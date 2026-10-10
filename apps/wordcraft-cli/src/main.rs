@@ -10,7 +10,7 @@ const USAGE: &str = "\
 wordcraft-cli — WordCraft from the command line
 
 USAGE:
-  wordcraft-cli convert <in> <out>            convert between formats (docx, pdf, odt, rtf, html, md, txt, json, png)
+  wordcraft-cli convert <in> <out>            convert between formats (docx, pdf, odt, rtf, html, md, tex, txt, json, png)
   wordcraft-cli info <file>                   pages, words, paragraphs, properties (JSON)
   wordcraft-cli text <file>                   plain text
   wordcraft-cli inspect <file>                document structure (JSON)
