@@ -4865,6 +4865,7 @@ dependencies = [
  "wordcraft-engine",
  "wordcraft-mcp",
  "wordcraft-render",
+ "wordcraft-zotero",
 ]
 
 [[package]]
@@ -5036,6 +5037,7 @@ dependencies = [
  "wordcraft-geom",
  "wordcraft-layout",
  "wordcraft-render",
+ "wordcraft-zotero",
 ]
 
 [[package]]
@@ -5054,6 +5056,20 @@ dependencies = [
  "wordcraft-doc",
  "wordcraft-engine",
  "wordcraft-ui-egui",
+]
+
+[[package]]
+name = "wordcraft-zotero"
+version = "0.4.0"
+dependencies = [
+ "log",
+ "proptest",
+ "serde_json",
+ "thiserror 2.0.21",
+ "wordcraft-doc",
+ "wordcraft-docx",
+ "wordcraft-engine",
+ "wordcraft-formats",
 ]
 
 [[package]]
