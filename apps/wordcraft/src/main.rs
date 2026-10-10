@@ -14,7 +14,10 @@ mod graphics;
 mod logging;
 
 use wordcraft_engine::Session;
-use wordcraft_ui_egui::{Services, UiState, WordApp, window_geometry::{WindowGeometry, take_rescue}};
+use wordcraft_ui_egui::{
+    Services, UiState, WordApp,
+    window_geometry::{WindowGeometry, take_rescue},
+};
 
 /// The app, and the restored window geometry until the first frame has checked it.
 struct App(WordApp, Option<WindowGeometry>);
