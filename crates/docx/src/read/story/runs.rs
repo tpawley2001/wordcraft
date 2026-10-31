@@ -167,7 +167,12 @@ impl Reader<'_> {
         }
         match k.name.as_str() {
             "w:t" | "w:delText" => {
-                let t = clean_text(&k.text());
+                // Without xml:space="preserve" the white space at either end of a text element
+                // is not significant (XML 1.0 §2.10, ECMA-376 Part 1 §17.3.3.31): Word and
+                // LibreOffice drop it, so `<w:t> deleted</w:t>` reads as "deleted".
+                let raw = k.text();
+                let raw = if k.attr("xml:space") == Some("preserve") { raw.as_str() } else { raw.trim_matches(['\u{20}', '\t', '\n', '\r']) };
+                let t = clean_text(raw);
                 self.emit_text(sc, pb, &t, props);
             }
             "w:instrText" | "w:delInstrText" => {

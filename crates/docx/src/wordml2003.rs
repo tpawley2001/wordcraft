@@ -246,6 +246,11 @@ impl Conv {
             el.attrs.retain(|(k, _)| k != "r:id");
             el.attrs.push(("r:id".into(), id));
         }
+        // Word 2003 XML keeps the white space at the ends of text as written; OOXML only with
+        // xml:space="preserve", which the reader honours.
+        if matches!(el.name.as_str(), "w:t" | "w:delText") && !el.attrs.iter().any(|(k, _)| k == "xml:space") {
+            el.attrs.push(("xml:space".into(), "preserve".into()));
+        }
         if el.name == "w:style" {
             for (k, v) in &mut el.attrs {
                 if k == "w:default" && v == "on" {

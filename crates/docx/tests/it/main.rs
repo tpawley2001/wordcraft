@@ -31,6 +31,7 @@ mod section_text_direction;
 mod section_valign;
 mod settings_merge;
 mod text_boxes;
+mod text_whitespace;
 mod toc_ranges;
 mod vml_shapes;
 mod word_xml;
