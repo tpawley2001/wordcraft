@@ -208,7 +208,9 @@ ideographic space (`autocorrect_finds_the_word_after_a_wide_space`):
   enclose several words; WordCraft converts a span only when the opening mark starts a word and
   the text inside holds a letter or digit and does not start or end with a space, so `2*3*`,
   `file_name_` and `*?!*` stay as typed, and so do marks around a picture, field or content
-  control. AutoCorrect then goes on with the word without its marks, so `*teh* ` becomes bold
+  control. A closing bracket or quote right after the closing mark finishes the word as a space
+  does, so `(*see note*)` converts (#4098,
+  `bold_and_italic_marks_convert_before_a_closing_bracket_or_quote`). AutoCorrect then goes on with the word without its marks, so `*teh* ` becomes bold
   `The `, and it corrects the first word of a span of several words as it is typed, so
   `*teh end* ` becomes bold `The end `. Undo right after brings the marks
   back (after Enter, the Enter stays). With Track Changes on, WordCraft converts only marks the
@@ -587,3 +589,4 @@ this correction; native Windows interaction and Microsoft Word remain untested.
 | 2026-10-15 | trivial | Text direction: typed and inserted text takes its direction from its own letters, not the caret's run; spaces typed into reopened Hebrew draw in the Latin font until reopened (#1543) |
 
 | 2026-10-27 | trivial | Backspace after a floating shape's anchor at a paragraph start joins paragraphs and keeps the shape (#4592) |
+| 2026-10-31 | trivial | `*bold*` and `_italic_` also convert when a closing bracket or quote follows the closing mark: `(*see note*)` (#4098) |

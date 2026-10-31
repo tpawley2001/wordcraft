@@ -642,6 +642,30 @@ fn bold_and_italic_marks_become_formatting() {
     assert_eq!(s.doc.plain_text(StoryRef::Body), "A *b*\n");
 }
 
+/// #4098: a closing bracket or quote right after the closing mark finishes the word, as a
+/// space or punctuation does.
+#[test]
+fn bold_and_italic_marks_convert_before_a_closing_bracket_or_quote() {
+    for (keys, want, word, bold) in [
+        ("(*see note*) ", "(see note) ", "see", true),
+        ("[_aside_] ", "[aside] ", "aside", false),
+        ("{*x1*}", "{x1}", "x1", true),
+        ("\"*loud*\" ", "\u{201c}loud\u{201d} ", "loud", true),
+        ("'_soft_' ", "\u{2018}soft\u{2019} ", "soft", false),
+    ] {
+        let mut s = s();
+        run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+        typ(&mut s, keys);
+        assert_eq!(s.doc.plain_text(StoryRef::Body), want, "{keys:?}");
+        let p = s.doc.para_at(&Pos::body(0, 0)).unwrap();
+        let c = p.props_of_char(p.text.find(word).unwrap());
+        let got = if bold { c.bold } else { c.italic };
+        assert_eq!(got, Some(true), "{keys:?}: {word} is formatted");
+        let first = p.props_of_char(0);
+        assert_eq!((first.bold, first.italic), (None, None), "{keys:?}: the bracket or quote stays plain");
+    }
+}
+
 #[test]
 fn autocorrect_goes_on_after_bold_and_italic_marks() {
     // After a space or punctuation, the word without its marks is replaced and capitalized.

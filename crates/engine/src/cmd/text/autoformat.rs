@@ -76,7 +76,9 @@ pub(super) fn insert(s: &mut Session, v: &Value) -> CmdResult {
         transformed: smart_quote.is_some(),
         selection_changed: false,
     };
-    let trigger = text.chars().count() == 1 && text.chars().all(|c| c == ' ' || ",.;:!?".contains(c));
+    // A closing bracket or quote finishes a `*bold*` or `_italic_` span too (#4098); AutoCorrect
+    // itself still only runs after a space or punctuation.
+    let trigger = text.chars().count() == 1 && text.chars().all(|c| c == ' ' || ",.;:!?)]}\"'".contains(c));
     if raw || !trigger {
         s.set_ime_edit_outcome(outcome);
         return sel_result(s);

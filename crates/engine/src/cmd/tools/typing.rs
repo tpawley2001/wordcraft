@@ -308,7 +308,8 @@ fn emphasis_at_caret(s: &Session, on_enter: bool) -> Option<(usize, usize, bool)
     let before = para.text.get(..f.off)?;
     let trigger = match before.chars().next_back() {
         _ if on_enter => 0,
-        Some(c) if c == ' ' || ",.;:!?".contains(c) => c.len_utf8(),
+        // A closing bracket or quote finishes the word too: `(*see note*)` (#4098).
+        Some(c) if c == ' ' || ",.;:!?)]}\"'”’".contains(c) => c.len_utf8(),
         _ => return None,
     };
     let span = before.get(..before.len() - trigger).and_then(emphasis_span)?;
