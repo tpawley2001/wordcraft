@@ -183,10 +183,13 @@ impl Server {
                 Ok(json!({
                     "protocolVersion": version,
                     "capabilities": {"tools": {}, "resources": {}},
-                    "serverInfo": {"name": "wordcraft", "title": "WordCraft", "version": env!("CARGO_PKG_VERSION"), "websiteUrl": "https://getartcraft.com/apps/wordcraft"},
+                    "serverInfo": {"name": "wordcraft", "title": wordcraft_engine::brand::APP_NAME, "version": env!("CARGO_PKG_VERSION")},
                     "instructions": format!(
-                        "{INSTRUCTIONS} Backend: {}. Community: https://discord.gg/artcraft · https://getartcraft.com/apps/wordcraft · https://github.com/storytold/wordcraft",
-                        self.backend.describe()
+                        "{} Backend: {}. {}: {}",
+                        wordcraft_engine::brand::named(INSTRUCTIONS),
+                        self.backend.describe(),
+                        wordcraft_engine::brand::APP_NAME,
+                        wordcraft_engine::brand::UPSTREAM_CREDIT
                     ),
                 }))
             }

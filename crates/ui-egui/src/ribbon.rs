@@ -129,6 +129,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         .exact_size(30.0)
         .frame(egui::Frame::NONE.fill(t.tab_strip).inner_margin(egui::Margin { left: 8, right: 10, top: 0, bottom: 0 }))
         .show(ui, |ui| {
+            // The tab strip sits on the navy band, like the title bar; its menus don't.
+            let _band = crate::theme::on_band();
+            let t = Tokens::get(ui.ctx());
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing = vec2(2.0, 0.0);
                 // Share, Editing mode and Comments keep their room; the tabs get what is left of it
@@ -169,7 +172,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                         let (share_size, share_text) =
                             if plan.buttons < 2 { (((share_w + 36.0).max(74.0), 24.0), true) } else { ((30.0, 24.0), false) };
                         let (r, resp) = ui.allocate_exact_size(vec2(share_size.0, share_size.1), Sense::click());
-                        ui.painter().rect_filled(r, 4.0, if resp.hovered() { t.accent_text } else { t.accent });
+                        ui.painter().rect_filled(r, 4.0, if resp.hovered() { t.accent_hover } else { t.accent });
                         let icon_x = if share_text { r.min.x + 14.0 } else { r.center().x };
                         icons::paint(
                             ui.painter(),
@@ -187,27 +190,34 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                         }
                         ui.add_space(6.0);
                         let track = app.session.doc.settings.track_changes;
-                        let mode = if plan.buttons == 0 {
-                            crate::widgets::icon_text_menu_button(ui, "pencil", editing_label, regular(12.0))
-                        } else {
-                            crate::widgets::icon_only_button(ui, "pencil", editing_label, regular(12.0), true)
-                        };
-                        egui::Popup::menu(&mode).show(|ui| {
-                            if ui.selectable_label(!track, tl!(tl!("Editing — edit the document directly"))).clicked() {
-                                let _ = app.run("review.trackChanges", json!({"value": false}));
-                                ui.close();
-                            }
-                            if ui.selectable_label(track, tl!(tl!("Reviewing — edits become suggestions"))).clicked() {
-                                let _ = app.run("review.trackChanges", json!({"value": true}));
-                                ui.close();
+                        // Framed parchment buttons on the band: drawn with the ordinary palette.
+                        let mode = crate::theme::off_band(|| {
+                            if plan.buttons == 0 {
+                                crate::widgets::icon_text_menu_button(ui, "pencil", editing_label, regular(12.0))
+                            } else {
+                                crate::widgets::icon_only_button(ui, "pencil", editing_label, regular(12.0), true)
                             }
                         });
+                        crate::theme::off_band(|| {
+                            egui::Popup::menu(&mode).show(|ui| {
+                                if ui.selectable_label(!track, tl!(tl!("Editing — edit the document directly"))).clicked() {
+                                    let _ = app.run("review.trackChanges", json!({"value": false}));
+                                    ui.close();
+                                }
+                                if ui.selectable_label(track, tl!(tl!("Reviewing — edits become suggestions"))).clicked() {
+                                    let _ = app.run("review.trackChanges", json!({"value": true}));
+                                    ui.close();
+                                }
+                            })
+                        });
                         ui.add_space(4.0);
-                        let comments_button = if plan.buttons == 0 {
-                            crate::widgets::icon_text_button(ui, "comment", comments, regular(12.0))
-                        } else {
-                            crate::widgets::icon_only_button(ui, "comment", comments, regular(12.0), false)
-                        };
+                        let comments_button = crate::theme::off_band(|| {
+                            if plan.buttons == 0 {
+                                crate::widgets::icon_text_button(ui, "comment", comments, regular(12.0))
+                            } else {
+                                crate::widgets::icon_only_button(ui, "comment", comments, regular(12.0), false)
+                            }
+                        });
                         if comments_button.clicked() {
                             let _ = app.run("view.commentsPane", json!({}));
                         }
@@ -268,7 +278,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                             if resp.double_clicked() && tab != "File" {
                                 let _ = app.run("ui.collapseRibbon", json!({}));
                             }
-                            resp.context_menu(|ui| crate::widgets::customize_menu_items(ui, app));
+                            crate::theme::off_band(|| resp.context_menu(|ui| crate::widgets::customize_menu_items(ui, app)));
                         }
                         let left_out: Vec<(&str, &str)> = tabs
                             .iter()
@@ -295,13 +305,15 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                             let more = tl!("More tabs");
                             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, more));
                             let resp = resp.on_hover_text(more);
-                            egui::Popup::menu(&resp).show(|ui| {
-                                for (tab, shown) in left_out {
-                                    if ui.selectable_label(app.ui.tab == tab, shown).clicked() {
-                                        let _ = app.run("ui.tab", json!({"tab": tab}));
-                                        ui.close();
+                            crate::theme::off_band(|| {
+                                egui::Popup::menu(&resp).show(|ui| {
+                                    for (tab, shown) in left_out {
+                                        if ui.selectable_label(app.ui.tab == tab, shown).clicked() {
+                                            let _ = app.run("ui.tab", json!({"tab": tab}));
+                                            ui.close();
+                                        }
                                     }
-                                }
+                                })
                             });
                         }
                     });

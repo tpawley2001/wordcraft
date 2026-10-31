@@ -4,9 +4,23 @@ use std::sync::Arc;
 
 use egui::{Align2, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Rect, Stroke, Visuals};
 
-/// WordCraft's app colour (and its darker ink for text on light backgrounds).
-pub const APP_COLOR: Color32 = Color32::from_rgb(0x3B, 0x5B, 0xDB);
-pub const APP_INK: Color32 = Color32::from_rgb(0x2B, 0x47, 0xB5);
+/// The app colour, brass (and its darker ink for brass text on parchment). The palette is
+/// PIRATE_SPEC.md's, shared by every Jolly Roger Office app.
+pub const APP_COLOR: Color32 = Color32::from_rgb(0xB8, 0x86, 0x0B);
+pub const APP_INK: Color32 = Color32::from_rgb(0x68, 0x4A, 0x00);
+/// Spec colours: parchment, ink, deep-sea navy, weathered wood, oxblood, bright brass.
+pub const PARCHMENT: Color32 = Color32::from_rgb(0xF4, 0xE9, 0xD0);
+pub const INK: Color32 = Color32::from_rgb(0x2B, 0x1D, 0x0E);
+pub const NAVY: Color32 = Color32::from_rgb(0x1F, 0x3A, 0x4D);
+pub const WOOD: Color32 = Color32::from_rgb(0x8C, 0x6D, 0x46);
+pub const OXBLOOD: Color32 = Color32::from_rgb(0x8B, 0x1E, 0x1E);
+pub const BRASS_BRIGHT: Color32 = Color32::from_rgb(0xD4, 0xA0, 0x17);
+/// Midnight Sea spec colours.
+pub const SEA: Color32 = Color32::from_rgb(0x0F, 0x1B, 0x24);
+pub const SEA_PANEL: Color32 = Color32::from_rgb(0x16, 0x26, 0x2F);
+pub const SEA_RIBBON: Color32 = Color32::from_rgb(0x0A, 0x14, 0x1B);
+pub const SEA_TEXT: Color32 = Color32::from_rgb(0xE8, 0xDC, 0xC0);
+pub const SEA_BORDER: Color32 = Color32::from_rgb(0x3A, 0x4F, 0x5C);
 
 /// The interface theme setting (File › Options › General, View › Interface Theme): a fixed light or
 /// dark palette, or `System`, which follows the OS light/dark appearance live (#115). Dark page
@@ -248,6 +262,8 @@ pub struct Tokens {
     pub pressed: Color32,
     pub checked: Color32,
     pub accent: Color32,
+    /// Filled accent controls under the pointer (Share, keytips); `on_accent` reads on it too.
+    pub accent_hover: Color32,
     /// The File page's side bar; white text and icons sit on it in both themes.
     pub nav: Color32,
     pub accent_text: Color32,
@@ -301,47 +317,52 @@ pub struct Tokens {
 }
 
 impl Tokens {
+    /// "Parchment" (PIRATE_SPEC.md): parchment panels, ink text, brass accents, and a deep-sea navy
+    /// band for the title bar and the ribbon tabs ([`Tokens::band`]).
     pub fn light() -> Self {
         Tokens {
             dark: false,
-            title_bar: Color32::from_rgb(0xF0, 0xF0, 0xF0),
-            ribbon: Color32::from_rgb(0xF9, 0xF9, 0xF9),
-            tab_strip: Color32::from_rgb(0xF0, 0xF0, 0xF0),
-            canvas: Color32::from_rgb(0xE6, 0xE6, 0xE6),
-            panel: Color32::from_rgb(0xFA, 0xFA, 0xFA),
-            border: Color32::from_rgb(0xE1, 0xE1, 0xE1),
-            border_strong: Color32::from_rgb(0xC8, 0xC8, 0xC8),
-            text: Color32::from_rgb(0x24, 0x24, 0x24),
-            text_dim: Color32::from_rgb(0x61, 0x61, 0x61),
-            text_disabled: Color32::from_rgb(0xA8, 0xA8, 0xA8),
-            icon: Color32::from_rgb(0x42, 0x42, 0x42),
-            hover: Color32::from_rgb(0xE6, 0xE6, 0xE6),
-            pressed: Color32::from_rgb(0xD6, 0xD6, 0xD6),
-            checked: Color32::from_rgb(0xDD, 0xE3, 0xF8),
+            title_bar: NAVY,
+            ribbon: PARCHMENT,
+            tab_strip: NAVY,
+            canvas: Color32::from_rgb(0xDD, 0xCB, 0xA3),
+            panel: Color32::from_rgb(0xEA, 0xDB, 0xB8),
+            border: Color32::from_rgb(0xD4, 0xC0, 0x98),
+            border_strong: WOOD,
+            text: INK,
+            text_dim: Color32::from_rgb(0x5A, 0x45, 0x2C),
+            text_disabled: Color32::from_rgb(0xA8, 0x95, 0x74),
+            icon: Color32::from_rgb(0x3A, 0x2A, 0x16),
+            hover: Color32::from_rgb(0xE4, 0xD2, 0xA8),
+            pressed: Color32::from_rgb(0xD8, 0xC0, 0x8E),
+            checked: Color32::from_rgb(0xE9, 0xD4, 0x9C),
             accent: APP_COLOR,
-            nav: APP_COLOR,
+            accent_hover: BRASS_BRIGHT,
+            nav: NAVY,
             accent_text: APP_INK,
-            on_accent: Color32::WHITE,
-            input: Color32::WHITE,
-            input_border: Color32::from_rgb(0x8A, 0x8A, 0x8A),
-            group_label: Color32::from_rgb(0x70, 0x70, 0x70),
-            ruler: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-            ruler_margin: Color32::from_rgb(0xD4, 0xD4, 0xD4),
-            ruler_tick: Color32::from_rgb(0x70, 0x70, 0x70),
-            status_bar: Color32::from_rgb(0xF0, 0xF0, 0xF0),
-            selection: Color32::from_rgba_unmultiplied(0x3B, 0x5B, 0xDB, 0x48),
+            // Ink on brass: white on #B8860B is only 3.2:1.
+            on_accent: INK,
+            input: Color32::from_rgb(0xFB, 0xF6, 0xEA),
+            input_border: WOOD,
+            group_label: Color32::from_rgb(0x6B, 0x52, 0x35),
+            ruler: Color32::from_rgb(0xFB, 0xF6, 0xEA),
+            ruler_margin: Color32::from_rgb(0xDC, 0xC9, 0xA0),
+            ruler_tick: Color32::from_rgb(0x5A, 0x45, 0x2C),
+            status_bar: Color32::from_rgb(0xEA, 0xDB, 0xB8),
+            // The spec's selection: #C9A227 at 35 %.
+            selection: Color32::from_rgba_unmultiplied(0xC9, 0xA2, 0x27, 0x59),
             find_highlight: Color32::from_rgba_unmultiplied(0xFF, 0xE0, 0x3D, 0x90),
-            page_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x22),
+            page_shadow: Color32::from_rgba_unmultiplied(0x2B, 0x1D, 0x0E, 0x30),
             handle: Color32::WHITE,
             handle_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x28),
             guide: Color32::from_rgb(0xC0, 0x28, 0x8C),
             equation_box: Color32::from_rgb(0x6E, 0x9B, 0xE6),
             crop_handle: Color32::BLACK,
             crop_dim: Color32::from_rgba_unmultiplied(0x30, 0x30, 0x30, 0xE0),
-            balloon: Color32::WHITE,
-            markup_area: Color32::from_rgb(0xF3, 0xF3, 0xF3),
-            markup_edge: Color32::from_rgb(0xE0, 0xE0, 0xE0),
-            resolved_text: Color32::from_rgb(0x1B, 0x6B, 0x42),
+            balloon: Color32::from_rgb(0xFB, 0xF6, 0xEA),
+            markup_area: Color32::from_rgb(0xEF, 0xE3, 0xC6),
+            markup_edge: Color32::from_rgb(0xD4, 0xC0, 0x98),
+            resolved_text: Color32::from_rgb(0x15, 0x5A, 0x37),
             author_colors: [
                 Color32::from_rgb(0x2F, 0x6F, 0xD0),
                 Color32::from_rgb(0xB0, 0x3A, 0x2E),
@@ -356,47 +377,49 @@ impl Tokens {
                 Color32::from_rgb(0x8E, 0x44, 0xAD),
                 Color32::from_rgb(0xE0, 0x7B, 0x1F),
             ],
-            menu: Color32::WHITE,
-            blue: Color32::from_rgb(0x2F, 0x6F, 0xD0),
-            red: Color32::from_rgb(0xD1, 0x3B, 0x3B),
-            green: Color32::from_rgb(0x2E, 0x8B, 0x57),
-            orange: Color32::from_rgb(0xE0, 0x7B, 0x1F),
+            menu: Color32::from_rgb(0xFB, 0xF6, 0xEA),
+            blue: Color32::from_rgb(0x1F, 0x5A, 0x7A),
+            red: OXBLOOD,
+            green: Color32::from_rgb(0x2E, 0x6B, 0x3A),
+            orange: Color32::from_rgb(0xB5, 0x65, 0x1D),
             close_hover: Color32::from_rgb(0xC4, 0x2B, 0x1C),
             close_pressed: Color32::from_rgb(0xA6, 0x23, 0x16),
             on_close: Color32::WHITE,
         }
     }
+
+    /// "Midnight Sea" (PIRATE_SPEC.md): dark sea panels, parchment text, bright brass accents.
     pub fn dark() -> Self {
         Tokens {
             dark: true,
-            title_bar: Color32::from_rgb(0x1F, 0x1F, 0x1F),
-            ribbon: Color32::from_rgb(0x29, 0x29, 0x29),
-            tab_strip: Color32::from_rgb(0x1F, 0x1F, 0x1F),
-            canvas: Color32::from_rgb(0x14, 0x14, 0x14),
-            panel: Color32::from_rgb(0x26, 0x26, 0x26),
-            border: Color32::from_rgb(0x3A, 0x3A, 0x3A),
-            border_strong: Color32::from_rgb(0x55, 0x55, 0x55),
-            text: Color32::from_rgb(0xEE, 0xEE, 0xEE),
-            text_dim: Color32::from_rgb(0xC8, 0xC8, 0xC8),
-            text_disabled: Color32::from_rgb(0x6A, 0x6A, 0x6A),
-            icon: Color32::from_rgb(0xDD, 0xDD, 0xDD),
-            hover: Color32::from_rgb(0x3D, 0x3D, 0x3D),
-            pressed: Color32::from_rgb(0x4A, 0x4A, 0x4A),
-            checked: Color32::from_rgb(0x2E, 0x3A, 0x66),
-            accent: Color32::from_rgb(0x7A, 0x93, 0xF0),
-            nav: Color32::from_rgb(0x27, 0x31, 0x5C),
-            accent_text: Color32::from_rgb(0x9C, 0xB0, 0xF5),
-            // Dark text on the light dark-theme accent: white on #7a93f0 is only 2.9:1 (#655).
-            on_accent: Color32::from_rgb(0x11, 0x16, 0x2E),
-            input: Color32::from_rgb(0x1E, 0x1E, 0x1E),
-            input_border: Color32::from_rgb(0x7A, 0x7A, 0x7A),
-            group_label: Color32::from_rgb(0xA0, 0xA0, 0xA0),
+            title_bar: SEA_RIBBON,
+            ribbon: SEA_PANEL,
+            tab_strip: SEA_RIBBON,
+            canvas: SEA,
+            panel: SEA_PANEL,
+            border: SEA_BORDER,
+            border_strong: Color32::from_rgb(0x55, 0x70, 0x80),
+            text: SEA_TEXT,
+            text_dim: Color32::from_rgb(0xB9, 0xAE, 0x94),
+            text_disabled: Color32::from_rgb(0x5E, 0x6A, 0x70),
+            icon: Color32::from_rgb(0xE0, 0xD4, 0xB6),
+            hover: Color32::from_rgb(0x21, 0x38, 0x45),
+            pressed: Color32::from_rgb(0x2A, 0x45, 0x54),
+            checked: Color32::from_rgb(0x3A, 0x34, 0x20),
+            accent: BRASS_BRIGHT,
+            accent_hover: Color32::from_rgb(0xE6, 0xB8, 0x3A),
+            nav: Color32::from_rgb(0x13, 0x30, 0x3F),
+            accent_text: Color32::from_rgb(0xE0, 0xB5, 0x3A),
+            on_accent: SEA,
+            input: Color32::from_rgb(0x0B, 0x16, 0x1D),
+            input_border: Color32::from_rgb(0x7E, 0x95, 0xA3),
+            group_label: Color32::from_rgb(0xA8, 0x9E, 0x86),
             // The text area is lighter than the margins, as in the light theme (#1148).
-            ruler: Color32::from_rgb(0x45, 0x45, 0x45),
-            ruler_margin: Color32::from_rgb(0x2E, 0x2E, 0x2E),
-            ruler_tick: Color32::from_rgb(0xB4, 0xB4, 0xB4),
-            status_bar: Color32::from_rgb(0x1F, 0x1F, 0x1F),
-            selection: Color32::from_rgba_unmultiplied(0x7A, 0x93, 0xF0, 0x55),
+            ruler: Color32::from_rgb(0x2A, 0x3F, 0x4C),
+            ruler_margin: SEA_PANEL,
+            ruler_tick: Color32::from_rgb(0xC8, 0xBC, 0xA0),
+            status_bar: SEA_RIBBON,
+            selection: Color32::from_rgba_unmultiplied(0xD4, 0xA0, 0x17, 0x55),
             find_highlight: Color32::from_rgba_unmultiplied(0xC8, 0xA8, 0x00, 0x70),
             page_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x60),
             handle: Color32::from_rgb(0xF2, 0xF2, 0xF2),
@@ -405,9 +428,9 @@ impl Tokens {
             equation_box: Color32::from_rgb(0x6E, 0x9B, 0xE6),
             crop_handle: Color32::BLACK,
             crop_dim: Color32::from_rgba_unmultiplied(0x30, 0x30, 0x30, 0xE0),
-            balloon: Color32::from_rgb(0x2B, 0x2B, 0x2B),
-            markup_area: Color32::from_rgb(0x1B, 0x1B, 0x1B),
-            markup_edge: Color32::from_rgb(0x3A, 0x3A, 0x3A),
+            balloon: Color32::from_rgb(0x1C, 0x30, 0x3B),
+            markup_area: SEA,
+            markup_edge: SEA_BORDER,
             resolved_text: Color32::from_rgb(0x5B, 0xC0, 0x8A),
             author_colors: [
                 Color32::from_rgb(0x7F, 0xA8, 0xF2),
@@ -423,9 +446,9 @@ impl Tokens {
                 Color32::from_rgb(0x8E, 0x44, 0xAD),
                 Color32::from_rgb(0xE0, 0x7B, 0x1F),
             ],
-            menu: Color32::from_rgb(0x2B, 0x2B, 0x2B),
+            menu: SEA_PANEL,
             blue: Color32::from_rgb(0x6C, 0x9B, 0xEA),
-            red: Color32::from_rgb(0xEE, 0x6A, 0x6A),
+            red: Color32::from_rgb(0xC0, 0x39, 0x2B),
             green: Color32::from_rgb(0x5B, 0xC0, 0x8A),
             orange: Color32::from_rgb(0xF0, 0xA0, 0x50),
             // A little lighter than the light theme's red, so it reads against the dark window.
@@ -434,8 +457,73 @@ impl Tokens {
             on_close: Color32::WHITE,
         }
     }
+
+    /// The same palette for chrome drawn on the title bar and the ribbon's tab strip: the navy
+    /// band (light) or the darkest sea (dark). Text and icons are parchment there, and the
+    /// controls' fills are shades of the band.
+    pub fn band(self) -> Self {
+        let mut t = self;
+        if t.dark {
+            t.ribbon = Color32::from_rgb(0x12, 0x21, 0x2B);
+            t.input = Color32::from_rgb(0x1A, 0x2D, 0x39);
+            t.hover = Color32::from_rgb(0x1A, 0x2A, 0x35);
+            t.pressed = Color32::from_rgb(0x22, 0x39, 0x4A);
+            t.border = Color32::from_rgb(0x2E, 0x42, 0x50);
+        } else {
+            t.text = PARCHMENT;
+            t.text_dim = Color32::from_rgb(0xC9, 0xBF, 0xA8);
+            t.text_disabled = Color32::from_rgb(0x7D, 0x8C, 0x96);
+            t.icon = PARCHMENT;
+            t.ribbon = Color32::from_rgb(0x17, 0x30, 0x3F);
+            t.input = Color32::from_rgb(0x22, 0x44, 0x5A);
+            // Darker than the band, so brass and parchment text keep their contrast on them.
+            t.hover = Color32::from_rgb(0x12, 0x28, 0x3A);
+            t.pressed = Color32::from_rgb(0x0C, 0x1C, 0x28);
+            t.checked = Color32::from_rgb(0x10, 0x23, 0x32);
+            t.border = Color32::from_rgb(0x4A, 0x6A, 0x80);
+            t.border_strong = Color32::from_rgb(0x6F, 0x8D, 0xA0);
+            t.input_border = Color32::from_rgb(0x8F, 0xA7, 0xB6);
+            t.accent_text = BRASS_BRIGHT;
+        }
+        t
+    }
+
+    /// The palette for the current theme, or its [`Tokens::band`] variant while the title bar or
+    /// the tab strip is being drawn ([`on_band`]).
     pub fn get(ctx: &egui::Context) -> Tokens {
-        if ctx.global_style().visuals.dark_mode { Tokens::dark() } else { Tokens::light() }
+        let t = if ctx.global_style().visuals.dark_mode { Tokens::dark() } else { Tokens::light() };
+        if BAND.with(std::cell::Cell::get) > 0 { t.band() } else { t }
+    }
+}
+
+thread_local! {
+    /// How many [`on_band`] guards are alive on this thread.
+    static BAND: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// While the returned guard lives, [`Tokens::get`] gives the band palette: for drawing the title
+/// bar and the ribbon's tab strip, which sit on the navy band.
+#[must_use]
+pub fn on_band() -> BandGuard {
+    let before = BAND.with(|b| b.replace(b.get().saturating_add(1)));
+    BandGuard(before)
+}
+
+/// Run `f` with the ordinary palette: for menus and popups opened from the band, which are drawn
+/// on the menu colour.
+pub fn off_band<R>(f: impl FnOnce() -> R) -> R {
+    let before = BAND.with(|b| b.replace(0));
+    let r = f();
+    BAND.with(|b| b.set(before));
+    r
+}
+
+/// Restores the band depth when dropped ([`on_band`]).
+pub struct BandGuard(u32);
+
+impl Drop for BandGuard {
+    fn drop(&mut self) {
+        BAND.with(|b| b.set(self.0));
     }
 }
 
@@ -873,11 +961,75 @@ mod tests {
     #[test]
     fn on_accent_reads_on_the_accent() {
         for t in [super::Tokens::light(), super::Tokens::dark()] {
-            for (name, bg) in [("accent", t.accent), ("hover", t.accent_text)] {
+            for (name, bg) in [("accent", t.accent), ("hover", t.accent_hover), ("band accent", t.band().accent)] {
                 let r = contrast(t.on_accent, bg);
                 assert!(r >= 4.5, "dark={}: on_accent on {name} is {r:.2}:1", t.dark);
             }
         }
+    }
+
+    /// The pirate palettes keep PIRATE_SPEC.md's colours, shared by every Jolly Roger Office app.
+    #[test]
+    fn palettes_use_the_spec_colours() {
+        use egui::Color32 as C;
+        let l = super::Tokens::light();
+        assert_eq!(l.ribbon, C::from_rgb(0xF4, 0xE9, 0xD0), "parchment");
+        assert_eq!(l.panel, C::from_rgb(0xEA, 0xDB, 0xB8));
+        assert_eq!(l.title_bar, C::from_rgb(0x1F, 0x3A, 0x4D), "deep sea navy band");
+        assert_eq!(l.accent, C::from_rgb(0xB8, 0x86, 0x0B), "brass");
+        assert_eq!(l.accent_hover, C::from_rgb(0xD4, 0xA0, 0x17));
+        assert_eq!(l.red, C::from_rgb(0x8B, 0x1E, 0x1E), "oxblood");
+        assert_eq!(l.text, C::from_rgb(0x2B, 0x1D, 0x0E), "ink");
+        assert_eq!(l.border_strong, C::from_rgb(0x8C, 0x6D, 0x46), "weathered wood");
+        assert_eq!(l.selection, C::from_rgba_unmultiplied(0xC9, 0xA2, 0x27, 0x59), "#C9A227 at 35 %");
+        assert_eq!(l.band().text, C::from_rgb(0xF4, 0xE9, 0xD0), "ribbon text");
+        let d = super::Tokens::dark();
+        assert_eq!(d.canvas, C::from_rgb(0x0F, 0x1B, 0x24));
+        assert_eq!(d.panel, C::from_rgb(0x16, 0x26, 0x2F));
+        assert_eq!(d.title_bar, C::from_rgb(0x0A, 0x14, 0x1B));
+        assert_eq!(d.text, C::from_rgb(0xE8, 0xDC, 0xC0));
+        assert_eq!(d.accent, C::from_rgb(0xD4, 0xA0, 0x17));
+        assert_eq!(d.red, C::from_rgb(0xC0, 0x39, 0x2B));
+        assert_eq!(d.border, C::from_rgb(0x3A, 0x4F, 0x5C));
+    }
+
+    /// Body text, dim text, group labels and brass text reach 4.5:1 on every surface they sit
+    /// on, in both palettes and on the band.
+    #[test]
+    fn pirate_text_is_readable() {
+        for t in [super::Tokens::light(), super::Tokens::dark()] {
+            for (bg_name, bg) in
+                [("ribbon", t.ribbon), ("panel", t.panel), ("menu", t.menu), ("input", t.input), ("status bar", t.status_bar), ("canvas", t.canvas)]
+            {
+                for (fg_name, fg) in [("text", t.text), ("dim text", t.text_dim), ("accent text", t.accent_text)] {
+                    let r = contrast(fg, bg);
+                    assert!(r >= 4.5, "dark={}: {fg_name} on {bg_name} is {r:.2}:1", t.dark);
+                }
+            }
+            let r = contrast(t.group_label, t.ribbon);
+            assert!(r >= 4.5, "dark={}: group labels on the ribbon are {r:.2}:1", t.dark);
+            let b = t.band();
+            for (bg_name, bg) in [("title bar", b.title_bar), ("tab strip", b.tab_strip), ("hovered tab", b.hover), ("search field", b.ribbon)] {
+                for (fg_name, fg) in [("text", b.text), ("dim text", b.text_dim), ("active tab", b.accent_text)] {
+                    let r = contrast(fg, bg);
+                    assert!(r >= 4.5, "dark={}: band {fg_name} on {bg_name} is {r:.2}:1", t.dark);
+                }
+            }
+        }
+    }
+
+    /// Menus opened from the band are drawn with the ordinary palette; the band ends with its guard.
+    #[test]
+    fn band_palette_is_scoped() {
+        let ctx = egui::Context::default();
+        let plain = super::Tokens::get(&ctx).ribbon;
+        {
+            let _band = super::on_band();
+            assert_ne!(super::Tokens::get(&ctx).ribbon, plain, "the band has its own field colour");
+            assert_eq!(super::off_band(|| super::Tokens::get(&ctx).ribbon), plain, "menus off the band");
+            assert_ne!(super::Tokens::get(&ctx).ribbon, plain, "back on the band after the menu");
+        }
+        assert_eq!(super::Tokens::get(&ctx).ribbon, plain, "the guard ends the band");
     }
 
     /// White text and icons on the File page's side bar reach 4.5:1 in both themes.
@@ -893,9 +1045,15 @@ mod tests {
     #[test]
     fn input_borders_reach_three_to_one() {
         for t in [super::Tokens::light(), super::Tokens::dark()] {
-            for (name, bg) in [("input", t.input), ("ribbon", t.ribbon), ("panel", t.panel), ("menu", t.menu), ("title bar", t.title_bar)] {
+            for (name, bg) in [("input", t.input), ("ribbon", t.ribbon), ("panel", t.panel), ("menu", t.menu)] {
                 let r = contrast(t.input_border, bg);
                 assert!(r >= 3.0, "dark={}: input_border on {name} is {r:.2}:1", t.dark);
+            }
+            // The title bar's controls are drawn with the band palette.
+            let b = t.band();
+            for (name, bg) in [("title bar", b.title_bar), ("band input", b.input), ("band field", b.ribbon)] {
+                let r = contrast(b.input_border, bg);
+                assert!(r >= 3.0, "dark={}: band input_border on {name} is {r:.2}:1", t.dark);
             }
         }
     }

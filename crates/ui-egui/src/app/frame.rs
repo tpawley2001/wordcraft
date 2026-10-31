@@ -15,8 +15,10 @@ impl WordApp {
         msg
     }
 
+    /// Show `s` in the status bar. Messages from the engine name the app as upstream did; they
+    /// are shown with the app's own name ([`crate::brand::named`]).
     pub fn status(&mut self, s: impl Into<String>) {
-        self.status_msg = Some((s.into(), now_ms()));
+        self.status_msg = Some((crate::brand::named(&s.into()), now_ms()));
     }
 
     /// Document title for the title bar (and the suggested file name). An untitled document is

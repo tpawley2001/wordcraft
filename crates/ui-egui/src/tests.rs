@@ -645,12 +645,12 @@ fn start_screen_shows_file_home_and_esc_leaves_no_document() {
     let a = h.state_mut();
     assert!(!a.ui.backstage, "Esc leaves the Start screen");
     assert!(!a.has_document(), "for an empty window, not a blank document");
-    assert_eq!(a.sent_title, "WordCraft", "the window is titled with the app alone");
+    assert_eq!(a.sent_title, crate::brand::APP_NAME, "the window is titled with the app alone");
     // The ribbon's commands are off, but Help, the File tab and the settings work.
     for id in ["format.bold", "text.insert", "file.save", "file.saveAs", "file.print", "edit.paste", "insert.table", "ui.print"] {
         assert!(!widgets::enabled(a, id), "{id} is off with no document");
     }
-    for id in ["file.new", "file.open", "ui.backstage", "ui.tab", "ui.discord", "file.options", "ui.theme"] {
+    for id in ["file.new", "file.open", "ui.backstage", "ui.tab", "ui.pirateSpeak", "file.options", "ui.theme"] {
         assert!(widgets::enabled(a, id), "{id} works with no document");
     }
     assert!(!chrome::qat_enabled(a, "file.save"));
@@ -3512,7 +3512,8 @@ fn the_print_preview_fills_the_pane_zooms_and_scrolls_both_ways() {
 #[test]
 fn the_default_app_button_shows_only_with_the_hosts_hook() {
     use egui_kittest::kittest::Queryable;
-    const LABEL: &str = "Make WordCraft the default for Word documents…";
+    let label = crate::brand::named("Make WordCraft the default for Word documents…");
+    let label = label.as_str();
     for hook in [false, true] {
         let calls = std::rc::Rc::new(std::cell::Cell::new(0));
         let mut a = app();
@@ -3533,10 +3534,10 @@ fn the_default_app_button_shows_only_with_the_hosts_hook() {
             a,
         );
         h.run_steps(4);
-        assert!(h.query_by_label("Show the community button in the title bar").is_some(), "hook {hook}: the Options page rendered");
-        assert_eq!(h.query_by_label(LABEL).is_some(), hook, "hook {hook}: the button");
+        assert!(h.query_by_label("Pirate speak").is_some(), "hook {hook}: the Options page rendered");
+        assert_eq!(h.query_by_label(label).is_some(), hook, "hook {hook}: the button");
         if hook {
-            h.get_by_label(LABEL).click();
+            h.get_by_label(label).click();
             h.run_steps(2);
             assert_eq!(calls.get(), 1, "the button ran the hook");
         }

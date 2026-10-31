@@ -743,14 +743,19 @@ impl WordApp {
             // button does it ([`WordApp::make_default_app`]); scripts, the control channel and
             // MCP get an error.
             "ui.makeDefaultApp" => {
-                return Some(Err(
-                    "making WordCraft the default app needs a click in File › Options › General; scripts and agents can't change system defaults"
-                        .into(),
-                ));
+                return Some(Err(crate::brand::named(
+                    "making WordCraft the default app needs a click in File › Options › General; scripts and agents can't change system defaults",
+                )));
             }
-            "ui.discord" => {
-                self.canvas.open_url = Some("https://discord.gg/artcraft".into());
-                json!({})
+            "ui.pirateSpeak" => {
+                // File › Options › General: `value` true or false turns the pirate flavour text
+                // (greeting, empty states, About box) on or off; no value reads it.
+                match p.get("value") {
+                    None => {}
+                    Some(Value::Bool(on)) => self.ui.pirate_speak = *on,
+                    Some(_) => return Some(Err("`value` must be true or false".into())),
+                }
+                json!({"pirateSpeak": self.ui.pirate_speak})
             }
             "ui.caretAnimation" => {
                 // File › Options › Advanced › Animation: `value` true or false turns the caret's
@@ -812,20 +817,20 @@ impl WordApp {
     /// command, so nothing programmatic (control channel, MCP, macros) can change system defaults.
     pub(crate) fn make_default_app(&mut self) -> Result<Value, String> {
         let Some(hook) = self.services.make_default_app.as_ref() else {
-            return Err("WordCraft can't change the default apps here; use your system's settings".into());
+            return Err(crate::brand::named("WordCraft can't change the default apps here; use your system's settings"));
         };
         match hook() {
             Ok(DefaultApp::SettingsOpened) => {
-                self.status(tl!("In Default apps, choose WordCraft for the document types you want it to open."));
+                self.status(crate::brand::named(tl!("In Default apps, choose WordCraft for the document types you want it to open.")));
                 Ok(json!({"settingsOpened": true}))
             }
             Ok(DefaultApp::MadeDefault) => {
-                self.status(tl!("WordCraft is now the default app for Word documents."));
+                self.status(crate::brand::named(tl!("WordCraft is now the default app for Word documents.")));
                 Ok(json!({"default": true}))
             }
             Err(e) => {
                 log::warn!("make default app: {e}");
-                let msg = i18n::fmt(tl!("Couldn't make WordCraft the default: {error}"), &[("error", &e)]);
+                let msg = i18n::fmt(&crate::brand::named(tl!("Couldn't make WordCraft the default: {error}")), &[("error", &e)]);
                 self.status(msg.clone());
                 Err(msg)
             }
@@ -1034,7 +1039,7 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.openFileDialog"
             | "ui.fileBrowser"
             | "ui.makeDefaultApp"
-            | "ui.discord"
+            | "ui.pirateSpeak"
             | "ui.caretAnimation"
             | "ui.startScreen"
             | "ui.checkForUpdates"

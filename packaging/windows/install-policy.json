@@ -1,7 +1,7 @@
 {
   "id": "wordcraft",
-  "name": "WordCraft",
-  "upgradeCode": "075497F9-E861-45D0-9C7F-A74F8C34E6BA",
+  "name": "CaptainsLog",
+  "upgradeCode": "C2DA2B5B-1BBC-4A2D-A00C-3F5E7C9CA4FB",
   "sources": [
     "wordcraft.wxs"
   ],

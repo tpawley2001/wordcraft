@@ -4,7 +4,7 @@ use egui::{Align2, Rect, Sense, Stroke, Ui, pos2, vec2};
 use serde_json::json;
 use wordcraft_doc::{PartKind, StoryRef};
 
-use crate::theme::{Tokens, TypeRung, fit_text, medium, paint_text, regular, semibold, text_width};
+use crate::theme::{Tokens, TypeRung, fit_text, paint_text, regular, semibold, text_width};
 use crate::{WordApp, icons};
 
 /// Why the caret's language isn't spell-checked (dictionary unreadable or missing), if it isn't.
@@ -15,9 +15,9 @@ pub(crate) fn dictionary_problem(lang: &str, unreadable: &Option<(std::path::Pat
             &[("language", lang), ("file", &file.to_string_lossy()), ("reason", reason)],
         )),
         (None, Some(name)) => Some(crate::i18n::fmt(
-            tl!(
+            &crate::brand::named(tl!(
                 "No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations."
-            ),
+            )),
             &[("language", lang), ("name", name)],
         )),
         (None, None) => None,
@@ -80,7 +80,7 @@ fn quick_access(ui: &mut Ui, app: &mut WordApp) {
                 app.keytip_rects.push((resp.rect, label));
             }
         }
-        crate::widgets::command_menu(&resp, app, id);
+        crate::theme::off_band(|| crate::widgets::command_menu(&resp, app, id));
         if id == "edit.undo" {
             undo_list_button(ui, app, enabled);
         }
@@ -93,9 +93,11 @@ fn quick_access(ui: &mut Ui, app: &mut WordApp) {
     }
     icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(16.0, 16.0)), "more", t.icon, t.accent);
     let resp = resp.on_hover_text(tl!("Customize Quick Access Toolbar"));
-    egui::Popup::menu(&resp).show(|ui| {
-        ui.set_min_width(220.0);
-        qat_menu(ui, app);
+    crate::theme::off_band(|| {
+        egui::Popup::menu(&resp).show(|ui| {
+            ui.set_min_width(220.0);
+            qat_menu(ui, app);
+        })
     });
 }
 
@@ -144,7 +146,7 @@ fn undo_list_button(ui: &mut Ui, app: &mut WordApp, enabled: bool) {
     let c = if enabled { t.icon } else { t.text_disabled };
     icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(9.0, 9.0)), "dropdown", c, c);
     let resp = resp.on_hover_text(tl!("Undo History"));
-    egui::Popup::menu(&resp).show(|ui| undo_list(ui, app));
+    crate::theme::off_band(|| egui::Popup::menu(&resp).show(|ui| undo_list(ui, app)));
 }
 
 /// The Undo list (#701): recent steps, newest first. Hovering a row highlights it and every newer
@@ -278,6 +280,8 @@ impl MacTitleBar {
 /// Draws the title bar with window dragging, AutoSave, quick access, account, community and search
 /// controls, and the centred clickable document title.
 pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
+    // The title bar sits on the navy band: its text, icons and controls use the band palette.
+    let _band = crate::theme::on_band();
     let t = Tokens::get(ui.ctx());
     // macOS: shorter, so the system's traffic lights are centred in it; the tallest controls
     // shrink to keep a margin above and below them.
@@ -356,22 +360,6 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
                         let _ = app.run("ui.backstage", json!({"value": true, "page": "options", "pane": "general"}));
                     }
                     ui.add_space(8.0);
-                    if app.ui.show_discord {
-                        let (r, resp) = ui.allocate_exact_size(vec2(84.0, 22.0), Sense::click());
-                        ui.painter().rect_filled(r, 11.0, if resp.hovered() { t.accent_text } else { t.accent });
-                        icons::paint(
-                            ui.painter(),
-                            Rect::from_center_size(pos2(r.min.x + 13.0, r.center().y), vec2(14.0, 14.0)),
-                            "discord",
-                            t.on_accent,
-                            t.on_accent,
-                        );
-                        ui.painter().text(pos2(r.min.x + 24.0, r.center().y), Align2::LEFT_CENTER, tl!("Discord"), medium(11.5), t.on_accent);
-                        if resp.on_hover_text(tl!("Join the ArtCraft community on Discord")).clicked() {
-                            let _ = app.run("ui.discord", json!({}));
-                        }
-                        ui.add_space(8.0);
-                    }
                     search_box(app, ui, control_h);
                     right_start = ui.min_rect().min.x;
                 });
@@ -379,7 +367,7 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
             // Centred title.
             let title = if !app.has_document() {
                 // No document open (#1129): the app's name alone.
-                "WordCraft".to_string()
+                crate::brand::APP_NAME.to_string()
             } else {
                 format!(
                     "{} — {}",
@@ -498,6 +486,7 @@ pub const SCREEN_BAR_HEIGHT: f32 = 30.0;
 /// The slim bar across the top in Focus ("⋯" drops the ribbon down over the page) and Full
 /// Screen View (Search, which finds and runs any command).
 pub fn screen_bar(app: &mut WordApp, ui: &mut Ui, screen: Screen) {
+    let _band = crate::theme::on_band();
     let t = Tokens::get(ui.ctx());
     let fill = if screen == Screen::Focus { FOCUS_CANVAS } else { t.title_bar };
     egui::Panel::top("screen_bar").exact_size(SCREEN_BAR_HEIGHT).show_separator_line(false).frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {

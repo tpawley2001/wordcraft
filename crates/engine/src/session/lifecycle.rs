@@ -103,7 +103,7 @@ impl Session {
             goal_x,
             page_hint,
             registry,
-            author: "WordCraft User".into(),
+            author: crate::brand::DEFAULT_AUTHOR.into(),
             initials: String::new(),
             painter: None,
             status: String::new(),

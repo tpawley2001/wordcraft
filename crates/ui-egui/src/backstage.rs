@@ -124,20 +124,15 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 }
             }
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                for (label, id) in [("About", "about"), ("Discord community", "discord")] {
-                    let (r, resp) = ui.allocate_exact_size(vec2(200.0, 32.0), Sense::click());
-                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), tl!(label)));
-                    if resp.hovered() {
-                        ui.painter().rect_filled(r, 0.0, egui::Color32::from_white_alpha(26));
-                    }
-                    ui.painter().text(pos2(r.min.x + 22.0, r.center().y), Align2::LEFT_CENTER, tl!(label), regular(13.0), egui::Color32::WHITE);
-                    if resp.clicked() {
-                        if id == "discord" {
-                            let _ = app.run("ui.discord", json!({}));
-                        } else {
-                            app.dialog = crate::dialogs::Dialog::open("about", app);
-                        }
-                    }
+                let label = "About";
+                let (r, resp) = ui.allocate_exact_size(vec2(200.0, 32.0), Sense::click());
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), tl!(label)));
+                if resp.hovered() {
+                    ui.painter().rect_filled(r, 0.0, egui::Color32::from_white_alpha(26));
+                }
+                ui.painter().text(pos2(r.min.x + 22.0, r.center().y), Align2::LEFT_CENTER, tl!(label), regular(13.0), egui::Color32::WHITE);
+                if resp.clicked() {
+                    app.dialog = crate::dialogs::Dialog::open("about", app);
                 }
             });
         });
@@ -299,16 +294,7 @@ fn matching_templates(query: &str) -> Vec<(&'static str, &'static str)> {
 fn home_page(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let hour = wordcraft_engine::cmd::now_iso().get(11..13).and_then(|h| h.parse::<u32>().ok()).unwrap_or(9);
-    heading(
-        ui,
-        if hour < 12 {
-            "Good morning"
-        } else if hour < 18 {
-            "Good afternoon"
-        } else {
-            "Good evening"
-        },
-    );
+    heading(ui, crate::brand::greeting(hour, app.ui.pirate_speak));
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing = vec2(18.0, 0.0);
         for (label, template) in TEMPLATES.into_iter().take(HOME_TEMPLATES) {
@@ -316,7 +302,7 @@ fn home_page(app: &mut WordApp, ui: &mut Ui) {
         }
     });
     ui.add_space(8.0);
-    let more = ui.add(egui::Label::new(egui::RichText::new(tl!("More templates →")).font(medium(13.5)).color(t.accent)).sense(Sense::click()));
+    let more = ui.add(egui::Label::new(egui::RichText::new(tl!("More templates →")).font(medium(13.5)).color(t.accent_text)).sense(Sense::click()));
     if more.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
         app.ui.backstage_page = "new".into();
     }
@@ -520,7 +506,7 @@ fn open_list(app: &mut WordApp, ui: &mut Ui) {
         ui.add_space(6.0);
     }
     if app.ui.recent.is_empty() {
-        ui.label(egui::RichText::new(tl!("Documents you open will show up here.")).color(t.text_dim));
+        ui.label(egui::RichText::new(tl!(crate::brand::no_recent(app.ui.pirate_speak))).color(t.text_dim));
     }
     let shown = app.ui.recent.iter().take(app.ui.recent_shown()).cloned().collect::<Vec<_>>();
     let file_name = |p: &str| std::path::Path::new(p).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or(p.to_string());
@@ -587,8 +573,8 @@ fn open_page(app: &mut WordApp, ui: &mut Ui) {
     // doesn't show up, WordCraft's own browser is always one click away.
     #[cfg(all(unix, not(target_os = "macos"), not(target_arch = "wasm32")))]
     if ui
-        .button(egui::RichText::new(tl!("Browse in WordCraft…")).font(medium(14.0)))
-        .on_hover_text(tl!("Open a file with WordCraft's own browser when the system file dialog doesn't appear."))
+        .button(egui::RichText::new(crate::brand::named(tl!("Browse in WordCraft…"))).font(medium(14.0)))
+        .on_hover_text(crate::brand::named(tl!("Open a file with WordCraft's own browser when the system file dialog doesn't appear.")))
         .clicked()
     {
         let _ = app.run("ui.fileBrowser", json!({}));

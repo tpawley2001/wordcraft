@@ -189,9 +189,9 @@ fn equation_pictures() -> Vec<(String, wordcraft_doc::math::Arg, bool, f32, egui
 }
 
 /// #1002: drawn the way the Equation tab draws them (the picture tinted with the theme's text
-/// colour on an input-coloured tile), every gallery tile, button and symbol is the theme's
-/// greys only: its background is the tile colour and its ink no darker or lighter than the
-/// text, in light and dark mode, with no red or teal anywhere.
+/// colour on an input-coloured tile), every gallery tile, button and symbol is a blend of the
+/// theme's tile and text colours only: each channel lies between the two, in light and dark
+/// mode, so no red or teal shows anywhere. (The pirate palettes are tinted, not grey.)
 #[test]
 fn equation_pictures_follow_the_theme() {
     let mix = |fg: u8, bg: u8, a: u8| ((u32::from(fg) * u32::from(a) + u32::from(bg) * (255 - u32::from(a))) / 255) as u8;
@@ -202,12 +202,12 @@ fn equation_pictures_follow_the_theme() {
         assert!(img.pixels.iter().any(|p| p.a() == 0), "{key}: transparent paper");
         for t in [Tokens::light(), Tokens::dark()] {
             let (bg, fg) = (t.input, t.text);
-            let (lo, hi) = (bg.r().min(fg.r()), bg.r().max(fg.r()));
+            let range = |b: u8, f: u8| b.min(f)..=b.max(f);
             for p in &img.pixels {
                 let a = p.a();
                 let c = [mix(fg.r(), bg.r(), a), mix(fg.g(), bg.g(), a), mix(fg.b(), bg.b(), a)];
-                assert!(c[0] == c[1] && c[1] == c[2], "{key}: a grey, not {c:?}");
-                assert!((lo..=hi).contains(&c[0]), "{key}: between the tile and the text colour, not {c:?}");
+                let ok = range(bg.r(), fg.r()).contains(&c[0]) && range(bg.g(), fg.g()).contains(&c[1]) && range(bg.b(), fg.b()).contains(&c[2]);
+                assert!(ok, "{key}: between the tile and the text colour, not {c:?}");
             }
         }
     }

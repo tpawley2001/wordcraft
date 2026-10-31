@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Captain's Log app icon: a quill over an open logbook on a deep-sea tile, with a faint compass ring.
+       Original artwork drawn in SVG for Jolly Roger Office (MIT OR Apache-2.0). Palette: PIRATE_SPEC.md. -->
+  <rect width="512" height="512" rx="112" fill="#1F3A4D"/>
+  <circle cx="256" cy="268" r="200" fill="none" stroke="#2B5068" stroke-width="10"/>
+  <g fill="#2B5068">
+    <path d="M256 52 L270 92 L242 92 Z"/>
+    <path d="M256 484 L242 444 L270 444 Z"/>
+    <path d="M40 268 L80 254 L80 282 Z"/>
+    <path d="M472 268 L432 282 L432 254 Z"/>
+  </g>
+  <!-- leather cover -->
+  <path d="M52 178 Q154 146 256 184 Q358 146 460 178 L460 418 Q358 390 256 426 Q154 390 52 418 Z" fill="#6B3E1E"/>
+  <!-- pages -->
+  <path d="M70 166 Q164 132 250 172 L250 404 Q164 370 70 400 Z" fill="#F4E9D0"/>
+  <path d="M262 172 Q348 132 442 166 L442 400 Q348 370 262 404 Z" fill="#EADBB8"/>
+  <path d="M250 172 L262 172 L262 404 L250 404 Z" fill="#8C6D46"/>
+  <!-- ruled lines -->
+  <g fill="none" stroke="#8C6D46" stroke-width="9" stroke-linecap="round">
+    <path d="M98 210 Q160 190 222 214"/>
+    <path d="M98 252 Q160 232 222 256"/>
+    <path d="M98 294 Q160 274 222 298"/>
+    <path d="M98 336 Q150 320 196 336"/>
+    <path d="M290 214 Q330 196 370 206"/>
+    <path d="M290 256 Q322 244 350 248"/>
+  </g>
+  <!-- ribbon bookmark -->
+  <path d="M376 392 L376 462 L394 444 L412 462 L412 384 Z" fill="#8B1E1E"/>
+  <!-- quill: vane, shaft, brass nib -->
+  <path d="M316 350 Q314 196 470 58 Q480 222 336 358 Z" fill="#F7F1E3" stroke="#C9A227" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M470 58 Q386 210 322 360" fill="none" stroke="#B8860B" stroke-width="7" stroke-linecap="round"/>
+  <g fill="none" stroke="#D9CFB8" stroke-width="5" stroke-linecap="round">
+    <path d="M412 134 L392 122"/>
+    <path d="M394 176 L366 168"/>
+    <path d="M376 220 L350 216"/>
+    <path d="M420 150 L448 150"/>
+    <path d="M400 196 L432 200"/>
+    <path d="M380 242 L410 250"/>
+  </g>
+  <path d="M310 356 L336 368 L306 412 Z" fill="#D4A017" stroke="#7A5808" stroke-width="5" stroke-linejoin="round"/>
+  <!-- a drop of ink -->
+  <circle cx="300" cy="426" r="9" fill="#2B1D0E"/>
+</svg>

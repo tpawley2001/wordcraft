@@ -259,7 +259,7 @@ impl WordApp {
             legacy_dark: _,
             nav_tab: _,
             nav_pane: _,
-            show_discord: _,
+            pirate_speak: _,
             author: _,
             window: _,
             language: _,

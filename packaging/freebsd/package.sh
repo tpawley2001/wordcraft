@@ -20,7 +20,7 @@ set -euo pipefail
 # shellcheck source=../env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 LINUX="$ROOT/packaging/linux"
-APP_ID=ai.storyteller.wordcraft
+APP_ID=com.hillyard_tech.CaptainsLog
 
 SKIP_BUILD=0
 DRY_RUN=0

@@ -331,9 +331,9 @@ pub(crate) fn show(app: &mut WordApp, ctx: &egui::Context) {
 fn body(ui: &mut Ui, b: &mut FileBrowser, t: &Tokens) -> Option<Option<PathBuf>> {
     if b.unavailable {
         ui.label(
-            egui::RichText::new(tl!(
+            egui::RichText::new(crate::brand::named(tl!(
                 "The system file dialog isn't available, so WordCraft shows its own. To get the system dialog, install a file chooser portal (such as xdg-desktop-portal-gtk) or zenity."
-            ))
+            )))
             .color(t.text_dim),
         );
         ui.add_space(6.0);
