@@ -137,8 +137,7 @@ Small follow-ups from the 2026-10-25 field, table and AutoFormat batch (#4232):
 - Convert Table to Text has no "Convert nested tables" check box; nested tables always stay tables, which is Word's default (#4155).
 - PAGE with a section page-number format of cardinal or ordinal text (`w:pgNumType`) shows the words in lowercase; only a `\* CardText` or `\* OrdText` switch should lowercase them (#4224).
 - A number outside a text format's range (`\* CardText` or `\* OrdText` past 999,999, `\* roman` past 50,000) keeps its digits; Word shows "Error! Number cannot be represented in specified format." (#4224).
-- AutoFormat's `*bold*` and `_italic_` don't convert when a closing bracket or quote follows the closing mark (`(*see note*)`): the trigger checks only space and `,.;:!?` (#4098).
-- The ribbon's Accept and Reject buttons only open their menus; Word's main half runs Accept (Reject) and Move to Next. The ribbon needs a big split button (Paste needs one too) (#4205).
+- Paste, Accept and Reject are big split buttons now, as in Word: the icon half pastes, or runs Accept (Reject) and Move to Next; the label half opens the menu (#4205, `widgets::big_split`).
 
 Recipient label generation (#4880) now includes all selected recipients across as many sheets as needed, retaining filtered/sorted order and the chosen product geometry. This fixes the one-sheet omission; Update Labels and Finish & Merge template behavior remain separate, and gap 21 remains open. Readiness estimates are unchanged.
 

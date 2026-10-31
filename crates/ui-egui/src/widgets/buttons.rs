@@ -123,6 +123,65 @@ fn big_button(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, id: &str,
     resp
 }
 
+/// What a [`big_split`] button runs from its upper half: the command, its params and the name
+/// its tooltip and screen readers give it; `menu` names the label half that opens the menu.
+pub struct SplitAction<'a> {
+    pub id: &'a str,
+    pub params: Value,
+    pub tip: &'a str,
+    pub menu: &'a str,
+}
+
+/// A large split button, as Word's Accept and Reject (#4205): the icon half runs `action`, the
+/// label half (with the drop-down marker) opens `menu`. The halves highlight on their own, and
+/// the whole button is outlined while the pointer is over either.
+pub fn big_split(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, action: SplitAction<'_>, menu: impl FnOnce(&mut Ui, &mut WordApp)) {
+    let SplitAction { id, params, tip, menu: menu_name } = action;
+    let (label, tip, menu_name) = (tl!(label), tl!(tip), tl!(menu_name));
+    let t = Tokens::get(ui.ctx());
+    let galley_w =
+        label.split('\n').map(|l| ui.ctx().fonts_mut(|f| f.layout_no_wrap(l.to_string(), regular(11.5), t.text).size().x)).fold(0.0, f32::max);
+    let w = (galley_w + 22.0).max(44.0);
+    let (r, _) = ui.allocate_exact_size(vec2(w, CONTENT_H), Sense::hover());
+    let split_y = r.min.y + BIG_LABEL_Y - 2.0;
+    let top = Rect::from_min_max(r.min, pos2(r.max.x, split_y));
+    let bottom = Rect::from_min_max(pos2(r.min.x, split_y), r.max);
+    let run = ui.interact(top, ui.scope_id().with(("big_split_run", id, label)), Sense::click());
+    let open = ui.interact(bottom, ui.scope_id().with(("big_split_menu", id, label)), Sense::click());
+    keytip_badge(ui, r, id, &label.replace('\n', " "));
+    let (on, menu_on) = (enabled(app, id), menu_enabled(app, id));
+    if run.hovered() || open.hovered() {
+        ui.painter().rect_stroke(r, CornerRadius::same(4), Stroke::new(1.0, t.border), egui::StrokeKind::Inside);
+    }
+    if on {
+        bg(ui, top, &run, false, &t);
+    }
+    if menu_on {
+        bg(ui, bottom, &open, false, &t);
+    }
+    let (c, a) = if on { (t.icon, t.accent) } else { (t.text_disabled, t.text_disabled) };
+    icons::paint(ui.painter(), Rect::from_center_size(pos2(r.center().x, r.min.y + BIG_ICON_Y), vec2(32.0, 32.0)), icon, c, a);
+    let lines: Vec<&str> = label.split('\n').collect();
+    let mut y = r.min.y + BIG_LABEL_Y;
+    for (i, l) in lines.iter().enumerate() {
+        label_line(ui, r.center().x, y, l, regular(11.5), if menu_on { t.text } else { t.text_disabled }, i + 1 == lines.len());
+        y += LABEL_PITCH;
+    }
+    run.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, on, tip));
+    open.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, menu_on, menu_name));
+    let run = tooltip(app, run, tip, id);
+    command_menu(&run, app, id);
+    if run.clicked() && on {
+        run_from_ribbon(app, id, params);
+    }
+    if menu_on {
+        egui::Popup::menu(&open).show(|ui| {
+            ui.set_min_width(200.0);
+            menu(ui, app);
+        });
+    }
+}
+
 /// A small button: 16 px icon with an optional label; `checked` draws the toggled state.
 pub struct ButtonAction<'a> {
     pub id: &'a str,

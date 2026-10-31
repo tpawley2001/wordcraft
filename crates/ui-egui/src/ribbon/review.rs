@@ -82,13 +82,15 @@ pub(super) fn review(app: &mut WordApp, ui: &mut Ui) {
         });
     });
     group(ui, "Changes", None, app, |ui, app| {
-        menu_button(ui, app, crate::widgets::MenuButtonOptions::new("accept", Some("Accept"), "Accept", true, "review.accept"), |ui, app| {
+        // Split buttons, as in Word (#4205): the icon accepts (rejects) and moves to the next change.
+        let next = |id, tip, menu| crate::widgets::SplitAction { id, params: json!({"next": true}), tip, menu };
+        crate::widgets::big_split(ui, app, "accept", "Accept", next("review.accept", "Accept and Move to Next", "Accept"), |ui, app| {
             mi(ui, app, "Accept and Move to Next", "review.accept", json!({"next": true}));
             mi(ui, app, "Accept This Change", "review.accept", json!({}));
             mi(ui, app, "Accept All Changes", "review.acceptAll", json!({}));
             mi(ui, app, "Accept All Changes and Stop Tracking", "review.acceptAll", json!({"stopTracking": true}));
         });
-        menu_button(ui, app, crate::widgets::MenuButtonOptions::new("reject", Some("Reject"), "Reject", true, "review.reject"), |ui, app| {
+        crate::widgets::big_split(ui, app, "reject", "Reject", next("review.reject", "Reject and Move to Next", "Reject"), |ui, app| {
             mi(ui, app, "Reject and Move to Next", "review.reject", json!({"next": true}));
             mi(ui, app, "Reject Change", "review.reject", json!({}));
             mi(ui, app, "Reject All Changes", "review.rejectAll", json!({}));

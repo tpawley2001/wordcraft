@@ -781,3 +781,49 @@ fn shape_and_chart_formats_leave_out_of_range_sizes_alone() {
     assert_eq!(before.0, Some((20.0, 2500.0)));
     assert_eq!(shown(a), before, "Chart Design shown, the chart untouched");
 }
+
+/// #4205: Review › Accept and Reject are split buttons, as in Word: the icon half accepts
+/// (rejects) the change and moves to the next, and the label half opens the menu. Home › Paste
+/// is split the same way.
+#[test]
+fn accept_and_reject_are_split_buttons() {
+    use egui_kittest::kittest::Queryable;
+    let mut a = WordApp::new(Session::new(wordcraft_doc::Document::from_text("Lanterns")), crate::Services::default());
+    a.run("review.trackChanges", json!({"value": true})).unwrap();
+    a.run("text.insert", json!({"text": "Paper "})).unwrap();
+    a.run("review.trackChanges", json!({"value": false})).unwrap();
+    a.run("select.text", json!({"text": "Paper "})).unwrap();
+    a.run("ui.tab", json!({"tab": "Review"})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        a,
+    );
+    h.run_steps(4);
+    let text = |h: &egui_kittest::Harness<'_, WordApp>| h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body);
+    let has = |h: &egui_kittest::Harness<'_, WordApp>, l: &str| h.query_all_by_label_contains(l).next().is_some();
+    assert_eq!(text(&h), "Paper Lanterns", "the tracked insertion shows");
+    assert!(!has(&h, "Reject All Changes"), "no menu yet");
+    // The label half opens the menu without changing anything.
+    h.get_by_label("Reject").click();
+    h.run_steps(4);
+    assert!(has(&h, "Reject All Changes"), "the label half opens the menu");
+    assert_eq!(text(&h), "Paper Lanterns", "opening the menu changes nothing");
+    h.key_press(egui::Key::Escape);
+    h.run_steps(4);
+    // The icon half rejects the change right away.
+    h.get_by_label("Reject and Move to Next").click();
+    h.run_steps(4);
+    assert_eq!(text(&h), "Lanterns", "the icon half rejects the insertion");
+    assert!(h.query_by_label("Accept and Move to Next").is_some(), "Accept is split too");
+    // Home › Paste: Paste Options opens the paste menu.
+    h.state_mut().run("ui.tab", json!({"tab": "Home"})).unwrap();
+    h.run_steps(4);
+    assert!(!has(&h, "Keep Text Only"));
+    h.get_by_label("Paste Options").click();
+    h.run_steps(4);
+    assert!(has(&h, "Keep Text Only"), "Paste Options opens the paste menu");
+}
