@@ -207,6 +207,8 @@ impl<'a> Exempt<'a> {
             || plain.starts_with("Style") || plain.starts_with("Table Style ") // a new style's default name
             || plain.contains('┬') || plain.contains('\u{2061}') // equation input (UnicodeMath), drawn as math
             || matches!(plain, "WordCraft" | "WordCraft User" | "Captain" | "Discord" | "https://" | "auto" | "I. II. III." | "i. ii. iii." | "I, II, III, …" | "i, ii, iii, …")
+            // the fork's product name and its pirate-speak tagline (English-only flavour, like the name)
+            || matches!(plain, "Captain's Log" | "Keep a true log, Captain: the sea forgets, but the page remembers.")
             || plain == "CONFIDENTIAL" // the watermark dialog's text: document content, kept as typed
             || plain == "Figure 1" // the caption dialog's sample: the label goes into the document as is
     }
