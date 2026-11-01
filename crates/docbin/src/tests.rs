@@ -7,6 +7,7 @@ use proptest::prelude::*;
 
 use super::read;
 
+mod cfb_tolerance;
 mod drawing;
 mod encrypted;
 mod header_guard;
