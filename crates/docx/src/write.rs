@@ -140,6 +140,12 @@ pub(crate) struct Writer<'d> {
     /// Linked text boxes: part id → (`wps:txbx`/`wps:linkedTxbx` id, seq; 0 for the box holding
     /// the text).
     txbx_links: HashMap<u32, (u32, u32)>,
+    /// How many `w:txbxContent` are open where writing is: a shape with its own text inside one
+    /// doesn't open another (Word never writes nested text boxes and can't open them).
+    in_txbx: usize,
+    /// Text box stories of shapes inside a text box, written as plain paragraphs after the
+    /// paragraph holding the shape.
+    flattened: Vec<u32>,
 }
 
 const CT_WML: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.";

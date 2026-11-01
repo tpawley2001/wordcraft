@@ -784,7 +784,7 @@ fn scrub_private(bytes: &[u8], names: bool, dates: bool) -> Option<Vec<u8>> {
 
 /// A VML `style` with the object's size, rotation and flips, and its offset when it floats
 /// (`position:absolute`).
-fn vml_style_with(style: &str, w: f32, h: f32, float: &Float) -> String {
+pub(super) fn vml_style_with(style: &str, w: f32, h: f32, float: &Float) -> String {
     let absolute = style
         .split(';')
         .filter_map(|d| d.split_once(':'))

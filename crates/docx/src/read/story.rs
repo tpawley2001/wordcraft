@@ -24,6 +24,7 @@ mod drawing;
 mod fields;
 mod runs;
 mod vml;
+pub(crate) use vml::VML_TEXT_WARPS;
 
 const INK_URI: &str = "http://schemas.microsoft.com/office/word/2010/wordprocessingInk";
 const INK_REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml";

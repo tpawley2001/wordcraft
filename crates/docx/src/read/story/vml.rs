@@ -385,7 +385,7 @@ impl Reader<'_> {
 
 /// The DrawingML text warps of VML's WordArt shapes, `o:spt` 136 (plain text) to 175 (can down), in
 /// order: the same shapes under their DrawingML names (`ST_TextShapeType`).
-const VML_TEXT_WARPS: [&str; 40] = [
+pub(crate) const VML_TEXT_WARPS: [&str; 40] = [
     "textPlain",
     "textStop",
     "textTriangle",

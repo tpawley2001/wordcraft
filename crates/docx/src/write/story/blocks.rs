@@ -34,6 +34,7 @@ impl Writer<'_> {
                 Block::Para(p) => {
                     self.inline_controls = plan.inline_in(i);
                     self.para(w, p, rels, top, depth);
+                    self.write_flattened(w, rels, depth);
                 }
                 Block::Table(t) => self.table(w, t, rels, depth),
             }

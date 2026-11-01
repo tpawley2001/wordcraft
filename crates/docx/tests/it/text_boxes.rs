@@ -247,3 +247,35 @@ fn story_shared_by_many_shapes_is_written_once() {
     assert!(xml.len() < 2_000_000, "document.xml is {} bytes", xml.len());
     assert_eq!(xml.matches(text.as_str()).count(), 1);
 }
+
+/// A text box (or a shape with text) inside a text box is saved without a second `w:txbxContent`
+/// (Word can't open one inside another, ECMA-376 §17.17.1.1): its text follows as paragraphs.
+#[test]
+fn a_shape_with_text_inside_a_text_box_saves_its_text_unnested() {
+    for kind in [ShapeKind::TextBox, ShapeKind::Ellipse] {
+        let mut d = Document::from_text("a");
+        let mut inner = text_box(&mut d, "INNER", TextBody::default());
+        if let InlineObject::Shape { kind: k, .. } = &mut inner {
+            *k = kind;
+        }
+        let mut p = wordcraft_doc::Paragraph::with_text("Outer", Default::default());
+        p.insert_object(5, inner, &Default::default()).unwrap();
+        let outer_id = d.add_part(PartKind::TextBox, vec![para_block(p)]);
+        let mut outer = text_box(&mut d, "", TextBody::default());
+        if let InlineObject::Shape { story, .. } = &mut outer {
+            *story = Some(outer_id);
+        }
+        d.insert_object(&wordcraft_doc::Pos::body(0, 1), outer, &Default::default()).unwrap();
+        let xml = document_xml(&wordcraft_docx::write(&d).unwrap());
+        assert_eq!(xml.matches("<w:txbxContent>").count(), 1, "{kind:?}: {xml}");
+        let (start, end) = (xml.find("<w:txbxContent>").unwrap(), xml.find("</w:txbxContent>").unwrap());
+        let inside = &xml[start..end];
+        assert!(inside.contains("Outer") && inside.contains("INNER"), "{kind:?}: {xml}");
+        // The inner text is a paragraph of its own after the one holding the shape.
+        assert!(inside.find("Outer").unwrap() < inside.find("INNER").unwrap());
+        // A shape keeps its outline; a bare text box is dropped.
+        assert_eq!(inside.contains("<wps:wsp>"), kind == ShapeKind::Ellipse, "{kind:?}: {xml}");
+        let back = wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap();
+        assert!(document_xml(&wordcraft_docx::write(&back).unwrap()).matches("<w:txbxContent>").count() == 1);
+    }
+}

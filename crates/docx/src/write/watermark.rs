@@ -18,6 +18,22 @@ pub(super) fn text(wm: &Watermark) -> Option<String> {
     (!t.trim().is_empty()).then_some(t)
 }
 
+/// `font` for a quoted string in a VML textpath `style`: CSS escapes for the characters a quoted
+/// string can't carry raw, control characters dropped, at most 100 characters.
+pub(super) fn css_font(font: &str) -> String {
+    let mut out = String::with_capacity(font.len());
+    for c in font.chars().filter(|c| !c.is_control()).take(100) {
+        match c {
+            '"' => out.push_str(r"\22 "),
+            ';' => out.push_str(r"\3b "),
+            ':' => out.push_str(r"\3a "),
+            '\\' => out.push_str(r"\5c "),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 /// A `w:r` holding the watermark shape (and its shape type), for the first paragraph of header
 /// part number `n`, in its box ([`Watermark::frame`]: its own, or Word's default for the page).
 pub(super) fn run(wm: &Watermark, n: usize, page: &SectionProps) -> Option<String> {
@@ -28,16 +44,7 @@ pub(super) fn run(wm: &Watermark, n: usize, page: &SectionProps) -> Option<Strin
     // `\5c ` `\`) are escaped and control characters are dropped (no font name carries one); the
     // reader (`read::story::css_string`) maps the escapes back. An apostrophe is legal inside a
     // double-quoted string, so it is kept.
-    let mut font = String::with_capacity(wm.font.len());
-    for c in wm.font.chars().filter(|c| !c.is_control()).take(100) {
-        match c {
-            '"' => font.push_str(r"\22 "),
-            ';' => font.push_str(r"\3b "),
-            ':' => font.push_str(r"\3a "),
-            '\\' => font.push_str(r"\5c "),
-            c => font.push(c),
-        }
-    }
+    let font = css_font(&wm.font);
     let font = if font.trim().is_empty() { Watermark::default().font } else { font };
     let rotation = if wm.diagonal { "rotation:315;" } else { "" };
     let style = format!(
