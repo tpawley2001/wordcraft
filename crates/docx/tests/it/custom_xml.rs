@@ -149,7 +149,7 @@ fn custom_stores_do_not_shadow_reserved_bibliography_names() {
 }
 
 #[test]
-fn opaque_non_utf8_data_and_strict_relationship_types_are_preserved() {
+fn opaque_non_utf8_data_is_preserved_and_strict_relationship_types_are_written_transitional() {
     let mut p = fixture();
     let data: Vec<u8> =
         "<?xml version=\"1.0\" encoding=\"UTF-16\"?><customer>Atlas Studios</customer>".encode_utf16().flat_map(u16::to_le_bytes).collect();
@@ -161,7 +161,9 @@ fn opaque_non_utf8_data_and_strict_relationship_types_are_preserved() {
     p.insert("word/_rels/document.xml.rels".into(), strict.into_bytes());
     edited_cycles(&p, |out| {
         assert_eq!(out.get("customXml/item1.xml"), Some(&bytes));
-        assert!(text(out, "word/_rels/document.xml.rels").contains("http://purl.oclc.org/ooxml/officeDocument/relationships/customXml"));
+        let rels = text(out, "word/_rels/document.xml.rels");
+        assert!(rels.contains(&format!(r#"Type="{RT}customXml""#)), "{rels}");
+        assert!(!rels.contains("purl.oclc.org/ooxml"), "{rels}");
     });
 }
 

@@ -327,7 +327,12 @@ impl<'d> EmbedWriter<'d> {
                 rels.add_with_id(&r.id, &r.kind, &relative(&new, &target), false);
             }
             let ct = if info.content_type.is_empty() { "application/octet-stream".to_string() } else { info.content_type };
-            let bytes = self.scrubbed.get(&orig).cloned().unwrap_or_else(|| bytes.to_vec());
+            // A part kept from a Strict file is written in Transitional namespaces, like the rest.
+            let bytes = match self.scrubbed.get(&orig) {
+                Some(b) => crate::strict::to_transitional(b).into_owned(),
+                None if ct.ends_with("xml") || orig.to_ascii_lowercase().ends_with(".xml") => crate::strict::to_transitional(bytes).into_owned(),
+                None => bytes.to_vec(),
+            };
             written.push(self.parts.len());
             self.parts.push((new, bytes, ct, rels));
         }
