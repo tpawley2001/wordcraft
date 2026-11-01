@@ -552,6 +552,10 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 row.cell_mark = c == '\u{7}';
                 let mut ilvl = 0u8;
                 let mut ilfo = 0i32;
+                // Direct frame sprms merge into the style's frame field by field, so start from it.
+                if sprm::iter(papx).any(|prl| fmt::is_frame_sprm(prl.op)) {
+                    pb.props.frame = fmt::style_frame(ctx.raw_styles, istd as usize);
+                }
                 for prl in sprm::iter(papx) {
                     if prl.op == P_ILVL {
                         ilvl = prl.operand.first().copied().unwrap_or(0).min(8);
