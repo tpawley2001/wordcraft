@@ -248,6 +248,17 @@ pub enum ReadPageColor {
     Inverse,
 }
 
+/// Read Mode › View › Layout: reading columns (Column Layout) or the printed pages (Paper Layout).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReadLayout {
+    /// The text reflows into reading columns sized to the window.
+    #[default]
+    Column,
+    /// The document's pages as they print.
+    Paper,
+}
+
 fn read_page_color(s: &mut Session, v: &Value) -> CmdResult {
     let color = match v.get("value").and_then(Value::as_str) {
         Some("none") => ReadPageColor::None,

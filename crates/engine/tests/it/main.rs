@@ -4,6 +4,7 @@ mod html_div_margins;
 mod macro_packages;
 #[cfg(not(target_arch = "wasm32"))]
 mod odt_sections;
+mod read_layout;
 mod recovery_format;
 #[cfg(not(target_arch = "wasm32"))]
 mod rtf_sections;
