@@ -1,4 +1,5 @@
-//! WordCraft reader for the Word 97-2003 binary file format (`.doc`, [MS-DOC]).
+//! WordCraft reader for the Word 97-2003 binary file format (`.doc`, [MS-DOC]), and for the
+//! text and basic formatting of Word 6.0/95 files ([`word6`]).
 //!
 //! [`read`] turns the bytes of a `.doc` file into a [`wordcraft_doc::Document`]. There is no
 //! writer: saving always goes through the other formats. The reader is written from the public
@@ -23,6 +24,7 @@ mod sections;
 mod sprm;
 mod stsh;
 mod table;
+mod word6;
 
 use std::io::{Read, Seek};
 
@@ -200,6 +202,12 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
         return Err(DocbinError::Limit(format!("WordDocument stream is {} bytes", word.len())));
     }
     let enc = fib::peek_encryption(&word);
+    // Word 6.0/95 files have their own FIB and keep everything in the WordDocument stream.
+    if enc.is_none()
+        && let Some(w6) = fib::Fib::parse(&word)?.word6
+    {
+        return word6::read(&mut comp, &word, &w6);
+    }
     // The FIB names the Table stream (0Table or 1Table); fall back to whichever exists,
     // since files written by other writers sometimes carry the wrong bit.
     let which = if let Some(e) = enc { e.which_tbl_stm } else { fib::Fib::parse(&word)?.which_tbl_stm };

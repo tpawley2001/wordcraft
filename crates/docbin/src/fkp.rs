@@ -41,6 +41,22 @@ impl Bins {
         Ok(Bins { fcs, pns })
     }
 
+    /// Parse a Word 6.0/95 bin table at `word[fc..fc+lcb]`: aFc[n+1] u32s + aPn[n] **u16**s
+    /// (the FKP pages themselves have the Word 97 layout).
+    pub(crate) fn parse_word6(word: &[u8], fc: u32, lcb: u32) -> Bins {
+        let lcb = lcb as usize;
+        let empty = Bins { fcs: Vec::new(), pns: Vec::new() };
+        if lcb < 4 || !(lcb - 4).is_multiple_of(6) {
+            return empty;
+        }
+        let Some(plc) = (fc as usize).checked_add(lcb).and_then(|end| word.get(fc as usize..end)) else { return empty };
+        let n = ((lcb - 4) / 6).min(MAX_BINS);
+        let fcs = (0..=n).filter_map(|i| plc.get(i * 4..i * 4 + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))).collect();
+        let base = (n + 1) * 4;
+        let pns = (0..n).filter_map(|i| plc.get(base + i * 2..base + i * 2 + 2).map(|b| u32::from(u16::from_le_bytes([b[0], b[1]])))).collect();
+        Bins { fcs, pns }
+    }
+
     /// The page containing `fc`, as a slice of the WordDocument stream.
     fn page<'w>(&self, word: &'w [u8], fc: u32) -> Option<&'w [u8]> {
         let i = self.fcs.partition_point(|&f| f <= fc).checked_sub(1)?;
