@@ -491,3 +491,78 @@ fn comment_ids_keep_sparse_threads_reservations_and_missing_parts() {
     let (first, _) = comment("Comment 3 β");
     assert_eq!(comment(&format!("Comment {} β", u32::MAX)).1.parent, Some(*first));
 }
+
+const W15_BETA: &str = "http://schemas.microsoft.com/office/word/2010/11/wordml";
+
+/// A comment thread as the Word 2013 preview wrote it: `w15` bound to the beta namespace in
+/// commentsExtended, people.xml and (declared only) webSettings.
+fn beta_w15_package() -> Vec<u8> {
+    let comments = r#"<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:comment w:id="0" w:author="Ann" w:date="2026-01-02T10:00:00Z" w:initials="A"><w:p w14:paraId="11111111"><w:r><w:t>First</w:t></w:r></w:p></w:comment><w:comment w:id="1" w:author="Ben" w:date="2026-01-03T11:00:00Z" w:initials="B"><w:p w14:paraId="22222222"><w:r><w:t>Reply</w:t></w:r></w:p></w:comment></w:comments>"#;
+    let ex = format!(
+        r#"<w15:commentsEx xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:w15="{W15_BETA}" mc:Ignorable="w15"><w15:commentEx w15:paraId="11111111" w15:done="1"/><w15:commentEx w15:paraId="22222222" w15:paraIdParent="11111111" w15:done="0"/></w15:commentsEx>"#
+    );
+    let people = format!(
+        r#"<w15:people xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:w15="{W15_BETA}" mc:Ignorable="w15"><w15:person w15:author="Ann" w15:contact="ann@example.com"/><w15:person w15:author="Ben" w15:contact="ben@example.com"/></w15:people>"#
+    );
+    let web = format!(
+        r#"<w:webSettings xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:w="{W}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="{W15_BETA}" mc:Ignorable="w14 w15"><w:optimizeForBrowser/></w:webSettings>"#
+    );
+    let body = r#"<w:p><w:commentRangeStart w:id="0"/><w:commentRangeStart w:id="1"/><w:r><w:t>Text</w:t></w:r><w:commentRangeEnd w:id="0"/><w:r><w:commentReference w:id="0"/></w:r><w:commentRangeEnd w:id="1"/><w:r><w:commentReference w:id="1"/></w:r></w:p>"#;
+    let comments_rel = format!("{REL}/comments");
+    let web_rel = format!("{REL}/webSettings");
+    package(
+        body,
+        &[
+            ("rId1", &comments_rel, "comments.xml"),
+            ("rId2", "http://schemas.microsoft.com/office/2011/relationships/commentsExtended", "commentsExtended.xml"),
+            ("rId3", "http://schemas.microsoft.com/office/2011/relationships/people", "people.xml"),
+            ("rId4", &web_rel, "webSettings.xml"),
+        ],
+        &[],
+        &[("word/comments.xml", comments), ("word/commentsExtended.xml", &ex), ("word/people.xml", &people), ("word/webSettings.xml", &web)],
+    )
+}
+
+#[test]
+fn beta_w15_comments_keep_reply_parent_and_done() {
+    let doc = wordcraft_docx::read(&beta_w15_package()).unwrap();
+    let ids: Vec<u32> = doc.comments.keys().copied().collect();
+    assert_eq!(ids.len(), 2);
+    let (first, reply) = (&doc.comments[&ids[0]], &doc.comments[&ids[1]]);
+    assert_eq!(first.author, "Ann");
+    assert!(first.resolved, "w15:done=\"1\" in the beta namespace reads as resolved");
+    assert_eq!(first.parent, None);
+    assert_eq!(reply.parent, Some(ids[0]), "the reply keeps its parent");
+    assert!(!reply.resolved);
+}
+
+#[test]
+fn beta_w15_namespace_is_not_written() {
+    let files = save(&wordcraft_docx::read(&beta_w15_package()).unwrap());
+    for (name, bytes) in &files {
+        let s = String::from_utf8_lossy(bytes);
+        assert!(!s.contains("2010/11/wordml"), "{name} still uses the Word 2013 preview namespace:\n{s}");
+    }
+    assert!(text(&files, "word/webSettings.xml").contains("optimizeForBrowser"));
+    if files.contains_key("word/people.xml") {
+        let people = text(&files, "word/people.xml");
+        assert!(people.contains("http://schemas.microsoft.com/office/word/2012/wordml"), "{people}");
+        assert!(people.contains(r#"author="Ann""#) && people.contains(r#"author="Ben""#), "{people}");
+    }
+    let ex = text(&files, "word/commentsExtended.xml");
+    assert!(ex.contains("paraIdParent"), "reply thread lost:\n{ex}");
+    assert!(ex.contains(r#"w15:done="1""#), "resolved state lost:\n{ex}");
+}
+
+#[test]
+fn beta_w15_resave_is_stable() {
+    let once = save(&wordcraft_docx::read(&beta_w15_package()).unwrap());
+    let bytes = wordcraft_docx::write(&wordcraft_docx::read(&beta_w15_package()).unwrap()).unwrap();
+    let twice = save(&wordcraft_docx::read(&bytes).unwrap());
+    assert_eq!(once.keys().collect::<Vec<_>>(), twice.keys().collect::<Vec<_>>());
+    for (name, a) in &once {
+        if name.ends_with(".xml") && !name.starts_with("docProps/") {
+            assert_eq!(String::from_utf8_lossy(a), String::from_utf8_lossy(&twice[name]), "{name} changed on a second save");
+        }
+    }
+}
