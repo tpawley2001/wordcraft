@@ -12,6 +12,7 @@ mod drawing;
 mod encrypted;
 mod header_guard;
 mod metadata;
+mod word6;
 
 /// Offset in the WordDocument stream where test text pieces are placed (past the FIB).
 const TEXT_FC: u32 = 0x600;
@@ -163,15 +164,6 @@ fn wrong_magic_rejected() {
     fib[1] = 0x12;
     let f = cfb_file(&[("WordDocument", &fib)]);
     assert!(matches!(read(&f), Err(super::DocbinError::NotWord(m)) if m.contains("magic")));
-}
-
-#[test]
-fn word_6_95_rejected() {
-    let mut fib = fib_bytes(&FibSpec::default());
-    fib[0] = 0xDC;
-    fib[1] = 0xA5;
-    let f = cfb_file(&[("WordDocument", &fib)]);
-    assert!(matches!(read(&f), Err(super::DocbinError::NotWord(m)) if m.contains("6.0/95")));
 }
 
 #[test]
