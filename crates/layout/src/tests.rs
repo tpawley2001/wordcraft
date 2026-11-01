@@ -9,6 +9,8 @@ mod bidi;
 mod budget;
 mod complex;
 mod grid;
+mod header_extent;
+mod header_extent_fixtures;
 mod ligature;
 pub(crate) mod linear;
 mod nbsp;
