@@ -11,6 +11,7 @@ mod cfb_tolerance;
 mod char_styles;
 mod drawing;
 mod encrypted;
+mod frames;
 mod header_guard;
 mod metadata;
 mod word6;
