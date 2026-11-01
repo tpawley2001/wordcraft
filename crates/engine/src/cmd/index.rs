@@ -33,7 +33,7 @@ pub fn specs() -> Vec<CommandSpec> {
     ]
 }
 
-fn clean(t: &str, max: usize) -> String {
+pub(super) fn clean(t: &str, max: usize) -> String {
     t.chars().filter(|c| *c != '"' && !c.is_control()).take(max).collect::<String>().trim().to_string()
 }
 
