@@ -343,7 +343,10 @@ impl Package {
                 let path = resolve(dir, target);
                 self.canonical(&path).map_or(path, str::to_string)
             };
-            rels.list.push(Rel { id: id.to_string(), kind: r.attr("Type").unwrap_or("").to_string(), target: resolved, external });
+            // A Strict package's relationship types are read by their Transitional meaning, so they
+            // are recognised, and kept parts are related with the Transitional type on save.
+            let kind = crate::strict::transitional_rel_type(r.attr("Type").unwrap_or("")).into_owned();
+            rels.list.push(Rel { id: id.to_string(), kind, target: resolved, external });
         }
         rels
     }
