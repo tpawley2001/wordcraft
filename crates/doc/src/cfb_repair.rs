@@ -113,7 +113,8 @@ pub fn repair(bytes: &[u8]) -> Cow<'_, [u8]> {
             let Some(end) = offset.checked_add(128) else { break };
             if bytes.get(offset.saturating_add(66)) == Some(&0)
                 && let Some(entry) = bytes.get(offset..end)
-                && entry != unused
+                // The writer may encode an empty name with its two-byte terminator.
+                && !entry.iter().zip(&unused).enumerate().all(|(i, (&actual, &expected))| actual == expected || (i == 64 && actual == 2))
                 && let Some(dst) = fixed.to_mut().get_mut(offset..end)
             {
                 dst.copy_from_slice(&unused);
@@ -157,7 +158,7 @@ mod tests {
             put(&mut bytes, at + size - 4, END);
         }
         let dir = (fats + 2) * size;
-        for entry in bytes[dir..dir + size].chunks_exact_mut(128) {
+        for entry in bytes[dir..dir + size].as_chunks_mut::<128>().0 {
             entry[68..80].fill(0xFF);
         }
         put(&mut bytes, size + (fats + 1) * 4, END);
