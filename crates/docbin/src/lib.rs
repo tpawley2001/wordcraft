@@ -177,10 +177,11 @@ pub fn is_encrypted(bytes: &[u8]) -> bool {
     stream(&mut comp, "WordDocument").is_some_and(|w| fib::peek_encryption(&w).is_some())
 }
 
-/// Open the compound file around a `.doc`, after [`wordcraft_doc::cfb_guard::check`].
-fn open_container(bytes: &[u8]) -> Result<cfb::CompoundFile<std::io::Cursor<&[u8]>>, DocbinError> {
-    wordcraft_doc::cfb_guard::check(bytes).map_err(DocbinError::Container)?;
-    cfb::CompoundFile::open(std::io::Cursor::new(bytes)).map_err(|e| DocbinError::Container(e.to_string()))
+/// Repair tolerable compound-file defects, then check the FAT layout before opening a `.doc`.
+fn open_container(bytes: &[u8]) -> Result<cfb::CompoundFile<std::io::Cursor<Vec<u8>>>, DocbinError> {
+    let bytes = wordcraft_doc::cfb_repair::repair(bytes);
+    wordcraft_doc::cfb_guard::check(&bytes).map_err(DocbinError::Container)?;
+    cfb::CompoundFile::open(std::io::Cursor::new(bytes.into_owned())).map_err(|e| DocbinError::Container(e.to_string()))
 }
 
 /// Read a `.doc` (Word 97-2003 binary) file into a [`Document`]. A password-protected file

@@ -13,6 +13,7 @@
 pub mod bidi;
 mod byte_store;
 pub mod cfb_guard;
+pub mod cfb_repair;
 pub mod chart;
 mod cjk_numbers;
 pub mod cluster;
