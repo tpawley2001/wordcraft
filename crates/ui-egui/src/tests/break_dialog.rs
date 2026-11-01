@@ -2,6 +2,11 @@
 
 use crate::WordApp;
 
+/// The body's text (a page break is U+000C), without internal revision counters.
+fn body(a: &WordApp) -> String {
+    a.session.doc.plain_text(wordcraft_doc::StoryRef::Body)
+}
+
 fn app() -> WordApp {
     WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default())
 }
@@ -17,10 +22,15 @@ fn the_break_dialog_opens_by_name_on_page_break() {
 fn ok_with_a_page_break_inserts_one_page_break() {
     let mut a = app();
     a.run("text.insert", serde_json::json!({"text": "ab"})).unwrap();
-    let before = a.session.doc.body.len();
     crate::dialogs::dialogs_insert::break_dialog_ok(&mut a, "page");
     assert!(a.dialog.is_none(), "OK closes the dialog");
-    assert!(a.session.doc.body.len() > before, "a page break splits the paragraph");
+    // The dialog's page break is the same inline break Ctrl+Enter inserts.
+    let mut b = app();
+    b.run("text.insert", serde_json::json!({"text": "ab"})).unwrap();
+    let before = body(&b);
+    b.run("text.pageBreak", serde_json::json!({})).unwrap();
+    assert_ne!(body(&b), before, "Ctrl+Enter changes the text");
+    assert_eq!(body(&a), body(&b), "OK inserts one page break, like Ctrl+Enter");
 }
 
 #[test]
