@@ -6,6 +6,12 @@ use crate::DocbinError;
 
 /// `wIdent` of every Word 97-2003 file (Word 6/95 wrote 0xA5DC).
 const W_IDENT: u16 = 0xA5EC;
+/// `wIdent` of Word 6.0 and Word 95 files, read by [`crate::word6`].
+const W_IDENT_6: u16 = 0xA5DC;
+/// The `nFib` values of Word 6.0 (101) through Word 95 (104, 105).
+const NFIB_6: std::ops::RangeInclusive<u16> = 101..=105;
+/// `fEncrypted` in the Word 6/95 FIB flags.
+const F_ENCRYPTED_6: u16 = 0x0100;
 /// Offsets within the FIB, in bytes (see the spec's Fib layout).
 const OFF_FLAGS: usize = 0x0A;
 const OFF_CSW: usize = 0x20;
@@ -112,6 +118,25 @@ pub(crate) struct Fib {
     pub(crate) ccp: SubDocs,
     /// The `RgFcLcb` pairs flattened as fc₀, lcb₀, fc₁, lcb₁, …
     pub(crate) pairs: Vec<u32>,
+    /// Set for a Word 6.0/95 file, whose FIB has its own layout (and no Table stream).
+    pub(crate) word6: Option<Word6Fib>,
+}
+
+/// The fields of a Word 6.0/95 FIB the reader uses (offsets in the WordDocument stream).
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Word6Fib {
+    /// `fComplex`: the text is described by the piece table in the Clx.
+    pub(crate) complex: bool,
+    /// `chse`: 256 for a file written on the Macintosh, 0 for Windows ANSI.
+    pub(crate) chse: u16,
+    /// `fcMin`: where the text starts (non-complex files).
+    pub(crate) fc_min: u32,
+    pub(crate) ccp: SubDocs,
+    /// (fc, lcb) of `PlcfbteChpx`, `SttbfFfn` and the `Clx`, all in the WordDocument stream
+    /// (`PlcfbtePapx`, at 0xC0, is not read yet).
+    pub(crate) bte_chpx: (u32, u32),
+    pub(crate) sttbf_ffn: (u32, u32),
+    pub(crate) clx: (u32, u32),
 }
 
 impl Fib {
@@ -133,12 +158,12 @@ impl Fib {
                 word.get(at + 3).copied().unwrap_or(0),
             ])
         };
+        let w_ident = u16le(0);
+        if w_ident == W_IDENT_6 {
+            return Self::parse_word6(word);
+        }
         if word.len() < OFF_RGLW + 88 {
             return Err(DocbinError::NotWord(format!("WordDocument stream is {} bytes", word.len())));
-        }
-        let w_ident = u16le(0);
-        if w_ident == 0xA5DC {
-            return Err(DocbinError::NotWord("Word 6.0/95 format, only Word 97-2003 is supported".into()));
         }
         if w_ident != W_IDENT {
             return Err(DocbinError::NotWord(format!("magic 0x{w_ident:04X}, expected 0x{W_IDENT:04X}")));
@@ -180,6 +205,51 @@ impl Fib {
             pairs.push(u32le(blob_off + i * 4));
         }
 
-        Ok(Fib { which_tbl_stm: flags & 0x0200 != 0, ccp: sub, pairs })
+        Ok(Fib { which_tbl_stm: flags & 0x0200 != 0, ccp: sub, pairs, word6: None })
+    }
+
+    /// The Word 6.0/95 FIB: wIdent 0xA5DC, nFib 101..=105, with the text counts at 0x34 and the
+    /// structure locations from 0xB8 on. A password-protected file is refused here.
+    fn parse_word6(word: &[u8]) -> Result<Fib, DocbinError> {
+        let u16le = |at: usize| -> u16 { u16::from_le_bytes([word.get(at).copied().unwrap_or(0), word.get(at + 1).copied().unwrap_or(0)]) };
+        let u32le = |at: usize| -> u32 {
+            u32::from_le_bytes([
+                word.get(at).copied().unwrap_or(0),
+                word.get(at + 1).copied().unwrap_or(0),
+                word.get(at + 2).copied().unwrap_or(0),
+                word.get(at + 3).copied().unwrap_or(0),
+            ])
+        };
+        if word.len() < OFF6_END {
+            return Err(DocbinError::NotWord(format!("Word 6.0/95 WordDocument stream is {} bytes", word.len())));
+        }
+        let nfib = u16le(2);
+        if !NFIB_6.contains(&nfib) {
+            return Err(DocbinError::NotWord(format!("Word 6.0/95 magic with nFib {nfib}")));
+        }
+        let flags = u16le(OFF_FLAGS);
+        if flags & F_ENCRYPTED_6 != 0 {
+            return Err(DocbinError::Encryption(
+                "this Word 6.0/95 document is password-protected; WordCraft opens only unprotected Word 6.0/95 files".into(),
+            ));
+        }
+        let ccp = |i: usize| -> u32 { (u32le(0x34 + i * 4) as i32).max(0) as u32 };
+        // ccpText, ccpFtn, ccpHdd, ccpMcr, ccpAtn, ccpEdn, ccpTxbx, ccpHdrTxbx.
+        let sub = SubDocs { text: ccp(0), ftn: ccp(1), hdd: ccp(2), atn: ccp(4), edn: ccp(5), txbx: ccp(6), hdr_txbx: ccp(7) };
+        sub.total()?;
+        let pair = |at: usize| (u32le(at), u32le(at + 4));
+        let w6 = Word6Fib {
+            complex: flags & 0x0004 != 0,
+            chse: u16le(0x14),
+            fc_min: u32le(0x18),
+            ccp: sub,
+            bte_chpx: pair(0xB8),
+            sttbf_ffn: pair(0xD0),
+            clx: pair(0x160),
+        };
+        Ok(Fib { which_tbl_stm: false, ccp: sub, pairs: Vec::new(), word6: Some(w6) })
     }
 }
+
+/// Bytes of the Word 6.0/95 FIB the reader looks at (through `lcbClx` at 0x164).
+const OFF6_END: usize = 0x168;
