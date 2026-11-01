@@ -24,6 +24,21 @@ pub(super) fn reading_toolbar(app: &mut WordApp, ui: &mut Ui, t: Tokens) {
             ui.horizontal_centered(|ui| {
                 ui.label(egui::RichText::new(tl!("Reading Mode")).font(semibold(14.0)));
                 ui.separator();
+                use wordcraft_engine::cmd::view::ReadLayout;
+                let layouts = [(ReadLayout::Column, "Column", "column"), (ReadLayout::Paper, "Paper", "paper")];
+                let layout = app.session.view.read_layout;
+                let name = layouts.iter().find(|l| l.0 == layout).map_or("Column", |l| l.1);
+                ui.menu_button(format!("{}: {}", tl!("Layout"), tl!(name)), |ui| {
+                    for (choice, name, value) in layouts {
+                        if ui.selectable_label(layout == choice, tl!(name)).clicked() {
+                            let _ = app.run("view.readLayout", json!({"value": value}));
+                            ui.close();
+                        }
+                    }
+                });
+                // Column width and line spacing shape the reading columns only: Paper Layout keeps them.
+                let columns = layout == ReadLayout::Column;
+                ui.separator();
                 let w = app.session.view.read_column_width;
                 let active = match w {
                     None => "Auto",
@@ -32,13 +47,15 @@ pub(super) fn reading_toolbar(app: &mut WordApp, ui: &mut Ui, t: Tokens) {
                     Some(v) if v <= 350.0 => "Wide",
                     _ => "Page",
                 };
-                ui.menu_button(format!("{}: {}", tl!("Column width"), tl!(active)), |ui| {
-                    for (name, value) in [("Auto", "auto"), ("Narrow", "narrow"), ("Medium", "medium"), ("Wide", "wide"), ("Page", "page")] {
-                        if ui.selectable_label(active == name, tl!(name)).clicked() {
-                            let _ = app.run("view.readColumnWidth", json!({"value": value}));
-                            ui.close();
+                ui.add_enabled_ui(columns, |ui| {
+                    ui.menu_button(format!("{}: {}", tl!("Column width"), tl!(active)), |ui| {
+                        for (name, value) in [("Auto", "auto"), ("Narrow", "narrow"), ("Medium", "medium"), ("Wide", "wide"), ("Page", "page")] {
+                            if ui.selectable_label(active == name, tl!(name)).clicked() {
+                                let _ = app.run("view.readColumnWidth", json!({"value": value}));
+                                ui.close();
+                            }
                         }
-                    }
+                    });
                 });
                 ui.separator();
                 let pct = (app.session.view.read_zoom * 100.0).round() as u32;
@@ -53,17 +70,19 @@ pub(super) fn reading_toolbar(app: &mut WordApp, ui: &mut Ui, t: Tokens) {
                 ui.separator();
                 let spacing = app.session.view.read_line_spacing;
                 let label = spacing.map_or_else(|| tl!("Document").to_owned(), |v| format!("{v}×"));
-                ui.menu_button(format!("{}: {}", tl!("Line spacing"), label), |ui| {
-                    if ui.selectable_label(spacing.is_none(), tl!("Document")).clicked() {
-                        let _ = app.run("view.readLineSpacing", json!({"value": "document"}));
-                        ui.close();
-                    }
-                    for value in [1.0, 1.25, 1.5, 2.0] {
-                        if ui.selectable_label(spacing == Some(value), format!("{value}×")).clicked() {
-                            let _ = app.run("view.readLineSpacing", json!({"value": value}));
+                ui.add_enabled_ui(columns, |ui| {
+                    ui.menu_button(format!("{}: {}", tl!("Line spacing"), label), |ui| {
+                        if ui.selectable_label(spacing.is_none(), tl!("Document")).clicked() {
+                            let _ = app.run("view.readLineSpacing", json!({"value": "document"}));
                             ui.close();
                         }
-                    }
+                        for value in [1.0, 1.25, 1.5, 2.0] {
+                            if ui.selectable_label(spacing == Some(value), format!("{value}×")).clicked() {
+                                let _ = app.run("view.readLineSpacing", json!({"value": value}));
+                                ui.close();
+                            }
+                        }
+                    });
                 });
                 ui.separator();
                 use wordcraft_engine::cmd::view::ReadPageColor;

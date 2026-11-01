@@ -40,6 +40,9 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("view.readPageColor", "Reading Page Color", "Reading › Layout", read_page_color)
             .params(r#"{"value": "none" | "sepia" | "inverse"}"#)
             .pure(),
+        CommandSpec::new("view.readLayout", "Reading Layout", "Reading › Layout", read_layout)
+            .params(r#"{"value": "column" | "paper"}"#)
+            .pure(),
         // Print Layout: hide the white space (margins, headers, footers) between pages. Screen only.
         CommandSpec::new("view.hideWhiteSpace", "Hide White Space", "View › Show", |s, v| toggle(s, v, |x| &mut x.hide_white_space))
             .params(r#"{"value"?: bool}"#)
@@ -182,6 +185,7 @@ fn mode(s: &mut Session, m: ViewMode, read: bool) -> CmdResult {
         s.view.read_zoom = 1.0;
         s.view.read_line_spacing = None;
         s.view.read_page_color = ReadPageColor::None;
+        s.view.read_layout = ReadLayout::Column;
     }
     s.view.mode = m;
     s.view.read_mode = read;
@@ -268,6 +272,18 @@ fn read_page_color(s: &mut Session, v: &Value) -> CmdResult {
     };
     s.view.read_page_color = color;
     Ok(json!({"pageColor": color}))
+}
+
+/// Read Mode › View › Layout. Paper Layout keeps Column Width and Line Spacing for when Column
+/// Layout comes back.
+fn read_layout(s: &mut Session, v: &Value) -> CmdResult {
+    let layout = match v.get("value").and_then(Value::as_str) {
+        Some("column") => ReadLayout::Column,
+        Some("paper") => ReadLayout::Paper,
+        _ => return Err(CmdError::Params("reading layout must be column or paper".into())),
+    };
+    s.view.read_layout = layout;
+    Ok(json!({"layout": layout}))
 }
 
 /// The zoom a document is saved with (#995): the fit mode, else the percentage; `None` at 100%.

@@ -67,7 +67,8 @@ pub(crate) use reading::turn_read_page;
 #[cfg(test)]
 use reading::{READ_NAV_BAR, RESIZE_SETTLE, place_read_pages};
 use reading::{
-    Settle, read_wheel_turns, reading_anchor_page, reading_animation_step, reading_page_start, reading_size, reading_viewport, web_layout_width,
+    Settle, paper_layout, paper_scale, paper_width, read_wheel_turns, reading_anchor_page, reading_animation_step, reading_page_start, reading_size,
+    reading_viewport, web_layout_width,
 };
 use rulers::rulers;
 #[cfg(test)]
@@ -114,6 +115,9 @@ pub struct CanvasState {
     /// First text position on the column currently leading the reading viewport, captured from
     /// last frame's layout. Survives changing page sizes, even when the caret stays elsewhere.
     pub(crate) read_first_visible: Option<Pos>,
+    /// Width in points of one reading page (a column, or Paper Layout's widest page) as last
+    /// drawn: a page turn moves by this plus the gap.
+    pub(crate) read_page_w: f32,
     /// An animated column-turn destination; intermediate offsets are allowed during the motion.
     read_target_page: Option<usize>,
     pub caret_visible_since: f64,
@@ -350,6 +354,7 @@ impl Default for CanvasState {
             web_viewport: Settle::default(),
             read_force_reflow: false,
             read_first_visible: None,
+            read_page_w: 0.0,
             read_target_page: None,
             caret_visible_since: 0.0,
             caret_bg: None,
@@ -508,7 +513,12 @@ fn prepare_view(app: &mut WordApp, ui: &Ui, full: Rect, layout: &DocLayout) -> C
     } else {
         (None, None, full)
     };
-    let area = if read_mode {
+    let area = if paper_layout(&app.session.view) {
+        app.canvas.read_page_w = paper_width(layout);
+        let scale = paper_scale(layout, area.size());
+        reading_viewport(area, app.canvas.read_page_w * scale, scale)
+    } else if read_mode {
+        app.canvas.read_page_w = app.session.view.read_width;
         let column = app.session.view.read_width * app.session.view.read_zoom.clamp(0.75, 1.5) * PX_PER_PT;
         reading_viewport(area, column, app.session.view.read_zoom.clamp(0.75, 1.5) * PX_PER_PT)
     } else {
@@ -621,7 +631,7 @@ fn scroll_motion(app: &mut WordApp, ui: &Ui, full: Rect, view: &CanvasView) -> S
             turn_read_page(app, turns.signum() as f32);
         }
         if let Some(page) = app.canvas.read_target_page {
-            let step = app.session.view.read_width * view.geo.scale + GAP;
+            let step = app.canvas.read_page_w * view.geo.scale + GAP;
             let x = (page as f32 * step).min(app.canvas.scroll_max.x);
             let dt = ui.input(|i| i.stable_dt);
             let next = if view.animate { reading_animation_step(app.canvas.scroll_offset.x, x, dt) } else { x };
@@ -686,7 +696,7 @@ fn configure_scroll_area(app: &mut WordApp, ui: &Ui, view: &CanvasView, motion: 
     }
     if delta != egui::Vec2::ZERO || app.canvas.scroll_request.is_some() || app.session.view.read_mode {
         let before = app.canvas.scroll_offset;
-        let step = app.session.view.read_width * view.geo.scale + GAP;
+        let step = app.canvas.read_page_w * view.geo.scale + GAP;
         let snapped = if step.is_finite() && step > 0.0 { vec2((before.x / step).round() * step, 0.0) } else { egui::Vec2::ZERO };
         let after = match app.canvas.scroll_request.take() {
             Some(request) => request.clamp(egui::Vec2::ZERO, app.canvas.scroll_max),
@@ -721,7 +731,11 @@ fn prepare_layout(app: &mut WordApp, ui: &Ui, full: Rect) -> std::sync::Arc<DocL
     if let Some(anchor) = reflow_anchor
         && let Some(page) = reading_anchor_page(&layout, &anchor)
     {
-        let step = app.session.view.read_width * app.session.view.read_zoom.clamp(0.75, 1.5) * PX_PER_PT + GAP;
+        let step = if paper_layout(&app.session.view) {
+            paper_width(&layout) * app.canvas.scale + GAP
+        } else {
+            app.session.view.read_width * app.session.view.read_zoom.clamp(0.75, 1.5) * PX_PER_PT + GAP
+        };
         app.canvas.read_target_page = None;
         app.canvas.scroll_request = Some(vec2(page as f32 * step, 0.0));
     }
@@ -766,7 +780,7 @@ fn update_canvas_scroll_state(
     crate::ink::replay_bar(app, ui, out.inner_rect);
     app.canvas.scroll_max = (out.content_size - out.inner_rect.size()).max(egui::Vec2::ZERO);
     if app.session.view.read_mode {
-        let step = app.session.view.read_width * geo.scale + GAP;
+        let step = app.canvas.read_page_w * geo.scale + GAP;
         if step.is_finite() && step > 0.0 {
             let page = (app.canvas.scroll_offset.x / step).round().max(0.0) as usize;
             app.canvas.read_first_visible = reading_page_start(layout, page.min(layout.pages.len().saturating_sub(1)));
@@ -1279,7 +1293,7 @@ fn finish_canvas_frame(finish: CanvasFinish<'_>, out: egui::scroll_area::ScrollA
     }
     if app.session.view.read_mode {
         // Fixed navigation chrome, independent of the horizontally moving columns.
-        let step = app.session.view.read_width * app.canvas.scale + GAP;
+        let step = app.canvas.read_page_w * app.canvas.scale + GAP;
         let current = if step > 0.0 { (app.canvas.scroll_offset.x / step).round() as usize + 1 } else { 1 };
         let total = layout.pages.len();
         let footer = Rect::from_min_size(pos2(area.max.x - 260.0, area.max.y - 38.0), vec2(250.0, 32.0));
