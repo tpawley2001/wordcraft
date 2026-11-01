@@ -190,13 +190,25 @@ impl Reader<'_> {
                 .and_then(|i| VML_TEXT_WARPS.get(i as usize))
                 .copied()
                 .and_then(TextWarp::new);
-            // The letters fill the box (`fitshape`): sized to its height.
+            // The letters' fill, outline and shadow: the shape's own, with VML's defaults (white,
+            // a 0.75pt black outline) for what it leaves out.
+            let child = |name: &str| shape.child(name).or_else(|| shapetype.and_then(|t| t.child(name)));
+            let fx = vml_text_effects(on("filled"), attr("fillcolor"), on("stroked"), attr("strokecolor"), attr("strokeweight"), child);
+            let fill_color = match fx.fill {
+                Some(wordcraft_doc::wordart::TextFill::Solid { color, .. }) => Some(TextColor::Rgb(color)),
+                _ => None,
+            };
+            // The letters fill the box (`fitshape`): sized to its height, and with `fitpath`
+            // stretched so their ink meets its edges.
             let props = CharProps {
                 font,
                 size: Some((h * 0.75).clamp(8.0, 200.0)),
-                color: attr("fillcolor").and_then(vml_color).map(TextColor::Rgb),
+                color: fill_color.or_else(|| attr("fillcolor").and_then(vml_color).map(TextColor::Rgb)),
+                text_effects: (!fx.is_empty()).then(|| Box::new(fx)),
                 ..CharProps::default()
             };
+            let truthy = |v: Option<&str>| v.is_some_and(|v| matches!(v.trim(), "t" | "true" | "1"));
+            let fit_box = truthy(tp.attr("fitpath")) || truthy(shapetype.and_then(|t| t.child("v:textpath")).and_then(|t| t.attr("fitshape")));
             let id = self.doc.add_part(PartKind::TextBox, vec![para_block(Paragraph::with_text(&text, props))]);
             if let Some(part) = self.doc.parts.get_mut(&id) {
                 part.body.anchor = wordcraft_doc::props::VAlign::Center;
@@ -213,7 +225,7 @@ impl Reader<'_> {
                 story: Some(id),
                 freeform: None,
                 effects: Default::default(),
-                extra: ShapeExtra { warp, ..ShapeExtra::default() },
+                extra: ShapeExtra { warp, fit_box, ..ShapeExtra::default() },
             });
         }
         if let Some((tb, t)) = vml_textbox(shape, 0)
@@ -611,6 +623,67 @@ fn vml_watermark(shape: &El) -> Option<wordcraft_doc::Watermark> {
 /// A VML `opacity`, 0..=1.
 fn vml_opacity(v: &str) -> Option<f32> {
     vml_fraction(v).map(|f| f.clamp(0.0, 1.0))
+}
+
+/// Word 2007 WordArt's look as text effects (ECMA-376 Part 4: `v:fill` §19.1.2.5, `v:stroke`
+/// §19.1.2.21, `v:shadow` §19.1.2.18): the letters filled `fillcolor` (white by default) unless
+/// `filled` or `v:fill/@on` is off, outlined `strokecolor` at `strokeweight` (black, 0.75pt by
+/// default) unless `stroked` or `v:stroke/@on` is off, and a plain offset shadow, crisp. `child`
+/// finds the shape's (or its shapetype's) `v:fill`, `v:stroke` and `v:shadow`.
+fn vml_text_effects<'a>(
+    filled: bool,
+    fillcolor: Option<&str>,
+    stroked: bool,
+    strokecolor: Option<&str>,
+    strokeweight: Option<&str>,
+    child: impl Fn(&str) -> Option<&'a El>,
+) -> wordcraft_doc::wordart::TextEffects {
+    use wordcraft_doc::wordart::{TextEffects, TextFill, TextOutline};
+    let truthy = |v: &str| matches!(v.trim(), "t" | "true" | "1");
+    let off = |e: Option<&El>| e.and_then(|e| e.attr("on")).is_some_and(|v| !truthy(v));
+    // Transparency in percent from an element's `opacity` (fully opaque by default).
+    let transparency = |e: Option<&El>| (1.0 - e.and_then(|e| e.attr("opacity")).and_then(vml_opacity).unwrap_or(1.0)) * 100.0;
+    let fill_el = child("v:fill");
+    let fill = if !filled || off(fill_el) {
+        TextFill::None
+    } else {
+        TextFill::Solid { color: fillcolor.and_then(vml_color).unwrap_or(Rgb::WHITE), transparency: transparency(fill_el) }
+    };
+    let stroke_el = child("v:stroke");
+    let outline = (stroked && !off(stroke_el)).then(|| TextOutline {
+        color: Some(stroke_el.and_then(|s| s.attr("color")).or(strokecolor).and_then(vml_color).unwrap_or(Rgb::BLACK)),
+        width: stroke_el
+            .and_then(|s| s.attr("weight"))
+            .or(strokeweight)
+            .and_then(|v| measure(v, 1.0))
+            .map_or(0.75, wordcraft_geom::finite)
+            .clamp(0.0, wordcraft_doc::wordart::MAX_OUTLINE),
+        transparency: transparency(stroke_el),
+    });
+    // Only a single offset copy (`type` absent or `single`); perspective, double and emboss
+    // shadows are left out rather than drawn wrong.
+    let shadow = child("v:shadow")
+        .filter(|s| s.attr("on").is_some_and(truthy) && s.attr("type").is_none_or(|t| t.trim().eq_ignore_ascii_case("single")))
+        .map(|s| {
+            let max = crate::units::MAX_LEN_PT;
+            let len = |v: &str| measure(v, 1.0).map_or(0.0, wordcraft_geom::finite).clamp(-max, max);
+            let (dx, dy) = match s.attr("offset") {
+                Some(o) => {
+                    let (x, y) = o.split_once(',').unwrap_or((o, ""));
+                    (len(x), len(y))
+                }
+                None => (2.0, 2.0),
+            };
+            wordcraft_doc::effects::Shadow {
+                color: s.attr("color").and_then(vml_color).unwrap_or(Rgb(0x80, 0x80, 0x80)),
+                transparency: transparency(Some(s)).clamp(0.0, 100.0),
+                blur: 0.0,
+                distance: dx.hypot(dy),
+                angle: dy.atan2(dx).to_degrees().rem_euclid(360.0),
+                rot_with_shape: false,
+            }
+        });
+    TextEffects { fill: Some(fill), outline, shadow, ..TextEffects::default() }.sanitized()
 }
 
 /// A VML shape's turn: `rotation` in degrees, or 65536ths of one with an `fd` suffix; `flip`: `x`
