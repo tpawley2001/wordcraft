@@ -7,7 +7,8 @@
 //! measured from real files: everything lives in the WordDocument stream (there is no Table
 //! stream), pieces hold 8-bit text at a direct byte offset, bin tables have 16-bit page
 //! numbers, FFNs carry an 8-bit name right after `ixchSzAlt`, and sprms have one-byte opcodes.
-//! Styles, paragraph properties, tables, sections, headers and footers, notes and pictures are
+//! Paragraph alignment, indents, spacing, keeps and tabs are read from PAPX runs.
+//! Styles, tables, sections, headers and footers, notes and pictures are
 //! not read yet: the body text is all present, the other stories stay out of it.
 
 use std::io::{Read, Seek};
@@ -15,7 +16,7 @@ use std::io::{Read, Seek};
 use wordcraft_doc::Document;
 use wordcraft_doc::encoding::{MAC_ROMAN_CODE_PAGE, charset_code_page, is_byte_code_page, windows_byte};
 use wordcraft_doc::para::Paragraph;
-use wordcraft_doc::props::CharProps;
+use wordcraft_doc::props::{CharProps, ParaProps};
 
 use crate::fib::Word6Fib;
 use crate::fkp::Bins;
@@ -64,6 +65,7 @@ pub(crate) fn read<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, word: &[u8],
     let fonts = fonts(word, fib.sttbf_ffn);
     let font_names: Vec<String> = fonts.iter().map(|f| f.name.clone()).collect();
     let chpx = Bins::parse_word6(word, fib.bte_chpx.0, fib.bte_chpx.1);
+    let papx = Bins::parse_word6(word, fib.bte_papx.0, fib.bte_papx.1);
     let mac = fib.chse == CHSE_MAC;
     let work = Work::new(MAX_WORK);
     // Every character comes from a byte of the stream; aliased pieces can't multiply it past this.
@@ -97,6 +99,7 @@ pub(crate) fn read<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, word: &[u8],
             match b {
                 0x0D | 0x07 => {
                     pb.mark = props;
+                    apply_para_props(&mut pb.props, papx.papx_word6(word, fc));
                     let done = std::mem::take(&mut pb);
                     out.push(para_out(done, cp.saturating_add(1)));
                 }
@@ -217,6 +220,38 @@ fn char_props(grpprl: &[u8], fonts: &[Font], names: &[String], mac: bool) -> (Ch
         }
     }
     (props, decode)
+}
+
+/// Translate Word 6 paragraph operands for the shared Word 97 property applier.
+/// Unknown opcodes end the group because their operand sizes cannot be inferred.
+fn apply_para_props(props: &mut ParaProps, mut rest: &[u8]) {
+    while let Some((&op, after)) = rest.split_first() {
+        let (len, op97) = match op {
+            5 => (1, Some(0x2403)),
+            7 => (1, Some(0x2405)),
+            8 => (1, Some(0x2406)),
+            9 => (1, Some(0x2407)),
+            15 => (usize::from(after.first().copied().unwrap_or(0)).saturating_add(1), Some(0xC60D)),
+            16 => (2, Some(0x840E)),
+            17 => (2, Some(0x840F)),
+            19 => (2, Some(0x8411)),
+            20 => (4, Some(0x6412)),
+            21 => (2, Some(0xA413)),
+            22 => (2, Some(0xA414)),
+            51 => (1, None),
+            2 => (2, None),
+            13 | 14 | 24 | 25 => (1, None),
+            12 | 23 => (usize::from(after.first().copied().unwrap_or(0)).saturating_add(1), None),
+            _ => break,
+        };
+        let Some(operand) = after.get(..len) else { break };
+        rest = after.get(len..).unwrap_or(&[]);
+        if op == 51 {
+            props.widow_control = operand.first().map(|&v| v != 0);
+        } else if let Some(op) = op97 {
+            fmt::apply_para(props, &Prl { op, operand });
+        }
+    }
 }
 
 /// Operand size of the Word 6 character sprms 80..=102, which keep the order and sizes of the
@@ -363,6 +398,19 @@ mod unit {
         assert!(pieces(&[0x01, 0xFF, 0xFF, 0x02, 0x00], &fib).is_err());
         let fib = Word6Fib { complex: true, clx: (u32::MAX, u32::MAX), ..Default::default() };
         assert!(pieces(&[0u8; 8], &fib).is_err());
+    }
+
+    #[test]
+    fn paragraph_operand_boundaries_and_skipped_records() {
+        use wordcraft_doc::props::Align;
+        let mut props = ParaProps::default();
+        apply_para_props(&mut props, &[2, 0, 0, 12, 2, 5, 3, 13, 0, 14, 0, 23, 1, 0, 5, 1, 0]);
+        assert_eq!(props.align, Some(Align::Center));
+        for g in [&[5][..], &[17, 1], &[20, 1, 2, 3], &[15], &[15, 5, 0], &[12, 255], &[23, 255], &[51]] {
+            let mut props = ParaProps::default();
+            apply_para_props(&mut props, g);
+            assert_eq!(props, ParaProps::default());
+        }
     }
 
     fn fonts_of(t: &[u8]) -> Vec<Font> {

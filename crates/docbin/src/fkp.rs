@@ -42,7 +42,7 @@ impl Bins {
     }
 
     /// Parse a Word 6.0/95 bin table at `word[fc..fc+lcb]`: aFc[n+1] u32s + aPn[n] **u16**s
-    /// (the FKP pages themselves have the Word 97 layout).
+    /// (Word 6 paragraph FKPs have smaller BX entries than Word 97).
     pub(crate) fn parse_word6(word: &[u8], fc: u32, lcb: u32) -> Bins {
         let lcb = lcb as usize;
         let empty = Bins { fcs: Vec::new(), pns: Vec::new() };
@@ -86,6 +86,38 @@ impl Bins {
         page.get(at + 1..at + 1 + cb as usize).unwrap_or(&[])
     }
 
+    /// Word 6 PAPX at the paragraph mark's FC: seven-byte BX entries and a word-count
+    /// length followed by an ignored style index and one-byte-opcode grpprl.
+    pub(crate) fn papx_word6<'w>(&self, word: &'w [u8], fc: u32) -> &'w [u8] {
+        self.papx_word6_data(word, fc).unwrap_or(&[])
+    }
+
+    fn papx_word6_data<'w>(&self, word: &'w [u8], fc: u32) -> Option<&'w [u8]> {
+        let page = self.page(word, fc)?;
+        let crun = usize::from(*page.get(511)?);
+        let page = page.get(..511)?;
+        let rgbx_at = crun.checked_add(1)?.checked_mul(4)?;
+        let header_end = rgbx_at.checked_add(crun.checked_mul(7)?)?;
+        page.get(..header_end)?;
+        let rgfc = |i: usize| -> Option<u32> {
+            let at = i.checked_mul(4)?;
+            Some(u32::from_le_bytes(page.get(at..at.checked_add(4)?)?.try_into().ok()?))
+        };
+        let j = (0..crun).find(|&j| rgfc(j).is_some_and(|start| start <= fc) && j.checked_add(1).and_then(rgfc).is_some_and(|end| fc < end))?;
+        let off = usize::from(*page.get(rgbx_at.checked_add(j.checked_mul(7)?)?)?);
+        if off == 0 {
+            return None;
+        }
+        let at = off.checked_mul(2)?;
+        if at < header_end {
+            return None;
+        }
+        let len = usize::from(*page.get(at)?).checked_mul(2)?;
+        let data_at = at.checked_add(1)?;
+        let data = page.get(data_at..data_at.checked_add(len)?)?;
+        data.get(2..)
+    }
+
     /// The (istd, grpprl) of the Papx of the paragraph whose mark is just before `fc`
     /// ([MS-DOC] PapxFkp: rgfc u32s — each the FC *following* a paragraph mark —, rgbx BX
     /// entries (1 offset byte + 12 PHE bytes), crun in the last byte; the PAPX itself is a
@@ -120,5 +152,33 @@ impl Bins {
         }
         let istd = u16at(data_at).unwrap_or(0);
         (istd, page.get(data_at + 2..data_at + data_len).unwrap_or(&[]))
+    }
+}
+
+#[cfg(test)]
+mod word6_tests {
+    use super::Bins;
+
+    #[test]
+    fn malformed_papx_defaults_and_run_end_is_exclusive() {
+        let bins = Bins { fcs: vec![100, 200], pns: vec![0] };
+        let mut page = [0u8; 512];
+        page[..4].copy_from_slice(&100u32.to_le_bytes());
+        page[4..8].copy_from_slice(&200u32.to_le_bytes());
+        page[8] = 250;
+        page[500..505].copy_from_slice(&[2, 0, 0, 5, 1]);
+        page[511] = 1;
+        assert_eq!(bins.papx_word6(&page, 199), &[5, 1]);
+        assert!(bins.papx_word6(&page, 200).is_empty());
+        for (at, value) in [(511, 255), (511, 0), (8, 255), (8, 0), (8, 1), (500, 255), (500, 0)] {
+            let mut bad = page;
+            bad[at] = value;
+            assert!(bins.papx_word6(&bad, 199).is_empty(), "{at}={value}");
+        }
+        for len in 0..512 {
+            assert!(bins.papx_word6(&page[..len], 199).is_empty());
+        }
+        let bad_bins = Bins { fcs: vec![100, 200], pns: vec![u32::MAX] };
+        assert!(bad_bins.papx_word6(&page, 199).is_empty());
     }
 }
