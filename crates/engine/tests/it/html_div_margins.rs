@@ -52,9 +52,7 @@ fn part(bytes: &[u8], name: &str) -> Option<String> {
 
 fn para(div_id: Option<&str>, ppr: &str, text: &str) -> String {
     let d = div_id.map(|id| format!(r#"<w:divId w:val="{id}"/>"#)).unwrap_or_default();
-    format!(
-        r#"<w:p><w:pPr>{ppr}{d}</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">{text}</w:t></w:r></w:p>"#
-    )
+    format!(r#"<w:p><w:pPr>{ppr}{d}</w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">{text}</w:t></w:r></w:p>"#)
 }
 
 /// Page-space (left, right) x of the first line of the body block at `index` (for a table,
@@ -65,12 +63,11 @@ fn first_line(bytes: &[u8], index: u32) -> (f32, f32, usize) {
     let l = layout(&d, &mut c, &LayoutOptions::default());
     for page in &l.pages {
         for it in &page.items {
-            if let Placed::Lines { story: StoryRef::Body, path, para, l0, x, .. } = it
-                && path.0.first() == Some(&index)
-                && *l0 == 0
-            {
-                let xs = &para.lines[0].xs;
-                return (x + xs[0], x + xs[xs.len() - 1], para.lines.len());
+            if let Placed::Lines { story: StoryRef::Body, path, para, l0, x, .. } = it {
+                if path.0.first() == Some(&index) && *l0 == 0 {
+                    let xs = &para.lines[0].xs;
+                    return (x + xs[0], x + xs[xs.len() - 1], para.lines.len());
+                }
             }
         }
     }
@@ -136,12 +133,7 @@ fn a_table_row_in_a_div_moves_with_it() {
     let row = |d: &str| {
         format!(r#"<w:tr><w:trPr>{d}</w:trPr><w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr>{}</w:tc></w:tr>"#, para(None, "", "Cell"))
     };
-    let tbl = |d: &str| {
-        format!(
-            r#"<w:tbl><w:tblPr><w:tblW w:w="3000" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/></w:tblGrid>{}</w:tbl>"#,
-            row(d)
-        )
-    };
+    let tbl = |d: &str| format!(r#"<w:tbl><w:tblPr><w:tblW w:w="3000" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/></w:tblGrid>{}</w:tbl>"#, row(d));
     let body = tbl("") + "<w:p/>" + &tbl(r#"<w:divId w:val="1748839239"/>"#) + "<w:p/>";
     let bytes = docx(&body, Some(&divs()));
     let (plain, _, _) = first_line(&bytes, 0);
