@@ -737,6 +737,7 @@ fn draw_line(p: &egui::Painter, [a, b]: [egui::Pos2; 2], style: BorderStyle, wid
     let px = (width * 1.2).clamp(1.0, 6.0);
     let normal = (b - a).normalized().rot90();
     let stroke = Stroke::new(px, color);
+    let style = style.draw_as();
     match style {
         BorderStyle::None => {}
         BorderStyle::Double | BorderStyle::Triple => {
@@ -764,7 +765,8 @@ fn draw_line(p: &egui::Painter, [a, b]: [egui::Pos2; 2], style: BorderStyle, wid
                 (0..=n.min(400)).map(|i| a + dir * (len * i as f32 / n as f32) + normal * if i % 2 == 0 { -1.5 } else { 1.5 }).collect();
             p.add(egui::Shape::line(pts, Stroke::new(1.0, color)));
         }
-        BorderStyle::Single | BorderStyle::Thick => {
+        // `draw_as` leaves only the basic styles; the rest draw as a single line.
+        _ => {
             p.line_segment([a, b], if style == BorderStyle::Thick { Stroke::new((px * 1.5).min(6.0), color) } else { stroke });
         }
     }

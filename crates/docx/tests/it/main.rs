@@ -1,5 +1,6 @@
 mod bidi;
 mod bidi_runs;
+mod border_styles;
 mod cell_margin_inheritance;
 mod char_units;
 mod citations;
