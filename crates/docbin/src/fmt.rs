@@ -2,7 +2,8 @@
 
 use wordcraft_doc::Rgb;
 use wordcraft_doc::props::{
-    Align, Border, BorderStyle, Borders, CharProps, Highlight, LineSpacing, ParaProps, TabAlign, TabLeader, TabStop, TextColor, Underline, VertAlign,
+    Align, Border, BorderStyle, Borders, CharProps, Highlight, LineSpacing, ParaProps, TabAlign, TabLeader, TabStop, TextColor, TextFrame, Underline,
+    VertAlign,
 };
 use wordcraft_doc::styles::{Style, StyleKind, StyleSheet};
 
@@ -25,6 +26,15 @@ const C_HIGHLIGHT: u16 = 0x2A0C;
 pub(crate) const C_ISTD: u16 = 0x4A30; // character style
 
 // Paragraph sprms ([MS-DOC] §2.6.2).
+// Frame (absolute position) sprms.
+const P_PC: u16 = 0x261B;
+const P_DXA_ABS: u16 = 0x8418;
+const P_DYA_ABS: u16 = 0x8419;
+const P_DXA_WIDTH: u16 = 0x841A;
+const P_WR: u16 = 0x2423;
+const P_WHEIGHT_ABS: u16 = 0x442B;
+const P_DYA_FROM_TEXT: u16 = 0x842E;
+const P_DXA_FROM_TEXT: u16 = 0x842F;
 const P_JC: u16 = 0x2461;
 const P_JC80: u16 = 0x2403;
 const P_DXA_LEFT: u16 = 0x845E;
@@ -315,11 +325,115 @@ fn change_tabs(p: &mut ParaProps, prl: &Prl) {
     p.tabs = Some(tabs);
 }
 
+/// Whether `op` is one of the paragraph frame sprms [`apply_frame`] reads.
+pub(crate) fn is_frame_sprm(op: u16) -> bool {
+    matches!(op, P_PC | P_DXA_ABS | P_DYA_ABS | P_DXA_WIDTH | P_WR | P_WHEIGHT_ABS | P_DYA_FROM_TEXT | P_DXA_FROM_TEXT)
+}
+
+/// A frame with the PAP defaults: anchored to the column horizontally and the margin vertically,
+/// at 0, sized to its text, no distance from the text.
+fn default_frame() -> TextFrame {
+    TextFrame { h_anchor: "text".into(), v_anchor: "margin".into(), wrap: "auto".into(), ..Default::default() }
+}
+
+/// Apply a frame sprm to the paragraph's frame, creating it with the PAP defaults. Each sprm
+/// changes only its own fields, so a frame merges field by field along the style chain.
+fn apply_frame(p: &mut ParaProps, prl: &Prl) {
+    let len = |v: i16| (f32::from(v) / 20.0).clamp(-1584.0, 1584.0);
+    let byte = prl.operand.first().copied();
+    let word = s16_of(prl);
+    // A short operand changes nothing (and creates no frame).
+    let short = if matches!(prl.op, P_PC | P_WR) { byte.is_none() } else { word.is_none() };
+    if short {
+        return;
+    }
+    let f = p.frame.get_or_insert_with(default_frame);
+    match (prl.op, byte, word) {
+        // PositionCodeOperand: pcVert in bits 4-5, pcHorz in bits 6-7; 3 keeps the anchor.
+        (P_PC, Some(b), _) => {
+            match (b >> 4) & 3 {
+                0 => f.v_anchor = "margin".into(),
+                1 => f.v_anchor = "page".into(),
+                2 => f.v_anchor = "text".into(),
+                _ => {}
+            }
+            match (b >> 6) & 3 {
+                0 => f.h_anchor = "text".into(),
+                1 => f.h_anchor = "margin".into(),
+                2 => f.h_anchor = "page".into(),
+                _ => {}
+            }
+        }
+        // XAS: negative codes are alignments, anything else a position in twips.
+        (P_DXA_ABS, _, Some(v)) => {
+            let align = match v {
+                -4 => Some("center"),
+                -8 => Some("right"),
+                -12 => Some("inside"),
+                -16 => Some("outside"),
+                _ => None,
+            };
+            f.x = if align.is_some() { 0.0 } else { len(v) };
+            f.x_align = align.map(str::to_string);
+        }
+        // YAS, likewise.
+        (P_DYA_ABS, _, Some(v)) => {
+            let align = match v {
+                -4 => Some("top"),
+                -8 => Some("center"),
+                -12 => Some("bottom"),
+                -16 => Some("inside"),
+                -20 => Some("outside"),
+                _ => None,
+            };
+            f.y = if align.is_some() { 0.0 } else { len(v) };
+            f.y_align = align.map(str::to_string);
+        }
+        (P_DXA_WIDTH, _, Some(v)) => f.w = (v != 0).then(|| len(v).max(0.0)),
+        // dyaHeight in bits 0-14; bit 15 (fMinHeight) makes it a minimum rather than exact.
+        (P_WHEIGHT_ABS, _, Some(v)) => {
+            let v = v as u16;
+            let h = v & 0x7FFF;
+            f.h = (h != 0).then(|| (f32::from(h) / 20.0).min(1584.0));
+            f.h_exact = h != 0 && v & 0x8000 == 0;
+        }
+        (P_DXA_FROM_TEXT, _, Some(v)) => f.h_space = len(v).max(0.0),
+        (P_DYA_FROM_TEXT, _, Some(v)) => f.v_space = len(v).max(0.0),
+        // Wr ([MS-DOC] §2.9.354).
+        (P_WR, Some(b), _) => {
+            f.wrap = match b {
+                1 => "notBeside",
+                2 => "around",
+                3 => "none",
+                4 => "tight",
+                5 => "through",
+                _ => "auto",
+            }
+            .into();
+        }
+        _ => {}
+    }
+}
+
+/// The effective frame of paragraph style `istd`: its chain's frame sprms, root first.
+pub(crate) fn style_frame(raw: &[crate::stsh::RawStyle], istd: usize) -> Option<TextFrame> {
+    let mut para = ParaProps::default();
+    for s in style_chain(raw, istd).into_iter().filter_map(|i| raw.get(i)) {
+        for prl in sprm::iter(&s.papx) {
+            if is_frame_sprm(prl.op) {
+                apply_frame(&mut para, &prl);
+            }
+        }
+    }
+    para.frame
+}
+
 /// Apply a paragraph-property sprm.
 pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
     let tw = |v: i32| (v as f32 / 20.0).clamp(-1000.0, 1000.0);
     let s16 = |prl: &Prl| -> Option<i16> { u16_of(prl).map(|v| v as i16) };
     match prl.op {
+        op if is_frame_sprm(op) => apply_frame(p, prl),
         sprm::P_CHG_TABS | sprm::P_CHG_TABS_PAPX => change_tabs(p, prl),
         P_JC | P_JC80 => {
             p.align = match prl.operand.first().copied().unwrap_or(0) {
