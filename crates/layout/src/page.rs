@@ -428,8 +428,8 @@ pub(crate) fn body_top_for(ctx: &mut Ctx, sect: &SectionProps, header: Option<u3
 /// it (measured from PDFs Word exported): its lines, and table cells down to their shading and
 /// borders, while the empty paragraphs in cells (a cell's paragraph after a nested table) and
 /// the rest of a borderless cell don't count. Empty paragraphs outside tables do (pressing Enter
-/// in a header pushes the body down). Floating objects (also top-and-bottom ones) only count
-/// through the lines they move down. `None` for turned text, which this doesn't measure.
+/// in a header pushes the body down), and a line of only inline pictures that a float moved down
+/// reaches down to its baseline. Floating objects (also top-and-bottom ones) only count through the lines they move down. `None` for turned text, which this doesn't measure.
 pub(crate) fn drawn_extent(items: &[Placed], story: StoryRef) -> Option<f32> {
     let mut bottom = 0.0f32;
     for it in items {
@@ -440,13 +440,20 @@ pub(crate) fn drawn_extent(items: &[Placed], story: StoryRef) -> Option<f32> {
                 }
                 let first = para.lines.get(*l0)?;
                 let in_cell = path.0.len() > 1;
-                for line in para.lines.get(*l0..*l1)? {
+                for (k, line) in para.lines.iter().enumerate().take(*l1).skip(*l0) {
                     let clusters = para.clusters.get(line.c0..line.c1).unwrap_or_default();
-                    let empty = !clusters.iter().any(|c| c.kind == ClKind::Text || matches!(c.kind, ClKind::Object(_)) && c.obj_h > 0.0);
-                    if empty && in_cell {
+                    let text = clusters.iter().any(|c| c.kind == ClKind::Text);
+                    let pictures = clusters.iter().any(|c| matches!(c.kind, ClKind::Object(_)) && c.obj_h > 0.0);
+                    if !text && !pictures && in_cell {
                         continue;
                     }
-                    bottom = bottom.max(y + line.top - first.top + line.height);
+                    // A line of only inline pictures that a floating object moved down reaches
+                    // down to its pictures, on its baseline: Word starts the body right below an
+                    // inline canvas under a top-and-bottom text box, without the descent.
+                    let above = k.checked_sub(1).and_then(|p| para.lines.get(p)).map_or(0.0, |p| p.top + p.height);
+                    let moved = line.top > above + 0.01;
+                    let reach = if pictures && !text && moved { line.baseline - line.top } else { line.height };
+                    bottom = bottom.max(y + line.top - first.top + reach);
                 }
             }
             Placed::Fill { rect, .. } => bottom = bottom.max(rect.bottom()),
