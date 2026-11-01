@@ -48,6 +48,47 @@ pub struct CustomProp {
     pub link_target: Option<String>,
 }
 
+/// An HTML div from the web settings (`w:div`, ECMA-376 §17.15.2.8), as documents saved from
+/// HTML carry them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct WebDiv {
+    /// `w:id`, which `w:divId` refers to.
+    pub id: String,
+    /// `w:bodyDiv`: the div stands for the HTML body.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub body_div: bool,
+    /// `w:marLeft`, `w:marRight`, `w:marTop`, `w:marBottom`, points.
+    pub mar_left: f32,
+    pub mar_right: f32,
+    pub mar_top: f32,
+    pub mar_bottom: f32,
+    /// `w:divBdr`, kept for saving; not drawn.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border: Option<crate::props::Borders>,
+    /// Divs nested in this one (`w:divsChild`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<WebDiv>,
+}
+
+/// The deepest div nesting kept and searched.
+pub const MAX_DIV_DEPTH: usize = 32;
+
+/// The (left, right) margins, points, that the div `id` and the divs it is nested in add to the
+/// indents of what names it; `None` when no div has that id.
+pub fn div_margins(divs: &[WebDiv], id: &str) -> Option<(f32, f32)> {
+    fn find(divs: &[WebDiv], id: &str, depth: usize) -> Option<(f32, f32)> {
+        if depth > MAX_DIV_DEPTH {
+            return None;
+        }
+        divs.iter().find_map(|d| {
+            let own = (d.mar_left, d.mar_right);
+            if d.id == id { Some(own) } else { find(&d.children, id, depth + 1).map(|(l, r)| (l + own.0, r + own.1)) }
+        })
+    }
+    find(divs, id.trim(), 0).filter(|(l, r)| l.is_finite() && r.is_finite())
+}
+
 /// Document properties (File › Info).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
@@ -122,6 +163,10 @@ pub struct Settings {
     /// draws one that isn't installed in a serif face.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub roman_fonts: Vec<String>,
+    /// HTML divs (`w:divs` in the web settings part, ECMA-376 §17.15.2.8): paragraphs and table
+    /// rows name one with `div_id`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub web_divs: Vec<WebDiv>,
     /// `w:doNotUseHTMLParagraphAutoSpacing`: the space between two paragraphs is the first's space
     /// after plus the second's space before, not the larger of the two.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -295,6 +340,7 @@ impl Default for Settings {
             protect_hash: Vec::new(),
             compat_mode: COMPAT_MODE_CURRENT,
             roman_fonts: Vec::new(),
+            web_divs: Vec::new(),
             sum_paragraph_spacing: false,
             do_not_expand_shift_return: false,
             allow_space_of_same_style_in_table: false,

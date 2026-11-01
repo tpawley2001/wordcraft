@@ -338,6 +338,7 @@ impl PropCtx {
                 "w:autoSpaceDE" => p.auto_space_de = Some(on_off(k)),
                 "w:autoSpaceDN" => p.auto_space_dn = Some(on_off(k)),
                 "w:snapToGrid" => p.snap_to_grid = Some(on_off(k)),
+                "w:divId" => p.div_id = div_id(k),
                 "w:framePr" => {
                     if let Some(kind @ ("drop" | "margin")) = k.attr("w:dropCap") {
                         p.drop_cap = Some(k.attr("w:lines").and_then(u32_of).unwrap_or(3).clamp(1, 10) as u8);
@@ -605,10 +606,19 @@ pub fn trpr(e: &El) -> RowProps {
             "w:gridAfter" => r.grid_after = k.attr("w:val").and_then(u32_of).unwrap_or(0).min(63),
             "w:wBefore" => r.w_before = gap_width(k),
             "w:wAfter" => r.w_after = gap_width(k),
+            "w:divId" => r.div_id = div_id(k),
             _ => {}
         }
     }
     r
+}
+
+/// The longest div id kept (`ST_DecimalNumber`; Word writes ten digits).
+const MAX_DIV_ID: usize = 32;
+
+/// `w:divId`'s value: a non-empty, short id.
+pub fn div_id(k: &El) -> Option<String> {
+    k.attr("w:val").map(str::trim).filter(|v| !v.is_empty() && v.len() <= MAX_DIV_ID).map(str::to_string)
 }
 
 /// `w:wBefore`/`w:wAfter` in points: only a width in twips (`dxa`) is kept.

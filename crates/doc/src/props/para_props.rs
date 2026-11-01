@@ -444,6 +444,10 @@ pub struct ParaProps {
     /// `w:snapToGrid`: lines snap to the section's document grid. Unset = on.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snap_to_grid: Option<bool>,
+    /// `w:divId` (ECMA-376 §17.3.1.10): the HTML div (`Settings::web_divs`) the paragraph
+    /// belongs to; its left and right margins add to the indents.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub div_id: Option<String>,
 }
 
 impl ParaProps {
@@ -455,7 +459,7 @@ impl ParaProps {
 
     fn overlay_layout(&mut self, patch: &ParaProps) {
         overlay_fields!(self, patch; style, align, indent_left, indent_right, indent_first, indent_left_chars, indent_right_chars, indent_first_chars,
-            space_before, space_after, space_before_auto, space_after_auto, line_spacing, contextual_spacing, mirror_indents, tabs, shading, borders);
+            space_before, space_after, space_before_auto, space_after_auto, line_spacing, contextual_spacing, mirror_indents, tabs, shading, borders, div_id);
     }
 
     fn overlay_pagination(&mut self, patch: &ParaProps) {

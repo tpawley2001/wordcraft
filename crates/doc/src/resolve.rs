@@ -208,6 +208,9 @@ pub struct ResolvedPara {
     /// point values; see [`ResolvedPara::set_char_unit`].
     #[serde(default)]
     pub indent_chars: [f32; 3],
+    /// The HTML div the paragraph belongs to (see `ParaProps::div_id`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub div_id: Option<String>,
 }
 
 const MAX_INDENT: f32 = 1584.0; // 22"
@@ -287,6 +290,7 @@ impl ResolvedPara {
             snap_to_grid: p.snap_to_grid.unwrap_or(true),
             indent_chars: [p.indent_left_chars, p.indent_right_chars, p.indent_first_chars]
                 .map(|c| c.filter(|c| c.is_finite()).unwrap_or(0.0).clamp(-MAX_CHARS, MAX_CHARS)),
+            div_id: p.div_id.clone(),
         }
     }
 }
