@@ -50,6 +50,9 @@ pub(crate) struct Pictures {
     /// entries and inline pictures that alias one record share one decode (`None`: failed, not
     /// retried). The stream is told apart by its address.
     by_delay: HashMap<(usize, usize, usize), Option<String>>,
+    /// Embedded object storage id → media key of its print presentation (`None`: over a cap,
+    /// not retried).
+    by_ole: HashMap<u32, Option<String>>,
     /// The media entries, merged into the document at the end.
     pub(crate) media: BTreeMap<String, Arc<Vec<u8>>>,
     total: usize,
@@ -69,6 +72,7 @@ impl Default for Pictures {
             by_fc: HashMap::new(),
             by_bse: HashMap::new(),
             by_delay: HashMap::new(),
+            by_ole: HashMap::new(),
             media: BTreeMap::new(),
             total: 0,
             limit: MAX_MEDIA_BYTES,
@@ -125,6 +129,21 @@ impl Pictures {
             }
             Found::Shape { w, h, key, props } => Some(Inline { key: key?, w, h, crop: props.crop, alt: props.alt }),
         }
+    }
+
+    /// The picture of embedded object `id`, drawn from its print presentation `emf` at the
+    /// Data stream picture's size and crop `shown`; one media entry per object. `None` when a
+    /// picture count/byte cap is reached.
+    pub(crate) fn ole(&mut self, id: u32, emf: &[u8], shown: &Inline) -> Option<Inline> {
+        if !self.by_ole.contains_key(&id) {
+            if self.by_fc.len().saturating_add(self.by_bse.len()).saturating_add(self.by_ole.len()) >= MAX_PICTURES {
+                return None;
+            }
+            let key = self.insert(emf.to_vec(), "emf", false);
+            self.by_ole.insert(id, key);
+        }
+        let key = self.by_ole.get(&id)?.clone()?;
+        Some(Inline { key, ..shown.clone() })
     }
 
     /// The media key of BLIP store entry `pib` (1-based), decoding it the first time; `delay`
