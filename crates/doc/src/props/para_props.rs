@@ -235,6 +235,14 @@ impl Border {
     pub fn single(width: f32) -> Border {
         Border { style: BorderStyle::Single, width, color: None, space: 0.0 }
     }
+    /// The width the border takes when drawn: a double border is line, gap, line, each `width`
+    /// thick. Other compound styles are drawn `width` wide here until measured against Word.
+    pub fn drawn_width(&self) -> f32 {
+        match self.style {
+            BorderStyle::Double => 3.0 * self.width,
+            _ => self.width,
+        }
+    }
     pub fn is_visible(&self) -> bool {
         self.style != BorderStyle::None && self.width > 0.0
     }

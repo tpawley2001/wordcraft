@@ -592,7 +592,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
             }
             // Word keeps the cell's text clear of its top border (and the last row's of its bottom
             // border): the border's width sits on top of the cell margin.
-            let band = |b: Option<Border>| b.filter(Border::is_visible).map_or(0.0, |b| b.width.clamp(0.0, 12.0));
+            let band = |b: Option<Border>| b.filter(Border::is_visible).map_or(0.0, |b| b.drawn_width().clamp(0.0, 12.0));
             let (band_t, band_b) = (band(borders.top), if ri + 1 == nrows { band(borders.bottom) } else { 0.0 });
             // A shared edge painted by the row above still clears this cell's text and minimum.
             let band_t = if band_t > 0.0 || cell.props.vmerge == VMerge::Continue {
@@ -876,7 +876,7 @@ fn finish_table_rows(ctx: &mut Ctx, input: TableRows<'_>) -> TableLayout {
                 story,
                 clip: exact && c.h > span_h + 0.01,
             });
-            let top = c.margins[0] + c.borders.top.filter(Border::is_visible).map_or(0.0, |b| b.width.clamp(0.0, 12.0));
+            let top = c.margins[0] + c.borders.top.filter(Border::is_visible).map_or(0.0, |b| b.drawn_width().clamp(0.0, 12.0));
             parts.push(CellPart { top, items: first..items.len(), end });
         }
         out.push(RowLayout {
