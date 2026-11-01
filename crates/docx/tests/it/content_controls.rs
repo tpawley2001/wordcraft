@@ -34,6 +34,19 @@ fn cell(text: &str) -> String {
     format!("<w:tc>{}</w:tc>", p(&t(text)))
 }
 
+#[test]
+fn list_items_with_empty_values_save_the_display_as_value() {
+    for tag in ["w:dropDownList", "w:comboBox"] {
+        let pr = format!(r#"<{tag}><w:listItem w:displayText="Yes" w:value=""/></{tag}>"#);
+        let mut bytes = package(&sdt(&pr, &p(&t("Yes"))));
+        for _ in 0..2 {
+            bytes = write(&read(&bytes).unwrap()).unwrap();
+            let xml = document_xml(&bytes);
+            assert!(xml.contains(r#"<w:listItem w:displayText="Yes" w:value="Yes"/>"#), "{xml}");
+        }
+    }
+}
+
 /// Every kind of control, at every level, with nesting.
 fn form() -> Vec<u8> {
     let block = sdt(
