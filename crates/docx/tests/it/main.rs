@@ -18,6 +18,7 @@ mod glossary;
 mod heading_levels;
 mod legacy_forms;
 mod ligatures;
+mod list_items;
 mod malformed;
 mod note_comments;
 mod passthrough;
