@@ -155,6 +155,9 @@ pub enum Dialog {
         /// Put the caret in Find what on the first frame, so typing searches (#772).
         focus: bool,
     },
+    Break {
+        kind: &'static str,
+    },
     InsertTable {
         rows: u32,
         cols: u32,
@@ -492,6 +495,7 @@ impl Dialog {
             Dialog::Find { tab: FindTab::Find, .. } => "find",
             Dialog::Find { tab: FindTab::Replace, .. } => "replace",
             Dialog::Find { tab: FindTab::GoTo, .. } => "goto",
+            Dialog::Break { .. } => "break",
             Dialog::InsertTable { .. } => "insertTable",
             Dialog::PageSetup { .. } => "pageSetup",
             Dialog::Link { .. } => "link",
@@ -562,6 +566,10 @@ impl Dialog {
     }
 
     pub fn open(name: &str, app: &mut WordApp) -> Option<Dialog> {
+        if name == "break" {
+            app.status_msg = None;
+            return Some(Dialog::Break { kind: "page" });
+        }
         if let Some(d) = crate::dialogs_insert::open(name, app) {
             return Some(Dialog::Insert(Box::new(d)));
         }

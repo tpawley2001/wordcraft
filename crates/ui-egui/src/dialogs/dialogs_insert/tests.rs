@@ -166,3 +166,33 @@ fn field_dialog_lists_the_document_information_fields() {
     f.select("SUBJECT");
     assert_eq!(f.instruction(), "SUBJECT");
 }
+
+#[test]
+fn break_dialog_all_kinds_are_one_undo_step() {
+    for kind in ["page", "column", "textWrapping", "nextPage", "continuous", "evenPage", "oddPage"] {
+        let mut a = app();
+        a.dialog = super::super::Dialog::open("break", &mut a);
+        assert!(matches!(a.dialog, Some(super::super::Dialog::Break { kind: "page" })));
+        let before = serde_json::to_value(&a.session.doc).unwrap();
+        let undo = a.session.undo_depth();
+        break_dialog_ok(&mut a, kind);
+        assert!(a.dialog.is_none(), "{kind} closes");
+        assert_eq!(a.session.undo_depth(), undo + 1, "{kind}: one undo step");
+        a.run("edit.undo", json!({})).unwrap();
+        assert_eq!(serde_json::to_value(&a.session.doc).unwrap(), before, "{kind}: undo restores the document");
+    }
+}
+
+#[test]
+fn break_dialog_refused_section_keeps_dialog_and_document() {
+    let mut a = app();
+    a.run("insert.table", json!({"rows": 1, "cols": 1})).unwrap();
+    a.dialog = Some(super::super::Dialog::Break { kind: "nextPage" });
+    let before = serde_json::to_value(&a.session.doc).unwrap();
+    let undo = a.session.undo_depth();
+    break_dialog_ok(&mut a, "nextPage");
+    assert!(matches!(a.dialog, Some(super::super::Dialog::Break { kind: "nextPage" })));
+    assert!(a.status_msg.as_ref().is_some_and(|(message, _)| message.contains("main text")));
+    assert_eq!(serde_json::to_value(&a.session.doc).unwrap(), before);
+    assert_eq!(a.session.undo_depth(), undo);
+}
