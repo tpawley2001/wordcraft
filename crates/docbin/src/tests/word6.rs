@@ -30,6 +30,10 @@ struct W6 {
     fonts: Vec<(&'static str, u8)>,
     /// Character runs as (start offset into `text`, Word 6 grpprl).
     chpx: Vec<(usize, Vec<u8>)>,
+    /// Paragraph runs as (start offset into `text`, Word 6 grpprl), in one PAPX page with Word 6's
+    /// 7-byte BX entries; each PAPX is `cw`, `istd` 0, then the grpprl. An empty grpprl gets
+    /// `bOffset` 0 (no properties).
+    papx: Vec<(usize, Vec<u8>)>,
 }
 
 impl W6 {
@@ -82,6 +86,37 @@ impl W6 {
             w.extend_from_slice(&bte);
             put32(&mut w, 0xB8, at as u32);
             put32(&mut w, 0xBC, bte.len() as u32);
+        }
+        if !self.papx.is_empty() {
+            w.resize(w.len().div_ceil(512) * 512, 0);
+            let pn = (w.len() / 512) as u16;
+            let mut page = vec![0u8; 512];
+            let crun = self.papx.len();
+            for (i, (start, _)) in self.papx.iter().enumerate() {
+                put32(&mut page, i * 4, (FC_MIN + start) as u32);
+            }
+            put32(&mut page, crun * 4, fc_mac);
+            let mut at = 510usize;
+            for (i, (_, grpprl)) in self.papx.iter().enumerate() {
+                if grpprl.is_empty() {
+                    continue;
+                }
+                let cw = (2 + grpprl.len()).div_ceil(2);
+                at = (at - (1 + cw * 2)) & !1;
+                page[at] = cw as u8;
+                page[at + 3..at + 3 + grpprl.len()].copy_from_slice(grpprl);
+                page[(crun + 1) * 4 + i * 7] = (at / 2) as u8;
+            }
+            page[511] = crun as u8;
+            w.extend_from_slice(&page);
+            let mut bte = Vec::new();
+            bte.extend_from_slice(&(FC_MIN as u32).to_le_bytes());
+            bte.extend_from_slice(&fc_mac.to_le_bytes());
+            bte.extend_from_slice(&pn.to_le_bytes());
+            let at = w.len();
+            w.extend_from_slice(&bte);
+            put32(&mut w, 0xC0, at as u32);
+            put32(&mut w, 0xC4, bte.len() as u32);
         }
         if !self.fonts.is_empty() {
             let mut t = vec![0u8, 0u8];
@@ -244,4 +279,102 @@ fn other_magic_still_refused() {
     bytes[w] = 0x99;
     bytes[w + 1] = 0xA6;
     assert!(read(&bytes).is_err());
+}
+
+fn paras(doc: &wordcraft_doc::Document) -> Vec<&wordcraft_doc::Paragraph> {
+    doc.body.iter().filter_map(|b| b.as_para()).collect()
+}
+
+#[test]
+fn word6_para_alignment_indents_and_spacing() {
+    use wordcraft_doc::props::{Align, LineSpacing};
+    let text = "Title\rBody\rLast\r";
+    let f = W6 {
+        papx: vec![
+            // "Title": centered (5=1), 12pt before (21=240), 6pt after (22=120), keep with next (8).
+            (0, vec![0x05, 0x01, 0x15, 0xF0, 0x00, 0x16, 0x78, 0x00, 0x08, 0x01]),
+            // "Body": justified, left 36pt (17=720), right 18pt (16=360), first line -18pt (19=-360),
+            // 1.5 lines (20: dyaLine 360, fMultLinespace 1), keep lines (7), widow control off (51=0).
+            (6, vec![0x05, 0x03, 0x11, 0xD0, 0x02, 0x10, 0x68, 0x01, 0x13, 0x98, 0xFE, 0x14, 0x68, 0x01, 0x01, 0x00, 0x07, 0x01, 0x33, 0x00]),
+            // "Last": right-aligned, exactly 14pt (dyaLine -280), page break before (9).
+            (11, vec![0x05, 0x02, 0x14, 0xE8, 0xFE, 0x00, 0x00, 0x09, 0x01]),
+        ],
+        ..plain(text)
+    }
+    .build();
+    let doc = read(&f).expect("opens");
+    let ps = paras(&doc);
+    assert_eq!(ps.iter().map(|p| p.text.as_str()).collect::<Vec<_>>(), ["Title", "Body", "Last"]);
+    let (t, b, l) = (&ps[0].props, &ps[1].props, &ps[2].props);
+    assert_eq!(t.align, Some(Align::Center), "{t:?}");
+    assert_eq!(t.space_before, Some(12.0));
+    assert_eq!(t.space_after, Some(6.0));
+    assert_eq!(t.keep_next, Some(true));
+    assert_eq!(b.align, Some(Align::Justify), "{b:?}");
+    assert_eq!(b.indent_left, Some(36.0));
+    assert_eq!(b.indent_right, Some(18.0));
+    assert_eq!(b.indent_first, Some(-18.0));
+    assert_eq!(b.line_spacing, Some(LineSpacing::Multiple(1.5)));
+    assert_eq!(b.keep_lines, Some(true));
+    assert_eq!(b.widow_control, Some(false));
+    assert_ne!(b.keep_next, Some(true), "keep with next stays on Title");
+    assert_eq!(l.align, Some(Align::Right), "{l:?}");
+    assert_eq!(l.line_spacing, Some(LineSpacing::Exactly(14.0)));
+    assert_eq!(l.page_break_before, Some(true));
+    assert_ne!(l.indent_left, Some(36.0), "indents stay on Body");
+}
+
+#[test]
+fn word6_para_tabs_match_the_word97_reading() {
+    // sprmPChgTabsPapx as stored in a real Word 6 file: len 5, no deletions, one added stop at
+    // 720 twips with TBD 0x09 (centre, dotted leader). Same operand as Word 97's 0xC60D.
+    let operand = [0x05u8, 0x00, 0x01, 0xD0, 0x02, 0x09];
+    let mut grpprl = vec![0x0F];
+    grpprl.extend_from_slice(&operand);
+    let f = W6 { papx: vec![(0, grpprl)], ..plain("a\tb\r") }.build();
+    let doc = read(&f).expect("opens");
+    let got = first_para(&doc).props.tabs.clone();
+    let mut want = wordcraft_doc::props::ParaProps::default();
+    crate::fmt::apply_para(&mut want, &crate::sprm::Prl { op: 0xC60D, operand: &operand });
+    assert!(want.tabs.as_ref().is_some_and(|t| t.len() == 1 && t[0].pos == 36.0), "{:?}", want.tabs);
+    assert_eq!(got, want.tabs);
+}
+
+#[test]
+fn word6_para_skips_known_sprms_and_stops_at_unknown_ones() {
+    use wordcraft_doc::props::Align;
+    let f = W6 {
+        papx: vec![
+            // In-table (24) and fTtp (25) are skipped by length; centred is still read after them.
+            (0, vec![0x18, 0x00, 0x19, 0x00, 0x05, 0x01]),
+            // Right-aligned, then an unknown opcode 200: what follows (left indent) is not read.
+            (2, vec![0x05, 0x02, 0xC8, 0x11, 0xD0, 0x02]),
+            // bOffset 0: no properties.
+            (4, vec![]),
+        ],
+        ..plain("a\rb\rc\r")
+    }
+    .build();
+    let doc = read(&f).expect("opens");
+    let ps = paras(&doc);
+    assert_eq!(ps.len(), 3);
+    assert_eq!(ps[0].props.align, Some(Align::Center));
+    assert_eq!(ps[1].props.align, Some(Align::Right));
+    assert_eq!(ps[1].props.indent_left, None);
+    assert_eq!(ps[2].props.align.unwrap_or(Align::Left), Align::Left);
+}
+
+#[test]
+fn word6_para_hostile_papx_pages_never_panic() {
+    let base = W6 { papx: vec![(0, vec![0x05, 0x01, 0x11, 0xD0, 0x02])], ..plain("one\rtwo\r") }.build();
+    let papx_page = base.windows(5).position(|w| w == [0x05, 0x01, 0x11, 0xD0, 0x02]).expect("grpprl") / 512 * 512;
+    for (at, byte) in [(511usize, 0xFFu8), (511, 0x00), (8, 0xFF), (8, 0x00)] {
+        let mut f = base.clone();
+        f[papx_page + at] = byte;
+        let _ = read(&f);
+    }
+    // Truncated operands at the end of a grpprl.
+    for g in [vec![0x14, 0x68], vec![0x0F, 0xFF, 0x00], vec![0x11], vec![0x0F]] {
+        let _ = read(&W6 { papx: vec![(0, g)], ..plain("x\r") }.build());
+    }
 }
