@@ -679,6 +679,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
             });
             g += span;
         }
+        shift_div_row(ctx, row, &mut cells);
         // Word adds the cells' top and bottom margins and border bands to an at-least row height:
         // a 30pt row with 5pt margins and 0.5pt borders is 40.5pt tall even when its text needs less.
         // An exact height gains only the bottom margin: it runs from the top border to the bottom
@@ -695,6 +696,24 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
     }
     grow_vertical_merges(&rows, &mut heights);
     finish_table_rows(ctx, TableRows { story, table: t, path, depth, cell_text, rows, heights, bottoms, edges, x, total })
+}
+
+/// A row in an HTML div (`w:divId`) moves right by the div's left margin, and those of the divs
+/// it is nested in, as if the table's indent grew by it.
+fn shift_div_row(ctx: &Ctx, row: &Row, cells: &mut [CellBox]) {
+    let Some((dx, _)) = row.props.div_id.as_deref().and_then(|id| wordcraft_doc::div_margins(&ctx.doc.settings.web_divs, id)) else { return };
+    if dx == 0.0 {
+        return;
+    }
+    for c in cells {
+        c.x += dx;
+        // Turned text is placed from `x` in the second pass.
+        if c.turned.is_none() {
+            for it in &mut c.items {
+                it.translate(dx, 0.0);
+            }
+        }
+    }
 }
 
 fn grow_vertical_merges(rows: &[Vec<CellBox>], heights: &mut [f32]) {

@@ -61,6 +61,16 @@ impl Reader<'_> {
             .collect();
     }
 
+    /// The HTML divs of the web settings part (`w:divs`, ECMA-376 §17.15.2.8), nested through
+    /// `w:divsChild`. The part itself rides along as an unmodelled part.
+    pub(super) fn read_web_divs(&mut self, path: &str) {
+        let Ok(Some(web)) = self.xml(path) else { return };
+        let mut budget = MAX_WEB_DIVS;
+        if let Some(divs) = web.child("w:divs") {
+            self.doc.settings.web_divs = web_divs(divs, 0, &mut budget);
+        }
+    }
+
     pub(super) fn xml(&self, path: &str) -> Result<Option<El>, DocxError> {
         self.pkg.xml(path)
     }
@@ -253,4 +263,37 @@ impl Reader<'_> {
         }
         self.pc.color_map = Some(map);
     }
+}
+
+/// Most divs read from a web settings part.
+const MAX_WEB_DIVS: usize = 10_000;
+
+/// The `w:div` children of `w:divs` / `w:divsChild`, at most `budget` in all and
+/// `MAX_DIV_DEPTH` deep.
+fn web_divs(parent: &El, depth: usize, budget: &mut usize) -> Vec<wordcraft_doc::WebDiv> {
+    if depth >= wordcraft_doc::MAX_DIV_DEPTH {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for d in parent.children("w:div") {
+        let Some(id) = d.attr("w:id").map(str::trim).filter(|v| !v.is_empty() && v.len() <= 32) else { continue };
+        if *budget == 0 {
+            break;
+        }
+        *budget -= 1;
+        // Margins are twips (`ST_SignedTwipsMeasure`); kept within the page sizes Word allows.
+        let mar =
+            |name: &str| d.child(name).and_then(|m| crate::units::tw(m, "w:val")).filter(|v| v.is_finite()).map_or(0.0, |v| v.clamp(-1584.0, 1584.0));
+        out.push(wordcraft_doc::WebDiv {
+            id: id.to_string(),
+            body_div: d.child("w:bodyDiv").is_some_and(crate::units::on_off),
+            mar_left: mar("w:marLeft"),
+            mar_right: mar("w:marRight"),
+            mar_top: mar("w:marTop"),
+            mar_bottom: mar("w:marBottom"),
+            border: d.child("w:divBdr").map(props::borders),
+            children: d.children("w:divsChild").flat_map(|c| web_divs(c, depth + 1, budget)).collect(),
+        });
+    }
+    out
 }

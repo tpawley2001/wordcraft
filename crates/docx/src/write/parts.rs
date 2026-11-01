@@ -183,6 +183,7 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
     for (name, bytes, ct, prels) in std::mem::take(&mut wr.embeds.parts) {
         push_part(&mut entries, &mut overrides, &name, bytes, &ct, prels);
     }
+    push_web_settings(doc, &mut rels, &mut entries, &mut overrides);
 
     // The macro project and the parts it relates to (VBA data, signatures…), verbatim. A
     // macro-free package can't hold them (Word drops them too).
@@ -646,6 +647,53 @@ pub(super) fn sniff(bytes: &[u8]) -> &'static str {
     } else {
         "bin"
     }
+}
+
+/// HTML divs: a web settings part kept from the file is the one they were read from, so it goes
+/// back as it was; otherwise one is written for them.
+fn push_web_settings(doc: &Document, rels: &mut PartRels, entries: &mut Vec<(String, Vec<u8>)>, overrides: &mut Vec<(String, String)>) {
+    if doc.settings.web_divs.is_empty() || rels.has_kind(rt::WEB_SETTINGS) {
+        return;
+    }
+    let taken = |name: &str| entries.iter().any(|(e, _)| e.eq_ignore_ascii_case(name));
+    if let Some(file) = ["webSettings.xml", "webSettings1.xml", "webSettings2.xml"].into_iter().find(|f| !taken(&format!("word/{f}"))) {
+        rels.add(rt::WEB_SETTINGS, file, false);
+        let bytes = web_settings_xml(&doc.settings.web_divs);
+        push_part(entries, overrides, &format!("word/{file}"), bytes, &format!("{CT_WML}webSettings+xml"), PartRels::default());
+    }
+}
+
+/// A web settings part (`w:webSettings`) holding `divs` (`w:divs`, ECMA-376 §17.15.2.8).
+fn web_settings_xml(divs: &[wordcraft_doc::WebDiv]) -> Vec<u8> {
+    fn div(w: &mut W, d: &wordcraft_doc::WebDiv, depth: usize) {
+        w.open("w:div", &[("w:id", &d.id)]);
+        if d.body_div {
+            w.val("w:bodyDiv", "1");
+        }
+        for (name, v) in [("w:marLeft", d.mar_left), ("w:marRight", d.mar_right), ("w:marTop", d.mar_top), ("w:marBottom", d.mar_bottom)] {
+            w.val(name, &crate::units::twips(if v.is_finite() { v } else { 0.0 }));
+        }
+        if let Some(b) = &d.border {
+            super::props::borders(w, "w:divBdr", b, None, &[]);
+        }
+        if !d.children.is_empty() && depth < wordcraft_doc::MAX_DIV_DEPTH {
+            w.open("w:divsChild", &[]);
+            for c in &d.children {
+                div(w, c, depth + 1);
+            }
+            w.close("w:divsChild");
+        }
+        w.close("w:div");
+    }
+    let mut w = W::new();
+    w.open("w:webSettings", &[("xmlns:w", "http://schemas.openxmlformats.org/wordprocessingml/2006/main")]);
+    w.open("w:divs", &[]);
+    for d in divs {
+        div(&mut w, d, 0);
+    }
+    w.close("w:divs");
+    w.close("w:webSettings");
+    w.into_bytes()
 }
 
 #[cfg(test)]

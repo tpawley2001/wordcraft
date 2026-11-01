@@ -286,6 +286,10 @@ pub fn ppr_inner(w: &mut W, p: &ParaProps, framed: bool, num_change: Option<&Cha
     if let Some(l) = p.outline_level {
         w.val("w:outlineLvl", &n(l.min(9) as i64));
     }
+    // CT_PPrBase: `w:divId` follows `w:outlineLvl` and precedes `w:cnfStyle`.
+    if let Some(id) = p.div_id.as_deref().filter(|id| !id.is_empty()) {
+        w.val("w:divId", id);
+    }
 }
 
 fn write_frame(w: &mut W, p: &ParaProps, framed: bool) {
@@ -545,7 +549,7 @@ pub fn trpr(w: &mut W, r: &RowProps, change: Option<&ChangeAttrs>) {
     }
     let change = change.zip(r.fmt_change.as_ref());
     let gaps = r.grid_before > 0 || r.grid_after > 0 || r.w_before.is_some() || r.w_after.is_some();
-    if r.height.is_none() && !r.header && !r.cant_split && !gaps && change.is_none() {
+    if r.height.is_none() && !r.header && !r.cant_split && !gaps && r.div_id.is_none() && change.is_none() {
         return;
     }
     w.open("w:trPr", &[]);
@@ -586,7 +590,10 @@ fn tblprex(w: &mut W, t: &TableProps) {
 }
 
 fn trpr_inner(w: &mut W, r: &RowProps) {
-    // The grid gaps go first, in the schema's order (as Word writes them).
+    // `w:divId`, then the grid gaps, in the schema's order (as Word writes them).
+    if let Some(id) = r.div_id.as_deref().filter(|id| !id.is_empty()) {
+        w.val("w:divId", id);
+    }
     if r.grid_before > 0 {
         w.val("w:gridBefore", &n(r.grid_before.into()));
     }

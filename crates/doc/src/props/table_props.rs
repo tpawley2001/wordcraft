@@ -239,6 +239,10 @@ pub struct RowProps {
     pub grid_after: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub w_after: Option<f32>,
+    /// `w:divId` (ECMA-376 §17.4.9): the HTML div (`Settings::web_divs`) the row belongs to;
+    /// its left margin moves the row.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub div_id: Option<String>,
     /// Tracked formatting change (`w:trPrChange`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fmt_change: Option<Box<PropChange<RowProps>>>,

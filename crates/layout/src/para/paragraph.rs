@@ -100,8 +100,23 @@ fn paragraph_props(p: &Paragraph, env: &ParaEnv) -> ResolvedPara {
         rp.set_char_unit(doc.styles.resolve_char_in(p.props.style.as_deref(), env.table.map(|t| &t.chr), &p.mark).size);
     }
     list_indents(&mut rp, p, env);
+    div_indents(&mut rp, doc);
     rp
 }
+
+/// A paragraph in an HTML div (`w:divId`) is indented by the div's left and right margins, and
+/// those of the divs it is nested in, on top of its own indents (as Word lays it out). The
+/// margins are the page's left and right, whichever way the paragraph runs. The divs' top and
+/// bottom margins and borders aren't applied: Word's handling of them isn't measured yet.
+fn div_indents(rp: &mut ResolvedPara, doc: &wordcraft_doc::Document) {
+    let Some((left, right)) = rp.div_id.as_deref().and_then(|id| wordcraft_doc::div_margins(&doc.settings.web_divs, id)) else { return };
+    let (start, end) = if rp.bidi { (right, left) } else { (left, right) };
+    rp.indent_left = (rp.indent_left + start).clamp(-MAX_DIV_INDENT, MAX_DIV_INDENT);
+    rp.indent_right = (rp.indent_right + end).clamp(-MAX_DIV_INDENT, MAX_DIV_INDENT);
+}
+
+/// The largest indent a div may give (Word's 22").
+const MAX_DIV_INDENT: f32 = 1584.0;
 
 /// List level indents apply unless the paragraph sets its own, or, for a list from the style,
 /// the style giving the list (or one based on it) does (`indents_over_list`). A paragraph

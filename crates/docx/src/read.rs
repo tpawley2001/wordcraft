@@ -188,6 +188,9 @@ pub(crate) fn read_opened(pkg: &Package) -> Result<Document, DocxError> {
     if let Some(p) = part(rt::THEME) {
         r.read_theme(&p);
     }
+    if let Some(p) = part(rt::WEB_SETTINGS) {
+        r.read_web_divs(&p);
+    }
     // Secondary parts are optional: a broken one is skipped (logged), not fatal.
     let lenient = |what: &str, res: Result<(), DocxError>| {
         if let Err(e) = res {

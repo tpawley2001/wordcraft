@@ -67,6 +67,10 @@ impl PartRels {
     pub(crate) fn is_empty(&self) -> bool {
         self.list.is_empty()
     }
+    /// Whether a relationship of type `kind` is present.
+    pub(crate) fn has_kind(&self, kind: &str) -> bool {
+        self.list.iter().any(|(_, k, ..)| crate::package::rel_is(k, kind))
+    }
     pub(crate) fn xml(&self) -> Vec<u8> {
         let mut w = W::new();
         w.open("Relationships", &[("xmlns", "http://schemas.openxmlformats.org/package/2006/relationships")]);
