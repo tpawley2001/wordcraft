@@ -638,46 +638,8 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 continue;
             }
             '\u{1}' => {
-                // Inline picture: the CHPX of the anchor carries sprmCPicLocation.
-                let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
-                let chpx = ctx.chpx_bins.chpx(ctx.word, fc);
-                // An embedded object's reference in its field's code: the field result's picture
-                // prints from the object's print presentation, when it has one.
-                let mut object = None;
-                if let Some(f) = field.as_ref().filter(|f| f.depth == 1) {
-                    match f.sep {
-                        None => {
-                            if let Some(id) = ole::object_id(chpx) {
-                                object_id = Some(id);
-                            }
-                        }
-                        Some(_) => object = object_id.and_then(|id| Some((id, ctx.prints.get(id)?))),
-                    }
-                }
-                let fc_pic = pic_location(chpx);
-                let pic = fc_pic.and_then(|at| pics.get(ctx.data, at)).cloned();
-                let pic = match (pic, object) {
-                    (Some(p), Some((id, emf))) => pics.ole(id, emf, &p).or(Some(p)),
-                    (p, _) => p,
-                };
-                match pic {
-                    Some(p) => {
-                        // Every anchor of a picture gets its own copy of the alt text; the
-                        // copies are charged to the work budget (#3709).
-                        let alt = if ctx.work.charge(p.alt.len() as u64, Cost::AltText) { p.alt.clone() } else { String::new() };
-                        pb.push('\u{FFFC}', CharProps::default());
-                        pb.objects.push(InlineObject::Image {
-                            media: p.key.clone(),
-                            w: p.w,
-                            h: p.h,
-                            alt,
-                            float: Default::default(),
-                            crop: p.crop,
-                            ole: None,
-                        });
-                    }
-                    None => pics.dropped(cp),
-                }
+                let open = field.as_ref().filter(|f| f.depth == 1).map(|f| f.sep.is_some());
+                inline_picture(ctx, cp, open, &mut object_id, &mut pb, pics);
             }
             '\u{8}' => {
                 // Drawn object anchor: the floating shape or picture anchored at this CP.
@@ -722,6 +684,40 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
         });
     }
     out
+}
+
+/// An inline picture anchor (`\x01`): the CHPX carries sprmCPicLocation. `open` is whether the
+/// innermost open field (if any, and not nested) is in its result; in its code, an embedded
+/// object's reference (sprmCFOle2) sets `object_id`, and the result's picture then prints from
+/// that object's print presentation, when it has one.
+fn inline_picture(ctx: &WalkCtx<'_>, cp: u32, open: Option<bool>, object_id: &mut Option<u32>, pb: &mut ParaBuild, pics: &mut media::Pictures) {
+    let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
+    let chpx = ctx.chpx_bins.chpx(ctx.word, fc);
+    let mut object = None;
+    match open {
+        Some(false) => {
+            if let Some(id) = ole::object_id(chpx) {
+                *object_id = Some(id);
+            }
+        }
+        Some(true) => object = object_id.and_then(|id| Some((id, ctx.prints.get(id)?))),
+        None => {}
+    }
+    let pic = pic_location(chpx).and_then(|at| pics.get(ctx.data, at)).cloned();
+    let pic = match (pic, object) {
+        (Some(p), Some((id, emf))) => pics.ole(id, emf, &p).or(Some(p)),
+        (p, _) => p,
+    };
+    match pic {
+        Some(p) => {
+            // Every anchor of a picture gets its own copy of the alt text; the
+            // copies are charged to the work budget (#3709).
+            let alt = if ctx.work.charge(p.alt.len() as u64, Cost::AltText) { p.alt } else { String::new() };
+            pb.push('\u{FFFC}', CharProps::default());
+            pb.objects.push(InlineObject::Image { media: p.key, w: p.w, h: p.h, alt, float: Default::default(), crop: p.crop, ole: None });
+        }
+        None => pics.dropped(cp),
+    }
 }
 
 /// Field assembly: `instr` collects everything before the separator (nested fields
