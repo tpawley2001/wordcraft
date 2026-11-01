@@ -276,7 +276,169 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
     }
     w.close("Types");
     entries.insert(0, ("[Content_Types].xml".into(), w.into_bytes()));
+    for (name, bytes) in &mut entries {
+        if name.rsplit_once('.').is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("xml"))
+            && let Some(rewritten) = modernize_beta_w15(name, bytes)
+        {
+            *bytes = rewritten;
+        }
+    }
     Ok(entries)
+}
+
+const W15_BETA: &[u8] = b"http://schemas.microsoft.com/office/word/2010/11/wordml";
+const W15_FINAL: &[u8] = b"http://schemas.microsoft.com/office/word/2012/wordml";
+
+/// Upgrade declarations of the Word 2013 preview namespace in kept XML. The people part also
+/// loses its preview-only contact attributes; its other markup stays byte for byte as read.
+fn modernize_beta_w15(name: &str, bytes: &[u8]) -> Option<Vec<u8>> {
+    if !bytes.windows(W15_BETA.len()).any(|w| w == W15_BETA) {
+        return None;
+    }
+    let without_contacts;
+    let bytes = if name.eq_ignore_ascii_case("word/people.xml") {
+        without_contacts = beta_people_without_contacts(bytes).unwrap_or_else(|| bytes.to_vec());
+        without_contacts.as_slice()
+    } else {
+        bytes
+    };
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut rest = bytes;
+    while let Some(at) = rest.windows(W15_BETA.len()).position(|w| w == W15_BETA) {
+        let (head, tail) = rest.split_at(at);
+        out.extend_from_slice(head);
+        if beta_namespace_declaration(head, tail) {
+            out.extend_from_slice(W15_FINAL);
+        } else {
+            out.extend_from_slice(W15_BETA);
+        }
+        rest = tail.get(W15_BETA.len()..).unwrap_or_default();
+    }
+    out.extend_from_slice(rest);
+    Some(out)
+}
+
+/// Is the preview URI at the start of `bytes` the whole value of an `xmlns` declaration?
+fn beta_namespace_declaration(head: &[u8], tail: &[u8]) -> bool {
+    let mut at = head.len();
+    let Some(&quote @ (b'\'' | b'"')) = tail.first() else { return false };
+    if head.last() != Some(&quote) {
+        return false;
+    }
+    while at > 0 && head.get(at - 1).is_some_and(|b| b.is_ascii_whitespace()) {
+        at -= 1;
+    }
+    if at == 0 || head.get(at - 1) != Some(&b'=') {
+        return false;
+    }
+    at -= 1;
+    while at > 0 && head.get(at - 1).is_some_and(|b| b.is_ascii_whitespace()) {
+        at -= 1;
+    }
+    let name_end = at;
+    while at > 0 && head.get(at - 1).is_some_and(|b| !b.is_ascii_whitespace() && *b != b'<') {
+        at -= 1;
+    }
+    let name = head.get(at..name_end).unwrap_or_default();
+    name == b"xmlns" || (name.starts_with(b"xmlns:") && name.len() > b"xmlns:".len())
+}
+
+/// Remove `contact` attributes bound to the preview namespace from its `person` elements.
+fn beta_people_without_contacts(bytes: &[u8]) -> Option<Vec<u8>> {
+    use quick_xml::events::Event;
+    use quick_xml::name::{QName, ResolveResult};
+    use quick_xml::reader::NsReader;
+
+    let mut r = NsReader::from_reader(bytes);
+    r.config_mut().check_end_names = false;
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut copied = 0usize;
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        let (res, ev) = r.read_resolved_event_into(&mut buf).ok()?;
+        let is_person = matches!(res, ResolveResult::Bound(ns) if ns.as_ref() == W15_BETA)
+            && matches!(&ev, Event::Start(e) | Event::Empty(e) if e.local_name().as_ref() == b"person");
+        let end = usize::try_from(r.buffer_position()).ok()?;
+        match ev {
+            Event::Eof => break,
+            Event::Start(ref e) | Event::Empty(ref e) if is_person => {
+                let start = end.checked_sub(e.as_ref().len().checked_add(2)?)?;
+                if bytes.get(start) != Some(&b'<') || bytes.get(start + 1..end - 1)? != e.as_ref() {
+                    return None;
+                }
+                out.extend_from_slice(bytes.get(copied..start)?);
+                let content = e.as_ref();
+                let name_end = content.iter().position(|b| b.is_ascii_whitespace() || *b == b'/').unwrap_or(content.len());
+                let mut attr = name_end;
+                out.extend_from_slice(content.get(..attr)?);
+                let mut kept = attr;
+                while attr < content.len() {
+                    while content.get(attr).is_some_and(|b| b.is_ascii_whitespace()) {
+                        attr += 1;
+                    }
+                    if content.get(attr).is_none_or(|b| *b == b'/') {
+                        break;
+                    }
+                    let name_start = attr;
+                    while content.get(attr).is_some_and(|b| !b.is_ascii_whitespace() && *b != b'=' && *b != b'/') {
+                        attr += 1;
+                    }
+                    let key = content.get(name_start..attr)?;
+                    while content.get(attr).is_some_and(|b| b.is_ascii_whitespace()) {
+                        attr += 1;
+                    }
+                    if content.get(attr) != Some(&b'=') {
+                        return None;
+                    }
+                    attr += 1;
+                    while content.get(attr).is_some_and(|b| b.is_ascii_whitespace()) {
+                        attr += 1;
+                    }
+                    let Some(&quote @ (b'\'' | b'"')) = content.get(attr) else { return None };
+                    attr += 1;
+                    let value_end = content.get(attr..)?.iter().position(|b| *b == quote)?.checked_add(attr)?;
+                    attr = value_end.checked_add(1)?;
+                    let (ares, local) = r.resolver_mut().resolve_attribute(QName(key));
+                    if matches!(ares, ResolveResult::Bound(ns) if ns.as_ref() == W15_BETA) && local.as_ref() == b"contact" {
+                        out.extend_from_slice(content.get(kept..name_start)?);
+                        kept = attr;
+                    }
+                }
+                out.extend_from_slice(content.get(kept..)?);
+                out.push(b'>');
+                copied = end;
+            }
+            _ => {}
+        }
+    }
+    out.extend_from_slice(bytes.get(copied..)?);
+    Some(out)
+}
+
+#[cfg(test)]
+mod beta_w15_tests {
+    use super::*;
+
+    #[test]
+    fn preview_declarations_change_without_touching_other_bytes() {
+        let original = format!(
+            r#"<?xml version="1.0"?><w15:people xmlns:mc="urn:test" xmlns:w15 = '{B}' mc:note="{B}"><w15:person w15:author="Ann" w15:contact="ann@example.com" other = 'x' w15:contact="duplicate"/><w15:person other="y"/></w15:people>"#,
+            B = String::from_utf8_lossy(W15_BETA)
+        );
+        let final_ns = String::from_utf8_lossy(W15_FINAL);
+        let expected = format!(
+            r#"<?xml version="1.0"?><w15:people xmlns:mc="urn:test" xmlns:w15 = '{final_ns}' mc:note="{B}"><w15:person w15:author="Ann" other = 'x'/><w15:person other="y"/></w15:people>"#,
+            B = String::from_utf8_lossy(W15_BETA)
+        );
+        let declaration = format!(r#"<x xmlns:w15="{B}"/>"#, B = String::from_utf8_lossy(W15_BETA));
+        let split = declaration.find(std::str::from_utf8(W15_BETA).unwrap()).unwrap();
+        assert!(beta_namespace_declaration(&declaration.as_bytes()[..split], declaration.as_bytes()[split..].get(W15_BETA.len()..).unwrap()));
+        eprintln!("clean {:?}", beta_people_without_contacts(original.as_bytes()).map(|v| String::from_utf8_lossy(&v).into_owned()));
+        let result = modernize_beta_w15("word/people.xml", original.as_bytes()).unwrap();
+        eprintln!("{}", String::from_utf8_lossy(&result));
+        assert_eq!(result, expected.into_bytes());
+    }
 }
 
 fn write_document_body(doc: &Document, wr: &mut Writer<'_>, rels: &mut PartRels, ns_refs: &[(&str, &str)]) -> Vec<u8> {
