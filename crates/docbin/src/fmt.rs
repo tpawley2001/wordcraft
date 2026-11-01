@@ -22,7 +22,7 @@ const C_HPS: u16 = 0x4A43; // half-points
 const C_HPS_POS: u16 = 0x4845; // super/subscript by half-points
 const C_FTC0: u16 = 0x4A4F; // font index
 const C_HIGHLIGHT: u16 = 0x2A0C;
-const C_ISTD: u16 = 0x4A30; // character style
+pub(crate) const C_ISTD: u16 = 0x4A30; // character style
 
 // Paragraph sprms ([MS-DOC] §2.6.2).
 const P_JC: u16 = 0x2461;
@@ -259,7 +259,7 @@ pub(crate) fn apply_char(p: &mut CharProps, prl: &Prl, base: &CharProps, fonts: 
                 p.highlight = Some(*h);
             }
         }
-        C_ISTD => {} // resolved separately through the style table
+        C_ISTD => {} // CHPX style references are resolved in char_props.
         _ => {}
     }
 }

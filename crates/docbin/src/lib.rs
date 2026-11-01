@@ -572,7 +572,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     pb.props.numbering = Some(NumRef { num, level: ilvl });
                 }
                 let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
-                pb.mark = char_props(ctx.chpx_bins.chpx(ctx.word, fc), ctx.fonts, &CharProps::default());
+                pb.mark = char_props(ctx.chpx_bins.chpx(ctx.word, fc), ctx.fonts, &CharProps::default(), ctx.raw_styles);
                 let done = std::mem::take(&mut pb);
                 out.push(ParaOut {
                     para: Paragraph {
@@ -875,7 +875,7 @@ fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, f
                     &default
                 }
             };
-            let mut props = char_props(grpprl, ctx.fonts, base);
+            let mut props = char_props(grpprl, ctx.fonts, base, ctx.raw_styles);
             apply_prm(&mut props, ctx.pieces.piece_prm(cp), ctx.fonts, base, ctx.work);
             *memo = Some(FmtMemo { chpx: grpprl, prm, style: style.map(str::to_owned), props: props.clone() });
             props
@@ -945,10 +945,20 @@ fn apply_prm(props: &mut CharProps, prm: PrmRef<'_>, fonts: &[String], base: &Ch
 }
 
 /// Character props from a CHPX grpprl applied over `base`.
-fn char_props(grpprl: &[u8], fonts: &[String], base: &CharProps) -> CharProps {
+fn char_props(grpprl: &[u8], fonts: &[String], base: &CharProps, raw_styles: &[stsh::RawStyle]) -> CharProps {
     let mut p = base.clone();
     for prl in sprm::iter(grpprl) {
-        if prl.sgc() == 2 {
+        if prl.op == fmt::C_ISTD {
+            // sprmCIstd names a character style, not direct formatting. Index 10 is
+            // Default Paragraph Font and means no character-style override.
+            p.style = match prl.operand {
+                [lo, hi] => {
+                    let istd = u16::from_le_bytes([*lo, *hi]);
+                    raw_styles.get(usize::from(istd)).filter(|s| istd != 10 && s.stk == 2 && !s.name.is_empty()).map(|s| fmt::style_id(&s.name))
+                }
+                _ => None,
+            };
+        } else if prl.sgc() == 2 {
             fmt::apply_char(&mut p, &prl, base, fonts);
         }
     }
@@ -967,3 +977,28 @@ fn stream<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, name: &str) -> Option
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod character_style_tests {
+    use super::*;
+
+    #[test]
+    fn character_style_reference_validates_kind_name_and_default_index() {
+        let mut styles = vec![stsh::RawStyle { stk: 2, name: "custom emphasis".into(), ..Default::default() }; 11];
+        for (istd, stk, name) in
+            [(0u16, 1, "Normal"), (1, 2, "custom emphasis"), (2, 3, "Table"), (3, 4, "List"), (4, 2, ""), (10, 2, "Default Paragraph Font")]
+        {
+            styles[usize::from(istd)] = stsh::RawStyle { stk, name: name.into(), ..Default::default() };
+            // Direct italic precedes the style; direct bold follows it.
+            let [lo, hi] = istd.to_le_bytes();
+            let grpprl = [0x36, 0x08, 1, 0x30, 0x4A, lo, hi, 0x35, 0x08, 1];
+            let props = char_props(&grpprl, &[], &CharProps::default(), &styles);
+            assert_eq!(props.style, (istd == 1).then(|| fmt::style_id(name)));
+            assert_eq!(props.italic, Some(true));
+            assert_eq!(props.bold, Some(true));
+        }
+        for grpprl in [&[0x30, 0x4A, 1][..], &[0x30, 0x4A, 0xFF, 0xFF][..]] {
+            assert_eq!(char_props(grpprl, &[], &CharProps::default(), &styles).style, None);
+        }
+    }
+}
