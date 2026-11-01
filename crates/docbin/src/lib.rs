@@ -983,6 +983,20 @@ mod character_style_tests {
     use super::*;
 
     #[test]
+    fn character_style_reference_preserves_paragraph_toggle_base() {
+        let styles = vec![stsh::RawStyle { stk: 2, name: "Emphasis".into(), ..Default::default() }];
+        let base = CharProps { bold: Some(true), italic: Some(false), ..Default::default() };
+        // Toggle operands keep (0x80) or invert (0x81) the existing paragraph base,
+        // regardless of whether the character-style reference precedes them.
+        for grpprl in [&[0x30, 0x4A, 0, 0, 0x35, 0x08, 0x81, 0x36, 0x08, 0x80][..], &[0x35, 0x08, 0x81, 0x36, 0x08, 0x80, 0x30, 0x4A, 0, 0][..]] {
+            let props = char_props(grpprl, &[], &base, &styles);
+            assert_eq!(props.style.as_deref(), Some("Emphasis"));
+            assert_eq!(props.bold, Some(false));
+            assert_eq!(props.italic, Some(false));
+        }
+    }
+
+    #[test]
     fn character_style_reference_validates_kind_name_and_default_index() {
         let mut styles = vec![stsh::RawStyle { stk: 2, name: "custom emphasis".into(), ..Default::default() }; 11];
         for (istd, stk, name) in
