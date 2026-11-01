@@ -11,6 +11,7 @@ mod props;
 mod sdt;
 mod shape_style;
 mod story;
+pub(crate) use story::VML_TEXT_WARPS;
 mod wordart;
 
 use std::collections::{BTreeMap, HashMap, HashSet};

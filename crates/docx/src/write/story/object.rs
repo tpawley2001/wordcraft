@@ -115,6 +115,7 @@ impl Writer<'_> {
             // ink keep their original source and related parts.
             InlineObject::Graphic { .. } => self.write_graphic(w, o, props, rels, depth),
             InlineObject::Image { .. } => self.write_image(w, o, props, rels, depth),
+            InlineObject::Shape { .. } if self.in_txbx > 0 && self.nested_story(o) => self.write_nested_story_shape(w, o, props, rels, depth),
             InlineObject::Shape { .. } => self.write_shape(w, o, props, rels, depth),
             InlineObject::Group { .. } => self.write_group(w, o, props, rels, depth),
             InlineObject::Ruby { base, ruby, align, size, raise, base_size, lang, props: ruby_props } => {
@@ -277,7 +278,7 @@ impl Writer<'_> {
         self.rev_close(w, props);
     }
 
-    fn write_shape(&mut self, w: &mut W, o: &InlineObject, props: &CharProps, rels: &mut PartRels, depth: usize) {
+    pub(super) fn write_shape(&mut self, w: &mut W, o: &InlineObject, props: &CharProps, rels: &mut PartRels, depth: usize) {
         let InlineObject::Shape { kind, w: sw, h: sh, float, effects, freeform, extra, .. } = o else { return };
         self.rev_open(w, props);
         w.open("w:r", &[]);

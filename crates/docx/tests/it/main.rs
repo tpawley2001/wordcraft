@@ -20,6 +20,7 @@ mod legacy_forms;
 mod ligatures;
 mod list_items;
 mod malformed;
+mod nested_txbx;
 mod note_comments;
 mod passthrough;
 mod positional_tabs;

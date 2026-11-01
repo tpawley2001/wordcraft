@@ -157,7 +157,12 @@ impl Writer<'_> {
         // its place in it instead.
         let part = (*story).and_then(|id| self.doc.parts.get(&id).filter(|p| p.kind == wordcraft_doc::PartKind::TextBox).map(|p| (id, p)));
         let link = part.and_then(|(id, _)| self.txbx_links.get(&id).copied());
-        if let Some((n, seq)) = link.filter(|(_, seq)| *seq > 0) {
+        if self.in_txbx > 0 {
+            // Inside a text box: no text box of its own; its text follows as paragraphs.
+            if let Some((id, _)) = part {
+                self.flattened.push(id);
+            }
+        } else if let Some((n, seq)) = link.filter(|(_, seq)| *seq > 0) {
             w.empty("wps:linkedTxbx", &[("id", &n.to_string()), ("seq", &seq.to_string())]);
         } else if let Some((id, part)) = part
             && self.boxes.enter(id)
@@ -167,12 +172,15 @@ impl Writer<'_> {
                 None => w.open("wps:txbx", &[]),
             }
             w.open("w:txbxContent", &[]);
+            self.in_txbx += 1;
             if self.written_boxes.insert(id) {
                 let blocks = part.blocks.clone();
                 self.blocks(w, &blocks, rels, false, depth + 1);
+                self.write_flattened(w, rels, depth + 1);
             } else {
                 w.empty("w:p", &[]);
             }
+            self.in_txbx = self.in_txbx.saturating_sub(1);
             w.close("w:txbxContent");
             w.close("wps:txbx");
             self.boxes.leave();
