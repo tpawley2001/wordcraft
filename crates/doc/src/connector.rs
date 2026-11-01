@@ -83,6 +83,10 @@ pub struct ShapeExtra {
     /// main colour (the shape's `stroke`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outline_fill: Option<crate::fill::Fill>,
+    /// The text is stretched so its letters' ink fills the shape's box, across and down
+    /// independently: legacy VML WordArt's `v:textpath` `fitpath` (ECMA-376 Part 4 §19.1.2.22).
+    #[serde(skip_serializing_if = "is_false")]
+    pub fit_box: bool,
 }
 
 fn is_zero(v: &u32) -> bool {

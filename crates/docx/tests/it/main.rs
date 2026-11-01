@@ -37,6 +37,7 @@ mod text_whitespace;
 mod toc_ranges;
 mod undefined_style;
 mod vml_shapes;
+mod vml_wordart_effects;
 mod web_divs;
 mod word_xml;
 mod wordml2003_write;

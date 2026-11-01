@@ -295,3 +295,59 @@ fn inline_box_that_resizes_to_fit_takes_its_texts_height() {
 /// Filler paragraphs before the box in [`inline_box_that_resizes_to_fit_takes_its_texts_height`]:
 /// enough that a 10 cm box no longer leaves room for the page break on the first page.
 const FILLER: usize = 22;
+
+/// Legacy WordArt with `fitpath` (`ShapeExtra::fit_box`): its letters are stretched across and
+/// down so their ink fills the shape's box, as Word draws a Word 2007 WordArt shape. Without the
+/// flag the same box keeps the letters' natural width.
+#[test]
+fn fit_box_wordart_ink_fills_its_box() {
+    use crate::display::{Draw, page_display};
+    let ink = |fit_box: bool| {
+        let mut d = Document::from_text("x");
+        let props = CharProps {
+            font: Some("Source Sans 3".into()),
+            size: Some(41.25 * 0.75),
+            color: Some(wordcraft_doc::TextColor::Rgb(wordcraft_doc::Rgb::WHITE)),
+            text_effects: Some(Box::new(wordcraft_doc::wordart::TextEffects {
+                fill: Some(wordcraft_doc::wordart::TextFill::Solid { color: wordcraft_doc::Rgb::WHITE, transparency: 0.0 }),
+                outline: Some(Default::default()),
+                ..Default::default()
+            })),
+            ..CharProps::default()
+        };
+        let id = d.add_part(PartKind::TextBox, vec![para_block(Paragraph::with_text("Your Text Here", props))]);
+        if let Some(p) = d.parts.get_mut(&id) {
+            p.body = TextBody { anchor: VAlign::Center, inset: Some([0; 4]), ..Default::default() };
+        }
+        let shape = InlineObject::Shape {
+            kind: wordcraft_doc::para::ShapeKind::TextBox,
+            w: 242.25,
+            h: 41.25,
+            fill: None,
+            stroke: None,
+            stroke_width: 0.75,
+            float: Default::default(),
+            story: Some(id),
+            effects: Default::default(),
+            freeform: None,
+            extra: wordcraft_doc::connector::ShapeExtra { warp: wordcraft_doc::wordart::TextWarp::new("textPlain"), fit_box, ..Default::default() },
+        };
+        d.insert_object(&Pos::body(0, 1), shape, &Default::default()).unwrap();
+        let l = lay(&d);
+        let frame = frame_of(&l, id);
+        let ink = page_display(&d, &l.pages[0], &Default::default())
+            .iter()
+            .filter_map(|dr| match dr {
+                Draw::Art { path, .. } => crate::wordart::path_box(path),
+                _ => None,
+            })
+            .reduce(|a, b| a.union(b))
+            .unwrap();
+        (frame, ink)
+    };
+    let (r, b) = ink(true);
+    let near = |a: f64, e: f32| (a - f64::from(e)).abs() <= 2.0;
+    assert!(near(b.x0, r.x) && near(b.x1, r.right()) && near(b.y0, r.y) && near(b.y1, r.bottom()), "ink {b:?} fills box {r:?}");
+    let (r, b) = ink(false);
+    assert!(b.width() < f64::from(r.w) - 20.0, "without fit_box the letters keep their width: {b:?} in {r:?}");
+}

@@ -206,17 +206,29 @@ fn cell_clip(clips: &Clips, story: StoryRef, path: &[u32]) -> Option<Rect> {
 
 /// The text boxes among `items` whose text is warped (Text Effects › Transform, drawn bent): their
 /// story, frame and warp. Empty, without a walk of the document, when none is.
-fn warped_boxes(doc: &Document, items: &[Placed]) -> Vec<(u32, Rect, wordcraft_doc::wordart::TextWarp)> {
+fn warped_boxes(doc: &Document, items: &[Placed]) -> Vec<(u32, Rect, BoxWarp)> {
     items
         .iter()
         .filter_map(|it| {
             let Placed::Object { rect, story, path, off, text_box: Some(id), .. } = it else { return None };
             match doc.para(*story, path)?.object_at(*off)? {
-                InlineObject::Shape { extra, .. } => extra.warp.clone().filter(|w| !w.is_plain()).map(|w| (*id, *rect, w)),
+                InlineObject::Shape { extra, .. } => {
+                    // Legacy WordArt stretched to its box is drawn by the same path, flat or bent.
+                    let warp = extra.warp.clone().filter(|w| extra.fit_box || !w.is_plain());
+                    let warp = warp.or_else(|| extra.fit_box.then(|| wordcraft_doc::wordart::TextWarp::new("textPlain")).flatten())?;
+                    Some((*id, *rect, BoxWarp { warp, fit_box: extra.fit_box }))
+                }
                 _ => None,
             }
         })
         .collect()
+}
+
+/// How a warped text box's text is drawn: bent by `warp`, and with `fit_box` stretched so its
+/// ink fills the whole frame (legacy WordArt's `fitpath`) rather than the frame inside its margins.
+struct BoxWarp {
+    warp: wordcraft_doc::wordart::TextWarp,
+    fit_box: bool,
 }
 
 /// The text of a warped text box at `rect`: its lines' letters as outlines bent by `warp`, the
@@ -226,7 +238,7 @@ struct WarpedText<'doc, 'opts, 'lines, 'placed, 'authors, 'author_doc> {
     doc: &'doc Document,
     lines: &'lines [&'placed Placed],
     rect: Rect,
-    warp: &'lines wordcraft_doc::wordart::TextWarp,
+    warp: &'lines BoxWarp,
     opts: &'opts DisplayOptions,
     authors: &'authors Authors<'author_doc>,
     alpha: f32,
@@ -258,8 +270,22 @@ fn warped_text(input: WarpedText<'_, '_, '_, '_, '_, '_>, out: &mut Vec<Draw>) {
         }
     }
     let src = arts.iter().filter_map(|(p, ..)| crate::wordart::path_box(p)).reduce(|a, b| a.union(b));
-    let inset = Rect::new(rect.x + 7.2, rect.y + 3.6, (rect.w - 14.4).max(1.0), (rect.h - 7.2).max(1.0));
-    let fitted = src.and_then(|b| crate::wordart::Warp::new(warp, inset, (b.height() / b.width().max(1e-3)) as f32).map(|w| (b, w)));
+    let BoxWarp { warp, fit_box } = warp;
+    let frame = if *fit_box { rect } else { Rect::new(rect.x + 7.2, rect.y + 3.6, (rect.w - 14.4).max(1.0), (rect.h - 7.2).max(1.0)) };
+    if *fit_box
+        && warp.is_plain()
+        && let Some(b) = src.filter(|b| b.width() > 1e-3 && b.height() > 1e-3 && frame.w > 0.0 && frame.h > 0.0)
+    {
+        // Flat, stretched across and down so the letters' ink meets the frame's edges.
+        let (kx, ky) = (f64::from(frame.w) / b.width(), f64::from(frame.h) / b.height());
+        let fit = kurbo::Affine::new([kx, 0.0, 0.0, ky, f64::from(frame.x) - b.x0 * kx, f64::from(frame.y) - b.y0 * ky]);
+        for (path, fx, color, alpha) in arts {
+            out.push(Draw::Art { path: fit * path, fx, color, alpha, text_bg: None });
+        }
+        out.extend(hidden);
+        return;
+    }
+    let fitted = src.and_then(|b| crate::wordart::Warp::new(warp, frame, (b.height() / b.width().max(1e-3)) as f32).map(|w| (b, w)));
     let Some((src, w)) = fitted else {
         out.extend(raw);
         return;
