@@ -737,6 +737,7 @@ fn draw_line(p: &egui::Painter, [a, b]: [egui::Pos2; 2], style: BorderStyle, wid
     let px = (width * 1.2).clamp(1.0, 6.0);
     let normal = (b - a).normalized().rot90();
     let stroke = Stroke::new(px, color);
+    let style = style.draw_as();
     match style {
         BorderStyle::None => {}
         BorderStyle::Double | BorderStyle::Triple => {

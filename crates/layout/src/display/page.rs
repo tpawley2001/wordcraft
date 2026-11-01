@@ -322,7 +322,7 @@ fn change_bars(doc: &Document, page: &Page, items: &[Placed], m: &MarkupOptions,
 }
 
 fn border_stroke(s: BorderStyle) -> Stroke {
-    match s {
+    match s.draw_as() {
         BorderStyle::Dotted => Stroke::BorderDotted,
         BorderStyle::Dashed => Stroke::BorderDashed,
         BorderStyle::DotDash => Stroke::BorderDotDash,

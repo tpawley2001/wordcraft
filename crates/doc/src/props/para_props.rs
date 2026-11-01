@@ -107,6 +107,24 @@ pub enum BorderStyle {
     Triple,
     DotDash,
     Wave,
+    // ECMA-376 Part 1, 17.18.2 `ST_Border` compound, 3-D and inset/outset lines. Kept so a save writes
+    // the source's `w:val`; drawn as their nearest basic style (`draw_as`) until layout paints them.
+    DotDotDash,
+    DoubleWave,
+    DashDotStroked,
+    ThinThickSmallGap,
+    ThickThinSmallGap,
+    ThinThickThinSmallGap,
+    ThinThickMediumGap,
+    ThickThinMediumGap,
+    ThinThickThinMediumGap,
+    ThinThickLargeGap,
+    ThickThinLargeGap,
+    ThinThickThinLargeGap,
+    ThreeDEmboss,
+    ThreeDEngrave,
+    Outset,
+    Inset,
 }
 
 impl BorderStyle {
@@ -121,6 +139,22 @@ impl BorderStyle {
             BorderStyle::Triple => "triple",
             BorderStyle::DotDash => "dotDash",
             BorderStyle::Wave => "wave",
+            BorderStyle::DotDotDash => "dotDotDash",
+            BorderStyle::DoubleWave => "doubleWave",
+            BorderStyle::DashDotStroked => "dashDotStroked",
+            BorderStyle::ThinThickSmallGap => "thinThickSmallGap",
+            BorderStyle::ThickThinSmallGap => "thickThinSmallGap",
+            BorderStyle::ThinThickThinSmallGap => "thinThickThinSmallGap",
+            BorderStyle::ThinThickMediumGap => "thinThickMediumGap",
+            BorderStyle::ThickThinMediumGap => "thickThinMediumGap",
+            BorderStyle::ThinThickThinMediumGap => "thinThickThinMediumGap",
+            BorderStyle::ThinThickLargeGap => "thinThickLargeGap",
+            BorderStyle::ThickThinLargeGap => "thickThinLargeGap",
+            BorderStyle::ThinThickThinLargeGap => "thinThickThinLargeGap",
+            BorderStyle::ThreeDEmboss => "threeDEmboss",
+            BorderStyle::ThreeDEngrave => "threeDEngrave",
+            BorderStyle::Outset => "outset",
+            BorderStyle::Inset => "inset",
         }
     }
     pub fn from_ooxml(s: &str) -> BorderStyle {
@@ -131,9 +165,56 @@ impl BorderStyle {
             "dashed" | "dashSmallGap" => BorderStyle::Dashed,
             "thick" => BorderStyle::Thick,
             "triple" => BorderStyle::Triple,
-            "dotDash" | "dotDotDash" => BorderStyle::DotDash,
-            "wave" | "doubleWave" => BorderStyle::Wave,
+            "dotDash" => BorderStyle::DotDash,
+            "wave" => BorderStyle::Wave,
+            "dotDotDash" => BorderStyle::DotDotDash,
+            "doubleWave" => BorderStyle::DoubleWave,
+            "dashDotStroked" => BorderStyle::DashDotStroked,
+            "thinThickSmallGap" => BorderStyle::ThinThickSmallGap,
+            "thickThinSmallGap" => BorderStyle::ThickThinSmallGap,
+            "thinThickThinSmallGap" => BorderStyle::ThinThickThinSmallGap,
+            "thinThickMediumGap" => BorderStyle::ThinThickMediumGap,
+            "thickThinMediumGap" => BorderStyle::ThickThinMediumGap,
+            "thinThickThinMediumGap" => BorderStyle::ThinThickThinMediumGap,
+            "thinThickLargeGap" => BorderStyle::ThinThickLargeGap,
+            "thickThinLargeGap" => BorderStyle::ThickThinLargeGap,
+            "thinThickThinLargeGap" => BorderStyle::ThinThickThinLargeGap,
+            "threeDEmboss" => BorderStyle::ThreeDEmboss,
+            "threeDEngrave" => BorderStyle::ThreeDEngrave,
+            "outset" => BorderStyle::Outset,
+            "inset" => BorderStyle::Inset,
             _ => BorderStyle::Single,
+        }
+    }
+    /// The basic style this one is painted as: itself for the basic styles, the nearest basic style for the
+    /// compound, 3-D and inset/outset lines (which keep their own value for saving).
+    pub fn draw_as(self) -> BorderStyle {
+        match self {
+            BorderStyle::None
+            | BorderStyle::Single
+            | BorderStyle::Double
+            | BorderStyle::Dotted
+            | BorderStyle::Dashed
+            | BorderStyle::Thick
+            | BorderStyle::Triple
+            | BorderStyle::DotDash
+            | BorderStyle::Wave => self,
+            BorderStyle::DotDotDash => BorderStyle::DotDash,
+            BorderStyle::DoubleWave => BorderStyle::Wave,
+            BorderStyle::DashDotStroked => BorderStyle::DotDash,
+            BorderStyle::ThinThickSmallGap => BorderStyle::Double,
+            BorderStyle::ThickThinSmallGap => BorderStyle::Double,
+            BorderStyle::ThinThickThinSmallGap => BorderStyle::Triple,
+            BorderStyle::ThinThickMediumGap => BorderStyle::Double,
+            BorderStyle::ThickThinMediumGap => BorderStyle::Double,
+            BorderStyle::ThinThickThinMediumGap => BorderStyle::Triple,
+            BorderStyle::ThinThickLargeGap => BorderStyle::Double,
+            BorderStyle::ThickThinLargeGap => BorderStyle::Double,
+            BorderStyle::ThinThickThinLargeGap => BorderStyle::Triple,
+            BorderStyle::ThreeDEmboss => BorderStyle::Single,
+            BorderStyle::ThreeDEngrave => BorderStyle::Single,
+            BorderStyle::Outset => BorderStyle::Single,
+            BorderStyle::Inset => BorderStyle::Single,
         }
     }
 }
