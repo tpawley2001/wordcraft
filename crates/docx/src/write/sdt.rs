@@ -263,7 +263,11 @@ fn kind(w: &mut W, k: &ControlKind) {
                 w.open(tag, &[("w:lastValue", last_value)]);
             }
             for i in items {
-                w.empty("w:listItem", &[("w:displayText", &i.display), ("w:value", i.value())]);
+                if i.display.is_empty() {
+                    w.empty("w:listItem", &[("w:value", i.value())]);
+                } else {
+                    w.empty("w:listItem", &[("w:displayText", &i.display), ("w:value", i.value())]);
+                }
             }
             w.close(tag);
         }
