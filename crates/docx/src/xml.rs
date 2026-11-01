@@ -57,6 +57,9 @@ pub const NAMESPACES: &[(&str, &str)] = &[
 pub const DECORATIVE_EXT: &str = "{C183D7F6-B498-43B3-948B-1728B52AA6E4}";
 pub const DECORATIVE_NS: &str = "http://schemas.microsoft.com/office/drawing/2017/decorative";
 
+/// Obsolete spellings of a known namespace (the Word 2013 preview's w15), accepted only by the reader.
+const NAMESPACE_ALIASES: &[(&str, &str)] = &[("w15", "http://schemas.microsoft.com/office/word/2010/11/wordml")];
+
 /// Namespaces that only appear in non-body parts.
 const OTHER_NAMESPACES: &[(&str, &str)] = &[
     ("b", "http://schemas.openxmlformats.org/officeDocument/2006/bibliography"),
@@ -86,7 +89,7 @@ fn prefix_for(uri: &[u8], extra: &[(&'static str, &str)]) -> &'static str {
     if let Some((p, _)) = extra.iter().find(|(_, u)| u.as_bytes() == uri) {
         return p;
     }
-    for (p, u) in NAMESPACES.iter().chain(OTHER_NAMESPACES).chain(STRICT) {
+    for (p, u) in NAMESPACES.iter().chain(NAMESPACE_ALIASES).chain(OTHER_NAMESPACES).chain(STRICT) {
         if u.as_bytes() == uri {
             return p;
         }
