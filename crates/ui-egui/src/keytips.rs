@@ -95,7 +95,7 @@ const TABLE_TAB_LETTERS: [(&str, &str); 2] = [("Table Design", "JT"), ("Table La
 /// The Search box's badge beside the tab badges (Word's Alt, Q).
 pub const SEARCH_LETTER: &str = "Q";
 
-/// Legacy menu keys (#1697): Word 2003 menu sequences Word for Windows still takes after Alt,
+/// Legacy menu keys (#1697): 19 Word 2003 menu sequences Word for Windows still takes after Alt,
 /// observed there. Hidden, as in Word: no badges, not in Customize Keyboard. They start only on
 /// letters no tab keytip or Search uses (see the test).
 fn legacy() -> Vec<(&'static str, Target)> {
@@ -115,6 +115,7 @@ fn legacy() -> Vec<(&'static str, Target)> {
         ("EE", dialog("replace")),
         ("EG", dialog("goto")),
         ("IS", dialog("symbol")),
+        ("IB", dialog("break")),
         ("IPF", cmd("insert.picture")),
         ("OF", dialog("font")),
         ("OP", dialog("paragraph")),

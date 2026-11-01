@@ -83,6 +83,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
         Dialog::Tabs { .. } => "Tabs",
         Dialog::Borders { .. } => "Borders and Shading",
         Dialog::Find { .. } => "Find and Replace",
+        Dialog::Break { .. } => "Break",
         Dialog::InsertTable { .. } => "Insert Table",
         Dialog::PageSetup { .. } => "Page Setup",
         Dialog::Link { .. } => "Insert Hyperlink",

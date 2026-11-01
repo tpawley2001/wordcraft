@@ -115,3 +115,43 @@ pub(crate) fn buttons(ui: &mut Ui, ok: &str, cancel: &str, ok_enabled: bool) -> 
 
 #[cfg(test)]
 mod tests;
+/// The Break dialog's OK: insert the break `kind` (a `layout.break` kind) and close the dialog.
+pub fn break_dialog_ok(app: &mut WordApp, kind: &str) {
+    match app.run("layout.break", json!({"kind": kind})) {
+        Ok(_) => app.dialog = None,
+        Err(message) => app.status(message),
+    }
+}
+
+/// Draws Insert › Break, keeping command errors visible until OK succeeds or Cancel closes it.
+pub(super) fn break_dialog(app: &mut WordApp, ui: &mut Ui, kind: &mut &'static str) -> bool {
+    ui.group(|ui| {
+        ui.label(tl!("Break types"));
+        ui.radio_value(kind, "page", tl!("Page break"));
+        ui.radio_value(kind, "column", tl!("Column break"));
+        ui.radio_value(kind, "textWrapping", tl!("Text wrapping break"));
+    });
+    ui.add_space(8.0);
+    ui.group(|ui| {
+        ui.label(tl!("Section break types"));
+        ui.radio_value(kind, "nextPage", tl!("Next page"));
+        ui.radio_value(kind, "continuous", tl!("Continuous"));
+        ui.radio_value(kind, "evenPage", tl!("Even page"));
+        ui.radio_value(kind, "oddPage", tl!("Odd page"));
+    });
+    if let Some((message, _)) = &app.status_msg {
+        ui.colored_label(ui.visuals().error_fg_color, message);
+    }
+    let (ok, cancel) = buttons(ui, "OK", "Cancel", true);
+    if cancel {
+        return true;
+    }
+    if ok {
+        // The modal host temporarily takes the dialog while drawing its body. Put it back so
+        // the same OK helper can close it on success and retain it on a refused command.
+        app.dialog = Some(super::Dialog::Break { kind });
+        break_dialog_ok(app, kind);
+        return app.dialog.is_none();
+    }
+    false
+}

@@ -21,6 +21,7 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::Enclose { .. } => enclose_dialog(app, ui, d),
         Dialog::TableProperties { .. } => table_properties_dialog(app, ui, d),
         Dialog::CellMargins { .. } => cell_margins_arm(app, ui, d),
+        Dialog::Break { kind } => crate::dialogs_insert::break_dialog(app, ui, kind),
         Dialog::InsertTable { .. } => insert_table_dialog(app, ui, d),
         Dialog::PageSetup { .. } => page_setup_dialog(app, ui, d),
         Dialog::Link { .. } => link_dialog(app, ui, d),
