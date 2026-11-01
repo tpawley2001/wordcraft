@@ -47,6 +47,9 @@ pub fn specs() -> Vec<CommandSpec> {
             super::para::fmt(s, &|pp| pp.outline_level = if level == 0 { Some(9) } else { Some(level - 1) })
         })
         .params(r#"{"level": 0 (do not show) | 1-9}"#),
+        CommandSpec::new("references.markTocEntry", "Mark Table of Contents Entry", "References › Table of Contents", mark_toc_entry)
+            .key(super::non_mac("Alt+Shift+O"))
+            .params(r#"{"text"?: string (the selection), "identifier"?: one letter A-Z (default "C"), "level"?: 1-9 (default 1)}"#),
         CommandSpec::new("references.footnote", "Insert Footnote", "References › Footnotes", |s, v| note(s, v, NoteKind::Footnote))
             .key("Mod+Alt+F")
             .params(r#"{"text"?: string, "mark"?: string (a custom mark instead of the number)}"#),
@@ -96,6 +99,29 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"all"?: bool (the body and every header, footer, note and text box, wherever the caret is; default: the story the caret is in)}"#)
         .key("F9"),
     ]
+}
+
+/// The TC field for `references.markTocEntry`'s parameters: `TC "text" \f C \l 1` (ECMA-376
+/// §17.16.5.70), hidden as Word hides it, at the end of the selection.
+fn mark_toc_entry(s: &mut Session, v: &Value) -> CmdResult {
+    let text = super::index::clean(&p::str(v, "text").map(str::to_string).unwrap_or_else(|| s.selected_text()), 255);
+    if text.is_empty() {
+        return Err(CmdError::Params("select text or give `text`".into()));
+    }
+    let identifier = p::str(v, "identifier").unwrap_or("C").to_ascii_uppercase();
+    if identifier.len() != 1 || !identifier.chars().all(|c| c.is_ascii_alphabetic()) {
+        return Err(CmdError::Params(format!("`identifier` must be one letter A-Z, not {identifier:?}")));
+    }
+    let level = match v.get("level") {
+        None | Some(Value::Null) => 1,
+        Some(l) => l.as_u64().filter(|l| (1..=9).contains(l)).ok_or_else(|| CmdError::Params(format!("`level` must be 1-9, not {l}")))?,
+    };
+    let instr = format!("TC \"{text}\" \\f {identifier} \\l {level}");
+    let hidden = CharProps { hidden: Some(true), ..Default::default() };
+    let field = InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
+    let (_, b) = s.sel.ordered();
+    s.doc.insert_object(&b, field, &hidden)?;
+    Ok(json!({"text": text, "identifier": identifier, "level": level}))
 }
 
 /// A field instruction split into its name, positional arguments and switches (ECMA-376

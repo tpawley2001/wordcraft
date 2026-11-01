@@ -240,6 +240,7 @@ Layout|Arrange|Group|arrange.group
 Layout|Arrange|Rotate|arrange.rotate
 References|Table of Contents|Table of Contents|references.toc
 References|Table of Contents|Add Text|references.addText
+References|Table of Contents|Mark Table of Contents Entry|references.markTocEntry
 References|Table of Contents|Update Table|references.updateToc
 References|Table of Contents|Remove Table of Contents|references.removeToc
 References|Footnotes|Insert Footnote|references.footnote
