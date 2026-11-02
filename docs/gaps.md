@@ -164,13 +164,13 @@ Strict DOCX graphics (gap #2): chart and SmartArt children and all relationship 
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-02 | trivial | P0029: Table Layout › Data › Sort: three keys (Sort by, Then by, Then by), each with a Type (Text, Number, Date) and its own order; `table.sort` takes `keys` (#1200 follow-up). Gap #7 narrowed; readiness estimates unchanged |
 | 2026-11-02 | trivial | P0031: `.doc` empty inline shapes (`MM_SHAPE`, no picture) keep their goal size as an invisible inline object, so lines below a text box anchored as a character start below it as in Word. Gaps #1/#4 narrowed; readiness estimates unchanged |
 | 2026-11-01 | trivial | P0022: Strict DOCX charts and SmartArt retain graphic children and relationships on save, with Transitional namespace URI attributes (#3548); readiness estimates unchanged |
 | 2026-11-01 | trivial | `.doc` linked pictures (`INCLUDEPICTURE \d`) whose file is missing keep their goal size and show as a frame, so the page lays out as in Word; DOCX saves them as `a:blip r:link`. Gaps #1/#4 narrowed; readiness estimates unchanged |
 | 2026-11-01 | trivial | P0023: DOCX repeated comment IDs retain every comment; saves write one reference per comment and only balanced ranges, including after edits. Synthetic import and repeated-save regressions; readiness estimates unchanged. |
 | 2026-11-01 | trivial | P0018: Insert › Break on Alt, I, B offers page, column, text wrapping and four section breaks; OK runs one undoable command, refusals keep the dialog open, and Cancel discards. Gaps #7 and #24 narrowed; readiness estimates unchanged |
 | 2026-11-01 | trivial | P0028: Word 6.0/95 `.doc` import reads section page size, orientation, margins, header/footer distances and breaks; gap #14 narrowed, readiness unchanged |
-| 2026-11-02 | trivial | P0029: Table Layout › Data › Sort: three keys (Sort by, Then by, Then by), each with a Type (Text, Number, Date) and its own order; `table.sort` takes `keys` (#1200 follow-up). Gap #7 narrowed; readiness estimates unchanged |
 | 2026-11-01 | trivial | P0017: Word 6.0/95 `.doc` import reads paragraph alignment, indents, spacing, keeps, widow control and tabs; gap #14 narrowed, readiness unchanged |
 | 2026-11-01 | trivial | P0011: DOCX drop-down and combo box items omit empty `w:displayText` attributes while retaining their values; readiness estimates unchanged. |
 | 2026-11-01 | trivial | P0010: `.doc` runs retain character-style references without copying style formatting into direct properties; readiness unchanged |

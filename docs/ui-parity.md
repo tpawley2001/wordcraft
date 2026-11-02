@@ -87,9 +87,9 @@ Labels → New Document with “One label per recipient” includes all filtered
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-02 | trivial | P0029: Table Layout › Data › Sort: three keys (Sort by, Then by, Then by), each with a Type (Text, Number, Date) and its own order; `table.sort` takes `keys` (#1200 follow-up). Gap #7 narrowed; readiness estimates unchanged |
 | 2026-11-02 | trivial | Reveal Formatting engine query `format.reveal`: the font, paragraph and section formatting at the caret, grouped Font, Paragraph and Section as Word's pane groups them; the pane itself is not yet built |
 | 2026-11-01 | trivial | P0018: Insert › Break on Alt, I, B offers page, column, text wrapping and four section breaks; OK runs one undoable command, refusals keep the dialog open, and Cancel discards. Gaps #7 and #24 narrowed; readiness estimates unchanged |
-| 2026-11-02 | trivial | P0029: Table Layout › Data › Sort: three keys (Sort by, Then by, Then by), each with a Type (Text, Number, Date) and its own order; `table.sort` takes `keys` (#1200 follow-up). Gap #7 narrowed; readiness estimates unchanged |
 | 2026-11-01 | trivial | Read Mode › View › Layout: a Layout menu (Column, Paper) on the reading toolbar; Paper Layout shows the printed pages fitted to the window, Column width and Line spacing kept but greyed out (`view.readLayout`) |
 | 2026-11-01 | trivial | Custom Document Properties: Text, Date, Number and Yes or no types, as in Word's Custom tab: a Type box (Yes / No buttons replace the value for Yes or no), the list shows each type, values are checked against it, and `file.properties` takes `"type"` (stored as `vt:lpwstr`, `vt:filetime`, `vt:i4`/`vt:r8`, `vt:bool`) |
 | 2026-10-31 | trivial | Keytips: Alt, F badges the Backstage pages with Word's letters and the letter opens the page; Alt, F, P and Alt, F, V open Print; the badges end with the Backstage (#4960) |
