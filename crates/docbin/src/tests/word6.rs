@@ -34,6 +34,9 @@ struct W6 {
     /// 7-byte BX entries; each PAPX is `cw`, `istd` 0, then the grpprl. An empty grpprl gets
     /// `bOffset` 0 (no properties).
     papx: Vec<(usize, Vec<u8>)>,
+    /// Sections as (end CP, Word 6 section grpprl): a PlcSed at FIB 0x88/0x8C, each SEPX as
+    /// `cb` u16 + grpprl; an empty grpprl gets `fcSepx` 0xFFFFFFFF (no properties).
+    sections: Vec<(u32, Vec<u8>)>,
 }
 
 impl W6 {
@@ -117,6 +120,33 @@ impl W6 {
             w.extend_from_slice(&bte);
             put32(&mut w, 0xC0, at as u32);
             put32(&mut w, 0xC4, bte.len() as u32);
+        }
+        if !self.sections.is_empty() {
+            let mut fcs = Vec::new();
+            for (_, grpprl) in &self.sections {
+                if grpprl.is_empty() {
+                    fcs.push(u32::MAX);
+                    continue;
+                }
+                w.resize(w.len().div_ceil(2) * 2, 0);
+                fcs.push(w.len() as u32);
+                w.extend_from_slice(&(grpprl.len() as u16).to_le_bytes());
+                w.extend_from_slice(grpprl);
+            }
+            let mut plc = 0u32.to_le_bytes().to_vec();
+            for (end, _) in &self.sections {
+                plc.extend_from_slice(&end.to_le_bytes());
+            }
+            for fc in fcs {
+                plc.extend_from_slice(&0u16.to_le_bytes()); // fn
+                plc.extend_from_slice(&fc.to_le_bytes()); // fcSepx
+                plc.extend_from_slice(&0u16.to_le_bytes()); // fnMpr
+                plc.extend_from_slice(&0u32.to_le_bytes()); // fcMpr
+            }
+            let at = w.len();
+            w.extend_from_slice(&plc);
+            put32(&mut w, 0x88, at as u32);
+            put32(&mut w, 0x8C, plc.len() as u32);
         }
         if !self.fonts.is_empty() {
             let mut t = vec![0u8, 0u8];
@@ -376,5 +406,69 @@ fn word6_para_hostile_papx_pages_never_panic() {
     // Truncated operands at the end of a grpprl.
     for g in [vec![0x14, 0x68], vec![0x0F, 0xFF, 0x00], vec![0x11], vec![0x0F]] {
         let _ = read(&W6 { papx: vec![(0, g)], ..plain("x\r") }.build());
+    }
+}
+
+// Sections (P04-003): Word 6 section sprms are one byte, the Word 97 sprm's ispmd + 133, with the
+// Word 97 operand. Grpprls below are the ones measured from real Word 6/95 files.
+
+/// Word6.doc's only section: page 12240 x 15840 twips, left/right 1800, top/bottom 1440, nfcPgn 0.
+const LETTER_1800_1440: [u8; 15] = [0xA4, 0xD0, 0x2F, 0xA5, 0xE0, 0x3D, 0xA6, 0x08, 0x07, 0xA7, 0x08, 0x07, 0xA8, 0xA0, 0x05];
+
+#[test]
+fn word6_section_page_size_and_margins() {
+    let g = [LETTER_1800_1440.as_slice(), &[0xA9, 0xA0, 0x05, 0x93, 0x00]].concat();
+    let doc = read(&W6 { sections: vec![(2, g)], ..plain("a\r") }.build()).expect("opens");
+    let s = &doc.last_section;
+    assert_eq!((s.page_w, s.page_h), (612.0, 792.0));
+    assert_eq!((s.margin_left, s.margin_right, s.margin_top, s.margin_bottom), (90.0, 90.0, 72.0, 72.0));
+    assert!(!s.landscape);
+}
+
+#[test]
+fn word6_continuous_landscape_section_ends_on_its_paragraph() {
+    // First section: sprmSBkc 0 (continuous), page 15840 x 12240 twips (landscape inferred).
+    let first = vec![0x8E, 0x00, 0xA4, 0xE0, 0x3D, 0xA5, 0xD0, 0x2F];
+    let doc = read(&W6 { sections: vec![(2, first), (4, Vec::new())], ..plain("a\rb\r") }.build()).expect("opens");
+    let paras: Vec<_> = doc.body.iter().filter_map(|b| b.as_para()).collect();
+    assert_eq!(paras.len(), 2);
+    let s = paras[0].section.as_deref().expect("paragraph a ends the first section");
+    assert_eq!(s.start, wordcraft_doc::section::SectionStart::Continuous);
+    assert_eq!((s.page_w, s.page_h), (792.0, 612.0));
+    assert!(s.landscape);
+    assert!(paras[1].section.is_none());
+    assert_eq!(doc.last_section, wordcraft_doc::section::SectionProps::default());
+}
+
+#[test]
+fn word6_section_header_and_footer_distances() {
+    // TestMickey.doc: column spacing 708, page numbers start at 1, header/footer 708 twips.
+    let g = vec![0x91, 0xC4, 0x02, 0xA1, 0x01, 0x00, 0x9C, 0xC4, 0x02, 0x9D, 0xC4, 0x02];
+    let doc = read(&W6 { sections: vec![(2, g)], ..plain("a\r") }.build()).expect("opens");
+    let s = &doc.last_section;
+    assert!((s.header - 35.4).abs() < 1e-3, "header {}", s.header);
+    assert!((s.footer - 35.4).abs() < 1e-3, "footer {}", s.footer);
+    assert_eq!(s.page_num_start, Some(1));
+}
+
+#[test]
+fn word6_hostile_section_tables_never_panic_and_keep_what_was_read() {
+    let base = W6 { sections: vec![(2, LETTER_1800_1440.to_vec())], ..plain("a\r") }.build();
+    // Page size read, then an unknown opcode: what came before stays.
+    let g = [&LETTER_1800_1440[..6], &[250u8, 1, 2, 3]].concat();
+    let doc = read(&W6 { sections: vec![(2, g)], ..plain("a\r") }.build()).expect("opens");
+    assert_eq!((doc.last_section.page_w, doc.last_section.page_h), (612.0, 792.0));
+    // Truncated operands at every length.
+    for n in 0..LETTER_1800_1440.len() {
+        let _ = read(&W6 { sections: vec![(2, LETTER_1800_1440[..n].to_vec())], ..plain("a\r") }.build());
+    }
+    // Every byte of the WordDocument stream's PlcSed/SEPX area overwritten: never a panic.
+    let sepx = base.windows(LETTER_1800_1440.len()).position(|w| w == LETTER_1800_1440).expect("sepx");
+    for at in sepx.saturating_sub(4)..(sepx + LETTER_1800_1440.len() + 40).min(base.len()) {
+        for byte in [0x00, 0x7F, 0xFF] {
+            let mut f = base.clone();
+            f[at] = byte;
+            let _ = read(&f);
+        }
     }
 }
