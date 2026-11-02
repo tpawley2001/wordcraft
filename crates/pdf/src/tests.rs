@@ -2488,3 +2488,37 @@ fn baseline_is_the_most_shared_y() {
     assert_eq!(baseline(&[(1, 0.0, 9.0), (2, 3.0, 4.0)]), Some(4.0));
     assert_eq!(baseline(&[(1, 0.0, -0.0), (2, 3.0, 0.0)]), Some(0.0));
 }
+
+#[test]
+fn fit_box_wordart_is_stretched_to_its_box() {
+    // Legacy WordArt stretched to its box (`fitpath`) is drawn one item at a time in the export:
+    // its letters must still fill the box as on screen, not come out at their natural size.
+    use kurbo::Shape;
+    use wordcraft_doc::para::ShapeKind;
+    use wordcraft_doc::wordart::{TextEffects, TextFill, TextWarp};
+    use wordcraft_doc::{PartKind, Pos, Rgb, TextBody, props::VAlign};
+    let mut d = Document::from_text("x");
+    let fx = TextEffects { fill: Some(TextFill::Solid { color: Rgb::BLACK, transparency: 0.0 }), ..Default::default() };
+    let props = CharProps { size: Some(30.0), text_effects: Some(Box::new(fx)), ..CharProps::default() };
+    let id = d.add_part(PartKind::TextBox, vec![para_block(Paragraph::with_text("Wide", props))]);
+    if let Some(p) = d.parts.get_mut(&id) {
+        p.body = TextBody { anchor: VAlign::Center, inset: Some([0; 4]), ..Default::default() };
+    }
+    let shape = InlineObject::Shape {
+        kind: ShapeKind::TextBox,
+        w: 242.25,
+        h: 41.25,
+        fill: None,
+        stroke: None,
+        stroke_width: 0.0,
+        float: Default::default(),
+        story: Some(id),
+        effects: Default::default(),
+        freeform: None,
+        extra: wordcraft_doc::connector::ShapeExtra { warp: TextWarp::new("textPlain"), fit_box: true, ..Default::default() },
+    };
+    d.insert_object(&Pos::body(0, 1), shape, &Default::default()).unwrap();
+    let fills = filled_paths(&export(&d, &PdfOptions::default()).unwrap());
+    let ink = fills.iter().map(|p| p.bounding_box()).filter(|b| b.height() < 60.0).reduce(|a, b| a.union(b)).expect("the letters are drawn as paths");
+    assert!((ink.width() - 242.25).abs() <= 2.0 && (ink.height() - 41.25).abs() <= 2.0, "ink {ink:?} fills the 242.25 x 41.25 box");
+}
