@@ -24,6 +24,40 @@ fn inches(pt: f32) -> String {
     format!("{}\"", num(pt / 72.0))
 }
 
+/// English names of the common language tags; other tags are shown as they are.
+const LANGUAGES: [(&str, &str); 16] = [
+    ("en-US", "English (United States)"),
+    ("en-GB", "English (United Kingdom)"),
+    ("en-AU", "English (Australia)"),
+    ("en-CA", "English (Canada)"),
+    ("fr-FR", "French (France)"),
+    ("de-DE", "German (Germany)"),
+    ("es-ES", "Spanish (Spain)"),
+    ("es-MX", "Spanish (Mexico)"),
+    ("it-IT", "Italian (Italy)"),
+    ("pt-BR", "Portuguese (Brazil)"),
+    ("pl-PL", "Polish"),
+    ("nl-NL", "Dutch (Netherlands)"),
+    ("ru-RU", "Russian"),
+    ("ja-JP", "Japanese"),
+    ("zh-CN", "Chinese (PRC)"),
+    ("ko-KR", "Korean"),
+];
+
+fn language_name(tag: &str) -> String {
+    LANGUAGES.iter().find(|(t, _)| t.eq_ignore_ascii_case(tag)).map(|(_, n)| (*n).to_string()).unwrap_or_else(|| tag.to_string())
+}
+
+/// The section holding the caret (the selection start for a body selection).
+fn caret_section(s: &Session) -> wordcraft_doc::section::SectionProps {
+    let (a, _) = s.sel.ordered();
+    if a.story != wordcraft_doc::StoryRef::Body {
+        return super::page::sect(s);
+    }
+    let i = s.doc.section_index_of(a.path.0.first().copied().unwrap_or(0) as usize);
+    s.doc.sections().get(i).map(|(_, x)| (*x).clone()).unwrap_or_default()
+}
+
 fn section(heading: &str, items: Vec<String>) -> Value {
     json!({"heading": heading, "items": items})
 }
@@ -58,7 +92,7 @@ pub fn reveal(s: &Session) -> Value {
     }
     let mut font_sections = vec![section("FONT", font)];
     if let Some(lang) = rc.lang.as_deref().filter(|l| !l.is_empty()) {
-        font_sections.push(section("LANGUAGE", vec![lang.to_string()]));
+        font_sections.push(section("LANGUAGE", vec![language_name(lang)]));
     }
 
     let align = match rp.align {
@@ -90,7 +124,7 @@ pub fn reveal(s: &Session) -> Value {
     };
     let spacing = vec![format!("Before: {} pt", num(rp.space_before)), format!("After: {} pt", num(rp.space_after)), format!("Line spacing: {line}")];
 
-    let sect = super::page::sect(s);
+    let sect = caret_section(s);
     let margins = vec![
         format!("Left: {}", inches(sect.margin_left)),
         format!("Right: {}", inches(sect.margin_right)),
@@ -135,6 +169,12 @@ mod tests {
         run(&mut s, "format.italic", json!({"value": true}));
         run(&mut s, "format.color", json!({"color": "1b1611"}));
         assert_eq!(font_items(&mut s), ["Arial", "10.5 pt", "Bold", "Italic", "Font color: 1B1611"]);
+    }
+
+    #[test]
+    fn language_by_name() {
+        assert_eq!(super::language_name("en-us"), "English (United States)");
+        assert_eq!(super::language_name("xx-YY"), "xx-YY");
     }
 
     #[test]
