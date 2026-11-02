@@ -25,9 +25,9 @@ pub(super) fn reading_toolbar(app: &mut WordApp, ui: &mut Ui, t: Tokens) {
                 ui.label(egui::RichText::new(tl!("Reading Mode")).font(semibold(14.0)));
                 ui.separator();
                 use wordcraft_engine::cmd::view::ReadLayout;
-                let layouts = [(ReadLayout::Column, "Column", "column"), (ReadLayout::Paper, "Paper", "paper")];
+                let layouts = [(ReadLayout::Column, "Column Layout", "column"), (ReadLayout::Paper, "Paper Layout", "paper")];
                 let layout = app.session.view.read_layout;
-                let name = layouts.iter().find(|l| l.0 == layout).map_or("Column", |l| l.1);
+                let name = layouts.iter().find(|l| l.0 == layout).map_or("Column Layout", |l| l.1);
                 ui.menu_button(format!("{}: {}", tl!("Layout"), tl!(name)), |ui| {
                     for (choice, name, value) in layouts {
                         if ui.selectable_label(layout == choice, tl!(name)).clicked() {
