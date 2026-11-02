@@ -545,13 +545,10 @@ pub struct W {
 
 impl W {
     pub fn new() -> W {
-        W {
-            comment_starts: Default::default(),
-            comment_insertions: Vec::new(),
-            comment_scopes: Vec::new(),
-            body_comment_anchor: None,
-            s: String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"),
-        }
+        let mut w = W::default();
+        w.s.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"");
+        w.s.push_str(" standalone=\"yes\"?>\n");
+        w
     }
     fn attrs(&mut self, attrs: &[(&str, &str)]) {
         for (k, v) in attrs {
