@@ -14,6 +14,7 @@ mod encrypted;
 mod frames;
 mod header_guard;
 mod metadata;
+mod ole_print;
 mod word6;
 
 /// Offset in the WordDocument stream where test text pieces are placed (past the FIB).

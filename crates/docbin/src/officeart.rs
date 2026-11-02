@@ -21,7 +21,7 @@ const MAX_BSE: usize = 10_000;
 /// Most drawings (main document, headers) read from `OfficeArtContent`.
 const MAX_DRAWINGS: usize = 8;
 /// Largest decompressed metafile (bytes).
-const MAX_METAFILE: usize = 64 << 20;
+pub(crate) const MAX_METAFILE: usize = 64 << 20;
 /// Largest DIB converted to PNG, per side (pixels).
 const MAX_DIB_SIDE: u32 = 16_384;
 

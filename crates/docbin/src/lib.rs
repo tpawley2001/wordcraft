@@ -19,6 +19,7 @@ mod media;
 mod metadata;
 mod notes;
 mod officeart;
+mod ole;
 mod piece;
 mod sections;
 mod sprm;
@@ -270,6 +271,8 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
     let hdd_base = fib.ccp.text.saturating_add(fib.ccp.ftn);
     let edn_base = hdd_base.saturating_add(fib.ccp.hdd).saturating_add(fib.ccp.atn);
     let mut pics = media::Pictures::for_input(word.len().saturating_add(data.len()));
+    // Object storages are not decrypted; an encrypted file keeps its Data stream pictures.
+    let prints = if enc.is_none() { ole::Prints::read(&mut comp) } else { ole::Prints::default() };
     // Every materialised character comes from at least one byte of the WordDocument stream, so a
     // legitimate document's total text (body plus every header, footnote and text box, each read
     // once) cannot exceed its stream. A hostile piece or story table that aliases the same bytes
@@ -291,6 +294,7 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
         marks: &[],
         drawn: &[],
         sect_ends: &[],
+        prints: &prints,
         budget: &budget,
         work: &work,
     };
@@ -444,6 +448,8 @@ struct WalkCtx<'a> {
     /// Where sections end (main-document CPs, sorted): the section mark (0x0C) just before
     /// each ends the section's last paragraph, it isn't a page break inside it.
     sect_ends: &'a [u32],
+    /// Embedded objects' print presentations, by storage id.
+    prints: &'a ole::Prints,
     /// Characters still allowed across every story walk of this document. Story ranges (headers,
     /// footnotes, text boxes) are hostile and can each span a whole subdocument, so thousands of
     /// them could otherwise materialise the same text thousands of times; this bounds the total.
@@ -509,6 +515,8 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
     // Field assembly state: instruction characters are swallowed, the result is kept until
     // the end character, then emitted as one object (hyperlinks keep their result text).
     let mut field: Option<FieldBuild> = None;
+    // Storage id of the embedded object the open field's code references (sprmCFOle2).
+    let mut object_id: Option<u32> = None;
     let mut memo: Option<FmtMemo<'a>> = None;
     while cp < cp_end {
         // Bookmark boundaries at this CP (main-document walks only; subdocument walks get
@@ -598,7 +606,10 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     Some(f) => {
                         f.depth = f.depth.saturating_add(1);
                     }
-                    None => field = Some(FieldBuild { depth: 1, instr: String::new(), sep: None }),
+                    None => {
+                        field = Some(FieldBuild { depth: 1, instr: String::new(), sep: None });
+                        object_id = None;
+                    }
                 }
                 cp = cp.saturating_add(1);
                 continue;
@@ -620,33 +631,15 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                         field = Some(f);
                     } else {
                         finish_field(&mut pb, f, ctx.work);
+                        object_id = None;
                     }
                 }
                 cp = cp.saturating_add(1);
                 continue;
             }
             '\u{1}' => {
-                // Inline picture: the CHPX of the anchor carries sprmCPicLocation.
-                let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
-                let fc_pic = pic_location(ctx.chpx_bins.chpx(ctx.word, fc));
-                match fc_pic.and_then(|at| pics.get(ctx.data, at)) {
-                    Some(p) => {
-                        // Every anchor of a picture gets its own copy of the alt text; the
-                        // copies are charged to the work budget (#3709).
-                        let alt = if ctx.work.charge(p.alt.len() as u64, Cost::AltText) { p.alt.clone() } else { String::new() };
-                        pb.push('\u{FFFC}', CharProps::default());
-                        pb.objects.push(InlineObject::Image {
-                            media: p.key.clone(),
-                            w: p.w,
-                            h: p.h,
-                            alt,
-                            float: Default::default(),
-                            crop: p.crop,
-                            ole: None,
-                        });
-                    }
-                    None => pics.dropped(cp),
-                }
+                let open = field.as_ref().filter(|f| f.depth == 1).map(|f| f.sep.is_some());
+                inline_picture(ctx, cp, open, &mut object_id, &mut pb, pics);
             }
             '\u{8}' => {
                 // Drawn object anchor: the floating shape or picture anchored at this CP.
@@ -691,6 +684,40 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
         });
     }
     out
+}
+
+/// An inline picture anchor (`\x01`): the CHPX carries sprmCPicLocation. `open` is whether the
+/// innermost open field (if any, and not nested) is in its result; in its code, an embedded
+/// object's reference (sprmCFOle2) sets `object_id`, and the result's picture then prints from
+/// that object's print presentation, when it has one.
+fn inline_picture(ctx: &WalkCtx<'_>, cp: u32, open: Option<bool>, object_id: &mut Option<u32>, pb: &mut ParaBuild, pics: &mut media::Pictures) {
+    let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
+    let chpx = ctx.chpx_bins.chpx(ctx.word, fc);
+    let mut object = None;
+    match open {
+        Some(false) => {
+            if let Some(id) = ole::object_id(chpx) {
+                *object_id = Some(id);
+            }
+        }
+        Some(true) => object = object_id.and_then(|id| Some((id, ctx.prints.get(id)?))),
+        None => {}
+    }
+    let pic = pic_location(chpx).and_then(|at| pics.get(ctx.data, at)).cloned();
+    let pic = match (pic, object) {
+        (Some(p), Some((id, emf))) => pics.ole(id, emf, &p).or(Some(p)),
+        (p, _) => p,
+    };
+    match pic {
+        Some(p) => {
+            // Every anchor of a picture gets its own copy of the alt text; the
+            // copies are charged to the work budget (#3709).
+            let alt = if ctx.work.charge(p.alt.len() as u64, Cost::AltText) { p.alt } else { String::new() };
+            pb.push('\u{FFFC}', CharProps::default());
+            pb.objects.push(InlineObject::Image { media: p.key, w: p.w, h: p.h, alt, float: Default::default(), crop: p.crop, ole: None });
+        }
+        None => pics.dropped(cp),
+    }
 }
 
 /// Field assembly: `instr` collects everything before the separator (nested fields
