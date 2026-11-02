@@ -75,12 +75,27 @@ const OTHER_NAMESPACES: &[(&str, &str)] = &[
     ("vt", "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"),
 ];
 
+/// Additional drawing vocabularies used inside preserved graphics. Declare them locally
+/// when used so ordinary Transitional output keeps its existing namespace declarations.
+const DRAWING_NAMESPACES: &[(&str, &str)] = &[
+    ("cdr", "http://schemas.openxmlformats.org/drawingml/2006/chartDrawing"),
+    ("lc", "http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas"),
+    ("comp", "http://schemas.openxmlformats.org/drawingml/2006/compatibility"),
+    ("xdr", "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"),
+];
+
 /// ISO/IEC 29500 Strict namespaces map onto the transitional prefixes.
 const STRICT: &[(&str, &str)] = &[
     ("w", "http://purl.oclc.org/ooxml/wordprocessingml/main"),
     ("r", "http://purl.oclc.org/ooxml/officeDocument/relationships"),
     ("wp", "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing"),
     ("a", "http://purl.oclc.org/ooxml/drawingml/main"),
+    ("c", "http://purl.oclc.org/ooxml/drawingml/chart"),
+    ("cdr", "http://purl.oclc.org/ooxml/drawingml/chartDrawing"),
+    ("lc", "http://purl.oclc.org/ooxml/drawingml/lockedCanvas"),
+    ("comp", "http://purl.oclc.org/ooxml/drawingml/compatibility"),
+    ("xdr", "http://purl.oclc.org/ooxml/drawingml/spreadsheetDrawing"),
+    ("dgm", "http://purl.oclc.org/ooxml/drawingml/diagram"),
     ("pic", "http://purl.oclc.org/ooxml/drawingml/picture"),
     ("m", "http://purl.oclc.org/ooxml/officeDocument/math"),
 ];
@@ -89,7 +104,7 @@ fn prefix_for(uri: &[u8], extra: &[(&'static str, &str)]) -> &'static str {
     if let Some((p, _)) = extra.iter().find(|(_, u)| u.as_bytes() == uri) {
         return p;
     }
-    for (p, u) in NAMESPACES.iter().chain(NAMESPACE_ALIASES).chain(OTHER_NAMESPACES).chain(STRICT) {
+    for (p, u) in NAMESPACES.iter().chain(NAMESPACE_ALIASES).chain(OTHER_NAMESPACES).chain(DRAWING_NAMESPACES).chain(STRICT) {
         if u.as_bytes() == uri {
             return p;
         }
@@ -259,6 +274,11 @@ impl El {
             }
             s.push('<');
             s.push_str(&e.name);
+            if let Some((prefix, _)) = e.name.split_once(':')
+                && let Some((_, uri)) = DRAWING_NAMESPACES.iter().find(|(p, _)| *p == prefix)
+            {
+                s.push_str(&format!(" xmlns:{prefix}=\"{uri}\""));
+            }
             for (k, v) in &e.attrs {
                 if k.starts_with("?:") {
                     continue;
@@ -266,7 +286,8 @@ impl El {
                 s.push(' ');
                 s.push_str(k);
                 s.push_str("=\"");
-                s.push_str(&esc(v));
+                let value = if k == "uri" { crate::strict::transitional_uri(v) } else { std::borrow::Cow::Borrowed(v.as_str()) };
+                s.push_str(&esc(&value));
                 s.push('"');
             }
             if e.kids.is_empty() {
@@ -579,6 +600,44 @@ pub fn body_ns() -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strict_drawing_namespaces_have_transitional_prefixes() {
+        for (strict, transitional) in crate::strict::NAMESPACES.iter().filter(|(s, _)| s.contains("/drawingml/")) {
+            let prefix = prefix_for(transitional.as_bytes(), &[]);
+            assert_ne!(prefix, "?");
+            assert_eq!(prefix_for(strict.as_bytes(), &[]), prefix);
+        }
+    }
+
+    #[test]
+    fn preserved_drawing_vocabularies_declare_transitional_namespaces() {
+        for (prefix, transitional) in DRAWING_NAMESPACES {
+            let strict = crate::strict::NAMESPACES.iter().find(|(_, t)| t == transitional).unwrap().0;
+            let xml = format!(r#"<g:payload xmlns:g="{strict}" uri="{strict}"><g:child/></g:payload>"#);
+            let saved = parse(xml.as_bytes()).unwrap().to_xml();
+            assert!(!saved.contains("purl.oclc.org/ooxml"));
+            let reread = parse_strict(saved.as_bytes()).unwrap();
+            assert_eq!(reread.name, format!("{prefix}:payload"));
+            assert!(reread.child(&format!("{prefix}:child")).is_some());
+            assert_eq!(reread.attr("uri"), Some(*transitional));
+            assert_eq!(reread.to_xml(), saved);
+        }
+    }
+
+    #[test]
+    fn strict_graphic_children_survive_canonical_serialization() {
+        for (prefix, name, child) in [("c", "chart", "chart"), ("dgm", "diagram", "relIds")] {
+            let strict = format!("http://purl.oclc.org/ooxml/drawingml/{name}");
+            let transitional = format!("http://schemas.openxmlformats.org/drawingml/2006/{name}");
+            let xml = format!(
+                r#"<a:graphicData xmlns:a="http://purl.oclc.org/ooxml/drawingml/main" xmlns:g="{strict}" xmlns:r="http://purl.oclc.org/ooxml/officeDocument/relationships" uri="{strict}"><g:{child} r:id="rId9"/></a:graphicData>"#
+            );
+            let el = parse(xml.as_bytes()).unwrap();
+            assert_eq!(el.child(&format!("{prefix}:{child}")).unwrap().attr("r:id"), Some("rId9"));
+            assert_eq!(el.to_xml(), format!(r#"<a:graphicData uri="{transitional}"><{prefix}:{child} r:id="rId9"/></a:graphicData>"#));
+        }
+    }
 
     #[test]
     fn strict_parsing_rejects_a_dropped_entity_and_trailing_markup() {
