@@ -611,6 +611,21 @@ mod tests {
     }
 
     #[test]
+    fn preserved_drawing_vocabularies_declare_transitional_namespaces() {
+        for (prefix, transitional) in DRAWING_NAMESPACES {
+            let strict = crate::strict::NAMESPACES.iter().find(|(_, t)| t == transitional).unwrap().0;
+            let xml = format!(r#"<g:payload xmlns:g="{strict}" uri="{strict}"><g:child/></g:payload>"#);
+            let saved = parse(xml.as_bytes()).unwrap().to_xml();
+            assert!(!saved.contains("purl.oclc.org/ooxml"));
+            let reread = parse_strict(saved.as_bytes()).unwrap();
+            assert_eq!(reread.name, format!("{prefix}:payload"));
+            assert!(reread.child(&format!("{prefix}:child")).is_some());
+            assert_eq!(reread.attr("uri"), Some(*transitional));
+            assert_eq!(reread.to_xml(), saved);
+        }
+    }
+
+    #[test]
     fn strict_graphic_children_survive_canonical_serialization() {
         for (prefix, name, child) in [("c", "chart", "chart"), ("dgm", "diagram", "relIds")] {
             let strict = format!("http://purl.oclc.org/ooxml/drawingml/{name}");
