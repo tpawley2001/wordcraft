@@ -12,6 +12,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 mod cells;
 mod clear;
 mod convert;
+pub use convert::sort_type;
 mod layout;
 mod select;
 mod structure;
@@ -195,7 +196,7 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"text"?: string, "title"?: string} (empty clears)"#)),
         t(CommandSpec::new("table.sort", "Sort", "Table Layout › Data", sort_table)
-            .params(r#"{"column"?: n, "descending"?: bool, "header"?: bool}"#)),
+            .params(r#"{"keys"?: [{"column": n, "type"?: "text|number|date", "descending"?: bool}] (1 to 3; ties go to the next key), "column"?: n, "descending"?: bool (one key, numbers then text), "header"?: bool}"#)),
         t(CommandSpec::new("table.toText", "Convert to Text", "Table Layout › Data", to_text)
             .params(r#"{"separator"?: "tab|comma|paragraph|other", "char"?: string (with other)} (the selected rows, or the whole table)"#)),
         t(CommandSpec::new("table.formula", "Formula", "Table Layout › Data", formula).params(r#"{"formula"?: "=SUM(ABOVE)"}"#)),
