@@ -815,3 +815,44 @@ fn size_dialog_typed_height_then_ok_without_enter_applies_it() {
     assert!(h.state().dialog.is_none(), "Esc cancels the dialog");
     assert_eq!(selected_size(h.state()), (30.0, 15.0), "nothing applied");
 }
+
+#[test]
+fn para_sort_opens_its_dialog() {
+    let original = "Name\tScore\nBea\t10\nAl\t7\nCy\t12";
+    let mut a = WordApp::new(Session::new(wordcraft_doc::Document::from_text(original)), Services::default());
+    a.session.run("select.all", &json!({})).unwrap();
+    let texts = |a: &WordApp| a.session.doc.body.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect::<Vec<_>>();
+    assert_eq!(a.run("para.sort", json!({})).unwrap(), json!({"pending": "paraSort"}));
+    assert_eq!(texts(&a).join("\n"), original, "opening does not sort");
+    let LayoutDialog::ParaSort(mut f) = form(&mut a) else { panic!("sort text") };
+    assert_eq!(f.keys[0].column, Some(0));
+    assert_eq!((f.keys[1].column, f.keys[2].column), (None, None));
+    assert_eq!(f.fields(), 2);
+    f.header = true;
+    f.pick(0, Some(2));
+    assert_eq!(f.keys[0].kind, "number");
+    a.run("para.sort", f.params()).unwrap();
+    assert_eq!(texts(&a), ["Name\tScore", "Al\t7", "Bea\t10", "Cy\t12"]);
+    assert!(a.dialog.is_none());
+    a.session.run("edit.undo", &json!({})).unwrap();
+    assert_eq!(texts(&a).join("\n"), original, "one undo restores the selected paragraphs");
+    a.run("para.sort", json!({})).unwrap();
+    let _cancelled = form(&mut a);
+    assert_eq!(texts(&a).join("\n"), original, "discarding the dialog does nothing");
+}
+
+#[test]
+fn para_sort_fields_follow_separator_and_infer_types() {
+    let mut a = WordApp::new(Session::new(wordcraft_doc::Document::from_text("b;2;2026-02-01\na;3;2025-01-01\nc;1")), Services::default());
+    a.session.run("select.all", &json!({})).unwrap();
+    let mut f = ParaSortForm::read(&a).unwrap();
+    assert_eq!(f.fields(), 1);
+    f.separator = "other".into();
+    f.other = ";".into();
+    assert_eq!(f.fields(), 3);
+    f.pick(0, Some(2));
+    f.pick(1, Some(3));
+    assert_eq!((f.keys[0].kind, f.keys[1].kind), ("number", "date"));
+    assert_eq!(f.params()["separator"], ";");
+    assert_eq!(f.params()["keys"][1]["field"], 2);
+}
