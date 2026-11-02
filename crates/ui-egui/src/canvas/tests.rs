@@ -4841,3 +4841,28 @@ fn the_view_key_changes_when_a_drag_takes_an_object_off_the_page() {
     assert_ne!(hidden, view_key(&app, false, None), "the page without the dragged object is rendered again");
     assert_eq!(hidden, view_key(&app, false, Some(&object)), "the same drag keeps the key: no re-render every frame");
 }
+
+/// Read Mode › View › Layout › Paper Layout: the printed pages, each fitted whole into the window
+/// above the page-turn bar, side by side in equal slots; a page turn moves one slot.
+#[test]
+fn paper_layout_fits_whole_printed_pages_to_the_window() {
+    let text = (0..80).map(|i| format!("Paragraph {i} long enough to fill more than one printed page.")).collect::<Vec<_>>().join("\n");
+    let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text(&text)), Default::default());
+    let print: Vec<(f32, f32)> = a.session.layout().pages.iter().map(|p| (p.w, p.h)).collect();
+    a.run("view.readMode", json!({})).unwrap();
+    a.run("view.readLayout", json!({"value": "paper"})).unwrap();
+    let layout = a.session.layout();
+    let avail = vec2(1200.0, 700.0);
+    let geo = geometry(&a, &layout, avail);
+    assert_eq!(geo.rects.len(), print.len());
+    for r in &geo.rects {
+        assert!(r.top() >= 0.0 && r.bottom() <= avail.y - READ_NAV_BAR + 0.5, "a whole page above the page-turn bar: {r:?}");
+    }
+    let (w, h) = print[0];
+    assert!((geo.rects[0].width() / geo.rects[0].height() - w / h).abs() < 1e-3, "the page keeps its shape");
+    assert!((geo.rects[1].left() - geo.rects[0].left() - (w * geo.scale + GAP)).abs() < 0.5, "one slot per page");
+    a.run("view.readLayout", json!({"value": "column"})).unwrap();
+    let layout = a.session.layout();
+    let geo = geometry(&a, &layout, avail);
+    assert_eq!(geo.scale, PX_PER_PT, "Column Layout keeps the reading text size");
+}

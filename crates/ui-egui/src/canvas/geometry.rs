@@ -1,4 +1,4 @@
-use super::reading::place_read_pages;
+use super::reading::{paper_layout, paper_scale, paper_width, place_paper_pages, place_read_pages};
 use super::{CommentDisplay, DocLayout, GAP, PX_PER_PT, Pos2, Rect, StoryRef, WordApp, pos2, vec2};
 
 /// Page positions in content space (points), for the current zoom.
@@ -171,9 +171,15 @@ pub fn geometry(app: &WordApp, l: &DocLayout, avail: egui::Vec2) -> Geometry {
     let web = v.mode != wordcraft_layout::ViewMode::Print;
     let mut scale = v.zoom.clamp(0.1, 5.0) * PX_PER_PT;
     if v.read_mode {
-        scale = v.read_zoom.clamp(0.75, 1.5) * PX_PER_PT;
         let sizes: Vec<(f32, f32)> = l.pages.iter().map(|p| (p.w, p.h)).collect();
-        let (rects, size) = place_read_pages(&sizes, scale, avail);
+        let (rects, size) = if paper_layout(v) {
+            // Paper Layout: the printed pages, each fitted whole to the window.
+            scale = paper_scale(l, avail);
+            place_paper_pages(&sizes, paper_width(l), scale, avail)
+        } else {
+            scale = v.read_zoom.clamp(0.75, 1.5) * PX_PER_PT;
+            place_read_pages(&sizes, scale, avail)
+        };
         // Reading columns show whole pages (Hide White Space doesn't apply).
         let bands = rects.iter().map(|r| (0.0, r.height())).collect();
         return Geometry { rects, size, scale, cols: sizes.len().max(1), bands };

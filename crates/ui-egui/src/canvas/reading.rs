@@ -95,6 +95,39 @@ pub(super) fn place_read_pages(sizes: &[(f32, f32)], scale: f32, avail: egui::Ve
     (rects, vec2(x.max(end).max(avail.x), avail.y.max(0.0)))
 }
 
+/// Whether Read Mode shows the printed pages (View › Layout › Paper Layout) instead of columns.
+pub(super) fn paper_layout(v: &wordcraft_engine::ViewState) -> bool {
+    v.read_mode && v.read_layout == wordcraft_engine::cmd::view::ReadLayout::Paper
+}
+
+/// The widest of Paper Layout's printed pages, points: the slot each page turn moves by.
+pub(super) fn paper_width(layout: &DocLayout) -> f32 {
+    layout.pages.iter().map(|p| sane_dim(p.w, 20_000.0)).fold(0.0f32, f32::max).max(72.0)
+}
+
+/// Paper Layout's scale (pixels per point): whole pages fitted to the window, above the
+/// page-turn bar, whatever the text size.
+pub(super) fn paper_scale(layout: &DocLayout, avail: egui::Vec2) -> f32 {
+    let maxh = layout.pages.iter().map(|p| sane_dim(p.h, 20_000.0)).fold(0.0f32, f32::max).max(72.0);
+    let scale = ((avail.y - 2.0 * GAP - READ_NAV_BAR) / maxh).min((avail.x - 2.0 * GAP) / paper_width(layout));
+    if scale.is_finite() { scale.clamp(0.05, 6.0) } else { PX_PER_PT }
+}
+
+/// Paper Layout's pages in one row, each centred in a slot as wide as the widest page, so a page
+/// turn always moves by one slot.
+pub(super) fn place_paper_pages(sizes: &[(f32, f32)], slot_w: f32, scale: f32, avail: egui::Vec2) -> (Vec<Rect>, egui::Vec2) {
+    let slot = sane_dim(slot_w, 20_000.0) * scale;
+    let mut x = GAP;
+    let mut rects = Vec::with_capacity(sizes.len());
+    for &(w, h) in sizes {
+        let (w, h) = (sane_dim(w, 20_000.0) * scale, sane_dim(h, 20_000.0) * scale);
+        rects.push(Rect::from_min_size(pos2(x + (slot - w).max(0.0) / 2.0, GAP), vec2(w, h)));
+        x += slot + GAP;
+    }
+    let end = rects.last().map_or(avail.x, |_| x - slot - GAP + avail.x - GAP);
+    (rects, vec2(x.max(end).max(avail.x), avail.y.max(0.0)))
+}
+
 /// Text at the start of a reading page. Unlike the editing caret, this records what the reader
 /// can currently see, even when the caret is elsewhere in the document.
 pub(super) fn reading_page_start(layout: &DocLayout, page: usize) -> Option<Pos> {
@@ -117,7 +150,7 @@ pub(super) fn reading_anchor_page(layout: &DocLayout, anchor: &Pos) -> Option<us
 /// Turn one reading column left/right. Multiple ticks during an animation queue additional
 /// columns, rather than rounding the partially animated position and losing a tick.
 pub(crate) fn turn_read_page(app: &mut WordApp, direction: f32) {
-    let step = app.session.view.read_width * app.canvas.scale + GAP;
+    let step = app.canvas.read_page_w * app.canvas.scale + GAP;
     if step.is_finite() && step > 0.0 {
         let current = app.canvas.read_target_page.unwrap_or_else(|| (app.canvas.scroll_offset.x / step).round().max(0.0) as usize);
         let next = if direction < 0.0 { current.saturating_sub(1) } else { current.saturating_add(1) };
