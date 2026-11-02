@@ -1,8 +1,9 @@
 use super::cells::{cell, selected_cells};
 use super::clear::{cell_prefix, guard_delete, text_spans};
-use super::layout::{fix_caret, sync_cell_widths};
+use super::layout::{fix_caret, sync_cell_widths, touch_cells};
 use super::{Block, CmdError, CmdResult, Paragraph, Pos, Selection, Session, Value, json, p, sel_result};
-use wordcraft_doc::Path;
+use wordcraft_doc::table::{MAX_COLS, MAX_ROWS};
+use wordcraft_doc::{Cell, Path, para_block};
 
 /// Insert Above / Below: rows like the caret's, as many as the selection spans; the caret goes into the first.
 pub(in crate::cmd) fn row(s: &mut Session, below: bool) -> CmdResult {
@@ -67,7 +68,7 @@ pub(super) fn del_col(s: &mut Session, _: &Value) -> CmdResult {
     let mut cols = std::collections::BTreeSet::new();
     for (rr, cc) in cells {
         let g = t.grid_col(rr, cc);
-        let span = t.rows.get(rr).and_then(|x| x.cells.get(cc)).map_or(1, wordcraft_doc::Cell::span);
+        let span = t.rows.get(rr).and_then(|x| x.cells.get(cc)).map_or(1, Cell::span);
         cols.extend(g..g.saturating_add(span).min(t.grid.len()));
     }
     if cols.is_empty() {
@@ -239,4 +240,138 @@ pub(super) fn split_table(s: &mut Session, _: &Value) -> CmdResult {
     s.doc.insert_block(story, &after.with_last(after.last() + 1), Block::Table(tail))?;
     s.sel = Selection::caret(Pos { story, path: after, off: 0 });
     sel_result(s)
+}
+
+/// Delete Cells: `shift` left (the caret's cell goes, a row's last cell stays), up (the column's
+/// content below moves up a row), or the entire row / column.
+pub(super) fn delete_cells(s: &mut Session, v: &Value) -> CmdResult {
+    match p::str(v, "shift").unwrap_or("left") {
+        "left" => delete_cell_left(s),
+        "up" => shift_up(s),
+        "row" => del_row(s, &Value::Null),
+        "column" => del_col(s, &Value::Null),
+        x => Err(CmdError::Params(format!("unknown shift `{x}` (left, up, row or column)"))),
+    }
+}
+
+/// Insert Cells: `shift` right (a cell before the caret's in its row), down (the column's content
+/// moves down a row, a row is added at the bottom), or an entire row above / column left.
+pub(super) fn insert_cells(s: &mut Session, v: &Value) -> CmdResult {
+    match p::str(v, "shift").unwrap_or("down") {
+        "right" => shift_right(s),
+        "down" => shift_down(s),
+        "row" => row(s, false),
+        "column" => col(s, false),
+        x => Err(CmdError::Params(format!("unknown shift `{x}` (right, down, row or column)"))),
+    }
+}
+
+fn delete_cell_left(s: &mut Session) -> CmdResult {
+    let (tp, r, c) = cell(s)?;
+    let story = s.sel.focus.story;
+    // A row's last cell stays.
+    if !s.doc.table(story, &tp).and_then(|t| t.rows.get(r)).is_some_and(|row| row.cells.len() > 1 && c < row.cells.len()) {
+        return fix_caret(s, &tp, r, 0);
+    }
+    let spans = text_spans(s, story, &[cell_prefix(&tp, r, c)]);
+    if let Some(done) = guard_delete(s, &spans)? {
+        return Ok(done);
+    }
+    if let Some(row) = s.doc.table_mut(story, &tp)?.rows.get_mut(r)
+        && c < row.cells.len()
+    {
+        row.cells.remove(c);
+    }
+    fix_caret(s, &tp, r, 0)
+}
+
+/// Shifting content between cells can't be tracked yet; refuse it with Track Changes on.
+fn refuse_tracked(s: &Session) -> Result<(), CmdError> {
+    if s.doc.settings.track_changes {
+        return Err(CmdError::Disabled("cells can't be shifted while Track Changes is on".into()));
+    }
+    Ok(())
+}
+
+/// The rows from `r` down that have a cell `c` (a ragged table's short rows are left alone), after
+/// checking that the content of those cells may move (locked content controls).
+fn column_rows(s: &mut Session, tp: &Path, r: usize, c: usize) -> Result<Vec<usize>, CmdError> {
+    refuse_tracked(s)?;
+    let story = s.sel.focus.story;
+    let Some(t) = s.doc.table(story, tp) else { return Err(CmdError::Failed("no table".into())) };
+    let rows: Vec<usize> = (r..t.rows.len()).filter(|&rr| t.rows.get(rr).is_some_and(|x| c < x.cells.len())).collect();
+    let prefixes: Vec<Vec<u32>> = rows.iter().map(|&rr| cell_prefix(tp, rr, c)).collect();
+    let spans = text_spans(s, story, &prefixes);
+    guard_delete(s, &spans)?;
+    Ok(rows)
+}
+
+/// Delete Cells › Shift cells up: in the caret's column, the content below moves up a row; the
+/// bottom cell is left empty. The row count stays.
+fn shift_up(s: &mut Session) -> CmdResult {
+    let (tp, r, c) = cell(s)?;
+    let rows = column_rows(s, &tp, r, c)?;
+    let t = s.doc.table_mut(s.sel.focus.story, &tp)?;
+    let mut moved = vec![para_block(Paragraph::new())];
+    for &rr in rows.iter().rev() {
+        if let Some(x) = t.rows.get_mut(rr).and_then(|row| row.cells.get_mut(c)) {
+            moved = std::mem::replace(&mut x.blocks, moved);
+        }
+    }
+    touch_cells(s, &tp)?;
+    fix_caret(s, &tp, r, c)
+}
+
+/// Insert Cells › Shift cells down: in the caret's column, the content from the caret's row down
+/// moves down a row into a new row added at the bottom; the caret's cell is left empty.
+fn shift_down(s: &mut Session) -> CmdResult {
+    let (tp, r, c) = cell(s)?;
+    let mut rows = column_rows(s, &tp, r, c)?;
+    let t = s.doc.table_mut(s.sel.focus.story, &tp)?;
+    let n = t.rows.len();
+    if n >= MAX_ROWS {
+        return Err(CmdError::Failed("the table has as many rows as it can".into()));
+    }
+    t.insert_row(n, n.saturating_sub(1));
+    // The new row takes the last cell's content even when the last row is short of the column.
+    if let Some(new) = t.rows.get_mut(n) {
+        while new.cells.len() <= c {
+            new.cells.push(Cell::empty());
+        }
+        rows.push(n);
+    }
+    let mut moved = vec![para_block(Paragraph::new())];
+    for &rr in &rows {
+        if let Some(x) = t.rows.get_mut(rr).and_then(|row| row.cells.get_mut(c)) {
+            moved = std::mem::replace(&mut x.blocks, moved);
+        }
+    }
+    touch_cells(s, &tp)?;
+    fix_caret(s, &tp, r, c)
+}
+
+/// Insert Cells › Shift cells right: an empty cell like the caret's goes before it in its row;
+/// the other rows are untouched.
+fn shift_right(s: &mut Session) -> CmdResult {
+    let (tp, r, c) = cell(s)?;
+    refuse_tracked(s)?;
+    let story = s.sel.focus.story;
+    let len = s.doc.table(story, &tp).and_then(|t| t.rows.get(r)).map_or(0, |row| row.cells.len());
+    if len >= MAX_COLS {
+        return Err(CmdError::Failed("the row has as many cells as it can".into()));
+    }
+    let prefixes: Vec<Vec<u32>> = (c..len).map(|cc| cell_prefix(&tp, r, cc)).collect();
+    let spans = text_spans(s, story, &prefixes);
+    guard_delete(s, &spans)?;
+    if let Some(row) = s.doc.table_mut(story, &tp)?.rows.get_mut(r)
+        && let Some(like) = row.cells.get(c)
+    {
+        let mut nc = Cell::empty();
+        nc.props = like.props.clone();
+        nc.props.span = 1;
+        nc.props.vmerge = wordcraft_doc::props::VMerge::None;
+        row.cells.insert(c, nc);
+    }
+    touch_cells(s, &tp)?;
+    fix_caret(s, &tp, r, c)
 }

@@ -21,16 +21,15 @@ use cells::{cell, with_cells, with_table};
 pub(crate) use cells::{cell_text, row_ends};
 pub(super) use clear::clear_range_cells;
 pub(crate) use clear::{backspace_cells, clear_cells};
-use clear::{cell_prefix, guard_delete, text_spans};
 use convert::{formula, from_text, quick_table, sort_table, to_text};
 pub use convert::{text_table_cells, text_table_lines};
-use layout::{autofit, borders, fix_caret, properties, set_column_widths};
+use layout::{autofit, borders, properties, set_column_widths};
 pub(crate) use layout::{sync_cell_widths, text_direction, touch_cells};
 pub(crate) use select::{extend_selection, grow_select_all, select_cell_first, select_range};
 use select::{select_cells, select_column};
 pub use structure::split_targets;
 pub(super) use structure::{col, row};
-use structure::{del_col, del_row, del_table, merge, split, split_table};
+use structure::{del_col, del_row, del_table, delete_cells, insert_cells, merge, split, split_table};
 pub(super) use structure::{delete_table_at, selected_table};
 
 fn in_table(s: &Session) -> Option<&'static str> {
@@ -47,24 +46,10 @@ pub fn specs() -> Vec<CommandSpec> {
         t(CommandSpec::new("table.deleteRow", "Delete Rows", "Table Layout › Rows & Columns › Delete", del_row)),
         t(CommandSpec::new("table.deleteColumn", "Delete Columns", "Table Layout › Rows & Columns › Delete", del_col)),
         t(CommandSpec::new("table.deleteTable", "Delete Table", "Table Layout › Rows & Columns › Delete", del_table)),
-        t(CommandSpec::new("table.deleteCells", "Delete Cells", "Table Layout › Rows & Columns › Delete", |s, _| {
-            let (tp, r, c) = cell(s)?;
-            let story = s.sel.focus.story;
-            // A row's last cell stays.
-            if !s.doc.table(story, &tp).and_then(|t| t.rows.get(r)).is_some_and(|row| row.cells.len() > 1 && c < row.cells.len()) {
-                return fix_caret(s, &tp, r, 0);
-            }
-            let spans = text_spans(s, story, &[cell_prefix(&tp, r, c)]);
-            if let Some(done) = guard_delete(s, &spans)? {
-                return Ok(done);
-            }
-            if let Some(row) = s.doc.table_mut(story, &tp)?.rows.get_mut(r)
-                && c < row.cells.len()
-            {
-                row.cells.remove(c);
-            }
-            fix_caret(s, &tp, r, 0)
-        })),
+        t(CommandSpec::new("table.insertCells", "Insert Cells", "Table Layout › Rows & Columns", insert_cells)
+            .params(r#"{"shift"?: "right|down|row|column"} (default down: the column's cells move down a row and a row is added at the bottom; right: the row's cells move right; row / column: Insert Above / Insert Left)"#)),
+        t(CommandSpec::new("table.deleteCells", "Delete Cells", "Table Layout › Rows & Columns › Delete", delete_cells)
+            .params(r#"{"shift"?: "left|up|row|column"} (default left: the row's cells move left, a row's last cell stays; up: the column's cells move up a row, the bottom one left empty; row / column: Delete Rows / Delete Columns)"#)),
         t(CommandSpec::new("table.merge", "Merge Cells", "Table Layout › Merge", merge)),
         t(CommandSpec::new("table.split", "Split Cells", "Table Layout › Merge", split)
             .params(r#"{"columns"?: n (2), "rows"?: n (1), "mergeFirst"?: bool (true: several selected cells are merged first)}"#)),

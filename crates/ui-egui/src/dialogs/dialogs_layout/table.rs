@@ -344,6 +344,42 @@ pub(super) fn split_cells_ui(app: &mut WordApp, ui: &mut Ui, f: &mut SplitCellsF
 }
 
 // ---------------------------------------------------------------------------------------------
+// Insert Cells / Delete Cells
+
+/// Insert Cells' options: (`shift` value, label).
+pub(super) const INSERT_CELLS: &[(&str, &str)] =
+    &[("right", "Shift cells right"), ("down", "Shift cells down"), ("row", "Insert entire row"), ("column", "Insert entire column")];
+/// Delete Cells' options: (`shift` value, label).
+pub(super) const DELETE_CELLS: &[(&str, &str)] =
+    &[("left", "Shift cells left"), ("up", "Shift cells up"), ("row", "Delete entire row"), ("column", "Delete entire column")];
+
+/// The Insert Cells or Delete Cells dialog's choice: the `shift` its command runs with.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CellsForm {
+    pub shift: String,
+}
+
+impl CellsForm {
+    /// The dialog with Word's default option; none outside a table.
+    pub fn read(app: &WordApp, default: &str) -> Option<CellsForm> {
+        app.session.sel.focus.path.cell()?;
+        Some(CellsForm { shift: default.to_string() })
+    }
+}
+
+pub(super) fn cells_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CellsForm, id: &str, options: &[(&str, &str)]) -> bool {
+    for (v, l) in options {
+        ui.radio_value(&mut f.shift, v.to_string(), tl!(l));
+    }
+    let (ok, cancel) = buttons(ui, "OK", true);
+    if ok {
+        return run(app, id, json!({"shift": f.shift}));
+    }
+    cancel
+}
+
+// ---------------------------------------------------------------------------------------------
 // Convert Text to Table
 
 /// The Convert Text to Table dialog's fields: the selected paragraphs (`lines`), where to
