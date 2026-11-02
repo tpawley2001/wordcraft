@@ -22,7 +22,7 @@ fn items(r: &Value, group: &str, heading: &str) -> Vec<String> {
 }
 
 fn select_all(s: &mut Session) {
-    run(s, "edit.selectAll", json!({}));
+    run(s, "select.all", json!({}));
 }
 
 #[test]
