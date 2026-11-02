@@ -132,9 +132,9 @@ pub(crate) struct Word6Fib {
     /// `fcMin`: where the text starts (non-complex files).
     pub(crate) fc_min: u32,
     pub(crate) ccp: SubDocs,
-    /// (fc, lcb) of `PlcfbteChpx`, `SttbfFfn` and the `Clx`, all in the WordDocument stream
-    /// (`PlcfbtePapx`, at 0xC0, is not read yet).
+    /// (fc, lcb) of the formatting bin tables, font table and Clx in WordDocument.
     pub(crate) bte_chpx: (u32, u32),
+    pub(crate) bte_papx: (u32, u32),
     pub(crate) sttbf_ffn: (u32, u32),
     pub(crate) clx: (u32, u32),
 }
@@ -244,6 +244,7 @@ impl Fib {
             fc_min: u32le(0x18),
             ccp: sub,
             bte_chpx: pair(0xB8),
+            bte_papx: pair(0xC0),
             sttbf_ffn: pair(0xD0),
             clx: pair(0x160),
         };
