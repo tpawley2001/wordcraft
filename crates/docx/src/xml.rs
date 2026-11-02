@@ -537,11 +537,19 @@ pub fn esc(s: &str) -> String {
 #[derive(Default)]
 pub struct W {
     pub s: String,
+    comment_starts: std::collections::HashMap<u32, (usize, usize)>,
+    comment_insertions: Vec<(usize, usize, u32)>,
+    comment_scopes: Vec<std::collections::HashMap<u32, (usize, usize)>>,
 }
 
 impl W {
     pub fn new() -> W {
-        W { s: String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n") }
+        W {
+            comment_starts: Default::default(),
+            comment_insertions: Vec::new(),
+            comment_scopes: Vec::new(),
+            s: String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"),
+        }
     }
     fn attrs(&mut self, attrs: &[(&str, &str)]) {
         for (k, v) in attrs {
@@ -585,8 +593,47 @@ impl W {
     pub fn raw(&mut self, s: &str) {
         self.s.push_str(s);
     }
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.s.into_bytes()
+    pub fn begin_comment_story(&mut self) {
+        self.comment_scopes.push(std::mem::take(&mut self.comment_starts));
+    }
+    pub fn end_comment_story(&mut self) {
+        self.comment_starts = self.comment_scopes.pop().unwrap_or_default();
+    }
+    /// Delay a range start until its end is actually written in this XML part.
+    pub fn comment_start(&mut self, id: u32) {
+        let order = self.comment_starts.len().saturating_add(self.comment_insertions.len());
+        self.comment_starts.entry(id).or_insert((self.s.len(), order));
+    }
+    pub fn comment_end(&mut self, id: u32) -> bool {
+        if let Some((pos, order)) = self.comment_starts.remove(&id) {
+            self.comment_insertions.push((pos, order, id));
+            true
+        } else {
+            false
+        }
+    }
+    /// Length after completing the range starts already paired in this part.
+    pub fn output_len(&self) -> usize {
+        self.comment_insertions.iter().fold(self.s.len(), |len, (_, _, id)| len.saturating_add(format!("<w:commentRangeStart w:id=\"{id}\"/>").len()))
+    }
+    pub fn into_bytes(mut self) -> Vec<u8> {
+        if self.comment_insertions.is_empty() {
+            return self.s.into_bytes();
+        }
+        self.comment_insertions.sort_by_key(|(pos, order, _)| (*pos, *order));
+        let mut out = String::new();
+        let mut from = 0;
+        for (pos, _, id) in self.comment_insertions {
+            if let Some(s) = self.s.get(from..pos) {
+                out.push_str(s);
+            }
+            out.push_str(&format!("<w:commentRangeStart w:id=\"{id}\"/>"));
+            from = pos;
+        }
+        if let Some(s) = self.s.get(from..) {
+            out.push_str(s);
+        }
+        out.into_bytes()
     }
 }
 

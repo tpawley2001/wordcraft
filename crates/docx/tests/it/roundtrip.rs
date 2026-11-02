@@ -2805,3 +2805,135 @@ fn drop_cap_options_round_trip() {
         (Some(4), Some(true), None, None)
     );
 }
+
+#[test]
+fn edited_comment_markers_save_once_and_balance_only_complete_ranges() {
+    use std::io::Read;
+    let mut doc = Document::new();
+    for id in 0..6 {
+        let part = doc.add_part(PartKind::Comment, vec![para_block(Paragraph::with_text("Review", CharProps::default()))]);
+        doc.comments.insert(id, Comment { part, ..Default::default() });
+    }
+    // Repeated ends, unmatched starts, an end before its start, and an orphan marker.
+    let objects = [
+        InlineObject::CommentStart { id: 0 },
+        InlineObject::CommentStart { id: 0 },
+        InlineObject::CommentEnd { id: 0 },
+        InlineObject::CommentEnd { id: 0 },
+        InlineObject::CommentStart { id: 1 },
+        InlineObject::CommentEnd { id: 2 },
+        InlineObject::CommentStart { id: 2 },
+        InlineObject::CommentStart { id: 3 },
+        InlineObject::CommentStart { id: 4 },
+        InlineObject::CommentEnd { id: 4 },
+        InlineObject::CommentEnd { id: 3 },
+        InlineObject::CommentEnd { id: 99 },
+    ];
+    let mut p = Paragraph::with_text("Body", CharProps::default());
+    for object in objects {
+        p.insert_object(p.text.len(), object, &CharProps::default()).unwrap();
+    }
+    doc.body = vec![para_block(p)];
+    for _ in 0..2 {
+        let bytes = wordcraft_docx::write(&doc).unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+        let mut body = String::new();
+        archive.by_name("word/document.xml").unwrap().read_to_string(&mut body).unwrap();
+        for id in 0..6 {
+            assert_eq!(body.matches(&format!("<w:commentReference w:id=\"{id}\"/>")).count(), 1, "{body}");
+            let start = format!("<w:commentRangeStart w:id=\"{id}\"/>");
+            let end = format!("<w:commentRangeEnd w:id=\"{id}\"/>");
+            let ranged = usize::from(matches!(id, 0 | 3 | 4));
+            assert_eq!(body.matches(&start).count(), ranged, "{body}");
+            assert_eq!(body.matches(&end).count(), ranged, "{body}");
+            if ranged == 1 {
+                assert!(body.find(&start).unwrap() < body.find(&end).unwrap());
+            }
+        }
+        assert!(!body.contains("w:id=\"99\""));
+        let mut extended = String::new();
+        archive.by_name("word/commentsExtended.xml").unwrap().read_to_string(&mut extended).unwrap();
+        assert_eq!(extended.matches("<w15:commentEx ").count(), 6);
+        let mut ids = String::new();
+        archive.by_name("word/commentsIds.xml").unwrap().read_to_string(&mut ids).unwrap();
+        assert_eq!(ids.matches("<w16cid:commentId ").count(), 6);
+        doc = wordcraft_docx::read(&bytes).unwrap();
+        assert_eq!(doc.comments.len(), 6);
+        assert_eq!(doc.body.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect::<String>(), "Body");
+    }
+}
+
+#[test]
+fn repeated_comment_ranges_follow_their_references_including_enclosed_marks() {
+    use crate::fixtures::zip;
+    let ns = r#"xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main""#;
+    let root_rels = br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#;
+    let rels = br#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>"#;
+    let comments = format!(
+        r#"<w:comments {ns}><w:comment w:id="8"><w:p><w:r><w:t>First</w:t></w:r></w:p></w:comment><w:comment w:id="8"><w:p><w:r><w:t>Second</w:t></w:r></w:p></w:comment><w:comment w:id="8"><w:p><w:r><w:t>Third</w:t></w:r></w:p></w:comment></w:comments>"#
+    );
+    let body = format!(
+        r#"<w:document {ns}><w:body><w:p><w:commentRangeStart w:id="8"/><w:r><w:t>A</w:t></w:r><w:commentRangeEnd w:id="8"/><w:r><w:commentReference w:id="8"/></w:r><w:commentRangeStart w:id="8"/><w:r><w:t>B</w:t><w:commentReference w:id="8"/></w:r><w:commentRangeEnd w:id="8"/><w:commentRangeStart w:id="8"/><w:r><w:t>C</w:t></w:r><w:commentRangeEnd w:id="8"/><w:r><w:t>D</w:t><w:commentReference w:id="8"/></w:r></w:p></w:body></w:document>"#
+    );
+    let bytes = zip(&[
+        ("_rels/.rels", root_rels),
+        ("word/document.xml", body.as_bytes()),
+        ("word/_rels/document.xml.rels", rels),
+        ("word/comments.xml", comments.as_bytes()),
+    ]);
+    let mut doc = wordcraft_docx::read(&bytes).unwrap();
+    for _ in 0..2 {
+        let p = doc.body[0].as_para().unwrap();
+        let ids: Vec<_> = p
+            .objects
+            .iter()
+            .filter_map(|o| match o {
+                InlineObject::CommentEnd { id } => Some(*id),
+                _ => None,
+            })
+            .collect();
+        let texts: Vec<_> = ids
+            .iter()
+            .map(|id| {
+                let c = &doc.comments[id];
+                doc.parts[&c.part].blocks[0].as_para().unwrap().plain_text()
+            })
+            .collect();
+        assert_eq!(texts, ["First", "Second", "Third"]);
+        let starts: Vec<_> = p
+            .objects
+            .iter()
+            .filter_map(|o| match o {
+                InlineObject::CommentStart { id } => Some(*id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(starts, ids[..2]);
+        assert_eq!(p.plain_text(), "ABCD");
+        doc = rt(&doc);
+    }
+}
+
+#[test]
+fn comment_ranges_do_not_join_separate_notes_in_the_same_part() {
+    use std::io::Read;
+    let mut doc = Document::new();
+    let comment = doc.add_part(PartKind::Comment, vec![para_block(Paragraph::with_text("Review", CharProps::default()))]);
+    doc.comments.insert(0, Comment { part: comment, ..Default::default() });
+    let mut body = Paragraph::new();
+    for object in [InlineObject::CommentStart { id: 0 }, InlineObject::CommentEnd { id: 0 }] {
+        let mut note = Paragraph::with_text("Note", CharProps::default());
+        note.insert_object(0, object, &CharProps::default()).unwrap();
+        let id = doc.add_part(PartKind::Footnote, vec![para_block(note)]);
+        body.insert_object(body.text.len(), InlineObject::NoteRef { kind: NoteKind::Footnote, id, custom: String::new() }, &CharProps::default())
+            .unwrap();
+    }
+    doc.body = vec![para_block(body)];
+    let bytes = wordcraft_docx::write(&doc).unwrap();
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+    let mut notes = String::new();
+    archive.by_name("word/footnotes.xml").unwrap().read_to_string(&mut notes).unwrap();
+    assert!(!notes.contains("commentRangeStart"), "{notes}");
+    assert!(!notes.contains("commentRangeEnd"), "{notes}");
+    assert_eq!(notes.matches("<w:commentReference ").count(), 1);
+}

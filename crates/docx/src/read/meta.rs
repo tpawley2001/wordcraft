@@ -189,23 +189,19 @@ impl Reader<'_> {
         let mut by_para: HashMap<String, u32> = HashMap::new();
         let mut next_id = 0u32;
         let mut entries: BTreeMap<u32, Comment> = BTreeMap::new();
-        // Ids given before this part, looked up rather than scanned for every generated id: a
-        // scan per comment made many non-numeric ids quadratic (#3692). Ids given here are in
-        // `entries`.
-        let given: HashSet<u32> = self.comment_map.values().copied().collect();
+        // Reserve numeric file ids before allocating replacements for repeated or nonnumeric
+        // ids, so a replacement cannot take a later comment's original id (#3692).
+        let given: HashSet<u32> = root.children("w:comment").filter_map(|c| c.attr("w:id")?.parse().ok()).collect();
         for c in root.children("w:comment") {
             if self.doc.parts.len() >= MAX_PARTS {
                 break;
             }
             let file_id = c.attr("w:id").unwrap_or("").to_string();
-            if self.comment_map.contains_key(&file_id) {
-                continue;
-            }
             let id = match file_id.parse::<u32>() {
                 Ok(v) if !entries.contains_key(&v) => v,
                 _ => {
                     while entries.contains_key(&next_id) || given.contains(&next_id) {
-                        next_id += 1;
+                        next_id = next_id.saturating_add(1);
                     }
                     next_id
                 }
@@ -230,7 +226,7 @@ impl Reader<'_> {
                     ..Default::default()
                 },
             );
-            self.comment_map.insert(file_id, id);
+            self.comment_map.entry(file_id).or_default().push_back(id);
         }
         if let Some(ext) = ext
             && let Ok(Some(x)) = self.xml(ext)

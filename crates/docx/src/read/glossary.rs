@@ -68,7 +68,6 @@ impl Reader<'_> {
         let footnotes = std::mem::take(&mut self.footnotes);
         let endnotes = std::mem::take(&mut self.endnotes);
         let comments = std::mem::take(&mut self.comment_map);
-        let ended = std::mem::take(&mut self.comments_ended);
         let bookmarks = std::mem::take(&mut self.bookmarks);
         let perms = std::mem::take(&mut self.perms);
         let moves = std::mem::take(&mut self.moves);
@@ -105,7 +104,6 @@ impl Reader<'_> {
         self.footnotes = footnotes;
         self.endnotes = endnotes;
         self.comment_map = comments;
-        self.comments_ended = ended;
         self.bookmarks = bookmarks;
         self.perms = perms;
         self.moves = moves;

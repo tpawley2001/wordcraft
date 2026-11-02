@@ -88,6 +88,7 @@ impl PartRels {
 
 pub(crate) struct Writer<'d> {
     doc: &'d Document,
+    comment_refs: std::collections::HashSet<u32>,
     /// Numbered display equations written so far (automatic numbers are written as text).
     pub(crate) eq_number: u32,
     /// Media key → file name under `word/media/`.

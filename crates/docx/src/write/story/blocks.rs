@@ -21,6 +21,9 @@ impl Writer<'_> {
             w.raw("<w:p/>");
             return;
         }
+        if depth == 0 {
+            w.begin_comment_story();
+        }
         let plan = crate::write::sdt::plan(bl);
         let toc = if top { written_toc_span(bl) } else { None };
         // Whether the heading's TOC field was written and still needs its end.
@@ -48,6 +51,9 @@ impl Writer<'_> {
         }
         if bl.last().is_none_or(|b| matches!(**b, Block::Table(_))) {
             self.write_trailing_para(w, depth);
+        }
+        if depth == 0 {
+            w.end_comment_story();
         }
     }
 

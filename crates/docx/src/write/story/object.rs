@@ -30,19 +30,15 @@ impl Writer<'_> {
             InlineObject::PermEnd { id } => w.empty("w:permEnd", &[("w:id", &id.to_string())]),
             InlineObject::CommentStart { id } => {
                 if self.doc.comments.contains_key(id) {
-                    w.empty("w:commentRangeStart", &[("w:id", &id.to_string())]);
+                    w.comment_start(*id);
                 }
             }
             InlineObject::CommentEnd { id } => {
-                if self.doc.comments.contains_key(id) {
-                    let s = id.to_string();
-                    w.empty("w:commentRangeEnd", &[("w:id", &s)]);
-                    w.open("w:r", &[]);
-                    w.open("w:rPr", &[]);
-                    w.val("w:rStyle", comment_reference_style(self.doc));
-                    w.close("w:rPr");
-                    w.empty("w:commentReference", &[("w:id", &s)]);
-                    w.close("w:r");
+                if self.doc.comments.contains_key(id) && self.comment_refs.insert(*id) {
+                    if w.comment_end(*id) {
+                        w.empty("w:commentRangeEnd", &[("w:id", &id.to_string())]);
+                    }
+                    self.comment_reference(w, *id);
                 }
             }
             InlineObject::Equation { linear, display, math } => {
@@ -442,5 +438,16 @@ mod standalone_ink_tests {
         let without = format!("<mc:AlternateContent {ns}><mc:Choice Requires=\"w14\"><w:drawing/></mc:Choice></mc:AlternateContent>");
         assert!(standalone_ink(&emb(&with)));
         assert!(!standalone_ink(&emb(&without)));
+    }
+}
+
+impl Writer<'_> {
+    pub(crate) fn comment_reference(&self, w: &mut W, id: u32) {
+        w.open("w:r", &[]);
+        w.open("w:rPr", &[]);
+        w.val("w:rStyle", comment_reference_style(self.doc));
+        w.close("w:rPr");
+        w.empty("w:commentReference", &[("w:id", &id.to_string())]);
+        w.close("w:r");
     }
 }
