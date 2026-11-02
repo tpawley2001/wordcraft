@@ -79,6 +79,11 @@ impl Reader<'_> {
             }
             for &(pos, cid) in &ev.refs {
                 let range = candidates.get(&pos).copied().flatten();
+                // Reference-only replies use their parent's model anchor. The writer still
+                // supplies one reference mark for each reply without adding a separate range.
+                if range.is_none() && self.doc.comments.get(&cid).is_some_and(|c| c.parent.is_some()) {
+                    continue;
+                }
                 assigned.insert(pos, (cid, range.is_some_and(|(_, end)| end != pos)));
                 if let Some((start, end)) = range {
                     assigned.insert(start, (cid, false));
