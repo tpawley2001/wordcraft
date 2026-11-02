@@ -16,8 +16,20 @@ impl Writer<'_> {
     /// A picture's `pic:pic` (the image in `media/{file}`), at `off` in its group (or 0, 0).
     pub(super) fn pic(&mut self, w: &mut W, o: &InlineObject, file: &str, off: (f32, f32), rels: &mut PartRels) {
         let InlineObject::Image { media, w: iw, h: ih, alt, crop, float, .. } = o else { return };
-        let rid = rels.add(rt::IMAGE, &format!("media/{file}"), false);
-        self.used_media.insert(media.clone());
+        // A picture linked to a file (ECMA-376 §20.1.8.13 `r:link`): an external relationship to
+        // it, and no media part.
+        let link = self.doc.linked_media.get(media).filter(|_| !self.doc.media.contains_key(media));
+        let (blip, rid, file) = match link {
+            Some(target) => {
+                let name = target.rsplit(['\\', '/']).next().filter(|n| !n.is_empty()).unwrap_or("Picture");
+                ("r:link", (!target.is_empty()).then(|| rels.add(rt::IMAGE, &link_target(target), true)), name.to_string())
+            }
+            None => {
+                self.used_media.insert(media.clone());
+                ("r:embed", Some(rels.add(rt::IMAGE, &format!("media/{file}"), false)), file.to_string())
+            }
+        };
+        let file = file.as_str();
         w.open("pic:pic", &[]);
         w.open("pic:nvPicPr", &[]);
         nv_props(w, "pic:cNvPr", "0", file, alt, &float.alt, float.hidden);
@@ -26,7 +38,10 @@ impl Writer<'_> {
         w.close("pic:cNvPicPr");
         w.close("pic:nvPicPr");
         w.open("pic:blipFill", &[]);
-        w.empty("a:blip", &[("r:embed", &rid)]);
+        match &rid {
+            Some(rid) => w.empty("a:blip", &[(blip, rid)]),
+            None => w.empty("a:blip", &[]),
+        }
         if crop.iter().any(|c| *c > 0.0) {
             let c = |v: f32| n((wordcraft_geom::finite(v).clamp(0.0, 1.0) * 100_000.0).round() as i64);
             w.empty("a:srcRect", &[("l", &c(crop[0])), ("t", &c(crop[1])), ("r", &c(crop[2])), ("b", &c(crop[3]))]);
@@ -584,4 +599,11 @@ pub(super) fn write_fill(w: &mut W, f: Option<&Fill>) {
             w.close("a:gradFill");
         }
     }
+}
+
+/// A linked picture's relationship target: a local or network path as a `file:` URI, as Word
+/// writes it; a URL as it is.
+fn link_target(path: &str) -> String {
+    let drive = matches!(path.as_bytes(), [d, b':', ..] if d.is_ascii_alphabetic());
+    if drive || path.starts_with("\\\\") { format!("file:///{path}") } else { path.to_string() }
 }

@@ -310,6 +310,14 @@ impl Exporter<'_> {
             vector_picture(self, s, &v, rect, crop, &clip, alpha);
             return;
         }
+        if self.doc.linked_media.contains_key(media) {
+            // A picture linked to a file we don't have: an empty frame of its size, as Word prints it.
+            s.set_fill(None);
+            s.set_stroke(Some(Stroke { paint: rgb::Color::new(0x40, 0x40, 0x40).into(), width: 0.75, ..Default::default() }));
+            s.draw_path(&clip);
+            s.set_stroke(None);
+            return;
+        }
         let Some(img) = self.image(media) else {
             s.set_stroke(None);
             s.set_fill(Some(fill(Rgb(0xD0, 0xD0, 0xD0), 1.0)));

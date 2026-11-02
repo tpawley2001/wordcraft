@@ -117,6 +117,11 @@ pub struct Document {
     /// Embedded media (images) by key. Native JSON writes each as base64 (`byte_store.rs`).
     #[serde(skip_serializing_if = "BTreeMap::is_empty", with = "byte_store")]
     pub media: BTreeMap<String, Arc<Vec<u8>>>,
+    /// Pictures linked to a file rather than embedded, by media key: the file's path or URL as
+    /// the source recorded it. Their bytes are not in `media` (the file is never fetched); they
+    /// keep their size and show as an empty frame, and DOCX saves them as `a:blip r:link`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub linked_media: BTreeMap<String, String>,
     /// Source-format parts we keep verbatim for round-trip (e.g. custom XML), by part name.
     #[serde(skip_serializing_if = "BTreeMap::is_empty", with = "byte_store")]
     pub passthrough: BTreeMap<String, Arc<Vec<u8>>>,

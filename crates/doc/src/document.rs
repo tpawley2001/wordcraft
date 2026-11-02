@@ -73,6 +73,7 @@ impl Document {
             footnote_separators: NoteSeparators::default(),
             endnote_separators: NoteSeparators::default(),
             media: BTreeMap::new(),
+            linked_media: BTreeMap::new(),
             passthrough: BTreeMap::new(),
             glossary: Vec::new(),
             media_index: MediaIndex::default(),
@@ -149,6 +150,7 @@ impl Document {
             footnote_separators,
             endnote_separators,
             media,
+            linked_media,
             passthrough,
             glossary,
             media_index: _,
@@ -168,6 +170,7 @@ impl Document {
             footnote_separators: other_footnotes,
             endnote_separators: other_endnotes,
             media: other_media,
+            linked_media: other_linked,
             passthrough: other_passthrough,
             glossary: other_glossary,
             media_index: _,
@@ -186,6 +189,7 @@ impl Document {
             && footnote_separators == other_footnotes
             && endnote_separators == other_endnotes
             && same_bytes(media, other_media)
+            && linked_media == other_linked
             && same_bytes(passthrough, other_passthrough)
             && same_glossary(glossary, other_glossary)
     }

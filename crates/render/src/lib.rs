@@ -783,6 +783,14 @@ fn draw_image(ctx: &mut RenderContext, fr: &Frame, it: &Draw) {
         draw_vector(ctx, &v, &r, crop, *alpha, view);
         return;
     }
+    if doc.linked_media.contains_key(media) {
+        // A picture linked to a file we don't have: an empty frame of its size, as Word shows it.
+        ctx.set_transform(view);
+        ctx.set_paint(color(fr.opts.ink(Rgb(0x40, 0x40, 0x40)), 1.0));
+        ctx.set_stroke(kurbo::Stroke::new(0.75));
+        ctx.stroke_rect(&r.inset(-0.375));
+        return;
+    }
     let Some(pm) = pixmap_for(doc, media) else {
         ctx.set_transform(view);
         ctx.set_paint(color(fr.opts.ink(Rgb(0xD0, 0xD0, 0xD0)), 1.0));

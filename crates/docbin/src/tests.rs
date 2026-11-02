@@ -13,6 +13,7 @@ mod drawing;
 mod encrypted;
 mod frames;
 mod header_guard;
+mod linked_pictures;
 mod metadata;
 mod ole_print;
 mod word6;

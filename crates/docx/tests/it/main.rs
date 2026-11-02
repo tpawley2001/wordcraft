@@ -18,6 +18,7 @@ mod glossary;
 mod heading_levels;
 mod legacy_forms;
 mod ligatures;
+mod linked_pictures;
 mod list_items;
 mod malformed;
 mod nested_txbx;
