@@ -258,6 +258,22 @@ fn adding_a_bookmark_again_moves_all_of_it() {
     assert_eq!(crate::cmd::references::bookmark_text(&s.doc, "Spot").as_deref(), Some("delta"));
 }
 
+/// Insert › Bookmark offers the visible bookmark added last; a refused name or a hidden one
+/// leaves the recorded name alone.
+#[test]
+fn a_refused_bookmark_name_keeps_the_last_added() {
+    let mut s = Session::new(wordcraft_doc::Document::from_text("Alpha beta gamma"));
+    assert_eq!(s.last_bookmark, None);
+    s.run("select.text", &json!({"text": "beta"})).unwrap();
+    s.run("insert.bookmark", &json!({"name": "Kept"})).unwrap();
+    assert_eq!(s.last_bookmark.as_deref(), Some("Kept"));
+    s.run("select.text", &json!({"text": "gamma"})).unwrap();
+    assert!(s.run("insert.bookmark", &json!({"name": "1bad"})).is_err());
+    assert_eq!(s.last_bookmark.as_deref(), Some("Kept"), "a refused name changes nothing");
+    s.run("insert.bookmark", &json!({"name": "_Hidden"})).unwrap();
+    assert_eq!(s.last_bookmark.as_deref(), Some("Kept"), "hidden names are never offered");
+}
+
 /// #3491: Bookmark names are validated by Unicode character count and character classes.
 #[test]
 fn bookmark_name_validation_rules() {

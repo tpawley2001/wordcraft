@@ -105,6 +105,37 @@ fn the_bookmark_dialog_goes_to_and_deletes_bookmarks() {
     assert_eq!(h.state().session.doc.bookmarks().len(), 3, "one undo step");
 }
 
+/// Insert › Bookmark, as in Word: with the caret in no bookmark the name box offers the
+/// bookmark added last, while it still exists; a bookmark around the caret still wins.
+#[test]
+fn the_bookmark_dialog_offers_the_bookmark_added_last() {
+    let name_box = |app: &mut WordApp| match Dialog::open("bookmark", app) {
+        Some(Dialog::Bookmark { name, .. }) => name,
+        _ => panic!("the Bookmark dialog opens"),
+    };
+    let mut app = app_with("Alpha beta gamma delta");
+    let _ = app.run("caret.docEnd", json!({}));
+    assert_eq!(name_box(&mut app), "", "nothing added yet");
+    for (word, name) in [("beta", "Zulu"), ("gamma", "Yankee"), ("Alpha", "_Hidden")] {
+        let _ = app.run("select.text", json!({"text": word}));
+        let _ = app.run("insert.bookmark", json!({"name": name}));
+    }
+    let _ = app.run("caret.docEnd", json!({}));
+    assert_eq!(name_box(&mut app), "Yankee", "the last visible bookmark added; hidden names are never offered");
+    let _ = app.run("select.text", json!({"text": "beta"}));
+    assert_eq!(name_box(&mut app), "Zulu", "the bookmark around the caret wins");
+    let _ = app.run("select.text", json!({"text": "delta"}));
+    let _ = app.run("insert.bookmark", json!({"name": "1bad"}));
+    let _ = app.run("caret.docEnd", json!({}));
+    assert_eq!(name_box(&mut app), "Yankee", "a refused name changes nothing");
+    let _ = app.run("select.text", json!({"text": "beta"}));
+    let _ = app.run("insert.bookmark", json!({"name": "Zulu"}));
+    let _ = app.run("caret.docEnd", json!({}));
+    assert_eq!(name_box(&mut app), "Zulu", "re-adding a name makes it the last added");
+    let _ = app.run("insert.deleteBookmark", json!({"name": "Zulu"}));
+    assert_eq!(name_box(&mut app), "", "a deleted last bookmark isn't offered");
+}
+
 /// #1904: with no bookmarks the list says so instead of a blank box.
 #[test]
 fn the_bookmark_dialog_says_when_there_are_no_bookmarks() {

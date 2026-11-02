@@ -2,15 +2,16 @@ use super::chrome::buttons;
 use super::{Sense, Tokens, Ui, WordApp, json, vec2};
 
 /// The innermost bookmark around the caret, which the Bookmark dialog opens on (as Word does);
-/// empty when the caret is in none.
+/// otherwise the bookmark added last, if it still exists; empty when there is neither.
 pub(super) fn bookmark_at_caret(s: &wordcraft_engine::Session) -> String {
     let at = &s.sel.focus;
-    s.doc
-        .bookmarks()
-        .into_iter()
+    let marks = s.doc.bookmarks();
+    marks
+        .iter()
         .rev()
         .find(|(name, start)| !name.starts_with('_') && start <= at && *at <= wordcraft_engine::cmd::insert::bookmark_span(&s.doc, name, start).1)
-        .map(|(name, _)| name)
+        .map(|(name, _)| name.clone())
+        .or_else(|| s.last_bookmark.clone().filter(|last| marks.iter().any(|(name, _)| name == last)))
         .unwrap_or_default()
 }
 

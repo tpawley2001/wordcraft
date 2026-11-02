@@ -53,6 +53,9 @@ pub struct Session {
     pub pending: Option<CharProps>,
     /// Last highlighter choice for the shortcut; palette state, outside document undo.
     pub(crate) last_highlight: wordcraft_doc::props::Highlight,
+    /// The visible bookmark `insert.bookmark` added last, which Insert › Bookmark offers when the
+    /// caret is in no bookmark (as Word does). Session state: not saved, not part of undo.
+    pub last_bookmark: Option<String>,
     pub path: Option<std::path::PathBuf>,
     /// Name given to a document not saved yet (File › Info › Rename): what Save suggests. A file
     /// name, not document metadata, so it is not part of the document or its undo history.

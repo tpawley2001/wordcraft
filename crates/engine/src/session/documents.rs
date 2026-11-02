@@ -264,6 +264,8 @@ impl Session {
             math_latex: _,
             math_normal_text: _,
             last_highlight: _,
+            // Only offered while a bookmark of that name exists in the active document.
+            last_bookmark: _,
             // Keyed by document id and revision, so one cache serves every document.
             protect_facts: _,
             // The input method talks to the window, whichever document it shows; the IME

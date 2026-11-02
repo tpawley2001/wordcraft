@@ -141,6 +141,7 @@ impl Session {
         copy.file_name = self.file_name.clone();
         copy.author = self.author.clone();
         copy.last_highlight = self.last_highlight;
+        copy.last_bookmark = self.last_bookmark.clone();
         copy.system_region = self.system_region.clone();
         copy.editing_lang = self.editing_lang.clone();
         // The copy shares the paragraph layouts, so only what the command changed is laid out.
