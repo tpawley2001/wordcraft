@@ -17,6 +17,7 @@ impl Session {
         self.doc.ensure_nonempty();
         self.password = None;
         self.file_name = None;
+        self.last_bookmark = None;
         // The old document's equation is gone: its editing session cannot carry over.
         self.math = None;
         self.sel = Selection::caret(self.doc.start_of(StoryRef::Body));
@@ -69,6 +70,8 @@ impl Session {
             view: _,
             pending: _,
             last_highlight: _,
+            // Dialog convenience, like the highlighter choice: not an edit.
+            last_bookmark: _,
             path: _,
             file_name: _,
             // The custom dictionary file, like the file path: host wiring, not an edit.

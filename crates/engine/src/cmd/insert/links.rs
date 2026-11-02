@@ -159,5 +159,8 @@ pub(super) fn bookmark(s: &mut Session, v: &Value) -> CmdResult {
     let end = s.doc.insert_object(&b, InlineObject::BookmarkEnd { name: name.clone() }, &props)?;
     s.doc.insert_object(&a, InlineObject::BookmarkStart { name: name.clone() }, &props)?;
     let _ = end;
+    if !name.starts_with('_') {
+        s.last_bookmark = Some(name);
+    }
     sel_result(s)
 }
