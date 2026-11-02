@@ -37,13 +37,13 @@ pub fn specs() -> Vec<CommandSpec> {
 }
 
 /// The paragraph props at the caret (the selection start for a selection).
-fn para_props(s: &Session) -> ParaProps {
+pub(super) fn para_props(s: &Session) -> ParaProps {
     let (a, _) = s.sel.ordered();
     s.doc.para_at(&a).map(|p| p.props.clone()).unwrap_or_default()
 }
 
 /// The direct character props at the caret (the first selected character for a selection).
-fn char_props(s: &Session) -> CharProps {
+pub(super) fn char_props(s: &Session) -> CharProps {
     let (a, b) = s.sel.ordered();
     if a == b {
         return s.caret_props();
@@ -73,7 +73,7 @@ fn differences<T: Serialize + DeserializeOwned>(direct: &T, skip: &[&str], base:
     out
 }
 
-fn style_name(s: &Session, id: &str) -> String {
+pub(super) fn style_name(s: &Session, id: &str) -> String {
     s.doc.styles.get(id).map(|st| st.name.clone()).unwrap_or_else(|| id.to_string())
 }
 
