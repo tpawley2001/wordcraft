@@ -321,14 +321,37 @@ fn table_sort_opens_its_dialog() {
     assert_eq!(a.run("table.sort", json!({})).unwrap(), json!({"pending": "tableSort"}));
     assert_eq!(first_column(&a), ["Name", "Bea", "Al", "Cy"], "nothing sorted yet");
     let LayoutDialog::Sort(mut f) = form(&mut a) else { panic!("sort") };
-    assert!(!f.header && f.column == 0 && !f.descending);
+    assert!(!f.header && f.keys[0].column == Some(0) && !f.keys[0].descending);
     assert_eq!(f.column_label(1), "Column 2");
     f.header = true;
     assert_eq!(f.column_label(1), "Score");
-    f.column = 1;
+    f.pick(0, Some(1));
     a.run("table.sort", f.params()).unwrap();
     assert_eq!(first_column(&a), ["Name", "Al", "Cy", "Bea"]);
     assert!(a.dialog.is_none());
+}
+
+/// Sort's Then by rows start at (none) and are only sent once a column is picked; picking a
+/// column sets its Type from the cells (Number when every body cell is a number).
+#[test]
+fn table_sort_sends_then_by_keys() {
+    let mut a = table_app(2, &["Name", "Score", "Bea", "10", "Al", "10", "Cy", "7"]);
+    a.run("table.sort", json!({})).unwrap();
+    let LayoutDialog::Sort(mut f) = form(&mut a) else { panic!("sort") };
+    assert_eq!((f.keys[1].column, f.keys[2].column), (None, None));
+    assert_eq!(f.params(), json!({"keys": [{"column": 0, "type": "text", "descending": false}], "header": false}));
+    f.header = true;
+    f.pick(0, Some(1));
+    assert_eq!(f.keys[0].kind, "number", "the header row is not a body cell");
+    f.keys[0].descending = true;
+    f.pick(1, Some(0));
+    assert_eq!(f.keys[1].kind, "text");
+    assert_eq!(
+        f.params(),
+        json!({"keys": [{"column": 1, "type": "number", "descending": true}, {"column": 0, "type": "text", "descending": false}], "header": true})
+    );
+    a.run("table.sort", f.params()).unwrap();
+    assert_eq!(first_column(&a), ["Name", "Al", "Bea", "Cy"]);
 }
 
 fn table_shape(a: &WordApp) -> Vec<usize> {

@@ -77,30 +77,68 @@ pub(super) fn formula_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FormulaForm) ->
 // ---------------------------------------------------------------------------------------------
 // Sort
 
-/// The table Sort dialog's fields: the column to sort by, the order and whether the first row is
-/// a header (kept in place). `headers` is the first row's text, which names the columns when it
-/// is a header.
+/// One key row of the Sort dialog (Sort by, Then by, Then by): its column (none: the row is
+/// not used), its Type (`text`, `number` or `date`) and its order.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SortKeyRow {
+    pub column: Option<usize>,
+    pub kind: &'static str,
+    pub descending: bool,
+}
+
+/// The table Sort dialog's fields: up to three keys, and whether the first row is a header
+/// (kept in place). `headers` is the first row's text, which names the columns when it is a
+/// header; `columns` is every column's cell text, for each key's default Type.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SortForm {
-    pub column: usize,
-    pub descending: bool,
+    pub keys: [SortKeyRow; 3],
     pub header: bool,
     pub headers: Vec<String>,
+    pub columns: Vec<Vec<String>>,
+    pub lang: Option<String>,
 }
+
+/// The Sort dialog's Types, as `table.sort` names them.
+const SORT_TYPES: [&str; 3] = ["text", "number", "date"];
 
 impl SortForm {
     /// The caret's table; none outside a table.
     pub fn read(app: &WordApp) -> Option<SortForm> {
         let s = &app.session;
         let (tp, _, _) = s.sel.focus.path.cell()?;
-        let first = s.doc.table(s.sel.focus.story, &tp)?.rows.first()?;
-        let headers = first
-            .cells
-            .iter()
-            .map(|c| c.blocks.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect::<Vec<_>>().join(" ").trim().to_string())
-            .collect();
-        Some(SortForm { column: 0, descending: false, header: first.props.header, headers })
+        let t = s.doc.table(s.sel.focus.story, &tp)?;
+        let first = t.rows.first()?;
+        let text = |c: &wordcraft_engine::doc::Cell| {
+            c.blocks.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect::<Vec<_>>().join(" ").trim().to_string()
+        };
+        let headers: Vec<String> = first.cells.iter().map(text).collect();
+        let columns = (0..headers.len()).map(|i| t.rows.iter().map(|r| r.cells.get(i).map(text).unwrap_or_default()).collect()).collect();
+        let none = SortKeyRow { column: None, kind: "text", descending: false };
+        let mut f = SortForm {
+            keys: [none.clone(), none.clone(), none],
+            header: first.props.header,
+            headers,
+            columns,
+            lang: wordcraft_engine::cmd::default_lang(s),
+        };
+        f.pick(0, Some(0));
+        Some(f)
+    }
+
+    /// Key row `row` sorts by `column` (none: the row is not used); its Type becomes the
+    /// column's: Number when every body cell holds a number, Date when every one holds a
+    /// date, else Text.
+    pub fn pick(&mut self, row: usize, column: Option<usize>) {
+        let skip = usize::from(self.header);
+        let kind = column
+            .and_then(|c| self.columns.get(c))
+            .map_or("text", |cells| wordcraft_engine::cmd::table::sort_type(cells.iter().skip(skip).map(String::as_str), self.lang.as_deref()));
+        if let Some(k) = self.keys.get_mut(row) {
+            k.column = column;
+            k.kind = kind;
+        }
     }
 
     /// A column's name in Sort by: its header text, or `Column n`.
@@ -111,26 +149,56 @@ impl SortForm {
         }
     }
 
-    /// `table.sort` parameters for OK.
+    /// `table.sort` parameters for OK: the key rows with a column.
     pub fn params(&self) -> Value {
-        json!({"column": self.column, "descending": self.descending, "header": self.header})
+        let keys: Vec<Value> =
+            self.keys.iter().filter_map(|k| k.column.map(|c| json!({"column": c, "type": k.kind, "descending": k.descending}))).collect();
+        json!({"keys": keys, "header": self.header})
+    }
+}
+
+fn sort_type_label(kind: &str) -> &'static str {
+    match kind {
+        "number" => tl!("Number"),
+        "date" => tl!("Date"),
+        _ => tl!("Text"),
     }
 }
 
 pub(super) fn sort_ui(app: &mut WordApp, ui: &mut Ui, f: &mut SortForm) -> bool {
-    heading(ui, "Sort by");
-    ui.horizontal(|ui| {
-        craft_ui::ComboBox::from_id_salt("sort_column").selected_text(f.column_label(f.column)).width(180.0).show_ui(ui, |ui| {
-            for i in 0..f.headers.len() {
-                let label = f.column_label(i);
-                ui.selectable_value(&mut f.column, i, label);
+    for row in 0..f.keys.len() {
+        heading(ui, if row == 0 { "Sort by" } else { "Then by" });
+        let Some(key) = f.keys.get(row).cloned() else { continue };
+        let mut column = key.column;
+        ui.horizontal(|ui| {
+            let selected = column.map_or_else(|| tl!("(none)").to_string(), |c| f.column_label(c));
+            craft_ui::ComboBox::from_id_salt(("sort_column", row)).selected_text(selected).width(180.0).show_ui(ui, |ui| {
+                if row > 0 {
+                    ui.selectable_value(&mut column, None, tl!("(none)"));
+                }
+                for i in 0..f.headers.len() {
+                    let label = f.column_label(i);
+                    ui.selectable_value(&mut column, Some(i), label);
+                }
+            });
+            if column != key.column {
+                f.pick(row, column);
             }
+            let Some(k) = f.keys.get_mut(row) else { return };
+            ui.add_enabled_ui(k.column.is_some(), |ui| {
+                ui.label(tl!("Type:"));
+                craft_ui::ComboBox::from_id_salt(("sort_type", row)).selected_text(sort_type_label(k.kind)).width(90.0).show_ui(ui, |ui| {
+                    for kind in SORT_TYPES {
+                        ui.selectable_value(&mut k.kind, kind, sort_type_label(kind));
+                    }
+                });
+                ui.vertical(|ui| {
+                    ui.radio_value(&mut k.descending, false, tl!("Ascending"));
+                    ui.radio_value(&mut k.descending, true, tl!("Descending"));
+                });
+            });
         });
-        ui.vertical(|ui| {
-            ui.radio_value(&mut f.descending, false, tl!("Ascending"));
-            ui.radio_value(&mut f.descending, true, tl!("Descending"));
-        });
-    });
+    }
     heading(ui, "My list has");
     ui.horizontal(|ui| {
         ui.radio_value(&mut f.header, true, tl!("Header row"));

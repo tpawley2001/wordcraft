@@ -19,6 +19,7 @@ mod mark_toc_entry;
 mod negative_margins;
 mod reveal_formatting;
 mod revision_checks;
+mod table_sort_keys;
 mod typing;
 mod wordart;
 
