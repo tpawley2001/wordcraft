@@ -10,6 +10,7 @@ use super::read;
 mod cfb_tolerance;
 mod char_styles;
 mod drawing;
+mod empty_inline_shape;
 mod encrypted;
 mod frames;
 mod header_guard;

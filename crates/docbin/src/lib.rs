@@ -710,6 +710,23 @@ fn inline_picture(ctx: &WalkCtx<'_>, cp: u32, open: Option<bool>, object_id: &mu
         (p, _) => p,
     };
     match pic {
+        // A shape with no picture: an invisible inline object that keeps its size on the line.
+        Some(p) if p.empty => {
+            pb.push('\u{FFFC}', CharProps::default());
+            pb.objects.push(InlineObject::Shape {
+                kind: Default::default(),
+                w: p.w,
+                h: p.h,
+                fill: None,
+                stroke: None,
+                stroke_width: 0.0,
+                float: Default::default(),
+                story: None,
+                freeform: None,
+                effects: Default::default(),
+                extra: Default::default(),
+            });
+        }
         Some(p) => {
             // Every anchor of a picture gets its own copy of the alt text; the
             // copies are charged to the work budget (#3709).

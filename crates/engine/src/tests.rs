@@ -17,6 +17,7 @@ mod fonts;
 mod ime_noop;
 mod mark_toc_entry;
 mod negative_margins;
+mod reveal_formatting;
 mod revision_checks;
 mod typing;
 mod wordart;

@@ -88,9 +88,11 @@ impl Default for Pictures {
 }
 
 /// An inline picture: its media key, display size (points), crop fractions and alt text.
+/// `empty` marks a shape with no picture at all: an invisible object of its size (no key).
 #[derive(Clone, Debug)]
 pub(crate) struct Inline {
     pub(crate) key: String,
+    pub(crate) empty: bool,
     pub(crate) w: f32,
     pub(crate) h: f32,
     pub(crate) crop: [f32; 4],
@@ -129,13 +131,14 @@ impl Pictures {
             Found::Range(pic) => {
                 let bytes = data.get(pic.range.clone()).filter(|b| b.len() <= room)?.to_vec();
                 let key = self.insert(bytes, pic.ext, false)?;
-                Some(Inline { key, w: pic.w, h: pic.h, crop: [0.0; 4], alt: String::new() })
+                Some(Inline { key, empty: false, w: pic.w, h: pic.h, crop: [0.0; 4], alt: String::new() })
             }
-            Found::Shape { w, h, key, props } => Some(Inline { key: key?, w, h, crop: props.crop, alt: props.alt }),
+            Found::Shape { w, h, key, props } => Some(Inline { key: key?, empty: false, w, h, crop: props.crop, alt: props.alt }),
+            Found::Empty { w, h, props } => Some(Inline { key: String::new(), empty: true, w, h, crop: [0.0; 4], alt: props.alt }),
             Found::Linked { w, h, path, props } => {
                 let key = format!("link{}", self.links.len() + 1);
                 self.links.insert(key.clone(), path);
-                Some(Inline { key, w, h, crop: props.crop, alt: props.alt })
+                Some(Inline { key, empty: false, w, h, crop: props.crop, alt: props.alt })
             }
         }
     }
@@ -152,7 +155,7 @@ impl Pictures {
             self.by_ole.insert(id, key);
         }
         let key = self.by_ole.get(&id)?.clone()?;
-        Some(Inline { key, ..shown.clone() })
+        Some(Inline { key, empty: false, ..shown.clone() })
     }
 
     /// The media key of BLIP store entry `pib` (1-based), decoding it the first time; `delay`
@@ -235,6 +238,14 @@ enum Found {
         path: String,
         props: officeart::Props,
     },
+    /// A shape with no picture, not linked and not a horizontal line (some writers put one
+    /// after a text box anchored as a character): Word lays it out as an invisible object of
+    /// its size, so its line keeps the room.
+    Empty {
+        w: f32,
+        h: f32,
+        props: officeart::Props,
+    },
 }
 
 /// `PICF.mfpf.mm` values of pictures stored as a shape (`MM_SHAPE`) or a shape with a file
@@ -275,11 +286,15 @@ fn locate(data: &[u8], fc_pic: u32, pics: &mut Pictures) -> Option<Found> {
         return match blip {
             Some(key) => Some(Found::Shape { w, h, key, props }),
             // No BLIP: a picture linked to a file ([MS-ODRAW] §2.3.23.3 `pibFlags` LinkToFile,
-            // or a file name) is kept at its size; a horizontal line, or anything else, isn't.
+            // or a file name) is kept at its size; so is a shape with no picture at all, drawn
+            // as nothing. A horizontal line isn't.
             None => {
-                let linked = props.pib_flags.is_some_and(|f| f & 0x8 != 0) || !props.pib_name.is_empty() || mm == MM_SHAPEFILE;
-                if !linked || props.horiz_rule {
+                if props.horiz_rule {
                     return None;
+                }
+                let linked = props.pib_flags.is_some_and(|f| f & 0x8 != 0) || !props.pib_name.is_empty() || mm == MM_SHAPEFILE;
+                if !linked {
+                    return Some(Found::Empty { w, h, props });
                 }
                 let path = if props.pib_name.is_empty() { file } else { props.pib_name.clone() };
                 Some(Found::Linked { w, h, path, props })

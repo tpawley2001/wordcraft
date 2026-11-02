@@ -34,6 +34,7 @@ pub mod paste;
 pub mod phonetic;
 pub mod protect;
 pub mod references;
+pub mod reveal;
 pub mod review;
 pub mod shape_fill;
 pub mod smart_art;
@@ -71,6 +72,7 @@ pub fn registry() -> Registry {
     v.extend(para::specs());
     v.extend(lists::specs());
     v.extend(inspector::specs());
+    v.extend(reveal::specs());
     v.extend(view::specs());
     v.extend(outline::specs());
     v.extend(insert::specs());
