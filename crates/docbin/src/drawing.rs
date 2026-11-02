@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use wordcraft_doc::fill::Fill;
-use wordcraft_doc::para::{Anchor, Float, FloatAlign, GroupChild, InlineObject, ShapeKind, Wrap};
+use wordcraft_doc::para::{Anchor, Float, FloatAlign, GroupChild, InlineObject, ShapeKind, Wrap, WrapText};
 use wordcraft_doc::props::Rgb;
 
 use crate::media::Pictures;
@@ -130,6 +130,7 @@ fn spa_float(flags: u16, p: &crate::officeart::Props) -> Float {
     let bx = (flags >> 1) & 3;
     let by = (flags >> 3) & 3;
     let wr = (flags >> 5) & 0xF;
+    let wrk = (flags >> 9) & 0xF;
     let below = flags & (1 << 14) != 0;
     let wrap = match wr {
         1 => Wrap::TopAndBottom,
@@ -143,6 +144,13 @@ fn spa_float(flags: u16, p: &crate::officeart::Props) -> Float {
         4 => Wrap::Tight,
         5 => Wrap::Through,
         _ => Wrap::Square,
+    };
+    // wrk: the sides text may use, for square (2), tight (4) and through (5) wrapping.
+    let wrap_text = match (wr, wrk) {
+        (2 | 4 | 5, 1) => WrapText::Left,
+        (2 | 4 | 5, 2) => WrapText::Right,
+        (2 | 4 | 5, 3) => WrapText::Largest,
+        _ => WrapText::BothSides,
     };
     let h_rel = match p.posrelh.unwrap_or(bx as u32) {
         0 => Anchor::Margin,
@@ -169,6 +177,7 @@ fn spa_float(flags: u16, p: &crate::officeart::Props) -> Float {
     let [dl, dt, dr, db] = p.wrap_dist;
     Float {
         wrap,
+        wrap_text,
         h_rel,
         v_rel,
         h_align: align(p.posh),

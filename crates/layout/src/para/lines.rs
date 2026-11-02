@@ -998,8 +998,8 @@ fn row_spans(exclusions: &[Exclusion], top: f32, h: f32, table_h: f32, lo: f32, 
         let text_left = match e.side {
             WrapText::Left => true,
             WrapText::Right => false,
-            // The side with more room on this line (left on a tie).
-            _ => left - lo >= hi - right,
+            // The side with more room on this line (right on a tie, as Word does).
+            _ => left - lo > hi - right,
         };
         taken.truncate(first);
         taken.push(if text_left { (left, hi.max(right), e.bottom) } else { (lo.min(left), right, e.bottom) });
@@ -1021,4 +1021,51 @@ fn row_spans(exclusions: &[Exclusion], top: f32, h: f32, table_h: f32, lo: f32, 
         return Err(taken.iter().map(|t| t.2).reduce(f32::min).unwrap_or(top));
     }
     Ok(spans.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use wordcraft_doc::para::{Anchor, Float, InlineObject, ShapeKind, Wrap, WrapText};
+    use wordcraft_doc::{Document, Pos};
+
+    use crate::{LayoutCache, LayoutOptions, Placed, layout};
+
+    /// Two `Largest` floats on the same lines, each with its narrower side facing outwards: each
+    /// keeps text off that side, so the text sits between them (as Word lays out a `.doc` whose
+    /// `Spa`s have wrk 3).
+    #[test]
+    fn largest_wrap_floats_side_by_side_keep_text_between_them() {
+        let mut d = Document::from_text(&"Words flow around the shapes here. ".repeat(40));
+        // A at 20 (20pt free on its left), B at 300 (68pt free on its right) in the 468pt column.
+        for x in [20.0, 300.0] {
+            let float = Float {
+                wrap: Wrap::Square,
+                wrap_text: WrapText::Largest,
+                x,
+                h_rel: Anchor::Column,
+                v_rel: Anchor::Paragraph,
+                dist: 9.0,
+                ..Default::default()
+            };
+            let shape = InlineObject::Shape {
+                kind: ShapeKind::Rectangle,
+                w: 100.0,
+                h: 100.0,
+                fill: None,
+                stroke: None,
+                stroke_width: 1.0,
+                float,
+                story: None,
+                effects: Default::default(),
+                freeform: None,
+                extra: Default::default(),
+            };
+            d.insert_object(&Pos::body(0, 0), shape, &Default::default()).unwrap();
+        }
+        let l = layout(&d, &mut LayoutCache::new(), &LayoutOptions::default());
+        let Some(Placed::Lines { para, .. }) = l.pages[0].items.iter().find(|i| matches!(i, Placed::Lines { .. })) else { panic!("no lines") };
+        let beside: Vec<_> = para.lines.iter().filter(|ln| ln.top < 100.0).map(|ln| (ln.left, ln.right)).collect();
+        // Between A's right edge and distance (20 + 100 + 9) and B's left edge less its distance.
+        assert!(!beside.is_empty() && beside.iter().all(|&(a, b)| a >= 129.0 - 0.01 && b <= 291.0 + 0.01), "{beside:?}");
+    }
 }
