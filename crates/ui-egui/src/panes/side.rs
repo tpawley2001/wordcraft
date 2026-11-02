@@ -72,6 +72,9 @@ pub(super) fn styles(app: &mut WordApp, ui: &mut Ui) {
     if ui.selectable_label(app.session.view.style_inspector, tl!("Style Inspector")).clicked() {
         let _ = app.run("styles.inspector", json!({}));
     }
+    if ui.selectable_label(app.session.view.reveal_formatting_pane, tl!("Reveal Formatting")).clicked() {
+        let _ = app.run("view.revealFormattingPane", json!({}));
+    }
     ui.separator();
     let mut list: Vec<(String, String, bool, bool)> = app
         .session

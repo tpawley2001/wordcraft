@@ -21,6 +21,7 @@ mod comments;
 mod host;
 mod inspector;
 mod nav;
+mod reveal;
 mod side;
 mod state;
 
@@ -36,6 +37,7 @@ use inspector::inspector;
 use nav::nav;
 #[cfg(test)]
 use nav::{nav_heading, nav_headings, visible_headings};
+use reveal::reveal;
 use side::{clipboard, styles};
 pub(crate) use state::float_rect;
 #[cfg(test)]
@@ -52,6 +54,7 @@ pub enum Pane {
     Clipboard,
     Styles,
     StyleInspector,
+    RevealFormatting,
     Accessibility,
     AltText,
     FormatShape,
@@ -67,6 +70,7 @@ impl Pane {
             Self::Clipboard => "Clipboard",
             Self::Styles => "Styles",
             Self::StyleInspector => "Style Inspector",
+            Self::RevealFormatting => "Reveal Formatting",
             Self::Accessibility => "Accessibility",
             Self::AltText => "Alt Text",
             Self::FormatShape => "Format Shape",
@@ -82,6 +86,7 @@ impl Pane {
             Self::Clipboard => (Edge::Start, 250.0),
             Self::Styles => (Edge::End, 250.0),
             Self::StyleInspector => (Edge::End, 240.0),
+            Self::RevealFormatting => (Edge::End, 260.0),
             Self::Accessibility => (Edge::End, 280.0),
             Self::AltText => (Edge::End, 260.0),
             Self::FormatShape => (Edge::End, 280.0),
@@ -99,6 +104,7 @@ impl Pane {
             Self::Clipboard => "clipboard",
             Self::Styles => "styles",
             Self::StyleInspector => "styleInspector",
+            Self::RevealFormatting => "revealFormatting",
             Self::Accessibility => "accessibility",
             Self::AltText => "altText",
             Self::FormatShape => "formatShape",
@@ -107,12 +113,13 @@ impl Pane {
         }
     }
 
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 11] = [
         Self::SmartArtText,
         Self::Navigation,
         Self::Clipboard,
         Self::Styles,
         Self::StyleInspector,
+        Self::RevealFormatting,
         Self::Accessibility,
         Self::AltText,
         Self::FormatShape,
@@ -132,6 +139,7 @@ impl Pane {
             Self::Clipboard => Some("edit.clipboardPane"),
             Self::Styles => Some("view.stylesPane"),
             Self::StyleInspector => Some("styles.inspector"),
+            Self::RevealFormatting => Some("view.revealFormattingPane"),
             Self::Accessibility => Some("view.accessibilityPane"),
             Self::AltText => Some("view.altTextPane"),
             Self::FormatShape => Some("view.formatShapePane"),
@@ -154,6 +162,7 @@ impl PaneContent<Pane> for Content<'_> {
             Pane::Clipboard => clipboard(app, ui),
             Pane::Styles => styles(app, ui),
             Pane::StyleInspector => inspector(app, ui),
+            Pane::RevealFormatting => reveal(app, ui),
             Pane::Accessibility => crate::a11y_pane::accessibility(app, ui),
             Pane::AltText => crate::a11y_pane::alt_text(app, ui),
             Pane::FormatShape => {

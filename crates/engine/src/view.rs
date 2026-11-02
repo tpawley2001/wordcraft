@@ -29,6 +29,9 @@ pub struct ViewState {
     /// Style Inspector pane (Home › Styles).
     #[serde(default)]
     pub style_inspector: bool,
+    /// Reveal Formatting pane (Home › Styles, Shift+F1).
+    #[serde(default)]
+    pub reveal_formatting_pane: bool,
     pub comments_pane: bool,
     /// The Clipboard pane (Home › Clipboard): items collected by Copy and Cut.
     #[serde(default)]
@@ -180,6 +183,7 @@ impl Default for ViewState {
             styles_pane: false,
             styles_pane_dock: StylesPaneDock::Right,
             style_inspector: false,
+            reveal_formatting_pane: false,
             comments_pane: false,
             clipboard_pane: false,
             smart_art_pane: false,

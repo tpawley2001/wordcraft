@@ -5,10 +5,23 @@ use serde_json::{Value, json};
 use wordcraft_doc::props::{Align, LineSpacing, TextColor, Underline, VertAlign};
 
 use super::inspector::{char_props, para_props, style_name};
-use crate::{CommandSpec, Session};
+use crate::{CommandSpec, Session, p};
 
 pub fn specs() -> Vec<CommandSpec> {
-    vec![CommandSpec::new("format.reveal", "Reveal Formatting", "Home › Styles › Reveal Formatting", |s, _| Ok(reveal(s))).pure()]
+    vec![
+        CommandSpec::new("format.reveal", "Reveal Formatting", "Home › Styles › Reveal Formatting", |s, _| Ok(reveal(s))).pure(),
+        CommandSpec::new("view.revealFormattingPane", "Reveal Formatting", "Home › Styles", |s, v| {
+            s.view.reveal_formatting_pane = p::bool(v, "value").unwrap_or(!s.view.reveal_formatting_pane);
+            let mut out = reveal(s);
+            if let Value::Object(m) = &mut out {
+                m.insert("pane".into(), json!(s.view.reveal_formatting_pane));
+            }
+            Ok(out)
+        })
+        .params(r#"{"value"?: bool (show/hide the pane)}"#)
+        .key("Shift+F1")
+        .pure(),
+    ]
 }
 
 /// A number as Word prints it: at most two decimals, no trailing zeros (`14`, `10.5`).
