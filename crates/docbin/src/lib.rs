@@ -413,6 +413,7 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
     }
 
     doc.media.extend(pics.media);
+    doc.linked_media.extend(pics.links);
     doc.body = table::assemble(paras);
     doc.ensure_nonempty();
     work.log();

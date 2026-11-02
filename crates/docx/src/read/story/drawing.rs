@@ -252,7 +252,10 @@ impl Reader<'_> {
     fn read_pic(&mut self, pic: &El, rels: &Rels, w: f32, h: f32, alt: String, mut float: Float) -> Option<InlineObject> {
         let blip = pic.find("a:blip")?;
         float.set_spin(xfrm_spin(pic.find("pic:spPr")));
-        let media = blip.attr("r:embed").and_then(|id| self.media_for(rels, id))?;
+        let media = blip
+            .attr("r:embed")
+            .and_then(|id| self.media_for(rels, id))
+            .or_else(|| blip.attr("r:link").and_then(|id| self.linked_media_for(rels, id)))?;
         let mut crop = [0.0f32; 4];
         if let Some(sr) = pic.find("a:srcRect") {
             for (i, n) in ["l", "t", "r", "b"].iter().enumerate() {

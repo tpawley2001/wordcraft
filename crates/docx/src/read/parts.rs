@@ -124,6 +124,25 @@ impl Reader<'_> {
         Some(key)
     }
 
+    /// The media key of a picture linked to an external file (`a:blip r:link`): it is never
+    /// fetched, so the picture keeps its size and shows as a frame (`Document::linked_media`).
+    pub fn linked_media_for(&mut self, rels: &Rels, id: &str) -> Option<String> {
+        let rel = rels.by_id(id).filter(|r| r.external)?;
+        let cached = format!("\0link:{}", rel.target);
+        if let Some(k) = self.media_by_path.get(&cached) {
+            return Some(k.clone());
+        }
+        let mut n = self.doc.linked_media.len().saturating_add(1);
+        let mut key = format!("link{n}");
+        while self.doc.media.contains_key(&key) || self.doc.linked_media.contains_key(&key) {
+            n = n.saturating_add(1);
+            key = format!("link{n}");
+        }
+        self.doc.linked_media.insert(key.clone(), rel.target.clone());
+        self.media_by_path.insert(cached, key.clone());
+        Some(key)
+    }
+
     /// A chart or diagram part, parsed once however often it's referenced (`None` when unreadable).
     pub(super) fn graphic_part(&mut self, path: &str) -> Option<Arc<El>> {
         if let Some(p) = self.graphic_parts.get(path) {

@@ -341,6 +341,12 @@ pub(crate) struct Props {
     pub(crate) wrap_dist: [Option<u32>; 4],
     /// `wzDescription`: the alternative text.
     pub(crate) alt: String,
+    /// `pibName`: the file a picture is linked to.
+    pub(crate) pib_name: String,
+    /// `pibFlags` ([MS-ODRAW] §2.3.23.3): how `pibName` is used (0x8: linked to the file).
+    pub(crate) pib_flags: Option<u32>,
+    /// `fHorizRule` (Group Shape Boolean Properties): Word's horizontal line, not a picture.
+    pub(crate) horiz_rule: bool,
 }
 
 impl Props {
@@ -356,12 +362,17 @@ impl Props {
             if opid & 0x8000 != 0 {
                 let start = complex_at;
                 complex_at = complex_at.saturating_add(op as usize);
-                if pid == 0x0381 {
+                if pid == 0x0381 || pid == 0x0105 {
                     let end = complex_at.min(body.len());
                     if let Some(data) = body.get(start..end) {
                         let units: Vec<u16> =
                             data.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).take_while(|u| *u != 0).take(4096).collect();
-                        self.alt = String::from_utf16_lossy(&units);
+                        let text = String::from_utf16_lossy(&units);
+                        if pid == 0x0381 {
+                            self.alt = text;
+                        } else {
+                            self.pib_name = text;
+                        }
                     }
                 }
                 continue;
@@ -376,6 +387,7 @@ impl Props {
                     self.crop[slot] = if v.is_finite() { v.clamp(0.0, 0.99) } else { 0.0 };
                 }
                 0x0104 => self.pib = Some(op),
+                0x0106 => self.pib_flags = Some(op),
                 0x0181 => self.fill_color = color(op),
                 // fFilled (bit 4) is valid when fUsefFilled (bit 20) is set.
                 0x01BF if op & (1 << 20) != 0 => self.filled = Some(op & (1 << 4) != 0),
@@ -386,6 +398,8 @@ impl Props {
                 // fLine (bit 3) is valid when fUsefLine (bit 19) is set.
                 0x01FF if op & (1 << 19) != 0 => self.line = Some(op & (1 << 3) != 0),
                 0x01FF => {}
+                // fHorizRule (bit 11) is valid when fUsefHorizRule (bit 27) is set.
+                0x03BF if op & (1 << 27) != 0 => self.horiz_rule = op & (1 << 11) != 0,
                 0x0384..=0x0387 => self.wrap_dist[(pid - 0x0384) as usize] = Some(op),
                 0x038F => self.posh = Some(op),
                 0x0390 => self.posrelh = Some(op),
