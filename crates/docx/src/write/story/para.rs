@@ -126,6 +126,9 @@ impl Writer<'_> {
         // Move ranges stay open across a moved paragraph mark; others end with the paragraph.
         let mark_moves = self.moves_of(&p.mark);
         self.move_ranges(w, &mark_moves);
+        if top {
+            w.set_body_comment_anchor();
+        }
         w.close("w:p");
     }
 

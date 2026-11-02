@@ -187,6 +187,7 @@ impl Writer<'_> {
                 None => w.open("wps:txbx", &[]),
             }
             w.open("w:txbxContent", &[]);
+            w.begin_comment_story();
             self.in_txbx += 1;
             if self.written_boxes.insert(id) {
                 let blocks = part.blocks.clone();
@@ -196,6 +197,7 @@ impl Writer<'_> {
                 w.empty("w:p", &[]);
             }
             self.in_txbx = self.in_txbx.saturating_sub(1);
+            w.end_comment_story();
             w.close("w:txbxContent");
             w.close("wps:txbx");
             self.boxes.leave();

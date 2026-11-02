@@ -10,6 +10,13 @@ impl Reader<'_> {
         if depth > crate::xml::MAX_DEPTH {
             return;
         }
+        let prepared;
+        let parent = if depth == 0 {
+            prepared = self.prepare_comment_ranges(parent);
+            &prepared
+        } else {
+            parent
+        };
         for e in parent.els() {
             match e.name.as_str() {
                 "w:p" => {
@@ -155,7 +162,7 @@ impl Reader<'_> {
                 .cloned()
                 .or_else(|| e.attr("w:name").map(str::trim).filter(|n| !n.is_empty() && n.len() <= 256).map(str::to_string))
                 .map(|name| InlineObject::BookmarkEnd { name }),
-            "w:commentRangeStart" => self.comment_id(&id).map(|id| InlineObject::CommentStart { id }),
+            "w:commentRangeStart" => e.attr("::comment").and_then(|s| s.parse().ok()).map(|id| InlineObject::CommentStart { id }),
             "w:permStart" => {
                 // Bounded: a hostile file can't grow the map without end.
                 if self.perms.len() >= 100_000 {
@@ -172,16 +179,11 @@ impl Reader<'_> {
             }
             "w:permEnd" => self.perms.get(&id).map(|id| InlineObject::PermEnd { id: *id }),
             "w:commentRangeEnd" => {
-                let cid = self.comment_id(&id)?;
-                self.comments_ended.insert(cid);
+                let cid = e.attr("::comment")?.parse().ok()?;
                 Some(InlineObject::CommentEnd { id: cid })
             }
             _ => None,
         }
-    }
-
-    pub(super) fn comment_id(&self, file_id: &str) -> Option<u32> {
-        self.comment_map.get(file_id).copied()
     }
 
     fn read_para(&mut self, sc: &mut StoryCtx, e: &El, rels: &Rels, depth: usize) -> Paragraph {

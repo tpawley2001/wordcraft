@@ -537,11 +537,18 @@ pub fn esc(s: &str) -> String {
 #[derive(Default)]
 pub struct W {
     pub s: String,
+    comment_starts: std::collections::HashMap<u32, (usize, usize)>,
+    comment_insertions: Vec<(usize, usize, u32)>,
+    comment_scopes: Vec<std::collections::HashMap<u32, (usize, usize)>>,
+    body_comment_anchor: Option<usize>,
 }
 
 impl W {
     pub fn new() -> W {
-        W { s: String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n") }
+        let mut w = W::default();
+        w.s.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"");
+        w.s.push_str(" standalone=\"yes\"?>\n");
+        w
     }
     fn attrs(&mut self, attrs: &[(&str, &str)]) {
         for (k, v) in attrs {
@@ -585,8 +592,60 @@ impl W {
     pub fn raw(&mut self, s: &str) {
         self.s.push_str(s);
     }
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.s.into_bytes()
+    pub fn begin_comment_story(&mut self) {
+        self.comment_scopes.push(std::mem::take(&mut self.comment_starts));
+    }
+    pub fn end_comment_story(&mut self) {
+        self.comment_starts = self.comment_scopes.pop().unwrap_or_default();
+    }
+    /// Delay a range start until its end is actually written in this XML part.
+    pub fn comment_start(&mut self, id: u32) {
+        let order = self.comment_starts.len().saturating_add(self.comment_insertions.len());
+        self.comment_starts.entry(id).or_insert((self.s.len(), order));
+    }
+    pub fn comment_end(&mut self, id: u32) -> bool {
+        if let Some((pos, order)) = self.comment_starts.remove(&id) {
+            self.comment_insertions.push((pos, order, id));
+            true
+        } else {
+            false
+        }
+    }
+    pub fn set_body_comment_anchor(&mut self) {
+        self.body_comment_anchor = Some(self.s.len());
+    }
+    /// A point inside an existing body paragraph, adjusted for deferred range starts.
+    /// A body with only tables has a generated empty paragraph to expand instead.
+    pub fn body_comment_anchor(&self) -> (usize, usize) {
+        let (at, replace) = match self.body_comment_anchor {
+            Some(at) => (at, 0),
+            None => (self.s.len().saturating_sub("<w:p/>".len()), "<w:p/>".len()),
+        };
+        let offset = self
+            .comment_insertions
+            .iter()
+            .filter(|(pos, _, _)| *pos <= at)
+            .fold(at, |len, (_, _, id)| len.saturating_add(format!("<w:commentRangeStart w:id=\"{id}\"/>").len()));
+        (offset, replace)
+    }
+    pub fn into_bytes(mut self) -> Vec<u8> {
+        if self.comment_insertions.is_empty() {
+            return self.s.into_bytes();
+        }
+        self.comment_insertions.sort_by_key(|(pos, order, _)| (*pos, *order));
+        let mut out = String::new();
+        let mut from = 0;
+        for (pos, _, id) in self.comment_insertions {
+            if let Some(s) = self.s.get(from..pos) {
+                out.push_str(s);
+            }
+            out.push_str(&format!("<w:commentRangeStart w:id=\"{id}\"/>"));
+            from = pos;
+        }
+        if let Some(s) = self.s.get(from..) {
+            out.push_str(s);
+        }
+        out.into_bytes()
     }
 }
 

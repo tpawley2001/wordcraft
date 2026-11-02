@@ -1,6 +1,7 @@
 //! DOCX → [`Document`].
 
 pub(crate) mod chart;
+mod comment_ranges;
 pub(crate) mod diagram;
 mod drawing_color;
 mod embed;
@@ -83,8 +84,7 @@ pub(crate) struct Reader<'p> {
     /// Reading a footnote or endnote separator or continuation notice (where the `w:separator`
     /// and `w:continuationSeparator` run elements belong).
     in_note_sep: bool,
-    pub comment_map: HashMap<String, u32>,
-    pub comments_ended: HashSet<u32>,
+    pub comment_map: HashMap<String, std::collections::VecDeque<u32>>,
     pub bookmarks: HashMap<String, String>,
     /// Restrict Editing exception ranges (`w:permStart`): the file's id → ours.
     pub perms: HashMap<String, u32>,
@@ -162,7 +162,6 @@ pub(crate) fn read_opened(pkg: &Package) -> Result<Document, DocxError> {
         current_note: None,
         in_note_sep: false,
         comment_map: HashMap::new(),
-        comments_ended: HashSet::new(),
         bookmarks: HashMap::new(),
         perms: HashMap::new(),
         graphic_parts: HashMap::new(),

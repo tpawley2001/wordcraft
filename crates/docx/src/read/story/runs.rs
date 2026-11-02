@@ -288,10 +288,9 @@ impl Reader<'_> {
                 self.emit_obj(sc, pb, InlineObject::note_separator(k.name == "w:continuationSeparator"), props);
             }
             "w:commentReference" => {
-                if let Some(cid) = k.attr("w:id").and_then(|i| self.comment_id(i))
-                    && !self.comments_ended.contains(&cid)
+                if let Some(cid) = k.attr("::comment").and_then(|i| i.parse().ok())
+                    && k.attr("::range").is_none()
                 {
-                    self.comments_ended.insert(cid);
                     pb.push_obj(InlineObject::CommentEnd { id: cid }, props);
                 }
             }

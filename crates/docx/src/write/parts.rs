@@ -23,6 +23,7 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
     };
     let mut wr = Writer {
         eq_number: 0,
+        comment_refs: Default::default(),
         doc,
         media_files: BTreeMap::new(),
         bookmarks: HashMap::new(),
@@ -80,7 +81,7 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
         }
     }
 
-    let body = write_document_body(doc, &mut wr, &mut rels, &ns_refs);
+    let (body, body_anchor) = write_document_body(doc, &mut wr, &mut rels, &ns_refs);
 
     // Headers and footers (discovered while writing sections).
     let mut done = 0;
@@ -279,6 +280,7 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
     }
     w.close("Types");
     entries.insert(0, ("[Content_Types].xml".into(), w.into_bytes()));
+    anchor_unreferenced_comments(&wr, &mut entries, body_anchor);
     for (name, bytes) in &mut entries {
         if name.rsplit_once('.').is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("xml"))
             && let Some(rewritten) = modernize_beta_w15(name, bytes)
@@ -287,6 +289,28 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
         }
     }
     Ok(entries)
+}
+
+fn anchor_unreferenced_comments(wr: &Writer<'_>, entries: &mut [(String, Vec<u8>)], body_anchor: (usize, usize)) {
+    // Comments without a surviving anchor still need one reference in a saved story.
+    let missing: Vec<_> = wr.doc.comments.keys().filter(|id| !wr.comment_refs.contains(id)).copied().collect();
+    if !missing.is_empty()
+        && let Some((_, bytes)) = entries.iter_mut().find(|(name, _)| name == "word/document.xml")
+    {
+        let mut refs = W::new();
+        refs.s.clear();
+        let (at, replace) = body_anchor;
+        if replace > 0 {
+            refs.open("w:p", &[]);
+        }
+        for id in missing {
+            wr.comment_reference(&mut refs, id);
+        }
+        if replace > 0 {
+            refs.close("w:p");
+        }
+        bytes.splice(at..at.saturating_add(replace), refs.into_bytes());
+    }
 }
 
 const W15_BETA: &[u8] = b"http://schemas.microsoft.com/office/word/2010/11/wordml";
@@ -425,7 +449,7 @@ fn beta_people_without_contacts(bytes: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-fn write_document_body(doc: &Document, wr: &mut Writer<'_>, rels: &mut PartRels, ns_refs: &[(&str, &str)]) -> Vec<u8> {
+fn write_document_body(doc: &Document, wr: &mut Writer<'_>, rels: &mut PartRels, ns_refs: &[(&str, &str)]) -> (Vec<u8>, (usize, usize)) {
     let mut w = W::new();
     w.open("w:document", ns_refs);
     let pic = doc.settings.page_picture.as_ref().filter(|p| wr.media_files.contains_key(&p.media) && doc.media.contains_key(&p.media));
@@ -453,11 +477,12 @@ fn write_document_body(doc: &Document, wr: &mut Writer<'_>, rels: &mut PartRels,
     }
     w.open("w:body", &[]);
     wr.blocks(&mut w, &doc.body, rels, true, 0);
+    let anchor = w.body_comment_anchor();
     let last = doc.last_section.clone();
     wr.sectpr(&mut w, &last, rels);
     w.close("w:body");
     w.close("w:document");
-    w.into_bytes()
+    (w.into_bytes(), anchor)
 }
 
 fn write_notes(
