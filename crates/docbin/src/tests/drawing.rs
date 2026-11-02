@@ -615,3 +615,29 @@ fn a_dib_with_a_large_tail_is_charged_for_its_copy() {
     assert!(officeart::blip(&big, 64 << 20, &mut work).is_none());
     assert_eq!(work.left, dib_len - 1);
 }
+
+/// [MS-DOC] Spa `wrk` (bits 9-12): which side text wraps on. 0 both, 1 left, 2 right, 3 largest.
+#[test]
+fn floating_pictures_keep_their_wrap_side() {
+    use wordcraft_doc::para::WrapText;
+    for (wr, wrk, want) in [
+        (2, 0, WrapText::BothSides),
+        (2, 1, WrapText::Left),
+        (2, 2, WrapText::Right),
+        (2, 3, WrapText::Largest),
+        (4, 3, WrapText::Largest),
+        (5, 2, WrapText::Right),
+    ] {
+        let png = tiny_png();
+        let pic = sp(&[fsp(75, 1025, 0xA00), fopt(&[(0x0104, 1)], &[])]);
+        let art = art_content(&[fbse_png(&png)], &[pic]);
+        let spas = plc(&[1, 3], &spa(1025, [1440, 720, 4320, 2160], spa_flags(1, 0, wr, false) | (wrk << 9)));
+        let text = "A\u{8}B\r";
+        let ccp = text.chars().count() as u32;
+        let spec = StructSpec { text, extra_pairs: vec![(40, spas), (50, art)], ..structured_spec(text, ccp) };
+        let doc = read(&struct_doc(&spec)).expect("opens");
+        let p0 = doc.body.first().and_then(|b| b.as_para()).expect("para");
+        let Some(InlineObject::Image { float, .. }) = p0.objects.first() else { panic!("no image: {:?}", p0.objects) };
+        assert_eq!(float.wrap_text, want, "wr {wr} wrk {wrk}");
+    }
+}
