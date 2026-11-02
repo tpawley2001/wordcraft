@@ -136,6 +136,8 @@ pub(crate) struct Word6Fib {
     pub(crate) bte_chpx: (u32, u32),
     pub(crate) bte_papx: (u32, u32),
     pub(crate) sttbf_ffn: (u32, u32),
+    /// (fc, lcb) of the section table (`PlcfSed`).
+    pub(crate) plcf_sed: (u32, u32),
     pub(crate) clx: (u32, u32),
 }
 
@@ -246,6 +248,7 @@ impl Fib {
             bte_chpx: pair(0xB8),
             bte_papx: pair(0xC0),
             sttbf_ffn: pair(0xD0),
+            plcf_sed: pair(0x88),
             clx: pair(0x160),
         };
         Ok(Fib { which_tbl_stm: false, ccp: sub, pairs: Vec::new(), word6: Some(w6) })
