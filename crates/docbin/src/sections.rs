@@ -54,7 +54,7 @@ pub(crate) fn parse(word: &[u8], table: &[u8], fib: &Fib) -> Vec<Section> {
 /// `apply` applies one section's grpprl and says whether it set the orientation explicitly.
 pub(crate) fn parse_plc(plc: &[u8], word: &[u8], mut apply: impl FnMut(&mut SectionProps, &[u8]) -> bool) -> Vec<Section> {
     // PlcSed: aCp[n+1] u32s + aSed[n] (Sed = fn 2, fcSepx 4, fnMpr 2, fcMpr 4).
-    if plc.len() < 4 || (plc.len() - 4) % 16 != 0 {
+    if plc.len() < 4 || !(plc.len() - 4).is_multiple_of(16) {
         return Vec::new();
     }
     let n = (plc.len() - 4) / 16;
