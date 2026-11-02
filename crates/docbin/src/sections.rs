@@ -150,12 +150,15 @@ fn apply_section(s: &mut SectionProps, prl: &Prl) {
         }
         S_DYA_TOP => {
             if let Some(v) = s16(prl) {
-                s.margin_top = tw(v as i32);
+                // Signed ([MS-DOC] §2.6.4): a negative top margin doesn't make room for the header.
+                s.margin_top = tw((v as i32).abs());
+                s.top_fixed = v < 0;
             }
         }
         S_DYA_BOTTOM => {
             if let Some(v) = s16(prl) {
-                s.margin_bottom = tw(v as i32);
+                s.margin_bottom = tw((v as i32).abs());
+                s.bottom_fixed = v < 0;
             }
         }
         S_DXA_GUTTER => {

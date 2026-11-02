@@ -725,6 +725,9 @@ pub fn sectpr(e: &El) -> (SectionProps, Vec<HfRef>) {
                 let m = |n: &str, d: f32| tw(k, n).map(f32::abs).unwrap_or(d).min(s.page_w.max(s.page_h));
                 s.margin_top = m("w:top", s.margin_top);
                 s.margin_bottom = m("w:bottom", s.margin_bottom);
+                // A negative top / bottom margin doesn't make room for the header / footer (§17.6.11).
+                s.top_fixed = tw(k, "w:top").is_some_and(|v| v < 0.0);
+                s.bottom_fixed = tw(k, "w:bottom").is_some_and(|v| v < 0.0);
                 s.margin_left = m("w:left", s.margin_left);
                 s.margin_right = m("w:right", s.margin_right);
                 s.header = m("w:header", s.header);
