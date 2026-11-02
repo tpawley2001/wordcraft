@@ -280,8 +280,20 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
     }
     w.close("Types");
     entries.insert(0, ("[Content_Types].xml".into(), w.into_bytes()));
+    anchor_unreferenced_comments(&wr, &mut entries, body_anchor);
+    for (name, bytes) in &mut entries {
+        if name.rsplit_once('.').is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("xml"))
+            && let Some(rewritten) = modernize_beta_w15(name, bytes)
+        {
+            *bytes = rewritten;
+        }
+    }
+    Ok(entries)
+}
+
+fn anchor_unreferenced_comments(wr: &Writer<'_>, entries: &mut [(String, Vec<u8>)], body_anchor: usize) {
     // Comments without a surviving anchor still need one reference in a saved story.
-    let missing: Vec<_> = doc.comments.keys().filter(|id| !wr.comment_refs.contains(id)).copied().collect();
+    let missing: Vec<_> = wr.doc.comments.keys().filter(|id| !wr.comment_refs.contains(id)).copied().collect();
     if !missing.is_empty()
         && let Some((_, bytes)) = entries.iter_mut().find(|(name, _)| name == "word/document.xml")
     {
@@ -294,14 +306,6 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
         refs.close("w:p");
         bytes.splice(body_anchor..body_anchor, refs.into_bytes());
     }
-    for (name, bytes) in &mut entries {
-        if name.rsplit_once('.').is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("xml"))
-            && let Some(rewritten) = modernize_beta_w15(name, bytes)
-        {
-            *bytes = rewritten;
-        }
-    }
-    Ok(entries)
 }
 
 const W15_BETA: &[u8] = b"http://schemas.microsoft.com/office/word/2010/11/wordml";
