@@ -14,7 +14,8 @@ fn lay(doc: &Document) -> DocLayout {
 /// A body paragraph holding a 242.25 x 41.25 pt WordArt box with `paras` paragraphs of text,
 /// bent by `warp` and with `fit_box` stretched to the box; the document and the box's story.
 fn wordart(warp: &str, fit_box: bool, paras: &[&str]) -> (Document, u32) {
-    let mut d = Document::from_text("x");
+    // The anchor text must not be part of "Your Text Here": it is drawn visibly.
+    let mut d = Document::from_text("q");
     let props = CharProps {
         font: Some("Source Sans 3".into()),
         size: Some(41.25 * 0.75),
