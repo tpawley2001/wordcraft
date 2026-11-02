@@ -291,7 +291,7 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
     Ok(entries)
 }
 
-fn anchor_unreferenced_comments(wr: &Writer<'_>, entries: &mut [(String, Vec<u8>)], body_anchor: usize) {
+fn anchor_unreferenced_comments(wr: &Writer<'_>, entries: &mut [(String, Vec<u8>)], body_anchor: (usize, usize)) {
     // Comments without a surviving anchor still need one reference in a saved story.
     let missing: Vec<_> = wr.doc.comments.keys().filter(|id| !wr.comment_refs.contains(id)).copied().collect();
     if !missing.is_empty()
@@ -299,12 +299,17 @@ fn anchor_unreferenced_comments(wr: &Writer<'_>, entries: &mut [(String, Vec<u8>
     {
         let mut refs = W::new();
         refs.s.clear();
-        refs.open("w:p", &[]);
+        let (at, replace) = body_anchor;
+        if replace > 0 {
+            refs.open("w:p", &[]);
+        }
         for id in missing {
             wr.comment_reference(&mut refs, id);
         }
-        refs.close("w:p");
-        bytes.splice(body_anchor..body_anchor, refs.into_bytes());
+        if replace > 0 {
+            refs.close("w:p");
+        }
+        bytes.splice(at..at.saturating_add(replace), refs.into_bytes());
     }
 }
 
@@ -444,7 +449,7 @@ fn beta_people_without_contacts(bytes: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-fn write_document_body(doc: &Document, wr: &mut Writer<'_>, rels: &mut PartRels, ns_refs: &[(&str, &str)]) -> (Vec<u8>, usize) {
+fn write_document_body(doc: &Document, wr: &mut Writer<'_>, rels: &mut PartRels, ns_refs: &[(&str, &str)]) -> (Vec<u8>, (usize, usize)) {
     let mut w = W::new();
     w.open("w:document", ns_refs);
     let pic = doc.settings.page_picture.as_ref().filter(|p| wr.media_files.contains_key(&p.media) && doc.media.contains_key(&p.media));
@@ -472,7 +477,7 @@ fn write_document_body(doc: &Document, wr: &mut Writer<'_>, rels: &mut PartRels,
     }
     w.open("w:body", &[]);
     wr.blocks(&mut w, &doc.body, rels, true, 0);
-    let anchor = w.output_len();
+    let anchor = w.body_comment_anchor();
     let last = doc.last_section.clone();
     wr.sectpr(&mut w, &last, rels);
     w.close("w:body");

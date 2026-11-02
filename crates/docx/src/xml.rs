@@ -540,6 +540,7 @@ pub struct W {
     comment_starts: std::collections::HashMap<u32, (usize, usize)>,
     comment_insertions: Vec<(usize, usize, u32)>,
     comment_scopes: Vec<std::collections::HashMap<u32, (usize, usize)>>,
+    body_comment_anchor: Option<usize>,
 }
 
 impl W {
@@ -548,6 +549,7 @@ impl W {
             comment_starts: Default::default(),
             comment_insertions: Vec::new(),
             comment_scopes: Vec::new(),
+            body_comment_anchor: None,
             s: String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"),
         }
     }
@@ -612,9 +614,22 @@ impl W {
             false
         }
     }
-    /// Length after completing the range starts already paired in this part.
-    pub fn output_len(&self) -> usize {
-        self.comment_insertions.iter().fold(self.s.len(), |len, (_, _, id)| len.saturating_add(format!("<w:commentRangeStart w:id=\"{id}\"/>").len()))
+    pub fn set_body_comment_anchor(&mut self) {
+        self.body_comment_anchor = Some(self.s.len());
+    }
+    /// A point inside an existing body paragraph, adjusted for deferred range starts.
+    /// A body with only tables has a generated empty paragraph to expand instead.
+    pub fn body_comment_anchor(&self) -> (usize, usize) {
+        let (at, replace) = match self.body_comment_anchor {
+            Some(at) => (at, 0),
+            None => (self.s.len().saturating_sub("<w:p/>".len()), "<w:p/>".len()),
+        };
+        let offset = self
+            .comment_insertions
+            .iter()
+            .filter(|(pos, _, _)| *pos <= at)
+            .fold(at, |len, (_, _, id)| len.saturating_add(format!("<w:commentRangeStart w:id=\"{id}\"/>").len()));
+        (offset, replace)
     }
     pub fn into_bytes(mut self) -> Vec<u8> {
         if self.comment_insertions.is_empty() {

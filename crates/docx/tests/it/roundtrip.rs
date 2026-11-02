@@ -2859,6 +2859,7 @@ fn edited_comment_markers_save_once_and_balance_only_complete_ranges() {
         assert_eq!(ids.matches("<w16cid:commentId ").count(), 6);
         doc = wordcraft_docx::read(&bytes).unwrap();
         assert_eq!(doc.comments.len(), 6);
+        assert_eq!(doc.plain_text(wordcraft_doc::StoryRef::Body), "Body");
         assert_eq!(doc.body.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect::<String>(), "Body");
     }
 }
@@ -2936,4 +2937,27 @@ fn comment_ranges_do_not_join_separate_notes_in_the_same_part() {
     assert!(!notes.contains("commentRangeStart"), "{notes}");
     assert!(!notes.contains("commentRangeEnd"), "{notes}");
     assert_eq!(notes.matches("<w:commentReference ").count(), 1);
+}
+
+#[test]
+fn unanchored_comments_use_the_existing_paragraph_in_empty_and_table_only_bodies() {
+    for table_only in [false, true] {
+        let mut doc = Document::new();
+        doc.body.clear();
+        if table_only {
+            doc.body.push(Arc::new(Block::Table(Table::new(1, 1, 240.0))));
+        }
+        let part = doc.add_part(PartKind::Comment, vec![para_block(Paragraph::with_text("Review", CharProps::default()))]);
+        doc.comments.insert(0, Comment { part, ..Default::default() });
+        for _ in 0..2 {
+            let bytes = wordcraft_docx::write(&doc).unwrap();
+            let xml = document_xml(&bytes);
+            assert_eq!(xml.matches("<w:commentReference ").count(), 1);
+            doc = wordcraft_docx::read(&bytes).unwrap();
+            let body_paras = paras(&doc);
+            assert_eq!(body_paras.len(), 1, "{xml}");
+            assert_eq!(body_paras[0].plain_text(), "");
+            assert_eq!(body_paras[0].objects, [InlineObject::CommentEnd { id: 0 }]);
+        }
+    }
 }
