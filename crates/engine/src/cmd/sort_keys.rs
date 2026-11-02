@@ -90,6 +90,17 @@ pub(super) fn cell_key(text: &str, ty: SortType, lang: Option<&str>, number_lang
     }
 }
 
+/// A paragraph's (or field's) value for a key: as [`cell_key`], except that a Number key also
+/// reads a number that starts the text ("10 apples").
+pub(super) fn para_key(text: &str, ty: SortType, lang: Option<&str>) -> CellKey {
+    match cell_key(text, ty, lang, lang) {
+        CellKey::Missing if ty == SortType::Number => {
+            text.split_whitespace().next().map_or(CellKey::Missing, |first| cell_key(first, ty, lang, lang))
+        }
+        k => k,
+    }
+}
+
 pub(super) fn compare(a: &[CellKey], b: &[CellKey], order: &[bool]) -> std::cmp::Ordering {
     use std::cmp::Ordering::{Equal, Greater, Less};
     for ((x, y), &desc) in a.iter().zip(b).zip(order) {

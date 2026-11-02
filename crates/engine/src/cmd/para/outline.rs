@@ -164,7 +164,7 @@ pub(super) fn outline_step(s: &mut Session, promote: bool) -> CmdResult {
 
 /// Sort the selected paragraphs (same container) alphabetically.
 pub(super) fn sort(s: &mut Session, v: &Value) -> CmdResult {
-    use crate::cmd::sort_keys::{SortType, cell_key, compare};
+    use crate::cmd::sort_keys::{SortType, compare, para_key};
     let separator = match v.get("separator") {
         None => '\t',
         Some(Value::String(t)) => match t.as_str() {
@@ -232,7 +232,7 @@ pub(super) fn sort(s: &mut Session, v: &Value) -> CmdResult {
                     .iter()
                     .map(|(field, ty, _)| {
                         let text = field.map_or(text.as_str(), |n| text.split(separator).nth(n).unwrap_or(""));
-                        cell_key(text, *ty, lang.as_deref(), lang.as_deref())
+                        para_key(text, *ty, lang.as_deref())
                     })
                     .collect();
                 (keys, b)
