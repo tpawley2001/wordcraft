@@ -12,6 +12,7 @@ mod complex;
 mod grid;
 mod header_extent;
 mod header_extent_fixtures;
+mod item_display_warp;
 mod ligature;
 pub(crate) mod linear;
 mod nbsp;
