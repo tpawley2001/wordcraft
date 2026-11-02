@@ -7813,6 +7813,18 @@ fn ruby_text_sits_over_its_base_and_the_line_grows_to_fit() {
     assert!(b.x - a.x > 30.0, "{a:?} {b:?}");
 }
 
+/// Word, measured on a .doc picture centred in its column with `wrapText` largest: both sides
+/// are equally wide and the text goes to the right only.
+#[test]
+fn largest_wrap_side_goes_right_on_a_tie() {
+    use wordcraft_doc::para::{Float, ShapeKind, Wrap, WrapText};
+    // A 100pt shape at x 184 in the 468pt column: 184pt free on either side.
+    let f = Float { wrap: Wrap::Square, wrap_text: WrapText::Largest, x: 184.0, ..Default::default() };
+    let beside: Vec<_> = line_spans(&lay(&wrapped_shape_doc(ShapeKind::Rectangle, 100.0, 100.0, f))).into_iter().filter(|l| l.0 < 100.0).collect();
+    // Right of the shape and its 9pt distance: 184 + 100 + 9.
+    assert!(!beside.is_empty() && beside.iter().all(|l| l.2 >= 293.0 - 0.01), "{beside:?}");
+}
+
 /// #354: `wrapText`. Left: text only to the left of a centred object (Square or Tight); Right:
 /// only to its right; Largest: only on its wider side.
 #[test]
