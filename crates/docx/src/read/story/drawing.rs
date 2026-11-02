@@ -31,7 +31,7 @@ impl Reader<'_> {
         }
         let gd = c.child("a:graphic").and_then(|g| g.child("a:graphicData"))?;
         // Checked by URI before the blip search: a diagram's data can hold a blip further down.
-        let uri = gd.attr("uri").unwrap_or("");
+        let uri = crate::strict::transitional_uri(gd.attr("uri").unwrap_or(""));
         if uri == INK_URI {
             let content = gd.child("w14:contentPart")?;
             let part = crate::read::part_of(rels, content.attr("r:id")?, INK_REL)?;

@@ -54,13 +54,19 @@ pub fn transitional_rel_type(t: &str) -> Cow<'_, str> {
     Cow::Owned(format!("{TRANSITIONAL_REL}{name}"))
 }
 
+/// Transitional spelling of a namespace URI, including `a:graphicData/@uri`.
+/// Unknown and already Transitional values are borrowed unchanged.
+pub fn transitional_uri(uri: &str) -> Cow<'_, str> {
+    Cow::Borrowed(transitional_namespace(uri).unwrap_or(uri))
+}
+
 fn transitional_namespace(uri: &str) -> Option<&'static str> {
     NAMESPACES.iter().find(|(s, _)| *s == uri).map(|(_, t)| *t)
 }
 
 /// Part `bytes` (XML kept verbatim from a file) with Strict namespace declarations and
-/// relationship `Type` values in Transitional spelling, and a root's `conformance="strict"`
-/// dropped. Only namespace declarations (`xmlns`, `xmlns:p`) and `Type` attributes are touched,
+/// namespace `uri` attributes and relationship `Type` values in Transitional spelling. A root's
+/// `conformance="strict"` is dropped. Only namespace declarations (`xmlns`, `xmlns:p`), `uri` and `Type` attributes are touched,
 /// never text content. Borrowed (unchanged) when the bytes hold no Strict URI, or aren't
 /// readable as markup.
 pub fn to_transitional(bytes: &[u8]) -> Cow<'_, [u8]> {
@@ -137,7 +143,7 @@ fn start_tag(s: &str, root: bool) -> Option<(String, &str)> {
         if root && name == "conformance" && value == "strict" {
             continue;
         }
-        let mapped = if name == "xmlns" || name.starts_with("xmlns:") {
+        let mapped = if name == "xmlns" || name.starts_with("xmlns:") || name == "uri" {
             transitional_namespace(value).map(Cow::Borrowed)
         } else if name == "Type" {
             Some(transitional_rel_type(value)).filter(|t| t.as_ref() != value)
@@ -159,6 +165,19 @@ fn start_tag(s: &str, root: bool) -> Option<(String, &str)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graphic_namespace_uris_are_rewritten_but_text_and_other_attributes_are_not() {
+        for (strict, transitional) in NAMESPACES {
+            assert_eq!(transitional_uri(strict), *transitional);
+            assert!(matches!(transitional_uri(transitional), Cow::Borrowed(_)));
+            let xml = format!(r#"<a:graphicData uri='{strict}' label="{strict}">{strict}</a:graphicData>"#);
+            let expected = format!(r#"<a:graphicData uri='{transitional}' label="{strict}">{strict}</a:graphicData>"#);
+            assert_eq!(to_transitional(xml.as_bytes()).as_ref(), expected.as_bytes());
+        }
+        let unknown = "urn:example:graphic";
+        assert_eq!(transitional_uri(unknown), unknown);
+    }
 
     #[test]
     fn relationship_types() {
