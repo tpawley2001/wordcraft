@@ -71,8 +71,39 @@ fn caret_section(s: &Session) -> wordcraft_doc::section::SectionProps {
     s.doc.sections().get(i).map(|(_, x)| (*x).clone()).unwrap_or_default()
 }
 
-fn section(heading: &str, items: Vec<String>) -> Value {
-    json!({"heading": heading, "items": items})
+/// A section's lines: `items` as English text, and `entries` the same lines as data (a label and a
+/// kind-tagged value: `pt`, `inches`, `text`, `font`, `lang`, `style`, `hex`, `multiple`) for a
+/// front end to word in its own language.
+#[derive(Default)]
+struct Lines {
+    items: Vec<String>,
+    entries: Vec<Value>,
+}
+
+impl Lines {
+    fn add(&mut self, item: String, entry: Value) {
+        self.items.push(item);
+        self.entries.push(entry);
+    }
+
+    /// `Label: value"` from points.
+    fn inches(&mut self, label: &str, pt: f32) {
+        self.add(format!("{label}: {}", inches(pt)), json!({"label": label, "inches": num(pt / 72.0).parse::<f64>().unwrap_or(0.0)}));
+    }
+
+    /// An English word on its own (`Bold`, `Centered`).
+    fn text(&mut self, text: &str) {
+        self.add(text.to_string(), json!({"label": null, "text": text}));
+    }
+}
+
+fn section(heading: &str, lines: Lines) -> Value {
+    json!({"heading": heading, "items": lines.items, "entries": lines.entries})
+}
+
+/// Points rounded as shown, as a JSON number.
+fn pt_value(v: f32) -> f64 {
+    num(v).parse::<f64>().unwrap_or(0.0)
 }
 
 /// What Reveal Formatting shows for the caret, as JSON.
@@ -83,7 +114,9 @@ pub fn reveal(s: &Session) -> Value {
     let rp = styles.resolve_para(&pp);
     let rc = styles.resolve_char(Some(&pstyle), &char_props(s));
 
-    let mut font = vec![rc.font.clone(), format!("{} pt", num(rc.size))];
+    let mut font = Lines::default();
+    font.add(rc.font.clone(), json!({"label": null, "font": rc.font}));
+    font.add(format!("{} pt", num(rc.size)), json!({"label": null, "pt": pt_value(rc.size)}));
     for (on, name) in [
         (rc.bold, "Bold"),
         (rc.italic, "Italic"),
@@ -97,15 +130,18 @@ pub fn reveal(s: &Session) -> Value {
         (rc.hidden, "Hidden"),
     ] {
         if on {
-            font.push(name.into());
+            font.text(name);
         }
     }
     if let TextColor::Rgb(c) = rc.color {
-        font.push(format!("Font color: {}", c.hex().to_uppercase()));
+        let hex = c.hex().to_uppercase();
+        font.add(format!("Font color: {hex}"), json!({"label": "Font color", "hex": hex}));
     }
     let mut font_sections = vec![section("FONT", font)];
     if let Some(lang) = rc.lang.as_deref().filter(|l| !l.is_empty()) {
-        font_sections.push(section("LANGUAGE", vec![language_name(lang)]));
+        let mut language = Lines::default();
+        language.add(language_name(lang), json!({"label": null, "lang": lang}));
+        font_sections.push(section("LANGUAGE", language));
     }
 
     let align = match rp.align {
@@ -115,41 +151,53 @@ pub fn reveal(s: &Session) -> Value {
         Align::Justify => "Justified",
         Align::Distribute => "Distributed",
     };
-    let mut indent = vec![align.to_string()];
+    let mut indent = Lines::default();
+    indent.text(align);
     if rp.indent_left != 0.0 {
-        indent.push(format!("Left: {}", inches(rp.indent_left)));
+        indent.inches("Left", rp.indent_left);
     }
     if rp.indent_right != 0.0 {
-        indent.push(format!("Right: {}", inches(rp.indent_right)));
+        indent.inches("Right", rp.indent_right);
     }
     if rp.indent_first > 0.0 {
-        indent.push(format!("First line: {}", inches(rp.indent_first)));
+        indent.inches("First line", rp.indent_first);
     } else if rp.indent_first < 0.0 {
-        indent.push(format!("Hanging: {}", inches(-rp.indent_first)));
+        indent.inches("Hanging", -rp.indent_first);
     }
-    let line = match rp.line_spacing {
-        LineSpacing::Multiple(m) if (m - 1.0).abs() < 0.001 => "single".to_string(),
-        LineSpacing::Multiple(m) if (m - 1.5).abs() < 0.001 => "1.5 lines".to_string(),
-        LineSpacing::Multiple(m) if (m - 2.0).abs() < 0.001 => "double".to_string(),
-        LineSpacing::Multiple(m) => format!("Multiple {} li", num(m)),
-        LineSpacing::AtLeast(pt) => format!("At least {} pt", num(pt)),
-        LineSpacing::Exactly(pt) => format!("Exactly {} pt", num(pt)),
+    let (line, line_value) = match rp.line_spacing {
+        LineSpacing::Multiple(m) if (m - 1.0).abs() < 0.001 => ("single".to_string(), json!({"text": "single"})),
+        LineSpacing::Multiple(m) if (m - 1.5).abs() < 0.001 => ("1.5 lines".to_string(), json!({"text": "1.5 lines"})),
+        LineSpacing::Multiple(m) if (m - 2.0).abs() < 0.001 => ("double".to_string(), json!({"text": "double"})),
+        LineSpacing::Multiple(m) => (format!("Multiple {} li", num(m)), json!({"multiple": pt_value(m)})),
+        LineSpacing::AtLeast(pt) => (format!("At least {} pt", num(pt)), json!({"atLeast": pt_value(pt)})),
+        LineSpacing::Exactly(pt) => (format!("Exactly {} pt", num(pt)), json!({"exactly": pt_value(pt)})),
     };
-    let spacing = vec![format!("Before: {} pt", num(rp.space_before)), format!("After: {} pt", num(rp.space_after)), format!("Line spacing: {line}")];
+    let mut spacing = Lines::default();
+    spacing.add(format!("Before: {} pt", num(rp.space_before)), json!({"label": "Before", "pt": pt_value(rp.space_before)}));
+    spacing.add(format!("After: {} pt", num(rp.space_after)), json!({"label": "After", "pt": pt_value(rp.space_after)}));
+    let mut line_entry = line_value;
+    if let Value::Object(m) = &mut line_entry {
+        m.insert("label".into(), json!("Line spacing"));
+    }
+    spacing.add(format!("Line spacing: {line}"), line_entry);
 
     let sect = caret_section(s);
-    let margins = vec![
-        format!("Left: {}", inches(sect.margin_left)),
-        format!("Right: {}", inches(sect.margin_right)),
-        format!("Top: {}", inches(sect.margin_top)),
-        format!("Bottom: {}", inches(sect.margin_bottom)),
-    ];
-    let paper = vec![format!("Width: {}", inches(sect.page_w)), format!("Height: {}", inches(sect.page_h))];
+    let mut margins = Lines::default();
+    margins.inches("Left", sect.margin_left);
+    margins.inches("Right", sect.margin_right);
+    margins.inches("Top", sect.margin_top);
+    margins.inches("Bottom", sect.margin_bottom);
+    let mut paper = Lines::default();
+    paper.inches("Width", sect.page_w);
+    paper.inches("Height", sect.page_h);
+    let style = style_name(s, &pstyle);
+    let mut style_lines = Lines::default();
+    style_lines.add(style.clone(), json!({"label": null, "style": style}));
 
     json!({"groups": [
         {"name": "Font", "sections": font_sections},
         {"name": "Paragraph", "sections": [
-            section("PARAGRAPH STYLE", vec![style_name(s, &pstyle)]),
+            section("PARAGRAPH STYLE", style_lines),
             section("ALIGNMENT AND INDENTATION", indent),
             section("SPACING", spacing),
         ]},
@@ -182,6 +230,22 @@ mod tests {
         run(&mut s, "format.italic", json!({"value": true}));
         run(&mut s, "format.color", json!({"color": "1b1611"}));
         assert_eq!(font_items(&mut s), ["Arial", "10.5 pt", "Bold", "Italic", "Font color: 1B1611"]);
+    }
+
+    #[test]
+    fn entries_parallel_items() {
+        let mut s = Session::new(Document::from_text("Body text"));
+        s.run("format.color", &json!({"color": "1b1611"})).unwrap();
+        let r = s.run("format.reveal", &json!({})).unwrap();
+        for group in r["groups"].as_array().unwrap() {
+            for section in group["sections"].as_array().unwrap() {
+                assert_eq!(section["items"].as_array().unwrap().len(), section["entries"].as_array().unwrap().len());
+            }
+        }
+        let spacing = &r["groups"][1]["sections"][2]["entries"];
+        assert_eq!(spacing[2]["label"], "Line spacing");
+        let margins = &r["groups"][2]["sections"][0]["entries"];
+        assert_eq!(margins[0], json!({"label": "Left", "inches": 1.0}));
     }
 
     #[test]
