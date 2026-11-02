@@ -75,12 +75,13 @@ fn sectpr_body(w: &mut W, s: &SectionProps) {
         } else {
             w.empty("w:pgSz", &[("w:w", &twips(pw)), ("w:h", &twips(ph))]);
         }
+        let signed = |v: f32, fixed: bool| if fixed { -v.abs() } else { v };
         w.empty(
             "w:pgMar",
             &[
-                ("w:top", &twips(s.margin_top)),
+                ("w:top", &twips(signed(s.margin_top, s.top_fixed))),
                 ("w:right", &twips(s.margin_right.max(0.0))),
-                ("w:bottom", &twips(s.margin_bottom)),
+                ("w:bottom", &twips(signed(s.margin_bottom, s.bottom_fixed))),
                 ("w:left", &twips(s.margin_left.max(0.0))),
                 ("w:header", &twips(s.header.max(0.0))),
                 ("w:footer", &twips(s.footer.max(0.0))),

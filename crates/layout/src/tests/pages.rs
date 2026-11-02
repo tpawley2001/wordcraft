@@ -158,6 +158,22 @@ fn outside_floating_tables_swap_sides_on_even_pages() {
 }
 
 #[test]
+fn a_negative_bottom_margin_keeps_the_body_bottom_under_a_tall_footer() {
+    // ECMA-376 §17.6.11: a negative bottom margin is used at its absolute value and the footer
+    // doesn't raise the body; the body runs down to the margin, over the footer.
+    let mut d = Document::from_text(&"Body line\n".repeat(60));
+    let id = d.add_part(PartKind::Footer, paras("Footer line", 8));
+    d.last_section.footers.default = Some(id);
+    d.last_section.bottom_fixed = true;
+    let l = lay(&d);
+    let foot_top = extent(&l.pages[0].footer, StoryRef::Part(id)).unwrap().0;
+    assert!(foot_top < 792.0 - 72.0, "the footer is taller than the margin: {foot_top}");
+    let (_, body_bottom) = extent(&l.pages[0].items, StoryRef::Body).unwrap();
+    assert!(body_bottom > foot_top + 20.0, "body ends at {body_bottom}, under the footer from {foot_top}");
+    assert!(body_bottom <= 792.0 - 72.0 + 0.01, "body ends at {body_bottom}, past the margin");
+}
+
+#[test]
 fn a_tall_footer_pushes_the_body_up() {
     // #453: an eight-line footer reaches far above the 72pt bottom margin.
     let mut d = Document::from_text(&"Body line\n".repeat(60));

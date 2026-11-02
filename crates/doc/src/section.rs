@@ -730,6 +730,12 @@ pub struct SectionProps {
     pub margin_bottom: f32,
     pub margin_left: f32,
     pub margin_right: f32,
+    /// The file gives the top / bottom margin negative (ECMA-376 §17.6.11): the margin is used at
+    /// its absolute value and the body doesn't move to clear a taller header / footer.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub top_fixed: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub bottom_fixed: bool,
     /// Distance from the page edge to the header / footer.
     pub header: f32,
     pub footer: f32,
@@ -786,6 +792,8 @@ impl Default for SectionProps {
             margin_bottom: 72.0,
             margin_left: 72.0,
             margin_right: 72.0,
+            top_fixed: false,
+            bottom_fixed: false,
             header: 36.0,
             footer: 36.0,
             gutter: 0.0,

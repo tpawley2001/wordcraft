@@ -474,8 +474,12 @@ pub(crate) fn item_bottom(y: f32, para: &ParaLayout, l0: usize, l1: usize) -> Op
     Some(y + l.top + l.height - f.top)
 }
 
-/// Where body text starts: the top margin, or below the header if it's taller.
+/// Where body text starts: the top margin, or below the header if it's taller (not when the file
+/// gave the top margin negative, ECMA-376 §17.6.11).
 pub(crate) fn body_top_for(ctx: &mut Ctx, sect: &SectionProps, header: Option<u32>) -> f32 {
+    if sect.top_fixed {
+        return sect.margin_top;
+    }
     let Some(id) = header else { return sect.margin_top };
     let Some(part) = ctx.doc.parts.get(&id) else { return sect.margin_top };
     let blocks = part.blocks.clone();
@@ -531,8 +535,12 @@ pub(crate) fn drawn_extent(items: &[Placed], story: StoryRef) -> Option<f32> {
     bottom.is_finite().then_some(bottom)
 }
 
-/// Where the footer starts (as `headers_footers` places it), `f32::MAX` without one.
+/// Where the footer starts (as `headers_footers` places it), `f32::MAX` without one (or when the
+/// file gave the bottom margin negative: the footer doesn't raise the body, ECMA-376 §17.6.11).
 pub(crate) fn foot_top_for(ctx: &mut Ctx, sect: &SectionProps, footer: Option<u32>) -> f32 {
+    if sect.bottom_fixed {
+        return f32::MAX;
+    }
     let Some(part) = footer.and_then(|id| ctx.doc.parts.get(&id).map(|p| (id, p))) else { return f32::MAX };
     let (id, blocks) = (part.0, part.1.blocks.clone());
     // A page total in the footer is filled in after pagination, like the header's: it doesn't
