@@ -7,9 +7,9 @@
 //! measured from real files: everything lives in the WordDocument stream (there is no Table
 //! stream), pieces hold 8-bit text at a direct byte offset, bin tables have 16-bit page
 //! numbers, FFNs carry an 8-bit name right after `ixchSzAlt`, and sprms have one-byte opcodes.
-//! Paragraph alignment, indents, spacing, keeps and tabs are read from PAPX runs.
-//! Styles, tables, sections, headers and footers, notes and pictures are
-//! not read yet: the body text is all present, the other stories stay out of it.
+//! Paragraph alignment, indents, spacing, keeps and tabs are read from PAPX runs, and each
+//! section's page size, margins, header/footer distances and break type from the `PlcfSed`.
+//! Styles, tables, headers and footers, notes and pictures are not read yet: the body text is all present, the other stories stay out of it.
 
 use std::io::{Read, Seek};
 
@@ -17,9 +17,11 @@ use wordcraft_doc::Document;
 use wordcraft_doc::encoding::{MAC_ROMAN_CODE_PAGE, charset_code_page, is_byte_code_page, windows_byte};
 use wordcraft_doc::para::Paragraph;
 use wordcraft_doc::props::{CharProps, ParaProps};
+use wordcraft_doc::section::SectionProps;
 
 use crate::fib::Word6Fib;
 use crate::fkp::Bins;
+use crate::sections::{self, Section};
 use crate::sprm::Prl;
 use crate::table::{self, ParaOut};
 use crate::{DocbinError, FieldBuild, MAX_TOTAL_CHARS, MAX_WORK, ParaBuild, Work, finish_field, fmt, metadata};
@@ -67,6 +69,9 @@ pub(crate) fn read<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, word: &[u8],
     let chpx = Bins::parse_word6(word, fib.bte_chpx.0, fib.bte_chpx.1);
     let papx = Bins::parse_word6(word, fib.bte_papx.0, fib.bte_papx.1);
     let mac = fib.chse == CHSE_MAC;
+    let sects = sections_of(word, fib.plcf_sed);
+    let mut sect_ends: Vec<u32> = sects.iter().map(|s| s.end_cp).collect();
+    sect_ends.sort_unstable();
     let work = Work::new(MAX_WORK);
     // Every character comes from a byte of the stream; aliased pieces can't multiply it past this.
     let mut budget = (word.len() as u64).saturating_mul(2).min(MAX_TOTAL_CHARS);
@@ -96,8 +101,10 @@ pub(crate) fn read<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, word: &[u8],
                     (props, decode)
                 }
             };
+            // A section mark (0x0C) at a section's end is that section's last paragraph mark.
+            let section_mark = b == 0x0C && sect_ends.binary_search(&cp.saturating_add(1)).is_ok();
             match b {
-                0x0D | 0x07 => {
+                0x0D | 0x07 | 0x0C if b != 0x0C || section_mark => {
                     pb.mark = props;
                     apply_para_props(&mut pb.props, papx.papx_word6(word, fc));
                     let done = std::mem::take(&mut pb);
@@ -142,7 +149,20 @@ pub(crate) fn read<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, word: &[u8],
         out.push(para_out(pb, cp_text));
     }
 
+    // A non-final section's properties go on the paragraph whose mark ends it; the section
+    // reaching the end of the text is the document's last section.
     let mut doc = Document::new();
+    let last = sects.len().saturating_sub(1);
+    for (si, sec) in sects.into_iter().enumerate() {
+        if si == last || sec.end_cp >= cp_text {
+            doc.last_section = sec.props;
+            break;
+        }
+        if let Some(p) = out.iter_mut().find(|p| p.end_cp == sec.end_cp) {
+            p.para.section = Some(Box::new(sec.props));
+        }
+    }
+
     if let Some(core) = metadata::read(comp) {
         doc.core = core;
     }
@@ -251,6 +271,62 @@ fn apply_para_props(props: &mut ParaProps, mut rest: &[u8]) {
         } else if let Some(op) = op97 {
             fmt::apply_para(props, &Prl { op, operand });
         }
+    }
+}
+
+/// The sections of the `PlcfSed` at `(fc, lcb)` in the WordDocument stream (laid out as in
+/// Word 97), each `Sepx` grpprl translated from Word 6 section sprms.
+fn sections_of(word: &[u8], (fc, lcb): (u32, u32)) -> Vec<Section> {
+    let Some(plc) = (fc as usize).checked_add(lcb as usize).and_then(|end| word.get(fc as usize..end)) else { return Vec::new() };
+    sections::parse_plc(plc, word, apply_section_props)
+}
+
+/// Apply a Word 6 section grpprl (one-byte opcodes) through the Word 97 section applier;
+/// returns whether it set the orientation explicitly. Unknown opcodes end the group because
+/// their operand sizes cannot be inferred.
+fn apply_section_props(props: &mut SectionProps, mut rest: &[u8]) -> bool {
+    let mut explicit_orient = false;
+    while let Some((&op, after)) = rest.split_first() {
+        let Some(op97) = word97_section_op(op) else { break };
+        // Operand size from the Word 97 opcode's spra ([MS-DOC] §2.2.5.1); spra 6 (only
+        // sprmSOlstAnm here) is a one-byte length then that many bytes.
+        let len = match op97 >> 13 {
+            0 | 1 => 1,
+            2 | 4 | 5 => 2,
+            3 => 4,
+            7 => 3,
+            _ => usize::from(after.first().copied().unwrap_or(0)).saturating_add(1),
+        };
+        let Some(operand) = after.get(..len) else { break };
+        rest = after.get(len..).unwrap_or(&[]);
+        // The Word 97 applier reads the page number start under its own opcode.
+        let op = if op97 == S_PGN_START_97 { sections::S_PGN_START } else { op97 };
+        if op == sections::S_ORIENTATION && matches!(operand.first(), Some(1 | 2)) {
+            explicit_orient = true;
+        }
+        sections::apply_section(props, &Prl { op, operand });
+    }
+    explicit_orient
+}
+
+/// `sprmSPgnStart97` ([MS-DOC] §2.6.4).
+const S_PGN_START_97: u16 = 0x501C;
+
+/// The Word 97 section sprm with the same meaning and operand as a Word 6 one: Word 6 numbers
+/// them 131.. in `ispmd` order, with 134 and 135 unused (so from `sprmSDxaColWidth` on, the
+/// Word 6 opcode is `ispmd` + 133).
+fn word97_section_op(op: u8) -> Option<u16> {
+    const FROM_136: [u16; 36] = [
+        0xF203, 0xF204, 0x3005, 0x3006, 0x5007, 0x5008, 0x3009, 0x300A, 0x500B, 0x900C, 0x300D, 0x300E, 0xB00F, 0xB010, 0x3011, 0x3012, 0x3013,
+        0x3014, 0x5015, 0x9016, 0xB017, 0xB018, 0x3019, 0x301A, 0x501B, 0x501C, 0x301D, 0x301E, 0xB01F, 0xB020, 0xB021, 0xB022, 0x9023, 0x9024,
+        0xB025, 0x5026,
+    ];
+    match op {
+        131 => Some(0x3000),
+        132 => Some(0x3001),
+        133 => Some(0xD202),
+        136..=171 => FROM_136.get(usize::from(op - 136)).copied(),
+        _ => None,
     }
 }
 
@@ -411,6 +487,23 @@ mod unit {
             apply_para_props(&mut props, g);
             assert_eq!(props, ParaProps::default());
         }
+    }
+
+    #[test]
+    fn section_opcodes_map_to_word97() {
+        for (w6, w97) in [(133, 0xD202), (136, 0xF203), (142, 0x3009), (144, 0x500B), (156, 0xB017), (161, 0x501C), (162, 0x301D), (171, 0x5026)] {
+            assert_eq!(word97_section_op(w6), Some(w97), "opcode {w6}");
+        }
+        for op in [0, 130, 134, 135, 172, 250] {
+            assert_eq!(word97_section_op(op), None);
+        }
+        // sprmSOlstAnm is skipped by its length byte; a hostile length stops the group.
+        let mut props = SectionProps::default();
+        apply_section_props(&mut props, &[133, 2, 9, 9, 142, 0]);
+        assert_eq!(props.start, wordcraft_doc::section::SectionStart::Continuous);
+        let mut props = SectionProps::default();
+        apply_section_props(&mut props, &[133, 255, 142, 0]);
+        assert_eq!(props, SectionProps::default());
     }
 
     fn fonts_of(t: &[u8]) -> Vec<Font> {

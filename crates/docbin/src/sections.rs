@@ -14,8 +14,8 @@ const MAX_SECTIONS: usize = 1024;
 const S_BKC: u16 = 0x3009;
 const S_TITLE_PAGE: u16 = 0x300A; // sprmSFTitlePage
 const S_CCOLUMNS: u16 = 0x500B;
-const S_PGN_START: u16 = 0x300C; // sprmSPgnStart
-const S_ORIENTATION: u16 = 0x301D; // sprmSBOrientation
+pub(crate) const S_PGN_START: u16 = 0x300C; // sprmSPgnStart
+pub(crate) const S_ORIENTATION: u16 = 0x301D; // sprmSBOrientation
 const S_HDR_TOP: u16 = 0xB017;
 const S_HDR_BOTTOM: u16 = 0xB018;
 const S_XA_PAGE: u16 = 0xB01F;
@@ -36,8 +36,25 @@ pub(crate) struct Section {
 pub(crate) fn parse(word: &[u8], table: &[u8], fib: &Fib) -> Vec<Section> {
     let Some((fc, lcb)) = fib.pair(pair::PLCF_SED) else { return Vec::new() };
     let Some(plc) = table.get(fc as usize..(fc as usize).saturating_add(lcb as usize)) else { return Vec::new() };
+    parse_plc(plc, word, |props, grpprl| {
+        let mut explicit_orient = false;
+        for prl in sprm::iter(grpprl) {
+            // Only a defined operand counts as explicit; anything else leaves the
+            // orientation to the page shape.
+            if prl.op == S_ORIENTATION && matches!(prl.operand.first(), Some(1 | 2)) {
+                explicit_orient = true;
+            }
+            apply_section(props, &prl);
+        }
+        explicit_orient
+    })
+}
+
+/// Walk a `PlcSed` (the same layout in Word 6/95 and Word 97) whose `Sepx`es live in `word`.
+/// `apply` applies one section's grpprl and says whether it set the orientation explicitly.
+pub(crate) fn parse_plc(plc: &[u8], word: &[u8], mut apply: impl FnMut(&mut SectionProps, &[u8]) -> bool) -> Vec<Section> {
     // PlcSed: aCp[n+1] u32s + aSed[n] (Sed = fn 2, fcSepx 4, fnMpr 2, fcMpr 4).
-    if plc.len() < 4 || (plc.len() - 4) % 16 != 0 {
+    if plc.len() < 4 || !(plc.len() - 4).is_multiple_of(16) {
         return Vec::new();
     }
     let n = (plc.len() - 4) / 16;
@@ -56,14 +73,7 @@ pub(crate) fn parse(word: &[u8], table: &[u8], fib: &Fib) -> Vec<Section> {
                 word.get(at..at.checked_add(cb)?)
             })
         {
-            for prl in sprm::iter(grpprl) {
-                // Only a defined operand counts as explicit; anything else leaves the
-                // orientation to the page shape.
-                if prl.op == S_ORIENTATION && matches!(prl.operand.first(), Some(1 | 2)) {
-                    explicit_orient = true;
-                }
-                apply_section(&mut props, &prl);
-            }
+            explicit_orient = apply(&mut props, grpprl);
         }
         // Without an explicit orientation sprm, infer it from the page shape.
         if !explicit_orient {
@@ -80,7 +90,7 @@ pub(crate) fn parse(word: &[u8], table: &[u8], fib: &Fib) -> Vec<Section> {
 
 /// Apply a section sprm to the model's section properties. All the measurement sprms here
 /// carry 16-bit twip operands ([MS-DOC] §2.6.4).
-fn apply_section(s: &mut SectionProps, prl: &Prl) {
+pub(crate) fn apply_section(s: &mut SectionProps, prl: &Prl) {
     let tw = |v: i32| (v as f32 / 20.0).clamp(0.0, 1584.0);
     let s16 = |prl: &Prl| -> Option<i16> {
         match prl.operand {
