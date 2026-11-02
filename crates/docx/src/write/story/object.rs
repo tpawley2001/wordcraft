@@ -420,6 +420,17 @@ fn standalone_ink(src: &wordcraft_doc::graphic::Embedded) -> bool {
     }
 }
 
+impl Writer<'_> {
+    pub(crate) fn comment_reference(&self, w: &mut W, id: u32) {
+        w.open("w:r", &[]);
+        w.open("w:rPr", &[]);
+        w.val("w:rStyle", comment_reference_style(self.doc));
+        w.close("w:rPr");
+        w.empty("w:commentReference", &[("w:id", &id.to_string())]);
+        w.close("w:r");
+    }
+}
+
 #[cfg(test)]
 mod standalone_ink_tests {
     use super::standalone_ink;
@@ -438,16 +449,5 @@ mod standalone_ink_tests {
         let without = format!("<mc:AlternateContent {ns}><mc:Choice Requires=\"w14\"><w:drawing/></mc:Choice></mc:AlternateContent>");
         assert!(standalone_ink(&emb(&with)));
         assert!(!standalone_ink(&emb(&without)));
-    }
-}
-
-impl Writer<'_> {
-    pub(crate) fn comment_reference(&self, w: &mut W, id: u32) {
-        w.open("w:r", &[]);
-        w.open("w:rPr", &[]);
-        w.val("w:rStyle", comment_reference_style(self.doc));
-        w.close("w:rPr");
-        w.empty("w:commentReference", &[("w:id", &id.to_string())]);
-        w.close("w:r");
     }
 }

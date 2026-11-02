@@ -23,7 +23,8 @@ impl Reader<'_> {
             }
             let pos = text_at.len();
             text_at.push(*text);
-            if matches!(e.name.as_str(), "w:t" | "w:tab" | "w:br" | "w:cr" | "w:drawing" | "w:pict") {
+            let text_run = matches!(e.name.as_str(), "w:t" | "w:delText") && e.kids.iter().any(|n| matches!(n, Node::Text(t) if !t.is_empty()));
+            if text_run || matches!(e.name.as_str(), "w:tab" | "w:br" | "w:cr" | "w:drawing" | "w:pict") {
                 *text = text.saturating_add(1);
             }
             if matches!(e.name.as_str(), "w:commentRangeStart" | "w:commentRangeEnd" | "w:commentReference") && e.attr("::comment").is_none() {

@@ -2873,7 +2873,7 @@ fn repeated_comment_ranges_follow_their_references_including_enclosed_marks() {
         r#"<w:comments {ns}><w:comment w:id="8"><w:p><w:r><w:t>First</w:t></w:r></w:p></w:comment><w:comment w:id="8"><w:p><w:r><w:t>Second</w:t></w:r></w:p></w:comment><w:comment w:id="8"><w:p><w:r><w:t>Third</w:t></w:r></w:p></w:comment></w:comments>"#
     );
     let body = format!(
-        r#"<w:document {ns}><w:body><w:p><w:commentRangeStart w:id="8"/><w:r><w:t>A</w:t></w:r><w:commentRangeEnd w:id="8"/><w:r><w:commentReference w:id="8"/></w:r><w:commentRangeStart w:id="8"/><w:r><w:t>B</w:t><w:commentReference w:id="8"/></w:r><w:commentRangeEnd w:id="8"/><w:commentRangeStart w:id="8"/><w:r><w:t>C</w:t></w:r><w:commentRangeEnd w:id="8"/><w:r><w:t>D</w:t><w:commentReference w:id="8"/></w:r></w:p></w:body></w:document>"#
+        r#"<w:document {ns}><w:body><w:p><w:commentRangeStart w:id="8"/><w:r><w:t>A</w:t></w:r><w:commentRangeEnd w:id="8"/><w:r><w:t/></w:r><w:r><w:commentReference w:id="8"/></w:r><w:commentRangeStart w:id="8"/><w:r><w:t>B</w:t><w:commentReference w:id="8"/></w:r><w:commentRangeEnd w:id="8"/><w:commentRangeStart w:id="8"/><w:r><w:t>C</w:t></w:r><w:commentRangeEnd w:id="8"/><w:r><w:t>D</w:t><w:commentReference w:id="8"/></w:r></w:p></w:body></w:document>"#
     );
     let bytes = zip(&[
         ("_rels/.rels", root_rels),
