@@ -230,6 +230,9 @@ pub enum ZoomFit {
 /// Word's compatibility mode for documents that don't state one.
 pub const LEGACY_COMPAT_MODE: u32 = 12;
 
+/// The compatibility mode Word lays out Word 97-2003 binary (`.doc`) files in.
+pub const WORD2003_COMPAT_MODE: u32 = 11;
+
 /// The compatibility mode of documents created by Word 2013 and later, and by WordCraft.
 pub const COMPAT_MODE_CURRENT: u32 = 15;
 

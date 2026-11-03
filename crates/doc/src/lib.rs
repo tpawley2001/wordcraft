@@ -86,7 +86,7 @@ pub use parts::{MAX_LINKED_BOXES, MAX_TEXT_BOX_INSET, NoteSeparators, Part, Part
 pub use position::{Path, Pos, StoryRef};
 pub use settings::{
     COMPAT_MODE_CURRENT, CoreProps, CustomProp, DEFAULT_GRID, DEFAULT_HYPHENATION_ZONE, LEGACY_COMPAT_MODE, MAX_DIV_DEPTH, PagePicture, Settings,
-    Source, THEME_COLORS, Watermark, WebDiv, Zoom, ZoomFit, div_margins,
+    Source, THEME_COLORS, WORD2003_COMPAT_MODE, Watermark, WebDiv, Zoom, ZoomFit, div_margins,
 };
 pub use text_walk::count_words;
 pub(crate) use text_walk::{PARA_WALK_DEPTH, walk_between};

@@ -64,6 +64,49 @@ fn doc_extension_dispatches_to_docbin() {
 }
 
 #[test]
+fn doc_saved_as_docx_keeps_word_2003_compatibility_mode() {
+    // A minimal Word 97-2003 file: FIB, one compressed piece of text, a Clx in the Table stream.
+    use std::io::Write;
+    let text = b"Hello\r";
+    let (text_fc, clx_at) = (0x600u32, 0x40usize);
+    let mut word = vec![0u8; text_fc as usize];
+    word.extend_from_slice(text);
+    let put = |v: &mut Vec<u8>, at: usize, b: &[u8]| v[at..at + b.len()].copy_from_slice(b);
+    put(&mut word, 0x00, &0xA5ECu16.to_le_bytes()); // wIdent
+    put(&mut word, 0x02, &0x00C1u16.to_le_bytes()); // nFib
+    put(&mut word, 0x0A, &0x1000u16.to_le_bytes()); // fExtChar (fWhichTblStm clear: 0Table)
+    put(&mut word, 0x20, &0x000Eu16.to_le_bytes()); // csw
+    put(&mut word, 0x3E, &0x0016u16.to_le_bytes()); // cslw
+    put(&mut word, 0x40, &0x1000u32.to_le_bytes()); // cbMac
+    put(&mut word, 0x4C, &(text.len() as u32).to_le_bytes()); // ccpText
+    put(&mut word, 0x98, &0x005Du16.to_le_bytes()); // cbRgFcLcb
+    let mut clx = vec![0x02u8];
+    let mut plc = Vec::new();
+    plc.extend_from_slice(&0u32.to_le_bytes());
+    plc.extend_from_slice(&(text.len() as u32).to_le_bytes());
+    plc.extend_from_slice(&[0, 0]);
+    plc.extend_from_slice(&((2 * text_fc) | 0x4000_0000).to_le_bytes());
+    plc.extend_from_slice(&[0, 0]);
+    clx.extend_from_slice(&(plc.len() as u32).to_le_bytes());
+    clx.extend_from_slice(&plc);
+    put(&mut word, 0x9A + 33 * 8, &(clx_at as u32).to_le_bytes());
+    put(&mut word, 0x9A + 33 * 8 + 4, &(clx.len() as u32).to_le_bytes());
+    let mut table = vec![0u8; clx_at];
+    table.extend_from_slice(&clx);
+    let mut comp = cfb::CompoundFile::create(std::io::Cursor::new(Vec::new())).unwrap();
+    for (name, data) in [("WordDocument", &word), ("1Table", &table)] {
+        comp.create_stream(format!("/{name}")).unwrap().write_all(data).unwrap();
+    }
+    let doc = crate::io::open_bytes("old.doc", &comp.into_inner().into_inner()).unwrap();
+    assert_eq!(doc.settings.compat_mode, wordcraft_doc::WORD2003_COMPAT_MODE);
+    let docx = crate::io::save_bytes("old.docx", &doc).unwrap();
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(docx)).unwrap();
+    let mut settings = String::new();
+    std::io::Read::read_to_string(&mut zip.by_name("word/settings.xml").unwrap(), &mut settings).unwrap();
+    assert!(settings.contains(r#"w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="11""#), "{settings}");
+}
+
+#[test]
 fn encrypted_doc_asks_for_a_password_and_rejects_a_wrong_one() {
     // #1079: a Word 97-2003 file with the encryption flag and an RC4 header whose verifier does
     // not match any password asks for one, and a given password is reported as wrong.

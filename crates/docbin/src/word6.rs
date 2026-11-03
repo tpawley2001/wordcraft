@@ -152,6 +152,8 @@ pub(crate) fn read<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, word: &[u8],
     // A non-final section's properties go on the paragraph whose mark ends it; the section
     // reaching the end of the text is the document's last section.
     let mut doc = Document::new();
+    // Word 6/95 files are laid out in Compatibility Mode too; 11 is the oldest mode modelled.
+    doc.settings.compat_mode = wordcraft_doc::WORD2003_COMPAT_MODE;
     let last = sects.len().saturating_sub(1);
     for (si, sec) in sects.into_iter().enumerate() {
         if si == last || sec.end_cp >= cp_text {

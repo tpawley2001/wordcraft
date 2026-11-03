@@ -10,6 +10,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod crypt;
+mod dop;
 mod drawing;
 mod fib;
 mod fkp;
@@ -254,6 +255,9 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
     };
 
     let mut doc = Document::new();
+    // Word lays out every Word 97-2003 file in Compatibility Mode, with the file's options.
+    doc.settings.compat_mode = wordcraft_doc::WORD2003_COMPAT_MODE;
+    dop::apply(&table, fib.pair(fib::pair::DOP), &mut doc.settings);
     if let Some(core) = metadata::read(&mut comp) {
         doc.core = core;
     }

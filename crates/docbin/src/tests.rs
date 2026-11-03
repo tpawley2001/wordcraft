@@ -9,6 +9,8 @@ use super::read;
 
 mod cfb_tolerance;
 mod char_styles;
+mod compat_mode;
+mod dop_options;
 mod drawing;
 mod empty_inline_shape;
 mod encrypted;
