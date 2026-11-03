@@ -296,6 +296,10 @@ fn place_floating_table(ctx: &mut Ctx, pb: &mut PageBuilder, tl: &table::TableLa
             }
             pg.float_tables.push(Path::top(block));
         }
+        // Its notes go to the foot of the page it is drawn on, in row order.
+        for row in &tl.rows {
+            table_notes(ctx, pb, &row.items);
+        }
         let area = r.inset(-dl, -dt, -dr, -db);
         pb.excl.push((area, false, None, WrapText::BothSides, true));
         pb.float_tables.push(area);
