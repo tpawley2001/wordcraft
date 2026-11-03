@@ -3009,7 +3009,7 @@ fn a_right_click_in_a_cell_deletes_the_table() {
 }
 
 /// With a column's cells selected, a right-click on one of them keeps them: the menu is a
-/// column's (Merge Cells, Distribute) and its Text Direction turns just the
+/// column's (Merge Cells, Distribute) and its Text Direction… dialog turns just the
 /// column, in one undo step; one on a cell beside them drops them, though that cell lies
 /// between the selection's ends in the text, and the menu is a cell's again.
 #[test]
@@ -3025,7 +3025,17 @@ fn a_right_click_keeps_selected_cells_only_on_them() {
     assert_menu(&h, &["Merge Cells", "Distribute Rows", "Distribute Columns", "Text Direction"], true);
     assert_menu(&h, &["Split Cells", "AutoFit"], false);
     let depth = h.state().session.undo_depth();
-    pick(&mut h, &["Text Direction"]);
+    pick(&mut h, &["Text Direction…"]);
+    assert_eq!(h.state().dialog.as_ref().map(crate::dialogs::Dialog::name), Some("textDirection"));
+    assert_eq!(h.state().session.undo_depth(), depth, "opening the dialog changes nothing");
+    {
+        use egui_kittest::kittest::Queryable;
+        h.get_by_label("Rotate all text 90°").click();
+        steps(&mut h, 2);
+        h.get_by_label("OK").click();
+        steps(&mut h, 3);
+    }
+    assert!(h.state().dialog.is_none(), "OK closes the dialog");
     assert_eq!(h.state().session.undo_depth(), depth + 1);
     let t = h.state().session.doc.body.iter().find_map(|b| b.as_table()).unwrap();
     let dir = |r: usize, c: usize| t.rows[r].cells[c].props.text_direction;
@@ -4844,14 +4854,9 @@ fn table_context_menu_opens_text_direction_dialog() {
     let at = screen(&mut h, rect.x + 12.0, rect.y + rect.h / 2.0);
     let before = serde_json::to_value(&h.state().session.doc).unwrap();
     let depth = h.state().session.undo_depth();
-    h.event(egui::Event::PointerMoved(at));
-    for pressed in [true, false] {
-        h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() });
-        h.step();
-    }
-    h.step();
-    h.get_by_label("Text Direction…").click();
-    steps(&mut h, 3);
+    right_click(&mut h, at);
+    assert_menu(&h, &["Text Direction…"], true);
+    pick(&mut h, &["Text Direction…"]);
     assert_eq!(h.state().dialog.as_ref().map(crate::dialogs::Dialog::name), Some("textDirection"));
     assert!(h.query_by_label("Text Direction - Table Cell").is_some());
     assert_eq!(serde_json::to_value(&h.state().session.doc).unwrap(), before);

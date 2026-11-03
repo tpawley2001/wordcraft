@@ -44,10 +44,15 @@ impl TextDirectionForm {
         [TextDirection::Horizontal, TextDirection::Down, TextDirection::Up]
     }
 
+    /// Applies the picked direction with Layout › Text Direction. In a table it is the table
+    /// command, which turns every selected cell (a selected column runs other commands one
+    /// row at a time).
     pub fn ok(self, app: &mut WordApp) -> Result<(), String> {
-        if self.value != wordcraft_engine::cmd::page::text_direction_at(&app.session) {
-            app.run("layout.textDirection", serde_json::json!({"value": self.value.ooxml()}))?;
+        if self.value == wordcraft_engine::cmd::page::text_direction_at(&app.session) {
+            return Ok(());
         }
+        let id = if self.target == TextDirectionTarget::TableCell { "table.textDirection" } else { "layout.textDirection" };
+        app.run(id, serde_json::json!({"value": self.value.ooxml()}))?;
         Ok(())
     }
 }
