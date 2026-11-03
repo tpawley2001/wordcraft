@@ -119,9 +119,9 @@ impl<'a> Builder<'a> {
             }
         }
         let size = rc.draw_size() * if small { 0.8 } else { 1.0 };
-        // A symbol font that isn't installed, or is installed one em tall (Apple's Symbol), takes
-        // the height Word gives it.
-        let (a, d) = match wordcraft_fonts::word::symbol_line(&rc.font, &r) {
+        // A symbol font that isn't installed, or is installed one em tall (Apple's Symbol), and a
+        // missing font Word's line is known for (Lucida Console) take the height Word gives them.
+        let (a, d) = match wordcraft_fonts::word::missing_font_line(&rc.font, &r) {
             Some((a, d)) => (a * face.upem, d * face.upem),
             None => wordcraft_fonts::word::line_metrics(&face),
         };

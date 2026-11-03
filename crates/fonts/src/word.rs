@@ -173,10 +173,28 @@ pub fn symbol_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)> {
     (resolved.substituted || one_em(line_metrics(&resolved.face), resolved.face.upem)).then_some(m)
 }
 
-/// (ascent, descent) in em that Word gives a line in `family` when that font isn't installed here
-/// and its substitute's own line differs. Stub: see the task spec.
+/// (ascent, descent) in em that Word gives a line in `family` when that font isn't installed
+/// here and its substitute's own line differs: Word measures the line with the real font.
+/// Symbol fonts follow [`symbol_line`].
 pub fn missing_font_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)> {
-    symbol_line(family, resolved)
+    if let Some(m) = symbol_line(family, resolved) {
+        return Some(m);
+    }
+    if !resolved.substituted {
+        return None;
+    }
+    missing_font_metrics(family)
+}
+
+/// Word's single line, (ascent, descent) in em, for fonts whose substitute spaces lines
+/// differently. Measured in Word's PDFs: Lucida Console's font descriptor gives `/Ascent` 789,
+/// and consecutive single-spaced 10 pt lines are 10.0 pt apart (one em), so the descent is the
+/// rest of the em (its Courier-New-like substitute is 1.133 em).
+fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
+    match family.trim().to_ascii_lowercase().as_str() {
+        "lucida console" => Some((0.789, 0.211)),
+        _ => None,
+    }
 }
 
 /// Is a line's (ascent, descent) one `upem` em tall?
