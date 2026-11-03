@@ -4313,6 +4313,43 @@ fn vml_textbox_style_anchor_and_fit() {
     assert!(tb.body.auto_fit);
 }
 
+/// The rectangle model emitted by the binary DOC reader saves using VML rule attributes.
+#[test]
+fn imported_rule_shape_saves_as_vml_and_round_trips() {
+    use wordcraft_doc::connector::{HorizontalRule, ShapeExtra};
+    let hr = HorizontalRule { pct: 100.0, align: Align::Center, standard: true };
+    let object = InlineObject::Shape {
+        kind: ShapeKind::Rectangle,
+        w: 453.6,
+        h: 1.5,
+        fill: Some(Fill::solid(Rgb(0xAC, 0xA8, 0x99))),
+        stroke: None,
+        stroke_width: 0.0,
+        float: Default::default(),
+        story: None,
+        freeform: None,
+        effects: Default::default(),
+        extra: ShapeExtra { hr: Some(hr), ..Default::default() },
+    };
+    let mut p = Paragraph::new();
+    p.insert_object(0, object, &Default::default()).unwrap();
+    let d = Document { body: vec![wordcraft_doc::para_block(p)], ..Default::default() };
+    let bytes = wordcraft_docx::write(&d).unwrap();
+    let files = unzip(&bytes);
+    let xml = text(&files, "word/document.xml");
+    assert!(xml.contains("<v:rect "));
+    assert!(xml.contains(r#"o:hr="t""#));
+    assert!(xml.contains(r#"o:hralign="center""#));
+    let again = wordcraft_docx::read(&bytes).unwrap();
+    let p = paras(&again);
+    let InlineObject::Shape { w, h, fill, stroke, extra, .. } = &p[0].objects[0] else { panic!("rule shape") };
+    assert!((*w - 453.6).abs() < 0.01);
+    assert_eq!(*h, 1.5);
+    assert_eq!(fill.as_ref().unwrap().main_color(), Rgb(0xAC, 0xA8, 0x99));
+    assert!(stroke.is_none());
+    assert_eq!(extra.hr, Some(hr));
+}
+
 /// A VML horizontal rule (`o:hr`, a web page's `<hr>` pasted into Word) is read as one: the whole
 /// line when it has no width and no `o:hrpct`, a share of it (`o:hrpct`, tenths of a percent), or
 /// its own width (`o:hrpct="0"`), placed by `o:hralign`. It saves back as the same VML rule.
