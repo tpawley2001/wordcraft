@@ -21,19 +21,20 @@ pub struct TextDirectionForm {
 
 impl TextDirectionForm {
     pub fn new(_app: &WordApp) -> Self {
-        todo!("TextDirectionForm::new")
+        // Stub: the task fills this in.
+        Self { target: TextDirectionTarget::MainDocument, value: TextDirection::Horizontal }
     }
 
     pub fn title(&self) -> &'static str {
-        todo!("TextDirectionForm::title")
+        ""
     }
 
     pub fn choices(&self) -> [TextDirection; 3] {
-        todo!("TextDirectionForm::choices")
+        [TextDirection::Horizontal; 3]
     }
 
     pub fn ok(self, _app: &mut WordApp) -> Result<(), String> {
-        todo!("TextDirectionForm::ok")
+        Err("not implemented".to_owned())
     }
 }
 
