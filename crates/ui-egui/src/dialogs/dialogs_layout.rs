@@ -31,6 +31,7 @@ use para_sort::para_sort_ui;
 mod print;
 mod table;
 mod text;
+mod text_direction;
 
 pub use page::{PageNumbersForm, SizeForm};
 use page::{page_numbers_ui, size_ui};
@@ -46,6 +47,7 @@ use table::{DELETE_CELLS, INSERT_CELLS, cells_ui, formula_ui, sort_ui, split_cel
 use text::language_name;
 pub use text::{HyphenationForm, LANGUAGES, LanguageForm, LineNumbersForm, ManualForm};
 use text::{hyphenation_ui, language_ui, line_numbers_ui, manual_ui};
+pub use text_direction::{TextDirectionForm, TextDirectionTarget};
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "form", rename_all = "camelCase")]
