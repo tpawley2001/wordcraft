@@ -185,7 +185,7 @@ pub(super) fn context_menu(app: &mut WordApp, ui: &mut Ui) {
                 item(ui, app, "Fixed Column Width", "table.autofit", json!({"mode": "fixed"}));
             });
         }
-        item(ui, app, "Text Direction", "table.textDirection", json!({}));
+        item(ui, app, "Text Direction…", "ui.dialog", json!({"name": "textDirection"}));
         if pick == TablePick::Table {
             item(ui, app, "Insert Caption…", "references.caption", json!({}));
         }

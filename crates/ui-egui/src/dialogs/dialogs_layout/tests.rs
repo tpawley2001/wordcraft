@@ -881,3 +881,23 @@ fn para_sort_fields_follow_separator_and_infer_types() {
     assert_eq!(f.params()["separator"], ";");
     assert_eq!(f.params()["keys"][1]["field"], 2);
 }
+
+#[test]
+fn text_direction_text_box_reads_applies_and_undoes() {
+    use wordcraft_doc::props::TextDirection;
+    let mut a = app();
+    a.run("insert.textBox", json!({"text": "A short note"})).unwrap();
+    a.run("layout.textDirection", json!({"value": "up"})).unwrap();
+    let mut f = TextDirectionForm::new(&a);
+    assert_eq!(f.target, TextDirectionTarget::TextBox);
+    assert_eq!(f.title(), "Text Direction - Text Box");
+    assert_eq!(f.value, TextDirection::Up);
+    let before = serde_json::to_value(&a.session.doc).unwrap();
+    let depth = a.session.undo_depth();
+    f.value = TextDirection::Down;
+    f.ok(&mut a).unwrap();
+    assert_eq!(wordcraft_engine::cmd::page::text_direction_at(&a.session), TextDirection::Down);
+    assert_eq!(a.session.undo_depth(), depth + 1);
+    a.run("edit.undo", json!({})).unwrap();
+    assert_eq!(serde_json::to_value(&a.session.doc).unwrap(), before);
+}

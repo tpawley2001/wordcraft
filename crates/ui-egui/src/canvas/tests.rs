@@ -4834,3 +4834,26 @@ fn paper_layout_fits_whole_printed_pages_to_the_window() {
     let geo = geometry(&a, &layout, avail);
     assert_eq!(geo.scale, PX_PER_PT, "Column Layout keeps the reading text size");
 }
+
+/// P0036: the table menu opens Text Direction without cycling the cell or adding history.
+#[test]
+fn table_context_menu_opens_text_direction_dialog() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = table_window();
+    let rect = cell(&mut h, 0, 0);
+    let at = screen(&mut h, rect.x + 12.0, rect.y + rect.h / 2.0);
+    let before = serde_json::to_value(&h.state().session.doc).unwrap();
+    let depth = h.state().session.undo_depth();
+    h.event(egui::Event::PointerMoved(at));
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() });
+        h.step();
+    }
+    h.step();
+    h.get_by_label("Text Direction…").click();
+    steps(&mut h, 3);
+    assert_eq!(h.state().dialog.as_ref().map(crate::dialogs::Dialog::name), Some("textDirection"));
+    assert!(h.query_by_label("Text Direction - Table Cell").is_some());
+    assert_eq!(serde_json::to_value(&h.state().session.doc).unwrap(), before);
+    assert_eq!(h.state().session.undo_depth(), depth);
+}
