@@ -31,6 +31,7 @@ use para_sort::para_sort_ui;
 mod print;
 mod table;
 mod text;
+mod text_direction;
 
 pub use page::{PageNumbersForm, SizeForm};
 use page::{page_numbers_ui, size_ui};
@@ -46,6 +47,8 @@ use table::{DELETE_CELLS, INSERT_CELLS, cells_ui, formula_ui, sort_ui, split_cel
 use text::language_name;
 pub use text::{HyphenationForm, LANGUAGES, LanguageForm, LineNumbersForm, ManualForm};
 use text::{hyphenation_ui, language_ui, line_numbers_ui, manual_ui};
+use text_direction::text_direction_ui;
+pub use text_direction::{TextDirectionForm, TextDirectionTarget};
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "form", rename_all = "camelCase")]
@@ -66,6 +69,7 @@ pub enum LayoutDialog {
     TableToText(TableToTextForm),
     Size(SizeForm),
     PageNumbers(PageNumbersForm),
+    TextDirection(TextDirectionForm),
 }
 
 impl LayoutDialog {
@@ -87,6 +91,7 @@ impl LayoutDialog {
             LayoutDialog::TableToText(_) => "tableToText",
             LayoutDialog::Size(_) => "pictureSize",
             LayoutDialog::PageNumbers(_) => "pageNumbers",
+            LayoutDialog::TextDirection(_) => "textDirection",
         }
     }
 
@@ -109,6 +114,7 @@ impl LayoutDialog {
             LayoutDialog::TableToText(_) => "Convert to Text",
             LayoutDialog::Size(_) => "Size",
             LayoutDialog::PageNumbers(_) => "Page Number Format",
+            LayoutDialog::TextDirection(f) => f.title(),
         }
     }
 }
@@ -132,6 +138,7 @@ pub fn open(name: &str, app: &mut WordApp) -> Option<LayoutDialog> {
         "tableToText" => LayoutDialog::TableToText(TableToTextForm::read(app)?),
         "pictureSize" => LayoutDialog::Size(SizeForm::read(app)?),
         "pageNumbers" => LayoutDialog::PageNumbers(PageNumbersForm::read(app)),
+        "textDirection" => LayoutDialog::TextDirection(TextDirectionForm::new(app)),
         _ => return None,
     })
 }
@@ -155,6 +162,7 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut LayoutDialog) -> bool {
         LayoutDialog::TableToText(f) => table_to_text_ui(app, ui, f),
         LayoutDialog::Size(f) => size_ui(app, ui, f),
         LayoutDialog::PageNumbers(f) => page_numbers_ui(app, ui, f),
+        LayoutDialog::TextDirection(f) => text_direction_ui(app, ui, f),
     }
 }
 

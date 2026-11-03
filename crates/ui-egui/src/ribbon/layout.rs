@@ -65,6 +65,8 @@ pub(super) fn layout(app: &mut WordApp, ui: &mut Ui) {
                 ] {
                     mi_check(ui, app, label, dir == d, "layout.textDirection", json!({"value": d.ooxml()}));
                 }
+                ui.separator();
+                mi(ui, app, "Text Direction Options…", "ui.dialog", json!({"name": "textDirection"}));
             },
         );
         menu_button(ui, app, crate::widgets::MenuButtonOptions::new("margins", Some("Margins"), "Margins", true, "layout.margins"), margins_items);
