@@ -312,7 +312,8 @@ fn locate(data: &[u8], fc_pic: u32, pics: &mut Pictures) -> Option<Found> {
         let [cl, ct, cr, cb] = props.crop;
         let w = (dxa_goal / 20.0 * (1.0 - cl - cr).max(0.01) * scale(mx)).clamp(1.0, 1584.0);
         let h = (dya_goal / 20.0 * (1.0 - ct - cb).max(0.01) * scale(my)).clamp(1.0, 1584.0);
-        if props.horiz_rule {
+        // A picture horizontal line (one with a BLIP) stays a picture.
+        if props.horiz_rule && blip.is_none() {
             let w = props.width_hr.map_or(dxa_goal * scale(mx), |v| v as f32) / 20.0;
             let h = props.height_hr.map_or(dya_goal * scale(my), |v| v as f32) / 20.0;
             return Some(Found::Rule { w: w.clamp(0.0, 1584.0), h: h.clamp(0.0, 1584.0), props });
