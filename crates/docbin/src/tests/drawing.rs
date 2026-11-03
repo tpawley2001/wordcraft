@@ -74,18 +74,18 @@ pub(super) fn wz(s: &str) -> Vec<u8> {
 }
 
 /// A `Spa` (26 bytes): spid, bounds in twips, flags, cTxbx.
-fn spa(spid: u32, [l, t, r, b]: [i32; 4], flags: u16) -> Vec<u8> {
+pub(super) fn spa(spid: u32, [l, t, r, b]: [i32; 4], flags: u16) -> Vec<u8> {
     [spid.to_le_bytes().as_slice(), &l.to_le_bytes(), &t.to_le_bytes(), &r.to_le_bytes(), &b.to_le_bytes(), &flags.to_le_bytes(), &0u32.to_le_bytes()]
         .concat()
 }
 
 /// `Spa` flags from bx, by, wr and fBelowText.
-fn spa_flags(bx: u16, by: u16, wr: u16, below: bool) -> u16 {
+pub(super) fn spa_flags(bx: u16, by: u16, wr: u16, below: bool) -> u16 {
     (bx << 1) | (by << 3) | (wr << 5) | (u16::from(below) << 14)
 }
 
 /// `OfficeArtContent`: a DggContainer holding a BLIP store, then one main-document drawing.
-fn art_content(fbses: &[Vec<u8>], shapes: &[Vec<u8>]) -> Vec<u8> {
+pub(super) fn art_content(fbses: &[Vec<u8>], shapes: &[Vec<u8>]) -> Vec<u8> {
     let bstore = rec(0xF, fbses.len() as u16, 0xF001, &fbses.concat());
     let dgg = container(0xF000, &[bstore]);
     let patriarch = sp(&[fsp(0, 1024, 0b101)]);
