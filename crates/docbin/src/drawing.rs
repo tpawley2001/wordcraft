@@ -185,6 +185,8 @@ fn spa_float(flags: u16, p: &crate::officeart::Props) -> Float {
         dist: emu(dl, 9.0).max(emu(dr, 9.0)),
         dist_top: emu(dt, 0.0),
         dist_bottom: emu(db, 0.0),
+        // Only Tight and Through wrapping follow the polygon.
+        wrap_polygon: if matches!(wrap, Wrap::Tight | Wrap::Through) { p.wrap_polygon().map(std::sync::Arc::new) } else { None },
         ..Float::default()
     }
 }

@@ -11,6 +11,7 @@ use std::io::Write;
 use image::ImageEncoder;
 
 use wordcraft_doc::props::Rgb;
+use wordcraft_doc::wrap::WrapPolygon;
 
 /// Deepest container nesting walked (groups inside groups…).
 const MAX_DEPTH: usize = 12;
@@ -353,6 +354,10 @@ pub(crate) struct Props {
     pub(crate) align_hr: Option<u32>,
     pub(crate) height_hr: Option<i32>,
     pub(crate) width_hr: Option<i32>,
+    /// `pWrapPolygonVertices`: the outline Tight and Through wrapping follow.
+    pub(crate) wrap_polygon: Option<WrapPolygon>,
+    /// `fEditedWrap` (Group Shape Boolean Properties): the polygon was edited by hand.
+    pub(crate) edited_wrap: bool,
 }
 
 impl Props {
@@ -368,7 +373,10 @@ impl Props {
             if opid & 0x8000 != 0 {
                 let start = complex_at;
                 complex_at = complex_at.saturating_add(op as usize);
-                if pid == 0x0381 || pid == 0x0105 {
+                if pid == 0x0383 {
+                    let end = complex_at.min(body.len());
+                    self.wrap_polygon = body.get(start..end).and_then(wrap_points);
+                } else if pid == 0x0381 || pid == 0x0105 {
                     let end = complex_at.min(body.len());
                     if let Some(data) = body.get(start..end) {
                         let units: Vec<u16> =
@@ -412,6 +420,10 @@ impl Props {
                     if op & (1 << 29) != 0 {
                         self.standard_hr = op & (1 << 13) != 0;
                     }
+                    // fEditedWrap (bit 6) is valid when fUsefEditedWrap (bit 22) is set.
+                    if op & (1 << 22) != 0 {
+                        self.edited_wrap = op & (1 << 6) != 0;
+                    }
                 }
                 0x0384..=0x0387 => self.wrap_dist[(pid - 0x0384) as usize] = Some(op),
                 0x038F => self.posh = Some(op),
@@ -425,6 +437,41 @@ impl Props {
                 _ => {}
             }
         }
+    }
+}
+
+impl Props {
+    /// The wrap polygon, marked edited as `fEditedWrap` says (the properties may come in
+    /// either order).
+    pub(crate) fn wrap_polygon(&self) -> Option<WrapPolygon> {
+        self.wrap_polygon.clone().map(|p| WrapPolygon { edited: self.edited_wrap, ..p })
+    }
+}
+
+/// The points of a `pWrapPolygonVertices` `IMsoArray` ([MS-ODRAW] §2.2.56): `nElems`,
+/// `nElemsAlloc` and `cbElem`, then the points, (x, y) as i32 pairs (`cbElem` 8) or i16 pairs
+/// (`cbElem` 0xFFF0). Only whole points present in `data` are read.
+fn wrap_points(data: &[u8]) -> Option<WrapPolygon> {
+    let n = u16_at(data, 0)? as usize;
+    let elems = data.get(6..)?;
+    match u16_at(data, 4)? {
+        8 => WrapPolygon::new(
+            false,
+            elems.as_chunks::<8>().0.iter().take(n).map(|c| {
+                let [x0, x1, x2, x3, y0, y1, y2, y3] = *c;
+                (i32::from_le_bytes([x0, x1, x2, x3]) as i64, i32::from_le_bytes([y0, y1, y2, y3]) as i64)
+            }),
+        ),
+        0xFFF0 => WrapPolygon::new(
+            false,
+            elems
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .take(n)
+                .map(|&[x0, x1, y0, y1]| (i16::from_le_bytes([x0, x1]) as i64, i16::from_le_bytes([y0, y1]) as i64)),
+        ),
+        _ => None,
     }
 }
 
