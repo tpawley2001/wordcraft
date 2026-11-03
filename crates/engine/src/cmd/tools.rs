@@ -27,4 +27,6 @@ pub use typing::{INITIAL_CAPS_EXCEPTIONS, autocorrect, autocorrect_word, emphasi
 pub(crate) use typing::{is_turkic, lower_char, upper_char};
 
 #[cfg(test)]
+mod compat_tests;
+#[cfg(test)]
 mod tests;
