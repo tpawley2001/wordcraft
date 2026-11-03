@@ -6,6 +6,7 @@ use wordcraft_doc::{Pos, Table};
 
 mod autospace;
 mod bidi;
+mod blank_side_page;
 mod border_band;
 mod budget;
 mod complex;
