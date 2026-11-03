@@ -482,6 +482,15 @@ pub enum Dialog {
     /// File › Info › Properties › Advanced Properties › Custom: the document's custom
     /// properties (#2982).
     CustomProperties(Box<CustomPropertiesForm>),
+    /// File › Info › Convert: confirms upgrading a document in Compatibility Mode to the current
+    /// layout mode (`file.convert`).
+    ConvertDocument,
+    /// File › Info › Check for Issues › Check Compatibility: `file.compatibility`'s findings and
+    /// the Word version the document lays out like.
+    Compatibility {
+        issues: Vec<String>,
+        version: String,
+    },
 }
 
 impl Dialog {
@@ -545,6 +554,8 @@ impl Dialog {
             Dialog::Templates { .. } => "templates",
             Dialog::Organizer { .. } => "organizer",
             Dialog::CustomProperties(..) => "customProperties",
+            Dialog::ConvertDocument => "convertDocument",
+            Dialog::Compatibility { .. } => "compatibilityChecker",
             Dialog::Layout(d) => d.name(),
         }
     }
@@ -561,6 +572,10 @@ impl Dialog {
             "mailings.checkErrors" => {
                 Some(Dialog::CheckErrors { unknown: strings("unknownFields"), records: v.get("records").and_then(Value::as_u64).unwrap_or(0) })
             }
+            "file.compatibility" => Some(Dialog::Compatibility {
+                issues: strings("issues"),
+                version: v.get("version").and_then(Value::as_str).unwrap_or_default().to_string(),
+            }),
             _ => None,
         }
     }
@@ -834,6 +849,10 @@ impl Dialog {
             "templates" => Dialog::Templates { form: Box::new(crate::dialogs_templates::TemplatesForm::read(app)) },
             "organizer" => Dialog::Organizer { form: Box::new(crate::dialogs_templates::OrganizerForm::read(app, None)) },
             "customProperties" => Dialog::CustomProperties(Box::new(CustomPropertiesForm::read(app))),
+            "convertDocument" => Dialog::ConvertDocument,
+            "compatibilityChecker" => {
+                return Self::report("file.compatibility", &app.session.run("file.compatibility", &json!({})).unwrap_or_default());
+            }
             "controlProperties" => match crate::dialogs_controls::ControlForm::read(app) {
                 Some(form) => Dialog::Control { form: Box::new(form) },
                 None => {

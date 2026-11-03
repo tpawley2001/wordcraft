@@ -1054,3 +1054,89 @@ fn backstage_save_as_sidebar_opens_save_as_page() {
     h.run_steps(4);
     assert_eq!(h.state().ui.backstage_page, "saveAs");
 }
+
+/// A saved, unchanged document at `/x/Report.docx` laid out in compatibility mode `mode`.
+fn compat_app(mode: u32) -> WordApp {
+    let mut session = wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Report body"));
+    session.doc.settings.compat_mode = mode;
+    session.path = Some(std::path::PathBuf::from("/x/Report.docx"));
+    session.dirty = false;
+    let mut app = WordApp::new(session, Services::default());
+    app.ui.language = "en".into();
+    app
+}
+
+fn info_harness(mut app: WordApp) -> egui_kittest::Harness<'static, WordApp> {
+    let _ = app.run("ui.backstage", json!({"value": true, "page": "info"}));
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        app,
+    );
+    h.run_steps(4);
+    h
+}
+
+/// The title bar says when a document is in Compatibility Mode.
+#[test]
+fn title_bar_shows_compatibility_mode() {
+    assert_eq!(crate::chrome::window_title(&compat_app(12)), "Report [Compatibility Mode] — Saved");
+    assert_eq!(crate::chrome::window_title(&compat_app(15)), "Report — Saved");
+}
+
+/// File › Info › Convert asks first, then upgrades the document: the title loses the suffix.
+#[test]
+fn info_convert_upgrades_a_compatibility_mode_document() {
+    let mut h = info_harness(compat_app(12));
+    assert!(h.query_by_label("Compatibility Mode").is_some());
+    h.get_by_label("Convert").click();
+    h.run_steps(4);
+    assert!(matches!(h.state().dialog, Some(crate::dialogs::Dialog::ConvertDocument)));
+    assert_eq!(h.state().session.doc.settings.compat_mode, 12, "nothing changes before OK");
+    h.get_by_label("OK").click();
+    h.run_steps(4);
+    assert!(h.state().dialog.is_none());
+    assert_eq!(h.state().session.doc.settings.compat_mode, 15);
+    assert_eq!(crate::chrome::window_title(h.state()), "Report — Edited");
+    drop(h);
+    let h = info_harness(compat_app(15));
+    assert!(h.query_by_label("Convert").is_none(), "a current document has nothing to convert");
+}
+
+/// Cancel leaves the document in Compatibility Mode.
+#[test]
+fn info_convert_cancel_changes_nothing() {
+    let mut h = info_harness(compat_app(14));
+    h.get_by_label("Convert").click();
+    h.run_steps(4);
+    h.get_by_label("Cancel").click();
+    h.run_steps(4);
+    assert!(h.state().dialog.is_none());
+    assert_eq!(h.state().session.doc.settings.compat_mode, 14);
+    assert!(!h.state().session.dirty);
+}
+
+/// Check for Issues › Check Compatibility opens the Compatibility Checker.
+#[test]
+fn check_for_issues_opens_the_compatibility_checker() {
+    let mut h = info_harness(compat_app(12));
+    h.get_by_label("Check for Issues").click();
+    h.run_steps(4);
+    h.get_by_label("Check Compatibility").click();
+    h.run_steps(4);
+    match &h.state().dialog {
+        Some(crate::dialogs::Dialog::Compatibility { issues, version }) => {
+            assert!(issues.is_empty());
+            assert_eq!(version, "Word 2007");
+        }
+        other => panic!("expected the Compatibility Checker, got {:?}", other.as_ref().map(|d| d.name())),
+    }
+    assert!(h.query_by_label("No compatibility issues were found.").is_some());
+    assert!(h.query_by_label("This document is in Word 2007 mode.").is_some());
+    h.get_by_label("OK").click();
+    h.run_steps(4);
+    assert!(h.state().dialog.is_none());
+}

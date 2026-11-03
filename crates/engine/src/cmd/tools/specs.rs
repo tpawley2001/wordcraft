@@ -152,9 +152,13 @@ pub fn specs() -> Vec<CommandSpec> {
             {
                 issues.push("Some embedded objects from the original file are shown as text only.");
             }
-            Ok(json!({"issues": issues}))
+            let mode = s.doc.settings.compat_mode;
+            Ok(json!({"issues": issues, "mode": mode, "version": super::mode_version(mode), "compatibilityMode": super::compatibility_mode(s)}))
         })
+        .params(r#"{} → {"issues": [string], "mode": u32, "version": string, "compatibilityMode": bool}"#)
         .pure(),
+        CommandSpec::new("file.convert", "Convert", "File › Info", super::compat::convert)
+            .params(r#"{} → {"mode": 15, "previous": u32, "path"?: string}"#),
         CommandSpec::new("file.share", "Share", "File", |s, _| {
             s.push_ui_request(json!({"open": "saveAs"}));
             Ok(json!({"hint": "Save or export a copy (PDF, Word document) to share it."}))

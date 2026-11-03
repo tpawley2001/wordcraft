@@ -65,6 +65,8 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::MergeRule { .. } => merge_rule_dialog(app, ui, d),
         Dialog::MatchFields { .. } => match_fields_dialog(ui, d),
         Dialog::CheckErrors { .. } => check_errors_dialog(ui, d),
+        Dialog::ConvertDocument => convert_document_dialog(app, ui),
+        Dialog::Compatibility { issues, version } => compatibility_dialog(ui, issues, version),
     }
 }
 
@@ -1521,4 +1523,36 @@ fn check_errors_dialog(ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.label(egui::RichText::new(crate::i18n::fmt(tl!("Recipients: {count}"), &[("count", &records.to_string())])).weak());
     let (ok, cancel) = buttons(ui, tl!("Close"));
     ok || cancel
+}
+
+/// File › Info › Convert: OK upgrades the document to the current layout mode.
+fn convert_document_dialog(app: &mut WordApp, ui: &mut Ui) -> bool {
+    ui.label(tl!("This document will be upgraded to the newest layout mode, so it can use every feature."));
+    ui.label(tl!("Its layout may change slightly."));
+    let (ok, cancel) = buttons(ui, tl!("OK"));
+    if ok && let Err(e) = app.run("file.convert", json!({})) {
+        app.status(e);
+    }
+    ok || cancel
+}
+
+/// Check Compatibility: what may not carry over, and the version the document lays out like.
+fn compatibility_dialog(ui: &mut Ui, issues: &[String], version: &str) -> bool {
+    if issues.is_empty() {
+        ui.label(tl!("No compatibility issues were found."));
+    } else {
+        egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+            for issue in issues {
+                ui.label(format!("• {}", tl!(issue)));
+            }
+        });
+    }
+    ui.add_space(4.0);
+    ui.label(crate::i18n::fmt(tl!("This document is in {version} mode."), &[("version", version)]));
+    ui.add_space(8.0);
+    let mut close = ui.input(|i| i.key_pressed(egui::Key::Escape) || i.key_pressed(egui::Key::Enter));
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        close |= ui.add(crate::widgets::primary_button(ui, tl!("OK"))).clicked();
+    });
+    close
 }
