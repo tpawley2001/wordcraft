@@ -1,8 +1,8 @@
 //! DOCX → [`Document`].
 
 pub(crate) mod chart;
-mod comment_ranges;
 mod chunk;
+mod comment_ranges;
 pub(crate) mod diagram;
 mod drawing_color;
 mod embed;
