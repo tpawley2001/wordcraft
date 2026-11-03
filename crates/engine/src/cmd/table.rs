@@ -1,8 +1,6 @@
 //! Table Design and Table Layout tabs.
 
-use super::table_formula::parse_number;
 use serde_json::{Value, json};
-use wordcraft_doc::collate::{SortKey, sort_key};
 use wordcraft_doc::props::{Align, Border, BorderStyle, Borders, HeightRule, Rgb, TextDirection, VAlign};
 use wordcraft_doc::{Block, Document, InlineObject, Paragraph, Path, Pos, RevisionKind, StoryRef, Table, para_block};
 
@@ -12,7 +10,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 mod cells;
 mod clear;
 mod convert;
-pub use convert::sort_type;
+pub use super::sort_keys::sort_type;
 mod layout;
 mod select;
 mod structure;

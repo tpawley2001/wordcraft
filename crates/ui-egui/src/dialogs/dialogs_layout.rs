@@ -23,6 +23,9 @@ use crate::options::MeasureExt;
 use crate::theme::semibold;
 
 mod page;
+mod para_sort;
+pub use para_sort::ParaSortForm;
+use para_sort::para_sort_ui;
 mod print;
 mod table;
 mod text;
@@ -53,6 +56,7 @@ pub enum LayoutDialog {
     Labels(LabelsForm),
     Formula(FormulaForm),
     Sort(SortForm),
+    ParaSort(ParaSortForm),
     SplitCells(SplitCellsForm),
     TextToTable(TextToTableForm),
     TableToText(TableToTextForm),
@@ -71,6 +75,7 @@ impl LayoutDialog {
             LayoutDialog::Labels(_) => "labels",
             LayoutDialog::Formula(_) => "tableFormula",
             LayoutDialog::Sort(_) => "tableSort",
+            LayoutDialog::ParaSort(_) => "paraSort",
             LayoutDialog::SplitCells(_) => "splitCells",
             LayoutDialog::TextToTable(_) => "textToTable",
             LayoutDialog::TableToText(_) => "tableToText",
@@ -90,6 +95,7 @@ impl LayoutDialog {
             LayoutDialog::Labels(_) => "Labels",
             LayoutDialog::Formula(_) => "Formula",
             LayoutDialog::Sort(_) => "Sort",
+            LayoutDialog::ParaSort(_) => tl!("Sort Text"),
             LayoutDialog::SplitCells(_) => "Split Cells",
             LayoutDialog::TextToTable(_) => "Convert Text to Table",
             LayoutDialog::TableToText(_) => "Convert to Text",
@@ -110,6 +116,7 @@ pub fn open(name: &str, app: &mut WordApp) -> Option<LayoutDialog> {
         "labels" => LayoutDialog::Labels(LabelsForm::read(app)),
         "tableFormula" => LayoutDialog::Formula(FormulaForm::read(app)?),
         "tableSort" => LayoutDialog::Sort(SortForm::read(app)?),
+        "paraSort" => LayoutDialog::ParaSort(ParaSortForm::read(app)?),
         "splitCells" => LayoutDialog::SplitCells(SplitCellsForm::read(app)?),
         "textToTable" => LayoutDialog::TextToTable(TextToTableForm::read(app)?),
         "tableToText" => LayoutDialog::TableToText(TableToTextForm::read(app)?),
@@ -130,6 +137,7 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut LayoutDialog) -> bool {
         LayoutDialog::Labels(f) => labels_ui(app, ui, f),
         LayoutDialog::Formula(f) => formula_ui(app, ui, f),
         LayoutDialog::Sort(f) => sort_ui(app, ui, f),
+        LayoutDialog::ParaSort(f) => para_sort_ui(app, ui, f),
         LayoutDialog::SplitCells(f) => split_cells_ui(app, ui, f),
         LayoutDialog::TextToTable(f) => text_to_table_ui(app, ui, f),
         LayoutDialog::TableToText(f) => table_to_text_ui(app, ui, f),

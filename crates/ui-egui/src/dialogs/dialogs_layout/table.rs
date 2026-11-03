@@ -157,7 +157,7 @@ impl SortForm {
     }
 }
 
-fn sort_type_label(kind: &str) -> &'static str {
+pub(super) fn sort_type_label(kind: &str) -> &'static str {
     match kind {
         "number" => tl!("Number"),
         "date" => tl!("Date"),

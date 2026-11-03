@@ -164,6 +164,48 @@ pub(super) fn outline_step(s: &mut Session, promote: bool) -> CmdResult {
 
 /// Sort the selected paragraphs (same container) alphabetically.
 pub(super) fn sort(s: &mut Session, v: &Value) -> CmdResult {
+    use crate::cmd::sort_keys::{SortType, compare, para_key};
+    let separator = match v.get("separator") {
+        None => '\t',
+        Some(Value::String(t)) => match t.as_str() {
+            "tab" => '\t',
+            "comma" => ',',
+            _ => {
+                let mut chars = t.chars();
+                let c = chars.next().ok_or_else(|| CmdError::Params("separator needs one character".into()))?;
+                if chars.next().is_some() {
+                    return Err(CmdError::Params("separator needs one character".into()));
+                }
+                c
+            }
+        },
+        _ => return Err(CmdError::Params("separator needs one character".into())),
+    };
+    let specs = v
+        .get("keys")
+        .map(|keys| {
+            let keys = keys.as_array().ok_or_else(|| CmdError::Params("`keys` must be a list".into()))?;
+            if keys.is_empty() || keys.len() > 3 {
+                return Err(CmdError::Params("`keys` takes one to three keys".into()));
+            }
+            keys.iter()
+                .map(|k| {
+                    if !k.is_object() {
+                        return Err(CmdError::Params("each key must be an object".into()));
+                    }
+                    let field = k
+                        .get("field")
+                        .map(|n| {
+                            n.as_u64()
+                                .and_then(|n| usize::try_from(n).ok())
+                                .ok_or_else(|| CmdError::Params("field must be a nonnegative integer".into()))
+                        })
+                        .transpose()?;
+                    Ok((field, SortType::read(k)?, p::bool(k, "descending").unwrap_or(false)))
+                })
+                .collect::<Result<Vec<_>, CmdError>>()
+        })
+        .transpose()?;
     let desc = p::bool(v, "descending").unwrap_or(false);
     let (a, b) = s.sel.ordered();
     if a.path.parent() != b.path.parent() {
@@ -171,18 +213,45 @@ pub(super) fn sort(s: &mut Session, v: &Value) -> CmdResult {
     }
     let (i0, i1) = (a.path.last(), b.path.last());
     let lang = s.doc.para(a.story, &a.path).and_then(|p| crate::cmd::para_lang(&s.doc, p)).or_else(|| crate::cmd::default_lang(s));
-    let bl = s.doc.container_mut(a.story, &a.path)?;
-    let Some(slice) = bl.get_mut(i0..=i1) else { return Err(CmdError::Failed("bad range".into())) };
+    let bl = s.doc.container(a.story, &a.path).ok_or_else(|| CmdError::Failed("bad range".into()))?;
+    let Some(slice) = bl.get(i0..=i1) else { return Err(CmdError::Failed("bad range".into())) };
     if slice.iter().any(|b| !matches!(**b, Block::Para(_))) {
         return Err(CmdError::Failed("sorting tables isn't supported here; use Table › Sort".into()));
     }
-    let mut keyed: Vec<_> =
-        slice.iter().map(|b| (natural_key(&b.as_para().map(|p| p.plain_text()).unwrap_or_default(), lang.as_deref()), b.clone())).collect();
-    keyed.sort_by(|(x, _), (y, _)| {
-        let o = natural_cmp(x, y);
-        if desc { o.reverse() } else { o }
-    });
-    for (dst, (_, blk)) in slice.iter_mut().zip(keyed) {
+    let skip = usize::from(p::bool(v, "header").unwrap_or(false)).min(slice.len());
+    let mut blocks: Vec<_> = slice.iter().skip(skip).cloned().collect();
+    if let Some(specs) = specs {
+        let order: Vec<_> = specs.iter().map(|(_, _, desc)| *desc).collect();
+        let mut keyed: Vec<_> = blocks
+            .into_iter()
+            .map(|b| {
+                let para = b.as_para();
+                let text = para.map(|p| p.plain_text()).unwrap_or_default();
+                let lang = para.and_then(|p| crate::cmd::para_lang(&s.doc, p)).or_else(|| lang.clone());
+                let keys: Vec<_> = specs
+                    .iter()
+                    .map(|(field, ty, _)| {
+                        let text = field.map_or(text.as_str(), |n| text.split(separator).nth(n).unwrap_or(""));
+                        para_key(text, *ty, lang.as_deref())
+                    })
+                    .collect();
+                (keys, b)
+            })
+            .collect();
+        keyed.sort_by(|(a, _), (b, _)| compare(a, b, &order));
+        blocks = keyed.into_iter().map(|(_, b)| b).collect();
+    } else {
+        let mut keyed: Vec<_> =
+            blocks.into_iter().map(|b| (natural_key(&b.as_para().map(|p| p.plain_text()).unwrap_or_default(), lang.as_deref()), b)).collect();
+        keyed.sort_by(|(x, _), (y, _)| {
+            let o = natural_cmp(x, y);
+            if desc { o.reverse() } else { o }
+        });
+        blocks = keyed.into_iter().map(|(_, b)| b).collect();
+    }
+    let bl = s.doc.container_mut(a.story, &a.path)?;
+    let Some(slice) = bl.get_mut(i0..=i1) else { return Err(CmdError::Failed("bad range".into())) };
+    for (dst, blk) in slice.iter_mut().skip(skip).zip(blocks) {
         *dst = blk;
     }
     // Keep a section break on the last paragraph of the range where it was.

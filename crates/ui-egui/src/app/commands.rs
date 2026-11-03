@@ -950,6 +950,7 @@ fn input_dialog_table(id: &str, params: &Value) -> Option<&'static str> {
         "table.properties" if no_settings(params) => Some("tableProperties"),
         "table.cellMargins" if no_settings(params) => Some("tableCellMargins"),
         "table.formula" if !has_value(params, "formula") => Some("tableFormula"),
+        "para.sort" if no_settings(params) => Some("paraSort"),
         "table.sort" if no_settings(params) => Some("tableSort"),
         "table.split" if no_settings(params) => Some("splitCells"),
         "table.fromText" if no_settings(params) => Some("textToTable"),
