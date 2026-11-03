@@ -40,6 +40,7 @@ mod section_valign;
 mod settings_merge;
 mod strict_graphics;
 mod strict_save;
+mod styles_without_id;
 mod text_boxes;
 mod text_whitespace;
 mod toc_ranges;
