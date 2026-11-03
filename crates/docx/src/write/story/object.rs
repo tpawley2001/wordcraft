@@ -115,6 +115,7 @@ impl Writer<'_> {
             InlineObject::Shape { extra, float, .. } if extra.hr.is_some() && float.wrap == Wrap::Inline && !float.hidden => {
                 self.write_hr(w, o, props)
             }
+            InlineObject::Shape { .. } if self.vml_shadowed(o) => self.write_vml_wordart(w, o, props, rels, depth),
             InlineObject::Shape { .. } => self.write_shape(w, o, props, rels, depth),
             InlineObject::Group { .. } => self.write_group(w, o, props, rels, depth),
             InlineObject::Ruby { base, ruby, align, size, raise, base_size, lang, props: ruby_props } => {
