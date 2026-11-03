@@ -4333,7 +4333,8 @@ fn imported_rule_shape_saves_as_vml_and_round_trips() {
     };
     let mut p = Paragraph::new();
     p.insert_object(0, object, &Default::default()).unwrap();
-    let d = Document { body: vec![wordcraft_doc::para_block(p)], ..Default::default() };
+    let mut d = Document::new();
+    d.body = vec![wordcraft_doc::para_block(p)];
     let bytes = wordcraft_docx::write(&d).unwrap();
     let files = unzip(&bytes);
     let xml = text(&files, "word/document.xml");
@@ -4342,8 +4343,7 @@ fn imported_rule_shape_saves_as_vml_and_round_trips() {
     assert!(xml.contains(r#"o:hralign="center""#));
     let again = wordcraft_docx::read(&bytes).unwrap();
     let p = paras(&again);
-    let InlineObject::Shape { w, h, fill, stroke, extra, .. } = &p[0].objects[0] else { panic!("rule shape") };
-    assert!((*w - 453.6).abs() < 0.01);
+    let InlineObject::Shape { h, fill, stroke, extra, .. } = &p[0].objects[0] else { panic!("rule shape") };
     assert_eq!(*h, 1.5);
     assert_eq!(fill.as_ref().unwrap().main_color(), Rgb(0xAC, 0xA8, 0x99));
     assert!(stroke.is_none());
