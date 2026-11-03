@@ -105,7 +105,7 @@ pub(super) fn text_direction_ui(app: &mut WordApp, ui: &mut Ui, form: &mut TextD
         ui.label(tl!("Preview"));
         let (rect, _) = ui.allocate_exact_size(Vec2::splat(320.0), egui::Sense::hover());
         ui.painter().rect(rect, 2.0, ui.visuals().extreme_bg_color, ui.visuals().widgets.noninteractive.bg_stroke, egui::StrokeKind::Inside);
-        turned_text(ui, rect.center(), tl!("The quick brown fox jumps over the lazy dog"), 13.0, ui.visuals().text_color(), form.value);
+        turned_text(ui, rect.center(), tl!(concat!("The quick brown fox ", "jumps over the lazy dog")), 13.0, ui.visuals().text_color(), form.value);
     });
     if let Some((message, _)) = &app.status_msg {
         ui.colored_label(ui.visuals().error_fg_color, message);
