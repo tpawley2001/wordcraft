@@ -21,6 +21,7 @@ mod linked_pictures;
 mod metadata;
 mod ole_print;
 mod word6;
+mod wrap_polygon;
 
 /// Offset in the WordDocument stream where test text pieces are placed (past the FIB).
 const TEXT_FC: u32 = 0x600;
