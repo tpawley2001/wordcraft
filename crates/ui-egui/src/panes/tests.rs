@@ -270,6 +270,7 @@ fn pane_bodies_fit_the_narrowest_pane() {
         Pane::Clipboard,
         Pane::Styles,
         Pane::StyleInspector,
+        Pane::RevealFormatting,
         Pane::Accessibility,
         Pane::AltText,
         Pane::FormatShape,
@@ -413,4 +414,29 @@ fn built_in_styles_grey_out_delete_in_the_styles_pane() {
     }
     assert!(delete_is_disabled("Normal"), "the built-in style's Delete is greyed out");
     assert!(!delete_is_disabled("Callout"), "the custom style's Delete stays enabled");
+}
+
+/// Shift+F1 toggles Reveal Formatting through the same shortcut path as the keyboard.
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn shift_f1_toggles_reveal_formatting() {
+    let app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello")), crate::Services::default());
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut crate::WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        app,
+    );
+    h.run_steps(4);
+    assert!(!super::open(h.state()).contains(&Pane::RevealFormatting));
+    for visible in [true, false] {
+        h.event(egui::Event::Key { key: egui::Key::F1, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::SHIFT });
+        h.run_steps(2);
+        assert_eq!(super::open(h.state()).contains(&Pane::RevealFormatting), visible);
+        assert!(!h.state().session.view.style_inspector);
+        h.event(egui::Event::Key { key: egui::Key::F1, physical_key: None, pressed: false, repeat: false, modifiers: egui::Modifiers::SHIFT });
+        h.run_steps(2);
+    }
 }

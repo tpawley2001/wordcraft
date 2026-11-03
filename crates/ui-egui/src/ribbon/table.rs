@@ -213,13 +213,13 @@ pub(super) fn table_layout(app: &mut WordApp, ui: &mut Ui) {
         crate::widgets::big_toggle(ui, app, "drawTable", "Draw\nTable", "table.draw", tool == Some(TableTool::Draw));
         crate::widgets::big_toggle(ui, app, "eraser", "Eraser", "table.eraser", tool == Some(TableTool::Erase));
     });
-    group(ui, "Rows & Columns", None, app, |ui, app| {
+    group(ui, "Rows & Columns", Some("table.insertCells"), app, |ui, app| {
         menu_button(
             ui,
             app,
             crate::widgets::MenuButtonOptions::new("deleteTable", Some("Delete"), "Delete", true, "table.deleteTable"),
             |ui, app| {
-                mi(ui, app, "Delete Cells", "table.deleteCells", json!({}));
+                mi(ui, app, "Delete Cells…", "ui.dialog", json!({"name": "deleteCells"}));
                 mi(ui, app, "Delete Columns", "table.deleteColumn", json!({}));
                 mi(ui, app, "Delete Rows", "table.deleteRow", json!({}));
                 mi(ui, app, "Delete Table", "table.deleteTable", json!({}));

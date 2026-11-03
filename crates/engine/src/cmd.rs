@@ -39,6 +39,7 @@ pub mod reveal;
 pub mod review;
 pub mod shape_fill;
 pub mod smart_art;
+mod sort_keys;
 pub mod speech;
 pub mod table;
 pub mod table_draw;
