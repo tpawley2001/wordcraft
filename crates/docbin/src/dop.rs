@@ -32,17 +32,17 @@ pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Setti
     let Some((fc, lcb)) = pair else { return };
     let (Ok(fc), Ok(lcb)) = (usize::try_from(fc), usize::try_from(lcb)) else { return };
     let Some(dop) = fc.checked_add(lcb).and_then(|end| table.get(fc..end)) else { return };
-    if dop.len() >= DOP95_LEN {
-        if let Some(copts60) = u16_at(dop, OFF_COPTS60) {
-            settings.do_not_expand_shift_return = copts60 & F_EXP_SH_RTN != 0;
-        }
+    if dop.len() >= DOP95_LEN
+        && let Some(copts60) = u16_at(dop, OFF_COPTS60)
+    {
+        settings.do_not_expand_shift_return = copts60 & F_EXP_SH_RTN != 0;
     }
-    if dop.len() >= DOP2000_LEN {
-        if let Some(flags) = u32_at(dop, OFF_COPTS_FLAGS) {
-            settings.sum_paragraph_spacing = flags & F_DONT_USE_HTML_AUTO_SPACING != 0;
-            if dop.len() >= DOP2003_LEN {
-                settings.allow_space_of_same_style_in_table = flags & F_ALLOW_SPACE_OF_SAME_STYLE_IN_TABLE != 0;
-            }
+    if dop.len() >= DOP2000_LEN
+        && let Some(flags) = u32_at(dop, OFF_COPTS_FLAGS)
+    {
+        settings.sum_paragraph_spacing = flags & F_DONT_USE_HTML_AUTO_SPACING != 0;
+        if dop.len() >= DOP2003_LEN {
+            settings.allow_space_of_same_style_in_table = flags & F_ALLOW_SPACE_OF_SAME_STYLE_IN_TABLE != 0;
         }
     }
 }
