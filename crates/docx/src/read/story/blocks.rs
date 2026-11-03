@@ -11,7 +11,8 @@ impl Reader<'_> {
             return;
         }
         let prepared;
-        let parent = if depth == 0 {
+        // A story starts at its document's depth (a nested altChunk document's is deeper).
+        let parent = if depth == self.chunks.depth {
             prepared = self.prepare_comment_ranges(parent);
             &prepared
         } else {
