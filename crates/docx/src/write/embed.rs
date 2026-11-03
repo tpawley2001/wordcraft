@@ -823,7 +823,7 @@ pub(super) fn vml_style_with(style: &str, w: f32, h: f32, float: &Float) -> Stri
 }
 
 /// Points for a VML style: finite, bounded, at most two decimals.
-fn pt(v: f32) -> String {
+pub(super) fn pt(v: f32) -> String {
     let v = wordcraft_geom::finite(v).clamp(-crate::units::MAX_LEN_PT, crate::units::MAX_LEN_PT);
     let s = format!("{v:.2}");
     s.trim_end_matches('0').trim_end_matches('.').to_string()

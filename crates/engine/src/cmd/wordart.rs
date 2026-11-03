@@ -208,6 +208,7 @@ fn text_effects(s: &mut Session, v: &Value) -> CmdResult {
         }
         if let Some(x) = shadow {
             fx.shadow = x;
+            fx.shadow_extra = None;
         }
         if let Some(x) = glow {
             fx.glow = x;

@@ -2,7 +2,8 @@
 //!
 //! Text with effects is drawn from its glyph outlines ([`glyph_path`]) as a [`Draw::Art`]
 //! (crate::display::Draw::Art), which [`art_layers`] turns into plain fills and strokes for the
-//! raster and PDF back ends: reflection, shadow, glow, fill, outline, in that order. A warped
+//! raster and PDF back ends: reflection, shadow (a second VML copy under it), glow, fill, outline,
+//! in that order. A warped
 //! text box's outlines are bent by [`Warp`] before that. Blurs are approximated with
 //! [`wordcraft_doc::effects::bands`], as for shapes.
 
@@ -102,8 +103,15 @@ pub fn art_layers(path: &BezPath, fx: &TextEffects, color: Rgb, alpha: f32) -> V
         });
     }
     if let Some(sh) = fx.shadow {
+        let extra = fx.shadow_extra.unwrap_or_default();
+        // Word 2007 WordArt's second copy goes under the first.
+        if let Some(c) = extra.second {
+            let moved = Affine::translate((f64::from(c.dx), f64::from(c.dy))) * path.clone();
+            out.push(ArtLayer { path: moved, paint: Paint::Solid(c.color, alpha * (1.0 - c.transparency / 100.0)), stroke: None, letters: false });
+        }
         let (dx, dy) = sh.offset();
-        let moved = Affine::translate((f64::from(dx), f64::from(dy))) * path.clone();
+        let skew = extra.transform.map_or(Affine::IDENTITY, |t| shadow_transform(&t, b));
+        let moved = Affine::translate((f64::from(dx), f64::from(dy))) * skew * path.clone();
         for (g, a) in wordcraft_doc::effects::bands(0.0, sh.blur / 2.0, sh.opacity() * alpha) {
             let paint = Paint::Solid(sh.color, a);
             out.push(ArtLayer { path: moved.clone(), paint: paint.clone(), stroke: None, letters: false });
@@ -126,6 +134,15 @@ pub fn art_layers(path: &BezPath, fx: &TextEffects, color: Rgb, alpha: f32) -> V
         out.push(ArtLayer { path: path.clone(), paint: Paint::Solid(c, a), stroke: Some(w), letters: true });
     }
     out
+}
+
+/// VML's shadow transform about its origin in box `b` (the letters' bounds, which WordArt
+/// stretches to its shape): the 2x2 matrix is y-up, so it is flipped into the page's y-down.
+fn shadow_transform(t: &wordcraft_doc::effects::ShadowTransform, b: kurbo::Rect) -> Affine {
+    let [sxx, sxy, syx, syy] = t.matrix.map(f64::from);
+    let o = Point::new(b.center().x + f64::from(t.origin[0]) * b.width(), b.center().y + f64::from(t.origin[1]) * b.height());
+    let m = Affine::new([sxx, -syx, -sxy, syy, 0.0, 0.0]);
+    Affine::translate(o.to_vec2()) * m * Affine::translate(-o.to_vec2())
 }
 
 /// The effects a run is drawn with: its WordArt effects on top of the legacy font effects
@@ -358,6 +375,38 @@ mod tests {
         // Arch down runs along the bottom.
         let d = Warp::new(&TextWarp::new("textArchDown").unwrap(), frame, 0.25).unwrap();
         assert!(d.map(0.5, 1.0).1 > 119.0);
+    }
+
+    /// Word 2007 WordArt's perspective shadow is sheared and squashed about its origin before its
+    /// offset; a double shadow's second copy is drawn first, under the first.
+    #[test]
+    fn vml_shadow_copies_and_transform() {
+        use wordcraft_doc::effects::{ShadowCopy, ShadowExtra, ShadowTransform};
+        let path = kurbo::Rect::new(0.0, 0.0, 100.0, 40.0).to_path(0.1);
+        let grey = Rgb(0x86, 0x86, 0x86);
+        // offset -6pt,-6pt; matrix ",-56756f,,.5"; origin "-.5,.5" (the bottom-left corner).
+        let shadow = Shadow { color: grey, transparency: 50.0, blur: 0.0, distance: 72f32.sqrt(), angle: 225.0, rot_with_shape: false };
+        let transform = ShadowTransform { matrix: [1.0, -56_756.0 / 65_536.0, 0.0, 0.5], origin: [-0.5, 0.5] };
+        let fx =
+            TextEffects { shadow: Some(shadow), shadow_extra: Some(ShadowExtra { second: None, transform: Some(transform) }), ..Default::default() };
+        let layers = art_layers(&path, &fx, Rgb::BLACK, 1.0);
+        let b = layers.iter().find(|l| !l.letters).map(|l| l.path.bounding_box()).unwrap();
+        // Half height, standing on the bottom edge (moved by the offset), leaning left.
+        let near = |a: f64, e: f64| (a - e).abs() < 0.05;
+        assert!(near(b.y0, 14.0) && near(b.y1, 34.0), "{b:?}");
+        assert!(near(b.x0, -40.64) && near(b.x1, 94.0), "{b:?}");
+
+        let second = ShadowCopy { dx: -6.0, dy: -6.0, color: Rgb(0xEC, 0xEC, 0xEC), transparency: 50.0 };
+        let fx =
+            TextEffects { shadow: Some(shadow), shadow_extra: Some(ShadowExtra { second: Some(second), transform: None }), ..Default::default() };
+        let shadows: Vec<_> = art_layers(&path, &fx, Rgb::BLACK, 1.0).into_iter().filter(|l| !l.letters).collect();
+        assert_eq!(shadows.len(), 2);
+        assert!(matches!(shadows[0].paint, Paint::Solid(c, _) if c == Rgb(0xEC, 0xEC, 0xEC)));
+        assert!(matches!(shadows[1].paint, Paint::Solid(c, _) if c == grey));
+        assert!(near(shadows[0].path.bounding_box().x0, -6.0));
+        // Without a shadow the extras draw nothing.
+        let fx = TextEffects { shadow_extra: Some(ShadowExtra { second: Some(second), transform: None }), ..Default::default() };
+        assert!(art_layers(&path, &fx, Rgb::BLACK, 1.0).iter().all(|l| l.letters));
     }
 
     /// #2534: the legacy font effects become text effects, under any WordArt effects.

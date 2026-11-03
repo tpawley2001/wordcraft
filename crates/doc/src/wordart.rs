@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::effects::{Glow, Shadow};
+use crate::effects::{Glow, Shadow, ShadowExtra};
 use crate::props::Rgb;
 
 /// Most gradient stops kept.
@@ -32,6 +32,9 @@ pub struct TextEffects {
     pub outline: Option<TextOutline>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shadow: Option<Shadow>,
+    /// Word 2007 WordArt's second shadow copy and shadow transform (VML), with `shadow`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shadow_extra: Option<ShadowExtra>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub glow: Option<Glow>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -157,6 +160,7 @@ impl TextEffects {
                 transparency: clamp(o.transparency, 0.0, 100.0, 0.0),
             }),
             shadow: self.shadow.map(Shadow::sanitized),
+            shadow_extra: self.shadow_extra.filter(|_| self.shadow.is_some()).and_then(ShadowExtra::sanitized),
             glow: self.glow.map(Glow::sanitized).filter(|g| g.size > 0.0),
             reflection: self.reflection.map(|r| Reflection {
                 transparency: clamp(r.transparency, 0.0, 100.0, 50.0),
@@ -176,6 +180,7 @@ impl TextEffects {
         }
         if patch.shadow.is_some() {
             self.shadow = patch.shadow;
+            self.shadow_extra = patch.shadow_extra;
         }
         if patch.glow.is_some() {
             self.glow = patch.glow;

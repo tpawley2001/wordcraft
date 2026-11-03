@@ -658,7 +658,8 @@ fn vml_opacity(v: &str) -> Option<f32> {
 /// Word 2007 WordArt's look as text effects (ECMA-376 Part 4: `v:fill` §19.1.2.5, `v:stroke`
 /// §19.1.2.21, `v:shadow` §19.1.2.18): the letters filled `fillcolor` (white by default) unless
 /// `filled` or `v:fill/@on` is off, outlined `strokecolor` at `strokeweight` (black, 0.75pt by
-/// default) unless `stroked` or `v:stroke/@on` is off, and a plain offset shadow, crisp. `child`
+/// default) unless `stroked` or `v:stroke/@on` is off, and a crisp shadow: its `offset` copy, plus
+/// a second copy (`double`, `emboss`) or a transform of it (`perspective`). `child`
 /// finds the shape's (or its shapetype's) `v:fill`, `v:stroke` and `v:shadow`.
 fn vml_text_effects<'a>(
     filled: bool,
@@ -668,6 +669,7 @@ fn vml_text_effects<'a>(
     strokeweight: Option<&str>,
     child: impl Fn(&str) -> Option<&'a El>,
 ) -> wordcraft_doc::wordart::TextEffects {
+    use wordcraft_doc::effects::{ShadowExtra, ShadowTransform};
     use wordcraft_doc::wordart::{TextEffects, TextFill, TextOutline};
     let truthy = |v: &str| matches!(v.trim(), "t" | "true" | "1");
     let off = |e: Option<&El>| e.and_then(|e| e.attr("on")).is_some_and(|v| !truthy(v));
@@ -690,30 +692,101 @@ fn vml_text_effects<'a>(
             .clamp(0.0, wordcraft_doc::wordart::MAX_OUTLINE),
         transparency: transparency(stroke_el),
     });
-    // Only a single offset copy (`type` absent or `single`); perspective, double and emboss
-    // shadows are left out rather than drawn wrong.
-    let shadow = child("v:shadow")
-        .filter(|s| s.attr("on").is_some_and(truthy) && s.attr("type").is_none_or(|t| t.trim().eq_ignore_ascii_case("single")))
-        .map(|s| {
-            let max = crate::units::MAX_LEN_PT;
-            let len = |v: &str| measure(v, 1.0).map_or(0.0, wordcraft_geom::finite).clamp(-max, max);
-            let (dx, dy) = match s.attr("offset") {
-                Some(o) => {
-                    let (x, y) = o.split_once(',').unwrap_or((o, ""));
-                    (len(x), len(y))
-                }
-                None => (2.0, 2.0),
-            };
-            wordcraft_doc::effects::Shadow {
-                color: s.attr("color").and_then(vml_color).unwrap_or(Rgb(0x80, 0x80, 0x80)),
-                transparency: transparency(Some(s)).clamp(0.0, 100.0),
-                blur: 0.0,
-                distance: dx.hypot(dy),
-                angle: dy.atan2(dx).to_degrees().rem_euclid(360.0),
-                rot_with_shape: false,
+    // Shadow colour keywords: the letters' line colour (when outlined) or fill colour.
+    let fill_color = match &fill {
+        TextFill::Solid { color, .. } => Some(*color),
+        _ => None,
+    };
+    let line_color = outline.and_then(|o| o.color);
+    let shadow_el = child("v:shadow").filter(|s| s.attr("on").is_some_and(truthy));
+    let kind = shadow_el.map(|s| s.attr("type").map_or_else(String::new, |t| t.trim().to_ascii_lowercase()));
+    let (mut shadow, mut shadow_extra) = (None, None);
+    if let (Some(s), Some(kind)) = (shadow_el, kind.as_deref())
+        && matches!(kind, "" | "single" | "double" | "emboss" | "perspective")
+    {
+        let max = crate::units::MAX_LEN_PT;
+        let len = |v: &str| measure(v, 1.0).map_or(0.0, wordcraft_geom::finite).clamp(-max, max);
+        let pair = |name: &str, d: f32| match s.attr(name) {
+            Some(o) => {
+                let (x, y) = o.split_once(',').unwrap_or((o, ""));
+                (len(x), len(y))
             }
+            None => (d, d),
+        };
+        let (dx, dy) = pair("offset", 2.0);
+        let keyword = |k: &str| match k.to_ascii_lowercase().as_str() {
+            "lineorfill" => line_color.or(fill_color),
+            "fill" => fill_color,
+            "line" => line_color,
+            _ => None,
+        };
+        let color = s.attr("color").and_then(|c| vml_color_expr(c, keyword)).unwrap_or(Rgb(0x80, 0x80, 0x80));
+        let transparency = transparency(Some(s)).clamp(0.0, 100.0);
+        // The second copy's colour: `color2` when a plain colour, else the first copy's lightened
+        // (VML's "shadow add(102)").
+        let color2 = || {
+            s.attr("color2")
+                .and_then(|c| vml_color_expr(c, |k| k.eq_ignore_ascii_case("shadow").then_some(color)))
+                .unwrap_or_else(|| lighten(color, 102))
+        };
+        let copy = |(dx, dy): (f32, f32)| wordcraft_doc::effects::ShadowCopy { dx, dy, color: color2(), transparency };
+        shadow_extra = match kind {
+            "double" => Some(ShadowExtra { second: Some(copy(pair("offset2", -2.0))), transform: None }),
+            "emboss" => Some(ShadowExtra { second: Some(copy((-dx, -dy))), transform: None }),
+            "perspective" => {
+                let d = ShadowTransform::default();
+                let mut matrix = d.matrix;
+                let items = s.attr("matrix").unwrap_or("");
+                for (m, v) in matrix.iter_mut().zip(items.split(',')) {
+                    if let Some(f) = vml_fraction(v).filter(|_| !v.trim().is_empty()) {
+                        *m = f;
+                    }
+                }
+                let mut origin = d.origin;
+                for (o, v) in origin.iter_mut().zip(s.attr("origin").unwrap_or("").split(',')) {
+                    *o = vml_fraction(v).unwrap_or(0.0);
+                }
+                Some(ShadowExtra { second: None, transform: Some(ShadowTransform { matrix, origin }) })
+            }
+            _ => None,
+        };
+        shadow = Some(wordcraft_doc::effects::Shadow {
+            color,
+            transparency,
+            blur: 0.0,
+            distance: dx.hypot(dy),
+            angle: dy.atan2(dx).to_degrees().rem_euclid(360.0),
+            rot_with_shape: false,
         });
-    TextEffects { fill: Some(fill), outline, shadow, ..TextEffects::default() }.sanitized()
+    }
+    TextEffects { fill: Some(fill), outline, shadow, shadow_extra, ..TextEffects::default() }.sanitized()
+}
+
+/// `c` with `n` added to each channel (VML's `add(n)`), clamped to 255.
+fn lighten(c: Rgb, n: u8) -> Rgb {
+    Rgb(c.0.saturating_add(n), c.1.saturating_add(n), c.2.saturating_add(n))
+}
+
+/// A VML colour or colour expression (as shadow colours are written, e.g. "lineOrFill
+/// darken(153)", "shadow add(102)"): a plain colour or a keyword (`keyword` gives its colour),
+/// then optionally `darken(n)` (each channel scaled by n/255), `lighten(n)` (moved toward white
+/// likewise) or `add(n)`.
+fn vml_color_expr(v: &str, keyword: impl Fn(&str) -> Option<Rgb>) -> Option<Rgb> {
+    let v = v.trim();
+    let (base, rest) = v.split_once(char::is_whitespace).unwrap_or((v, ""));
+    let c = vml_color(base).or_else(|| keyword(base))?;
+    let rest = rest.trim();
+    let Some((op, arg)) = rest.split_once('(') else { return Some(c) };
+    let Some(n) = arg.trim_end().strip_suffix(')').and_then(|n| n.trim().parse::<f32>().ok()).filter(|n| n.is_finite()) else { return Some(c) };
+    let n = n.clamp(0.0, 255.0);
+    let ch = |x: u8, f: &dyn Fn(f32) -> f32| f(f32::from(x)).round().clamp(0.0, 255.0) as u8;
+    let map = |f: &dyn Fn(f32) -> f32| Rgb(ch(c.0, f), ch(c.1, f), ch(c.2, f));
+    Some(match op.trim().to_ascii_lowercase().as_str() {
+        "darken" => map(&|x| x * n / 255.0),
+        "lighten" => map(&|x| 255.0 - (255.0 - x) * n / 255.0),
+        "add" => map(&|x| x + n),
+        _ => c,
+    })
 }
 
 /// A VML shape's turn: `rotation` in degrees, or 65536ths of one with an `fd` suffix; `flip`: `x`

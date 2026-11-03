@@ -129,6 +129,69 @@ impl Shadow {
     }
 }
 
+/// Largest scale or shear term of a [`ShadowTransform`].
+pub const MAX_SHADOW_SCALE: f32 = 10.0;
+
+/// Word 2007 WordArt's shadow beyond its first copy (ECMA-376 Part 4 §19.1.2.18, VML `v:shadow`
+/// `type` double, emboss and perspective): a second crisp copy and a transform of the first.
+#[derive(Clone, Copy, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ShadowExtra {
+    /// A second copy, drawn under the first (`double`'s `offset2`, `emboss`'s light copy).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub second: Option<ShadowCopy>,
+    /// The first copy's transform (`perspective`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transform: Option<ShadowTransform>,
+}
+
+/// A crisp copy of the letters moved by `dx`, `dy` points (y down).
+#[derive(Clone, Copy, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ShadowCopy {
+    pub dx: f32,
+    pub dy: f32,
+    pub color: Rgb,
+    pub transparency: f32,
+}
+
+/// VML's shadow `matrix` 2x2 part (`sxx, sxy, syx, syy`, y pointing up as VML draws it: a negative
+/// `sxy` leans the shadow left) applied about `origin`, fractions of the box from its centre
+/// (-0.5..0.5; `-0.5, 0.5` is the bottom-left corner), before the shadow's offset.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ShadowTransform {
+    pub matrix: [f32; 4],
+    pub origin: [f32; 2],
+}
+
+impl Default for ShadowTransform {
+    fn default() -> Self {
+        ShadowTransform { matrix: [1.0, 0.0, 0.0, 1.0], origin: [0.0, 0.0] }
+    }
+}
+
+impl ShadowExtra {
+    /// Finite, in range; `None` when nothing is left.
+    pub fn sanitized(self) -> Option<ShadowExtra> {
+        let second = self.second.map(|c| ShadowCopy {
+            dx: clamp(c.dx, -MAX_DISTANCE, MAX_DISTANCE, 0.0),
+            dy: clamp(c.dy, -MAX_DISTANCE, MAX_DISTANCE, 0.0),
+            color: c.color,
+            transparency: clamp(c.transparency, 0.0, 100.0, 0.0),
+        });
+        let transform = self.transform.map(|t| {
+            let d = ShadowTransform::default();
+            let mut matrix = d.matrix;
+            for (m, (v, dv)) in matrix.iter_mut().zip(t.matrix.iter().zip(d.matrix)) {
+                *m = clamp(*v, -MAX_SHADOW_SCALE, MAX_SHADOW_SCALE, dv);
+            }
+            ShadowTransform { matrix, origin: t.origin.map(|o| clamp(o, -0.5, 0.5, 0.0)) }
+        });
+        (second.is_some() || transform.is_some()).then_some(ShadowExtra { second, transform })
+    }
+}
+
 impl Glow {
     /// Finite, in range.
     pub fn sanitized(self) -> Glow {

@@ -118,6 +118,7 @@ fn every_char_prop_round_trips() {
                 angle: 45.0,
                 rot_with_shape: false,
             }),
+            shadow_extra: None,
             glow: Some(wordcraft_doc::effects::Glow { color: Rgb(0x0F, 0x9E, 0xD5), size: 5.0, transparency: 40.0 }),
             reflection: Some(wordcraft_doc::wordart::Reflection::default()),
         })),
