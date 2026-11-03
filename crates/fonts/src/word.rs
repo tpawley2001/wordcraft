@@ -173,6 +173,12 @@ pub fn symbol_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)> {
     (resolved.substituted || one_em(line_metrics(&resolved.face), resolved.face.upem)).then_some(m)
 }
 
+/// (ascent, descent) in em that Word gives a line in `family` when that font isn't installed here
+/// and its substitute's own line differs. Stub: see the task spec.
+pub fn missing_font_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)> {
+    symbol_line(family, resolved)
+}
+
 /// Is a line's (ascent, descent) one `upem` em tall?
 fn one_em((ascent, descent): (f64, f64), upem: f64) -> bool {
     upem > 0.0 && ((ascent + descent) / upem - 1.0).abs() < 0.005
