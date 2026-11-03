@@ -1,6 +1,6 @@
 use super::{
-    Arc, BTreeMap, Blocks, Comment, DocxError, El, HashMap, HashSet, MAX_PARTS, MAX_SOURCES, MAX_TEMPLATE_PATH, NoteKind, NumFormat, Paragraph,
-    PartKind, Reader, Rels, Seen, StoryCtx, Zoom, ZoomFit, int, math, on_off, para_block, props, tw, u32_of,
+    Arc, Blocks, Comment, DocxError, El, HashMap, MAX_PARTS, MAX_SOURCES, MAX_TEMPLATE_PATH, NoteKind, NumFormat, Paragraph, PartKind, Reader, Rels,
+    Seen, StoryCtx, Zoom, ZoomFit, int, math, on_off, para_block, props, tw, u32_of,
 };
 
 impl Reader<'_> {
@@ -120,7 +120,7 @@ impl Reader<'_> {
             let mut sc = StoryCtx::default();
             let mut blocks = Blocks::new();
             self.current_note = Some((kind, id));
-            self.read_blocks(&mut sc, n, &rels, &mut blocks, 0);
+            self.read_blocks(&mut sc, n, &rels, &mut blocks, self.chunks.depth);
             self.flush_pending(&mut sc, &mut blocks);
             self.current_note = None;
             if let Some(p) = self.doc.parts.get_mut(&id)
@@ -152,7 +152,7 @@ impl Reader<'_> {
         let mut sc = StoryCtx::default();
         let mut blocks = Blocks::new();
         self.in_note_sep = true;
-        self.read_blocks(&mut sc, n, rels, &mut blocks, 0);
+        self.read_blocks(&mut sc, n, rels, &mut blocks, self.chunks.depth);
         self.flush_pending(&mut sc, &mut blocks);
         self.in_note_sep = false;
         if blocks.is_empty() {
@@ -188,33 +188,33 @@ impl Reader<'_> {
         let rels = self.pkg.rels(path);
         let mut by_para: HashMap<String, u32> = HashMap::new();
         let mut next_id = 0u32;
-        let mut entries: BTreeMap<u32, Comment> = BTreeMap::new();
-        // Reserve numeric file ids before allocating replacements for repeated or nonnumeric
-        // ids, so a replacement cannot take a later comment's original id (#3692).
-        let given: HashSet<u32> = root.children("w:comment").filter_map(|c| c.attr("w:id")?.parse().ok()).collect();
+        // Straight into the document, beside the comments chunks in notes brought in.
         for c in root.children("w:comment") {
             if self.doc.parts.len() >= MAX_PARTS {
                 break;
             }
             let file_id = c.attr("w:id").unwrap_or("").to_string();
             let id = match file_id.parse::<u32>() {
-                Ok(v) if !entries.contains_key(&v) => v,
+                Ok(v) if !self.doc.comments.contains_key(&v) => v,
                 _ => {
-                    while entries.contains_key(&next_id) || given.contains(&next_id) {
-                        next_id = next_id.saturating_add(1);
+                    // Every id handed out so far is a key of `doc.comments` (inserted below).
+                    while self.doc.comments.contains_key(&next_id) {
+                        next_id += 1;
                     }
                     next_id
                 }
             };
+            // Taken before its text is read: a chunk there brings comments of its own.
+            self.doc.comments.insert(id, Comment::default());
             let mut sc = StoryCtx::default();
             let mut blocks = Blocks::new();
-            self.read_blocks(&mut sc, c, &rels, &mut blocks, 0);
+            self.read_blocks(&mut sc, c, &rels, &mut blocks, self.chunks.depth);
             self.flush_pending(&mut sc, &mut blocks);
             let part = self.doc.add_part(PartKind::Comment, blocks);
             if let Some(pid) = c.children("w:p").last().and_then(|p| p.attr("w14:paraId")) {
                 by_para.insert(pid.to_string(), id);
             }
-            entries.insert(
+            self.doc.comments.insert(
                 id,
                 Comment {
                     author: c.attr("w:author").unwrap_or("").to_string(),
@@ -235,7 +235,7 @@ impl Reader<'_> {
                 let Some(cid) = e.attr("w15:paraId").and_then(|p| by_para.get(p)).copied() else { continue };
                 let parent = e.attr("w15:paraIdParent").and_then(|p| by_para.get(p)).copied().filter(|p| *p != cid);
                 let done = e.attr("w15:done").is_some_and(|v| v == "1" || v == "true");
-                if let Some(c) = entries.get_mut(&cid) {
+                if let Some(c) = self.doc.comments.get_mut(&cid) {
                     c.parent = parent;
                     c.resolved = done;
                 }
@@ -254,7 +254,7 @@ impl Reader<'_> {
             for e in x.els().filter(|e| e.local() == "commentId") {
                 let Some(cid) = local(e, "paraId").and_then(|p| by_para.get(&p).copied()) else { continue };
                 let Some(durable) = local(e, "durableId").filter(|d| crate::write::durable_id_ok(d)) else { continue };
-                if let Some(c) = entries.get_mut(&cid) {
+                if let Some(c) = self.doc.comments.get_mut(&cid) {
                     c.durable_id = Some(durable.to_ascii_uppercase());
                     by_durable.insert(durable.to_ascii_uppercase(), cid);
                 }
@@ -266,12 +266,11 @@ impl Reader<'_> {
             for e in x.els().filter(|e| e.local() == "commentExtensible") {
                 let Some(cid) = local(e, "durableId").and_then(|d| by_durable.get(&d.to_ascii_uppercase()).copied()) else { continue };
                 let date = local(e, "dateUtc").filter(|d| d.len() <= 40 && d.chars().all(|c| c.is_ascii_alphanumeric() || ":-.+".contains(c)));
-                if let (Some(c), Some(date)) = (entries.get_mut(&cid), date) {
+                if let (Some(c), Some(date)) = (self.doc.comments.get_mut(&cid), date) {
                     c.date_utc = Some(date);
                 }
             }
         }
-        self.doc.comments = entries;
         Ok(())
     }
 
