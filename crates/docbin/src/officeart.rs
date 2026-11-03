@@ -347,6 +347,12 @@ pub(crate) struct Props {
     pub(crate) pib_flags: Option<u32>,
     /// `fHorizRule` (Group Shape Boolean Properties): Word's horizontal line, not a picture.
     pub(crate) horiz_rule: bool,
+    pub(crate) standard_hr: bool,
+    /// Horizontal-rule width in tenths of a percent, alignment and dimensions in twips.
+    pub(crate) pct_hr: Option<i32>,
+    pub(crate) align_hr: Option<u32>,
+    pub(crate) height_hr: Option<i32>,
+    pub(crate) width_hr: Option<i32>,
 }
 
 impl Props {
@@ -399,12 +405,23 @@ impl Props {
                 0x01FF if op & (1 << 19) != 0 => self.line = Some(op & (1 << 3) != 0),
                 0x01FF => {}
                 // fHorizRule (bit 11) is valid when fUsefHorizRule (bit 27) is set.
-                0x03BF if op & (1 << 27) != 0 => self.horiz_rule = op & (1 << 11) != 0,
+                0x03BF => {
+                    if op & (1 << 27) != 0 {
+                        self.horiz_rule = op & (1 << 11) != 0;
+                    }
+                    if op & (1 << 29) != 0 {
+                        self.standard_hr = op & (1 << 13) != 0;
+                    }
+                }
                 0x0384..=0x0387 => self.wrap_dist[(pid - 0x0384) as usize] = Some(op),
                 0x038F => self.posh = Some(op),
                 0x0390 => self.posrelh = Some(op),
                 0x0391 => self.posv = Some(op),
                 0x0392 => self.posrelv = Some(op),
+                0x0393 => self.pct_hr = Some(op as i32),
+                0x0394 => self.align_hr = Some(op),
+                0x0395 => self.height_hr = Some(op as i32),
+                0x0396 => self.width_hr = Some(op as i32),
                 _ => {}
             }
         }

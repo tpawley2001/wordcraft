@@ -7,6 +7,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::officeart;
+use wordcraft_doc::connector::HorizontalRule;
+use wordcraft_doc::props::{Align, Rgb};
 
 /// `PICF.cbHeader` — the fixed size of the PICF structure.
 const CB_HEADER: usize = 0x44;
@@ -88,11 +90,12 @@ impl Default for Pictures {
 }
 
 /// An inline picture: its media key, display size (points), crop fractions and alt text.
-/// `empty` marks a shape with no picture at all: an invisible object of its size (no key).
+/// `empty` keeps an invisible shape’s space; `rule` carries a horizontal line’s fill and metadata.
 #[derive(Clone, Debug)]
 pub(crate) struct Inline {
     pub(crate) key: String,
     pub(crate) empty: bool,
+    pub(crate) rule: Option<(Rgb, HorizontalRule)>,
     pub(crate) w: f32,
     pub(crate) h: f32,
     pub(crate) crop: [f32; 4],
@@ -131,14 +134,34 @@ impl Pictures {
             Found::Range(pic) => {
                 let bytes = data.get(pic.range.clone()).filter(|b| b.len() <= room)?.to_vec();
                 let key = self.insert(bytes, pic.ext, false)?;
-                Some(Inline { key, empty: false, w: pic.w, h: pic.h, crop: [0.0; 4], alt: String::new() })
+                Some(Inline { key, empty: false, rule: None, w: pic.w, h: pic.h, crop: [0.0; 4], alt: String::new() })
             }
-            Found::Shape { w, h, key, props } => Some(Inline { key: key?, empty: false, w, h, crop: props.crop, alt: props.alt }),
-            Found::Empty { w, h, props } => Some(Inline { key: String::new(), empty: true, w, h, crop: [0.0; 4], alt: props.alt }),
+            Found::Shape { w, h, key, props } => Some(Inline { key: key?, empty: false, rule: None, w, h, crop: props.crop, alt: props.alt }),
+            Found::Empty { w, h, props } => Some(Inline { key: String::new(), empty: true, rule: None, w, h, crop: [0.0; 4], alt: props.alt }),
+            Found::Rule { w, h, props } => Some(Inline {
+                key: String::new(),
+                empty: false,
+                w,
+                h,
+                crop: [0.0; 4],
+                alt: props.alt,
+                rule: Some((
+                    props.fill_color.unwrap_or(Rgb(0xAC, 0xA8, 0x99)),
+                    HorizontalRule {
+                        pct: (props.pct_hr.unwrap_or(1000) as f32 / 10.0).clamp(0.0, 100.0),
+                        align: match props.align_hr {
+                            Some(1) => Align::Center,
+                            Some(2) => Align::Right,
+                            _ => Align::Left,
+                        },
+                        standard: props.standard_hr,
+                    },
+                )),
+            }),
             Found::Linked { w, h, path, props } => {
                 let key = format!("link{}", self.links.len() + 1);
                 self.links.insert(key.clone(), path);
-                Some(Inline { key, empty: false, w, h, crop: props.crop, alt: props.alt })
+                Some(Inline { key, empty: false, rule: None, w, h, crop: props.crop, alt: props.alt })
             }
         }
     }
@@ -224,6 +247,12 @@ struct Located {
 /// `OfficeArtInlineSpContainer` (Word 97 and later) whose BLIP is decoded.
 enum Found {
     Range(Located),
+    /// A horizontal line using the existing rule shape model, without image bytes.
+    Rule {
+        w: f32,
+        h: f32,
+        props: officeart::Props,
+    },
     Shape {
         w: f32,
         h: f32,
@@ -283,15 +312,17 @@ fn locate(data: &[u8], fc_pic: u32, pics: &mut Pictures) -> Option<Found> {
         let [cl, ct, cr, cb] = props.crop;
         let w = (dxa_goal / 20.0 * (1.0 - cl - cr).max(0.01) * scale(mx)).clamp(1.0, 1584.0);
         let h = (dya_goal / 20.0 * (1.0 - ct - cb).max(0.01) * scale(my)).clamp(1.0, 1584.0);
+        if props.horiz_rule {
+            let w = props.width_hr.map_or(dxa_goal * scale(mx), |v| v as f32) / 20.0;
+            let h = props.height_hr.map_or(dya_goal * scale(my), |v| v as f32) / 20.0;
+            return Some(Found::Rule { w: w.clamp(0.0, 1584.0), h: h.clamp(0.0, 1584.0), props });
+        }
         return match blip {
             Some(key) => Some(Found::Shape { w, h, key, props }),
             // No BLIP: a picture linked to a file ([MS-ODRAW] §2.3.23.3 `pibFlags` LinkToFile,
             // or a file name) is kept at its size; so is a shape with no picture at all, drawn
-            // as nothing. A horizontal line isn't.
+            // as nothing.
             None => {
-                if props.horiz_rule {
-                    return None;
-                }
                 let linked = props.pib_flags.is_some_and(|f| f & 0x8 != 0) || !props.pib_name.is_empty() || mm == MM_SHAPEFILE;
                 if !linked {
                     return Some(Found::Empty { w, h, props });
@@ -348,5 +379,59 @@ fn ext_of(b: &[u8]) -> &'static str {
         "gif"
     } else {
         "bmp"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rule(props: &[(u16, u32)]) -> Inline {
+        let mut table = Vec::new();
+        for (id, value) in props {
+            table.extend_from_slice(&id.to_le_bytes());
+            table.extend_from_slice(&value.to_le_bytes());
+        }
+        let mut shape = Vec::new();
+        shape.extend_from_slice(&((props.len() as u16) << 4 | 3).to_le_bytes());
+        shape.extend_from_slice(&officeart::rt::TERTIARY_FOPT.to_le_bytes());
+        shape.extend_from_slice(&(table.len() as u32).to_le_bytes());
+        shape.extend(table);
+        let mut data = vec![0u8; CB_HEADER];
+        data[4..6].copy_from_slice(&(CB_HEADER as u16).to_le_bytes());
+        data[6..8].copy_from_slice(&MM_SHAPE.to_le_bytes());
+        data[28..30].copy_from_slice(&1000i16.to_le_bytes());
+        data[30..32].copy_from_slice(&500i16.to_le_bytes());
+        data[32..34].copy_from_slice(&2000u16.to_le_bytes());
+        data[34..36].copy_from_slice(&60u16.to_le_bytes());
+        data.extend_from_slice(&15u16.to_le_bytes());
+        data.extend_from_slice(&officeart::rt::SP_CONTAINER.to_le_bytes());
+        data.extend_from_slice(&(shape.len() as u32).to_le_bytes());
+        data.extend(shape);
+        let len = data.len() as u32;
+        data[0..4].copy_from_slice(&len.to_le_bytes());
+        Pictures::default().get(&data, 0).unwrap().clone()
+    }
+
+    #[test]
+    fn rule_defaults_use_scaled_goal_size_and_grey_fill() {
+        let p = rule(&[(0x03BF, (1 << 27) | (1 << 11) | (1 << 13))]);
+        let (fill, hr) = p.rule.unwrap();
+        assert_eq!(fill, Rgb(0xAC, 0xA8, 0x99));
+        assert_eq!(hr.pct, 100.0);
+        assert_eq!(hr.align, Align::Left);
+        assert!(!hr.standard, "standard flag requires its use bit");
+        assert_eq!((p.w, p.h), (100.0, 1.5));
+    }
+
+    #[test]
+    fn rule_percent_is_bounded_and_flags_require_use_bits() {
+        for (value, pct) in [(2000, 100.0), (u32::MAX, 0.0)] {
+            let p = rule(&[(0x0393, value), (0x0394, 99), (0x03BF, (1 << 27) | (1 << 11))]);
+            let (_, hr) = p.rule.unwrap();
+            assert_eq!(hr.pct, pct);
+            assert_eq!(hr.align, Align::Left);
+        }
+        assert!(rule(&[(0x03BF, 1 << 11)]).rule.is_none());
     }
 }
