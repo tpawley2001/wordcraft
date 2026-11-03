@@ -14,6 +14,7 @@ mod empty_inline_shape;
 mod encrypted;
 mod frames;
 mod header_guard;
+mod horizontal_rules;
 mod linked_pictures;
 mod metadata;
 mod ole_print;
