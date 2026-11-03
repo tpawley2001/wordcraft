@@ -45,6 +45,7 @@ mod toc_ranges;
 mod undefined_style;
 mod vml_shapes;
 mod vml_wordart_effects;
+mod vml_wordart_shadows;
 mod web_divs;
 mod word_xml;
 mod wordml2003_write;

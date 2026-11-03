@@ -109,15 +109,11 @@ fn offset_shadows() {
     assert!(close(s.transparency, 0.0) && close(s.distance, 2.828_427) && close(s.angle, 45.0), "{s:?}");
 }
 
-/// Shadows this task doesn't map, or that are off, give none.
+/// Shadows that are off give none.
 #[test]
 fn other_shadows_give_none() {
     assert_eq!(shadow_of(r##"<v:shadow on="f" color="#868686" offset="6pt,6pt"/>"##), None);
     assert_eq!(shadow_of(r##"<v:shadow color="#868686" offset="6pt,6pt"/>"##), None);
-    for ty in ["perspective", "double", "emboss"] {
-        let s = format!(r##"<v:shadow on="t" type="{ty}" color="#868686" opacity=".5" offset="-6pt,-6pt" matrix=",-56756f,,.5"/>"##);
-        assert_eq!(shadow_of(&s), None, "{ty}");
-    }
 }
 
 /// Hostile values never panic and stay in range.
