@@ -277,6 +277,27 @@ impl MacTitleBar {
     }
 }
 
+/// The title centred in the title bar: the document's name, "[Compatibility Mode]" when it is
+/// laid out for an older Word, and whether its changes are saved; the app's name with no
+/// document open (#1129).
+pub(crate) fn window_title(app: &WordApp) -> String {
+    if !app.has_document() {
+        return crate::brand::APP_NAME.to_string();
+    }
+    let state = if app.session.dirty {
+        tl!("Edited")
+    } else if app.session.path.is_some() {
+        tl!("Saved")
+    } else {
+        tl!("Not saved")
+    };
+    if wordcraft_engine::compatibility_mode(&app.session) {
+        format!("{} {} — {}", app.title_stem(), tl!("[Compatibility Mode]"), state)
+    } else {
+        format!("{} — {}", app.title_stem(), state)
+    }
+}
+
 /// Draws the title bar with window dragging, AutoSave, quick access, account, community and search
 /// controls, and the centred clickable document title.
 pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
@@ -365,22 +386,7 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
                 });
             });
             // Centred title.
-            let title = if !app.has_document() {
-                // No document open (#1129): the app's name alone.
-                crate::brand::APP_NAME.to_string()
-            } else {
-                format!(
-                    "{} — {}",
-                    app.title_stem(),
-                    if app.session.dirty {
-                        tl!("Edited")
-                    } else if app.session.path.is_some() {
-                        tl!("Saved")
-                    } else {
-                        tl!("Not saved")
-                    }
-                )
-            };
+            let title = window_title(app);
             let font = TypeRung::Chrome.semibold();
             let track = TypeRung::Chrome.tracking();
             let cx = full.center().x;

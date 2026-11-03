@@ -692,6 +692,8 @@ fn info_page(app: &mut WordApp, ui: &mut Ui) {
         {
             let _ = app.run("ui.dialog", json!({"name": "customProperties"}));
         }
+        compatibility_section(app, ui);
+        inspect_section(app, ui);
         // Protect Document › Encrypt with Password (#55).
         ui.add_space(18.0);
         ui.label(egui::RichText::new(tl!("Protect Document")).font(semibold(15.0)));
@@ -717,6 +719,59 @@ fn info_page(app: &mut WordApp, ui: &mut Ui) {
         }
         let path = info.get("path").and_then(|v| v.as_str()).unwrap_or(tl!("Not saved yet"));
         ui.label(crate::i18n::fmt(tl!("Location: {path}"), &[("path", path)]));
+    });
+}
+
+/// File › Info › Compatibility Mode: shown only for a document laid out for an older Word, with
+/// Convert, which asks before upgrading it (`file.convert`).
+fn compatibility_section(app: &mut WordApp, ui: &mut Ui) {
+    if !wordcraft_engine::compatibility_mode(&app.session) {
+        return;
+    }
+    ui.add_space(18.0);
+    ui.label(egui::RichText::new(tl!("Compatibility Mode")).font(semibold(15.0)));
+    let version = wordcraft_engine::mode_version(app.session.doc.settings.compat_mode);
+    ui.label(crate::i18n::fmt(tl!("Some new features are turned off so this document lays out as it does in {version}."), &[("version", version)]));
+    if ui
+        .button(egui::RichText::new(tl!("Convert")).font(medium(13.5)))
+        .on_hover_text(tl!("Upgrade the document to the newest layout mode."))
+        .clicked()
+    {
+        let _ = app.run("ui.dialog", json!({"name": "convertDocument"}));
+    }
+}
+
+/// File › Info › Inspect Document: Check for Issues runs the Document Inspector, the
+/// accessibility checker (its pane) or the Compatibility Checker (a dialog).
+fn inspect_section(app: &mut WordApp, ui: &mut Ui) {
+    ui.add_space(18.0);
+    ui.label(egui::RichText::new(tl!("Inspect Document")).font(semibold(15.0)));
+    ui.menu_button(egui::RichText::new(tl!("Check for Issues")).font(medium(13.5)), |ui| {
+        if ui.button(tl!("Inspect Document")).clicked() {
+            match app.run("file.inspect", json!({})) {
+                Ok(v) => {
+                    let found = v.get("found").unwrap_or(&v);
+                    let n = |k: &str| found.get(k).and_then(|x| x.as_u64()).unwrap_or(0).to_string();
+                    let msg = crate::i18n::fmt(
+                        tl!("Comments: {comments}. Tracked changes: {revisions}. Hidden text: {hidden}. Headers and footers: {headers}."),
+                        &[("comments", &n("comments")), ("revisions", &n("revisions")), ("hidden", &n("hiddenCount")), ("headers", &n("headers"))],
+                    );
+                    app.status(msg);
+                }
+                Err(e) => app.status(e),
+            }
+            ui.close();
+        }
+        if ui.button(tl!("Check Accessibility")).clicked() {
+            // The findings are in the Accessibility pane beside the document.
+            let _ = app.run("ui.backstage", json!({"value": false}));
+            let _ = app.run("file.accessibility", json!({}));
+            ui.close();
+        }
+        if ui.button(tl!("Check Compatibility")).clicked() {
+            let _ = app.run("file.compatibility", json!({}));
+            ui.close();
+        }
     });
 }
 

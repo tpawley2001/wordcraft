@@ -26,6 +26,7 @@ File|Backstage|Protect Document|file.protect
 File|Backstage|Inspect Document|file.inspect
 File|Backstage|Check Accessibility|file.accessibility
 File|Backstage|Check Compatibility|file.compatibility
+File|Backstage|Convert|file.convert
 File|Backstage|Version History|file.versions
 File|Backstage|Recover Unsaved|file.recover
 File|Backstage|New from Template|file.newFromTemplate
