@@ -392,6 +392,31 @@ fn split_cells_opens_its_dialog() {
     assert!(a.dialog.is_none(), "no dialog outside a table");
 }
 
+/// Insert Cells opens from the Rows & Columns launcher's command with Shift cells down chosen,
+/// Delete Cells with Shift cells left; their OK runs the command with the chosen `shift`.
+#[test]
+fn insert_and_delete_cells_dialogs() {
+    let mut a = table_app(2, &["A", "B", "C", "D"]);
+    assert_eq!(a.run("table.insertCells", json!({})).unwrap(), json!({"pending": "insertCells"}));
+    assert_eq!(table_shape(&a), [2, 2], "nothing inserted yet");
+    let LayoutDialog::InsertCells(mut f) = form(&mut a) else { panic!("insert cells") };
+    assert_eq!(f.shift, "down");
+    f.shift = "right".into();
+    a.run("table.insertCells", json!({"shift": f.shift})).unwrap();
+    assert_eq!(table_shape(&a), [2, 3]);
+
+    a.run("ui.dialog", json!({"name": "deleteCells"})).unwrap();
+    let LayoutDialog::DeleteCells(f) = form(&mut a) else { panic!("delete cells") };
+    assert_eq!(f.shift, "left");
+    a.run("table.deleteCells", json!({"shift": f.shift})).unwrap();
+    assert_eq!(table_shape(&a), [2, 2]);
+
+    let mut a = app();
+    a.run("ui.dialog", json!({"name": "insertCells"})).unwrap();
+    a.run("ui.dialog", json!({"name": "deleteCells"})).unwrap();
+    assert!(a.dialog.is_none(), "no dialog outside a table");
+}
+
 /// #2592, as Word does: for a merged cell the dialog's message says the row count must
 /// divide its height (or lie in 1 to the height); the engine refuses the same counts and the
 /// document stays as it was.

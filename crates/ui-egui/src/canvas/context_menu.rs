@@ -158,11 +158,12 @@ pub(super) fn context_menu(app: &mut WordApp, ui: &mut Ui) {
             item(ui, app, "Insert Columns to the Right", "table.insertColumnRight", json!({}));
             item(ui, app, "Insert Rows Above", "table.insertRowAbove", json!({}));
             item(ui, app, "Insert Rows Below", "table.insertRowBelow", json!({}));
+            item(ui, app, "Insert Cells…", "ui.dialog", json!({"name": "insertCells"}));
         });
         // Every Delete is there whatever is selected, as on Word's Delete button: with the caret
         // in a cell, Delete Table is how the table goes (#1198).
         ui.menu_button(tl!("Delete"), |ui| {
-            item(ui, app, "Delete Cells", "table.deleteCells", json!({}));
+            item(ui, app, "Delete Cells…", "ui.dialog", json!({"name": "deleteCells"}));
             item(ui, app, "Delete Columns", "table.deleteColumn", json!({}));
             item(ui, app, "Delete Rows", "table.deleteRow", json!({}));
             item(ui, app, "Delete Table", "table.deleteTable", json!({}));
