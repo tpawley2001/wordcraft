@@ -19,6 +19,7 @@ mod mark_toc_entry;
 mod negative_margins;
 mod para_sort_keys;
 mod reveal_formatting;
+mod reveal_formatting_pane;
 mod revision_checks;
 mod table_sort_keys;
 mod typing;
@@ -169,7 +170,7 @@ fn word_default_shortcuts_resolve() {
     assert_eq!(id("Alt+Right"), Some("caret.wordRight"));
     assert_eq!(id("Mod+Left"), Some(cmd::mac_or("caret.home", "caret.wordLeft")));
     assert_eq!(id("Mod+Right"), Some(cmd::mac_or("caret.end", "caret.wordRight")));
-    assert_eq!(id("Shift+F1"), Some("styles.inspector"));
+    assert_eq!(id("Shift+F1"), Some("view.revealFormattingPane"));
     assert_eq!(id("Alt+F8"), Some("tools.macros"));
     assert_eq!(id("Mod+Shift+X"), Some("format.strikethrough"));
     assert_eq!(id("Shift+F4"), Some("edit.findNext"));
