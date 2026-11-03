@@ -82,7 +82,7 @@ pub(super) fn text_direction_ui(app: &mut WordApp, ui: &mut Ui, form: &mut TextD
                 };
                 let selected = form.value == direction;
                 let (rect, response) = ui.allocate_exact_size(vec2(84.0, 84.0), egui::Sense::click());
-                response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, ui.is_enabled(), selected, label));
+                response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, ui.is_enabled(), selected, label));
                 if response.clicked() {
                     form.value = direction;
                 }
