@@ -79,7 +79,7 @@ fn an_empty_inline_shape_takes_its_scale() {
 }
 
 #[test]
-fn an_empty_horizontal_rule_is_still_not_an_object() {
+fn a_horizontal_rule_without_picture_data_is_a_rule_shape() {
     let tertiary = {
         let mut b = Vec::new();
         for (pid, op) in [(0x0394u16, 1u32), (0x0395, 30), (0x03BF, 0x2800_2800)] {
@@ -89,7 +89,22 @@ fn an_empty_horizontal_rule_is_still_not_an_object() {
         rec(3, 3, 0xF122, &b)
     };
     let doc = doc_with(picf(MM_SHAPE, (1000, 500), (9072, 60), &empty_frame(vec![tertiary])));
-    assert_eq!(inline_sizes(&doc), Vec::<(f32, f32)>::new());
+    assert!(close(&inline_sizes(&doc), (453.6, 1.5)));
+    let p = doc.body.first().and_then(|b| b.as_para()).unwrap();
+    assert_eq!(p.objects.len(), 1);
+    let wordcraft_doc::para::InlineObject::Shape { kind, fill, stroke, stroke_width, extra, float, .. } = &p.objects[0] else {
+        panic!("a horizontal rule is a shape, not an image");
+    };
+    assert_eq!(*kind, wordcraft_doc::para::ShapeKind::Rectangle);
+    assert_eq!(fill.as_ref().unwrap().main_color(), wordcraft_doc::props::Rgb(0xAC, 0xA8, 0x99));
+    assert!(stroke.is_none());
+    assert_eq!(*stroke_width, 0.0);
+    assert_eq!(float.wrap, Wrap::Inline);
+    let hr = extra.hr.unwrap();
+    assert_eq!(hr.pct, 100.0);
+    assert_eq!(hr.align, wordcraft_doc::props::Align::Center);
+    assert!(hr.standard);
+    assert!(doc.media.is_empty());
 }
 
 #[test]

@@ -710,21 +710,21 @@ fn inline_picture(ctx: &WalkCtx<'_>, cp: u32, open: Option<bool>, object_id: &mu
         (p, _) => p,
     };
     match pic {
-        // A shape with no picture: an invisible inline object that keeps its size on the line.
-        Some(p) if p.empty => {
+        // Empty shapes keep their space; horizontal rules fill their line via the rule metadata.
+        Some(p) if p.empty || p.rule.is_some() => {
             pb.push('\u{FFFC}', CharProps::default());
             pb.objects.push(InlineObject::Shape {
-                kind: Default::default(),
+                kind: wordcraft_doc::para::ShapeKind::Rectangle,
                 w: p.w,
                 h: p.h,
-                fill: None,
+                fill: p.rule.map(|(color, _)| wordcraft_doc::fill::Fill::solid(color)),
                 stroke: None,
                 stroke_width: 0.0,
                 float: Default::default(),
                 story: None,
                 freeform: None,
                 effects: Default::default(),
-                extra: Default::default(),
+                extra: wordcraft_doc::connector::ShapeExtra { hr: p.rule.map(|(_, hr)| hr), ..Default::default() },
             });
         }
         Some(p) => {
