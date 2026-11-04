@@ -23,7 +23,8 @@ pub struct Resolved {
 
 /// Substitutes to try, in order, for a family that isn't installed. Open fonts that are
 /// metric-compatible come first (Carlito ↔ Calibri, Caladea ↔ Cambria, Liberation ↔ Arial /
-/// Times New Roman / Courier New, Liberation Sans Narrow ↔ Arial Narrow), then common system fonts,
+/// Times New Roman / Courier New / Microsoft Sans Serif, Liberation Sans Narrow ↔ Arial Narrow,
+/// C059 ↔ Century), then common system fonts,
 /// then our bundled families.
 fn substitutes(family: &str) -> &'static [&'static str] {
     substitutes_by_name(family).0
@@ -120,6 +121,21 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
         "DejaVu Serif",
         "Source Serif 4",
     ];
+    // Century: URW's C059 has its advance widths (also packaged as Century Schoolbook L and TeX
+    // Gyre Schola), then the generic serif list.
+    const CENTURY: &[&str] = &[
+        "C059",
+        "Century Schoolbook L",
+        "TeX Gyre Schola",
+        "New Century Schoolbook",
+        "Caladea",
+        "Times New Roman",
+        "Liberation Serif",
+        "Georgia",
+        "Noto Serif",
+        "DejaVu Serif",
+        "Source Serif 4",
+    ];
     let f = family.to_ascii_lowercase();
     if is_thai_serif(&f) {
         return (THAI_SERIF, true);
@@ -142,6 +158,9 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
     match f.as_str() {
         "palatino linotype" | "book antiqua" | "palatino" => (PALATINO, true),
         "arial" | "helvetica" | "arial nova" => (ARIAL, true),
+        // Microsoft Sans Serif has Arial's advance widths (to within 1/1000 em).
+        "microsoft sans serif" | "ms sans serif" => (ARIAL, true),
+        "century" | "century schoolbook" | "new century schoolbook" => (CENTURY, true),
         "arial narrow" | "helvetica narrow" => (ARIAL_NARROW, true),
         "arial unicode ms" => (ARIAL_UNICODE, true),
         "times new roman" | "times" => (TIMES, true),
@@ -154,8 +173,6 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
         | "garamond"
         | "constantia"
         | "baskerville old face"
-        | "century"
-        | "century schoolbook"
         | "bookman old style"
         | "sitka text"
         | "sitka"
@@ -735,12 +752,40 @@ mod tests {
 
     #[test]
     fn fonts_with_a_clone_have_named_substitutes() {
-        for f in ["Times New Roman", "Times New Roman Cyr", "Arial", "Arial Narrow", "Courier New", "Palatino Linotype", "Symbol"] {
+        for f in [
+            "Times New Roman",
+            "Times New Roman Cyr",
+            "Arial",
+            "Arial Narrow",
+            "Courier New",
+            "Palatino Linotype",
+            "Symbol",
+            "Century",
+            "Microsoft Sans Serif",
+        ] {
             assert!(has_named_substitutes(f), "{f}");
         }
         for f in ["No Such Brand Font", "Cambria", "Georgia", "Brand Serif"] {
             assert!(!has_named_substitutes(f), "{f}");
         }
+    }
+
+    #[test]
+    fn century_takes_c059_first() {
+        let subs = substitutes("Century");
+        assert_eq!(subs.first(), Some(&"C059"));
+        let caladea = subs.iter().position(|s| *s == "Caladea");
+        let clones = subs.iter().position(|s| *s == "New Century Schoolbook");
+        assert!(caladea > clones, "{subs:?}");
+        assert_eq!(substitutes("century schoolbook"), subs);
+    }
+
+    #[test]
+    fn microsoft_sans_serif_takes_liberation_sans_first() {
+        let subs = substitutes("Microsoft Sans Serif");
+        assert_eq!(subs.first(), Some(&"Liberation Sans"));
+        assert!(!subs.contains(&"Carlito"), "{subs:?}");
+        assert_eq!(substitutes("ms sans serif"), subs);
     }
 
     #[test]
