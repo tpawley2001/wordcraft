@@ -1604,3 +1604,5 @@ fn rtf_backslash_space_and_special_breaks() {
     let p = doc.body.first().unwrap().as_para().unwrap();
     assert_eq!(p.text, "A\u{00A0}B\u{00A0}C\u{200B}D\nE\u{000C}F");
 }
+
+mod section_revisions;
