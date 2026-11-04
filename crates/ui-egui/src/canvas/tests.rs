@@ -4945,6 +4945,8 @@ fn a_long_comment_balloon_paints_only_its_first_ten_rows() {
         );
         assert!(hidden.iter().all(|r| r.min.y >= clip.max.y - 0.5), "the rows after the tenth are cut off: {:?}, clip {clip:?}", hidden.first());
     }
+}
+
 #[test]
 fn drawing_grid_from_an_origin_keeps_lines_inside_the_body() {
     // Letter page with 1" margins: the text area is 468 x 648 pt from (72, 72).
