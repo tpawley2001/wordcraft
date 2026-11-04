@@ -400,6 +400,9 @@ impl<'a> Shaped<'a> {
         let (start, end) = (slot.start, slot.end);
         match wordcraft_doc::eq::parse_overstrike(instr) {
             Some(o) => overstrike(&mut self.b, &o, instr, start, end, rc, &mut self.enclosures),
+            None if let Some(eq) = wordcraft_doc::eq::parse_eq(instr) => {
+                super::eqfield::eq_field(&mut self.b, &eq, (start, end), rc, &mut self.enclosures, &mut self.rubies);
+            }
             None => {
                 let (t, page_dep) = field_text_on(instr, result, cx.env.fields, cx.env.fields.page_at(start));
                 self.has_page_fields |= page_dep;

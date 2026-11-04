@@ -19,6 +19,7 @@ use crate::fields::{FIELD_SHADING, FieldCtx, field_code_text, field_text_on, ref
 mod bidi;
 mod builder;
 mod chars;
+mod eqfield;
 mod grid;
 mod justify;
 mod lines;

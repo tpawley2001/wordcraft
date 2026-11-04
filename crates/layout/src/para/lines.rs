@@ -429,9 +429,10 @@ impl<'e> Breaker<'e> {
                     (st.ascent, st.descent)
                 }
             } else {
-                // `obj_h` is set on text clusters only under ruby text, which the line grows to fit.
+                // `obj_h` is set on text clusters only under ruby text and for EQ fields (with
+                // `obj_d`), which the line grows to fit.
                 let (a, d) = st.line_extent();
-                (a.max(c.obj_h + st.shift), d)
+                (a.max(c.obj_h + st.shift), if c.obj_d > 0.0 { d.max(c.obj_d - st.shift) } else { d })
             };
             ex.asc = ex.asc.max(a);
             ex.desc = ex.desc.max(d);
