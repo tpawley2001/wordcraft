@@ -17,6 +17,7 @@ mod header_extent_fixtures;
 mod item_display_warp;
 mod ligature;
 pub(crate) mod linear;
+mod missing_font_line;
 mod nbsp;
 mod numeral;
 mod pages;
