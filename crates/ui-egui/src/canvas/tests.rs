@@ -4945,4 +4945,31 @@ fn a_long_comment_balloon_paints_only_its_first_ten_rows() {
         );
         assert!(hidden.iter().all(|r| r.min.y >= clip.max.y - 0.5), "the rows after the tenth are cut off: {:?}, clip {clip:?}", hidden.first());
     }
+#[test]
+fn drawing_grid_from_an_origin_keeps_lines_inside_the_body() {
+    // Letter page with 1" margins: the text area is 468 x 648 pt from (72, 72).
+    let body = wordcraft_geom::Rect::new(72.0, 72.0, 468.0, 648.0);
+    // From the margins, every 2 units of 9 pt down and none across: Word's blank document.
+    let (xs, ys) = drawing_grid_from((body.x, body.y), body, (0.0, 18.0));
+    assert!(xs.is_empty(), "no vertical gridlines");
+    assert_eq!(ys.first().copied(), Some(72.0));
+    assert_eq!(ys.len(), 37);
+    // An origin on the page, not the margins: lines every 36 pt from (36, 36), clipped to the body.
+    let (xs, ys) = drawing_grid_from((36.0, 36.0), body, (36.0, 36.0));
+    assert_eq!(xs.first().copied(), Some(72.0), "the first line inside the body");
+    assert_eq!(ys.first().copied(), Some(72.0));
+    assert!(xs.iter().all(|x| (72.0..=540.0).contains(x)), "{xs:?}");
+    assert!(ys.iter().all(|y| (72.0..=720.0).contains(y)), "{ys:?}");
+    for w in xs.windows(2).chain(ys.windows(2)) {
+        assert!((w[1] - w[0] - 36.0).abs() < 0.01, "{w:?}");
+    }
+    // Hostile values draw nothing.
+    for (origin, step) in [((f32::NAN, 0.0), (9.0, 9.0)), ((0.0, 0.0), (f32::INFINITY, -1.0))] {
+        let (xs, ys) = drawing_grid_from(origin, body, step);
+        assert!(xs.iter().chain(&ys).all(|p| p.is_finite()), "{origin:?} {step:?}: {xs:?} {ys:?}");
+    }
+    let (xs, _) = drawing_grid_from((f32::NAN, 0.0), body, (9.0, 9.0));
+    assert!(xs.is_empty(), "a broken origin draws no vertical lines");
+    let (xs, ys) = drawing_grid_from((0.0, 0.0), body, (f32::INFINITY, -1.0));
+    assert!(xs.is_empty() && ys.is_empty(), "a broken step draws nothing");
 }

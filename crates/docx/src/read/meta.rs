@@ -6,6 +6,10 @@ use super::{
 impl Reader<'_> {
     pub(super) fn read_settings(&mut self, path: &str) -> Result<(), DocxError> {
         let Some(root) = self.xml(path)? else { return Ok(()) };
+        // The drawing grid's display elements are absent from most files, and absent means 1, not
+        // the blank document's 0/2: start from the schema's defaults and let the file say.
+        self.doc.settings.grid_every_h = 1;
+        self.doc.settings.grid_every_v = 1;
         if let Some(b) = self.pkg.get(path).filter(|b| crate::write::settings_has_unowned(b)) {
             self.doc.passthrough.insert(crate::package::SETTINGS_ORIG.into(), Arc::new(b.to_vec()));
         }
@@ -52,6 +56,19 @@ impl Reader<'_> {
                     if let Some(v) = tw(k, "w:val").filter(|v| *v > 0.0) {
                         let v = v.clamp(0.5, 1584.0);
                         if k.name == "w:drawingGridHorizontalSpacing" { s.grid_h = v } else { s.grid_v = v }
+                    }
+                }
+                "w:displayHorizontalDrawingGridEvery" | "w:displayVerticalDrawingGridEvery" => {
+                    if let Some(v) = k.attr("w:val").and_then(u32_of) {
+                        let v = v.min(127) as u8;
+                        if k.name == "w:displayHorizontalDrawingGridEvery" { s.grid_every_h = v } else { s.grid_every_v = v }
+                    }
+                }
+                "w:doNotUseMarginsForDrawingGridOrigin" => s.grid_use_margins = !on_off(k),
+                "w:drawingGridHorizontalOrigin" | "w:drawingGridVerticalOrigin" => {
+                    if let Some(v) = tw(k, "w:val").filter(|v| v.is_finite()) {
+                        let v = v.clamp(0.0, 1584.0);
+                        if k.name == "w:drawingGridHorizontalOrigin" { s.grid_origin_x = v } else { s.grid_origin_y = v }
                     }
                 }
                 "m:mathPr" => s.math = Some(math::read_math_pr(k)),

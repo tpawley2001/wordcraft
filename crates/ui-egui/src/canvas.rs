@@ -62,8 +62,8 @@ use navigation::{scrollbar_page_tip, viewed_page};
 use pages::{DRAWING_GRID_MAX_LINES, DRAWING_GRID_MIN_PX};
 pub(crate) use pages::{PageKeys, page_doc, page_screen_scale, preview_sel, screen_render_options};
 use pages::{
-    drawing_grid, drawing_grid_step, gridline_cells, page_image, page_key, page_render_options, shown_layout, texel_aligned_rect, view_key,
-    visible_tiles,
+    drawing_grid, drawing_grid_from, drawing_grid_step, gridline_cells, page_image, page_key, page_render_options, shown_layout, texel_aligned_rect,
+    view_key, visible_tiles,
 };
 pub(crate) use reading::turn_read_page;
 #[cfg(test)]
@@ -874,20 +874,44 @@ fn draw_page_gridlines(app: &WordApp, painter: &egui::Painter, t: &Tokens, page:
                 let cp = s.grid_char_pitch(size).map_or(f32::INFINITY, |cp| drawing_grid_step(cp, page_scale));
                 (cp, drawing_grid_step(lp, page_scale))
             }
-            None => (drawing_grid_step(settings.grid_h, page_scale), drawing_grid_step(settings.grid_v, page_scale)),
+            // The drawing grid: a line every `grid_every_*` units (none when 0), from the body's
+            // top-left or, when the grid doesn't use the margins, from its own origin on the page.
+            None => {
+                let every = |n: u8, spacing: f32| if n == 0 { 0.0 } else { drawing_grid_step(spacing * f32::from(n), page_scale) };
+                let origin = if settings.grid_use_margins { (page.body.x, page.body.y) } else { (settings.grid_origin_x, settings.grid_origin_y) };
+                let (xs, ys) = drawing_grid_from(
+                    origin,
+                    page.body,
+                    (every(settings.grid_every_h, settings.grid_h), every(settings.grid_every_v, settings.grid_v)),
+                );
+                draw_grid_lines(painter, t, visual_sr, page_scale, page.body, (xs, ys));
+                return;
+            }
         };
         let (xs, ys) = drawing_grid(page.body, step);
-        let stroke = Stroke::new(1.0, t.blue.linear_multiply(0.22));
-        let (x0, x1) = (visual_sr.min.x + page.body.x * page_scale, visual_sr.min.x + page.body.right() * page_scale);
-        let (y0, y1) = (visual_sr.min.y + page.body.y * page_scale, visual_sr.min.y + page.body.bottom() * page_scale);
-        for x in xs {
-            let sx = visual_sr.min.x + x * page_scale;
-            painter.line_segment([pos2(sx, y0), pos2(sx, y1)], stroke);
-        }
-        for y in ys {
-            let sy = visual_sr.min.y + y * page_scale;
-            painter.line_segment([pos2(x0, sy), pos2(x1, sy)], stroke);
-        }
+        draw_grid_lines(painter, t, visual_sr, page_scale, page.body, (xs, ys));
+    }
+}
+
+/// Grid lines at page points `xs` and `ys`, clipped to the body, on screen.
+fn draw_grid_lines(
+    painter: &egui::Painter,
+    t: &Tokens,
+    visual_sr: Rect,
+    page_scale: f32,
+    body: wordcraft_geom::Rect,
+    (xs, ys): (Vec<f32>, Vec<f32>),
+) {
+    let stroke = Stroke::new(1.0, t.blue.linear_multiply(0.22));
+    let (x0, x1) = (visual_sr.min.x + body.x * page_scale, visual_sr.min.x + body.right() * page_scale);
+    let (y0, y1) = (visual_sr.min.y + body.y * page_scale, visual_sr.min.y + body.bottom() * page_scale);
+    for x in xs {
+        let sx = visual_sr.min.x + x * page_scale;
+        painter.line_segment([pos2(sx, y0), pos2(sx, y1)], stroke);
+    }
+    for y in ys {
+        let sy = visual_sr.min.y + y * page_scale;
+        painter.line_segment([pos2(x0, sy), pos2(x1, sy)], stroke);
     }
 }
 

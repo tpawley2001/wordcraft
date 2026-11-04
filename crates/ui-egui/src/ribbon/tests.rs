@@ -851,6 +851,32 @@ fn align_menu_reaches_left_and_right_not_just_center() {
     assert!(left_x < center_x && center_x < right_x, "Left, Center and Right each land at a distinct x: {left_x} < {center_x} < {right_x}");
 }
 
+/// Layout › Align ends with View Gridlines and Grid Settings…, as Word's Align menu does.
+#[test]
+fn align_menu_ends_with_view_gridlines_and_grid_settings() {
+    use egui_kittest::kittest::{By, Queryable};
+    let item = |label: &'static str| By::new().label_contains(label);
+    let mut a = crate::WordApp::new(Session::new(wordcraft_doc::Document::new()), crate::Services::default());
+    a.run("insert.picture", json!({"data": png_data()})).unwrap();
+    let mut h = egui_kittest::Harness::builder()
+        .with_size(egui::vec2(300.0, 300.0))
+        .build_ui_state(|ui, app: &mut crate::WordApp| align_menu(ui, app, None), a);
+    h.run();
+    h.get(item("Align")).click();
+    h.run();
+    assert!(h.query(item("View Gridlines")).is_some(), "the menu ends with View Gridlines");
+    assert!(h.query(item("Grid Settings")).is_some(), "and Grid Settings…");
+    h.get(item("View Gridlines")).click();
+    h.run();
+    assert!(h.state().session.view.gridlines, "View Gridlines turns the drawing grid on");
+    // The menu closed with the click; open it again for the dialog.
+    h.get(item("Align")).click();
+    h.run();
+    h.get(item("Grid Settings")).click();
+    h.run();
+    assert_eq!(h.state().dialog.as_ref().map(|d| d.name()), Some("gridSettings"), "Grid Settings… opens the Grid and Guides dialog");
+}
+
 /// #2573 review: Shape Format and Chart Design leave sizes outside their fields' ranges alone
 /// too (a 0.5 pt high line; a chart narrower than 36 pt), as Picture Format does.
 #[test]

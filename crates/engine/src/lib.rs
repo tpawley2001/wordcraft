@@ -210,4 +210,5 @@ pub mod p {
 }
 
 #[cfg(test)]
+#[rustfmt::skip]
 mod tests;

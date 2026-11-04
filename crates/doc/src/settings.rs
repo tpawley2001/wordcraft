@@ -181,6 +181,24 @@ pub struct Settings {
     /// Drawing grid spacing in points, across and down (View › Gridlines); ECMA-376's default is 1/8 inch.
     pub grid_h: f32,
     pub grid_v: f32,
+    /// `w:displayHorizontalDrawingGridEvery`: draw a vertical gridline every N grid units across;
+    /// 0 draws none. Absent in a file means 1.
+    #[serde(default = "one_u8")]
+    pub grid_every_h: u8,
+    /// `w:displayVerticalDrawingGridEvery`: draw a horizontal gridline every N grid units down;
+    /// 0 draws none. Absent in a file means 1.
+    #[serde(default = "one_u8")]
+    pub grid_every_v: u8,
+    /// `w:doNotUseMarginsForDrawingGridOrigin` is off: the grid starts at the page margins.
+    #[serde(default = "yes")]
+    pub grid_use_margins: bool,
+    /// `w:drawingGridHorizontalOrigin`: the grid's origin from the page's left edge, in points,
+    /// when it doesn't use the margins.
+    #[serde(default)]
+    pub grid_origin_x: f32,
+    /// `w:drawingGridVerticalOrigin`: the grid's origin from the page's top edge, in points.
+    #[serde(default)]
+    pub grid_origin_y: f32,
     /// Equation options (`m:mathPr`), when the document has them.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub math: Option<math::MathProps>,
@@ -241,6 +259,14 @@ pub const DEFAULT_HYPHENATION_ZONE: f32 = 18.0;
 
 /// ECMA-376 §17.15.1.44/45: 180 twentieths of a point when a document doesn't say.
 pub const DEFAULT_GRID: f32 = 9.0;
+
+fn one_u8() -> u8 {
+    1
+}
+
+fn yes() -> bool {
+    true
+}
 
 /// A picture fill for the page background (`v:background/v:fill` with an image).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -349,6 +375,12 @@ impl Default for Settings {
             allow_space_of_same_style_in_table: false,
             grid_h: DEFAULT_GRID,
             grid_v: DEFAULT_GRID,
+            // Word's blank document: a horizontal gridline every 2 units (0.25 in), none vertical.
+            grid_every_h: 0,
+            grid_every_v: 2,
+            grid_use_margins: true,
+            grid_origin_x: 0.0,
+            grid_origin_y: 0.0,
             math: None,
             bib_style: None,
             attached_template: None,

@@ -13,6 +13,7 @@ mod bidi;
 mod custom_prop_types;
 mod documents;
 mod font_sizes;
+mod grid_settings;
 mod fonts;
 mod ime_noop;
 mod mark_toc_entry;

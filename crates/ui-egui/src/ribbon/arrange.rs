@@ -114,5 +114,8 @@ pub(super) fn align_menu(ui: &mut Ui, app: &mut WordApp, label: Option<&str>) {
         mi(ui, app, "Align Left", "arrange.align", json!({"value": "left"}));
         mi(ui, app, "Align Center", "arrange.align", json!({"value": "center"}));
         mi(ui, app, "Align Right", "arrange.align", json!({"value": "right"}));
+        ui.separator();
+        mi_check(ui, app, "View Gridlines", app.session.view.gridlines, "view.gridlines", json!({}));
+        mi(ui, app, "Grid Settings…", "ui.dialog", json!({"name": "gridSettings"}));
     });
 }

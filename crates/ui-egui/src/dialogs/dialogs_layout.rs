@@ -10,7 +10,8 @@
 //! `mailings.labels`, `table.formula`, `table.sort`, `table.split`, `table.insertCells`,
 //! `table.deleteCells`, `table.fromText`,
 //! `picture.size`, `layout.pageNumberFormat`), so scripts and agents get the same result without
-//! the dialog. Shown through [`crate::dialogs::Dialog::Layout`].
+//! the dialog. Grid and Guides (Layout › Align › Grid Settings…) runs `view.gridSettings` and
+//! `view.gridlines`. Shown through [`crate::dialogs::Dialog::Layout`].
 
 use egui::{Ui, vec2};
 use serde::Serialize;
@@ -24,6 +25,7 @@ use crate::WordApp;
 use crate::options::MeasureExt;
 use crate::theme::semibold;
 
+mod grid;
 mod page;
 mod para_sort;
 pub use para_sort::ParaSortForm;
@@ -33,6 +35,8 @@ mod table;
 mod text;
 mod text_direction;
 
+pub use grid::GridSettingsForm;
+use grid::grid_settings_ui;
 pub use page::{PageNumbersForm, SizeForm};
 use page::{page_numbers_ui, size_ui};
 #[cfg(test)]
@@ -70,6 +74,7 @@ pub enum LayoutDialog {
     Size(SizeForm),
     PageNumbers(PageNumbersForm),
     TextDirection(TextDirectionForm),
+    GridSettings(GridSettingsForm),
 }
 
 impl LayoutDialog {
@@ -92,6 +97,7 @@ impl LayoutDialog {
             LayoutDialog::Size(_) => "pictureSize",
             LayoutDialog::PageNumbers(_) => "pageNumbers",
             LayoutDialog::TextDirection(_) => "textDirection",
+            LayoutDialog::GridSettings(_) => "gridSettings",
         }
     }
 
@@ -115,6 +121,7 @@ impl LayoutDialog {
             LayoutDialog::Size(_) => "Size",
             LayoutDialog::PageNumbers(_) => "Page Number Format",
             LayoutDialog::TextDirection(f) => f.title(),
+            LayoutDialog::GridSettings(_) => "Grid and Guides",
         }
     }
 }
@@ -139,6 +146,7 @@ pub fn open(name: &str, app: &mut WordApp) -> Option<LayoutDialog> {
         "pictureSize" => LayoutDialog::Size(SizeForm::read(app)?),
         "pageNumbers" => LayoutDialog::PageNumbers(PageNumbersForm::read(app)),
         "textDirection" => LayoutDialog::TextDirection(TextDirectionForm::new(app)),
+        "gridSettings" => LayoutDialog::GridSettings(GridSettingsForm::read(app)),
         _ => return None,
     })
 }
@@ -163,6 +171,7 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut LayoutDialog) -> bool {
         LayoutDialog::Size(f) => size_ui(app, ui, f),
         LayoutDialog::PageNumbers(f) => page_numbers_ui(app, ui, f),
         LayoutDialog::TextDirection(f) => text_direction_ui(app, ui, f),
+        LayoutDialog::GridSettings(f) => grid_settings_ui(app, ui, f),
     }
 }
 
