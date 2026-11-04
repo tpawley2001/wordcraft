@@ -22,6 +22,10 @@ pub(super) struct Reader {
     /// The document's page (`\paperw`, `\margl`…) and the current section's formatting.
     pub(super) page: PageGeom,
     pub(super) sec: SecFmt,
+    /// The current section's formatting before a tracked change (`\oldsprops`), and the one
+    /// an `\oldsprops` group being read builds.
+    pub(super) sec_old: Option<SecFmt>,
+    pub(super) old_sec: SecFmt,
     /// The headers and footers of each section ended so far (`\sect`); `hf_parts` holds the
     /// current section's.
     pub(super) section_parts: Vec<Vec<(HeaderFooter, Vec<FBlock>)>>,
@@ -160,58 +164,32 @@ impl Reader {
         if self.hf.is_some() || self.st.intbl || self.section_parts.len() + 1 >= MAX_SECTIONS {
             return;
         }
-        let props = self.sec.props(&self.page);
+        let mut props = self.sec.props(&self.page);
+        props.fmt_change = self.section_change();
         if let Some(FBlock::Para(p)) = self.body.last_mut() {
             p.section = Some(Box::new(props));
             self.section_parts.push(std::mem::take(&mut self.hf_parts));
         }
     }
 
+    /// The current section's tracked formatting change (`\oldsprops`), taken: its revision is
+    /// set when the document is built ([`super::parse`]), as RTF names no author or date for it.
+    pub(super) fn section_change(&mut self) -> Option<Box<wordcraft_doc::props::PropChange<wordcraft_doc::SectionProps>>> {
+        let old = self.sec_old.take()?;
+        wordcraft_doc::props::PropChange::boxed(0, old.props(&self.page))
+    }
+
     /// A section formatting word: applied to the current section, unless it's inside a header
     /// or footer (whose `\sectd` isn't the body's). False when `w` isn't one.
     pub(super) fn section_word(&mut self, w: &str, p: Option<i32>) -> bool {
-        use wordcraft_doc::section::{NumFormat, SectionStart};
-        let on = p != Some(0);
-        let pv = p.unwrap_or(0);
         // Inside a header or footer the word is read into a scratch copy and dropped.
-        let mut scratch;
-        let sec = if self.hf.is_some() {
-            scratch = self.sec.clone();
-            &mut scratch
-        } else {
-            &mut self.sec
-        };
-        match w {
-            "sectd" => *sec = SecFmt::default(),
-            "titlepg" => sec.title_page = on,
-            "pgwsxn" => sec.page.w = Some(pv),
-            "pghsxn" => sec.page.h = Some(pv),
-            "marglsxn" => sec.page.left = Some(pv),
-            "margrsxn" => sec.page.right = Some(pv),
-            "margtsxn" => sec.page.top = Some(pv),
-            "margbsxn" => sec.page.bottom = Some(pv),
-            "headery" => sec.page.header = Some(pv),
-            "footery" => sec.page.footer = Some(pv),
-            "lndscpsxn" => sec.page.landscape = on,
-            "sbknone" => sec.start = SectionStart::Continuous,
-            "sbkcol" => sec.start = SectionStart::NextColumn,
-            "sbkpage" => sec.start = SectionStart::NextPage,
-            "sbkeven" => sec.start = SectionStart::EvenPage,
-            "sbkodd" => sec.start = SectionStart::OddPage,
-            "cols" => sec.cols = Some(pv),
-            "colsx" => sec.colsx = Some(pv),
-            "linebetcol" => sec.linebetcol = on,
-            "pgnrestart" => sec.pgn_restart = true,
-            "pgncont" => sec.pgn_restart = false,
-            "pgnstarts" => sec.pgn_start = Some(pv),
-            "pgndec" => sec.pgn_fmt = NumFormat::Decimal,
-            "pgnucrm" => sec.pgn_fmt = NumFormat::UpperRoman,
-            "pgnlcrm" => sec.pgn_fmt = NumFormat::LowerRoman,
-            "pgnucltr" => sec.pgn_fmt = NumFormat::UpperLetter,
-            "pgnlcltr" => sec.pgn_fmt = NumFormat::LowerLetter,
-            _ => return false,
+        if self.hf.is_some() {
+            return apply_section_word(&mut self.sec.clone(), w, p);
         }
-        true
+        if w == "sectd" {
+            self.sec_old = None;
+        }
+        apply_section_word(&mut self.sec, w, p)
     }
 
     pub(super) fn open(&mut self) {
@@ -254,6 +232,9 @@ impl Reader {
         let Some(mut prev) = self.stack.pop() else { return };
         // The end of old formatting read in the body: the formatting it holds is the change's
         // old formatting (nested old-formatting groups only change their parent's copy).
+        if closing == Dest::OldSect && prev.dest == Dest::Body && self.hf.is_none() {
+            self.sec_old = Some(std::mem::take(&mut self.old_sec));
+        }
         if let Dest::OldProps(para) = closing
             && prev.dest == Dest::Body
         {
@@ -412,4 +393,42 @@ impl Reader {
             self.body.push(FBlock::Table(FTable { rows, widths, borderless: true }));
         }
     }
+}
+
+/// Applies section formatting word `w` (parameter `p`) to `sec`. False when `w` isn't one.
+pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> bool {
+    use wordcraft_doc::section::{NumFormat, SectionStart};
+    let on = p != Some(0);
+    let pv = p.unwrap_or(0);
+    match w {
+        "sectd" => *sec = SecFmt::default(),
+        "titlepg" => sec.title_page = on,
+        "pgwsxn" => sec.page.w = Some(pv),
+        "pghsxn" => sec.page.h = Some(pv),
+        "marglsxn" => sec.page.left = Some(pv),
+        "margrsxn" => sec.page.right = Some(pv),
+        "margtsxn" => sec.page.top = Some(pv),
+        "margbsxn" => sec.page.bottom = Some(pv),
+        "headery" => sec.page.header = Some(pv),
+        "footery" => sec.page.footer = Some(pv),
+        "lndscpsxn" => sec.page.landscape = on,
+        "sbknone" => sec.start = SectionStart::Continuous,
+        "sbkcol" => sec.start = SectionStart::NextColumn,
+        "sbkpage" => sec.start = SectionStart::NextPage,
+        "sbkeven" => sec.start = SectionStart::EvenPage,
+        "sbkodd" => sec.start = SectionStart::OddPage,
+        "cols" => sec.cols = Some(pv),
+        "colsx" => sec.colsx = Some(pv),
+        "linebetcol" => sec.linebetcol = on,
+        "pgnrestart" => sec.pgn_restart = true,
+        "pgncont" => sec.pgn_restart = false,
+        "pgnstarts" => sec.pgn_start = Some(pv),
+        "pgndec" => sec.pgn_fmt = NumFormat::Decimal,
+        "pgnucrm" => sec.pgn_fmt = NumFormat::UpperRoman,
+        "pgnlcrm" => sec.pgn_fmt = NumFormat::LowerRoman,
+        "pgnucltr" => sec.pgn_fmt = NumFormat::UpperLetter,
+        "pgnlcltr" => sec.pgn_fmt = NumFormat::LowerLetter,
+        _ => return false,
+    }
+    true
 }

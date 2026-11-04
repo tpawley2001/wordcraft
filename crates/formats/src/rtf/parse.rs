@@ -216,6 +216,7 @@ fn finalize(mut r: Reader) -> Parsed {
     // A file that ends with `\sect` ends its last section there: no empty one follows, and
     // header or footer groups after that `\sect` (a section without text) are dropped.
     let mut last_section = r.sec.props(&r.page);
+    last_section.fmt_change = r.section_change();
     let mut headers_footers = std::mem::take(&mut r.section_parts);
     if let Some(FBlock::Para(p)) = blocks.last_mut()
         && let Some(s) = p.section.take()
@@ -268,6 +269,38 @@ pub(super) fn column_grid(rows: &mut [Vec<Cell>], rights: &[Vec<i32>]) -> Vec<f3
         .collect()
 }
 
+/// Gives the sections' tracked formatting changes (`\oldsprops`) their revision: RTF names no
+/// author or date for one, so it is the "Unknown" author's, undated.
+fn set_section_revisions(doc: &mut Document) {
+    use wordcraft_doc::{Block, Revision, RevisionKind};
+    let changed = doc.last_section.fmt_change.is_some()
+        || doc.body.iter().any(|b| matches!(&**b, Block::Para(p) if p.section.as_ref().is_some_and(|s| s.fmt_change.is_some())));
+    if !changed {
+        return;
+    }
+    let found =
+        doc.revisions.iter().position(|r| r.kind == RevisionKind::Format && r.author == "Unknown" && r.date.is_empty() && r.move_name.is_none());
+    let rev = match found {
+        Some(i) => u32::try_from(i).unwrap_or(u32::MAX),
+        None => {
+            doc.revisions.push(Revision::new(RevisionKind::Format, "Unknown", ""));
+            u32::try_from(doc.revisions.len().saturating_sub(1)).unwrap_or(u32::MAX)
+        }
+    };
+    for b in &mut doc.body {
+        if let Block::Para(p) = &**b
+            && p.section.as_ref().is_some_and(|s| s.fmt_change.is_some())
+            && let Block::Para(p) = std::sync::Arc::make_mut(b)
+            && let Some(c) = p.section.as_deref_mut().and_then(|s| s.fmt_change.as_deref_mut())
+        {
+            c.rev = rev;
+        }
+    }
+    if let Some(c) = doc.last_section.fmt_change.as_deref_mut() {
+        c.rev = rev;
+    }
+}
+
 /// Parse RTF bytes into a document.
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
     model::begin_import();
@@ -303,6 +336,7 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     if let Some((h, f)) = sets.next() {
         (doc.last_section.headers, doc.last_section.footers) = (h, f);
     }
+    set_section_revisions(&mut doc);
     // RTF's paragraph defaults are single spacing and no space around paragraphs; what a file
     // wants beyond that it states on each paragraph.
     let dp = &mut doc.styles.default_para;
