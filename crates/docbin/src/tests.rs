@@ -20,6 +20,7 @@ mod horizontal_rules;
 mod linked_pictures;
 mod metadata;
 mod ole_print;
+mod ole_result_objects;
 mod word6;
 mod wrap_polygon;
 
