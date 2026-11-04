@@ -101,9 +101,25 @@ impl Reader<'_> {
         }
         // Built-in styles' behaviour (gallery, priority, visibility), written back as is.
         sheet.latent_styles = root.child("w:latentStyles").map(|l| l.to_xml()).filter(|x| x.len() <= MAX_LATENT_STYLES_XML);
+        // A style written without a `w:styleId` (Reporting Services' `EmptyCellLayoutStyle`) is
+        // referenced by its name with the spaces removed, as Word finds it; a style that has that
+        // id explicitly wins, whatever the order.
+        let explicit: std::collections::HashSet<&str> =
+            root.children("w:style").take(10_000).filter_map(|s| s.attr("w:styleId")).filter(|i| !i.is_empty()).collect();
         for s in root.children("w:style").take(10_000) {
-            let Some(raw_id) = s.attr("w:styleId").filter(|i| !i.is_empty()) else { continue };
-            let id = self.pc.style_id(raw_id);
+            let raw_id: String = match s.attr("w:styleId").filter(|i| !i.is_empty()) {
+                Some(i) => i.to_string(),
+                None => {
+                    let Some(derived) = s.child_val("w:name").map(|n| n.chars().filter(|c| !c.is_whitespace()).collect::<String>()) else {
+                        continue;
+                    };
+                    if derived.is_empty() || explicit.contains(derived.as_str()) {
+                        continue;
+                    }
+                    derived
+                }
+            };
+            let id = self.pc.style_id(&raw_id);
             let kind = match s.attr("w:type").unwrap_or("paragraph") {
                 "character" => StyleKind::Character,
                 "table" => StyleKind::Table,
