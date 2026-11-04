@@ -112,6 +112,31 @@ fn prefix_for(uri: &[u8], extra: &[(&'static str, &str)]) -> &'static str {
     "?"
 }
 
+/// The Strict `wordprocessingDrawing` namespace, where Strict files also put the Word 2010
+/// shape, group and canvas elements (`wsp`, `wgp`, `wpc` and their children).
+const STRICT_WP: &[u8] = b"http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing";
+
+/// The canonical prefix of an element in the Strict `wordprocessingDrawing` namespace: the
+/// Word 2010 shape (`wps`), group (`wpg`) and canvas (`wpc`) element names get their family's
+/// prefix, so they read like Transitional ones; the drawing elements (`inline`, `anchor`,
+/// `extent`, `docPr`…) stay `wp`. `cNvPr` and `extLst` occur in more than one family and
+/// follow their parent.
+fn strict_wp_prefix(local: &[u8], parent: Option<&str>) -> &'static str {
+    match local {
+        b"wsp" | b"cNvSpPr" | b"cNvCnPr" | b"spPr" | b"style" | b"txbx" | b"linkedTxbx" | b"bodyPr" => "wps",
+        b"wgp" | b"grpSp" | b"grpSpPr" | b"cNvGrpSpPr" | b"cNvFrPr" | b"graphicFrame" => "wpg",
+        b"wpc" | b"bg" | b"whole" => "wpc",
+        b"cNvPr" | b"extLst" => match parent.and_then(|p| p.split_once(':')).map(|(p, _)| p) {
+            Some("wpg") => "wpg",
+            Some("wpc") => "wpc",
+            Some("wps") => "wps",
+            _ if local == b"cNvPr" => "wps",
+            _ => "wp",
+        },
+        _ => "wp",
+    }
+}
+
 /// Compatibility feature namespaces whose elements are not otherwise handled by this tree.
 /// Keep the reader's existing feature set when canonicalizing `mc:Choice/@Requires` aliases.
 fn requirement_prefix(uri: &[u8]) -> &'static str {
@@ -366,8 +391,11 @@ fn parse_with(bytes: &[u8], extra: &[(&'static str, &str)], strict: bool) -> Res
     loop {
         buf.clear();
         let (res, ev) = r.read_resolved_event_into(&mut buf).map_err(|e| DocxError::Xml(e.to_string()))?;
-        let el_prefix = match &res {
-            ResolveResult::Bound(ns) => Some(prefix_for(ns.as_ref(), extra)),
+        let el_prefix = match (&res, &ev) {
+            (ResolveResult::Bound(ns), Event::Start(e) | Event::Empty(e)) if ns.as_ref() == STRICT_WP => {
+                Some(strict_wp_prefix(e.local_name().as_ref(), stack.last().map(|p| p.name.as_str())))
+            }
+            (ResolveResult::Bound(ns), _) => Some(prefix_for(ns.as_ref(), extra)),
             _ => None,
         };
         match ev {
@@ -659,6 +687,22 @@ pub fn body_ns() -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strict_shape_group_and_canvas_elements_get_their_word_2010_prefixes() {
+        let xml = r#"<wp:inline xmlns:wp="http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing"><wp:extent cx="1" cy="1"/><wp:docPr id="1" name="n"/><wp:wpc><wp:bg/><wp:whole/><wp:wgp><wp:cNvGrpSpPr/><wp:grpSpPr/><wp:grpSp><wp:cNvPr id="2" name="g"/></wp:grpSp><wp:wsp><wp:cNvPr id="3" name="s"/><wp:cNvSpPr/><wp:spPr/><wp:style/><wp:txbx/><wp:bodyPr/><wp:extLst/></wp:wsp></wp:wgp><wp:extLst/></wp:wpc></wp:inline>"#;
+        let root = parse(xml.as_bytes()).unwrap();
+        let mut names = Vec::new();
+        fn go(e: &El, out: &mut Vec<String>) {
+            out.push(e.name.clone());
+            for k in e.els() {
+                go(k, out);
+            }
+        }
+        go(&root, &mut names);
+        let expected = "wp:inline wp:extent wp:docPr wpc:wpc wpc:bg wpc:whole wpg:wgp wpg:cNvGrpSpPr wpg:grpSpPr wpg:grpSp wpg:cNvPr wps:wsp wps:cNvPr wps:cNvSpPr wps:spPr wps:style wps:txbx wps:bodyPr wps:extLst wpc:extLst";
+        assert_eq!(names.join(" "), expected);
+    }
 
     #[test]
     fn strict_drawing_namespaces_have_transitional_prefixes() {
