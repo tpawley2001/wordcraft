@@ -208,11 +208,15 @@ pub fn missing_font_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)
 /// baseline at 48.60 pt, so the ascent is 1.05 em (its P052 substitute is 1.20 em).
 /// Franklin Gothic Book: 12 pt lines 13.56 pt apart (1.13 em); `/Ascent` 917, the descent is the
 /// rest of the line (its Carlito substitute is 1.2207 em).
+/// Tahoma: `/Ascent` 1000, `/Descent` -207; 12 pt lines 14.43 pt apart (1.207 em).
+/// Lucida Bright: `/Ascent` 967, `/Descent` -205; 18 pt lines 21.12 pt apart (1.172 em).
 fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
     match family.trim().to_ascii_lowercase().as_str() {
         "lucida console" => Some((0.789, 0.211)),
         "palatino linotype" => Some((1.05, 0.30)),
         "franklin gothic book" => Some((0.917, 0.213)),
+        "tahoma" => Some((1.0, 0.207)),
+        "lucida bright" => Some((0.967, 0.205)),
         _ => None,
     }
 }
