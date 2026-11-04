@@ -150,6 +150,23 @@ pub(super) fn drawing_grid(body: wordcraft_geom::Rect, step: (f32, f32)) -> (Vec
     (axis(body.x, body.w, step.0), axis(body.y, body.h, step.1))
 }
 
+/// The drawing grid's lines across and down a page, in page points: vertical lines every
+/// `step.0` from `origin.0` and horizontal ones every `step.1` from `origin.1`, kept inside
+/// `body`. A step of 0 draws none of that direction.
+pub(super) fn drawing_grid_from(origin: (f32, f32), body: wordcraft_geom::Rect, step: (f32, f32)) -> (Vec<f32>, Vec<f32>) {
+    let axis = |start: f32, step: f32, lo: f32, hi: f32| -> Vec<f32> {
+        if !(step.is_finite() && step > 0.0 && start.is_finite() && lo.is_finite() && hi.is_finite() && hi >= lo) {
+            return Vec::new();
+        }
+        let first = start + ((lo - start) / step).ceil() * step;
+        if !first.is_finite() {
+            return Vec::new();
+        }
+        (0..DRAWING_GRID_MAX_LINES).map(|k| first + k as f32 * step).take_while(|p| p.is_finite() && *p <= hi + 0.01).collect()
+    };
+    (axis(origin.0, step.0, body.x, body.right()), axis(origin.1, step.1, body.y, body.bottom()))
+}
+
 /// Global View Gridlines outlines every table (#1628). While editing a header/footer, also
 /// outline that story's cells (#2197), without adding printable borders or changing the view flag.
 pub(super) fn gridline_cells(page: &Page, all: bool, editing: Option<StoryRef>) -> impl Iterator<Item = wordcraft_geom::Rect> + '_ {

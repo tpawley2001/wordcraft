@@ -1392,13 +1392,24 @@ fn text_pane_tab_demotes_and_shift_tab_promotes_the_focused_item() {
 /// Type into a dialog text field, replacing what is there (as a user would: click, select
 /// all, type over).
 fn set_text_field(h: &mut egui_kittest::Harness<'_, WordApp>, label: &str, text: &str) {
+    set_field(h, egui::accesskit::Role::TextInput, label, text, false);
+}
+
+fn set_spin_field(h: &mut egui_kittest::Harness<'_, WordApp>, label: &str, text: &str) {
+    set_field(h, egui::accesskit::Role::SpinButton, label, text, true);
+}
+
+fn set_field(h: &mut egui_kittest::Harness<'_, WordApp>, role: egui::accesskit::Role, label: &str, text: &str, commit: bool) {
     use egui_kittest::kittest::Queryable;
-    h.get_by_role_and_label(egui::accesskit::Role::TextInput, label).click();
+    h.get_by_role_and_label(role, label).click();
     h.run_steps(2);
     h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
     h.key_press(egui::Key::Backspace);
     h.run_steps(1);
-    h.get_by_role_and_label(egui::accesskit::Role::TextInput, label).type_text(text);
+    h.get_by_role_and_label(role, label).type_text(text);
+    if commit {
+        h.key_press(egui::Key::Enter);
+    }
     h.run_steps(2);
 }
 
@@ -1822,4 +1833,56 @@ fn the_custom_properties_dialog_refuses_an_invalid_number() {
     h.run_steps(4);
     assert!(h.state().session.doc.custom_props.is_empty(), "the document is unchanged");
     assert_eq!(h.state().session.undo_depth(), depth, "no step was recorded");
+}
+
+/// Layout › Align › Grid Settings… opens on the document's drawing grid, and OK applies what the
+/// dialog shows through `view.gridSettings` (and `view.gridlines` when that box changed).
+#[test]
+fn grid_settings_dialog_opens_and_applies() {
+    use egui_kittest::kittest::Queryable;
+    let mut app = app_with("Grid");
+    let Some(Dialog::Layout(d)) = Dialog::open("gridSettings", &mut app) else {
+        panic!("gridSettings opens the Grid and Guides dialog");
+    };
+    assert_eq!((d.name(), d.title()), ("gridSettings", "Grid and Guides"));
+    let crate::dialogs_layout::LayoutDialog::GridSettings(f) = *d else {
+        panic!("the Grid and Guides form");
+    };
+    let ppu = crate::options::unit().pt_per_unit();
+    assert!((f.horizontal_spacing * ppu - 9.0).abs() < 0.01, "the blank document's 9 pt spacing");
+    assert_eq!((f.vertical_every, f.use_margins, f.gridlines), (2, true, false));
+
+    let mut h = app_harness(app);
+    h.state_mut().run("ui.dialog", json!({"name": "gridSettings"})).unwrap();
+    h.run_steps(3);
+    assert!(h.query_by_label("Grid settings").is_some());
+    set_spin_field(&mut h, "Horizontal spacing:", "18 pt");
+    set_spin_field(&mut h, "Vertical gridlines every:", "3");
+    set_spin_field(&mut h, "Horizontal gridlines every:", "5");
+    h.get_by_label("Use margins").click();
+    h.run_steps(2);
+    set_spin_field(&mut h, "Horizontal origin:", "72 pt");
+    set_spin_field(&mut h, "Vertical origin:", "36 pt");
+    h.get_by_label("Display gridlines on screen").click();
+    h.run_steps(2);
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    assert!(h.state().dialog.is_none(), "OK closes the dialog");
+    let s = &h.state().session;
+    assert!(s.view.gridlines, "the box turned gridlines on");
+    assert!((s.doc.settings.grid_h - 18.0).abs() < 0.01, "OK applies the spacing in the interface unit");
+    assert_eq!((s.doc.settings.grid_every_h, s.doc.settings.grid_every_v), (3, 5));
+    assert!(!s.doc.settings.grid_use_margins);
+    assert!((s.doc.settings.grid_origin_x - 72.0).abs() < 0.01);
+    assert!((s.doc.settings.grid_origin_y - 36.0).abs() < 0.01);
+
+    // Cancel changes nothing.
+    h.state_mut().run("ui.dialog", json!({"name": "gridSettings"})).unwrap();
+    h.run_steps(3);
+    h.get_by_label("Display gridlines on screen").click();
+    h.run_steps(2);
+    h.get_by_label("Cancel").click();
+    h.run_steps(3);
+    assert!(h.state().dialog.is_none());
+    assert!(h.state().session.view.gridlines, "Cancel keeps gridlines on");
 }

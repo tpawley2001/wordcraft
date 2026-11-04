@@ -101,6 +101,16 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
             w.val(tag, &crate::units::twips(v.clamp(0.5, 1584.0)));
         }
     }
+    w.val("w:displayHorizontalDrawingGridEvery", &s.grid_every_h.min(127).to_string());
+    w.val("w:displayVerticalDrawingGridEvery", &s.grid_every_v.min(127).to_string());
+    if !s.grid_use_margins {
+        w.empty("w:doNotUseMarginsForDrawingGridOrigin", &[]);
+        for (tag, v) in [("w:drawingGridHorizontalOrigin", s.grid_origin_x), ("w:drawingGridVerticalOrigin", s.grid_origin_y)] {
+            if v.is_finite() && v.abs() > 0.01 {
+                w.val(tag, &crate::units::twips(v.clamp(0.0, 1584.0)));
+            }
+        }
+    }
     w.val("w:characterSpacingControl", "doNotCompress");
     write_note_settings(&mut w, s, s_notes, footnotes, endnotes);
     write_compatibility_settings(&mut w, doc);

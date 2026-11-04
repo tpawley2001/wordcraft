@@ -13,6 +13,70 @@ fn toggle(s: &mut Session, v: &Value, f: fn(&mut crate::ViewState) -> &mut bool)
     Ok(json!({"value": *f(&mut s.view)}))
 }
 
+/// A grid spacing or origin in points: 0.5..=1584 for a spacing, 0..=1584 for an origin.
+fn grid_pt(v: &Value, k: &str, min: f32) -> Result<Option<f32>, CmdError> {
+    let Some(x) = v.get(k) else { return Ok(None) };
+    match x.as_f64().map(|x| x as f32).filter(|x| x.is_finite()) {
+        Some(x) if (min..=1584.0).contains(&x) => Ok(Some(x)),
+        _ => Err(CmdError::Params(format!("`{k}` must be a number of points from {min} to 1584"))),
+    }
+}
+
+/// A gridline interval: an integer 0..=127 (0 draws none).
+fn grid_every(v: &Value, k: &str) -> Result<Option<u8>, CmdError> {
+    let Some(x) = v.get(k) else { return Ok(None) };
+    match x.as_f64().filter(|x| x.is_finite() && x.fract() == 0.0 && (0.0..=127.0).contains(x)) {
+        Some(x) => Ok(Some(x as u8)),
+        None => Err(CmdError::Params(format!("`{k}` must be a whole number from 0 to 127"))),
+    }
+}
+
+fn grid_settings(s: &mut Session, v: &Value) -> CmdResult {
+    let h = grid_pt(v, "horizontalSpacing", 0.5)?;
+    let vv = grid_pt(v, "verticalSpacing", 0.5)?;
+    let every_h = grid_every(v, "horizontalEvery")?;
+    let every_v = grid_every(v, "verticalEvery")?;
+    let use_margins = match v.get("useMargins") {
+        None => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(_) => return Err(CmdError::Params("`useMargins` must be true or false".into())),
+    };
+    let ox = grid_pt(v, "horizontalOrigin", 0.0)?;
+    let oy = grid_pt(v, "verticalOrigin", 0.0)?;
+    let g = &mut s.doc.settings;
+    if let Some(x) = h {
+        g.grid_h = x;
+    }
+    if let Some(x) = vv {
+        g.grid_v = x;
+    }
+    if let Some(x) = every_h {
+        g.grid_every_h = x;
+    }
+    if let Some(x) = every_v {
+        g.grid_every_v = x;
+    }
+    if let Some(x) = use_margins {
+        g.grid_use_margins = x;
+    }
+    if let Some(x) = ox {
+        g.grid_origin_x = x;
+    }
+    if let Some(x) = oy {
+        g.grid_origin_y = x;
+    }
+    let g = &s.doc.settings;
+    Ok(json!({
+        "horizontalSpacing": g.grid_h,
+        "verticalSpacing": g.grid_v,
+        "horizontalEvery": g.grid_every_h,
+        "verticalEvery": g.grid_every_v,
+        "useMargins": g.grid_use_margins,
+        "horizontalOrigin": g.grid_origin_x,
+        "verticalOrigin": g.grid_origin_y,
+    }))
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("view.marks", "Show/Hide ¶", "Home › Paragraph", |s, v| {
@@ -68,6 +132,12 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("view.gridlines", "Gridlines", "View › Show", |s, v| toggle(s, v, |x| &mut x.gridlines))
             .params(r#"{"value"?: bool}"#)
             .pure(),
+        // The drawing grid's spacing, origin and how often gridlines are shown (Layout › Align ›
+        // Grid Settings…), stored in settings.xml as Word does (ECMA-376 §17.15.1).
+        CommandSpec::new("view.gridSettings", "Grid Settings", "Layout › Align", grid_settings)
+            .params(
+                r#"{"horizontalSpacing"?: pt (0.5-1584), "verticalSpacing"?: pt (0.5-1584), "horizontalEvery"?: n (0-127; vertical gridlines every n units, 0 = none), "verticalEvery"?: n (0-127; horizontal gridlines every n units, 0 = none), "useMargins"?: bool, "horizontalOrigin"?: pt (0-1584), "verticalOrigin"?: pt (0-1584)} → the resulting values"#,
+            ),
         // Outlines of table cells (screen only; never printed or exported).
         CommandSpec::new("table.viewGridlines", "View Gridlines", "Table Layout › Table", |s, v| toggle(s, v, |x| &mut x.table_gridlines))
             .params(r#"{"value"?: bool}"#)
