@@ -190,9 +190,13 @@ pub fn missing_font_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)
 /// differently. Measured in Word's PDFs: Lucida Console's font descriptor gives `/Ascent` 789,
 /// and consecutive single-spaced 10 pt lines are 10.0 pt apart (one em), so the descent is the
 /// rest of the em (its Courier-New-like substitute is 1.133 em).
+/// Palatino Linotype: 12 pt lines 16.20 pt apart (189 samples, two documents); a header at 36 pt has its first baseline at 48.60 pt, giving ascent 1.05 em and descent 0.30 em.
+/// Franklin Gothic Book: 12 pt lines 13.56 pt apart (340 samples); PDF descriptor `/Ascent 917` gives ascent 0.917 em and the remaining descent 0.213 em.
 fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
     match family.trim().to_ascii_lowercase().as_str() {
         "lucida console" => Some((0.789, 0.211)),
+        "palatino linotype" => Some((1.05, 0.30)),
+        "franklin gothic book" => Some((0.917, 0.213)),
         _ => None,
     }
 }
