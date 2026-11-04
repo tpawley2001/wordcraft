@@ -23,7 +23,8 @@ pub struct Resolved {
 
 /// Substitutes to try, in order, for a family that isn't installed. Open fonts that are
 /// metric-compatible come first (Carlito ↔ Calibri, Caladea ↔ Cambria, Liberation ↔ Arial /
-/// Times New Roman / Courier New), then common system fonts, then our bundled families.
+/// Times New Roman / Courier New, Liberation Sans Narrow ↔ Arial Narrow), then common system fonts,
+/// then our bundled families.
 fn substitutes(family: &str) -> &'static [&'static str] {
     substitutes_by_name(family).0
 }
@@ -41,6 +42,18 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
     const SERIF: &[&str] = &["Caladea", "Times New Roman", "Liberation Serif", "Georgia", "Noto Serif", "DejaVu Serif", "Source Serif 4"];
     const MONO: &[&str] = &["Courier New", "Liberation Mono", "Menlo", "Consolas", "DejaVu Sans Mono", "JetBrains Mono"];
     const ARIAL: &[&str] = &["Liberation Sans", "Helvetica", "Helvetica Neue", "Arimo", "Source Sans 3"];
+    // Liberation Sans Narrow has Arial Narrow's advance widths; Nimbus Sans Narrow is the next best.
+    const ARIAL_NARROW: &[&str] = &[
+        "Arial Narrow",
+        "Liberation Sans Narrow",
+        "Nimbus Sans Narrow",
+        "Helvetica Narrow",
+        "Liberation Sans",
+        "Helvetica",
+        "Helvetica Neue",
+        "Arimo",
+        "Source Sans 3",
+    ];
     const ARIAL_UNICODE: &[&str] = &["Arial", "Liberation Sans", "Helvetica", "Helvetica Neue", "Arimo", "Source Sans 3"];
     const TIMES: &[&str] = &["Liberation Serif", "Times", "Tinos", "Source Serif 4"];
     // Word's symbol fonts (Symbol, Wingdings…) are proprietary: their characters are drawn as their
@@ -129,6 +142,7 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
     match f.as_str() {
         "palatino linotype" | "book antiqua" | "palatino" => (PALATINO, true),
         "arial" | "helvetica" | "arial nova" => (ARIAL, true),
+        "arial narrow" | "helvetica narrow" => (ARIAL_NARROW, true),
         "arial unicode ms" => (ARIAL_UNICODE, true),
         "times new roman" | "times" => (TIMES, true),
         "courier new" | "courier" | "consolas" | "lucida console" | "cascadia code" | "cascadia mono" => (MONO, true),
@@ -717,11 +731,19 @@ mod tests {
 
     #[test]
     fn fonts_with_a_clone_have_named_substitutes() {
-        for f in ["Times New Roman", "Times New Roman Cyr", "Arial", "Courier New", "Palatino Linotype", "Symbol"] {
+        for f in ["Times New Roman", "Times New Roman Cyr", "Arial", "Arial Narrow", "Courier New", "Palatino Linotype", "Symbol"] {
             assert!(has_named_substitutes(f), "{f}");
         }
         for f in ["No Such Brand Font", "Cambria", "Georgia", "Brand Serif"] {
             assert!(!has_named_substitutes(f), "{f}");
         }
+    }
+
+    #[test]
+    fn arial_narrow_takes_narrow_substitutes_first() {
+        let subs = substitutes("Arial Narrow");
+        assert_eq!(subs.get(1), Some(&"Liberation Sans Narrow"));
+        assert!(!subs.contains(&"Carlito"), "{subs:?}");
+        assert_eq!(substitutes("arial narrow"), subs);
     }
 }
