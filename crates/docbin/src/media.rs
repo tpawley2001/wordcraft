@@ -170,15 +170,27 @@ impl Pictures {
     /// Data stream picture's size and crop `shown`; one media entry per object. `None` when a
     /// picture count/byte cap is reached.
     pub(crate) fn ole(&mut self, id: u32, emf: &[u8], shown: &Inline) -> Option<Inline> {
+        let key = self.ole_key(id, emf, "emf")?;
+        Some(Inline { key, empty: false, ..shown.clone() })
+    }
+
+    /// The picture of embedded object `id` referenced from a field result, drawn from its own
+    /// presentation `bytes` (`ext`: emf or wmf) at `w` x `h` points; one media entry per object.
+    pub(crate) fn ole_object(&mut self, id: u32, bytes: &[u8], ext: &str, w: f32, h: f32) -> Option<Inline> {
+        let key = self.ole_key(id, bytes, ext)?;
+        Some(Inline { key, empty: false, rule: None, w, h, crop: [0.0; 4], alt: String::new() })
+    }
+
+    /// The media key of object `id`'s presentation, adding `bytes` the first time.
+    fn ole_key(&mut self, id: u32, bytes: &[u8], ext: &str) -> Option<String> {
         if !self.by_ole.contains_key(&id) {
             if self.by_fc.len().saturating_add(self.by_bse.len()).saturating_add(self.by_ole.len()) >= MAX_PICTURES {
                 return None;
             }
-            let key = self.insert(emf.to_vec(), "emf", false);
+            let key = self.insert(bytes.to_vec(), ext, false);
             self.by_ole.insert(id, key);
         }
-        let key = self.by_ole.get(&id)?.clone()?;
-        Some(Inline { key, empty: false, ..shown.clone() })
+        self.by_ole.get(&id)?.clone()
     }
 
     /// The media key of BLIP store entry `pib` (1-based), decoding it the first time; `delay`
