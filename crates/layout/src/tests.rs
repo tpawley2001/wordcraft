@@ -5,6 +5,7 @@ use wordcraft_doc::props::{Align, Border, BorderStyle, Borders, ParaProps, TextD
 use wordcraft_doc::{Pos, Table};
 
 mod autospace;
+mod autospace_legacy_lists;
 mod bidi;
 mod blank_side_page;
 mod border_band;
