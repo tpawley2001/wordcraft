@@ -696,7 +696,9 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
 /// An inline picture anchor (`\x01`): the CHPX carries sprmCPicLocation. `open` is whether the
 /// innermost open field (if any, and not nested) is in its result; in its code, an embedded
 /// object's reference (sprmCFOle2) sets `object_id`, and the result's picture then prints from
-/// that object's print presentation, when it has one.
+/// that object's print presentation, when it has one. A result `\x01` that is itself an object
+/// reference (no object in the code) is drawn from the object's storage: its location is the
+/// storage id, not a Data stream fc.
 fn inline_picture(ctx: &WalkCtx<'_>, cp: u32, open: Option<bool>, object_id: &mut Option<u32>, pb: &mut ParaBuild, pics: &mut media::Pictures) {
     let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
     let chpx = ctx.chpx_bins.chpx(ctx.word, fc);
@@ -710,10 +712,15 @@ fn inline_picture(ctx: &WalkCtx<'_>, cp: u32, open: Option<bool>, object_id: &mu
         Some(true) => object = object_id.and_then(|id| Some((id, ctx.prints.get(id)?))),
         None => {}
     }
-    let pic = pic_location(chpx).and_then(|at| pics.get(ctx.data, at)).cloned();
-    let pic = match (pic, object) {
-        (Some(p), Some((id, emf))) => pics.ole(id, emf, &p).or(Some(p)),
-        (p, _) => p,
+    let result_object = if open == Some(true) && object_id.is_none() { ole::object_id(chpx) } else { None };
+    let pic = if let Some(id) = result_object {
+        ctx.prints.result_object(id).and_then(|o| pics.ole_object(id, o.bytes, o.ext, o.w, o.h))
+    } else {
+        let pic = pic_location(chpx).and_then(|at| pics.get(ctx.data, at)).cloned();
+        match (pic, object) {
+            (Some(p), Some((id, emf))) => pics.ole(id, emf, &p).or(Some(p)),
+            (p, _) => p,
+        }
     };
     match pic {
         // Empty shapes keep their space; horizontal rules fill their line via the rule metadata.
