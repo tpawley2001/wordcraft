@@ -191,6 +191,8 @@ impl Reader {
 
     pub(super) fn text(&mut self, s: &str) {
         match self.st.dest {
+            Dest::ShapeName | Dest::ShapeValue => self.shape_property_text(s),
+            Dest::ShapeInst => {}
             Dest::Body => {
                 if self.st.hidden {
                     return;
@@ -209,7 +211,20 @@ impl Reader {
                     let old = self.old_fmt(&words);
                     f.fmt_change = Some(Box::new(model::FmtChange { mark, old }));
                 }
-                self.para.push_text(s, &f);
+                if !self.shapes.is_empty()
+                    && let Some(instr) =
+                        self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty() && super::word::hyperlink(s).is_none())
+                {
+                    if let Some(Inline::Field { instr: old, result, .. }) = self.para.inlines.last_mut()
+                        && old == instr
+                    {
+                        result.push_str(s);
+                    } else {
+                        self.para.inlines.push(Inline::Field { instr: instr.clone(), result: s.to_string(), fmt: f, locked: false });
+                    }
+                } else {
+                    self.para.push_text(s, &f);
+                }
                 self.para_has = true;
             }
             Dest::FontTbl => {

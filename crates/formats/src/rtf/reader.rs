@@ -7,6 +7,7 @@ use super::{Arc, Cell, FBlock, FTable, HashMap, Inline, Kind, Meta, Para, Rgb, m
 #[derive(Default)]
 pub(super) struct Reader {
     pub(super) st: St,
+    pub(super) shapes: Vec<super::shapes::Shape>,
     stack: Vec<St>,
     overflow: usize,
     pub(super) fonts: HashMap<i32, Arc<str>>,
@@ -110,7 +111,7 @@ impl Reader {
 
     /// Set the output aside (a header or footer starts) or put it back (it ended), returning the
     /// other one.
-    fn swap_output(&mut self, mut o: Output) -> Output {
+    pub(super) fn swap_output(&mut self, mut o: Output) -> Output {
         std::mem::swap(&mut o.body, &mut self.body);
         std::mem::swap(&mut o.para, &mut self.para);
         std::mem::swap(&mut o.para_has, &mut self.para_has);
@@ -215,6 +216,7 @@ impl Reader {
             self.overflow -= 1;
             return;
         }
+        self.close_shape_group();
         let closing = self.st.dest;
         // Destination-level commits.
         match closing {

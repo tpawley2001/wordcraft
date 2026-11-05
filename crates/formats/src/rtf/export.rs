@@ -432,6 +432,54 @@ impl Writer {
             match i {
                 Inline::Text(t, f) => self.run(t, f, out),
                 Inline::Image(img) => self.picture(img, out),
+                Inline::Shape { kind, w, h, float, blocks, look, .. } => {
+                    use wordcraft_doc::para::{Anchor, ShapeKind, Wrap};
+                    let f = float.as_deref().cloned().unwrap_or_default();
+                    let tw = |v: f32| (v * 20.0).round() as i32;
+                    let wrap = match f.wrap {
+                        Wrap::TopAndBottom => 1,
+                        Wrap::Square => 2,
+                        Wrap::Tight => 4,
+                        Wrap::Through => 5,
+                        _ => 3,
+                    };
+                    let bx = match f.h_rel {
+                        Anchor::Page => "page",
+                        Anchor::Margin => "margin",
+                        _ => "column",
+                    };
+                    let by = match f.v_rel {
+                        Anchor::Page => "page",
+                        Anchor::Margin => "margin",
+                        _ => "para",
+                    };
+                    out.push_str(&format!(
+                        "{{\\shp{{\\*\\shpinst\\shpleft{}\\shptop{}\\shpright{}\\shpbottom{}\\shpbx{bx}\\shpby{by}\\shpwr{wrap}\\shpfblwtxt{}",
+                        tw(f.x),
+                        tw(f.y),
+                        tw(f.x + w),
+                        tw(f.y + h),
+                        u8::from(f.wrap == Wrap::BehindText)
+                    ));
+                    out.push_str(&format!("\\shpz{}", f.z.saturating_sub(1)));
+                    for (name, value) in [
+                        ("shapeType", if *kind == ShapeKind::TextBox { 202 } else { 1 }),
+                        ("fFilled", i32::from(look.fill.is_some())),
+                        ("fLine", i32::from(look.line.is_some())),
+                    ] {
+                        out.push_str(&format!("{{\\sp{{\\sn {name}}}{{\\sv {value}}}}}"));
+                    }
+                    if let Some(inset) = look.inset {
+                        for (name, v) in ["dxTextLeft", "dyTextTop", "dxTextRight", "dyTextBottom"].iter().zip(inset) {
+                            out.push_str(&format!("{{\\sp{{\\sn {name}}}{{\\sv {}}}}}", (v * 12700.0).round() as i32));
+                        }
+                    }
+                    out.push_str("{\\shptxt ");
+                    let base = self.base.clone();
+                    self.blocks(blocks, false, "\\par", out, 1);
+                    self.base = base;
+                    out.push_str("}}}");
+                }
                 Inline::Anchor(a) => {
                     let a = esc(a);
                     out.push_str(&format!("{{\\*\\bkmkstart {a}}}{{\\*\\bkmkend {a}}}"));
@@ -440,14 +488,18 @@ impl Writer {
                 Inline::Ruby { base, fmt, .. } => self.run(base, fmt, out),
                 // ASK and SET show nothing (see `model::shows_nothing`).
                 Inline::Field { instr, .. } if model::shows_nothing(instr) => {}
-                Inline::Field { result, fmt, .. } | Inline::Control { text: result, fmt, .. } => self.run(result, fmt, out),
+                Inline::Field { instr, result, fmt, .. } => {
+                    out.push_str(&format!("{{\\field{{\\*\\fldinst {}}}{{\\fldrslt ", esc(instr)));
+                    self.run(result, fmt, out);
+                    out.push_str("}}");
+                }
+                Inline::Control { text: result, fmt, .. } => self.run(result, fmt, out),
                 Inline::Figure(_)
                 | Inline::Chart(_)
                 | Inline::Equation { .. }
                 | Inline::Note { .. }
                 | Inline::Comment { .. }
                 | Inline::CommentEnd(_)
-                | Inline::Shape { .. }
                 | Inline::Group { .. }
                 | Inline::FieldStart(_)
                 | Inline::FieldEnd
@@ -738,7 +790,8 @@ fn tab_words(t: &wordcraft_doc::props::TabStop) -> String {
 
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
-    let flow = model::from_doc_tracked(doc);
+    let opts = model::FlowOpts::tracked();
+    let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
         t: Tables { fonts: vec![base_font], colors: Vec::new() },
@@ -753,6 +806,16 @@ pub fn export(doc: &Document) -> String {
     let secs: Vec<wordcraft_doc::SectionProps> = doc.sections().into_iter().map(|(_, s)| s.clone()).collect();
     if let Some(first) = secs.first() {
         body.push_str(&sect_words(first));
+        for (set, prefix) in [(&first.headers, "header"), (&first.footers, "footer")] {
+            for (id, suffix) in [(set.default, ""), (set.first, "f"), (set.even, "l")] {
+                if let Some(part) = id.and_then(|id| doc.parts.get(&id)) {
+                    body.push_str(&format!("{{\\{prefix}{suffix} "));
+                    let blocks = model::part_flow(doc, &part.blocks, opts);
+                    w.blocks(&blocks, false, "\\par", &mut body, 1);
+                    body.push('}');
+                }
+            }
+        }
     }
     if secs.len() > 1 {
         w.sections = secs;

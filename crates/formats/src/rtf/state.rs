@@ -16,6 +16,9 @@ pub(super) const MAX_SECTIONS: usize = 10_000;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Dest {
     Body,
+    ShapeInst,
+    ShapeName,
+    ShapeValue,
     Skip,
     FontTbl,
     ColorTbl,

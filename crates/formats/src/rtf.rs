@@ -7,8 +7,8 @@
 //! hyperlinks as `HYPERLINK` fields, bookmarks, pictures (`\pngblip` / `\jpegblip`) and tables
 //! (`\trowd … \cellx … \cell … \row`, header rows, vertical merges, shading).
 //!
-//! Import: a tolerant reader for groups and destinations (unknown `\*` destinations, headers,
-//! footers, notes and objects are skipped), `\par \line \tab \page`, `\uN` with `\ucN`
+//! Import: a tolerant reader for groups and destinations (unknown `\*` destinations,
+//! notes and objects are skipped; headers, footers and shape text have their own stories), `\par \line \tab \page`, `\uN` with `\ucN`
 //! fallback skipping, `\'hh` and 8-bit text in the document's code page (`\ansicpg`, `\mac`, `\pc`, `\pca`) or
 //! the current font's (`\fcharset`, `\cpg`: Cyrillic, Central European, Greek, Mac OS Roman, the
 //! East Asian multibyte pages 932/936/949/950…; Windows-1252 when none is named). A multibyte
@@ -48,3 +48,7 @@ use word::hyperlink;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod shape_regressions;
+mod shapes;

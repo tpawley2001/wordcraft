@@ -14,6 +14,9 @@ impl Reader {
         if self.skip_destination_word(w, pv) {
             return;
         }
+        if self.shape_word(w, p, starred) {
+            return;
+        }
         if w == "shppict" || self.start_header_footer_word(w) {
             return;
         }
@@ -288,6 +291,18 @@ impl Reader {
                 let link = self.st.field.and_then(|i| self.fields.get(i)).and_then(|s| hyperlink(s));
                 if link.is_some() {
                     self.st.fmt.link = link.as_deref().and_then(model::kept_link);
+                } else if !self.shapes.is_empty()
+                    && let Some(instr) = self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty())
+                {
+                    // Each result starts its own field, even when it is empty or follows the
+                    // same instruction without intervening text.
+                    self.para.inlines.push(super::Inline::Field {
+                        instr: instr.clone(),
+                        result: String::new(),
+                        fmt: self.st.fmt.clone(),
+                        locked: false,
+                    });
+                    self.para_has = true;
                 }
             }
             _ => {}
@@ -367,6 +382,7 @@ impl Reader {
 
     fn destination_word(&mut self, word: &str, param: Option<i32>, on: bool, value: i32) -> bool {
         match self.st.dest {
+            Dest::ShapeInst | Dest::ShapeName | Dest::ShapeValue => true,
             Dest::Skip => {
                 if self.in_creatim {
                     self.record_created_part(word, value);
