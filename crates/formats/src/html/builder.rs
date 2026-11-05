@@ -653,7 +653,7 @@ impl<'r> Builder<'r> {
             // A paragraph of a hidden block (`display: none`) gets a hidden mark; `flush` shows
             // it again when the paragraph has shown text.
             if self.stack.iter().rev().find(|e| e.kind != ElKind::Inline).is_some_and(|e| e.fmt.hidden) {
-                p.mark = Some(Box::new(Fmt { hidden: true, ..Fmt::default() }));
+                p.mark = Some(Box::new(wordcraft_doc::props::CharProps { hidden: Some(true), ..Default::default() }));
             }
             self.para = Some(p);
         }
@@ -682,7 +682,7 @@ impl<'r> Builder<'r> {
                 p.trim();
             }
         }
-        if p.mark.as_ref().is_some_and(|m| m.hidden) && p.inlines.iter().any(|i| matches!(i, Inline::Text(t, f) if !f.hidden && !t.is_empty())) {
+        if p.mark.as_ref().is_some_and(|m| m.hidden == Some(true)) && p.inlines.iter().any(|i| matches!(i, Inline::Text(t, f) if !f.hidden && !t.is_empty())) {
             p.mark = None;
         }
         if p.inlines.len() == 1 && p.text() == "\u{00A0}" {
