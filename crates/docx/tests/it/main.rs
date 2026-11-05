@@ -1,6 +1,7 @@
 mod alt_chunks;
 mod bidi;
 mod bidi_runs;
+mod body_level_breaks;
 mod border_lines;
 mod border_styles;
 mod cell_margin_inheritance;
