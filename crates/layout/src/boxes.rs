@@ -38,14 +38,15 @@ impl<'a> BoxInput<'a> {
 
 struct ParagraphSpacing<'a> {
     index: usize,
-    listed: bool,
+    /// Whether automatic spacing drops between the previous paragraph and this one, both list
+    /// items (`Ctx::list_items_join`).
+    list_items_join: bool,
     style: &'a str,
     contextual: bool,
     before_auto: bool,
     space_before: f32,
     allow_same_style_space: bool,
     previous_style: Option<&'a (String, bool)>,
-    previous_listed: bool,
     previous_after_auto: bool,
     previous_after: &'a mut f32,
     y: &'a mut f32,
@@ -74,14 +75,13 @@ struct TableBlockContext<'ctx, 'state, 'doc> {
 fn paragraph_spacing(input: ParagraphSpacing<'_>) -> (bool, f32) {
     let ParagraphSpacing {
         index,
-        listed,
+        list_items_join,
         style,
         contextual,
         before_auto,
         space_before,
         allow_same_style_space,
         previous_style,
-        previous_listed,
         previous_after_auto,
         previous_after,
         y,
@@ -102,7 +102,7 @@ fn paragraph_spacing(input: ParagraphSpacing<'_>) -> (bool, f32) {
             before = 0.0;
         }
     }
-    if index > 0 && previous_listed && listed {
+    if index > 0 && list_items_join {
         if previous_after_auto {
             *y -= *previous_after;
             *previous_after = 0.0;
@@ -215,7 +215,7 @@ pub(crate) fn layout_box(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
     let mut y = 0.0f32;
     let mut prev_after = 0.0f32;
     let mut prev_after_auto = false;
-    let mut prev_listed = false;
+    let mut prev_list: Option<u32> = None;
     let mut prev_style: Option<(String, bool)> = None;
     let mut last_top = 0.0f32;
     // Word has no frames in a text box: a framed paragraph there (its style's frame, usually)
@@ -230,7 +230,7 @@ pub(crate) fn layout_box(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
         match &**b {
             Block::Para(p) => {
                 let label = ctx.next_label(p);
-                let listed = label.is_some();
+                let list = label.as_ref().and_then(|_| ctx.label_num(p));
                 let mut pl = ctx.para_labelled(p, width, table, &[], label.clone());
                 // A text frame (a footer's page number in a frame, say) is placed apart, like a
                 // floating object, and the text after it wraps around it; it takes no room in
@@ -252,14 +252,13 @@ pub(crate) fn layout_box(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                 }
                 let (ctxl, before) = paragraph_spacing(ParagraphSpacing {
                     index: i,
-                    listed,
+                    list_items_join: ctx.list_items_join(prev_list, list),
                     style: &pl.rp.style,
                     contextual: pl.rp.contextual_spacing,
                     before_auto: pl.rp.before_auto,
                     space_before: pl.rp.space_before,
                     allow_same_style_space,
                     previous_style: prev_style.as_ref(),
-                    previous_listed: prev_listed,
                     previous_after_auto: prev_after_auto,
                     previous_after: &mut prev_after,
                     y: &mut y,
@@ -348,7 +347,7 @@ pub(crate) fn layout_box(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                 y += edges.top + pl.height + edges.bottom + after;
                 prev_after = after;
                 prev_after_auto = pl.rp.after_auto;
-                prev_listed = listed;
+                prev_list = list;
                 prev_style = Some((pl.rp.style.clone(), ctxl));
             }
             Block::Table(t) => {

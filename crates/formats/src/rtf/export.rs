@@ -81,8 +81,19 @@ pub(super) struct Writer {
     pub(super) sect_i: usize,
 }
 
-/// `\sectd` and a section's formatting, in the words the reader reads back.
+/// `\sectd` and a section's formatting, in the words the reader reads back, then its formatting
+/// before a tracked change (`{\*\oldsprops …}`) when it has one.
 fn sect_words(s: &wordcraft_doc::SectionProps) -> String {
+    let mut o = sect_props_words(s);
+    if let Some(c) = &s.fmt_change {
+        o.push_str(&format!("{{\\*\\oldsprops {}}}", sect_props_words(&c.old)));
+    }
+    o.push('\n');
+    o
+}
+
+/// `\sectd` and a section's own formatting words.
+fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
     use wordcraft_doc::section::{NumFormat, SectionStart};
     let tw = |v: f32| if v.is_finite() { ((v * 20.0).round() as i64).max(0) } else { 0 };
     let mut o = String::from("\\sectd");
@@ -125,7 +136,6 @@ fn sect_words(s: &wordcraft_doc::SectionProps) -> String {
     if s.title_page {
         o.push_str("\\titlepg");
     }
-    o.push('\n');
     o
 }
 

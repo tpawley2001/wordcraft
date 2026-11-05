@@ -30,7 +30,7 @@ pub(crate) struct PageBuilder<'a> {
     pub(crate) orig_bottom: f32,
     /// The paragraph above: its style, contextual spacing, space after, whether that is automatic
     /// and whether it is a list item.
-    pub(crate) prev: Option<(String, bool, f32, bool, bool)>,
+    pub(crate) prev: Option<(String, bool, f32, bool, Option<u32>)>,
     /// The previous paragraph ended with a page break (its mark stayed with the break): the next
     /// paragraph, first on the new page, gets no space before (Word).
     pub(crate) after_break_mark: bool,
