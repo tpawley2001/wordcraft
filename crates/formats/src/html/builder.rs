@@ -650,6 +650,11 @@ impl<'r> Builder<'r> {
             }
             let pb_before = self.stack.iter_mut().rev().take_while(|e| e.kind != ElKind::Cell).any(|e| std::mem::take(&mut e.page_break));
             p.page_break = pb_before || std::mem::take(&mut self.pending_page_break);
+            // A paragraph of a hidden block (`display: none`) gets a hidden mark; `flush` shows
+            // it again when the paragraph has shown text.
+            if self.stack.iter().rev().find(|e| e.kind != ElKind::Inline).is_some_and(|e| e.fmt.hidden) {
+                p.mark = Some(Box::new(wordcraft_doc::props::CharProps { hidden: Some(true), ..Default::default() }));
+            }
             self.para = Some(p);
         }
         self.para.get_or_insert_with(Para::default)
@@ -676,6 +681,11 @@ impl<'r> Builder<'r> {
                 // Only white space (indentation between blocks): nothing to keep.
                 p.trim();
             }
+        }
+        if p.mark.as_ref().is_some_and(|m| m.hidden == Some(true))
+            && p.inlines.iter().any(|i| matches!(i, Inline::Text(t, f) if !f.hidden && !t.is_empty()))
+        {
+            p.mark = None;
         }
         if p.inlines.len() == 1 && p.text() == "\u{00A0}" {
             // `<p>&nbsp;</p>`: an empty paragraph on purpose, whose line is as high as the

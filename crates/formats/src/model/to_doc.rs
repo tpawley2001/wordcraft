@@ -17,6 +17,7 @@ pub fn char_props(f: &Fmt) -> CharProps {
         italic: on(f.italic),
         underline: if f.underline { Some(Underline::Single) } else { None },
         strike: on(f.strike),
+        hidden: on(f.hidden),
         vert_align: if f.sup {
             Some(VertAlign::Superscript)
         } else if f.sub {
@@ -659,6 +660,9 @@ impl<'a> Builder<'a> {
         }
         if let Some(m) = p.mark.as_deref().filter(|_| p.textless()) {
             out.mark = self.budget(CharProps { ins: None, del: None, fmt_change: None, ..m.clone() });
+        } else if p.mark.as_deref().is_some_and(|m| m.hidden == Some(true)) {
+            // A paragraph with text keeps only a hidden mark (HTML `display: none` blocks).
+            out.mark.hidden = Some(true);
         }
         out.mark.ins = p.mark_ins.as_deref().map(|m| self.revision(RevisionKind::Insert, m));
         out.mark.del = p.mark_del.as_deref().map(|m| self.revision(RevisionKind::Delete, m));

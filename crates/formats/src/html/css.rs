@@ -114,6 +114,9 @@ pub(super) fn apply_style(
                     f.strike = true;
                 }
             }
+            // `display: none` content stays in the document as hidden text, as Word imports it;
+            // any other display value shows it again (also inside a hidden parent).
+            "display" => f.hidden = lv.trim() == "none",
             "color" => {
                 if let Some(c) = parse_color(v) {
                     f.color = Some(c);

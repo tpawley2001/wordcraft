@@ -112,6 +112,8 @@ pub struct Fmt {
     pub italic: bool,
     pub underline: bool,
     pub strike: bool,
+    /// Hidden text (`w:vanish`): kept in the document, not shown or printed.
+    pub hidden: bool,
     pub code: bool,
     pub sup: bool,
     pub sub: bool,
