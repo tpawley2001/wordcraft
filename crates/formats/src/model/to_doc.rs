@@ -784,6 +784,7 @@ impl<'a> Builder<'a> {
                     let mut j = i;
                     let mut group: Vec<ListInfo> = Vec::new();
                     let mut top: Option<bool> = None;
+                    let mut labels = [None; 9];
                     let id = p.list.map_or(0, |l| l.list);
                     while let Some(FBlock::Para(q)) = blocks.get(j) {
                         let Some(li) = q.list else { break };
@@ -798,12 +799,12 @@ impl<'a> Builder<'a> {
                         }
                         if id == 0
                             && let Some(label) = li.label.filter(|l| l.format != wordcraft_doc::section::NumFormat::None)
-                            && group.iter().any(|previous| {
-                                previous.level == li.level
-                                    && previous.label.is_some_and(|old| old.format != wordcraft_doc::section::NumFormat::None && old != label)
-                            })
+                            && let Some(previous) = labels.get_mut(usize::from(li.level.min(8)))
                         {
-                            break;
+                            if previous.is_some_and(|old| old != label) {
+                                break;
+                            }
+                            *previous = Some(label);
                         }
                         group.push(li);
                         j += 1;

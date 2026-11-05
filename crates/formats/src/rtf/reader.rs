@@ -271,8 +271,8 @@ impl Reader {
         // The end of a `{\pntxtb …}` or `{\pntxta …}` group: its text is the label's bullet or
         // the text around the number.
         match closing {
-            Dest::PnTxtB => self.pn_cur.before = std::mem::take(&mut self.pn_txt),
-            Dest::PnTxtA => self.pn_cur.after = std::mem::take(&mut self.pn_txt),
+            Dest::PnTxtB if prev.dest != closing => self.pn_cur.before = std::mem::take(&mut self.pn_txt),
+            Dest::PnTxtA if prev.dest != closing => self.pn_cur.after = std::mem::take(&mut self.pn_txt),
             _ => {}
         }
         if let Some((d, _)) = &self.bkmk

@@ -127,8 +127,9 @@ impl Reader {
             prefix: model::Affix::new(&pn.before),
             suffix: model::Affix::new(&pn.after),
             shown: 1,
-            indent: None,
-            hanging: None,
+            // Legacy numbering uses the paragraph's own indents, not gallery defaults.
+            indent: Some(0),
+            hanging: Some(0),
             align: None,
         };
         let font = pn.font.and_then(|f| self.fonts.get(&f)).and_then(|f| model::LabelFont::new(f));
@@ -327,9 +328,21 @@ mod legacy_numbering_tests {
     #[test]
     fn outline_parameter_and_default_start() {
         let doc = crate::rtf::import(br"{\rtf1\pard{\*\pn\pnlvl3\pndec{\pntxta .}}a\par}").unwrap();
-        let Block::Para(p) = &**doc.body.iter().next().unwrap() else { panic!("paragraph") };
+        let Block::Para(p) = &**doc.body.first().unwrap() else { panic!("paragraph") };
         assert_eq!(p.props.numbering.unwrap().level, 2);
         assert_eq!(labels(r"\pard{\*\pn\pnlvlbody\pndec{\pntxta .}}a\par"), [Some("1.".into())]);
+    }
+
+    #[test]
+    fn unicode_label_and_paragraph_indents() {
+        let doc = crate::rtf::import(br"{\rtf1\pard\li240\fi-120{\*\pn\pnlvlblt{\pntxtb\u8226?}}a\par}").unwrap();
+        let Block::Para(p) = &**doc.body.first().unwrap() else { panic!("paragraph") };
+        assert_eq!(p.props.indent_left, Some(12.0));
+        assert_eq!(p.props.indent_first, Some(-6.0));
+        let n = p.props.numbering.unwrap();
+        let (text, level) = Counters::default().next_label(&doc.numbering, n.num, n.level).unwrap();
+        assert_eq!(text, "•");
+        assert_eq!((level.indent, level.hanging), (0.0, 0.0));
     }
 
     #[test]

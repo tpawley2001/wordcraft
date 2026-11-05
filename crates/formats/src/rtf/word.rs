@@ -411,7 +411,7 @@ impl Reader {
                 self.pn_word(word, value);
                 true
             }
-            Dest::PnTxtB | Dest::PnTxtA => true,
+            Dest::PnTxtB | Dest::PnTxtA => !matches!(word, "u" | "uc" | "bullet" | "emdash" | "endash"),
             Dest::ListOverride => {
                 match word {
                     "listid" => self.ov_list = value,
