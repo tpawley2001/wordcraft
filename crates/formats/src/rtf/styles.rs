@@ -131,8 +131,8 @@ impl Reader {
             hanging: None,
             align: None,
         };
-        let font = pn.font.and_then(|f| self.fonts.get(&f)).map(|f| f.to_string());
-        Some(ListInfo { ordered, level, start: pn.start, list: 0, label: Some(label), font })
+        let font = pn.font.and_then(|f| self.fonts.get(&f)).and_then(|f| model::LabelFont::new(f));
+        Some(ListInfo { ordered, level, start: pn.start.unwrap_or(1), list: 0, label: Some(label), font })
     }
 }
 
@@ -305,5 +305,42 @@ fn spacing(st: &St) -> model::Spacing {
         right: st.ri.map(pt),
         first: st.fi.map(pt),
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod legacy_numbering_tests {
+    use wordcraft_doc::{Block, numbering::Counters};
+
+    fn labels(body: &str) -> Vec<Option<String>> {
+        let doc = crate::rtf::import(format!("{{\\rtf1 {body}}}").as_bytes()).unwrap();
+        let mut counters = Counters::default();
+        doc.body
+            .iter()
+            .filter_map(|block| match &**block {
+                Block::Para(p) => Some(p.props.numbering.and_then(|n| counters.next_label(&doc.numbering, n.num, n.level)).map(|(text, _)| text)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn outline_parameter_and_default_start() {
+        let doc = crate::rtf::import(br"{\rtf1\pard{\*\pn\pnlvl3\pndec{\pntxta .}}a\par}").unwrap();
+        let Block::Para(p) = &**doc.body.iter().next().unwrap() else { panic!("paragraph") };
+        assert_eq!(p.props.numbering.unwrap().level, 2);
+        assert_eq!(labels(r"\pard{\*\pn\pnlvlbody\pndec{\pntxta .}}a\par"), [Some("1.".into())]);
+    }
+
+    #[test]
+    fn bullet_continuation_and_format_change() {
+        assert_eq!(
+            labels(r"\pard{\*\pn\pnlvlblt{\pntxtb *}}a\par\pard{\*\pn\pnlvlcont}b\par\pard{\*\pn\pnlvlblt{\pntxtb *}}c\par"),
+            [Some("*".into()), None, Some("*".into())]
+        );
+        assert_eq!(
+            labels(r"\pard{\*\pn\pnlvlbody\pndec{\pntxta .}}a\par\pard{\*\pn\pnlvlbody\pnucrm{\pntxta .}}b\par"),
+            [Some("1.".into()), Some("I.".into())]
+        );
     }
 }

@@ -54,7 +54,7 @@ pub(super) struct Pn {
     /// The number format (`\pndec`, `\pnucrm`…); `None` until the group names one.
     pub(super) format: Option<wordcraft_doc::section::NumFormat>,
     /// The first item's number (`\pnstartN`).
-    pub(super) start: u32,
+    pub(super) start: Option<u32>,
     /// The text before the number (`{\pntxtb …}`): a bulleted level's bullet.
     pub(super) before: String,
     /// The text after the number (`{\pntxta …}`): "1." has a ".".
