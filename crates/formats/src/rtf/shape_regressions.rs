@@ -7,7 +7,7 @@ fn shape_story_retains_fields_tabs_and_insets() {
     let FBlock::Para(p) = &flow.blocks[0] else { panic!("paragraph") };
     let shapes: Vec<_> = p.inlines.iter().filter(|i| matches!(i, Inline::Shape { .. })).collect();
     assert_eq!(shapes.len(), 1);
-    let Inline::Shape { blocks, look, .. } = shapes[0] else { unreachable!() };
+    let Inline::Shape { blocks, look, .. } = shapes[0] else { panic!("shape") };
     assert!(look.fill.is_none() && look.line.is_none());
     assert_eq!(look.inset, Some([1.0, 3.6, 7.2, 3.6]));
     let FBlock::Para(box_p) = &blocks[0] else { panic!("box paragraph") };
@@ -41,4 +41,21 @@ fn shape_page_field_round_trips_in_header() {
             .any(|o| matches!(o, wordcraft_doc::para::InlineObject::Field { instr, .. } if instr.trim().eq_ignore_ascii_case("page")))
     );
     assert_eq!(back.body[0].as_para().unwrap().text, "Body.");
+}
+
+#[test]
+fn adjacent_and_empty_box_fields_stay_separate() {
+    let flow = parse(br"{\rtf1{\shp{\*\shpinst{\shptxt {\field{\*\fldinst page}{\fldrslt 1}}{\field{\*\fldinst page}{\fldrslt 1}}{\field{\*\fldinst page}{\fldrslt }}\par}}}}").unwrap();
+    let FBlock::Para(p) = &flow.blocks[0] else { panic!("paragraph") };
+    let Inline::Shape { blocks, .. } = &p.inlines[0] else { panic!("box") };
+    let FBlock::Para(p) = &blocks[0] else { panic!("box paragraph") };
+    let results: Vec<_> = p
+        .inlines
+        .iter()
+        .filter_map(|i| match i {
+            Inline::Field { result, .. } => Some(result.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(results, ["1", "1", ""]);
 }
