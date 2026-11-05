@@ -12,6 +12,7 @@ mod border_band;
 mod budget;
 mod complex;
 mod eq_fields;
+mod eq_integral_limits;
 mod float_table_notes;
 mod grid;
 mod header_extent;

@@ -292,7 +292,8 @@ impl Lay<'_, '_> {
                 let k = if *variable { clamp_size(size * 1.4) } else { size };
                 let span = (b.asc + b.desc, (b.asc - b.desc) / 2.0);
                 let sym = if *variable { self.tall_char(*symbol, k, span, 1.1) } else { self.text(&symbol.to_string(), k) };
-                let (lb, hb) = (self.node(lo, small), self.node(hi, small));
+                let limit_size = if *inline { small } else { size };
+                let (lb, hb) = (self.node(lo, limit_size), self.node(hi, limit_size));
                 let mut out = EqBox::default();
                 if *inline {
                     let (sw, sa, sd) = (sym.w, sym.asc, sym.desc);
@@ -304,11 +305,12 @@ impl Lay<'_, '_> {
                     out.w = sw + lw;
                 } else {
                     let w = sym.w.max(lb.w).max(hb.w);
-                    let (sw, sa, sd, lw, hw) = (sym.w, sym.asc, sym.desc, lb.w, hb.w);
-                    let (la, hd) = (lb.asc, hb.desc);
+                    let (sw, lw, hw) = (sym.w, lb.w, hb.w);
                     out.put(sym, (w - sw) / 2.0, 0.0);
-                    out.put(hb, (w - hw) / 2.0, sa + hd);
-                    out.put(lb, (w - lw) / 2.0, -sd - la);
+                    // Word's stacked limits use full-size text with baselines about
+                    // 1.29 em above and 1.24 em below the field's baseline.
+                    out.put(hb, (w - hw) / 2.0, size * 1.29);
+                    out.put(lb, (w - lw) / 2.0, -size * 1.24);
                     out.w = w;
                 }
                 out.append(b);
