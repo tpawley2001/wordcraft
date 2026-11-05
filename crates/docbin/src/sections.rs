@@ -14,7 +14,9 @@ const MAX_SECTIONS: usize = 1024;
 const S_BKC: u16 = 0x3009;
 const S_TITLE_PAGE: u16 = 0x300A; // sprmSFTitlePage
 const S_CCOLUMNS: u16 = 0x500B;
-pub(crate) const S_PGN_START: u16 = 0x300C; // sprmSPgnStart
+const S_NFC_PGN: u16 = 0x300E; // sprmSNfcPgn
+const S_PGN_RESTART: u16 = 0x3011; // sprmSFPgnRestart
+const S_PGN_START: u16 = 0x501C; // sprmSPgnStart97
 pub(crate) const S_ORIENTATION: u16 = 0x301D; // sprmSBOrientation
 const S_HDR_TOP: u16 = 0xB017;
 const S_HDR_BOTTOM: u16 = 0xB018;
@@ -36,7 +38,7 @@ pub(crate) struct Section {
 pub(crate) fn parse(word: &[u8], table: &[u8], fib: &Fib) -> Vec<Section> {
     let Some((fc, lcb)) = fib.pair(pair::PLCF_SED) else { return Vec::new() };
     let Some(plc) = table.get(fc as usize..(fc as usize).saturating_add(lcb as usize)) else { return Vec::new() };
-    parse_plc(plc, word, |props, grpprl| {
+    parse_plc(plc, word, |props, pgn, grpprl| {
         let mut explicit_orient = false;
         for prl in sprm::iter(grpprl) {
             // Only a defined operand counts as explicit; anything else leaves the
@@ -44,15 +46,22 @@ pub(crate) fn parse(word: &[u8], table: &[u8], fib: &Fib) -> Vec<Section> {
             if prl.op == S_ORIENTATION && matches!(prl.operand.first(), Some(1 | 2)) {
                 explicit_orient = true;
             }
-            apply_section(props, &prl);
+            apply_section(props, pgn, &prl);
         }
         explicit_orient
     })
 }
 
+/// A section's page-number restart flag and start value, resolved once its whole grpprl is read.
+#[derive(Default)]
+pub(crate) struct PageNumbering {
+    restart: bool,
+    start: Option<u32>,
+}
+
 /// Walk a `PlcSed` (the same layout in Word 6/95 and Word 97) whose `Sepx`es live in `word`.
 /// `apply` applies one section's grpprl and says whether it set the orientation explicitly.
-pub(crate) fn parse_plc(plc: &[u8], word: &[u8], mut apply: impl FnMut(&mut SectionProps, &[u8]) -> bool) -> Vec<Section> {
+pub(crate) fn parse_plc(plc: &[u8], word: &[u8], mut apply: impl FnMut(&mut SectionProps, &mut PageNumbering, &[u8]) -> bool) -> Vec<Section> {
     // PlcSed: aCp[n+1] u32s + aSed[n] (Sed = fn 2, fcSepx 4, fnMpr 2, fcMpr 4).
     if plc.len() < 4 || !(plc.len() - 4).is_multiple_of(16) {
         return Vec::new();
@@ -67,13 +76,22 @@ pub(crate) fn parse_plc(plc: &[u8], word: &[u8], mut apply: impl FnMut(&mut Sect
         let mut props = SectionProps::default();
         // Sepx: cb u16, then a grpprl of section sprms.
         let mut explicit_orient = false;
+        let mut pgn = PageNumbering::default();
         if let Some(grpprl) =
             word.get(fc_sepx as usize..).and_then(|sepx| sepx.get(..2).map(|b| u16::from_le_bytes([b[0], b[1]]) as usize)).and_then(|cb| {
                 let at = (fc_sepx as usize).checked_add(2)?;
                 word.get(at..at.checked_add(cb)?)
             })
         {
-            explicit_orient = apply(&mut props, grpprl);
+            explicit_orient = apply(&mut props, &mut pgn, grpprl);
+        }
+        // Numbering restarts only where fPgnRestart is set (from 1 unless a start is given);
+        // elsewhere it continues, whatever the start value. The first section begins numbering
+        // anyway, so a start value there counts without the flag.
+        if pgn.restart {
+            props.page_num_start = Some(pgn.start.unwrap_or(1));
+        } else if i == 0 {
+            props.page_num_start = pgn.start;
         }
         // Without an explicit orientation sprm, infer it from the page shape.
         if !explicit_orient {
@@ -89,8 +107,9 @@ pub(crate) fn parse_plc(plc: &[u8], word: &[u8], mut apply: impl FnMut(&mut Sect
 }
 
 /// Apply a section sprm to the model's section properties. All the measurement sprms here
-/// carry 16-bit twip operands ([MS-DOC] §2.6.4).
-pub(crate) fn apply_section(s: &mut SectionProps, prl: &Prl) {
+/// carry 16-bit twip operands ([MS-DOC] §2.6.4). The page-number restart flag and start value
+/// go to `pgn`, as they only count together.
+pub(crate) fn apply_section(s: &mut SectionProps, pgn: &mut PageNumbering, prl: &Prl) {
     let tw = |v: i32| (v as f32 / 20.0).clamp(0.0, 1584.0);
     let s16 = |prl: &Prl| -> Option<i16> {
         match prl.operand {
@@ -116,10 +135,20 @@ pub(crate) fn apply_section(s: &mut SectionProps, prl: &Prl) {
                 s.columns = Columns { count: (c as u32).saturating_add(1).min(44), ..Default::default() };
             }
         }
+        S_NFC_PGN => {
+            s.page_num_format = match prl.operand.first() {
+                // nfc: 0 Arabic, 1 upper Roman, 2 lower Roman, 3 upper letter, 4 lower letter.
+                Some(1) => NumFormat::UpperRoman,
+                Some(2) => NumFormat::LowerRoman,
+                Some(3) => NumFormat::UpperLetter,
+                Some(4) => NumFormat::LowerLetter,
+                _ => NumFormat::Decimal,
+            };
+        }
+        S_PGN_RESTART => pgn.restart = prl.operand.first().is_some_and(|&v| v != 0),
         S_PGN_START => {
-            if let Some(v) = s16(prl) {
-                s.page_num_start = Some(v.max(0) as u32);
-                s.page_num_format = NumFormat::Decimal;
+            if let [b0, b1, ..] = prl.operand {
+                pgn.start = Some(u32::from(u16::from_le_bytes([*b0, *b1])));
             }
         }
         // SBOrientationOperand ([MS-DOC] §2.9.236): 1 portrait, 2 landscape.

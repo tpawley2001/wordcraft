@@ -21,6 +21,7 @@ mod linked_pictures;
 mod metadata;
 mod ole_print;
 mod ole_result_objects;
+mod section_page_numbers;
 mod word6;
 mod wrap_polygon;
 
