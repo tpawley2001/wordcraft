@@ -65,6 +65,13 @@ fn sum_limits_sit_about_one_and_a_quarter_em_from_the_baseline() {
     let above = (body.2 - hi.2) / em;
     assert!((1.09..=1.39).contains(&below), "lower limit's baseline 1.24 em below (Word): {below} em");
     assert!((1.14..=1.44).contains(&above), "upper limit's baseline 1.29 em above (Word): {above} em");
+}
+
+#[test]
+fn sum_limits_are_centred_over_the_symbol() {
+    // Digits share one advance width, so centred limits start at the same x.
+    let cs = chars(&doc_with("", "EQ \\i\\su(1,2,x)", ""));
+    let (lo, hi) = (glyph(&cs, "1"), glyph(&cs, "2"));
     assert!((lo.1 - hi.1).abs() < 0.5, "both limits centred over the symbol: {lo:?} {hi:?}");
 }
 
