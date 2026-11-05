@@ -14,6 +14,9 @@ impl Reader {
         if self.skip_destination_word(w, pv) {
             return;
         }
+        if self.shape_word(w, p, starred) {
+            return;
+        }
         if w == "shppict" || self.start_header_footer_word(w) {
             return;
         }
@@ -367,6 +370,7 @@ impl Reader {
 
     fn destination_word(&mut self, word: &str, param: Option<i32>, on: bool, value: i32) -> bool {
         match self.st.dest {
+            Dest::ShapeInst | Dest::ShapeName | Dest::ShapeValue => true,
             Dest::Skip => {
                 if self.in_creatim {
                     self.record_created_part(word, value);

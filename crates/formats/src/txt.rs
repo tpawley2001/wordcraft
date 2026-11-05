@@ -8,7 +8,7 @@ use wordcraft_doc::Document;
 
 pub use wordcraft_doc::encoding::cp1252;
 
-use crate::model::{FBlock, ListCounter, from_doc};
+use crate::model::{self, FBlock, Inline, ListCounter};
 
 fn utf16(b: &[u8], le: bool) -> String {
     let units: Vec<u16> = b.as_chunks::<2>().0.iter().map(|c| if le { u16::from_le_bytes(*c) } else { u16::from_be_bytes(*c) }).collect();
@@ -122,6 +122,32 @@ pub fn import_on(bytes: &[u8], page: &wordcraft_doc::SectionProps) -> Document {
     doc
 }
 
+// Plain text has no drawing container: include its story at the anchor position.
+fn flatten_box(inline: &mut Inline, depth: usize) {
+    if depth >= 8 {
+        return;
+    }
+    let text = match inline {
+        Inline::Shape { blocks, .. } => {
+            let mut lines = Vec::new();
+            blocks_text(blocks, &mut lines, &mut ListCounter::default(), depth + 1);
+            lines.join("\n").replace("\r\n", "\n")
+        }
+        Inline::Group { members, .. } => {
+            let mut text = String::new();
+            for member in members {
+                flatten_box(&mut member.inline, depth + 1);
+                if let Inline::Text(t, _) = &member.inline {
+                    text.push_str(t);
+                }
+            }
+            text
+        }
+        _ => return,
+    };
+    *inline = Inline::Text(text, Default::default());
+}
+
 fn blocks_text(blocks: &[FBlock], out: &mut Vec<String>, lists: &mut ListCounter, depth: usize) {
     for b in blocks {
         match b {
@@ -134,6 +160,10 @@ fn blocks_text(blocks: &[FBlock], out: &mut Vec<String>, lists: &mut ListCounter
                         line.push('\t');
                     }
                     None => lists.reset(),
+                }
+                let mut p = p.clone();
+                for inline in &mut p.inlines {
+                    flatten_box(inline, depth);
                 }
                 line.push_str(&p.shown_text().replace('\n', "\r\n").replace(['\u{000C}', '\u{000E}'], ""));
                 out.push(line);
@@ -161,7 +191,7 @@ fn blocks_text(blocks: &[FBlock], out: &mut Vec<String>, lists: &mut ListCounter
 
 /// UTF-8 text, CRLF line ends.
 pub fn export(doc: &Document) -> Vec<u8> {
-    let flow = from_doc(doc);
+    let flow = model::from_doc_with(doc, model::FlowOpts { boxes: true, ..Default::default() });
     let mut lines = Vec::new();
     blocks_text(&flow.blocks, &mut lines, &mut ListCounter::default(), 0);
     lines.join("\r\n").into_bytes()

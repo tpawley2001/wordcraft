@@ -252,6 +252,9 @@ fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
 fn finalize(mut r: Reader) -> Parsed {
     // A header or footer left open by a truncated file ends here, and so does a multibyte run.
     r.finish_multibyte();
+    while r.depth() > 0 {
+        r.close();
+    }
     r.end_header_footer();
     if r.para_has || !r.para.inlines.is_empty() {
         r.end_para(false);
