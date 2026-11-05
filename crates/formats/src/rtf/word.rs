@@ -1,7 +1,8 @@
 use super::reader::apply_section_word;
-use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, RevSt, SecFmt, St};
+use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, RevSt, SecFmt, St};
 use super::styles::{StyleDef, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
+use wordcraft_doc::props::{TabAlign, TabLeader, TabStop};
 
 impl Reader {
     pub(super) fn word(&mut self, w: &str, p: Option<i32>, starred: bool, first_in_group: bool) {
@@ -204,6 +205,19 @@ impl Reader {
             "li" | "lin" => self.st.li = Some(pv),
             "ri" | "rin" => self.st.ri = Some(pv),
             "fi" => self.st.fi = Some(pv),
+            "tqr" => self.st.tab_align = TabAlign::Right,
+            "tqc" => self.st.tab_align = TabAlign::Center,
+            "tqdec" => self.st.tab_align = TabAlign::Decimal,
+            "tldot" => self.st.tab_leader = TabLeader::Dot,
+            "tlmdot" => self.st.tab_leader = TabLeader::MiddleDot,
+            "tlhyph" => self.st.tab_leader = TabLeader::Hyphen,
+            "tlul" | "tlth" => self.st.tab_leader = TabLeader::Underscore,
+            // An equals-sign leader has no model value.
+            "tleq" => self.st.tab_leader = TabLeader::None,
+            "tx" | "tb" => self.tab_stop(pv, w == "tb"),
+            // Character spacing: `\expnd` in quarter points, `\expndtw` in twips; the later wins.
+            "expnd" => self.char_spacing(pv as f32 / 4.0),
+            "expndtw" => self.char_spacing(pv as f32 / 20.0),
             "clbrdrt" => self.cell_side = Some('t'),
             "clbrdrl" => self.cell_side = Some('l'),
             "clbrdrb" => self.cell_side = Some('b'),
@@ -516,6 +530,28 @@ impl Reader {
         if self.fields.len() < 100_000 {
             self.fields.push(String::new());
             self.st.field = Some(self.fields.len() - 1);
+        }
+    }
+
+    /// A tab stop at `twips` from the indent (`\tx`, or a bar tab `\tb`), with the alignment and
+    /// leader words read before it. A stop at a position already set replaces it.
+    fn tab_stop(&mut self, twips: i32, bar: bool) {
+        let align = if bar { TabAlign::Bar } else { self.st.tab_align };
+        let stop = TabStop { pos: twips as f32 / 20.0, align, leader: self.st.tab_leader };
+        (self.st.tab_align, self.st.tab_leader) = (TabAlign::Left, TabLeader::None);
+        if let Some(t) = self.st.tabs.iter_mut().find(|t| t.pos == stop.pos) {
+            *t = stop;
+        } else if self.st.tabs.len() < MAX_TABS {
+            self.st.tabs.push(stop);
+        }
+    }
+
+    /// The run's character spacing, points (0 = normal).
+    fn char_spacing(&mut self, pt: f32) {
+        let x = self.st.fmt.extra.get_or_insert_with(Default::default);
+        x.spacing = (pt != 0.0).then_some(pt);
+        if **x == wordcraft_doc::props::CharProps::default() {
+            self.st.fmt.extra = None;
         }
     }
 

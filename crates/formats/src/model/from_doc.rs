@@ -81,6 +81,11 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
 fn run_fmt(doc: &Document, props: &CharProps, in_code: bool, opts: FlowOpts) -> Fmt {
     let mut f = fmt_of(doc, props, in_code);
     if !opts.chars {
+        if opts.tabs_spacing
+            && let Some(sp) = effective(doc, props).spacing.filter(|v| *v != 0.0 && v.is_finite())
+        {
+            f.extra = Some(Box::new(CharProps { spacing: Some(sp), ..Default::default() }));
+        }
         return f;
     }
     let custom = props.style.as_deref().filter(|id| is_custom_char_style(doc, id));
@@ -483,6 +488,10 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
     };
     if opts.paras {
         out.extra = para_extra(doc, &p.props);
+    } else if opts.tabs_spacing
+        && let Some(tabs) = p.props.tabs.clone().filter(|t| !t.is_empty())
+    {
+        out.extra = Some(Box::new(wordcraft_doc::props::ParaProps { tabs: Some(tabs), ..Default::default() }));
     }
     let in_code = kind == Kind::Code;
     let mut k = 0usize;
@@ -1140,9 +1149,10 @@ pub fn from_doc(doc: &Document) -> Flow {
 }
 
 /// [`from_doc`] keeping tracked changes: deleted text stays, and text carries its insertion and
-/// deletion marks ([`Fmt::ins`], [`Fmt::del`]), for formats that can write revisions (RTF).
+/// deletion marks ([`Fmt::ins`], [`Fmt::del`]), for formats that can write revisions (RTF), and
+/// with tab stops and character spacing ([`FlowOpts::tabs_spacing`]).
 pub fn from_doc_tracked(doc: &Document) -> Flow {
-    flow_of(doc, FlowOpts { tracked: true, ..Default::default() })
+    flow_of(doc, FlowOpts { tracked: true, tabs_spacing: true, ..Default::default() })
 }
 
 /// [`from_doc`] keeping what `opts` asks for.
