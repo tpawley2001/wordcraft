@@ -45,6 +45,11 @@ fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
             }
             b'}' => {
                 r.close();
+                // This brace closes `{\rtf…}`: the document ends here and whatever follows isn't part
+                // of it (RTF spec, "RTF Syntax"), as in Word.
+                if r.depth() == 0 {
+                    break;
+                }
                 if r.info_depth.is_some_and(|d| r.depth() < d) {
                     r.info_depth = None;
                 }
