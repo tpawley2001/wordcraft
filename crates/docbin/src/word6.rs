@@ -286,7 +286,7 @@ fn sections_of(word: &[u8], (fc, lcb): (u32, u32)) -> Vec<Section> {
 /// Apply a Word 6 section grpprl (one-byte opcodes) through the Word 97 section applier;
 /// returns whether it set the orientation explicitly. Unknown opcodes end the group because
 /// their operand sizes cannot be inferred.
-fn apply_section_props(props: &mut SectionProps, mut rest: &[u8]) -> bool {
+fn apply_section_props(props: &mut SectionProps, pgn: &mut sections::PageNumbering, mut rest: &[u8]) -> bool {
     let mut explicit_orient = false;
     while let Some((&op, after)) = rest.split_first() {
         let Some(op97) = word97_section_op(op) else { break };
@@ -301,18 +301,13 @@ fn apply_section_props(props: &mut SectionProps, mut rest: &[u8]) -> bool {
         };
         let Some(operand) = after.get(..len) else { break };
         rest = after.get(len..).unwrap_or(&[]);
-        // The Word 97 applier reads the page number start under its own opcode.
-        let op = if op97 == S_PGN_START_97 { sections::S_PGN_START } else { op97 };
-        if op == sections::S_ORIENTATION && matches!(operand.first(), Some(1 | 2)) {
+        if op97 == sections::S_ORIENTATION && matches!(operand.first(), Some(1 | 2)) {
             explicit_orient = true;
         }
-        sections::apply_section(props, &Prl { op, operand });
+        sections::apply_section(props, pgn, &Prl { op: op97, operand });
     }
     explicit_orient
 }
-
-/// `sprmSPgnStart97` ([MS-DOC] §2.6.4).
-const S_PGN_START_97: u16 = 0x501C;
 
 /// The Word 97 section sprm with the same meaning and operand as a Word 6 one: Word 6 numbers
 /// them 131.. in `ispmd` order, with 134 and 135 unused (so from `sprmSDxaColWidth` on, the
@@ -501,10 +496,10 @@ mod unit {
         }
         // sprmSOlstAnm is skipped by its length byte; a hostile length stops the group.
         let mut props = SectionProps::default();
-        apply_section_props(&mut props, &[133, 2, 9, 9, 142, 0]);
+        apply_section_props(&mut props, &mut Default::default(), &[133, 2, 9, 9, 142, 0]);
         assert_eq!(props.start, wordcraft_doc::section::SectionStart::Continuous);
         let mut props = SectionProps::default();
-        apply_section_props(&mut props, &[133, 255, 142, 0]);
+        apply_section_props(&mut props, &mut Default::default(), &[133, 255, 142, 0]);
         assert_eq!(props, SectionProps::default());
     }
 
