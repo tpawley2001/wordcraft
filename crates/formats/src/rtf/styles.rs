@@ -89,6 +89,9 @@ impl Reader {
         let mut p = Para::new(self.para_kind(st));
         p.align = st.align;
         p.page_break = st.pagebb;
+        if st.widow.is_some() {
+            p.extra.get_or_insert_with(Default::default).widow_control = st.widow;
+        }
         p.spacing = spacing(st);
         p.borders = st.borders.any_visible().then_some(st.borders);
         if !st.tabs.is_empty() {
@@ -240,6 +243,8 @@ pub(super) fn is_format_word(w: &str) -> bool {
             | "s"
             | "outlinelevel"
             | "pagebb"
+            | "widctlpar"
+            | "nowidctlpar"
             | "intbl"
             | "ls"
             | "ilvl"

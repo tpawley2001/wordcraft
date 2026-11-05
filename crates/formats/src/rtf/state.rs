@@ -168,6 +168,8 @@ pub(super) struct St {
     pub(super) ilvl: u8,
     pub(super) outline: Option<u8>,
     pub(super) pagebb: bool,
+    /// Widow/orphan control (`\widctlpar`, `\nowidctlpar`); `None` until the paragraph says.
+    pub(super) widow: Option<bool>,
     pub(super) field: Option<usize>,
     /// The code page of the current font's charset (`\fcharset`), when it names one.
     pub(super) cp: Option<u16>,
@@ -213,6 +215,7 @@ impl Default for St {
             ilvl: 0,
             outline: None,
             pagebb: false,
+            widow: None,
             field: None,
             cp: None,
             borders: Default::default(),

@@ -526,6 +526,11 @@ impl Writer {
         for t in p.extra.as_ref().and_then(|x| x.tabs.as_deref()).unwrap_or_default() {
             out.push_str(&tab_words(t));
         }
+        match p.extra.as_ref().and_then(|x| x.widow_control) {
+            Some(true) => out.push_str("\\widctlpar"),
+            Some(false) => out.push_str("\\nowidctlpar"),
+            None => {}
+        }
         match p.kind {
             Kind::Quote => out.push_str("\\li720\\ri720\\i"),
             Kind::Code => {

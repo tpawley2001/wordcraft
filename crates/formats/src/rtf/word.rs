@@ -175,6 +175,8 @@ impl Reader {
             "s" => self.st.style = pv,
             "outlinelevel" => self.st.outline = Some(pv.clamp(0, 9) as u8),
             "pagebb" => self.st.pagebb = on,
+            "widctlpar" => self.st.widow = Some(true),
+            "nowidctlpar" => self.st.widow = Some(false),
             "intbl" => self.st.intbl = true,
             "ls" => self.st.ls = Some(pv),
             "ilvl" => self.st.ilvl = pv.clamp(0, 8) as u8,
