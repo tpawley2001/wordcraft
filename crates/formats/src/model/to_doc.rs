@@ -17,6 +17,7 @@ pub fn char_props(f: &Fmt) -> CharProps {
         italic: on(f.italic),
         underline: if f.underline { Some(Underline::Single) } else { None },
         strike: on(f.strike),
+        hidden: on(f.hidden),
         vert_align: if f.sup {
             Some(VertAlign::Superscript)
         } else if f.sub {
