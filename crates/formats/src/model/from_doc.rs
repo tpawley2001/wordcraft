@@ -174,6 +174,16 @@ pub fn tabs_from_indent(doc: &Document) -> bool {
     doc.settings.odf.is_some_and(|o| o.tabs_from_indent)
 }
 
+/// [`Para::extra`] as `opts` asks for it: all of it ([`FlowOpts::paras`]), the paragraph's own
+/// tab stops alone ([`FlowOpts::tabs_spacing`]) or nothing.
+fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: FlowOpts) -> Option<Box<wordcraft_doc::props::ParaProps>> {
+    if opts.paras {
+        return para_extra(doc, p);
+    }
+    let tabs = p.tabs.clone().filter(|t| opts.tabs_spacing && !t.is_empty())?;
+    Some(Box::new(wordcraft_doc::props::ParaProps { tabs: Some(tabs), ..Default::default() }))
+}
+
 /// The paragraph formatting only [`Para::extra`] holds that `p` sets itself; `None` when none.
 fn para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps) -> Option<Box<wordcraft_doc::props::ParaProps>> {
     let tabs = p.tabs.clone().filter(|t| !t.is_empty()).map(|mut tabs| {
@@ -486,13 +496,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
         index: None,
         group: None,
     };
-    if opts.paras {
-        out.extra = para_extra(doc, &p.props);
-    } else if opts.tabs_spacing
-        && let Some(tabs) = p.props.tabs.clone().filter(|t| !t.is_empty())
-    {
-        out.extra = Some(Box::new(wordcraft_doc::props::ParaProps { tabs: Some(tabs), ..Default::default() }));
-    }
+    out.extra = flow_para_extra(doc, &p.props, opts);
     let in_code = kind == Kind::Code;
     let mut k = 0usize;
     let mut control = OpenControl::default();
