@@ -4623,3 +4623,29 @@ fn vml_horizontal_rules_are_read_and_kept() {
     let d = read_body(&body);
     assert_eq!(rules(&d).iter().map(|r| r.0).collect::<Vec<_>>(), [None, None]);
 }
+
+#[test]
+fn stray_breaks_keep_paragraph_and_first_run_formatting() {
+    use wordcraft_doc::para::{LINE_BREAK, PAGE_BREAK};
+    let d = read_body(
+        r#"<w:br w:type="page"/><w:br w:type="unknown"/><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>after</w:t></w:r></w:p><w:br/><w:p/>"#,
+    );
+    let ps = paras(&d);
+    assert_eq!(ps[0].text, format!("{PAGE_BREAK}{LINE_BREAK}after"));
+    assert_eq!(ps[0].props.align, Some(Align::Right));
+    assert_eq!(ps[0].runs.first().unwrap().props.bold, Some(true));
+    assert_eq!(ps[1].text, LINE_BREAK.to_string());
+    assert_eq!(ps[1].runs.first().unwrap().props, Default::default());
+}
+
+#[test]
+fn stray_breaks_stop_at_tables_and_stay_in_their_container() {
+    use wordcraft_doc::para::LINE_BREAK;
+    let d = read_body(
+        r#"<w:br w:type="page"/><w:tbl><w:tr><w:tc><w:br/><w:p><w:r><w:t>cell</w:t></w:r></w:p><w:br w:type="column"/></w:tc><w:tc><w:p><w:r><w:t>other</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>after</w:t></w:r></w:p>"#,
+    );
+    let Block::Table(t) = &*d.body[0] else { panic!("table") };
+    assert_eq!(t.rows[0].cells[0].blocks[0].as_para().unwrap().text, format!("{LINE_BREAK}cell"));
+    assert_eq!(t.rows[0].cells[1].blocks[0].as_para().unwrap().text, "other");
+    assert_eq!(paras(&d)[0].text, "after");
+}

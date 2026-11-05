@@ -3,6 +3,7 @@ use super::{
     Reader, Rels, RevisionKind, Row, Run, RunCtx, StoryCtx, Table, children_of_choice, clean_text, collect, last_para_mut, para_block,
     placeholder_of, sectpr, tcpr, trpr,
 };
+use wordcraft_doc::para::{COLUMN_BREAK, LINE_BREAK, PAGE_BREAK};
 
 impl Reader<'_> {
     /// Read a story's blocks from a container element (`w:body`, `w:hdr`, `w:tc`, `w:txbxContent`…).
@@ -18,10 +19,24 @@ impl Reader<'_> {
         } else {
             parent
         };
+        // Stray story-level breaks belong to this container's next paragraph.
+        // The XML element limit also bounds this buffer.
+        let mut pending_breaks = String::new();
         for e in parent.els() {
             match e.name.as_str() {
+                "w:br" => pending_breaks.push(match e.attr("w:type") {
+                    Some("page") => PAGE_BREAK,
+                    Some("column") => COLUMN_BREAK,
+                    _ => LINE_BREAK,
+                }),
                 "w:p" => {
-                    let p = self.read_para(sc, e, rels, depth);
+                    let mut p = self.read_para(sc, e, rels, depth);
+                    if !pending_breaks.is_empty() {
+                        let props = p.runs.first().map(|r| r.props.clone()).unwrap_or_default();
+                        // Offset zero is always a valid character boundary.
+                        let _ = p.insert_text(0, &pending_breaks, &props);
+                        pending_breaks.clear();
+                    }
                     // A framed drop-cap paragraph merges into the paragraph it starts.
                     if let Some(Block::Para(prev)) = out.last().map(|b| &**b)
                         && prev.props.drop_cap.is_some()
@@ -52,6 +67,7 @@ impl Reader<'_> {
                     out.push(para_block(p));
                 }
                 "w:tbl" => {
+                    pending_breaks.clear();
                     if depth / 4 >= MAX_TABLE_DEPTH {
                         out.push(para_block(Paragraph::with_text(&clean_text(&e.deep_text()), CharProps::default())));
                     } else if let Some(t) = self.read_table(sc, e, rels, depth) {
