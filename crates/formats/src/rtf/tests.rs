@@ -1708,3 +1708,4 @@ mod legacy_pn;
 mod section_revisions;
 mod tabs_spacing;
 mod trailing_data;
+mod widow_control;
