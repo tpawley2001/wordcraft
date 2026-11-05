@@ -29,8 +29,9 @@ fn gaps(mode: u32, items: &[(u32, u8, bool)]) -> Vec<f32> {
     let build = |items: &[(u32, u8, bool)]| {
         let mut d = Document::new();
         d.settings.compat_mode = mode;
-        let a = d.numbering.add_list(wordcraft_doc::ListKind::Bullet);
-        let b = d.numbering.add_list(wordcraft_doc::ListKind::Bullet);
+        let numbering = std::sync::Arc::make_mut(&mut d.numbering);
+        let a = numbering.add_list(wordcraft_doc::ListKind::Bullet);
+        let b = numbering.add_list(wordcraft_doc::ListKind::Bullet);
         let mut paras = vec![plain()];
         for &(list, level, is_auto) in items {
             let mut p = if is_auto { auto() } else { plain() };
