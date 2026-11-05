@@ -682,7 +682,9 @@ impl<'r> Builder<'r> {
                 p.trim();
             }
         }
-        if p.mark.as_ref().is_some_and(|m| m.hidden == Some(true)) && p.inlines.iter().any(|i| matches!(i, Inline::Text(t, f) if !f.hidden && !t.is_empty())) {
+        if p.mark.as_ref().is_some_and(|m| m.hidden == Some(true))
+            && p.inlines.iter().any(|i| matches!(i, Inline::Text(t, f) if !f.hidden && !t.is_empty()))
+        {
             p.mark = None;
         }
         if p.inlines.len() == 1 && p.text() == "\u{00A0}" {
