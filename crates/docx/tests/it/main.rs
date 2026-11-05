@@ -49,6 +49,7 @@ mod text_alignment;
 mod text_boxes;
 mod text_whitespace;
 mod toc_ranges;
+mod twips_wrap;
 mod undefined_style;
 mod vml_shapes;
 mod vml_wordart_effects;
