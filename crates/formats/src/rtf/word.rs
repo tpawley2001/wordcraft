@@ -485,19 +485,28 @@ impl Reader {
             "pnlvlblt" => pn.kind = PnKind::Bullet,
             "pnlvlbody" => pn.kind = PnKind::Body,
             "pnlvlcont" => pn.kind = PnKind::Cont,
-            "pnlvl" if (1..=9).contains(&value) => pn.kind = PnKind::Outline(value.clamp(1, 9) as u8),
+            "pnlvl1" => pn.kind = PnKind::Outline(1),
+            "pnlvl2" => pn.kind = PnKind::Outline(2),
+            "pnlvl3" => pn.kind = PnKind::Outline(3),
+            "pnlvl4" => pn.kind = PnKind::Outline(4),
+            "pnlvl5" => pn.kind = PnKind::Outline(5),
+            "pnlvl6" => pn.kind = PnKind::Outline(6),
+            "pnlvl7" => pn.kind = PnKind::Outline(7),
+            "pnlvl8" => pn.kind = PnKind::Outline(8),
+            "pnlvl9" => pn.kind = PnKind::Outline(9),
             "pndec" => pn.format = Some(NumFormat::Decimal),
             "pnucrm" => pn.format = Some(NumFormat::UpperRoman),
             "pnlcrm" => pn.format = Some(NumFormat::LowerRoman),
             "pnucltr" => pn.format = Some(NumFormat::UpperLetter),
             "pnlcltr" => pn.format = Some(NumFormat::LowerLetter),
-            "pnstart" => pn.start = value.max(1).min(32_767) as u32,
+            "pnstart" => pn.start = value.clamp(0, 32_767) as u32,
             "pnf" => pn.font = Some(value),
             _ => {}
         }
     }
 
-    fn list_table_word(&mut self, word: &str, value: i32) {        match word {
+    fn list_table_word(&mut self, word: &str, value: i32) {
+        match word {
             "list" => {
                 self.list_cur.clear();
                 self.list_cur_id = 0;

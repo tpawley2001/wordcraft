@@ -1,6 +1,7 @@
 use super::export::HEAD_SIZES;
-use super::state::St;
+use super::state::{Pn, PnKind, St};
 use super::{Fmt, Kind, ListInfo, Para, Reader, model};
+use model::Label;
 
 impl Reader {
     pub(super) fn commit_style(&mut self) {
@@ -98,8 +99,40 @@ impl Reader {
             let lv = st.ilvl.min(8);
             let ordered = list.and_then(|l| l.get(lv as usize).copied()).unwrap_or(false);
             p.list = Some(ListInfo { ordered, level: lv, start: 1, ..Default::default() });
+        } else if let Some(pn) = st.pn.as_deref() {
+            p.list = self.pn_list(pn);
         }
         p
+    }
+
+    /// A Word 6.0/95 `{\*\pn …}` group as the paragraph's list level. A continuation has the
+    /// `none` format: it belongs to the list, but shows no label and doesn't advance its count.
+    fn pn_list(&self, pn: &Pn) -> Option<ListInfo> {
+        use wordcraft_doc::section::NumFormat;
+        let (ordered, level) = match pn.kind {
+            PnKind::None => return None,
+            PnKind::Bullet => (false, 0),
+            PnKind::Body | PnKind::Cont => (true, 0),
+            PnKind::Outline(n) => (true, n.saturating_sub(1).min(8)),
+        };
+        let format = if pn.kind == PnKind::Cont {
+            NumFormat::None
+        } else if ordered {
+            pn.format.unwrap_or(NumFormat::Decimal)
+        } else {
+            NumFormat::Bullet
+        };
+        let label = Label {
+            format,
+            prefix: model::Affix::new(&pn.before),
+            suffix: model::Affix::new(&pn.after),
+            shown: 1,
+            indent: None,
+            hanging: None,
+            align: None,
+        };
+        let font = pn.font.and_then(|f| self.fonts.get(&f)).map(|f| f.to_string());
+        Some(ListInfo { ordered, level, start: pn.start, list: 0, label: Some(label), font })
     }
 }
 

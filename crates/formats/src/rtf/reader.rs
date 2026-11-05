@@ -1,6 +1,6 @@
 use super::date::dttm_to_iso;
 use super::parse::column_grid;
-use super::state::{CellDef, Dest, HeaderFooter, MAX_GROUPS, MAX_REV_AUTHORS, MAX_SECTIONS, Output, PageGeom, Pn, PnKind, SecFmt, St};
+use super::state::{CellDef, Dest, HeaderFooter, MAX_GROUPS, MAX_REV_AUTHORS, MAX_SECTIONS, Output, PageGeom, Pn, SecFmt, St};
 use super::styles::{StyleDef, drop_style_formatting, style_fmt};
 use super::{Arc, Cell, FBlock, FTable, HashMap, Inline, Kind, Meta, Para, Rgb, model};
 
@@ -262,10 +262,12 @@ impl Reader {
         }
         // The end of a `{\*\pn …}` group: the numbering it describes is the paragraph's, unless
         // the paragraph names a Word 97+ list (`\ls`), which wins.
-        if self.pn_depth.is_some_and(|d| self.depth() < d) && prev.dest == Dest::Body && self.st.ls.is_none() {
-            prev.pn = Some(Box::new(std::mem::take(&mut self.pn_cur)));
+        if self.pn_depth.is_some_and(|d| self.depth() < d) {
+            if prev.dest == Dest::Body && self.st.ls.is_none() {
+                prev.pn = Some(Box::new(std::mem::take(&mut self.pn_cur)));
+            }
+            self.pn_depth = None;
         }
-        self.pn_depth = None;
         // The end of a `{\pntxtb …}` or `{\pntxta …}` group: its text is the label's bullet or
         // the text around the number.
         match closing {

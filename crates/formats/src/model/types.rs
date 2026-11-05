@@ -518,7 +518,7 @@ pub enum Kind {
     Rule,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListInfo {
     pub ordered: bool,
     /// 0-based nesting level (0..=8).
@@ -531,11 +531,13 @@ pub struct ListInfo {
     pub list: u32,
     /// How the paragraph's level shows its number or bullet, when the source says.
     pub label: Option<Label>,
+    /// The label's font, when the source gives it one (RTF `\pnfN`).
+    pub font: Option<String>,
 }
 
 impl Default for ListInfo {
     fn default() -> Self {
-        ListInfo { ordered: false, level: 0, start: 1, list: 0, label: None }
+        ListInfo { ordered: false, level: 0, start: 1, list: 0, label: None, font: None }
     }
 }
 

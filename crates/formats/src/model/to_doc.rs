@@ -688,6 +688,7 @@ impl<'a> Builder<'a> {
         }
         let mut starts: [Option<u32>; 9] = [None; 9];
         let mut labels: [Option<super::types::Label>; 9] = [None; 9];
+        let mut fonts: [Option<String>; 9] = Default::default();
         for li in group {
             if let Some(s) = starts.get_mut(li.level.min(8) as usize)
                 && s.is_none()
@@ -698,6 +699,11 @@ impl<'a> Builder<'a> {
                 && l.is_none()
             {
                 *l = li.label;
+            }
+            if let Some(f) = fonts.get_mut(li.level.min(8) as usize)
+                && f.is_none()
+            {
+                f.clone_from(&li.font);
             }
         }
         // Levels nobody used follow the first level's kind.
@@ -724,6 +730,9 @@ impl<'a> Builder<'a> {
                         }
                     }
                     _ => {}
+                }
+                if let Some(font) = fonts.get(i).and_then(|f| f.as_ref()) {
+                    level.chr.font = Some(font.clone());
                 }
                 if let Some(l) = labels.get(i).copied().flatten() {
                     if let Some((indent, hanging)) = l.position() {
