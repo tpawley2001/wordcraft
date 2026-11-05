@@ -176,7 +176,8 @@ pub fn tabs_from_indent(doc: &Document) -> bool {
 }
 
 /// [`Para::extra`] as `opts` asks for it: all of it ([`FlowOpts::paras`]), the paragraph's own
-/// tab stops alone ([`FlowOpts::tabs_spacing`]) or nothing.
+/// tab stops ([`FlowOpts::tabs_spacing`]) and widow/orphan control ([`FlowOpts::widow`]) alone, or
+/// nothing.
 fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: FlowOpts) -> Option<Box<wordcraft_doc::props::ParaProps>> {
     if opts.paras {
         return para_extra(doc, p);
