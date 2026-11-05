@@ -2,8 +2,14 @@ mod comment_ids;
 mod date_fields;
 mod html_div_margins;
 mod macro_packages;
+mod odt_charts;
+mod odt_fields;
+mod odt_forms;
+mod odt_objects;
+mod odt_password;
 #[cfg(not(target_arch = "wasm32"))]
 mod odt_sections;
+mod odt_toc;
 mod read_layout;
 mod recovery_format;
 #[cfg(not(target_arch = "wasm32"))]

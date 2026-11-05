@@ -15,7 +15,7 @@ pub(super) struct DrawingInfo<'a> {
 impl Writer<'_> {
     /// A picture's `pic:pic` (the image in `media/{file}`), at `off` in its group (or 0, 0).
     pub(super) fn pic(&mut self, w: &mut W, o: &InlineObject, file: &str, off: (f32, f32), rels: &mut PartRels) {
-        let InlineObject::Image { media, w: iw, h: ih, alt, crop, float, .. } = o else { return };
+        let InlineObject::Image { media, w: iw, h: ih, alt, crop, float, fx, .. } = o else { return };
         // A picture linked to a file (ECMA-376 §20.1.8.13 `r:link`): an external relationship to
         // it, and no media part.
         let link = self.doc.linked_media.get(media).filter(|_| !self.doc.media.contains_key(media));
@@ -38,9 +38,21 @@ impl Writer<'_> {
         w.close("pic:cNvPicPr");
         w.close("pic:nvPicPr");
         w.open("pic:blipFill", &[]);
-        match &rid {
-            Some(rid) => w.empty("a:blip", &[(blip, rid)]),
-            None => w.empty("a:blip", &[]),
+        // Brightness, contrast and transparency (#1711, #1766) as `a:blip` effects (ECMA-376
+        // §20.1.8.13 CT_Blip: an unbounded choice of effects, in any order).
+        let fx = fx.clamped();
+        let attrs: Vec<(&str, &str)> = rid.as_deref().map(|rid| (blip, rid)).into_iter().collect();
+        if fx.is_identity() {
+            w.empty("a:blip", &attrs);
+        } else {
+            w.open("a:blip", &attrs);
+            if fx.transparency != 0 {
+                w.empty("a:alphaModFix", &[("amt", &n(i64::from(100_000 - fx.transparency)))]);
+            }
+            if fx.bright != 0 || fx.contrast != 0 {
+                w.empty("a:lum", &[("bright", &n(i64::from(fx.bright))), ("contrast", &n(i64::from(fx.contrast)))]);
+            }
+            w.close("a:blip");
         }
         if crop.iter().any(|c| *c > 0.0) {
             let c = |v: f32| n((wordcraft_geom::finite(v).clamp(0.0, 1.0) * 100_000.0).round() as i64);

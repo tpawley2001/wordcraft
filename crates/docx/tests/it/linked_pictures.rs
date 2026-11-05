@@ -9,8 +9,16 @@ const PATH: &str = "c:\\web\\title.gif";
 fn linked_doc() -> Document {
     let mut doc = Document::new();
     doc.linked_media.insert("link1".into(), PATH.into());
-    let pic =
-        InlineObject::Image { media: "link1".into(), w: 225.0, h: 18.75, alt: String::new(), float: Default::default(), crop: [0.0; 4], ole: None };
+    let pic = InlineObject::Image {
+        media: "link1".into(),
+        w: 225.0,
+        h: 18.75,
+        alt: String::new(),
+        float: Default::default(),
+        crop: [0.0; 4],
+        fx: Default::default(),
+        ole: None,
+    };
     doc.insert_object(&Pos::default(), pic, &Default::default()).unwrap();
     doc
 }

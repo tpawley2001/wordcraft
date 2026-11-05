@@ -71,9 +71,10 @@ fn two_level(text: &str, chr: CharProps, align: Option<Align>, height: f32, inne
 
 /// docDefaults: Times New Roman (10pt, OOXML's default size), 10pt after, 1.15 lines.
 fn defaults(d: &mut Document) {
-    d.styles.default_chr = CharProps { font: Some("Times New Roman".into()), size: Some(10.0), ..Default::default() };
-    d.styles.default_para = ParaProps { space_after: Some(10.0), line_spacing: Some(LineSpacing::Multiple(1.15)), ..Default::default() };
-    d.styles.default_para_present = true;
+    std::sync::Arc::make_mut(&mut d.styles).default_chr = CharProps { font: Some("Times New Roman".into()), size: Some(10.0), ..Default::default() };
+    std::sync::Arc::make_mut(&mut d.styles).default_para =
+        ParaProps { space_after: Some(10.0), line_spacing: Some(LineSpacing::Multiple(1.15)), ..Default::default() };
+    std::sync::Arc::make_mut(&mut d.styles).default_para_present = true;
 }
 
 /// Case A of the spec.
@@ -108,10 +109,11 @@ pub(super) fn nested_header_table_doc() -> Document {
 /// Case B of the spec.
 pub(super) fn header_text_box_and_canvas_doc() -> Document {
     let mut d = Document::new();
-    d.styles.default_chr = CharProps { font: Some("Times New Roman".into()), size: Some(10.0), ..Default::default() };
-    d.styles.default_para = ParaProps { space_after: Some(0.0), line_spacing: Some(LineSpacing::Multiple(1.0)), ..Default::default() };
-    d.styles.default_para_present = true;
-    if let Some(normal) = d.styles.styles.iter_mut().find(|s| s.id == "Normal") {
+    std::sync::Arc::make_mut(&mut d.styles).default_chr = CharProps { font: Some("Times New Roman".into()), size: Some(10.0), ..Default::default() };
+    std::sync::Arc::make_mut(&mut d.styles).default_para =
+        ParaProps { space_after: Some(0.0), line_spacing: Some(LineSpacing::Multiple(1.0)), ..Default::default() };
+    std::sync::Arc::make_mut(&mut d.styles).default_para_present = true;
+    if let Some(normal) = std::sync::Arc::make_mut(&mut d.styles).styles.iter_mut().find(|s| s.id == "Normal") {
         normal.chr = CharProps { font: Some("Arial".into()), size: Some(12.0), ..Default::default() };
     }
     let s = &mut d.last_section;

@@ -310,7 +310,7 @@ fn web_divs(parent: &El, depth: usize, budget: &mut usize) -> Vec<wordcraft_doc:
             mar_right: mar("w:marRight"),
             mar_top: mar("w:marTop"),
             mar_bottom: mar("w:marBottom"),
-            border: d.child("w:divBdr").map(props::borders),
+            border: d.child("w:divBdr").map(|b| props::PropCtx::default().borders(b)),
             children: d.children("w:divsChild").flat_map(|c| web_divs(c, depth + 1, budget)).collect(),
         });
     }
