@@ -1705,3 +1705,4 @@ fn compound_borders_round_trip() {
 }
 
 mod section_revisions;
+mod trailing_data;
