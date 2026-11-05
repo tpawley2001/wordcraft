@@ -940,6 +940,7 @@ fn export_as(doc: &Document, mime: &str) -> Result<Vec<u8>, String> {
             chars: true,
             paras: true,
             boxes: true,
+            widow: true,
             ..Default::default()
         },
     );

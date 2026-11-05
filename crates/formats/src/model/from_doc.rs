@@ -176,13 +176,15 @@ pub fn tabs_from_indent(doc: &Document) -> bool {
 }
 
 /// [`Para::extra`] as `opts` asks for it: all of it ([`FlowOpts::paras`]), the paragraph's own
-/// tab stops alone ([`FlowOpts::tabs_spacing`]) or nothing.
+/// tab stops ([`FlowOpts::tabs_spacing`]) and widow/orphan control ([`FlowOpts::widow`]) alone, or
+/// nothing.
 fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: FlowOpts) -> Option<Box<wordcraft_doc::props::ParaProps>> {
     if opts.paras {
         return para_extra(doc, p);
     }
-    let tabs = p.tabs.clone().filter(|t| opts.tabs_spacing && !t.is_empty())?;
-    Some(Box::new(wordcraft_doc::props::ParaProps { tabs: Some(tabs), ..Default::default() }))
+    let tabs = p.tabs.clone().filter(|t| opts.tabs_spacing && !t.is_empty());
+    let widow_control = p.widow_control.filter(|_| opts.widow);
+    (tabs.is_some() || widow_control.is_some()).then(|| Box::new(wordcraft_doc::props::ParaProps { tabs, widow_control, ..Default::default() }))
 }
 
 /// The paragraph formatting only [`Para::extra`] holds that `p` sets itself; `None` when none.
@@ -1156,9 +1158,10 @@ pub fn from_doc(doc: &Document) -> Flow {
 
 /// [`from_doc`] keeping tracked changes: deleted text stays, and text carries its insertion and
 /// deletion marks ([`Fmt::ins`], [`Fmt::del`]), for formats that can write revisions (RTF), and
-/// with tab stops and character spacing ([`FlowOpts::tabs_spacing`]).
+/// with tab stops, character spacing ([`FlowOpts::tabs_spacing`]) and each paragraph's own
+/// widow/orphan control ([`FlowOpts::widow`]).
 pub fn from_doc_tracked(doc: &Document) -> Flow {
-    flow_of(doc, FlowOpts { tracked: true, tabs_spacing: true, ..Default::default() })
+    flow_of(doc, FlowOpts { tracked: true, tabs_spacing: true, widow: true, ..Default::default() })
 }
 
 /// [`from_doc`] keeping what `opts` asks for.
