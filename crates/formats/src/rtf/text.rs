@@ -310,7 +310,7 @@ impl Reader {
                     self.pn_txt.push(c);
                 }
             }
-            Dest::Skip | Dest::ListTable | Dest::ListOverride | Dest::OldProps(_) | Dest::OldSect | Dest::Pn => {}
+            Dest::Skip | Dest::Object | Dest::ListTable | Dest::ListOverride | Dest::OldProps(_) | Dest::OldSect | Dest::Pn => {}
         }
     }
 

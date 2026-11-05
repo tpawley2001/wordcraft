@@ -28,6 +28,9 @@ pub(super) enum Dest {
     ListOverride,
     FldInst,
     Pict,
+    /// An embedded object (`\object`): its control data is skipped, its `{\result …}` group is
+    /// read as body content, which is what Word shows for the object.
+    Object,
     Bookmark,
     /// The author table of tracked changes (`\revtbl`).
     RevTbl,

@@ -59,3 +59,4 @@ fn an_object_without_a_result_adds_nothing() {
     assert!(images(&f).is_empty());
     assert_eq!(texts(&f), ["Normal:BeforeAfter"]);
 }
+
