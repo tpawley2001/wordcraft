@@ -790,7 +790,8 @@ fn tab_words(t: &wordcraft_doc::props::TabStop) -> String {
 
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
-    let flow = model::from_doc_tracked(doc);
+    let opts = model::FlowOpts::tracked();
+    let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
         t: Tables { fonts: vec![base_font], colors: Vec::new() },

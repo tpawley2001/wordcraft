@@ -1157,11 +1157,10 @@ pub fn from_doc(doc: &Document) -> Flow {
 }
 
 /// [`from_doc`] keeping tracked changes: deleted text stays, and text carries its insertion and
-/// deletion marks ([`Fmt::ins`], [`Fmt::del`]), for formats that can write revisions (RTF), and
-/// with tab stops, character spacing ([`FlowOpts::tabs_spacing`]), each paragraph's own
-/// widow/orphan control ([`FlowOpts::widow`]), fields and text boxes.
+/// deletion marks ([`Fmt::ins`], [`Fmt::del`]), for formats that can write revisions (RTF): see
+/// [`FlowOpts::tracked`].
 pub fn from_doc_tracked(doc: &Document) -> Flow {
-    flow_of(doc, FlowOpts { tracked: true, tabs_spacing: true, widow: true, fields: true, boxes: true, ..Default::default() })
+    flow_of(doc, FlowOpts::tracked())
 }
 
 /// [`from_doc`] keeping what `opts` asks for.

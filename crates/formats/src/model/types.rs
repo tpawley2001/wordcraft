@@ -486,6 +486,15 @@ pub struct FlowOpts {
     pub widow: bool,
 }
 
+impl FlowOpts {
+    /// What RTF keeps: tracked changes, the paragraph's own tab stops and character spacing
+    /// ([`FlowOpts::tabs_spacing`]) and widow/orphan control ([`FlowOpts::widow`]), fields and
+    /// text boxes.
+    pub fn tracked() -> Self {
+        FlowOpts { tracked: true, tabs_spacing: true, widow: true, fields: true, boxes: true, ..Default::default() }
+    }
+}
+
 /// Base text size (points) a phonetic guide falls back to when the source states none: the
 /// Phonetic Guide command's own fallback for an unresolved size
 /// (`crates/engine/src/cmd/phonetic.rs`).
