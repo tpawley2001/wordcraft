@@ -90,6 +90,9 @@ impl Reader {
         p.page_break = st.pagebb;
         p.spacing = spacing(st);
         p.borders = st.borders.any_visible().then_some(st.borders);
+        if !st.tabs.is_empty() {
+            p.extra = Some(Box::new(wordcraft_doc::props::ParaProps { tabs: Some(st.tabs.clone()), ..Default::default() }));
+        }
         if let Some(ls) = st.ls {
             let list = self.overrides.get(&ls).and_then(|id| self.lists.get(id));
             let lv = st.ilvl.min(8);

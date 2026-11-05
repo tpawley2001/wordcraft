@@ -371,6 +371,11 @@ impl Writer {
             let i = self.t.color(c);
             ctl.push_str(&format!("\\chcbpat{i}"));
         }
+        // Expanded or condensed: quarter points for older readers, then the exact twips.
+        if let Some(pt) = f.extra.as_ref().and_then(|x| x.spacing).filter(|v| v.is_finite() && *v != 0.0) {
+            let pt = pt.clamp(-1584.0, 1584.0);
+            ctl.push_str(&format!("\\expnd{}\\expndtw{}", (pt * 4.0).round() as i32, (pt * 20.0).round() as i32));
+        }
         ctl
     }
 
@@ -517,6 +522,9 @@ impl Writer {
         }
         if p.page_break {
             out.push_str("\\pagebb");
+        }
+        for t in p.extra.as_ref().and_then(|x| x.tabs.as_deref()).unwrap_or_default() {
+            out.push_str(&tab_words(t));
         }
         match p.kind {
             Kind::Quote => out.push_str("\\li720\\ri720\\i"),
@@ -698,6 +706,29 @@ fn level_def(ordered: bool, l: usize) -> String {
             ch as u32 as i16
         )
     }
+}
+
+/// The control words of tab stop `t`: alignment, leader, then `\txN` (`\tbN` for a bar tab).
+fn tab_words(t: &wordcraft_doc::props::TabStop) -> String {
+    use wordcraft_doc::props::{TabAlign, TabLeader};
+    let at = (t.pos.clamp(-1584.0, 1584.0) * 20.0).round() as i32;
+    let align = match t.align {
+        TabAlign::Right => "\\tqr",
+        TabAlign::Center => "\\tqc",
+        TabAlign::Decimal => "\\tqdec",
+        TabAlign::Bar => return format!("\\tb{at}"),
+        // A clearing stop is left out: the paragraph's own stops are all it has.
+        TabAlign::Clear => return String::new(),
+        TabAlign::Left => "",
+    };
+    let leader = match t.leader {
+        TabLeader::None => "",
+        TabLeader::Dot => "\\tldot",
+        TabLeader::MiddleDot => "\\tlmdot",
+        TabLeader::Hyphen => "\\tlhyph",
+        TabLeader::Underscore => "\\tlul",
+    };
+    format!("{align}{leader}\\tx{at}")
 }
 
 /// RTF text of a document.

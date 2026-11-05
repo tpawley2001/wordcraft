@@ -476,6 +476,10 @@ pub struct FlowOpts {
     /// Lists with their identity and labels ([`ListInfo::list`], [`ListInfo::label`]; otherwise
     /// consecutive items form one list in the default look of its kind).
     pub lists: bool,
+    /// Without [`FlowOpts::chars`] and [`FlowOpts::paras`]: just the paragraph's own tab stops
+    /// ([`Para::extra`]) and character spacing ([`Fmt::extra`]), for formats that write those
+    /// alone (RTF).
+    pub tabs_spacing: bool,
 }
 
 /// Base text size (points) a phonetic guide falls back to when the source states none: the

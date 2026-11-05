@@ -81,6 +81,11 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
 fn run_fmt(doc: &Document, props: &CharProps, in_code: bool, opts: FlowOpts) -> Fmt {
     let mut f = fmt_of(doc, props, in_code);
     if !opts.chars {
+        if opts.tabs_spacing
+            && let Some(sp) = effective(doc, props).spacing.filter(|v| *v != 0.0 && v.is_finite())
+        {
+            f.extra = Some(Box::new(CharProps { spacing: Some(sp), ..Default::default() }));
+        }
         return f;
     }
     let custom = props.style.as_deref().filter(|id| is_custom_char_style(doc, id));
@@ -167,6 +172,16 @@ pub fn is_custom_style(doc: &Document, id: &str) -> bool {
 /// file says so): [`Para::extra`]'s tab stops then are too.
 pub fn tabs_from_indent(doc: &Document) -> bool {
     doc.settings.odf.is_some_and(|o| o.tabs_from_indent)
+}
+
+/// [`Para::extra`] as `opts` asks for it: all of it ([`FlowOpts::paras`]), the paragraph's own
+/// tab stops alone ([`FlowOpts::tabs_spacing`]) or nothing.
+fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: FlowOpts) -> Option<Box<wordcraft_doc::props::ParaProps>> {
+    if opts.paras {
+        return para_extra(doc, p);
+    }
+    let tabs = p.tabs.clone().filter(|t| opts.tabs_spacing && !t.is_empty())?;
+    Some(Box::new(wordcraft_doc::props::ParaProps { tabs: Some(tabs), ..Default::default() }))
 }
 
 /// The paragraph formatting only [`Para::extra`] holds that `p` sets itself; `None` when none.
@@ -481,9 +496,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
         index: None,
         group: None,
     };
-    if opts.paras {
-        out.extra = para_extra(doc, &p.props);
-    }
+    out.extra = flow_para_extra(doc, &p.props, opts);
     let in_code = kind == Kind::Code;
     let mut k = 0usize;
     let mut control = OpenControl::default();
@@ -1140,9 +1153,10 @@ pub fn from_doc(doc: &Document) -> Flow {
 }
 
 /// [`from_doc`] keeping tracked changes: deleted text stays, and text carries its insertion and
-/// deletion marks ([`Fmt::ins`], [`Fmt::del`]), for formats that can write revisions (RTF).
+/// deletion marks ([`Fmt::ins`], [`Fmt::del`]), for formats that can write revisions (RTF), and
+/// with tab stops and character spacing ([`FlowOpts::tabs_spacing`]).
 pub fn from_doc_tracked(doc: &Document) -> Flow {
-    flow_of(doc, FlowOpts { tracked: true, ..Default::default() })
+    flow_of(doc, FlowOpts { tracked: true, tabs_spacing: true, ..Default::default() })
 }
 
 /// [`from_doc`] keeping what `opts` asks for.

@@ -1,4 +1,5 @@
 use super::{Align, Cell, FBlock, Fmt, Para, Rgb, VAlign};
+use wordcraft_doc::props::{TabAlign, TabLeader, TabStop};
 
 /// Deepest group nesting we track; deeper groups share the innermost state.
 pub(super) const MAX_GROUPS: usize = 512;
@@ -50,6 +51,9 @@ type OldWords = Vec<(String, Option<i32>)>;
 
 /// Most words kept from one `\oldcprops` group (hostile input).
 pub(super) const MAX_OLD_WORDS: usize = 64;
+
+/// Most tab stops kept for one paragraph (hostile input).
+pub(super) const MAX_TABS: usize = 64;
 
 /// Most authors read from a `\revtbl` (hostile input).
 pub(super) const MAX_REV_AUTHORS: usize = 10_000;
@@ -138,6 +142,11 @@ pub(super) struct St {
     pub(super) li: Option<i32>,
     pub(super) ri: Option<i32>,
     pub(super) fi: Option<i32>,
+    /// The paragraph's tab stops (`\tx`, `\tb`), and the alignment (`\tq*`) and leader (`\tl*`)
+    /// words read for the next one.
+    pub(super) tabs: Vec<TabStop>,
+    pub(super) tab_align: TabAlign,
+    pub(super) tab_leader: TabLeader,
 }
 
 impl Default for St {
@@ -170,6 +179,9 @@ impl Default for St {
             li: None,
             ri: None,
             fi: None,
+            tabs: Vec::new(),
+            tab_align: TabAlign::Left,
+            tab_leader: TabLeader::None,
         }
     }
 }
