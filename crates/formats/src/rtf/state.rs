@@ -30,6 +30,9 @@ pub(super) enum Dest {
     /// Formatting before a tracked change (`\oldpprops` when true, else `\oldcprops`): read
     /// into the group's own state, which the group's end keeps as the change's old formatting.
     OldProps(bool),
+    /// Section formatting before a tracked change (`\oldsprops`): read into the reader's
+    /// scratch section, which the group's end keeps as the current section's old formatting.
+    OldSect,
 }
 
 /// A tracked formatting change being read (`\crauth`/`\crdate` with `\oldcprops`,

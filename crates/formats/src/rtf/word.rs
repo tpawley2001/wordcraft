@@ -1,4 +1,5 @@
-use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, RevSt, St};
+use super::reader::apply_section_word;
+use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, RevSt, SecFmt, St};
 use super::styles::{StyleDef, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
 
@@ -41,6 +42,8 @@ impl Reader {
                     self.st.old_rev = (None, None);
                 }
                 Dest::OldProps(true) => self.word("pard", None, false, false),
+                // Old section formatting is complete, from Word's defaults (as after `\sectd`).
+                Dest::OldSect => self.old_sec = SecFmt::default(),
                 _ => {}
             }
             self.st.dest = d;
@@ -281,6 +284,7 @@ impl Reader {
             "revtbl" => Some(Dest::RevTbl),
             "oldcprops" => Some(Dest::OldProps(false)),
             "oldpprops" => Some(Dest::OldProps(true)),
+            "oldsprops" => Some(Dest::OldSect),
             "listoverridetable" => Some(Dest::ListOverride),
             "fldinst" => Some(Dest::FldInst),
             // Transparent wrapper: read the nested pict without changing the destination.
@@ -397,6 +401,10 @@ impl Reader {
                 } else {
                     self.st.old_rev.1 = Some(value as u32);
                 }
+                true
+            }
+            Dest::OldSect => {
+                apply_section_word(&mut self.old_sec, word, param);
                 true
             }
             Dest::OldProps(_) if !is_format_word(word) => true,
