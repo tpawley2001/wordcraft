@@ -149,6 +149,8 @@ struct Flow<'a> {
     body_top: f32,
     width: f32,
     label: Option<(String, Level)>,
+    /// Its numbering instance when it shows a label.
+    list: Option<u32>,
     /// Where it was expected to start; floats anchored here are placed again if it starts elsewhere.
     guess: f32,
     excl_mark: usize,
@@ -184,6 +186,7 @@ impl<'a> Flow<'a> {
         let excl_mark = pb.excl.len();
         let guess = pb.y + space_before;
         let label = ctx.next_label(p);
+        let list = label.as_ref().and_then(|_| ctx.label_num(p));
         let eq_start = ctx.eq_count;
         let (float_rects, pl, rel) =
             anchor_floats(ctx, pb, FloatAnchor { p, block, y0: guess, before: space_before, excl_mark, label: &label, place: true });
@@ -193,6 +196,7 @@ impl<'a> Flow<'a> {
             body_top,
             width,
             label,
+            list,
             guess,
             excl_mark,
             eq_start,
@@ -266,8 +270,8 @@ impl<'a> Flow<'a> {
     }
 
     /// `before`, the space before the paragraph, with the previous paragraph (`prev`) taken into account.
-    fn merge_gap(&self, ctx: &Ctx, pb: &mut PageBuilder, mut before: f32, prev: (String, bool, f32, bool, bool)) -> f32 {
-        let (style, ctxl, mut after, after_auto, listed) = prev;
+    fn merge_gap(&self, ctx: &Ctx, pb: &mut PageBuilder, mut before: f32, prev: (String, bool, f32, bool, Option<u32>)) -> f32 {
+        let (style, ctxl, mut after, after_auto, prev_list) = prev;
         let rp = &self.pl.rp;
         // Contextual spacing suppresses each paragraph's own side of the gap.
         if style == rp.style {
@@ -281,8 +285,8 @@ impl<'a> Flow<'a> {
             }
         }
         // Automatic spacing: none between two list items (as in an HTML list; measured in Word:
-        // any two items, of one list or two, at any level).
-        if listed && self.label.is_some() {
+        // any two items at any level, of one list or, from compatibility mode 13, of two).
+        if ctx.list_items_join(prev_list, self.list) {
             if after_auto {
                 pb.y -= after;
                 after = 0.0;
@@ -389,7 +393,7 @@ impl<'a> Flow<'a> {
             // with widow control, one more with it). Without notes the space after may run past
             // the bottom margin as usual.
             let tail = if !free && fit.l1 + 1 == n {
-                *after_on_page.get_or_insert_with(|| space_after_kept(ctx, self.block, &pl.rp, self.label.is_some()))
+                *after_on_page.get_or_insert_with(|| space_after_kept(ctx, self.block, &pl.rp, self.list))
             } else {
                 0.0
             };
@@ -591,7 +595,7 @@ impl<'a> Flow<'a> {
         let rp = &self.pl.rp;
         let (bottom_room, space_after) = if pb.after_break_mark { (0.0, 0.0) } else { (rooms.bottom, rp.space_after) };
         pb.y += bottom_room + space_after;
-        pb.prev = Some((rp.style.clone(), rp.contextual_spacing, space_after, rp.after_auto, self.label.is_some()));
+        pb.prev = Some((rp.style.clone(), rp.contextual_spacing, space_after, rp.after_auto, self.list));
     }
 }
 
@@ -852,7 +856,7 @@ fn mirror_shift(rp: &wordcraft_doc::resolve::ResolvedPara, number: u32, web: boo
 /// paragraph. Same tests as the spacing between paragraphs in `place_para_in_flow`: contextual
 /// spacing removes this paragraph's space after only when this one asks for it, and the next
 /// counts as a list item when it gets a label.
-fn space_after_kept(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::ResolvedPara, listed: bool) -> f32 {
+fn space_after_kept(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::ResolvedPara, list: Option<u32>) -> f32 {
     let after = rp.space_after.max(0.0);
     if after <= 0.0 {
         return 0.0;
@@ -862,7 +866,7 @@ fn space_after_kept(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::Resolv
         if nrp.style == rp.style && rp.contextual_spacing {
             return 0.0;
         }
-        if listed && rp.after_auto && ctx.has_label(next) {
+        if rp.after_auto && ctx.list_items_join(list, ctx.label_num(next)) {
             return 0.0;
         }
     }

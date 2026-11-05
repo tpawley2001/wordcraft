@@ -233,6 +233,26 @@ impl Ctx<'_> {
             .filter(|n| n.num != 0)
             .is_some_and(|n| self.doc.numbering.shows_label(n.num, n.level))
     }
+    /// The numbering instance (`w:num`) of `p` when it shows a list label.
+    pub(crate) fn label_num(&self, p: &Paragraph) -> Option<u32> {
+        p.props
+            .numbering
+            .or_else(|| self.doc.styles.resolve_para(&p.props).numbering)
+            .filter(|n| n.num != 0 && self.doc.numbering.shows_label(n.num, n.level))
+            .map(|n| n.num)
+    }
+
+    /// Whether automatic spacing drops between two paragraphs with these list instances (`None`:
+    /// not a list item), as between the items of an HTML list. Measured in Word: from Word 2010's
+    /// layout (compatibility mode 13 and up) any two items, of one list or two, at any level; in
+    /// Word 2007 mode only items of one list (the same `w:num`, at any level), and two lists keep it.
+    pub(crate) fn list_items_join(&self, prev: Option<u32>, next: Option<u32>) -> bool {
+        match (prev, next) {
+            (Some(a), Some(b)) => a == b || self.doc.settings.compat_mode >= 13,
+            _ => false,
+        }
+    }
+
     pub(crate) fn next_label(&mut self, p: &Paragraph) -> Option<(String, Level)> {
         let n = p.props.numbering.or_else(|| self.doc.styles.resolve_para(&p.props).numbering).filter(|n| n.num != 0)?;
         self.counters.next_label(&self.doc.numbering, n.num, n.level)
