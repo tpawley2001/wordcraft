@@ -353,6 +353,9 @@ fn signature_contradicts(ext: &str, bytes: &[u8]) -> bool {
         "html"
     } else if wordcraft_formats::mht::is_mht(bytes) {
         "mht"
+    } else if expected == "ole" && wordcraft_formats::txt::is_text(bytes) {
+        // Word opens a `.doc` or `.dot` that is really plain text as text.
+        "text"
     } else {
         return false;
     };
