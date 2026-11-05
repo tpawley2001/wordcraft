@@ -286,7 +286,13 @@ impl Reader {
                     }
                 }
             }
-            Dest::Skip | Dest::ListTable | Dest::ListOverride | Dest::OldProps(_) | Dest::OldSect => {}
+            Dest::PnTxtB | Dest::PnTxtA => {
+                // The label's own text is short; a longer one is a hostile file's.
+                if self.pn_txt.len() < 64 {
+                    self.pn_txt.push_str(s);
+                }
+            }
+            Dest::Skip | Dest::ListTable | Dest::ListOverride | Dest::OldProps(_) | Dest::OldSect | Dest::Pn => {}
         }
     }
 
