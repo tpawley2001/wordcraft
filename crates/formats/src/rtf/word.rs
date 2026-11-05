@@ -1,5 +1,5 @@
 use super::reader::apply_section_word;
-use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, RevSt, SecFmt, St};
+use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pn, PnKind, RevSt, SecFmt, St};
 use super::styles::{StyleDef, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
 use wordcraft_doc::props::{TabAlign, TabLeader, TabStop};
@@ -318,7 +318,17 @@ impl Reader {
             | "do" | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
             | "rsidtbl" | "generator" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb"
-            | "fontfile" | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pn" | "pgptbl" => Some(Dest::Skip),
+            | "fontfile" | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl" => Some(Dest::Skip),
+            // Word 6.0/95 paragraph numbering: read, so the paragraph imports as a list.
+            "pn" => {
+                self.pn_cur = Pn::default();
+                self.pn_depth = Some(self.depth());
+                Some(Dest::Pn)
+            }
+            "pntxtb" | "pntxta" if self.pn_depth.is_some() => {
+                self.pn_txt.clear();
+                Some(if w == "pntxtb" { Dest::PnTxtB } else { Dest::PnTxtA })
+            }
             "creatim" if self.in_info() => {
                 self.in_creatim = true;
                 Some(Dest::Skip)
@@ -397,6 +407,11 @@ impl Reader {
                 self.list_table_word(word, value);
                 true
             }
+            Dest::Pn => {
+                self.pn_word(word, value);
+                true
+            }
+            Dest::PnTxtB | Dest::PnTxtA => !matches!(word, "u" | "uc" | "bullet" | "emdash" | "endash"),
             Dest::ListOverride => {
                 match word {
                     "listid" => self.ov_list = value,
@@ -456,6 +471,28 @@ impl Reader {
                     self.font_cp_cur = Some(cp);
                 }
             }
+            _ => {}
+        }
+    }
+
+    /// A word of a `{\*\pn …}` group (Word 6.0/95 paragraph numbering): the level's kind, its
+    /// number format, its start value and the font of its label. The label's own text comes from
+    /// the group's `{\pntxtb …}` and `{\pntxta …}`.
+    fn pn_word(&mut self, word: &str, value: i32) {
+        use wordcraft_doc::section::NumFormat;
+        let pn = &mut self.pn_cur;
+        match word {
+            "pnlvlblt" => pn.kind = PnKind::Bullet,
+            "pnlvlbody" => pn.kind = PnKind::Body,
+            "pnlvlcont" => pn.kind = PnKind::Cont,
+            "pnlvl" => pn.kind = PnKind::Outline(value.clamp(1, 9) as u8),
+            "pndec" => pn.format = Some(NumFormat::Decimal),
+            "pnucrm" => pn.format = Some(NumFormat::UpperRoman),
+            "pnlcrm" => pn.format = Some(NumFormat::LowerRoman),
+            "pnucltr" => pn.format = Some(NumFormat::UpperLetter),
+            "pnlcltr" => pn.format = Some(NumFormat::LowerLetter),
+            "pnstart" => pn.start = Some(value.clamp(0, 32_767) as u32),
+            "pnf" => pn.font = Some(value),
             _ => {}
         }
     }

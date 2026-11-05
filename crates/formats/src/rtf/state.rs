@@ -34,6 +34,48 @@ pub(super) enum Dest {
     /// Section formatting before a tracked change (`\oldsprops`): read into the reader's
     /// scratch section, which the group's end keeps as the current section's old formatting.
     OldSect,
+    /// Word 6.0/95 paragraph numbering (`{\*\pn …}`): its words are read into the reader's
+    /// scratch numbering, which the group's end keeps as the paragraph's.
+    Pn,
+    /// The text before the number of a `{\*\pn …}` group (`{\pntxtb …}`): kept as the bullet of
+    /// a bulleted level, or the prefix of a numbered one.
+    PnTxtB,
+    /// The text after the number of a `{\*\pn …}` group (`{\pntxta …}`): the label's suffix.
+    PnTxtA,
+}
+
+/// Word 6.0/95 paragraph numbering (`{\*\pn …}`, RTF 1.9.1 "Bullets and Numbering"): what one
+/// group says about the paragraph's label. A paragraph's own group describes its level only.
+#[derive(Clone, Debug, Default)]
+pub(super) struct Pn {
+    /// `\pnlvlblt` (bulleted), `\pnlvlbody` (numbered, one level), `\pnlvlN` (outline level N,
+    /// 1-based as written) or `\pnlvlcont` (no label, the count doesn't advance).
+    pub(super) kind: PnKind,
+    /// The number format (`\pndec`, `\pnucrm`…); `None` until the group names one.
+    pub(super) format: Option<wordcraft_doc::section::NumFormat>,
+    /// The first item's number (`\pnstartN`).
+    pub(super) start: Option<u32>,
+    /// The text before the number (`{\pntxtb …}`): a bulleted level's bullet.
+    pub(super) before: String,
+    /// The text after the number (`{\pntxta …}`): "1." has a ".".
+    pub(super) after: String,
+    /// The font of the label (`\pnfN`, a `\fonttbl` index).
+    pub(super) font: Option<i32>,
+}
+
+/// Which kind of Word 6.0/95 numbering a `{\*\pn …}` group describes.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) enum PnKind {
+    #[default]
+    None,
+    /// `\pnlvlblt`: bulleted.
+    Bullet,
+    /// `\pnlvlbody`: numbered, a simple one-level list.
+    Body,
+    /// `\pnlvlcont`: the paragraph continues the list without a label.
+    Cont,
+    /// `\pnlvlN`: outline numbering at level N (1-based as written).
+    Outline(u8),
 }
 
 /// A tracked formatting change being read (`\crauth`/`\crdate` with `\oldcprops`,
@@ -147,6 +189,9 @@ pub(super) struct St {
     pub(super) tabs: Vec<TabStop>,
     pub(super) tab_align: TabAlign,
     pub(super) tab_leader: TabLeader,
+    /// Word 6.0/95 paragraph numbering (`{\*\pn …}`), which the group's end keeps here; `\pard`
+    /// clears it. A paragraph with `\lsN` (Word 97+) ignores it.
+    pub(super) pn: Option<Box<Pn>>,
 }
 
 impl Default for St {
@@ -182,6 +227,7 @@ impl Default for St {
             tabs: Vec::new(),
             tab_align: TabAlign::Left,
             tab_leader: TabLeader::None,
+            pn: None,
         }
     }
 }

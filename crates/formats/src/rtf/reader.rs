@@ -1,6 +1,6 @@
 use super::date::dttm_to_iso;
 use super::parse::column_grid;
-use super::state::{CellDef, Dest, HeaderFooter, MAX_GROUPS, MAX_REV_AUTHORS, MAX_SECTIONS, Output, PageGeom, SecFmt, St};
+use super::state::{CellDef, Dest, HeaderFooter, MAX_GROUPS, MAX_REV_AUTHORS, MAX_SECTIONS, Output, PageGeom, Pn, SecFmt, St};
 use super::styles::{StyleDef, drop_style_formatting, style_fmt};
 use super::{Arc, Cell, FBlock, FTable, HashMap, Inline, Kind, Meta, Para, Rgb, model};
 
@@ -71,6 +71,12 @@ pub(super) struct Reader {
     /// The mapping mode `N` of `\wmetafileN`.
     pub(super) pict_mm: i32,
     pub(super) bkmk: Option<(usize, String)>,
+    /// Word 6.0/95 paragraph numbering (`{\*\pn …}`) being read, and the depth its group
+    /// started at; the group's end keeps it as the paragraph's.
+    pub(super) pn_cur: Pn,
+    pub(super) pn_depth: Option<usize>,
+    /// The text of the `{\pntxtb …}` or `{\pntxta …}` group being read.
+    pub(super) pn_txt: String,
     /// Authors of tracked changes (`\revtbl`), and the entry being read.
     rev_authors: Vec<String>,
     pub(super) rev_name: String,
@@ -253,6 +259,21 @@ impl Reader {
         if self.pict_depth.is_some_and(|d| self.depth() < d) {
             self.pict_depth = None;
             self.finish_pict();
+        }
+        // The end of a `{\*\pn …}` group: the numbering it describes is the paragraph's, unless
+        // the paragraph names a Word 97+ list (`\ls`), which wins.
+        if self.pn_depth.is_some_and(|d| self.depth() < d) {
+            if prev.dest == Dest::Body && self.st.ls.is_none() {
+                prev.pn = Some(Box::new(std::mem::take(&mut self.pn_cur)));
+            }
+            self.pn_depth = None;
+        }
+        // The end of a `{\pntxtb …}` or `{\pntxta …}` group: its text is the label's bullet or
+        // the text around the number.
+        match closing {
+            Dest::PnTxtB if prev.dest != closing => self.pn_cur.before = std::mem::take(&mut self.pn_txt),
+            Dest::PnTxtA if prev.dest != closing => self.pn_cur.after = std::mem::take(&mut self.pn_txt),
+            _ => {}
         }
         if let Some((d, _)) = &self.bkmk
             && self.depth() < *d

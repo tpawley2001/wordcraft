@@ -531,11 +531,33 @@ pub struct ListInfo {
     pub list: u32,
     /// How the paragraph's level shows its number or bullet, when the source says.
     pub label: Option<Label>,
+    /// The label's font, when the source gives it one (RTF `\pnfN`).
+    pub font: Option<LabelFont>,
+}
+
+/// A bounded font name kept inline with a list label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LabelFont {
+    bytes: [u8; MAX_FONT_NAME],
+    len: u16,
+}
+
+impl LabelFont {
+    pub fn new(name: &str) -> Option<Self> {
+        let mut out = Self { bytes: [0; MAX_FONT_NAME], len: 0 };
+        out.bytes.get_mut(..name.len())?.copy_from_slice(name.as_bytes());
+        out.len = name.len() as u16;
+        Some(out)
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.bytes.get(..usize::from(self.len)).and_then(|b| std::str::from_utf8(b).ok()).unwrap_or("")
+    }
 }
 
 impl Default for ListInfo {
     fn default() -> Self {
-        ListInfo { ordered: false, level: 0, start: 1, list: 0, label: None }
+        ListInfo { ordered: false, level: 0, start: 1, list: 0, label: None, font: None }
     }
 }
 

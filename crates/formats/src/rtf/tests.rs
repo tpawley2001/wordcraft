@@ -1704,6 +1704,7 @@ fn compound_borders_round_trip() {
     assert_eq!(tops(&back), want);
 }
 
+mod legacy_pn;
 mod section_revisions;
 mod tabs_spacing;
 mod trailing_data;

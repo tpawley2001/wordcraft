@@ -1,6 +1,7 @@
 use super::export::HEAD_SIZES;
-use super::state::St;
+use super::state::{Pn, PnKind, St};
 use super::{Fmt, Kind, ListInfo, Para, Reader, model};
+use model::Label;
 
 impl Reader {
     pub(super) fn commit_style(&mut self) {
@@ -98,8 +99,41 @@ impl Reader {
             let lv = st.ilvl.min(8);
             let ordered = list.and_then(|l| l.get(lv as usize).copied()).unwrap_or(false);
             p.list = Some(ListInfo { ordered, level: lv, start: 1, ..Default::default() });
+        } else if let Some(pn) = st.pn.as_deref() {
+            p.list = self.pn_list(pn);
         }
         p
+    }
+
+    /// A Word 6.0/95 `{\*\pn …}` group as the paragraph's list level. A continuation has the
+    /// `none` format: it belongs to the list, but shows no label and doesn't advance its count.
+    fn pn_list(&self, pn: &Pn) -> Option<ListInfo> {
+        use wordcraft_doc::section::NumFormat;
+        let (ordered, level) = match pn.kind {
+            PnKind::None => return None,
+            PnKind::Bullet => (false, 0),
+            PnKind::Body | PnKind::Cont => (true, 0),
+            PnKind::Outline(n) => (true, n.saturating_sub(1).min(8)),
+        };
+        let format = if pn.kind == PnKind::Cont {
+            NumFormat::None
+        } else if ordered {
+            pn.format.unwrap_or(NumFormat::Decimal)
+        } else {
+            NumFormat::Bullet
+        };
+        let label = Label {
+            format,
+            prefix: model::Affix::new(&pn.before),
+            suffix: model::Affix::new(&pn.after),
+            shown: 1,
+            // Legacy numbering uses the paragraph's own indents, not gallery defaults.
+            indent: Some(0),
+            hanging: Some(0),
+            align: None,
+        };
+        let font = pn.font.and_then(|f| self.fonts.get(&f)).and_then(|f| model::LabelFont::new(f));
+        Some(ListInfo { ordered, level, start: pn.start.unwrap_or(1), list: 0, label: Some(label), font })
     }
 }
 
@@ -272,5 +306,54 @@ fn spacing(st: &St) -> model::Spacing {
         right: st.ri.map(pt),
         first: st.fi.map(pt),
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod legacy_numbering_tests {
+    use wordcraft_doc::{Block, numbering::Counters};
+
+    fn labels(body: &str) -> Vec<Option<String>> {
+        let doc = crate::rtf::import(format!("{{\\rtf1 {body}}}").as_bytes()).unwrap();
+        let mut counters = Counters::default();
+        doc.body
+            .iter()
+            .filter_map(|block| match &**block {
+                Block::Para(p) => Some(p.props.numbering.and_then(|n| counters.next_label(&doc.numbering, n.num, n.level)).map(|(text, _)| text)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn outline_parameter_and_default_start() {
+        let doc = crate::rtf::import(br"{\rtf1\pard{\*\pn\pnlvl3\pndec{\pntxta .}}a\par}").unwrap();
+        let Block::Para(p) = &**doc.body.first().unwrap() else { panic!("paragraph") };
+        assert_eq!(p.props.numbering.unwrap().level, 2);
+        assert_eq!(labels(r"\pard{\*\pn\pnlvlbody\pndec{\pntxta .}}a\par"), [Some("1.".into())]);
+    }
+
+    #[test]
+    fn unicode_label_and_paragraph_indents() {
+        let doc = crate::rtf::import(br"{\rtf1\pard\li240\fi-120{\*\pn\pnlvlblt{\pntxtb\u8226?}}a\par}").unwrap();
+        let Block::Para(p) = &**doc.body.first().unwrap() else { panic!("paragraph") };
+        assert_eq!(p.props.indent_left, Some(12.0));
+        assert_eq!(p.props.indent_first, Some(-6.0));
+        let n = p.props.numbering.unwrap();
+        let (text, level) = Counters::default().next_label(&doc.numbering, n.num, n.level).unwrap();
+        assert_eq!(text, "•");
+        assert_eq!((level.indent, level.hanging), (0.0, 0.0));
+    }
+
+    #[test]
+    fn bullet_continuation_and_format_change() {
+        assert_eq!(
+            labels(r"\pard{\*\pn\pnlvlblt{\pntxtb *}}a\par\pard{\*\pn\pnlvlcont}b\par\pard{\*\pn\pnlvlblt{\pntxtb *}}c\par"),
+            [Some("*".into()), None, Some("*".into())]
+        );
+        assert_eq!(
+            labels(r"\pard{\*\pn\pnlvlbody\pndec{\pntxta .}}a\par\pard{\*\pn\pnlvlbody\pnucrm{\pntxta .}}b\par"),
+            [Some("1.".into()), Some("I.".into())]
+        );
     }
 }

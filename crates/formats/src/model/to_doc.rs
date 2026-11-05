@@ -679,7 +679,7 @@ impl<'a> Builder<'a> {
         let num_levels = levels_for(ListKind::Numbered);
         let bul_levels = levels_for(ListKind::Bullet);
         let mut kinds: [Option<bool>; 9] = [None; 9];
-        for li in group {
+        for li in group.iter().filter(|li| !li.label.is_some_and(|l| l.format == wordcraft_doc::section::NumFormat::None)) {
             if let Some(k) = kinds.get_mut(li.level.min(8) as usize)
                 && k.is_none()
             {
@@ -688,7 +688,8 @@ impl<'a> Builder<'a> {
         }
         let mut starts: [Option<u32>; 9] = [None; 9];
         let mut labels: [Option<super::types::Label>; 9] = [None; 9];
-        for li in group {
+        let mut fonts: [Option<String>; 9] = Default::default();
+        for li in group.iter().filter(|li| !li.label.is_some_and(|l| l.format == wordcraft_doc::section::NumFormat::None)) {
             if let Some(s) = starts.get_mut(li.level.min(8) as usize)
                 && s.is_none()
             {
@@ -698,6 +699,11 @@ impl<'a> Builder<'a> {
                 && l.is_none()
             {
                 *l = li.label;
+            }
+            if let Some(f) = fonts.get_mut(li.level.min(8) as usize)
+                && f.is_none()
+            {
+                *f = li.font.map(|f| f.as_str().to_string());
             }
         }
         // Levels nobody used follow the first level's kind.
@@ -725,6 +731,9 @@ impl<'a> Builder<'a> {
                     }
                     _ => {}
                 }
+                if let Some(font) = fonts.get(i).and_then(|f| f.as_ref()) {
+                    level.chr.font = Some(font.clone());
+                }
                 if let Some(l) = labels.get(i).copied().flatten() {
                     if let Some((indent, hanging)) = l.position() {
                         (level.indent, level.hanging) = (indent, hanging);
@@ -744,6 +753,24 @@ impl<'a> Builder<'a> {
         nid
     }
 
+    /// A silent level shares its abstract list's counters without consuming a number.
+    fn silent_list(&mut self, num: u32, level: u8) -> u32 {
+        let numbering = Arc::make_mut(&mut self.doc.numbering);
+        let Some(source) = numbering.num(num) else { return num };
+        let abstract_id = source.abstract_id;
+        if let Some(existing) = numbering.nums.iter().find(|n| {
+            n.abstract_id == abstract_id
+                && n.level_overrides.iter().any(|(lv, def)| *lv == level && def.format == wordcraft_doc::section::NumFormat::None)
+        }) {
+            return existing.id;
+        }
+        let mut definition = numbering.level(num, level).cloned().unwrap_or_default();
+        definition.format = wordcraft_doc::section::NumFormat::None;
+        let id = numbering.nums.iter().map(|n| n.id).max().unwrap_or(0).saturating_add(1);
+        numbering.nums.push(Num { id, abstract_id, level_overrides: vec![(level, definition)], ..Default::default() });
+        id
+    }
+
     fn blocks(&mut self, blocks: &[FBlock], depth: usize) -> Blocks {
         let mut out = Blocks::new();
         let mut i = 0;
@@ -757,17 +784,27 @@ impl<'a> Builder<'a> {
                     let mut j = i;
                     let mut group: Vec<ListInfo> = Vec::new();
                     let mut top: Option<bool> = None;
+                    let mut labels = [None; 9];
                     let id = p.list.map_or(0, |l| l.list);
                     while let Some(FBlock::Para(q)) = blocks.get(j) {
                         let Some(li) = q.list else { break };
                         if li.list != id {
                             break;
                         }
-                        if li.level == 0 && id == 0 {
+                        if li.level == 0 && id == 0 && !li.label.is_some_and(|l| l.format == wordcraft_doc::section::NumFormat::None) {
                             if top.is_some_and(|o| o != li.ordered) {
                                 break;
                             }
                             top = Some(li.ordered);
+                        }
+                        if id == 0
+                            && let Some(label) = li.label.filter(|l| l.format != wordcraft_doc::section::NumFormat::None)
+                            && let Some(previous) = labels.get_mut(usize::from(li.level.min(8)))
+                        {
+                            if previous.is_some_and(|old| old != label) {
+                                break;
+                            }
+                            *previous = Some(label);
                         }
                         group.push(li);
                         j += 1;
@@ -784,7 +821,13 @@ impl<'a> Builder<'a> {
                     };
                     for q in blocks.get(i..j).unwrap_or(&[]) {
                         if let FBlock::Para(q) = q {
-                            let para = self.para(q, Some(num));
+                            let paragraph_num =
+                                if let Some(li) = q.list.filter(|li| li.label.is_some_and(|l| l.format == wordcraft_doc::section::NumFormat::None)) {
+                                    self.silent_list(num, li.level)
+                                } else {
+                                    num
+                                };
+                            let para = self.para(q, Some(paragraph_num));
                             out.push(para_block(para));
                         }
                     }

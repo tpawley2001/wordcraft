@@ -264,6 +264,7 @@ fn props_kind(doc: &Document, props: &ParaProps, blank: bool) -> (Kind, Option<L
             start: lv.start,
             list: n.num,
             label: Some(super::types::Label::of_level(lv.format, &lv.text).placed(lv.indent, lv.hanging, lv.align)),
+            font: None,
         })
     });
     (kind, list)
