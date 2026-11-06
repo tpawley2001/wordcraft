@@ -1,2 +1,4 @@
 max_width = 150
 use_small_heuristics = "Max"
+# Preserve module declaration order, including externally supplied test modules.
+reorder_modules = false
