@@ -28,6 +28,7 @@ mod ligatures;
 mod linked_pictures;
 mod list_items;
 mod malformed;
+mod missing_doc_defaults;
 mod nested_block_controls;
 mod nested_txbx;
 mod note_comments;
