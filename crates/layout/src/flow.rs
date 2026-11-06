@@ -308,12 +308,15 @@ impl<'a> Flow<'a> {
     /// that doesn't breaks as usual, its last lines going over with the next paragraph. Returns
     /// the space before applied (`before`, or what is left of it at the top of the next column).
     fn keep_together(&self, ctx: &mut Ctx, pb: &mut PageBuilder, rooms: Rooms, before: f32) -> f32 {
-        let rp = &self.pl.rp;
         let height = self.pl.height + rooms.top + rooms.bottom;
-        if !(rp.keep_lines || (rp.keep_next && pb.y + height <= pb.bottom + 0.01)) {
+        // A chain of kept paragraphs too long for an empty column flows like ordinary
+        // paragraphs, breaking at each column end (Word).
+        let keep_next = self.pl.rp.keep_next && !self.long_keep_chain(ctx, pb, height);
+        let rp = &self.pl.rp;
+        if !(rp.keep_lines || (keep_next && pb.y + height <= pb.bottom + 0.01)) {
             return before;
         }
-        let need = height + if rp.keep_next { next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone()) } else { 0.0 };
+        let need = height + if keep_next { next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone()) } else { 0.0 };
         // (Against the whole column: balanced columns grow to hold it.)
         // With the 0.01 pt of slack the other fit checks take.
         if pb.y + need > pb.bottom + 0.01 && !pb.fresh() && need <= pb.next_room(self.body_top) {
@@ -322,6 +325,55 @@ impl<'a> Flow<'a> {
             return rp.space_before.min(0.0);
         }
         before
+    }
+
+    /// Whether the keep-with-next chain this paragraph belongs to (the run of kept body
+    /// paragraphs and the room the paragraph after it needs to start), measured from its first
+    /// paragraph, would not fit in an empty column. Measured once a chain (and only until it is
+    /// known not to fit), so layout stays linear in the number of paragraphs.
+    fn long_keep_chain(&self, ctx: &mut Ctx, pb: &PageBuilder, height: f32) -> bool {
+        let room = pb.next_room(self.body_top);
+        let b = self.block;
+        let start = match ctx.keep_chain {
+            Some((start, last, _, _)) if start <= b && b <= last.saturating_add(1) => start,
+            _ => {
+                let mut start = b;
+                while start > 0 && kept_para(ctx.doc, start - 1) {
+                    start -= 1;
+                }
+                start
+            }
+        };
+        if let Some((s, last, r, long)) = ctx.keep_chain
+            && s == start
+            && (r - room).abs() < 0.01
+        {
+            ctx.keep_chain = Some((s, last.max(b), r, long));
+            return long;
+        }
+        let mut counters = ctx.counters.clone();
+        let mut total = 0.0;
+        let mut link = start;
+        let long = loop {
+            total += if link == b {
+                height
+            } else {
+                match chain_link(ctx, link, self.width, &mut counters, link == start) {
+                    Some(h) => h,
+                    None => break false,
+                }
+            };
+            if total > room + 0.01 {
+                break true;
+            }
+            if !kept_para(ctx.doc, link + 1) {
+                total += next_first_line(ctx, link, self.width, 0, &mut counters);
+                break total > room + 0.01;
+            }
+            link += 1;
+        };
+        ctx.keep_chain = Some((start, b, room, long));
+        long
     }
 
     /// The lines going into a new column (or page) were broken around the wrap areas where the
@@ -883,35 +935,7 @@ fn space_after_kept(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::Resolv
 fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counters: &mut Counters) -> f32 {
     match ctx.doc.body.get(block + 1).map(|b| &**b) {
         Some(Block::Para(p)) => {
-            // Keep list indents and label metrics without consuming the document counters.
-            let rp = ctx.doc.styles.resolve_para(&p.props);
-            let label =
-                p.props.numbering.or(rp.numbering).filter(|n| n.num != 0).and_then(|n| counters.next_label(&ctx.doc.numbering, n.num, n.level));
-            let pl = match ctx.para_ahead(p, width, label.clone()) {
-                Some(pl) => pl,
-                None => {
-                    let env = para::ParaEnv {
-                        doc: ctx.doc,
-                        width,
-                        label,
-                        fields: &ctx.fields,
-                        show_hidden: ctx.opts.show_hidden,
-                        field_codes: ctx.opts.field_codes,
-                        hide_deleted: ctx.opts.hides_deleted(StoryRef::Body),
-                        table: None,
-                        proofing: None,
-                        typing_word: None,
-                        numeral: ctx.opts.numeral,
-                        exclusions: &[],
-                        eq_number: ctx.eq_count,
-                        read_line_spacing: if ctx.opts.view == ViewMode::Read { ctx.opts.read_line_spacing } else { None },
-                        grid: ctx.grid,
-                        fit_objects: false,
-                        fitted: &[],
-                    };
-                    Arc::new(para::layout_para(p, &env))
-                }
-            };
+            let pl = para_ahead(ctx, p, width, counters);
             // Its border room, unless it joins the paragraph before (or after) in one box.
             let own = Edges::own(&pl, 0, pl.lines.len());
             let top = if joined(ctx.doc, &ctx.doc.body, block + 1, Some(block), None) { 0.0 } else { own.top };
@@ -939,5 +963,55 @@ fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counte
         }
         Some(Block::Table(_)) => 24.0,
         None => 0.0,
+    }
+}
+
+/// Whether body block `block` is a paragraph with keep with next.
+fn kept_para(doc: &Document, block: usize) -> bool {
+    matches!(doc.body.get(block).map(|b| &**b), Some(Block::Para(p)) if doc.styles.resolve_para(&p.props).keep_next)
+}
+
+/// The room kept body paragraph `block` takes in its chain, as [`next_first_line`] counts it (the
+/// chain's `first` paragraph without its space before, which is above the chain). None when it is
+/// not a paragraph.
+fn chain_link(ctx: &mut Ctx, block: usize, width: f32, counters: &mut Counters, first: bool) -> Option<f32> {
+    let Some(Block::Para(p)) = ctx.doc.body.get(block).map(|b| &**b) else { return None };
+    let pl = para_ahead(ctx, p, width, counters);
+    let own = Edges::own(&pl, 0, pl.lines.len());
+    let top = if block > 0 && joined(ctx.doc, &ctx.doc.body, block, Some(block - 1), None) { 0.0 } else { own.top };
+    let bottom = if joined(ctx.doc, &ctx.doc.body, block, Some(block + 1), None) { 0.0 } else { own.bottom };
+    let before = if first { 0.0 } else { pl.rp.space_before };
+    Some(before + top + pl.height + bottom + pl.rp.space_after)
+}
+
+/// Body paragraph `p` laid out ahead of the flow, for keep with next.
+fn para_ahead(ctx: &mut Ctx, p: &Paragraph, width: f32, counters: &mut Counters) -> Arc<ParaLayout> {
+    // Keep list indents and label metrics without consuming the document counters.
+    let rp = ctx.doc.styles.resolve_para(&p.props);
+    let label = p.props.numbering.or(rp.numbering).filter(|n| n.num != 0).and_then(|n| counters.next_label(&ctx.doc.numbering, n.num, n.level));
+    match ctx.para_ahead(p, width, label.clone()) {
+        Some(pl) => pl,
+        None => {
+            let env = para::ParaEnv {
+                doc: ctx.doc,
+                width,
+                label,
+                fields: &ctx.fields,
+                show_hidden: ctx.opts.show_hidden,
+                field_codes: ctx.opts.field_codes,
+                hide_deleted: ctx.opts.hides_deleted(StoryRef::Body),
+                table: None,
+                proofing: None,
+                typing_word: None,
+                numeral: ctx.opts.numeral,
+                exclusions: &[],
+                eq_number: ctx.eq_count,
+                read_line_spacing: if ctx.opts.view == ViewMode::Read { ctx.opts.read_line_spacing } else { None },
+                grid: ctx.grid,
+                fit_objects: false,
+                fitted: &[],
+            };
+            Arc::new(para::layout_para(p, &env))
+        }
     }
 }
