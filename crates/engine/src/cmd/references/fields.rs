@@ -72,8 +72,9 @@ pub(super) fn caption(s: &mut Session, v: &Value) -> CmdResult {
     sel_result(s)
 }
 
-/// Renumber the body's LISTNUM fields and SEQ fields in document order, honouring `\* format`, `\s level` (restart
-/// after each heading of that level), `\r n` (reset to n), `\c` (repeat) and `\h` (hide), and
+/// Renumber the body's LISTNUM fields and SEQ fields in document order. SEQ honours
+/// `\* format`, `\s level` (restart after each heading of that level), `\r n` (reset to n),
+/// `\c` (repeat) and `\h` (hide). LISTNUM uses shared level counters and `\l` / `\s`. Also
 /// fill body STYLEREF fields ([`wordcraft_layout::styleref`]): chapter numbers (`STYLEREF n \s`,
 /// the last level-n heading's number, or its count when the heading isn't numbered) and the
 /// text or number of the nearest paragraph of a style.
