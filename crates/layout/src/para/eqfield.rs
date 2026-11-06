@@ -247,10 +247,10 @@ impl Lay<'_, '_> {
                 let sign = self.tall_char('\u{221A}', size, (b.asc + b.desc, (b.asc - b.desc) / 2.0), 1.0);
                 let mut out = EqBox::default();
                 if let Some(i) = index {
-                    let ib = self.node(i, small);
+                    let ib = self.node(i, size);
                     // The index sits over the radical's left arm.
                     let lead = (ib.w - sign.w * 0.4).max(0.0);
-                    out.put(ib, 0.0, size * 0.45);
+                    out.put(ib, 0.0, size * 0.67);
                     out.w = lead;
                 }
                 out.append(sign);
