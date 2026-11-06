@@ -311,6 +311,7 @@ Table rows and cells inside `mc:AlternateContent` use the same selected-branch p
 
 > 2026-11-05 · P0066: RTF shape text imports into separate text-box stories, including fields and tabs, in body text and headers/footers. Placement, wrapping, fill/outline visibility and internal margins survive RTF export/import. Picture fallback behavior is unchanged; gap 19 narrowed, readiness estimates unchanged.
 > 2026-11-06 · P0070: `.doc` style ids are assigned once by istd, with built-in ids reserved first; case-colliding styles keep their own formatting, stored user names and base-style links. Readiness estimates unchanged.
+> 2026-11-06 · P0070: `.doc` style ids are assigned once by istd, with built-in ids reserved first; case-colliding styles keep their own formatting, stored user names and base-style links. An unspecified sti in a matching reserved heading slot retains the existing heading display name. Readiness estimates unchanged.
 
 > 2026-11-04 · P0058: story-level DOCX breaks start the next paragraph in the same container; tables and container ends discard pending breaks. Synthetic import and save/reopen coverage; readiness estimates unchanged.
 > 2026-11-04 · P0061: `.doc`: each section's page number format (`sprmSNfcPgn` 0x300E: Arabic, upper/lower Roman, upper/lower letter), restart flag (`sprmSFPgnRestart` 0x3011) and start value (`sprmSPgnStart97` 0x501C, previously looked for under 0x300C) are read; without the restart flag numbering continues, as in Word. Front matter numbered i, ii, iii and a body restarting at 1 now number as in Word

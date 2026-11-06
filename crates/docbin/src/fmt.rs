@@ -583,7 +583,7 @@ pub(crate) fn stylesheet(
                 para.outline_level = Some(h - 1);
             }
         }
-        sheet.styles.push(Style { id, name: display_name(st), kind, based_on: base, chr, para, ..Default::default() });
+        sheet.styles.push(Style { id, name: display_name(st, istd), kind, based_on: base, chr, para, ..Default::default() });
     }
     sheet
 }
@@ -679,13 +679,16 @@ fn heading_level(name: &str) -> u8 {
     lower.strip_prefix("heading ").and_then(|d| d.parse().ok()).filter(|&l: &u8| (1..=9).contains(&l)).unwrap_or(0)
 }
 
-fn display_name(st: &crate::stsh::RawStyle) -> String {
+fn display_name(st: &crate::stsh::RawStyle, istd: usize) -> String {
     let name = &st.name;
-    if st.sti >= 0x0FFE {
-        return name.clone();
-    }
     let lower = name.trim().to_ascii_lowercase();
     let h = heading_level(&lower);
+    // STSH reserves istd 1–9 for the corresponding headings ([MS-DOC] §2.9.271).
+    // Tolerate an unspecified sti there when the name agrees with the reserved slot.
+    let fixed_heading = st.sti == 0x0FFF && h > 0 && istd == usize::from(h);
+    if st.sti >= 0x0FFE && !fixed_heading {
+        return name.clone();
+    }
     if h > 0 {
         return format!("Heading {h}");
     }
@@ -730,10 +733,20 @@ mod style_id_tests {
         ];
         let ids = style_ids(&raw);
         assert_eq!(ids, [Some("Heading 1 2".into()), Some("Heading 1 2 2".into()), Some("Heading 1".into()), Some("HEADING 1 3".into()), None]);
-        assert_eq!(display_name(&raw[0]), "Heading 1");
-        assert_eq!(display_name(&raw[1]), "heading 1 2");
-        assert_eq!(display_name(&raw[2]), "Heading 1");
-        assert_eq!(display_name(&raw[3]), "HEADING 1");
+        assert_eq!(display_name(&raw[0], 0), "Heading 1");
+        assert_eq!(display_name(&raw[1], 1), "heading 1 2");
+        assert_eq!(display_name(&raw[2], 2), "Heading 1");
+        assert_eq!(display_name(&raw[3], 3), "HEADING 1");
+    }
+
+    #[test]
+    fn user_heading_names_are_preserved_outside_unspecified_fixed_headings() {
+        let mut st = RawStyle { sti: 0x0FFE, name: "heading 1".into(), ..Default::default() };
+        assert_eq!(display_name(&st, 1), "heading 1");
+        st.sti = 0x0FFF;
+        assert_eq!(display_name(&st, 15), "heading 1");
+        assert_eq!(display_name(&st, 2), "heading 1");
+        assert_eq!(display_name(&st, 1), "Heading 1");
     }
 
     #[test]
