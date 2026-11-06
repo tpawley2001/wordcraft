@@ -38,7 +38,7 @@ mod tests {
 
     fn session(table: Table, path: Vec<u32>) -> Session {
         let mut doc = Document::new();
-        doc.body.insert(0, Block::Table(table));
+        doc.body.insert(0, Block::Table(table).into());
         let mut s = Session::new(doc);
         s.sel = Selection::caret(Pos { story: StoryRef::Body, path: Path(path), off: 0 });
         s
@@ -65,7 +65,7 @@ mod tests {
     #[test]
     fn all_four_moves_stay_in_the_innermost_table() {
         let mut outer = Table::new(3, 4, 400.0);
-        outer.rows[1].cells[1].blocks.insert(0, Block::Table(Table::new(3, 4, 300.0)));
+        outer.rows[1].cells[1].blocks.insert(0, Block::Table(Table::new(3, 4, 300.0)).into());
         let mut s = session(outer, vec![0, 1, 1, 0, 1, 1, 0]);
         for (id, r, c) in
             [("table.firstCellInRow", 1, 0), ("table.lastCellInRow", 1, 3), ("table.firstCellInColumn", 0, 1), ("table.lastCellInColumn", 2, 1)]
