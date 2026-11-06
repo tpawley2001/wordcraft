@@ -264,7 +264,8 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
         doc.core = core;
     }
     doc.body.clear();
-    doc.styles = Arc::new(fmt::stylesheet(&raw_styles, &fonts, standard_fonts));
+    let style_ids = fmt::style_ids(&raw_styles);
+    doc.styles = Arc::new(fmt::stylesheet(&raw_styles, &style_ids, &fonts, standard_fonts));
     doc.numbering = Arc::new(list::parse(&table, &fib, &fonts));
     let sheet: StyleSheet = StyleSheet::clone(&doc.styles);
     let sects = sections::parse(&word, &table, &fib);
@@ -295,6 +296,7 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
         papx_bins: &papx_bins,
         fonts: &fonts,
         raw_styles: &raw_styles,
+        style_ids: &style_ids,
         sheet: &sheet,
         notes: &[],
         marks: &[],
@@ -447,6 +449,7 @@ struct WalkCtx<'a> {
     papx_bins: &'a Bins,
     fonts: &'a [String],
     raw_styles: &'a [stsh::RawStyle],
+    style_ids: &'a [Option<String>],
     sheet: &'a StyleSheet,
     /// (reference CP in the main document, kind, part id) for notes.
     notes: &'a [(u32, NoteKind, u32)],
@@ -563,9 +566,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 // querying at the mark's own FC finds that paragraph's properties.
                 let fc_mark = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
                 let (istd, papx) = ctx.papx_bins.papx(ctx.word, fc_mark);
-                if let Some(st) = ctx.raw_styles.get(istd as usize).filter(|s| !s.name.is_empty()) {
-                    pb.props.style = Some(fmt::style_id(&st.name));
-                }
+                pb.props.style = ctx.style_ids.get(usize::from(istd)).and_then(Clone::clone);
                 let mut row = table::decode(papx);
                 row.cell_mark = c == '\u{7}';
                 let mut ilvl = 0u8;
@@ -594,7 +595,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     pb.props.numbering = Some(NumRef { num, level: ilvl });
                 }
                 let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
-                pb.mark = char_props(ctx.chpx_bins.chpx(ctx.word, fc), ctx.fonts, &CharProps::default(), ctx.raw_styles);
+                pb.mark = char_props(ctx.chpx_bins.chpx(ctx.word, fc), ctx.fonts, &CharProps::default(), ctx.raw_styles, ctx.style_ids);
                 let done = std::mem::take(&mut pb);
                 out.push(ParaOut {
                     para: Paragraph {
@@ -870,7 +871,7 @@ fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, f
                     &default
                 }
             };
-            let mut props = char_props(grpprl, ctx.fonts, base, ctx.raw_styles);
+            let mut props = char_props(grpprl, ctx.fonts, base, ctx.raw_styles, ctx.style_ids);
             apply_prm(&mut props, ctx.pieces.piece_prm(cp), ctx.fonts, base, ctx.work);
             *memo = Some(FmtMemo { chpx: grpprl, prm, style: style.map(str::to_owned), props: props.clone() });
             props
@@ -940,7 +941,7 @@ fn apply_prm(props: &mut CharProps, prm: PrmRef<'_>, fonts: &[String], base: &Ch
 }
 
 /// Character props from a CHPX grpprl applied over `base`.
-fn char_props(grpprl: &[u8], fonts: &[String], base: &CharProps, raw_styles: &[stsh::RawStyle]) -> CharProps {
+fn char_props(grpprl: &[u8], fonts: &[String], base: &CharProps, raw_styles: &[stsh::RawStyle], style_ids: &[Option<String>]) -> CharProps {
     let mut p = base.clone();
     for prl in sprm::iter(grpprl) {
         if prl.op == fmt::C_ISTD {
@@ -949,7 +950,11 @@ fn char_props(grpprl: &[u8], fonts: &[String], base: &CharProps, raw_styles: &[s
             p.style = match prl.operand {
                 [lo, hi] => {
                     let istd = u16::from_le_bytes([*lo, *hi]);
-                    raw_styles.get(usize::from(istd)).filter(|s| istd != 10 && s.stk == 2 && !s.name.is_empty()).map(|s| fmt::style_id(&s.name))
+                    raw_styles
+                        .get(usize::from(istd))
+                        .filter(|s| istd != 10 && s.stk == 2)
+                        .and_then(|_| style_ids.get(usize::from(istd)))
+                        .and_then(Clone::clone)
                 }
                 _ => None,
             };
@@ -984,7 +989,7 @@ mod character_style_tests {
         // Toggle operands keep (0x80) or invert (0x81) the existing paragraph base,
         // regardless of whether the character-style reference precedes them.
         for grpprl in [&[0x30, 0x4A, 0, 0, 0x35, 0x08, 0x81, 0x36, 0x08, 0x80][..], &[0x35, 0x08, 0x81, 0x36, 0x08, 0x80, 0x30, 0x4A, 0, 0][..]] {
-            let props = char_props(grpprl, &[], &base, &styles);
+            let props = char_props(grpprl, &[], &base, &styles, &fmt::style_ids(&styles));
             assert_eq!(props.style.as_deref(), Some("Emphasis"));
             assert_eq!(props.bold, Some(false));
             assert_eq!(props.italic, Some(false));
@@ -993,7 +998,7 @@ mod character_style_tests {
 
     #[test]
     fn character_style_reference_validates_kind_name_and_default_index() {
-        let mut styles = vec![stsh::RawStyle { stk: 2, name: "custom emphasis".into(), ..Default::default() }; 11];
+        let mut styles = vec![stsh::RawStyle { sti: 0x0FFF, stk: 2, name: "custom emphasis".into(), ..Default::default() }; 11];
         for (istd, stk, name) in
             [(0u16, 1, "Normal"), (1, 2, "custom emphasis"), (2, 3, "Table"), (3, 4, "List"), (4, 2, ""), (10, 2, "Default Paragraph Font")]
         {
@@ -1001,13 +1006,13 @@ mod character_style_tests {
             // Direct italic precedes the style; direct bold follows it.
             let [lo, hi] = istd.to_le_bytes();
             let grpprl = [0x36, 0x08, 1, 0x30, 0x4A, lo, hi, 0x35, 0x08, 1];
-            let props = char_props(&grpprl, &[], &CharProps::default(), &styles);
+            let props = char_props(&grpprl, &[], &CharProps::default(), &styles, &fmt::style_ids(&styles));
             assert_eq!(props.style, (istd == 1).then(|| fmt::style_id(name)));
             assert_eq!(props.italic, Some(true));
             assert_eq!(props.bold, Some(true));
         }
         for grpprl in [&[0x30, 0x4A, 1][..], &[0x30, 0x4A, 0xFF, 0xFF][..]] {
-            assert_eq!(char_props(grpprl, &[], &CharProps::default(), &styles).style, None);
+            assert_eq!(char_props(grpprl, &[], &CharProps::default(), &styles, &fmt::style_ids(&styles)).style, None);
         }
     }
 }

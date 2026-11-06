@@ -544,7 +544,12 @@ pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
 
 /// Build the model stylesheet: resolve each raw style's chain (base → this) and the ids we
 /// reference from paragraphs.
-pub(crate) fn stylesheet(raw: &[crate::stsh::RawStyle], fonts: &[String], standard: crate::stsh::StandardFonts) -> StyleSheet {
+pub(crate) fn stylesheet(
+    raw: &[crate::stsh::RawStyle],
+    ids: &[Option<String>],
+    fonts: &[String],
+    standard: crate::stsh::StandardFonts,
+) -> StyleSheet {
     let mut sheet = StyleSheet::empty();
     // Word's base character properties: the stylesheet's standard fonts (Aptos in a Word 365
     // file, whose font table still starts with Times New Roman, #5066), else font index 0 of the
@@ -557,17 +562,14 @@ pub(crate) fn stylesheet(raw: &[crate::stsh::RawStyle], fonts: &[String], standa
         sheet.default_chr.size = Some(10.0);
     }
     for (istd, st) in raw.iter().enumerate() {
-        if st.name.is_empty() {
-            continue;
-        }
-        let id = style_id(&st.name);
+        let Some(id) = ids.get(istd).and_then(Clone::clone) else { continue };
         let kind = match st.stk {
             2 => StyleKind::Character,
             3 => StyleKind::Table,
             4 => StyleKind::Numbering,
             _ => StyleKind::Paragraph,
         };
-        let base = base_of(raw, istd).and_then(|i| raw.get(i)).map(|b| style_id(&b.name));
+        let base = base_of(raw, istd).and_then(|i| ids.get(i)).and_then(Clone::clone);
         // Inherit: properties come from the base chain, root first, then our own grpprls.
         let mut chr = CharProps::default();
         let mut para = ParaProps::default();
@@ -581,7 +583,7 @@ pub(crate) fn stylesheet(raw: &[crate::stsh::RawStyle], fonts: &[String], standa
                 para.outline_level = Some(h - 1);
             }
         }
-        sheet.styles.push(Style { id, name: display_name(&st.name), kind, based_on: base, chr, para, ..Default::default() });
+        sheet.styles.push(Style { id, name: display_name(st), kind, based_on: base, chr, para, ..Default::default() });
     }
     sheet
 }
@@ -612,6 +614,29 @@ fn style_chain(raw: &[crate::stsh::RawStyle], istd: usize) -> Vec<usize> {
     }
     chain.reverse();
     chain
+}
+
+/// Stable ids indexed by istd. Reserve built-in names before assigning user-style ids.
+pub(crate) fn style_ids(raw: &[crate::stsh::RawStyle]) -> Vec<Option<String>> {
+    let mut ids = vec![None; raw.len()];
+    let mut taken = std::collections::HashSet::new();
+    for built_in in [true, false] {
+        for (st, slot) in raw.iter().zip(ids.iter_mut()) {
+            if st.name.is_empty() || (st.sti < 0x0FFE) != built_in {
+                continue;
+            }
+            let base = style_id(&st.name);
+            // At most raw.len() - 1 ids have been assigned, so one candidate must be free.
+            for suffix in 1..=raw.len() {
+                let id = if suffix == 1 { base.clone() } else { format!("{base} {suffix}") };
+                if taken.insert(id.to_ascii_lowercase()) {
+                    *slot = Some(id);
+                    break;
+                }
+            }
+        }
+    }
+    ids
 }
 
 /// The style-id form of a stored (lower-case) built-in name, matching the docx reader's ids.
@@ -654,7 +679,11 @@ fn heading_level(name: &str) -> u8 {
     lower.strip_prefix("heading ").and_then(|d| d.parse().ok()).filter(|&l: &u8| (1..=9).contains(&l)).unwrap_or(0)
 }
 
-fn display_name(name: &str) -> String {
+fn display_name(st: &crate::stsh::RawStyle) -> String {
+    let name = &st.name;
+    if st.sti >= 0x0FFE {
+        return name.clone();
+    }
     let lower = name.trim().to_ascii_lowercase();
     let h = heading_level(&lower);
     if h > 0 {
@@ -682,5 +711,42 @@ fn apply_chain_para(para: &mut ParaProps, grpprl: &[u8]) {
         if prl.sgc() == 1 {
             apply_para(para, &prl);
         }
+    }
+}
+
+#[cfg(test)]
+mod style_id_tests {
+    use super::*;
+    use crate::stsh::RawStyle;
+
+    #[test]
+    fn built_ins_reserve_ids_before_user_styles() {
+        let raw = [
+            RawStyle { sti: 0x0FFE, name: "Heading 1".into(), ..Default::default() },
+            RawStyle { sti: 0x0FFF, name: "heading 1 2".into(), ..Default::default() },
+            RawStyle { sti: 1, name: "heading 1".into(), ..Default::default() },
+            RawStyle { sti: 0x0FFF, name: "HEADING 1".into(), ..Default::default() },
+            RawStyle::default(),
+        ];
+        let ids = style_ids(&raw);
+        assert_eq!(ids, [Some("Heading 1 2".into()), Some("Heading 1 2 2".into()), Some("Heading 1".into()), Some("HEADING 1 3".into()), None]);
+        assert_eq!(display_name(&raw[0]), "Heading 1");
+        assert_eq!(display_name(&raw[1]), "heading 1 2");
+        assert_eq!(display_name(&raw[2]), "Heading 1");
+        assert_eq!(display_name(&raw[3]), "HEADING 1");
+    }
+
+    #[test]
+    fn character_references_use_distinct_ids() {
+        let raw = [
+            RawStyle { sti: 0x0FFF, stk: 2, name: "Emphasis".into(), ..Default::default() },
+            RawStyle { sti: 0x0FFF, stk: 2, name: "emphasis".into(), ..Default::default() },
+        ];
+        let ids = style_ids(&raw);
+        let base = CharProps::default();
+        let first = crate::char_props(&[0x30, 0x4A, 0, 0], &[], &base, &raw, &ids);
+        let second = crate::char_props(&[0x30, 0x4A, 1, 0], &[], &base, &raw, &ids);
+        assert_eq!(first.style.as_deref(), Some("Emphasis"));
+        assert_eq!(second.style.as_deref(), Some("Emphasis 2"));
     }
 }
