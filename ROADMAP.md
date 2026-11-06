@@ -1,5 +1,6 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-06 · **Change:** trivial (P0077: body LISTNUM fields share nine level counters on F9 and output, with heading-derived levels, start-at and NumberDefault/LegalDefault/OutlineDefault formats; locked fields do not count. Insert LISTNUM and Repeat Find use Ctrl+Alt+L/Y on Windows/Linux. Readiness estimates unchanged.)
 > **Highlight update:** 2026-10-25 · Highlight shortcut toggles the last chosen colour off when the whole selection has it; explicit colour commands remain setters (#4085). Readiness estimates unchanged.
 
 **Stage: alpha** · next: beta, ~15 points (60% → 75% ready for real work) and ~150–230 h away
@@ -145,6 +146,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 ## Progress log
 
 - 2026-11-06: P0076: Ctrl+F6 / Alt+F6 and Ctrl+Shift+F6 / Alt+Shift+F6 cycle document windows in opening order; Ctrl+Shift+Q applies Symbol in one undo step (Linux/Windows; no default keys on macOS). Readiness unchanged.
+- 2026-11-06: P0077: body LISTNUM fields share nine level counters on F9 and output, with heading-derived levels, start-at and NumberDefault/LegalDefault/OutlineDefault formats; locked fields do not count. Insert LISTNUM and Repeat Find use Ctrl+Alt+L/Y on Windows/Linux. Readiness estimates unchanged.
 
 - 2026-11-06: P0073: EQ radical indices use the field size with their baseline 0.67 em above the radicand; unindexed radicals unchanged; readiness estimates unchanged.
 - 2026-11-06: P0074: unthemed DOCX packages without `w:docDefaults` and without an explicit compatibility mode below 15 use Aptos 12 pt, 278/240 line spacing and 8 pt after; explicit defaults and formatting overrides remain intact; application-defined defaults stay implicit across repeated saves.
@@ -836,6 +838,8 @@ Section page-numbering settings preserve `w:chapStyle` values across the full un
 MATH glyphs that reference the same construction now share its immutable variants and assembly data (#3630). Glyph mappings, values and the existing partial-record fallback stay unchanged. Repeated glyph IDs keep their last valid reference without retaining superseded constructions. Distinct overlapping constructions and assembly-only sharing remain separate.
 
 ## Revision history
+
+> 2026-11-06 · P0077: body LISTNUM fields share nine level counters on F9 and output, with heading-derived levels, start-at and NumberDefault/LegalDefault/OutlineDefault formats; locked fields do not count. Insert LISTNUM and Repeat Find use Ctrl+Alt+L/Y on Windows/Linux. Readiness estimates unchanged.
 
 > 2026-11-06 · P0073: EQ radical indices use the field size with their baseline 0.67 em above the radicand; unindexed radicals unchanged; readiness estimates unchanged.
 | 2026-11-06 | trivial | P0074: unthemed DOCX packages without `w:docDefaults` and without an explicit compatibility mode below 15 use Aptos 12 pt, 278/240 line spacing and 8 pt after; explicit defaults and formatting overrides remain intact; application-defined defaults stay implicit across repeated saves. |
