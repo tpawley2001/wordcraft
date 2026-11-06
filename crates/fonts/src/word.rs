@@ -227,6 +227,7 @@ pub fn missing_font_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)
 /// rest of the line (its Carlito substitute is 1.2207 em).
 /// Tahoma: `/Ascent` 1000, `/Descent` -207; 12 pt lines 14.43 pt apart (1.207 em).
 /// Lucida Bright: `/Ascent` 967, `/Descent` -205; 18 pt lines 21.12 pt apart (1.172 em).
+/// Aptos and Aptos Display: `/Ascent` 939, `/Descent` -282; 11 pt at 1.1 lines is 14.76 pt apart.
 fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
     match family.trim().to_ascii_lowercase().as_str() {
         "lucida console" => Some((0.789, 0.211)),
@@ -234,6 +235,7 @@ fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
         "franklin gothic book" => Some((0.917, 0.213)),
         "tahoma" => Some((1.0, 0.207)),
         "lucida bright" => Some((0.967, 0.205)),
+        "aptos" | "aptos display" => Some((0.939, 0.282)),
         _ => None,
     }
 }
