@@ -216,16 +216,23 @@ fn read_opened_in(pkg: &Package, chunks: ChunkState) -> Result<(Document, usize,
     if let Some(p) = part(rt::SETTINGS) {
         r.read_color_mapping(&p);
     }
+    let mut has_doc_defaults = false;
     if let Some(p) = part(rt::STYLES) {
-        lenient("styles", r.read_styles(&p));
+        // An unreadable styles part does not establish that defaults were omitted.
+        has_doc_defaults = true;
+        lenient("styles", r.read_styles(&p).map(|present| has_doc_defaults = present));
     }
     if let Some(p) = part(rt::NUMBERING) {
         lenient("numbering", r.read_numbering(&p));
     }
     // Without a stated mode (or settings at all) Word lays a document out as Word 2007 did.
     r.doc.settings.compat_mode = wordcraft_doc::LEGACY_COMPAT_MODE;
+    let mut explicit_mode = None;
     if let Some(p) = part(rt::SETTINGS) {
-        lenient("settings", r.read_settings(&p));
+        lenient("settings", r.read_settings(&p).map(|mode| explicit_mode = mode));
+    }
+    if !has_doc_defaults && part(rt::THEME).is_none() && explicit_mode.is_none_or(|mode| mode >= 15) {
+        r.apply_missing_doc_defaults();
     }
     // Comments before notes: a comment range inside a footnote or endnote resolves its id against
     // the comments already read, and was dropped when the notes came first.

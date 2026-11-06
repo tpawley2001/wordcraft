@@ -22,28 +22,38 @@ pub(super) fn styles_xml(doc: &Document) -> Vec<u8> {
     let ns = xml::body_ns();
     let ns_refs: Vec<(&str, &str)> = ns.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
     w.open("w:styles", &ns_refs);
-    w.open("w:docDefaults", &[]);
-    w.open("w:rPrDefault", &[]);
-    w.open("w:rPr", &[]);
-    if s.default_chr.size.is_none() {
-        // The reader reads an omitted `w:sz` as 10 pt, but the resolver falls back to
-        // DEFAULT_FONT_SIZE, so writing nothing would change the size on reopening.
-        let mut chr = s.default_chr.clone();
-        chr.size = Some(wordcraft_doc::props::DEFAULT_FONT_SIZE);
-        props::rpr_inner(&mut w, &chr);
-    } else {
-        props::rpr_inner(&mut w, &s.default_chr);
+    // Keep application-defined defaults omitted until the user edits them. Once edited,
+    // write their effective base too, since an explicit element disables the fallback.
+    if !s.builtin_word_defaults
+        || s.default_chr != wordcraft_doc::props::CharProps::default()
+        || s.default_para_present
+        || s.default_para != wordcraft_doc::props::ParaProps::default()
+    {
+        let defaults_chr = s.effective_default_chr();
+        let defaults_para = s.effective_default_para();
+        w.open("w:docDefaults", &[]);
+        w.open("w:rPrDefault", &[]);
+        w.open("w:rPr", &[]);
+        if defaults_chr.size.is_none() {
+            // The reader reads an omitted `w:sz` as 10 pt, but the resolver falls back to
+            // DEFAULT_FONT_SIZE, so writing nothing would change the size on reopening.
+            let mut chr = defaults_chr.clone();
+            chr.size = Some(wordcraft_doc::props::DEFAULT_FONT_SIZE);
+            props::rpr_inner(&mut w, &chr);
+        } else {
+            props::rpr_inner(&mut w, &defaults_chr);
+        }
+        w.close("w:rPr");
+        w.close("w:rPrDefault");
+        if s.builtin_word_defaults || s.default_para_present || s.default_para != wordcraft_doc::props::ParaProps::default() {
+            w.open("w:pPrDefault", &[]);
+            w.open("w:pPr", &[]);
+            props::ppr_inner(&mut w, &defaults_para, false, None);
+            w.close("w:pPr");
+            w.close("w:pPrDefault");
+        }
+        w.close("w:docDefaults");
     }
-    w.close("w:rPr");
-    w.close("w:rPrDefault");
-    if s.default_para_present || s.default_para != wordcraft_doc::props::ParaProps::default() {
-        w.open("w:pPrDefault", &[]);
-        w.open("w:pPr", &[]);
-        props::ppr_inner(&mut w, &s.default_para, false, None);
-        w.close("w:pPr");
-        w.close("w:pPrDefault");
-    }
-    w.close("w:docDefaults");
     if let Some(latent) = s.latent_styles.as_deref() {
         w.raw(latent);
     }

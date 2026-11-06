@@ -4,8 +4,9 @@ use super::{
 };
 
 impl Reader<'_> {
-    pub(super) fn read_settings(&mut self, path: &str) -> Result<(), DocxError> {
-        let Some(root) = self.xml(path)? else { return Ok(()) };
+    pub(super) fn read_settings(&mut self, path: &str) -> Result<Option<u32>, DocxError> {
+        let Some(root) = self.xml(path)? else { return Ok(None) };
+        let mut explicit_mode = None;
         // The drawing grid's display elements are absent from most files, and absent means 1, not
         // the blank document's 0/2: start from the schema's defaults and let the file say.
         self.doc.settings.grid_every_h = 1;
@@ -39,6 +40,7 @@ impl Reader<'_> {
                         })
                         .and_then(|c| c.attr("w:val"));
                     if let Some(m) = mode.and_then(u32_of) {
+                        explicit_mode = Some(m);
                         s.compat_mode = m.clamp(11, 99);
                     }
                     s.sum_paragraph_spacing = k.children("w:doNotUseHTMLParagraphAutoSpacing").any(on_off);
@@ -111,7 +113,7 @@ impl Reader<'_> {
                 _ => {}
             }
         }
-        Ok(())
+        Ok(explicit_mode)
     }
 
     pub(super) fn read_notes(&mut self, path: &str, foot: bool) -> Result<(), DocxError> {

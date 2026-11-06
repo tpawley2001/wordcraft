@@ -158,8 +158,12 @@ fn write_compatibility_settings(w: &mut W, doc: &Document) {
     if doc.settings.allow_space_of_same_style_in_table {
         w.empty("w:allowSpaceOfSameStyleInTable", &[]);
     }
-    let mode = doc.settings.compat_mode.clamp(11, 15).to_string();
-    w.empty("w:compatSetting", &[("w:name", "compatibilityMode"), ("w:uri", "http://schemas.microsoft.com/office/word"), ("w:val", &mode)]);
+    // An absent source mode uses legacy layout internally, but must stay absent so
+    // reopening still selects the application-defined document defaults.
+    if !doc.styles.builtin_word_defaults || doc.settings.compat_mode >= 15 {
+        let mode = doc.settings.compat_mode.clamp(11, 15).to_string();
+        w.empty("w:compatSetting", &[("w:name", "compatibilityMode"), ("w:uri", "http://schemas.microsoft.com/office/word"), ("w:val", &mode)]);
+    }
     w.close("w:compat");
 }
 

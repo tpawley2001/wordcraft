@@ -52,10 +52,10 @@ fn builtin_heading_level(name: &str) -> Option<u8> {
 }
 
 impl Reader<'_> {
-    pub(super) fn read_styles(&mut self, path: &str) -> Result<(), DocxError> {
+    pub(super) fn read_styles(&mut self, path: &str) -> Result<bool, DocxError> {
         /// Largest `w:latentStyles` kept (Word's has ~380 exceptions, ~40 KB).
         const MAX_LATENT_STYLES_XML: usize = 1 << 20;
-        let Some(root) = self.xml(path)? else { return Ok(()) };
+        let Some(root) = self.xml(path)? else { return Ok(false) };
         // The default paragraph style must be called `Normal` in our model.
         let has_normal = root.children("w:style").any(|s| s.attr("w:styleId") == Some("Normal"));
         if !has_normal
@@ -205,7 +205,19 @@ impl Reader<'_> {
             sheet.add_default_gallery();
         }
         self.doc.styles = Arc::new(sheet);
-        Ok(())
+        Ok(root.child("w:docDefaults").is_some())
+    }
+
+    /// ECMA-376 §17.7.5.1 leaves omitted document defaults to the application.
+    /// Current Word uses these values for unthemed files without an older explicit mode.
+    pub(super) fn apply_missing_doc_defaults(&mut self) {
+        let sheet = Arc::make_mut(&mut self.doc.styles);
+        // Discard the reader's 10 pt or new-document fallbacks, not source formatting:
+        // this path is entered only when the entire docDefaults element was absent.
+        sheet.default_chr = Default::default();
+        sheet.default_para = Default::default();
+        sheet.default_para_present = false;
+        sheet.builtin_word_defaults = true;
     }
 
     /// A table style's table-level formatting and conditional formats. The `wholeTable` region

@@ -476,6 +476,10 @@ pub struct StyleSheet {
     /// Preserve an explicit `w:pPrDefault`, even when empty. Omission leaves defaults to
     /// the application; nonempty `default_para` is always written after spacing edits.
     pub default_para_present: bool,
+    /// Apply current Word defaults beneath explicit properties for an unthemed DOCX
+    /// that omitted `w:docDefaults` and did not request an older compatibility mode.
+    #[serde(default)]
+    pub builtin_word_defaults: bool,
     pub styles: Vec<Style>,
     /// The file's `w:latentStyles` (behaviour of built-in styles not defined in the document:
     /// gallery, priority, visibility), as XML, written back as is.
@@ -511,6 +515,7 @@ impl StyleSheet {
             default_chr: CharProps::default(),
             default_para: ParaProps::default(),
             default_para_present: true,
+            builtin_word_defaults: false,
             styles: Vec::new(),
             latent_styles: None,
         }
@@ -528,6 +533,7 @@ impl StyleSheet {
                 ..para()
             },
             default_para_present: true,
+            builtin_word_defaults: false,
             styles: Vec::new(),
             latent_styles: None,
         };
