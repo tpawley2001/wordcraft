@@ -72,6 +72,9 @@ pub(crate) struct Ctx<'a> {
     /// Items re-placed as repeated table header rows so far, in the whole layout (see
     /// [`MAX_HEADER_ITEMS`]).
     pub(crate) header_repeats: usize,
+    /// The keep-with-next chain last looked at: its first and latest body paragraphs, the empty
+    /// column it was measured against, and whether it is too long for it ([`Flow::keep_together`]).
+    pub(crate) keep_chain: Option<(usize, usize, f32, bool)>,
 }
 
 struct ParaEnvInput<'a> {

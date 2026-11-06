@@ -110,6 +110,7 @@ fn new_ctx<'a>(
         hf: Arc::new(HfLinks::new(doc.sections())),
         alphas: Default::default(),
         header_repeats: 0,
+        keep_chain: None,
     }
 }
 
