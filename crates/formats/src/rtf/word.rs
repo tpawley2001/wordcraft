@@ -11,7 +11,7 @@ impl Reader {
         self.finish_multibyte();
         let on = p != Some(0);
         let pv = p.unwrap_or(0);
-        if self.skip_destination_word(w, pv) {
+        if self.skip_destination_word(w, pv, first_in_group) {
             return;
         }
         if self.shape_word(w, p, starred) {
@@ -329,10 +329,14 @@ impl Reader {
             "fldinst" => Some(Dest::FldInst),
             // Transparent wrapper: read the nested pict without changing the destination.
             "pict" => Some(Dest::Pict),
+            // An object's `{\result …}` is what Word shows for it; the rest of the object is
+            // control data, skipped below.
+            "object" => Some(Dest::Object),
+            "result" if self.st.dest == Dest::Object => Some(Dest::Body),
             "bkmkstart" => Some(Dest::Bookmark),
             "header" | "footer" | "headerl" | "headerr" | "headerf" | "footerl" | "footerr" | "footerf" | "footnote" | "annotation" | "pntext"
-            | "listtext" | "object" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "bkmkend" | "atnid" | "atnauthor" | "comment" | "shpinst"
-            | "do" | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
+            | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "bkmkend" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
+            | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
             | "rsidtbl" | "generator" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb"
             | "fontfile" | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl" => Some(Dest::Skip),
@@ -383,7 +387,7 @@ impl Reader {
     fn destination_word(&mut self, word: &str, param: Option<i32>, on: bool, value: i32) -> bool {
         match self.st.dest {
             Dest::ShapeInst | Dest::ShapeName | Dest::ShapeValue => true,
-            Dest::Skip => {
+            Dest::Skip | Dest::Object => {
                 if self.in_creatim {
                     self.record_created_part(word, value);
                 }
@@ -557,10 +561,19 @@ impl Reader {
         }
     }
 
-    fn skip_destination_word(&mut self, word: &str, value: i32) -> bool {
+    fn skip_destination_word(&mut self, word: &str, value: i32, first_in_group: bool) -> bool {
         let kept_info = self.in_info() && matches!(word, "title" | "author" | "subject" | "keywords" | "doccomm" | "creatim");
-        if self.st.dest != Dest::Skip || kept_info {
+        if !matches!(self.st.dest, Dest::Skip | Dest::Object) || kept_info {
             return false;
+        }
+        // An object's `{\result …}` is the one thing in it that's read: it's what Word shows.
+        if self.st.dest == Dest::Object && first_in_group {
+            if word == "result" {
+                return false;
+            }
+            // Other object groups contain metadata or payload, never displayed content.
+            // Give them their own skipped destination so a nested result stays hidden.
+            self.st.dest = Dest::Skip;
         }
         if self.in_creatim {
             self.record_created_part(word, value);
@@ -618,4 +631,29 @@ impl Reader {
 /// The target of a `HYPERLINK` field instruction; `%22` is a quote, as the writer stores one.
 pub(super) fn hyperlink(instr: &str) -> Option<String> {
     wordcraft_doc::link::hyperlink_target(instr).map(|t| t.replace("%22", "\""))
+}
+
+#[cfg(test)]
+mod object_result_tests {
+    use super::super::{FBlock, Inline, parse};
+
+    #[test]
+    fn result_text_stays_in_place_and_metadata_stays_hidden() {
+        let rtf = br"{\rtf1 Before{\object\objemb{\*\objclass Package{\result hidden}}{\objname name{\result hidden}}{\*\objdata 0102{\result hidden}}{\*\unknown{\result hidden}}{\result visible}}After}";
+        let flow = parse(rtf).unwrap();
+        let text: String = flow
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                FBlock::Para(p) => Some(&p.inlines),
+                FBlock::Table(_) => None,
+            })
+            .flatten()
+            .filter_map(|inline| match inline {
+                Inline::Text(text, _) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "BeforevisibleAfter");
+    }
 }

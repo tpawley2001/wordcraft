@@ -1705,6 +1705,7 @@ fn compound_borders_round_trip() {
 }
 
 mod legacy_pn;
+mod object_result;
 mod section_revisions;
 mod shape_text;
 mod tabs_spacing;
