@@ -818,7 +818,6 @@ Footer page-table height and body wrapping are corrected. Other pagination gaps 
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-06 | trivial | P0071: missing Aptos and Aptos Display retain Word's single-line height (ascent 0.939 em, descent 0.282 em); substitute widths and readiness estimates unchanged |
-| 2026-11-06 | trivial | P0072: table row/column end shortcuts on Alt+Home, Alt+End, Alt+PageUp and Alt+PageDown; readiness unchanged |
 | 2026-11-04 | trivial | P0057: non-inline EQ integral, sum and product limits use the field size, centred at baselines 1.29 em above and 1.24 em below; inline limits unchanged; readiness estimates unchanged |
 | 2026-11-05 | trivial | P0064: RTF Word 6/95 paragraph numbering imports bullets, number formats, starts and outline levels; continuations keep the list without a label or counter increment. Cached labels stay hidden and `\ls` takes precedence; gap 19 narrowed, readiness unchanged |
 | 2026-11-02 | trivial | P0037: `.doc` horizontal-line pictures import as horizontal rules with width, height, alignment and fill; existing rule layout and DOCX output apply. |
