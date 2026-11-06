@@ -8,6 +8,21 @@ use super::{
     glossary, rt, settings_merge, watermark, xml,
 };
 
+fn push_theme(doc: &Document, rels: &mut PartRels, entries: &mut Vec<(String, Vec<u8>)>, overrides: &mut Vec<(String, String)>) {
+    // These source packages had no theme. Adding one would disable their implicit defaults.
+    if !doc.styles.builtin_word_defaults {
+        rels.add(rt::THEME, "theme/theme1.xml", false);
+        push_part(
+            entries,
+            overrides,
+            "word/theme/theme1.xml",
+            theme_xml(doc),
+            "application/vnd.openxmlformats-officedocument.theme+xml",
+            PartRels::default(),
+        );
+    }
+}
+
 /// The parts of the package [`write_as`] zips, in order, `[Content_Types].xml` first: (part name
 /// without the leading `/`, bytes).
 pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String, Vec<u8>)>, DocxError> {
@@ -153,18 +168,7 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
         &format!("{CT_WML}settings+xml"),
         settings_rels,
     );
-    // These source packages had no theme. Adding one would disable their implicit defaults.
-    if !doc.styles.builtin_word_defaults {
-        rels.add(rt::THEME, "theme/theme1.xml", false);
-        push_part(
-            &mut entries,
-            &mut overrides,
-            "word/theme/theme1.xml",
-            theme_xml(doc),
-            "application/vnd.openxmlformats-officedocument.theme+xml",
-            PartRels::default(),
-        );
-    }
+    push_theme(doc, &mut rels, &mut entries, &mut overrides);
 
     wr.embeds.font_table(&mut rels);
 
