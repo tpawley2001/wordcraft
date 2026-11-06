@@ -19,6 +19,7 @@ mod grid;
 mod header_extent;
 mod header_extent_fixtures;
 mod item_display_warp;
+mod keep_next_long_chain;
 mod ligature;
 pub(crate) mod linear;
 mod missing_font_line;
