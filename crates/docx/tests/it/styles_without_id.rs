@@ -84,5 +84,44 @@ fn an_id_less_nameless_style_is_ignored() {
     let d = wordcraft_docx::read(&package(body, "Normal")).unwrap();
     // Only Normal (and whatever the reader always adds) is there; nothing came from the two.
     assert!(d.styles.styles.iter().all(|s| !s.id.is_empty()));
+    assert_eq!(size(&d, "Normal"), 12.0);
+}
+
+#[test]
+fn omitted_defaults_remain_implicit_across_repeated_saves() {
+    use wordcraft_doc::props::{LineSpacing, ParaProps};
+    let mut d = wordcraft_docx::read(&package("", "Normal")).unwrap();
+    for _ in 0..3 {
+        assert!(d.styles.builtin_word_defaults);
+        assert_eq!(d.styles.default_chr, CharProps::default());
+        assert_eq!(d.styles.default_para, ParaProps::default());
+        let c = d.styles.effective_default_chr();
+        assert_eq!(c.font_ea.as_deref(), Some("Aptos"));
+        assert_eq!(c.font_cs.as_deref(), Some("Aptos"));
+        assert_eq!(c.size_cs, Some(12.0));
+        let p = d.styles.resolve_para(&ParaProps::default());
+        assert_eq!(p.space_after, 8.0);
+        assert_eq!(p.line_spacing, LineSpacing::Multiple(278.0 / 240.0));
+        d = wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap();
+    }
+}
+
+#[test]
+fn editing_implicit_defaults_preserves_the_other_effective_values() {
+    use wordcraft_doc::props::{LineSpacing, ParaProps};
+    let mut d = wordcraft_docx::read(&package("", "Normal")).unwrap();
+    std::sync::Arc::make_mut(&mut d.styles).default_para.space_after = Some(4.0);
+    let d = wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap();
+    assert_eq!(size(&d, "Normal"), 12.0);
+    assert_eq!(d.styles.resolve_char(None, &CharProps::default()).font, "Aptos");
+    let p = d.styles.resolve_para(&ParaProps::default());
+    assert_eq!(p.space_after, 4.0);
+    assert_eq!(p.line_spacing, LineSpacing::Multiple(278.0 / 240.0));
+}
+
+#[test]
+fn an_explicitly_empty_defaults_element_keeps_the_established_fallback() {
+    let d = wordcraft_docx::read(&package("<w:docDefaults/>", "Normal")).unwrap();
+    assert!(!d.styles.builtin_word_defaults);
     assert_eq!(size(&d, "Normal"), 10.0);
 }

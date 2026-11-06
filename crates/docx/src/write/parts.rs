@@ -153,15 +153,18 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
         &format!("{CT_WML}settings+xml"),
         settings_rels,
     );
-    rels.add(rt::THEME, "theme/theme1.xml", false);
-    push_part(
-        &mut entries,
-        &mut overrides,
-        "word/theme/theme1.xml",
-        theme_xml(doc),
-        "application/vnd.openxmlformats-officedocument.theme+xml",
-        PartRels::default(),
-    );
+    // These source packages had no theme. Adding one would disable their implicit defaults.
+    if !doc.styles.builtin_word_defaults {
+        rels.add(rt::THEME, "theme/theme1.xml", false);
+        push_part(
+            &mut entries,
+            &mut overrides,
+            "word/theme/theme1.xml",
+            theme_xml(doc),
+            "application/vnd.openxmlformats-officedocument.theme+xml",
+            PartRels::default(),
+        );
+    }
 
     wr.embeds.font_table(&mut rels);
 

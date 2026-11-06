@@ -212,13 +212,12 @@ impl Reader<'_> {
     /// Current Word uses these values for unthemed files without an older explicit mode.
     pub(super) fn apply_missing_doc_defaults(&mut self) {
         let sheet = Arc::make_mut(&mut self.doc.styles);
-        sheet.default_chr.font = Some("Aptos".into());
-        sheet.default_chr.font_ea = Some("Aptos".into());
-        sheet.default_chr.font_cs = Some("Aptos".into());
-        sheet.default_chr.size = Some(12.0);
-        sheet.default_chr.size_cs = Some(12.0);
-        sheet.default_para.space_after = Some(8.0);
-        sheet.default_para.line_spacing = Some(wordcraft_doc::props::LineSpacing::Multiple(278.0 / 240.0));
+        // Discard the reader's 10 pt or new-document fallbacks, not source formatting:
+        // this path is entered only when the entire docDefaults element was absent.
+        sheet.default_chr = Default::default();
+        sheet.default_para = Default::default();
+        sheet.default_para_present = false;
+        sheet.builtin_word_defaults = true;
     }
 
     /// A table style's table-level formatting and conditional formats. The `wholeTable` region

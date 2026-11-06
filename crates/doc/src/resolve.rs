@@ -311,9 +311,38 @@ impl ResolvedPara {
 const MAX_CHARS: f32 = 1584.0;
 
 impl StyleSheet {
+    /// Document run defaults, including application-defined defaults when omitted in DOCX.
+    pub fn effective_default_chr(&self) -> CharProps {
+        let mut defaults = if self.builtin_word_defaults {
+            CharProps {
+                font: Some(crate::styles::BODY_FONT.into()),
+                font_ea: Some(crate::styles::BODY_FONT.into()),
+                font_cs: Some(crate::styles::BODY_FONT.into()),
+                size: Some(12.0),
+                size_cs: Some(12.0),
+                ..CharProps::default()
+            }
+        } else {
+            CharProps::default()
+        };
+        defaults.overlay(&self.default_chr);
+        defaults
+    }
+
+    /// Document paragraph defaults without changing the source's explicit properties.
+    pub fn effective_default_para(&self) -> ParaProps {
+        let mut defaults = if self.builtin_word_defaults {
+            ParaProps { space_after: Some(8.0), line_spacing: Some(LineSpacing::Multiple(278.0 / 240.0)), ..ParaProps::default() }
+        } else {
+            ParaProps::default()
+        };
+        defaults.overlay(&self.default_para);
+        defaults
+    }
+
     /// Paragraph properties after defaults and the style chain (without direct formatting).
     pub fn para_style_props(&self, style: &str) -> (ParaProps, CharProps) {
-        self.para_style_props_over(style, self.default_para.clone(), self.default_chr.clone())
+        self.para_style_props_over(style, self.effective_default_para(), self.effective_default_chr())
     }
 
     /// The paragraph style chain of `style` applied over `pp` / `cp`. A style the document doesn't
@@ -344,10 +373,10 @@ impl StyleSheet {
     /// that the chain doesn't set. Formats without table styles state these directly.
     pub fn table_para_patch(&self, p: &ParaProps, table: &ParaProps) -> ParaProps {
         let style = p.style.clone().unwrap_or_else(|| "Normal".into());
-        let mut with = self.default_para.clone();
+        let mut with = self.effective_default_para();
         with.overlay(&ParaProps { style: None, ..table.clone() });
         let (with, _) = self.para_style_props_over(&style, with, CharProps::default());
-        let (without, _) = self.para_style_props_over(&style, self.default_para.clone(), CharProps::default());
+        let (without, _) = self.para_style_props_over(&style, self.effective_default_para(), CharProps::default());
         diff_patch(&with, &without)
     }
 
@@ -366,9 +395,9 @@ impl StyleSheet {
             }
             cp
         };
-        let mut with = self.default_chr.clone();
+        let mut with = self.effective_default_chr();
         with.overlay(&CharProps { style: None, ..table.clone() });
-        diff_patch(&chain(with), &chain(self.default_chr.clone()))
+        diff_patch(&chain(with), &chain(self.effective_default_chr()))
     }
 
     /// Resolve a paragraph's properties.
@@ -383,7 +412,7 @@ impl StyleSheet {
     /// property the paragraph style chain sets, Normal included, beats the table style.
     pub fn resolve_para_in(&self, p: &ParaProps, table: Option<&ParaProps>) -> ResolvedPara {
         let style = p.style.clone().unwrap_or_else(|| "Normal".into());
-        let mut defaults = self.default_para.clone();
+        let mut defaults = self.effective_default_para();
         if let Some(t) = table {
             defaults.overlay(&ParaProps { style: None, ..t.clone() });
         }
@@ -414,7 +443,7 @@ impl StyleSheet {
     /// paragraph is in. Order: document defaults, the table style, the paragraph style chain, the
     /// character style chain, direct formatting (ECMA-376 §17.7.2).
     pub fn resolve_char_in(&self, para_style: Option<&str>, table: Option<&CharProps>, c: &CharProps) -> ResolvedChar {
-        let mut defaults = self.default_chr.clone();
+        let mut defaults = self.effective_default_chr();
         if let Some(t) = table {
             defaults.overlay(&CharProps { style: None, ..t.clone() });
         }
