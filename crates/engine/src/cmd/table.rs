@@ -10,6 +10,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 mod cells;
 mod clear;
 mod convert;
+mod ends;
 pub use super::sort_keys::sort_type;
 mod layout;
 mod select;
@@ -192,6 +193,26 @@ pub fn specs() -> Vec<CommandSpec> {
             let (tp, r, _) = cell(s)?;
             select_cells(s, &tp, Some((r, None)))
         })
+        .pure()),
+        t(CommandSpec::new("table.firstCellInRow", "First Cell in Row", "Table Layout › Table › Select", |s, _| {
+            ends::move_to_cell_end(s, true, true)
+        })
+        .key("Alt+Home")
+        .pure()),
+        t(CommandSpec::new("table.lastCellInRow", "Last Cell in Row", "Table Layout › Table › Select", |s, _| {
+            ends::move_to_cell_end(s, true, false)
+        })
+        .key("Alt+End")
+        .pure()),
+        t(CommandSpec::new("table.firstCellInColumn", "First Cell in Column", "Table Layout › Table › Select", |s, _| {
+            ends::move_to_cell_end(s, false, true)
+        })
+        .key("Alt+PageUp")
+        .pure()),
+        t(CommandSpec::new("table.lastCellInColumn", "Last Cell in Column", "Table Layout › Table › Select", |s, _| {
+            ends::move_to_cell_end(s, false, false)
+        })
+        .key("Alt+PageDown")
         .pure()),
         t(CommandSpec::new("table.selectColumn", "Select Column", "Table Layout › Table › Select", select_column).pure()),
         t(CommandSpec::new("table.selectCell", "Select Cell", "Table Layout › Table › Select", |s, _| {

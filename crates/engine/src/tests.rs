@@ -24,6 +24,7 @@ mod reveal_formatting;
 mod reveal_formatting_pane;
 mod revision_checks;
 mod table_insert_delete_cells;
+mod table_row_column_ends;
 mod table_sort_keys;
 mod typing;
 mod wordart;
