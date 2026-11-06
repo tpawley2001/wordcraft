@@ -1,27 +1,24 @@
 use super::cells::cell;
-use super::{CmdResult, Path, Pos, Selection, Session, StoryRef, sel_result};
+use super::{CmdError, CmdResult, Path, Pos, Selection, Session, sel_result};
 
-/// The first or last cell of the caret's row or column, as Word's Alt+Home / Alt+End /
-/// Alt+PageUp / Alt+PageDown go: `row` keeps the caret's row and goes to its first or last
-/// cell; a column move keeps the caret's cell index and goes to the first row, or the last row
-/// that has a cell at that index (rows can be ragged). The innermost table around the caret.
+/// Move within the innermost table, keeping the row or the cell index in the column.
 pub(super) fn move_to_cell_end(s: &mut Session, row: bool, first: bool) -> CmdResult {
     let (tp, r, c) = cell(s)?;
     let story = s.sel.focus.story;
-    let Some(t) = s.doc.table(story, &tp) else { return sel_result(s) };
-    let target = if row {
-        let row = t.rows.get(r);
-        let c = if first { 0 } else { row.map_or(0, |row| row.cells.len().saturating_sub(1)) };
-        row.is_some().then_some((r, c))
-    } else if first {
-        (t.rows.first().is_some_and(|row| row.cells.get(c).is_some())).then_some((0, c))
+    let missing = || CmdError::Disabled("the cursor isn't in a table cell".into());
+    let t = s.doc.table(story, &tp).ok_or_else(missing)?;
+    let current = t.rows.get(r).ok_or_else(missing)?;
+    current.cells.get(c).ok_or_else(missing)?;
+    let (r, c) = if row {
+        (r, if first { 0 } else { current.cells.len().saturating_sub(1) })
     } else {
-        (0..t.rows.len().rev()).find(|&i| t.rows.get(i).is_some_and(|row| row.cells.get(c).is_some())).map(|i| (i, c))
+        let mut rows = t.rows.iter().enumerate().filter(|(_, row)| row.cells.get(c).is_some());
+        let target = if first { rows.next() } else { rows.next_back() };
+        (target.ok_or_else(missing)?.0, c)
     };
-    let Some((r, c)) = target else { return sel_result(s) };
-    let mut path = tp.0.clone();
-    path.push(u32::try_from(r).ok().ok_or_else(|| super::CmdError::Failed("the row is too deep to name".into()))?);
-    path.push(u32::try_from(c).ok().ok_or_else(|| super::CmdError::Failed("the column is too deep to name".into()))?);
+    let mut path = tp.0;
+    path.push(u32::try_from(r).map_err(|_| CmdError::Failed("row index is too large".into()))?);
+    path.push(u32::try_from(c).map_err(|_| CmdError::Failed("cell index is too large".into()))?);
     path.push(0);
     let at = Pos { story, path: Path(path), off: 0 };
     s.sel = Selection::caret(s.doc.clamp(&at));
@@ -33,7 +30,51 @@ pub(super) fn move_to_cell_end(s: &mut Session, row: bool, first: bool) -> CmdRe
     sel_result(s)
 }
 
-/// The story of the caret, for callers that need it after the move.
-pub(super) fn story_of(s: &Session) -> StoryRef {
-    s.sel.focus.story
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use wordcraft_doc::{Block, Document, StoryRef, Table};
+
+    fn session(table: Table, path: Vec<u32>) -> Session {
+        let mut doc = Document::new();
+        doc.body.insert(0, Block::Table(table));
+        let mut s = Session::new(doc);
+        s.sel = Selection::caret(Pos { story: StoryRef::Body, path: Path(path), off: 0 });
+        s
+    }
+
+    #[test]
+    fn column_ends_skip_rows_without_the_cell_and_add_no_undo_step() {
+        let mut table = Table::new(5, 4, 400.0);
+        for r in [0, 2, 4] {
+            table.rows[r].cells.truncate(1);
+        }
+        let mut s = session(table, vec![0, 3, 2, 0]);
+        let before = s.doc.clone();
+        let undo = s.undo_labels();
+        s.run("table.firstCellInColumn", &json!({})).unwrap();
+        assert_eq!(s.sel.focus.path, Path(vec![0, 1, 2, 0]));
+        s.run("table.lastCellInColumn", &json!({})).unwrap();
+        assert_eq!(s.sel.focus.path, Path(vec![0, 3, 2, 0]));
+        assert_eq!(s.sel.focus.off, 0);
+        assert_eq!(s.doc, before);
+        assert_eq!(s.undo_labels(), undo);
+    }
+
+    #[test]
+    fn all_four_moves_stay_in_the_innermost_table() {
+        let mut outer = Table::new(3, 4, 400.0);
+        outer.rows[1].cells[1].blocks.insert(0, Block::Table(Table::new(3, 4, 300.0)));
+        let mut s = session(outer, vec![0, 1, 1, 0, 1, 1, 0]);
+        for (id, r, c) in
+            [("table.firstCellInRow", 1, 0), ("table.lastCellInRow", 1, 3), ("table.firstCellInColumn", 0, 1), ("table.lastCellInColumn", 2, 1)]
+        {
+            s.sel = Selection::caret(Pos { story: StoryRef::Body, path: Path(vec![0, 1, 1, 0, 1, 1, 0]), off: 0 });
+            s.run(id, &json!({})).unwrap();
+            assert_eq!(s.sel.focus.path, Path(vec![0, 1, 1, 0, r, c, 0]), "{id}");
+            assert_eq!(s.sel.focus.off, 0);
+            assert!(s.sel.is_collapsed());
+        }
+    }
 }
