@@ -36,7 +36,7 @@ pub struct ViewState {
     #[serde(default)]
     pub selection_pane: bool,
     /// View › Window › Split (#3254): `Some(r)` shows two panes, the top one `r` of the height
-    /// (0.1..=0.9). Acceptance-test stub: the task wires it up.
+    /// (0.1..=0.9); `None` is one pane. The desktop app draws the panes.
     #[serde(default)]
     pub split: Option<f32>,
     pub comments_pane: bool,

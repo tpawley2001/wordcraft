@@ -349,6 +349,7 @@ View|Dark Mode|Switch Modes|view.darkMode
 View|Window|New Window|view.newWindow
 View|Window|Arrange All|view.arrangeAll
 View|Window|Split|view.split
+View|Window|Remove Split|view.removeSplit
 View|Window|View Side by Side|view.sideBySide
 View|Window|Synchronous Scrolling|view.syncScroll
 View|Window|Reset Window Position|view.resetWindowPosition

@@ -248,11 +248,19 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"value"?: bool (show/hide the pane)}"#)
         .key(super::mac_or("", "Alt+F10"))
         .pure(),
-        CommandSpec::new("view.split", "Split", "View › Window", |s, _| {
-            s.push_ui_request(json!({"toggle": "split"}));
-            sel_result(s)
+        // Split (#3254): two panes, one above the other, on the same document. The session keeps
+        // the top pane's share of the height; the desktop app draws the panes and sends the ratio
+        // back while the divider is dragged.
+        CommandSpec::new("view.split", "Split", "View › Window", split)
+            .params(r#"{"value"?: bool (default: toggle), "ratio"?: 0.1..0.9 (the top pane's share; turns the split on)} → {"split": bool, "ratio": number | null}"#)
+            .key("Mod+Alt+S")
+            .pure(),
+        // Word's ClosePane key on Windows; Word for Mac has none.
+        CommandSpec::new("view.removeSplit", "Remove Split", "View › Window", |s, _| {
+            s.view.split = None;
+            Ok(json!({"split": false}))
         })
-        .key("Mod+Alt+S")
+        .key(super::non_mac("Alt+Shift+C"))
         .pure(),
         // The window fills the screen, OS-level full screen (#980). F11 as in browsers and most
         // desktop apps; ⌃⌘F first on macOS, where Ctrl is a key of its own (elsewhere Mod is Ctrl,
@@ -281,6 +289,29 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"value"?: "arabic|hindi|context|system"}"#)
         .pure(),
     ]
+}
+
+/// The top pane's share of the height while split, and the default when splitting.
+const SPLIT_RATIO: std::ops::RangeInclusive<f32> = 0.1..=0.9;
+const SPLIT_EVEN: f32 = 0.5;
+
+fn split(s: &mut Session, v: &Value) -> Result<Value, CmdError> {
+    let ratio = match v.get("ratio") {
+        None | Some(Value::Null) => None,
+        Some(r) => match r.as_f64().map(|r| r as f32) {
+            Some(r) if r.is_finite() && SPLIT_RATIO.contains(&r) => Some(r),
+            _ => return Err(CmdError::Params("ratio: a number from 0.1 to 0.9".into())),
+        },
+    };
+    let on = match v.get("value") {
+        None | Some(Value::Null) => ratio.is_some() || s.view.split.is_none(),
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(CmdError::Params("value: bool".into())),
+    };
+    s.view.split = on.then(|| ratio.or(s.view.split).unwrap_or(SPLIT_EVEN));
+    // Reported to four places: 0.4, not the f32's 0.4000000059604645.
+    let ratio = s.view.split.map(|r| (f64::from(r) * 1e4).round() / 1e4);
+    Ok(json!({"split": s.view.split.is_some(), "ratio": ratio}))
 }
 
 /// The browser keeps full screen to itself (its own F11); the web app can't ask for it.

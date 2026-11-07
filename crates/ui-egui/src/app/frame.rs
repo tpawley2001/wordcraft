@@ -1,8 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use super::file_browser;
 use super::{
-    WordApp, backstage, canvas, chrome, colors, content_controls, dialogs, documents, keys, now_ms, panes, read_aloud, ribbon, theme, updates_ui,
-    zotero,
+    WordApp, backstage, chrome, colors, content_controls, dialogs, documents, keys, now_ms, panes, read_aloud, ribbon, theme, updates_ui, zotero,
 };
 
 impl WordApp {
@@ -83,7 +82,7 @@ impl WordApp {
             }
             let fill = if screen == chrome::Screen::Focus { chrome::FOCUS_CANVAS } else { t.canvas };
             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {
-                canvas::show(self, ui);
+                crate::split_view::show(self, ui);
             });
             if self.focus_ribbon && !moved(self) {
                 chrome::focus_ribbon(self, ctx);
