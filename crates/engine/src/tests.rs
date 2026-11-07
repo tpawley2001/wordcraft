@@ -14,6 +14,7 @@ mod autonum_fields;
 mod auto_caption;
 mod bidi;
 mod browse_object;
+mod building_blocks;
 mod clipboard_options;
 mod custom_prop_types;
 mod documents;
