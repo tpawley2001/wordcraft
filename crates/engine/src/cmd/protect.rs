@@ -292,6 +292,9 @@ impl Facts {
 /// filled in. A document that is read only (or open to comments only) with no exception the
 /// author may edit takes no other edits at all.
 pub(crate) fn greyed_out(s: &Session, id: &str, facts: impl FnOnce() -> Facts) -> Option<&'static str> {
+    if let Some(why) = marked_final(s, id, &Value::Null) {
+        return Some(why);
+    }
     let mode = s.doc.settings.protection.as_deref()?;
     if always_allowed(id, &Value::Null) {
         return None;
@@ -315,10 +318,21 @@ pub(crate) fn greyed_out(s: &Session, id: &str, facts: impl FnOnce() -> Facts) -
     }
 }
 
+/// A document marked as final (File › Info › Protect Document › Mark as Final) takes no edits
+/// until the mark is removed; this is independent of Restrict Editing, and comes before it.
+/// Removing the mark itself, and what protection always lets through (saving, exporting…), stay
+/// available.
+fn marked_final(s: &Session, id: &str, params: &Value) -> Option<&'static str> {
+    (id != "file.markAsFinal" && s.marked_final() && !always_allowed(id, params)).then_some("the document is marked as final")
+}
+
 /// What a protected document lets command `id` do before it runs: `Err` refuses it; `Ok(true)`
 /// lets it run as long as it only changes the exceptions (checked afterwards with
 /// [`outside_unchanged`]).
 pub(crate) fn check_before(s: &Session, id: &str, params: &Value) -> Result<bool, CmdError> {
+    if let Some(why) = marked_final(s, id, params) {
+        return Err(CmdError::Disabled(format!("{id}: {why}")));
+    }
     let Some(mode) = s.doc.settings.protection.as_deref() else { return Ok(false) };
     if always_allowed(id, params) {
         return Ok(false);

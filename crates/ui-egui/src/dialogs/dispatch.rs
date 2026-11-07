@@ -67,6 +67,7 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::MatchFields { .. } => match_fields_dialog(ui, d),
         Dialog::CheckErrors { .. } => check_errors_dialog(ui, d),
         Dialog::ConvertDocument => convert_document_dialog(app, ui),
+        Dialog::MarkAsFinal => mark_as_final_dialog(app, ui),
         Dialog::Compatibility { issues, version } => compatibility_dialog(ui, issues, version),
     }
 }
@@ -1602,6 +1603,17 @@ fn convert_document_dialog(app: &mut WordApp, ui: &mut Ui) -> bool {
     ui.label(tl!("Its layout may change slightly."));
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok && let Err(e) = app.run("file.convert", json!({})) {
+        app.status(e);
+    }
+    ok || cancel
+}
+
+/// Mark as Final: OK marks the document as final and saves it, as Save does (asking where for a
+/// document that has never been saved).
+fn mark_as_final_dialog(app: &mut WordApp, ui: &mut Ui) -> bool {
+    ui.label(tl!("This document will be marked as final and then saved."));
+    let (ok, cancel) = buttons(ui, tl!("OK"));
+    if ok && let Err(e) = app.run("file.markAsFinal", json!({"final": true})).and_then(|_| app.run("file.save", json!({}))) {
         app.status(e);
     }
     ok || cancel

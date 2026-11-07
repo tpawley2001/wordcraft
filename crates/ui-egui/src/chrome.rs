@@ -554,6 +554,30 @@ pub fn focus_ribbon(app: &mut WordApp, ctx: &egui::Context) {
     }
 }
 
+/// The message bar under the ribbon while the document is marked as final (File › Info ›
+/// Protect Document › Mark as Final): Edit Anyway removes the mark (`file.markAsFinal`).
+pub fn marked_final_bar(app: &mut WordApp, ui: &mut Ui) {
+    if !app.session.marked_final() {
+        return;
+    }
+    let t = Tokens::get(ui.ctx());
+    egui::Panel::top("marked_final_bar")
+        .exact_size(36.0)
+        .show_separator_line(false)
+        .frame(egui::Frame::NONE.fill(t.panel).inner_margin(egui::Margin::symmetric(12, 0)))
+        .show(ui, |ui| {
+            let full = ui.max_rect();
+            ui.painter().hline(full.x_range(), full.bottom() - 0.5, Stroke::new(1.0, t.border));
+            ui.horizontal_centered(|ui| {
+                ui.label(egui::RichText::new(tl!("MARKED AS FINAL")).font(semibold(13.0)).color(t.text));
+                ui.label(egui::RichText::new(tl!("An author has marked this document as final to discourage editing.")).color(t.text));
+                if ui.button(tl!("Edit Anyway")).clicked() {
+                    let _ = app.run("file.markAsFinal", json!({"final": false}));
+                }
+            });
+        });
+}
+
 /// Draws the status bar's page, word count, zoom and status controls, fitting a status message
 /// with a tooltip; without a document the bar is empty.
 pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {

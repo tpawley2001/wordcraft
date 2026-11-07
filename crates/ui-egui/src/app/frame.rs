@@ -74,6 +74,7 @@ impl WordApp {
                     return;
                 }
                 crate::language_packs::bar(self, ui);
+                chrome::marked_final_bar(self, ui);
                 chrome::status_bar(self, ui);
                 panes::show(self, ui);
             }

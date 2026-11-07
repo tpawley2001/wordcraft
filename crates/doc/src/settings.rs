@@ -107,6 +107,18 @@ pub struct CoreProps {
     pub created: String,
     pub modified: String,
     pub revision: u32,
+    /// Status (`cp:contentStatus`), e.g. `Final` once the document is marked as final.
+    pub content_status: String,
+    /// Last printed (`cp:lastPrinted`), a W3CDTF date; kept as read.
+    pub last_printed: String,
+    /// `dc:language`, kept as read.
+    pub language: String,
+    /// `cp:version`, kept as read.
+    pub version: String,
+    /// `dc:identifier`, kept as read.
+    pub identifier: String,
+    /// `cp:contentType`, kept as read.
+    pub content_type: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -493,6 +493,9 @@ pub enum Dialog {
     /// File › Info › Convert: confirms upgrading a document in Compatibility Mode to the current
     /// layout mode (`file.convert`).
     ConvertDocument,
+    /// File › Info › Protect Document › Mark as Final: confirms marking the document as final,
+    /// then marks it (`file.markAsFinal`) and saves it.
+    MarkAsFinal,
     /// File › Info › Check for Issues › Check Compatibility: `file.compatibility`'s findings and
     /// the Word version the document lays out like.
     Compatibility {
@@ -577,6 +580,7 @@ impl Dialog {
             Dialog::Organizer { .. } => "organizer",
             Dialog::CustomProperties(..) => "customProperties",
             Dialog::ConvertDocument => "convertDocument",
+            Dialog::MarkAsFinal => "markAsFinal",
             Dialog::Compatibility { .. } => "compatibilityChecker",
             Dialog::Layout(d) => d.name(),
         }
@@ -881,6 +885,7 @@ impl Dialog {
             "organizer" => Dialog::Organizer { form: Box::new(crate::dialogs_templates::OrganizerForm::read(app, None)) },
             "customProperties" => Dialog::CustomProperties(Box::new(CustomPropertiesForm::read(app))),
             "convertDocument" => Dialog::ConvertDocument,
+            "markAsFinal" => Dialog::MarkAsFinal,
             "compatibilityChecker" => {
                 return Self::report("file.compatibility", &app.session.run("file.compatibility", &json!({})).unwrap_or_default());
             }

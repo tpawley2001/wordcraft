@@ -148,8 +148,13 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(r#"{"id"?: n (an open document, see view.switchWindows; default the active one), "force"?: bool (discard unsaved changes; without it a document with unsaved changes is an error and stays open)} → {"closed": id, "active": id, "documents": [{"id", "title", "path", "dirty", "active"}]}; closing the last document leaves a new blank one"#)
             .pure(),
         CommandSpec::new("file.properties", "Properties", "File › Info", properties)
-            .params(r#"{"title"?, "subject"?, "author"?, "keywords"?, "comments"?, "category"?, "custom"?: {name: string | {"value": string, "type"?: "text" | "number" | "date" | "yesno" (default text), "linkTarget"?: string | null} | null (removes)}}; a number is a whole number in i32 (stored vt:i4) or any other finite number (vt:r8), a date is YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ (vt:filetime), yes/no is true/false/yes/no (vt:bool); text values and bookmark targets are at most 1 MiB; a string keeps an existing target, an object replaces it (omitted/null target unlinks)"#),
+            .params(r#"{"title"?, "subject"?, "author"?, "keywords"?, "comments"?, "category"?, "status"?, "custom"?: {name: string | {"value": string, "type"?: "text" | "number" | "date" | "yesno" (default text), "linkTarget"?: string | null} | null (removes)}}; a number is a whole number in i32 (stored vt:i4) or any other finite number (vt:r8), a date is YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ (vt:filetime), yes/no is true/false/yes/no (vt:bool); text values and bookmark targets are at most 1 MiB; a string keeps an existing target, an object replaces it (omitted/null target unlinks)"#),
         CommandSpec::new("file.info", "Info", "File", info).pure(),
+        // Mark as Final: the `_MarkAsFinal` custom property (vt:bool true) and Status `Final`.
+        // While it is set the document takes no edits (`protect::greyed_out`); it is not
+        // protection, so `w:documentProtection` is untouched. Saving is the caller's job.
+        CommandSpec::new("file.markAsFinal", "Mark as Final", "File › Info › Protect Document", mark_as_final)
+            .params(r#"{"final"?: bool (absent toggles)} → {"final": bool}; marking sets the `_MarkAsFinal` Yes/No property and Status "Final", unmarking removes the property and leaves Status as it is; the document is not saved"#),
         CommandSpec::new("file.setAuthor", "User Name", "File › Options › General", set_author)
             .params(r#"{"name": string (author of new tracked changes and comments)}"#)
             .pure(),
@@ -472,6 +477,7 @@ fn properties(s: &mut Session, v: &Value) -> CmdResult {
     set(&mut c.keywords, "keywords");
     set(&mut c.description, "comments");
     set(&mut c.category, "category");
+    set(&mut c.content_status, "status");
     if let Some(custom) = v.get("custom") {
         let Some(m) = custom.as_object() else {
             return Err(CmdError::Params("`custom` must be an object of name → text, linked text value, or null".into()));
@@ -653,6 +659,32 @@ pub const MAX_CUSTOM_NAME: usize = 255;
 /// validates with it too (#2982).
 pub const MAX_CUSTOM_VALUE: usize = 1024 * 1024;
 
+/// The custom property Word sets on a document marked as final.
+pub(crate) const MARK_AS_FINAL: &str = "_MarkAsFinal";
+
+impl Session {
+    /// Whether the document is marked as final: a Yes/No custom property `_MarkAsFinal` (name
+    /// compared without case) whose value is true. Another kind, or false, is not a mark.
+    pub fn marked_final(&self) -> bool {
+        self.doc.custom_props.iter().any(|p| {
+            p.name.eq_ignore_ascii_case(MARK_AS_FINAL)
+                && p.kind.eq_ignore_ascii_case("bool")
+                && matches!(p.value.trim().to_ascii_lowercase().as_str(), "true" | "1")
+        })
+    }
+}
+
+fn mark_as_final(s: &mut Session, v: &Value) -> CmdResult {
+    let on = p::bool(v, "final").unwrap_or(!s.marked_final());
+    if on {
+        s.doc.set_custom_prop_typed(MARK_AS_FINAL, "bool", "true");
+        s.doc.core.content_status = "Final".into();
+    } else {
+        s.doc.remove_custom_prop(MARK_AS_FINAL);
+    }
+    Ok(json!({"final": s.marked_final()}))
+}
+
 fn info(s: &mut Session, _: &Value) -> CmdResult {
     let l = s.layout();
     Ok(json!({
@@ -666,6 +698,7 @@ fn info(s: &mut Session, _: &Value) -> CmdResult {
         "comments": s.doc.comments.len(),
         "sections": s.doc.sections().len(),
         "encrypted": s.password.is_some(),
+        "markedFinal": s.marked_final(),
         "layoutMs": l.ms,
     }))
 }
