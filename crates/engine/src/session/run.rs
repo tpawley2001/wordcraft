@@ -185,6 +185,9 @@ impl Session {
         let mutates = spec.mutates;
         let ime_caret_before = self.current_ime_caret_state();
         let rev_before = self.rev;
+        // Extend mode (F8): caret movement extends, and other commands end it or its history.
+        let extended = crate::cmd::caret::extend_mode_params(self, id, mutates, params);
+        let params = extended.as_ref().unwrap_or(params);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match crate::cmd::canvas::member_command(self, id, params) {
             Some(r) => r,
             None => crate::cmd::column::dispatch(self, id, mutates, run, params),

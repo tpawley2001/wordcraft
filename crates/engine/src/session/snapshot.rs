@@ -27,6 +27,8 @@ impl Session {
         self.member = None;
         self.column = None;
         self.column_mode = false;
+        self.extend_mode = false;
+        self.extend_history.clear();
         self.widened = None;
         self.edit_marks.clear();
         self.new_header_parts.clear();
@@ -164,6 +166,8 @@ impl Session {
             // `sel` matches them.
             column: _,
             column_mode: _,
+            extend_mode: _,
+            extend_history: _,
             widened: _,
             // Go Back's places, like the caret history: not part of the document.
             edit_marks: _,

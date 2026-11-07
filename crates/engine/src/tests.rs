@@ -19,6 +19,7 @@ mod grid_settings;
 mod fonts;
 mod ime_noop;
 mod autoformat_now;
+mod extend_selection;
 mod listnum_fields;
 mod mark_toc_entry;
 mod negative_margins;

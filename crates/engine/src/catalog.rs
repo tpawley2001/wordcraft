@@ -520,6 +520,7 @@ Editing|Selection|Select Word|select.word
 Editing|Selection|Select Sentence|select.sentence
 Editing|Selection|Select Paragraph|select.paragraph
 Editing|Selection|Extend Selection (F8)|select.extend
+Editing|Selection|Shrink Selection (Shift+F8)|select.shrink
 Editing|Selection|Column Selection|select.column
 Editing|Fields|Show Field Codes|view.fieldCodes
 Editing|Fields|Toggle Field Codes|fields.toggleCode

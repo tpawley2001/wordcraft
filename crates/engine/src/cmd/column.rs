@@ -82,6 +82,7 @@ fn select_column(s: &mut Session, v: &Value) -> CmdResult {
     let on = p::bool(v, "on").unwrap_or(!s.column_mode);
     s.column_mode = on;
     if on {
+        super::caret::extend_mode_off(s);
         let f = s.sel.focus.clone();
         let x = s.layout().caret_on(&f, s.page_hint).map(|c| c.x).unwrap_or(0.0);
         make(s, f.clone(), f, x, x);

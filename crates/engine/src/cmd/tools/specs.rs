@@ -357,21 +357,17 @@ pub fn specs() -> Vec<CommandSpec> {
         .pure(),
         CommandSpec::new("review.editor", "Editor", "Home › Editor", |s, v| s.run("review.spelling", v)).pure(),
         CommandSpec::new("select.similar", "Select Text with Similar Formatting", "Home › Editing › Select", select_similar).pure(),
-        CommandSpec::new("select.extend", "Extend Selection", "Editing › Selection", |s, _| {
-            // F8 grows the selection: word → sentence → paragraph → document.
-            let (a, b) = s.sel.ordered();
-            let para_len = s.doc.para_at(&a).map(|x| x.len()).unwrap_or(0);
-            let id = if a == b {
-                "select.word"
-            } else if a.path == b.path && (a.off > 0 || b.off < para_len) {
-                if s.doc.para_at(&a).map(|x| x.sentence_at(a.off)) == Some((a.off, b.off)) { "select.paragraph" } else { "select.sentence" }
-            } else {
-                "select.all"
-            };
-            let params = if id == "select.all" { json!({"whole": true}) } else { json!({}) };
-            s.run(id, &params)
+        CommandSpec::new("select.extend", "Extend Selection", "Editing › Selection", crate::cmd::caret::extend_selection)
+            .params(r#"{"on"?: bool} — the first press turns extend mode on (the arrow keys then extend); each further press grows the selection: word, sentence, paragraph, section, document. `on: false` ends the mode and keeps the selection."#)
+            .key("F8")
+            .pure(),
+        CommandSpec::new("select.shrink", "Shrink Selection", "Editing › Selection", crate::cmd::caret::shrink_selection)
+            .key("Shift+F8")
+            .pure(),
+        CommandSpec::new("select.extendOff", "End Extend Selection", "Editing › Selection", |s, _| {
+            crate::cmd::caret::extend_mode_off(s);
+            sel_result(s)
         })
-        .key("F8")
         .pure(),
         CommandSpec::new("design.effects", "Effects", "Design › Document Formatting", |s, v| {
             s.doc.settings.theme_name =
