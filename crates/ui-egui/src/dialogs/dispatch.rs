@@ -12,6 +12,7 @@ use super::{Dialog, MeasureExt, Tokens, Ui, Value, WordApp, json, semibold, vec2
 /// Returns true to close.
 pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     match d {
+        Dialog::CompareSideBySide { .. } => compare_side_by_side_dialog(app, ui, d),
         Dialog::RenameDocument { .. } => rename_document_dialog(app, ui, d),
         Dialog::Font { .. } => font_dialog(app, ui, d),
         Dialog::Paragraph { .. } => paragraph_dialog(app, ui, d),
@@ -75,6 +76,40 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::MarkAsFinal => mark_as_final_dialog(app, ui),
         Dialog::Compatibility { issues, version } => compatibility_dialog(ui, issues, version),
     }
+}
+
+/// View Side by Side with three or more documents: the other windows by title; OK puts the
+/// chosen one beside the active one.
+fn compare_side_by_side_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
+    let Dialog::CompareSideBySide { choices, selected, message } = d else {
+        return false;
+    };
+    ui.label(tl!("Compare Side by Side with:"));
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        ui.set_min_width(320.0);
+        egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+            for (i, (_, title)) in choices.iter().enumerate() {
+                if ui.selectable_label(*selected == i, title.as_str()).clicked() {
+                    *selected = i;
+                }
+            }
+        });
+    });
+    if !message.is_empty() {
+        ui.colored_label(ui.visuals().error_fg_color, message.as_str());
+    }
+    let (ok, cancel) = buttons(ui, tl!("OK"));
+    if cancel {
+        return true;
+    }
+    if ok {
+        let Some(&(id, _)) = choices.get(*selected) else { return true };
+        match app.run("view.sideBySide", json!({"value": true, "id": id})) {
+            Ok(_) => return true,
+            Err(e) => *message = e,
+        }
+    }
+    false
 }
 
 fn rename_document_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {

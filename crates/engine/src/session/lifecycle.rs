@@ -155,6 +155,7 @@ impl Session {
             bib_style,
             merge,
             ui_requests: Vec::new(),
+            side_by_side: None,
             math,
             math_latex: false,
             math_normal_text: false,

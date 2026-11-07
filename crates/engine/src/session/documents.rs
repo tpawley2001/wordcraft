@@ -273,6 +273,8 @@ impl Session {
             macros: _,
             building_blocks: _,
             ui_requests: _,
+            // Pairs two documents, so it belongs to neither.
+            side_by_side: _,
             read_aloud: _,
             prefs: _,
             system_region: _,
@@ -555,6 +557,10 @@ impl Session {
     /// active document; what a window does then is the front end's choice. An id that isn't
     /// open is an error.
     pub fn close_document(&mut self, id: u64) -> Result<(), CmdError> {
+        if self.side_by_side.is_some_and(|p| p.left == id || p.right == id) && self.is_open(id) {
+            self.side_by_side = None;
+            self.push_ui_request(serde_json::json!({"sideBySide": null}));
+        }
         if id != self.document_id {
             if !self.remove_parked(id) {
                 return Err(unknown(id));

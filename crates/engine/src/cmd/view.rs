@@ -208,6 +208,32 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("view.switchWindows", "Switch Windows", "View › Window", switch_windows)
             .params(r#"{"id"?: n (make this open document the active one)} → {"documents": [{"id", "title", "path", "dirty", "active"}]} in the order they were opened"#)
             .pure(),
+        // Arrange All: the window layer tiles every document window top to bottom.
+        CommandSpec::new("view.arrangeAll", "Arrange All", "View › Window", |s, _| {
+            s.push_ui_request(json!({"open": "arrangeAll"}));
+            switch_windows(s, &Value::Null)
+        })
+        .params(r#"{} → {"documents": [...]} as view.switchWindows; the desktop app tiles the windows top to bottom"#)
+        .pure(),
+        CommandSpec::new("view.sideBySide", "View Side by Side", "View › Window", side_by_side)
+            .params(r#"{"value"?: bool (default: toggle), "id"?: n (the other open document; default the only other one)} → {"sideBySide": {"left", "right", "syncScroll"} | null}; with three or more documents and no id: {"sideBySide": null, "choose": [ids]} and the app asks which one"#)
+            .when(side_by_side_available)
+            .pure(),
+        CommandSpec::new("view.syncScroll", "Synchronous Scrolling", "View › Window", |s, v| {
+            let Some(pair) = s.side_by_side.as_mut() else { return Err(CmdError::Disabled(NOT_SIDE_BY_SIDE.into())) };
+            pair.sync_scroll = p::bool(v, "value").unwrap_or(!pair.sync_scroll);
+            Ok(json!({"syncScroll": pair.sync_scroll}))
+        })
+        .params(r#"{"value"?: bool (default: toggle)} → {"syncScroll": bool}"#)
+        .when(side_by_side_on)
+        .pure(),
+        CommandSpec::new("view.resetWindowPosition", "Reset Window Position", "View › Window", |s, _| {
+            let Some(pair) = s.side_by_side else { return Err(CmdError::Disabled(NOT_SIDE_BY_SIDE.into())) };
+            s.push_ui_request(json!({"open": "resetWindowPosition"}));
+            Ok(side_by_side_state(Some(pair)))
+        })
+        .when(side_by_side_on)
+        .pure(),
         CommandSpec::new("view.nextWindow", "Next Window", "View › Window", |s, _| cycle_window(s, false))
             .key(super::mac_or("", "Mod+F6 / Alt+F6"))
             .pure(),
@@ -427,6 +453,67 @@ fn switch_windows(s: &mut Session, v: &Value) -> CmdResult {
         s.activate(id)?;
     }
     Ok(json!({"documents": s.documents()}))
+}
+
+const NOT_SIDE_BY_SIDE: &str = "turn on View Side by Side first";
+
+/// The pair, if both of its documents are still open.
+fn current_pair(s: &Session) -> Option<crate::SideBySide> {
+    s.side_by_side.filter(|p| s.is_open(p.left) && s.is_open(p.right))
+}
+
+fn side_by_side_available(s: &Session) -> Option<&'static str> {
+    (s.documents().len() < 2).then_some("open another document first")
+}
+
+fn side_by_side_on(s: &Session) -> Option<&'static str> {
+    current_pair(s).is_none().then_some(NOT_SIDE_BY_SIDE)
+}
+
+fn side_by_side_state(pair: Option<crate::SideBySide>) -> Value {
+    match pair {
+        Some(p) => json!({"sideBySide": {"left": p.left, "right": p.right, "syncScroll": p.sync_scroll}}),
+        None => json!({"sideBySide": null}),
+    }
+}
+
+/// View Side by Side: the active document on the left, another one on the right, scrolling
+/// together. With three or more documents and no `id`, the app asks which one.
+fn side_by_side(s: &mut Session, v: &Value) -> CmdResult {
+    let current = current_pair(s);
+    if current.is_none() {
+        s.side_by_side = None;
+    }
+    let on = p::bool(v, "value").unwrap_or(current.is_none());
+    if !on {
+        if s.side_by_side.take().is_some() {
+            s.push_ui_request(json!({"sideBySide": null}));
+        }
+        return Ok(side_by_side_state(None));
+    }
+    let active = s.document_id();
+    let others: Vec<u64> = s.documents().iter().map(|d| d.id).filter(|&id| id != active).collect();
+    let other = match v.get("id").filter(|x| !x.is_null()) {
+        Some(x) => {
+            let id = x.as_u64().ok_or_else(|| CmdError::Params("`id` must be another open document's id".into()))?;
+            if !others.contains(&id) {
+                return Err(CmdError::Params(format!("`id` {id} is not another open document")));
+            }
+            id
+        }
+        None => match others.as_slice() {
+            [] => return Err(CmdError::Disabled("view.sideBySide: open another document first".into())),
+            [one] => *one,
+            _ => {
+                s.push_ui_request(json!({"open": "sideBySide"}));
+                return Ok(json!({"sideBySide": null, "choose": others}));
+            }
+        },
+    };
+    let pair = crate::SideBySide { left: active, right: other, sync_scroll: true };
+    s.side_by_side = Some(pair);
+    s.push_ui_request(json!({"sideBySide": {"left": active, "right": other}}));
+    Ok(side_by_side_state(Some(pair)))
 }
 
 /// Move through the open documents without changing their opening order or edit history.

@@ -204,6 +204,11 @@ pub struct CanvasState {
     /// Explicit scroll position to apply on the next frame (reading navigation buttons/keys, a
     /// window moving into another viewport).
     pub(crate) scroll_request: Option<egui::Vec2>,
+    /// Vertical scrolling this window did since its last frame, for the window it scrolls with
+    /// (View › Window › Synchronous Scrolling).
+    pub(crate) sync_scroll_out: f32,
+    /// This frame's scroll mirrors the other window's: it isn't passed back (no ping-pong).
+    pub(crate) sync_scroll_mirrored: bool,
     /// The viewport (the content's visible rect on screen) at the end of last frame; the
     /// drag-select edge auto-scroll decides this frame's scroll from it (#688).
     pub(crate) viewport: Option<egui::Rect>,
@@ -424,6 +429,8 @@ impl Default for CanvasState {
             scroll_offset: egui::Vec2::ZERO,
             scroll_max: egui::Vec2::ZERO,
             scroll_request: None,
+            sync_scroll_out: 0.0,
+            sync_scroll_mirrored: false,
             viewport: None,
             cols: 1,
             balloon: None,
@@ -784,7 +791,14 @@ fn update_canvas_scroll_state(
     caret: Option<wordcraft_layout::hit::Caret>,
     out: &egui::scroll_area::ScrollAreaOutput<(egui::Response, Vec<Rect>)>,
 ) {
-    app.canvas.scroll_offset = out.state.clamped_offset();
+    let offset = out.state.clamped_offset();
+    let moved = offset.y - app.canvas.scroll_offset.y;
+    if std::mem::take(&mut app.canvas.sync_scroll_mirrored) {
+        // The other window's scroll, mirrored here: not sent back.
+    } else if moved.is_finite() && moved != 0.0 {
+        app.canvas.sync_scroll_out += moved;
+    }
+    app.canvas.scroll_offset = offset;
     scrollbar_page_tip(app, ui, out.id, &geo.rects, &geo.bands, layout.pages.len());
     // The page the status bar names (#3880): the caret's, or a whole-story selection's page, while
     // it is on screen; else the page at the top of the window.

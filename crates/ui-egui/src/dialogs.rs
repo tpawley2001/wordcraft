@@ -58,6 +58,13 @@ use paragraph::{para_fields, paragraph_dialog};
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "dialog", rename_all = "camelCase")]
 pub enum Dialog {
+    /// View Side by Side with three or more documents: which one goes beside the active one.
+    CompareSideBySide {
+        /// The other open documents: id and title, in the order they were opened.
+        choices: Vec<(u64, String)>,
+        selected: usize,
+        message: String,
+    },
     RenameDocument {
         name: String,
         message: String,
@@ -565,6 +572,7 @@ impl Dialog {
 
     pub fn name(&self) -> &'static str {
         match self {
+            Dialog::CompareSideBySide { .. } => "sideBySide",
             Dialog::RenameDocument { .. } => "renameDocument",
             Dialog::Font { .. } => "font",
             Dialog::Paragraph { .. } => "paragraph",
@@ -876,6 +884,11 @@ impl Dialog {
                 }
             }
             "pasteSpecial" => Dialog::paste_special(app, &json!({})),
+            "sideBySide" => {
+                let active = app.session.document_id();
+                let choices = app.session.documents().iter().filter(|d| d.id != active).map(|d| (d.id, crate::documents::display_title(d))).collect();
+                Dialog::CompareSideBySide { choices, selected: 0, message: String::new() }
+            }
             "renameDocument" => Dialog::RenameDocument { name: app.title_stem(), message: String::new(), focus: true },
             "about" => Dialog::About { tab: 0 },
             "contributors" => Dialog::About { tab: 1 },

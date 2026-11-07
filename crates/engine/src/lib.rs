@@ -40,7 +40,7 @@ pub use io::Password;
 pub use keymap::KeyMap;
 pub use ribbon::RibbonLayout;
 pub use session::{
-    CellRange, ColumnBlock, DocInfo, DocState, EditSnapshot, FindFormat, FindState, MathEdit, Prefs, Selection, Session, StylesPaneDock,
+    CellRange, ColumnBlock, DocInfo, DocState, EditSnapshot, FindFormat, FindState, MathEdit, Prefs, Selection, Session, SideBySide, StylesPaneDock,
     UNDO_LIST_MAX, ViewState, WindowView, blank_document, next_math_session, set_system_locale,
 };
 /// The outcome a command reports for IME receipt classification.
