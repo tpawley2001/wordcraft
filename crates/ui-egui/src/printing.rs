@@ -276,3 +276,46 @@ mod tests {
         assert_eq!(super::pwg_media("Quarto"), None);
     }
 }
+
+#[cfg(test)]
+mod document_date_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn last_printed_changes_only_after_successful_submission() {
+        for native in [false, true] {
+            for success in [false, true] {
+                let mut app =
+                    crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Print test")), crate::Services::default());
+                app.session.dirty = false;
+                let old = "2023-07-04T12:00:00Z";
+                app.session.doc.core.last_printed = old.into();
+                if native {
+                    app.printing.printers = vec![Printer { name: "Test Printer".into(), label: String::new(), default: true }];
+                    app.printing.settings.printer = "Test Printer".into();
+                    app.services.print_native = Some(Box::new(move |_, _, _, _| {
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        tx.send(if success { Ok(String::new()) } else { Err("print failed".into()) }).unwrap();
+                        rx
+                    }));
+                } else {
+                    app.services.print = Some(Box::new(move |_| if success { Ok(()) } else { Err("print failed".into()) }));
+                }
+                let result = submit(&mut app, &json!({}));
+                if native {
+                    assert!(result.is_ok());
+                    assert_eq!(app.session.doc.core.last_printed, old, "submission is still pending");
+                    app.poll_printing(&egui::Context::default());
+                } else {
+                    assert_eq!(result.is_ok(), success);
+                }
+                assert_eq!(app.session.doc.core.last_printed != old, success);
+                assert_eq!(app.session.dirty, success);
+                if success {
+                    assert!(app.session.doc.core.last_printed.ends_with('Z'));
+                }
+            }
+        }
+    }
+}

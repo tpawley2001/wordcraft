@@ -319,8 +319,12 @@ impl WordApp {
             return;
         };
         if matches!(message, printing::Feedback::Submitted(_)) {
-            self.session.doc.core.last_printed = wordcraft_engine::cmd::now_iso();
-            self.session.dirty = true;
+            // Submission may finish after the user switches to another document.
+            let document = self.print_document.unwrap_or(self.session.document_id());
+            let _ = self.session.with_document(document, |s| {
+                s.doc.core.last_printed = wordcraft_engine::cmd::now_iso();
+                s.dirty = true;
+            });
         }
         let text = printing::feedback(&message, |label| i18n::t(label).to_owned());
         self.status(text);

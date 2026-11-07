@@ -9,6 +9,14 @@ use super::{
     sel_result,
 };
 
+/// Core date fields keep their cached result when the property cannot identify an instant.
+fn document_date_result(instr: &str, value: &str) -> Option<String> {
+    let date = chrono::DateTime::parse_from_rfc3339(value).ok()?;
+    let unix = u64::try_from(date.timestamp()).ok()?;
+    let picture = date_picture(instr).unwrap_or_else(|| "M/d/yyyy".into());
+    Some(text_result(instr, crate::cmd::insert::format_date_at(&picture, unix, crate::cmd::local_offset_secs(unix))))
+}
+
 /// The `\*` format switch value for a caption's number format (OOXML names work too).
 pub fn seq_format(name: &str) -> &'static str {
     match name {
@@ -501,11 +509,7 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
                 }
                 "CREATEDATE" | "PRINTDATE" => {
                     let value = if name == "CREATEDATE" { &core.created } else { &core.last_printed };
-                    if let Some(unix) = chrono::DateTime::parse_from_rfc3339(value).ok().and_then(|date| u64::try_from(date.timestamp()).ok()) {
-                        let pic = date_picture(instr).unwrap_or_else(|| "M/d/yyyy".into());
-                        let text = crate::cmd::insert::format_date_at(&pic, unix, crate::cmd::local_offset_secs(unix));
-                        updates.push((k, text_result(instr, text)));
-                    }
+                    updates.extend(document_date_result(instr, value).map(|text| (k, text)));
                 }
                 "REF" | "PAGEREF" => {
                     let f = FieldCode::parse(instr);
