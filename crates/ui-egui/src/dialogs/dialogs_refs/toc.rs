@@ -219,6 +219,7 @@ pub struct FiguresForm {
     pub labels: Vec<String>,
     pub include_label: bool,
     pub page_numbers: bool,
+    pub hyperlinks: bool,
     pub right_align: bool,
     pub leader: String,
 }
@@ -231,7 +232,15 @@ impl FiguresForm {
                 labels.push(l);
             }
         }
-        FiguresForm { label: "Figure".into(), labels, include_label: true, page_numbers: true, right_align: true, leader: "dot".into() }
+        FiguresForm {
+            label: "Figure".into(),
+            labels,
+            include_label: true,
+            page_numbers: true,
+            hyperlinks: true,
+            right_align: true,
+            leader: "dot".into(),
+        }
     }
 
     /// `references.tableOfFigures` parameters.
@@ -239,6 +248,7 @@ impl FiguresForm {
         json!({
             "label": self.label,
             "includeLabel": self.include_label,
+            "hyperlinks": self.hyperlinks,
             "pageNumbers": self.page_numbers,
             "rightAlign": self.right_align,
             "tabLeader": self.leader,
@@ -268,6 +278,7 @@ pub(super) fn figures_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FiguresForm) ->
         });
         combo.response.labelled_by(label_label.id);
     });
+    ui.checkbox(&mut f.hyperlinks, tl!("Use hyperlinks instead of page numbers"));
     ui.checkbox(&mut f.include_label, tl!("Include label and number"));
     ui.checkbox(&mut f.page_numbers, tl!("Include page numbers"));
     ui.add_enabled_ui(f.page_numbers, |ui| {

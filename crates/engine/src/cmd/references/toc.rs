@@ -465,7 +465,7 @@ pub(crate) fn toc_bookmark(s: &mut Session, i: usize, lead: usize) -> Result<Str
     bookmark_heading(s, &Path::top(i), lead)
 }
 
-fn bookmark_heading(s: &mut Session, path: &Path, lead: usize) -> Result<String, CmdError> {
+pub(crate) fn bookmark_heading(s: &mut Session, path: &Path, lead: usize) -> Result<String, CmdError> {
     const MARK: usize = wordcraft_doc::para::OBJ.len_utf8();
     let para = s.doc.para(StoryRef::Body, path).ok_or_else(|| CmdError::Failed("heading is gone".into()))?;
     if let Some(InlineObject::BookmarkStart { name }) = para.object_at(lead)

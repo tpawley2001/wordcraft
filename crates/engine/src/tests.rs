@@ -49,6 +49,7 @@ mod word_window_keys;
 mod button_fields;
 mod wordart;
 mod page_number_formats_in_lists;
+mod figures_hyperlinks;
 mod window_edge_keys;
 mod write_protection;
 
