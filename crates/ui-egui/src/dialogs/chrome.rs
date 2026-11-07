@@ -208,6 +208,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
         Dialog::Organizer { .. } => "Organizer",
         Dialog::CustomProperties { .. } => "Custom Document Properties",
         Dialog::ConvertDocument => "Convert Document",
+        Dialog::MarkAsFinal => "Mark as Final",
         Dialog::Compatibility { .. } => "Compatibility Checker",
         Dialog::Layout(d) => d.title(),
     };

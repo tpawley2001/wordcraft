@@ -123,3 +123,50 @@ fn reading_drops_dates_that_are_not_w3cdtf() {
         assert!(!xml.contains("aaa") && !xml.contains("sss") && !xml.contains("not a date"), "{xml}");
     }
 }
+
+/// Status (`cp:contentStatus`) and the other core properties Word writes (`cp:lastPrinted`,
+/// `dc:language`, `cp:version`, `dc:identifier`, `cp:contentType`) are read and written back
+/// unchanged; empty ones are not written.
+#[test]
+fn status_and_the_other_core_properties_round_trip() {
+    let base = wordcraft_docx::write(&Document::new()).unwrap();
+    let core = format!(
+        concat!(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties {ns}>"#,
+            "<dc:creator>Someone</dc:creator><cp:lastPrinted>2026-11-02T09:30:00Z</cp:lastPrinted>",
+            "<cp:contentStatus>Final</cp:contentStatus><dc:language>en-GB</dc:language>",
+            "<cp:version>2.1</cp:version><dc:identifier>DOC-77</dc:identifier>",
+            "<cp:contentType>Memo</cp:contentType></cp:coreProperties>"
+        ),
+        ns = CORE_NS
+    );
+    let d = wordcraft_docx::read(&replace_part(&base, "docProps/core.xml", &core)).unwrap();
+    assert_eq!(d.core.content_status, "Final");
+    assert_eq!(d.core.last_printed, "2026-11-02T09:30:00Z");
+    assert_eq!((d.core.language.as_str(), d.core.version.as_str()), ("en-GB", "2.1"));
+    assert_eq!((d.core.identifier.as_str(), d.core.content_type.as_str()), ("DOC-77", "Memo"));
+    let xml = part(&wordcraft_docx::write(&d).unwrap(), "docProps/core.xml").unwrap();
+    for want in [
+        "<cp:contentStatus>Final</cp:contentStatus>",
+        "<cp:lastPrinted>2026-11-02T09:30:00Z</cp:lastPrinted>",
+        "<dc:language>en-GB</dc:language>",
+        "<cp:version>2.1</cp:version>",
+        "<dc:identifier>DOC-77</dc:identifier>",
+        "<cp:contentType>Memo</cp:contentType>",
+    ] {
+        assert!(xml.contains(want), "{want}: {xml}");
+    }
+    let empty = core_xml_of("2014", "2014");
+    for tag in ["contentStatus", "lastPrinted", "language", "version", "identifier", "contentType"] {
+        assert!(!empty.contains(tag), "{tag}: {empty}");
+    }
+}
+
+/// A last-printed date that isn't a W3C date-time is dropped, like `dcterms:created`.
+#[test]
+fn a_last_printed_date_that_is_not_w3cdtf_is_dropped() {
+    let mut d = Document::new();
+    d.core.last_printed = "yesterday".into();
+    let xml = part(&wordcraft_docx::write(&d).unwrap(), "docProps/core.xml").unwrap();
+    assert!(!xml.contains("lastPrinted"), "{xml}");
+}

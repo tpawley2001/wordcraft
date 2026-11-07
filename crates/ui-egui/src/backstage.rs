@@ -713,6 +713,7 @@ fn info_properties(app: &mut WordApp, ui: &mut Ui, info: &serde_json::Value) {
             ("Author", &mut props.creator),
             ("Keywords", &mut props.keywords),
             ("Category", &mut props.category),
+            ("Status", &mut props.content_status),
         ] {
             t.row(|r| {
                 let label = r.cell(|ui| ui.label(tl!(l)));
@@ -730,7 +731,7 @@ fn info_properties(app: &mut WordApp, ui: &mut Ui, info: &serde_json::Value) {
         if app.info_editing == Some((field, app.session.rev())) {
             app.session.join_next_undo();
         }
-        let ok = app.run("file.properties", json!({"title": props.title, "subject": props.subject, "author": props.creator, "keywords": props.keywords, "category": props.category})).is_ok();
+        let ok = app.run("file.properties", json!({"title": props.title, "subject": props.subject, "author": props.creator, "keywords": props.keywords, "category": props.category, "status": props.content_status})).is_ok();
         app.info_editing = ok.then(|| (field, app.session.rev()));
     }
     if focused != app.info_editing.map(|(f, _)| f) {
@@ -765,6 +766,18 @@ fn info_properties(app: &mut WordApp, ui: &mut Ui, info: &serde_json::Value) {
             let _ = app.run("file.encrypt", json!({"password": null}));
         }
     });
+    // Protect Document › Mark as Final: a toggle; marking asks first, then saves.
+    let marked = app.session.marked_final();
+    if marked {
+        ui.label(tl!("This document has been marked as final to discourage editing."));
+    }
+    if ui
+        .selectable_label(marked, egui::RichText::new(tl!("Mark as Final")).font(medium(13.5)))
+        .on_hover_text(tl!("Let readers know the document is final and make it read-only."))
+        .clicked()
+    {
+        let _ = if marked { app.run("file.markAsFinal", json!({"final": false})) } else { app.run("ui.dialog", json!({"name": "markAsFinal"})) };
+    }
 }
 
 fn info_statistics(ui: &mut Ui, info: &serde_json::Value) {

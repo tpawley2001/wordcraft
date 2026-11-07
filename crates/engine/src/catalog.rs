@@ -23,6 +23,7 @@ File|Backstage|Options|file.options
 File|Options|Numerals|view.numeral
 File|Backstage|Share|file.share
 File|Backstage|Protect Document|file.protect
+File|Backstage|Mark as Final|file.markAsFinal
 File|Backstage|Inspect Document|file.inspect
 File|Backstage|Check Accessibility|file.accessibility
 File|Backstage|Check Compatibility|file.compatibility

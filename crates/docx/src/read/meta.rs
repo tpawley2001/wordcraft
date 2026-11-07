@@ -327,6 +327,12 @@ impl Reader<'_> {
                 "dcterms:created" if crate::w3cdtf::is_w3cdtf(&t) => c.created = t,
                 "dcterms:modified" if crate::w3cdtf::is_w3cdtf(&t) => c.modified = t,
                 "cp:category" => c.category = t,
+                "cp:contentStatus" => c.content_status = t,
+                "cp:lastPrinted" if crate::w3cdtf::is_w3cdtf(&t) => c.last_printed = t,
+                "dc:language" => c.language = t,
+                "cp:version" => c.version = t,
+                "dc:identifier" => c.identifier = t,
+                "cp:contentType" => c.content_type = t,
                 _ => {}
             }
         }
