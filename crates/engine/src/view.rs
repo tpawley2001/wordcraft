@@ -35,6 +35,10 @@ pub struct ViewState {
     /// Selection Pane (Layout › Arrange, Alt+F10): the body's drawings, front-most first.
     #[serde(default)]
     pub selection_pane: bool,
+    /// View › Window › Split (#3254): `Some(r)` shows two panes, the top one `r` of the height
+    /// (0.1..=0.9). Acceptance-test stub: the task wires it up.
+    #[serde(default)]
+    pub split: Option<f32>,
     pub comments_pane: bool,
     /// The Clipboard pane (Home › Clipboard): items collected by Copy and Cut.
     #[serde(default)]
@@ -193,6 +197,7 @@ impl Default for ViewState {
             style_inspector: false,
             reveal_formatting_pane: false,
             selection_pane: false,
+            split: None,
             comments_pane: false,
             clipboard_pane: false,
             smart_art_pane: false,
