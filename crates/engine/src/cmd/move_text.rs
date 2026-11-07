@@ -46,6 +46,14 @@ pub fn pending_status(s: &Session) -> Option<&'static str> {
     s.pending_text_move.as_ref().map(|m| if m.copy { "Copy to where?" } else { "Move to where?" })
 }
 
+/// Undo commands cancel even when there is no history to restore.
+pub(crate) fn before_command(s: &mut Session, id: &str) {
+    invalidate(s);
+    if matches!(id, "edit.undo" | "edit.undoTo" | "edit.redo") {
+        s.pending_text_move = None;
+    }
+}
+
 /// Discard sources after edits, including commands that join an existing undo step.
 pub(crate) fn invalidate(s: &mut Session) {
     if s.pending_text_move.as_ref().is_some_and(|m| m.revision != s.rev()) {

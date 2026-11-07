@@ -89,9 +89,9 @@ pub struct Session {
     pub author: String,
     /// Initials for comments (File › Options › General); empty = the name's initials.
     pub initials: String,
-    /// Format painter: copied formatting waiting to be applied (and whether it stays on).
     /// Selection waiting for F2/Shift+F2 destination confirmation; outside undo history.
     pub pending_text_move: Option<crate::cmd::move_text::PendingMove>,
+    /// Format painter: copied formatting waiting to be applied (and whether it stays on).
     pub painter: Option<(CharProps, wordcraft_doc::props::ParaProps, bool)>,
     /// Last message for the status bar / agents.
     pub status: String,
