@@ -171,6 +171,10 @@ fn eprint<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<Ve
     (v.len() as u64 <= cap && is_emf(&v)).then_some(v)
 }
 
+/// Repairs an EMF's `EMR_HEADER` counts in place ([MS-EMF] 2.3.4.2). Stub: not implemented yet.
+#[allow(dead_code)]
+pub(crate) fn repair_emf_header(_emf: &mut [u8]) {}
+
 /// The Windows Metafile in the object's `\x03META` stream (after its METAFILEPICT16 header), if
 /// it is well-formed and within the per-picture cap.
 fn meta<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<Vec<u8>> {
