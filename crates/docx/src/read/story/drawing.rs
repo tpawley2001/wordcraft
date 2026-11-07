@@ -23,7 +23,7 @@ impl Reader<'_> {
         let mut float = if anchored { anchor_float(c) } else { Float::default() };
         float.alt = meta;
         float.hidden = c.child("wp:docPr").is_some_and(|p| on_off_attr(p, "hidden"));
-        float.name = c.child("wp:docPr").and_then(|p| p.attr("name")).map(|n| wordcraft_doc::para::cap_alt(n.trim())).unwrap_or_default();
+        float.name = c.child("wp:docPr").map(docpr_name).unwrap_or_default();
         if let Some(e) = c.child("wp:effectExtent") {
             for (slot, n) in float.effect.iter_mut().zip(["l", "t", "r", "b"]) {
                 // Negative for a rotated object narrower than its frame; settled below.
@@ -783,4 +783,17 @@ fn group_xfrm(sppr: Option<&El>) -> Xfrm {
         ch_off: pair("a:chOff", "x", "y", max),
         ch_ext: pos(pair("a:chExt", "cx", "cy", max)),
     }
+}
+
+/// A drawing's `wp:docPr/@name`, capped like alt text. A default name, a kind followed by the
+/// drawing's own id ("Picture 3" with `id="3"`, as Word and our writer generate), isn't kept:
+/// the Selection Pane shows a default anyway, and the writer generates it again on save.
+fn docpr_name(p: &El) -> String {
+    let name = p.attr("name").unwrap_or_default().trim();
+    let generated = p
+        .attr("id")
+        .and_then(|id| name.strip_suffix(id))
+        .and_then(|kind| kind.strip_suffix(' '))
+        .is_some_and(|kind| !kind.is_empty() && kind.chars().all(|c| c.is_ascii_alphabetic() || c == ' '));
+    if generated { String::new() } else { cap_alt(name) }
 }
