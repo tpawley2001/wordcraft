@@ -1,5 +1,9 @@
 //! GOTOBUTTON and MACROBUTTON fields: F9 stores their display text, and Alt+Shift+F9 (Word's
 //! DoFieldClick, `fields.click`) follows a GOTOBUTTON to its bookmark or page. Macros never run.
+//
+// Note for the implementer (remove when done): this file was written before it could be compiled.
+// If a helper name or type here doesn't match the engine, fix only that; never change what an
+// assertion checks.
 
 use serde_json::json;
 use wordcraft_doc::{InlineObject, Pos, StoryRef};
