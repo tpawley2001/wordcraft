@@ -788,7 +788,7 @@ fn replace_all(s: &mut Session, v: &Value) -> CmdResult {
     Ok(json!({"replaced": n}))
 }
 
-fn goto(s: &mut Session, v: &Value) -> CmdResult {
+pub(super) fn goto(s: &mut Session, v: &Value) -> CmdResult {
     // Relative pages, Go To's "+2" / "-1": from the page the caret is on.
     let by = v.get("pageBy").and_then(Value::as_i64);
     let rel = by.map(|by| {

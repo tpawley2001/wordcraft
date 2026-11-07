@@ -458,6 +458,7 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
     }
     let stories: Vec<StoryRef> =
         if all { std::iter::once(StoryRef::Body).chain(s.doc.parts.keys().map(|k| StoryRef::Part(*k))).collect() } else { vec![caret_story] };
+    let range_stories = stories.clone();
     // The document properties as the fields read and set them (`SUBJECT "New subject"`): a field
     // after one that sets a property shows the new value.
     let mut core = s.doc.core.clone();
@@ -575,6 +576,12 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
                     let text = if has_switch(instr, 'p') { fn_path } else { fn_name };
                     updates.push((k, text_result(instr, text)));
                 }
+                // GOTOBUTTON and MACROBUTTON store the text their code shows.
+                "GOTOBUTTON" | "MACROBUTTON" => {
+                    if let Some(text) = wordcraft_layout::fields::button_display_text(instr) {
+                        updates.push((k, text));
+                    }
+                }
                 _ => {}
             }
         }
@@ -594,6 +601,7 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
         }
         para.touch();
     }
+    update_button_ranges(s, &range_stories)?;
     if !in_body {
         return Ok(());
     }
@@ -666,6 +674,36 @@ fn set_values(s: &Session, paths: &[(StoryRef, Path)]) -> std::collections::Hash
         }
     }
     out
+}
+
+/// F9 on GOTOBUTTON and MACROBUTTON range fields (`FieldStart` … `FieldEnd`, as read from .docx):
+/// the content between the markers becomes the text their code shows. Unlocked fields only; the
+/// text takes the formatting of the field's first character.
+fn update_button_ranges(s: &mut Session, stories: &[StoryRef]) -> Result<(), CmdError> {
+    let width = wordcraft_doc::para::OBJ.len_utf8();
+    for &story in stories {
+        // Last first, so replacing one result never moves a field still to do; re-read after each
+        // edit, as a replaced result may have held other fields.
+        let mut i = s.doc.field_ranges(story).len();
+        while i > 0 {
+            i -= 1;
+            let Some(r) = s.doc.field_ranges(story).into_iter().nth(i) else { continue };
+            let name = wordcraft_layout::fields::field_name(&r.instr);
+            if r.locked || (name != "GOTOBUTTON" && name != "MACROBUTTON") {
+                continue;
+            }
+            let Some(text) = wordcraft_layout::fields::button_display_text(&r.instr) else { continue };
+            let Some(inner) = r.start.off.checked_add(width) else { continue };
+            let start = Pos { off: inner, ..r.start.clone() };
+            if s.doc.copy_range(&start, &r.end).plain_text() == text {
+                continue;
+            }
+            let props = s.doc.para_at(&r.start).map(|p| p.props_of_char(r.start.off).clone()).unwrap_or_default();
+            let at = s.doc.delete_range(&start, &r.end)?;
+            s.doc.insert_text(&at, &text, &props)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

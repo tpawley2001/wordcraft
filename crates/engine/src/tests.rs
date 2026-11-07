@@ -37,6 +37,7 @@ mod table_sort_keys;
 mod symbol_field_update;
 mod typing;
 mod word_window_keys;
+mod button_fields;
 mod wordart;
 
 /// True, after saying so on stderr, when this build lacks the Language data the proofing tests

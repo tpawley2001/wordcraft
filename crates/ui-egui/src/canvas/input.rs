@@ -351,6 +351,20 @@ fn handle_primary_press(
         return;
     }
     app.canvas.column_drag = None;
+    // A single click in a MACROBUTTON field selects the whole field, as Word's "click here and
+    // type" placeholder does, so the next typed text replaces it.
+    if clicks == 1
+        && !mods.shift
+        && !mods.command
+        && !mods.alt
+        && let Some(sel) = wordcraft_engine::cmd::fields::click_selection(&app.session, &pos)
+    {
+        let _ = app.run("caret.set", json!({"pos": pj}));
+        app.session.sel = sel;
+        app.session.page_hint = page;
+        app.canvas.dragging = true;
+        return;
+    }
     let _ = app.run("caret.set", json!({"pos": pj, "extend": mods.shift}));
     // Double-click selects a word, triple-click a paragraph, Ctrl/⌘+click a sentence; holding
     // the button and dragging then extends by whole units (Word, #549).
@@ -442,6 +456,14 @@ fn handle_completed_click(app: &mut WordApp, pointer: &PagePointer<'_>) -> bool 
         {
             app.session.sel = wordcraft_engine::Selection::caret(field);
             let _ = app.run("fields.setCode", json!({}));
+            return true;
+        }
+        // Double-clicking a GOTOBUTTON follows it, as Alt+Shift+F9 does.
+        if let Some(pos) = layout.hit(page, x, y, story)
+            && wordcraft_engine::cmd::fields::field_name_at(&app.session, &pos).as_deref() == Some("GOTOBUTTON")
+        {
+            app.session.sel = wordcraft_engine::Selection::caret(pos);
+            let _ = app.run("fields.click", json!({}));
             return true;
         }
         let _ = app.run("select.word", json!({}));
