@@ -44,6 +44,7 @@ mod table_sort_keys;
 mod symbol_field_update;
 mod accent_compose;
 mod typing;
+mod view_side_by_side;
 mod word_window_keys;
 mod button_fields;
 mod wordart;
