@@ -309,7 +309,7 @@ pub fn field_text_on(instr: &str, result: &str, ctx: &FieldCtx, page: u32) -> (S
             };
             (apply_case_switch(instr, text), false)
         }
-        "SYMBOL" if result.is_empty() => (symbol_text(instr), false),
+        "SYMBOL" => (symbol_text(instr), false),
         // ASK and SET only assign text to a bookmark: they never show a result (ECMA-376 §17.16.5).
         "ASK" | "SET" => (String::new(), false),
         "STYLEREF" => match &ctx.styleref {
@@ -352,13 +352,19 @@ fn instr_words(instr: &str) -> Vec<String> {
 /// The character a `SYMBOL` field shows (ECMA-376 Part 1 §17.16.5.68): the code is decimal or
 /// `0x` hexadecimal; in a symbol font (`\f`) it maps to its Unicode equivalent, else `\u` reads
 /// it as Unicode and the default (`\a` ANSI, `\j`) as Windows-1252. `\s` and `\h` only change size.
-fn symbol_text(instr: &str) -> String {
+pub fn symbol_text(instr: &str) -> String {
     let words = instr_words(instr);
     let code = words.get(1).filter(|w| !w.starts_with('\\')).and_then(|w| match w.strip_prefix("0x").or_else(|| w.strip_prefix("0X")) {
         Some(hex) => u32::from_str_radix(hex, 16).ok(),
         None => w.parse::<u32>().ok(),
     });
-    let Some(code) = code.filter(|c| *c != 0) else { return String::new() };
+    let Some(code) = code else { return "###".into() };
+    if code == 0 {
+        return String::new();
+    }
+    if code > 0xFF && !has_switch(instr, 'u') {
+        return "###".into();
+    }
     let font = words.iter().position(|w| w.eq_ignore_ascii_case("\\f")).and_then(|i| words.get(i + 1)).filter(|w| !w.starts_with('\\'));
     let shown = match font {
         Some(font) if wordcraft_doc::symbol_fonts::is_symbol_font(font) => (code <= 0xFF)

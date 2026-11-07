@@ -489,6 +489,7 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
             }
             let name = wordcraft_layout::fields::field_name(instr);
             match name.as_str() {
+                "SYMBOL" => updates.push((k, wordcraft_layout::fields::symbol_text(instr))),
                 "DATE" | "TIME" | "CREATEDATE" | "SAVEDATE" | "PRINTDATE" => {
                     let pic = date_picture(instr).unwrap_or_else(|| if name == "TIME" { "h:mm am/pm".into() } else { "M/d/yyyy".into() });
                     updates.push((k, text_result(instr, crate::cmd::insert::format_date(&pic))));
