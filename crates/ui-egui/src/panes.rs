@@ -1,6 +1,6 @@
 //! Task panes: Navigation (headings, pages, search results), Clipboard, Styles, Style Inspector,
 //! Accessibility and Alt Text (see `a11y_pane`), Format Shape (see `format_shape`), Restrict Editing
-//! ([`crate::dialogs_review`]), Comments, and the SmartArt Text Pane. `craft_ui::panes` draws them
+//! ([`crate::dialogs_review`]), Comments, the Selection Pane, and the SmartArt Text Pane. `craft_ui::panes` draws them
 //! around the document, with their title bars, menus and resize edges; the session's view flags say
 //! which are open.
 
@@ -22,6 +22,7 @@ mod host;
 mod inspector;
 mod nav;
 mod reveal;
+mod selection;
 mod side;
 mod state;
 
@@ -42,6 +43,7 @@ use nav::nav;
 #[cfg(test)]
 use nav::{nav_heading, nav_headings, visible_headings};
 use reveal::reveal;
+use selection::selection;
 use side::{clipboard, styles};
 pub(crate) use state::float_rect;
 #[cfg(test)]
@@ -65,6 +67,8 @@ pub enum Pane {
     RestrictEditing,
     Proofing,
     Comments,
+    /// Layout › Arrange › Selection Pane (Alt+F10): the drawings by name, front-most first.
+    Selection,
 }
 
 impl Pane {
@@ -82,6 +86,7 @@ impl Pane {
             Self::RestrictEditing => "Restrict Editing",
             Self::Proofing => "Proofing",
             Self::Comments => "Comments",
+            Self::Selection => "Selection",
         }
     }
 
@@ -99,6 +104,7 @@ impl Pane {
             Self::RestrictEditing => (Edge::End, 270.0),
             Self::Proofing => (Edge::End, 400.0),
             Self::Comments => (Edge::End, 290.0),
+            Self::Selection => (Edge::End, 250.0),
         };
         PaneState::docked(edge, width)
     }
@@ -118,10 +124,11 @@ impl Pane {
             Self::RestrictEditing => "restrictEditing",
             Self::Proofing => "proofing",
             Self::Comments => "comments",
+            Self::Selection => "selection",
         }
     }
 
-    const ALL: [Self; 12] = [
+    const ALL: [Self; 13] = [
         Self::SmartArtText,
         Self::Navigation,
         Self::Clipboard,
@@ -134,6 +141,7 @@ impl Pane {
         Self::RestrictEditing,
         Self::Proofing,
         Self::Comments,
+        Self::Selection,
     ];
 
     fn from_key(key: &str) -> Option<Self> {
@@ -153,6 +161,7 @@ impl Pane {
             Self::AltText => Some("view.altTextPane"),
             Self::FormatShape => Some("view.formatShapePane"),
             Self::Comments => Some("view.commentsPane"),
+            Self::Selection => Some("view.selectionPane"),
             Self::RestrictEditing | Self::Proofing => None,
         }
     }
@@ -180,6 +189,7 @@ impl PaneContent<Pane> for Content<'_> {
             Pane::RestrictEditing => crate::dialogs_review::restrict_pane(app, ui),
             Pane::Proofing => crate::proofing_pane::show(app, ui),
             Pane::Comments => comments(app, ui),
+            Pane::Selection => selection(app, ui),
         })
     }
 

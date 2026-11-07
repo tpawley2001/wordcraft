@@ -494,3 +494,39 @@ fn a_long_comment_card_keeps_its_buttons_and_the_next_card_in_view() {
     assert_eq!(go_to.len(), 2, "one Go to button per card");
     assert!(go_to.iter().all(|r| r.max.y < 900.0), "both cards' buttons are in view: {go_to:?}");
 }
+
+/// Alt+F10 opens the Selection Pane (Windows and Linux), and the eye of its first row hides the
+/// front-most object.
+#[test]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]
+fn alt_f10_opens_the_selection_pane_and_the_eye_hides_an_object() {
+    use egui_kittest::kittest::Queryable;
+
+    let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello")), crate::Services::default());
+    app.run("insert.shape", serde_json::json!({"kind": "rectangle"})).unwrap();
+    app.run("select.collapse", serde_json::json!({"end": true})).unwrap();
+    app.run("insert.shape", serde_json::json!({"kind": "ellipse"})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut crate::WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        app,
+    );
+    h.run_steps(4);
+    assert!(!super::open(h.state()).contains(&Pane::Selection));
+    h.event(egui::Event::Key { key: egui::Key::F10, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::ALT });
+    h.run_steps(2);
+    h.event(egui::Event::Key { key: egui::Key::F10, physical_key: None, pressed: false, repeat: false, modifiers: egui::Modifiers::ALT });
+    h.run_steps(2);
+    assert!(super::open(h.state()).contains(&Pane::Selection), "Alt+F10 opened the pane");
+    let hidden = |h: &mut egui_kittest::Harness<'_, crate::WordApp>| -> Vec<bool> {
+        let list = h.state_mut().session.run("arrange.selectionPane", &serde_json::json!({})).unwrap();
+        list.as_array().unwrap().iter().map(|e| e["hidden"].as_bool().unwrap()).collect()
+    };
+    assert_eq!(hidden(&mut h), [false, false]);
+    h.get_all_by_label("Hide").next().unwrap().click();
+    h.run_steps(4);
+    assert_eq!(hidden(&mut h), [true, false], "the eye of row 0 hid the front-most object");
+}

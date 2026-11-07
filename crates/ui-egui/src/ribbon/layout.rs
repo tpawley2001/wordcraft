@@ -213,7 +213,7 @@ pub(super) fn layout(app: &mut WordApp, ui: &mut Ui) {
                 "selectionPane",
                 Some("Selection Pane"),
                 "Selection Pane",
-                crate::widgets::ButtonAction::new("arrange.selectionPane", json!({}), false),
+                crate::widgets::ButtonAction::new("view.selectionPane", json!({}), false),
             );
         });
         stack(ui, |ui| {

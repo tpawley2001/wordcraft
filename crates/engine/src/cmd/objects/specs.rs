@@ -3,7 +3,7 @@ use super::group::{add_object, group, ungroup};
 use super::picture::{adjust, adjust_media, clear_lum, crop, original_media, recolor, relook, remove_background, reset, size};
 use super::select::{
     all_objects, alt_text, can_group, edit_obj, has_floating, has_group, has_movable, has_object, has_picture, has_placeable, has_shape,
-    has_shape_or_canvas, has_sizable, obj_size, objects_list, selected, with_float, with_obj,
+    has_shape_or_canvas, has_sizable, obj_size, objects_list, pane_all, pane_rename, pane_select, pane_visible, selected, with_float, with_obj,
 };
 use super::shape::{NO_TEXT_BOX, can_link, has_text_box, link_text_box, set_text_body, shape_effects, text_box_target};
 use super::{CmdError, CommandSpec, InlineObject, Pos, Rgb, Selection, Spin, TextVert, VAlign, Wrap, WrapText, json, p, sel_result};
@@ -247,6 +247,15 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"value": "left|center|right"}"#)
         .when(has_placeable),
         CommandSpec::new("arrange.selectionPane", "Selection Pane", "Layout › Arrange", objects_list).pure(),
+        CommandSpec::new("arrange.selectObject", "Select Object", "Layout › Arrange › Selection Pane", pane_select)
+            .params(r#"{"index": n}  (n: the object's entry in arrange.selectionPane, front-most first)"#)
+            .pure(),
+        CommandSpec::new("arrange.setVisible", "Show or Hide Object", "Layout › Arrange › Selection Pane", pane_visible)
+            .params(r#"{"index": n, "visible": bool}  (n: the object's entry in arrange.selectionPane)"#),
+        CommandSpec::new("arrange.showAll", "Show All", "Layout › Arrange › Selection Pane", |s, _| pane_all(s, false)),
+        CommandSpec::new("arrange.hideAll", "Hide All", "Layout › Arrange › Selection Pane", |s, _| pane_all(s, true)),
+        CommandSpec::new("arrange.rename", "Rename Object", "Layout › Arrange › Selection Pane", pane_rename)
+            .params(r#"{"index": n, "name": string}  (n: the object's entry in arrange.selectionPane; the name is trimmed and can't be empty)"#),
         CommandSpec::new("arrange.bounds", "Move or Resize", "Layout › Arrange", bounds)
             .params(r#"{"width"?: pt, "height"?: pt, "x"?: pt, "y"?: pt, "page"?: n, "to"?: Pos}  (x/y: the top-left on page `page` (0-based, default its page); moving an inline object by x/y floats it. to: an In Line with Text object moves to that text position and stays inline, as a drag does)"#)
             .when(has_movable),

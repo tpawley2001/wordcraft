@@ -1010,6 +1010,17 @@ fn paint_view_and_tables(pen: &Pen, name: &str) -> bool {
     let (c, a) = (pen.c, pen.a);
     let red = Color32::from_rgb(0xD1, 0x3B, 0x3B);
     match name {
+        // Selection Pane: an object shown (open eye) or hidden (closed eye).
+        "eye" => {
+            pen.line(&[(2.0, 10.0), (5.0, 6.5), (10.0, 5.0), (15.0, 6.5), (18.0, 10.0), (15.0, 13.5), (10.0, 15.0), (5.0, 13.5), (2.0, 10.0)]);
+            pen.fcircle(10.0, 10.0, 2.5, a);
+        }
+        "eyeClosed" => {
+            pen.line(&[(2.0, 9.0), (5.0, 12.0), (10.0, 13.5), (15.0, 12.0), (18.0, 9.0)]);
+            pen.line(&[(5.0, 12.0), (3.5, 14.5)]);
+            pen.line(&[(10.0, 13.5), (10.0, 16.5)]);
+            pen.line(&[(15.0, 12.0), (16.5, 14.5)]);
+        }
         // View
         "readMode" => {
             pen.closed(&[(2.0, 4.0), (9.5, 5.0), (9.5, 17.0), (2.0, 16.0)], c);

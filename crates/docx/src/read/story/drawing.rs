@@ -23,6 +23,7 @@ impl Reader<'_> {
         let mut float = if anchored { anchor_float(c) } else { Float::default() };
         float.alt = meta;
         float.hidden = c.child("wp:docPr").is_some_and(|p| on_off_attr(p, "hidden"));
+        float.name = c.child("wp:docPr").map(docpr_name).unwrap_or_default();
         if let Some(e) = c.child("wp:effectExtent") {
             for (slot, n) in float.effect.iter_mut().zip(["l", "t", "r", "b"]) {
                 // Negative for a rotated object narrower than its frame; settled below.
@@ -97,6 +98,12 @@ impl Reader<'_> {
                 // Ink's round ends belong to its tool, not the optional shape outline. Keep
                 // its canonical model unchanged when reading the round cap the writer adds.
                 extra.cap = Default::default();
+            }
+            // Ink's name follows its tool (written from it on save), not the stored name.
+            if let InlineObject::Shape { freeform: Some(f), float, .. } = &mut obj
+                && f.ink.is_some()
+            {
+                float.name.clear();
             }
             obj
         };
@@ -776,4 +783,17 @@ fn group_xfrm(sppr: Option<&El>) -> Xfrm {
         ch_off: pair("a:chOff", "x", "y", max),
         ch_ext: pos(pair("a:chExt", "cx", "cy", max)),
     }
+}
+
+/// A drawing's `wp:docPr/@name`, capped like alt text. A default name, a kind followed by the
+/// drawing's own id ("Picture 3" with `id="3"`, as Word and our writer generate), isn't kept:
+/// the Selection Pane shows a default anyway, and the writer generates it again on save.
+fn docpr_name(p: &El) -> String {
+    let name = p.attr("name").unwrap_or_default().trim();
+    let generated = p
+        .attr("id")
+        .and_then(|id| name.strip_suffix(id))
+        .and_then(|kind| kind.strip_suffix(' '))
+        .is_some_and(|kind| !kind.is_empty() && kind.chars().all(|c| c.is_ascii_alphabetic() || c == ' '));
+    if generated { String::new() } else { cap_alt(name) }
 }

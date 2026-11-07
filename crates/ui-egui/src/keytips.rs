@@ -297,7 +297,7 @@ fn controls(tab: &str) -> Vec<Control> {
             c("Wrap Text", "arrange.wrap"),
             c("Bring Forward", "arrange.bringForward"),
             c("Send Backward", "arrange.sendBackward"),
-            c("Selection Pane", "arrange.selectionPane"),
+            c("Selection Pane", "view.selectionPane"),
             c("Align", "arrange.align"),
             c("Group", "arrange.group"),
             c("Rotate", "arrange.rotate"),
