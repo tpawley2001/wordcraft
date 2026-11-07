@@ -1,7 +1,74 @@
-use super::{ENVELOPE_SIZES, LABEL_PRODUCTS, Serialize, Ui, Value, WordApp, buttons, heading, json, run};
+use super::{ENVELOPE_SIZES, LABEL_PRODUCTS, MeasureExt, Serialize, Ui, Value, WordApp, buttons, heading, json, run, unit};
 
 // ---------------------------------------------------------------------------------------------
 // Envelopes
+
+/// An address's optional position (points) and style font overrides.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvelopeAddressForm {
+    pub left: Option<f32>,
+    pub top: Option<f32>,
+    pub font_name: String,
+    pub font_size: Option<f32>,
+    pub show_font: bool,
+}
+
+impl EnvelopeAddressForm {
+    fn params(&self, v: &mut Value, prefix: &str) {
+        if let Some(n) = self.left {
+            v[format!("{prefix}Left")] = json!(n);
+        }
+        if let Some(n) = self.top {
+            v[format!("{prefix}Top")] = json!(n);
+        }
+        let mut font = json!({});
+        if !self.font_name.is_empty() {
+            font["name"] = json!(self.font_name);
+        }
+        if let Some(n) = self.font_size {
+            font["size"] = json!(n);
+        }
+        v[format!("{prefix}Font")] = font;
+    }
+
+    fn ui(&mut self, ui: &mut Ui, w: f32, h: f32, defaults: (f32, f32), size: f32) {
+        if ui.button(tl!("Font…")).clicked() {
+            self.show_font = !self.show_font;
+        }
+        if self.show_font {
+            ui.horizontal(|ui| {
+                ui.label(tl!("Font:"));
+                ui.text_edit_singleline(&mut self.font_name);
+            });
+            ui.horizontal(|ui| {
+                let mut change = self.font_size.is_some();
+                if ui.checkbox(&mut change, tl!("Size:")).changed() {
+                    self.font_size = change.then_some(size);
+                }
+                if let Some(n) = &mut self.font_size {
+                    ui.add(egui::DragValue::new(n).range(1.0..=1638.0).suffix(" pt"));
+                }
+            });
+        }
+        for (label, value, max, default) in [(tl!("From left:"), &mut self.left, w, defaults.0), (tl!("From top:"), &mut self.top, h, defaults.1)] {
+            ui.horizontal(|ui| {
+                ui.label(label);
+                let mut auto = value.is_none();
+                if ui.checkbox(&mut auto, tl!("Auto")).changed() {
+                    *value = (!auto).then_some(default);
+                }
+                if let Some(n) = value {
+                    let k = unit().pt_per_unit();
+                    let mut display = *n / k;
+                    if ui.add(egui::DragValue::new(&mut display).speed(0.01).range(0.0..=max / k).measure(unit()).max_decimals(2)).changed() {
+                        *n = display * k;
+                    }
+                }
+            });
+        }
+    }
+}
 
 /// The Envelopes dialog's fields. `size` indexes [`ENVELOPE_SIZES`].
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -11,24 +78,58 @@ pub struct EnvelopeForm {
     pub ret: String,
     pub omit_return: bool,
     pub size: usize,
+    pub delivery_options: EnvelopeAddressForm,
+    pub return_options: EnvelopeAddressForm,
+    #[serde(skip)]
+    pub options_draft: Option<Box<EnvelopeForm>>,
 }
 
 impl EnvelopeForm {
     /// The delivery address starts as the selected text (an address in the letter).
     pub fn read(app: &WordApp) -> EnvelopeForm {
         let sel = if app.session.sel.is_collapsed() { String::new() } else { app.session.selected_text() };
-        EnvelopeForm { delivery: sel.trim().replace("\r\n", "\n").replace('\r', "\n"), ret: String::new(), omit_return: false, size: 0 }
+        EnvelopeForm {
+            delivery: sel.trim().replace("\r\n", "\n").replace('\r', "\n"),
+            ret: String::new(),
+            omit_return: false,
+            size: 0,
+            delivery_options: EnvelopeAddressForm::default(),
+            return_options: EnvelopeAddressForm::default(),
+            options_draft: None,
+        }
     }
 
     /// `mailings.envelopes` parameters; `add` puts the envelope at the start of this document.
     pub fn params(&self, add: bool) -> Value {
         let size = ENVELOPE_SIZES.get(self.size).map_or("Envelope #10", |s| s.0);
-        let ret = if self.omit_return { "" } else { self.ret.as_str() };
-        json!({"delivery": self.delivery, "return": ret, "size": size, "add": add})
+        let mut v = json!({"delivery": self.delivery, "return": self.ret, "omitReturn": self.omit_return, "size": size, "add": add});
+        self.delivery_options.params(&mut v, "delivery");
+        self.return_options.params(&mut v, "return");
+        v
     }
 }
 
 pub(super) fn envelopes_ui(app: &mut WordApp, ui: &mut Ui, f: &mut EnvelopeForm) -> bool {
+    if let Some(mut draft) = f.options_draft.take() {
+        heading(ui, tl!("Envelope Options"));
+        envelope_size_ui(ui, &mut draft.size);
+        let (_, w, h) = ENVELOPE_SIZES.get(draft.size).copied().unwrap_or(("Envelope #10", 684.0, 297.0));
+        ui.push_id("delivery_options", |ui| {
+            heading(ui, tl!("Delivery address:"));
+            draft.delivery_options.ui(ui, w, h, (w * 0.42, h * 0.45), 12.0);
+        });
+        ui.push_id("return_options", |ui| {
+            heading(ui, tl!("Return address:"));
+            draft.return_options.ui(ui, w, h, (22.0, 22.0), 10.0);
+        });
+        let (ok, cancel) = buttons(ui, true);
+        if ok {
+            *f = *draft;
+        } else if !cancel {
+            f.options_draft = Some(draft);
+        }
+        return false;
+    }
     ui.label(tl!("Delivery address:"));
     ui.add(egui::TextEdit::multiline(&mut f.delivery).desired_rows(4).desired_width(340.0));
     ui.horizontal(|ui| {
@@ -36,15 +137,9 @@ pub(super) fn envelopes_ui(app: &mut WordApp, ui: &mut Ui, f: &mut EnvelopeForm)
         ui.checkbox(&mut f.omit_return, tl!("Omit"));
     });
     ui.add_enabled(!f.omit_return, egui::TextEdit::multiline(&mut f.ret).desired_rows(3).desired_width(340.0));
-    ui.horizontal(|ui| {
-        ui.label(tl!("Envelope size:"));
-        let label = |i: usize| ENVELOPE_SIZES.get(i).map(|(n, w, h)| envelope_label(n, *w, *h)).unwrap_or_default();
-        craft_ui::ComboBox::from_id_salt("env_size").selected_text(label(f.size)).width(220.0).show_ui(ui, |ui| {
-            for i in 0..ENVELOPE_SIZES.len() {
-                ui.selectable_value(&mut f.size, i, label(i));
-            }
-        });
-    });
+    if ui.button(tl!("Options…")).clicked() {
+        f.options_draft = Some(Box::new(f.clone()));
+    }
     let ready = !f.delivery.trim().is_empty();
     ui.add_space(8.0);
     let (mut add, mut new, mut cancel) = (false, false, false);
@@ -59,6 +154,18 @@ pub(super) fn envelopes_ui(app: &mut WordApp, ui: &mut Ui, f: &mut EnvelopeForm)
         return run(app, "mailings.envelopes", f.params(add));
     }
     cancel
+}
+
+fn envelope_size_ui(ui: &mut Ui, size: &mut usize) {
+    ui.horizontal(|ui| {
+        ui.label(tl!("Envelope size:"));
+        let label = |i: usize| ENVELOPE_SIZES.get(i).map(|(n, w, h)| envelope_label(n, *w, *h)).unwrap_or_default();
+        craft_ui::ComboBox::from_id_salt("env_size").selected_text(label(*size)).width(220.0).show_ui(ui, |ui| {
+            for i in 0..ENVELOPE_SIZES.len() {
+                ui.selectable_value(size, i, label(i));
+            }
+        });
+    });
 }
 
 /// `DL   110 × 220 mm` / `#10   4.13 × 9.5 in`: metric sizes in millimetres, the others in

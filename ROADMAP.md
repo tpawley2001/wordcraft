@@ -1,6 +1,6 @@
 # WordCraft roadmap
 
-> **Last updated:** 2026-11-07 · **Change:** trivial (P0098: Options persists Print hidden text, Print field codes instead of their values and Print pages in reverse order; print jobs accept overrides independent of screen display. Reverse order precedes copies and is ignored for N-up/booklet. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-07 · **Change:** trivial (P0097: Envelope Options adds address positions, style fonts and Omit; Auto layout and readiness estimates unchanged); previously trivial (P0098: Options persists Print hidden text, Print field codes instead of their values and Print pages in reverse order; print jobs accept overrides independent of screen display. Reverse order precedes copies and is ignored for N-up/booklet. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-06 · **Change:** trivial (P0085: AUTONUM, AUTONUMLGL and AUTONUMOUT fields share nine level counters on F9 and output, with heading-derived levels, `\s`, `\e` and the outline style; locked fields do not count. Readiness estimates unchanged.); previously trivial (P0077: body LISTNUM fields share nine level counters on F9 and output, with heading-derived levels, start-at and NumberDefault/LegalDefault/OutlineDefault formats; locked fields do not count. Insert LISTNUM and Repeat Find use Ctrl+Alt+L/Y on Windows/Linux. Readiness estimates unchanged.)
 > **Highlight update:** 2026-10-25 · Highlight shortcut toggles the last chosen colour off when the whole selection has it; explicit colour commands remain setters (#4085). Readiness estimates unchanged.
 
@@ -148,6 +148,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-07: P0097: Envelope Options adds page-relative address positions, style font overrides and Omit return address; Auto layout remains unchanged.
 - 2026-11-07: P0098: Options persists Print hidden text, Print field codes instead of their values and Print pages in reverse order; print jobs accept overrides independent of screen display. Reverse order precedes copies and is ignored for N-up/booklet. Readiness estimates unchanged.
 
 - 2026-11-06: P0085: AUTONUM, AUTONUMLGL and AUTONUMOUT fields share nine level counters on F9 and output, with heading-derived levels, `\s`, `\e` and the outline style; locked fields do not count. Readiness estimates unchanged.
@@ -377,6 +378,7 @@ Imported Word 97–2003 `.doc`/`.dot` files now ask for a supported DOCX target 
 | 2026-10-31 | P0001: legacy DOC imports tolerate stale FAT end markers beyond EOF and garbage in unused directory entries; synthetic regression coverage preserves other refusals. |
 | 2026-10-28 | Fonts a document uses that aren't installed are no longer silent: the font box shows a warning mark (hover names the font drawn instead) and the status bar says how many are missing, listing them (the first 20, then how many more) with the faces drawn instead and Add Font…. The list is what layout actually drew, so hidden text, unused styles and orphaned stories don't count; substitutes that measure the same (Carlito for Calibri, Liberation for Arial) and Symbol/Wingdings bullets aren't flagged |
 | 2026-10-21 | Read Aloud on Linux speaks through Speech Dispatcher when neither `espeak-ng` nor `espeak` is installed (#4576). It talks to the server over its own socket (SSIP), so the text is never taken for a command and stopping cancels only WordCraft's own speech, not a screen reader's; each sentence goes in its language, region included, and a sentence a screen reader's announcement cuts off is said again after a short pause; if another program keeps stopping it, reading pauses on it with a message. With no speech program at all, Read Aloud names the package to install, and the `.deb` and `.rpm` packages recommend one. |
+| 2026-11-07 | trivial | P0097: Envelope Options adds page-relative address positions, style font overrides and Omit return address; Auto layout remains unchanged. |
 | 2026-10-31 | trivial | Preserve recipient columns after an unquoted whitespace-only prefix in a headered CSV (#4249); keep quoted headers, headerless whitespace records and shared CSV parsing. |
 | 2026-10-31 | trivial | Integrate complete-record recipient CSV delimiter detection (#4249) with current main; preserve leading blank-line detection (#5042), original regressions and readiness estimates. |
 | 2026-10-28 | **Arabic diacritic editing (#4757):** Backspace removes the last stored Arabic combining mark, so its base letter can stay while the mark is replaced. Caret movement and forward Delete keep their cluster rules. Synthetic command, history, protection and native/DOCX fresh-reopen checks; no native Word comparison or readiness change. |
