@@ -85,6 +85,9 @@ pub struct Session {
     pub clipboard_rtf: String,
     /// Items collected by Copy and Cut this session, for the Clipboard pane.
     pub clip_history: crate::cmd::edit::ClipHistory,
+    /// The selection, document and revision of the newest Copy, so copying the same selection
+    /// again with nothing changed counts as pressing Ctrl+C twice (Clipboard pane Options).
+    pub(crate) last_copy: Option<(Selection, u64, u64)>,
     pub find: FindState,
     /// Page x the caret tries to keep on Up/Down.
     pub goal_x: Option<f32>,

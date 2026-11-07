@@ -92,6 +92,9 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"value"?: bool}"#)
         .pure(),
+        CommandSpec::new("edit.clipboardOptions", "Clipboard Options", "Home › Clipboard › Clipboard Pane › Options", clipboard_options)
+            .params(r#"{"showAutomatically"?: bool, "showOnCopyTwice"?: bool, "collectWithoutShowing"?: bool, "showStatus"?: bool}"#)
+            .pure(),
         CommandSpec::new("edit.clipboardItems", "Clipboard Items", "Home › Clipboard › Clipboard Pane", |s, _| Ok(s.clip_history.describe())).pure(),
         CommandSpec::new("edit.pasteClipboardItem", "Paste Clipboard Item", "Home › Clipboard › Clipboard Pane", paste_clip_item)
             .params(r#"{"index": n (0 = newest)}"#)
@@ -176,7 +179,63 @@ pub fn specs() -> Vec<CommandSpec> {
 
 fn copy(s: &mut Session, _: &Value) -> CmdResult {
     let whole = super::table::selected_table(s);
-    copy_with(s, whole.as_ref())
+    // The same selection copied again with nothing changed in between: Ctrl+C pressed twice.
+    let key = (s.sel.clone(), s.document_id(), s.rev());
+    let twice = s.last_copy.as_ref() == Some(&key);
+    let mut r = copy_with(s, whole.as_ref())?;
+    s.last_copy = Some(key);
+    if twice && s.prefs.clipboard.show_on_copy_twice {
+        s.view.clipboard_pane = true;
+        r["pane"] = json!(true);
+    }
+    Ok(r)
+}
+
+/// The Clipboard pane's Options: set the given ones, report all four.
+fn clipboard_options(s: &mut Session, v: &Value) -> CmdResult {
+    let mut o = s.prefs.clipboard.clone();
+    for (key, field) in [
+        ("showAutomatically", &mut o.show_automatically),
+        ("showOnCopyTwice", &mut o.show_on_copy_twice),
+        ("collectWithoutShowing", &mut o.collect_without_showing),
+        ("showStatus", &mut o.show_status),
+    ] {
+        match v.get(key) {
+            None => {}
+            Some(Value::Bool(b)) => *field = *b,
+            Some(_) => return Err(CmdError::Params(format!("{key} must be true or false"))),
+        }
+    }
+    s.prefs.clipboard = o;
+    let o = &s.prefs.clipboard;
+    Ok(json!({
+        "showAutomatically": o.show_automatically,
+        "showOnCopyTwice": o.show_on_copy_twice,
+        "collectWithoutShowing": o.collect_without_showing,
+        "showStatus": o.show_status,
+    }))
+}
+
+/// Put a copy or cut on the clipboard and, as the Clipboard pane's Options say, collect it in
+/// the pane: what Copy and Cut return, with `collected` ("Item N of 24") when the status shows
+/// and `pane` when collecting opened the pane.
+pub(crate) fn take_copy(s: &mut Session, f: Fragment) -> Value {
+    s.clipboard_text = f.clipboard_text();
+    let o = s.prefs.clipboard.clone();
+    let collected = (s.view.clipboard_pane || o.collect_without_showing) && s.clip_history.push(&f, &s.clipboard_text);
+    s.clipboard = Some(f);
+    let mut r = copy_result(s);
+    if collected {
+        let n = s.clip_history.len();
+        if o.show_status {
+            r["collected"] = json!({"item": n, "of": CLIP_MAX_ITEMS});
+        }
+        if o.show_automatically && n >= 2 && !s.view.clipboard_pane {
+            s.view.clipboard_pane = true;
+            r["pane"] = json!(true);
+        }
+    }
+    r
 }
 
 /// Copy, `whole` being the table the selection covers whole, if it does.
@@ -194,10 +253,7 @@ fn copy_with(s: &mut Session, whole: Option<&Path>) -> CmdResult {
         None if a == b => return Ok(json!({"text": ""})),
         None => s.doc.copy_range(&a, &b),
     };
-    s.clipboard_text = f.clipboard_text();
-    s.clip_history.push(&f, &s.clipboard_text);
-    s.clipboard = Some(f);
-    Ok(copy_result(s))
+    Ok(take_copy(s, f))
 }
 
 /// What Copy and Cut return: the clipboard's text, and the copy as HTML (equations as MathML,
@@ -363,22 +419,25 @@ impl ClipHistory {
         self.items.is_empty()
     }
 
-    pub(crate) fn push(&mut self, f: &Fragment, text: &str) {
+    /// Collect a copy; whether it was added (a repeat of the newest item or an oversized copy
+    /// isn't).
+    pub(crate) fn push(&mut self, f: &Fragment, text: &str) -> bool {
         // Text plus per-paragraph overhead; pictures are references into the document.
         let paras = text.matches('\n').count().saturating_add(f.blocks.len()).saturating_add(f.parts.len()).saturating_add(1);
         let bytes = text.len().saturating_mul(2).saturating_add(paras.saturating_mul(256));
         if bytes > CLIP_ITEM_BYTES || f.blocks.is_empty() {
-            return;
+            return false;
         }
         // Copying the same thing again doesn't add a second item.
         if self.items.first().is_some_and(|i| i.text == text && i.fragment == *f) {
-            return;
+            return false;
         }
         self.items.insert(0, ClipItem { fragment: f.clone(), text: text.to_string(), bytes });
         self.items.truncate(CLIP_MAX_ITEMS);
         while self.items.len() > 1 && self.items.iter().map(|i| i.bytes).sum::<usize>() > CLIP_TOTAL_BYTES {
             self.items.pop();
         }
+        true
     }
 
     /// The items for agents and the pane, newest first.

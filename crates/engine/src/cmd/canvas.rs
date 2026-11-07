@@ -330,10 +330,7 @@ fn copy_member(s: &mut Session, pos: &Pos, index: usize) -> CmdResult {
     if !copied {
         return Err(CmdError::Failed("the member vanished".into()));
     }
-    s.clipboard_text = f.clipboard_text();
-    s.clip_history.push(&f, &s.clipboard_text);
-    s.clipboard = Some(f);
-    Ok(super::edit::copy_result(s))
+    Ok(super::edit::take_copy(s, f))
 }
 
 /// Take member `index` out of the canvas at `pos`; the canvas stays selected.

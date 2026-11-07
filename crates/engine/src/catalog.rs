@@ -48,6 +48,7 @@ Home|Clipboard|Format Painter|edit.formatPainter
 Home|Clipboard|Copy Formatting|edit.copyFormat
 Home|Clipboard|Paste Formatting|edit.pasteFormat
 Home|Clipboard|Clipboard Pane|edit.clipboardPane
+Home|Clipboard|Clipboard Pane › Options|edit.clipboardOptions
 Home|Font|Font|format.font
 Home|Font|Symbol Font|format.symbolFont
 Home|Font|Font Size|format.size

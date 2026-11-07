@@ -92,6 +92,7 @@ impl Session {
             clipboard_html: _,
             clipboard_rtf: _,
             clip_history: _,
+            last_copy: _,
             find: _,
             goal_x: _,
             page_hint: _,
