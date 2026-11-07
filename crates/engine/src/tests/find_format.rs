@@ -100,6 +100,7 @@ fn replace_all_text_and_format_is_one_undo_step() {
 #[test]
 fn style_condition_uses_the_paragraph_style() {
     let mut s = doc();
+    run(&mut s, "caret.docEnd", json!({}));
     run(&mut s, "text.newParagraph", json!({}));
     run(&mut s, "text.insert", json!({"text": "beta heading"}));
     run(&mut s, "styles.apply", json!({"style": "Heading 1"}));
