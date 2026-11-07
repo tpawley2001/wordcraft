@@ -17,6 +17,7 @@ mod browse_object;
 mod clipboard_options;
 mod custom_prop_types;
 mod documents;
+mod envelope_options;
 mod font_sizes;
 mod grid_settings;
 mod fonts;
