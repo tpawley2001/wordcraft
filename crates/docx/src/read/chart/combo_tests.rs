@@ -305,3 +305,68 @@ fn stock_chart_up_down_bars_span_open_to_close() {
         strokes(&items).into_iter().filter(|s| s.1.len() == 2 && near(s.1[0].0, s.1[1].0) && near(s.1[0].0, (u.1 + u.3) / 2.0)).map(|s| s.2).max();
     assert!(hl.is_some_and(|k| k < u.5), "Q1 hi-low line drawn before (under) its up bar");
 }
+
+#[test]
+fn deleted_secondary_axis_keeps_its_scale_but_draws_no_labels() {
+    let deleted = val_ax(4, 3, true, Some(0.4)).replace(r#"<c:delete val="0"/>"#, r#"<c:delete val="1"/>"#);
+    let plot = format!(
+        "{}{}{}{}{}",
+        bar_group(&ser(0, "Units", &CATS, &[100.0, 200.0, 300.0], &solid(BAR)), (1, 2)),
+        line_group(&ser(1, "Margin", &CATS, &[0.1, 0.2, 0.3], &format!("<a:ln>{}</a:ln>", solid(LINE))), (3, 4)),
+        cat_ax(1, 2),
+        val_ax(2, 1, false, Some(400.0)),
+        deleted
+    );
+    let items = draw(&plot, false);
+    let bars: Vec<_> = fills(&items).into_iter().filter(|f| f.0 == Rgb(0x44, 0x72, 0xC4)).collect();
+    let line = strokes(&items).into_iter().find(|s| s.0 == Rgb(0xED, 0x7D, 0x31)).expect("line drawn").1;
+    for (p, b) in line.iter().zip(&bars) {
+        assert!(near(p.1, b.2), "secondary scale kept: {} vs {}", p.1, b.2);
+    }
+    let t = texts(&items);
+    assert!(!t.iter().any(|(s, _)| s == "0.4"), "no secondary labels: {t:?}");
+}
+
+#[test]
+fn stock_chart_without_hi_low_lines_draws_its_series_lines() {
+    let series = format!(
+        "{}{}{}",
+        ser(0, "High", &CATS, &[30.0, 35.0, 25.0], ""),
+        ser(1, "Low", &CATS, &[10.0, 20.0, 5.0], ""),
+        ser(2, "Close", &CATS, &[20.0, 22.0, 15.0], "")
+    );
+    let items = draw(&stock(&series, ""), false);
+    assert!(!texts(&items).iter().any(|t| t.0.contains("not supported")));
+    let three: Vec<_> = strokes(&items).into_iter().filter(|s| s.1.len() == 3).collect();
+    assert_eq!(three.len(), 3, "a line per series");
+    assert!(!strokes(&items).iter().any(|s| s.0 == TEXT && s.1.len() == 2 && near(s.1[0].0, s.1[1].0)), "no hi-low lines");
+}
+
+#[test]
+fn a_combo_skips_an_unsupported_group_and_caps_series_over_all_groups() {
+    let plot = format!(
+        "{}<c:bubbleChart>{}</c:bubbleChart>{}{}{}",
+        bar_group(&ser(0, "Sales", &CATS, &[1.0, 2.0, 3.0], &solid(BAR)), (1, 2)),
+        ser(1, "Bubbles", &CATS, &[1.0, 2.0, 3.0], ""),
+        line_group(&ser(2, "Trend", &CATS, &[2.0, 2.0, 2.0], &format!("<a:ln>{}</a:ln>", solid(LINE))), (1, 2)),
+        cat_ax(1, 2),
+        val_ax(2, 1, false, None)
+    );
+    let items = draw(&plot, true);
+    let t: Vec<String> = texts(&items).into_iter().map(|t| t.0).collect();
+    assert!(!t.iter().any(|s| s.contains("not supported") || s == "Bubbles"), "{t:?}");
+    assert!(t.iter().any(|s| s == "Sales") && t.iter().any(|s| s == "Trend"), "{t:?}");
+
+    // MAX_SERIES counts the series of every group together.
+    let many = |k: usize| (0..k).map(|i| ser(i, "S", &CATS[..1], &[1.0], "")).collect::<String>();
+    let x = format!(
+        r#"<c:chartSpace {NS}><c:chart><c:plotArea>{}{}{}{}</c:plotArea></c:chart></c:chartSpace>"#,
+        bar_group(&many(MAX_SERIES - 1), (1, 2)),
+        line_group(&many(10), (1, 2)),
+        cat_ax(1, 2),
+        val_ax(2, 1, false, None)
+    );
+    let chart = Chart::parse(&crate::xml::parse(x.as_bytes()).unwrap(), &THEME_COLORS).expect("chart");
+    assert_eq!(chart.groups.iter().map(|g| g.series.len()).sum::<usize>(), MAX_SERIES);
+    assert_eq!(chart.groups.len(), 2);
+}
