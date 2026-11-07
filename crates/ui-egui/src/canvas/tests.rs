@@ -5075,3 +5075,38 @@ fn a_pictures_corrections_and_crop_change_its_page_key() {
     assert_ne!(plain, pages::page_content_key(&at([0.1, 0.0, 0.0, 0.0], PicFx::default())), "crop");
     assert_ne!(plain, pages::page_content_key(&at([0.0; 4], PicFx::new(10_000, 0, 0))), "brightness");
 }
+
+/// Show crop marks (File › Options › Advanced): an "L" outside each corner of the text area,
+/// each line starting at the corner and running out into the margin, never past the page.
+#[test]
+fn crop_marks_run_from_each_text_area_corner_into_the_margins() {
+    use super::pages::crop_marks;
+    // Letter page, 1" margins: text area (72, 72)-(540, 720).
+    let body = wordcraft_geom::Rect::new(72.0, 72.0, 468.0, 648.0);
+    let marks = crop_marks(body, 612.0, 792.0);
+    assert_eq!(marks.len(), 8, "{marks:?}");
+    let corners = [(72.0, 72.0), (540.0, 72.0), (72.0, 720.0), (540.0, 720.0)];
+    for [a, b] in &marks {
+        assert!(corners.contains(a), "starts at a corner: {a:?}");
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        assert!(dx == 0.0 || dy == 0.0, "axis-aligned: {a:?}-{b:?}");
+        let len = dx.abs() + dy.abs();
+        assert!(len > 0.0 && len <= 72.0, "within the margin: {a:?}-{b:?}");
+        // Away from the text area: a left corner goes left or up/down, never into the body.
+        let mid = ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0);
+        let inside = mid.0 > 72.0 && mid.0 < 540.0 && mid.1 > 72.0 && mid.1 < 720.0;
+        assert!(!inside, "outside the text area: {a:?}-{b:?}");
+        assert!((0.0..=612.0).contains(&b.0) && (0.0..=792.0).contains(&b.1), "on the page: {b:?}");
+    }
+    for c in corners {
+        let from_c: Vec<_> = marks.iter().filter(|[a, _]| *a == c).collect();
+        assert_eq!(from_c.len(), 2, "two lines from {c:?}");
+        assert!(from_c.iter().any(|[a, b]| a.1 == b.1) && from_c.iter().any(|[a, b]| a.0 == b.0), "one across, one down at {c:?}");
+    }
+    // No margin on the left: the left marks shrink to nothing and are left out.
+    let flush = wordcraft_geom::Rect::new(0.0, 72.0, 540.0, 648.0);
+    let marks = crop_marks(flush, 612.0, 792.0);
+    assert!(marks.iter().all(|[a, b]| a != b), "no zero-length marks");
+    assert!(marks.iter().all(|[_, b]| b.0 >= 0.0), "never past the page edge");
+    assert_eq!(marks.len(), 6, "{marks:?}");
+}

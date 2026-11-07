@@ -136,6 +136,14 @@ pub(super) const DRAWING_GRID_MIN_PX: f32 = 4.0;
 /// Most grid lines drawn each way on one page (page sizes come from files).
 pub(super) const DRAWING_GRID_MAX_LINES: usize = 2000;
 
+/// File › Options › Advanced › Show crop marks: the eight short lines at the corners of the
+/// page's text area, in document points, each from a corner out into the margins. Screen only.
+// Acceptance-test stub (P05-052): replace with the real geometry.
+#[allow(dead_code)]
+pub(super) fn crop_marks(_body: wordcraft_geom::Rect, _page_w: f32, _page_h: f32) -> Vec<[(f32, f32); 2]> {
+    Vec::new()
+}
+
 /// The View › Gridlines drawing grid over a page's text area, in document points: the x of each
 /// vertical line and the y of each horizontal line, starting at the margins and `step` (across,
 /// down) apart, never outside the margins. Drawn on screen only — never printed or exported.
