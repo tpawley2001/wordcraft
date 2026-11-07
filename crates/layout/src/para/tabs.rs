@@ -5,14 +5,7 @@ use super::{PTabAlign, PTabBase, ParaLayout, TabAlign, TabLeader, TabStop};
 /// then default stops, every `default_tab` from `origin` (the margin, 0, or for an ODF document
 /// whose tabs are measured from the indent, the paragraph's left indent).
 pub(super) fn next_tab(x: f32, tabs: &[TabStop], default_tab: f32, hanging_at: Option<f32>, origin: f32) -> TabStop {
-    let mut best: Option<TabStop> = tabs.iter().copied().filter(|t| t.pos > x + 0.01).min_by(|a, b| a.pos.total_cmp(&b.pos));
-    if let Some(h) = hanging_at
-        && h > x + 0.01
-        && best.is_none_or(|t| h < t.pos)
-    {
-        best = Some(TabStop { pos: h, align: TabAlign::Left, leader: TabLeader::None });
-    }
-    best.unwrap_or_else(|| {
+    next_set_tab(x, tabs, hanging_at).unwrap_or_else(|| {
         let d = if default_tab > 1.0 { default_tab } else { 36.0 };
         // Left of the margin Word's arithmetic truncates toward zero: the next default stop is
         // the first multiple of the interval *at or after* `x`, so a tab that already sits on
@@ -24,6 +17,18 @@ pub(super) fn next_tab(x: f32, tabs: &[TabStop], default_tab: f32, hanging_at: O
         let n = if x < -0.01 { ((x - 0.01) / d).ceil() } else { ((x + 0.01) / d).floor() + 1.0 };
         TabStop { pos: (n * d + origin).min(1e6), align: TabAlign::Left, leader: TabLeader::None }
     })
+}
+
+/// Next explicit or hanging-indent stop after `x`; `None` when the next stop is a default stop.
+pub(super) fn next_set_tab(x: f32, tabs: &[TabStop], hanging_at: Option<f32>) -> Option<TabStop> {
+    let mut best: Option<TabStop> = tabs.iter().copied().filter(|t| t.pos > x + 0.01).min_by(|a, b| a.pos.total_cmp(&b.pos));
+    if let Some(h) = hanging_at
+        && h > x + 0.01
+        && best.is_none_or(|t| h < t.pos)
+    {
+        best = Some(TabStop { pos: h, align: TabAlign::Left, leader: TabLeader::None });
+    }
+    best
 }
 
 /// A positional tab's stop (column coordinates): the left edge, centre or right edge of the

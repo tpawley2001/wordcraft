@@ -3,7 +3,7 @@ use super::grid::{Exclusion, Grid};
 use super::justify::{HYPHENATION_ZONE, hyphen_glyph, shrink_line_spaces, space_room};
 use super::model::{ClKind, Cluster, Line, LineEnd, ParaEnv};
 use super::paragraph::word_widths;
-use super::tabs::{next_tab, pl_text_at, ptab_stop, resolve_tab};
+use super::tabs::{next_set_tab, next_tab, pl_text_at, ptab_stop, resolve_tab};
 use super::{Align, Arc, Level, LevelSuffix, LineSpacing, MathJc, ParaLayout, TabAlign, TabLeader, TabStop, VecDeque, WrapText};
 
 /// Narrow cells and float spans must retain their usable width.
@@ -103,6 +103,16 @@ struct Scan {
 /// has no room to wrap from.
 fn has_content(pl: &ParaLayout, c0: usize, j: usize) -> bool {
     (c0..j).any(|k| pl.clusters.get(k).is_some_and(|c| c.kind != ClKind::Marker))
+}
+
+/// Whether text (or an object) follows the tab at `tj` before the next tab, break or the
+/// paragraph's end; zero-width markers don't count.
+fn text_follows(pl: &ParaLayout, tj: usize) -> bool {
+    pl.clusters
+        .iter()
+        .skip(tj + 1)
+        .take_while(|c| !matches!(c.kind, ClKind::Tab | ClKind::LineBreak | ClKind::PageBreak | ClKind::ColumnBreak))
+        .any(|c| c.kind != ClKind::Marker)
 }
 
 /// A line's first item stays on it even when it doesn't fit; markers before it (a content
@@ -812,6 +822,21 @@ impl Scan {
             return true;
         }
         self.xs.push(self.x);
+        if ptab.is_none()
+            && stop.pos > self.right_edge + 0.01
+            && stop.align == TabAlign::Left
+            && self.x < self.right_edge - 0.01
+            && next_set_tab(self.x, &rp.tabs, bk.hanging_at).is_none()
+            && !text_follows(pl, j)
+        {
+            // A default stop past the right indent with no text after the tab: like Word, the
+            // tab ends at the right indent instead of wrapping, and only the next tab wraps
+            // (form fill-in lines of underlined tabs take one line).
+            self.place_tab(pl, TabStop { pos: self.right_edge, ..stop });
+            self.last_break = Some(j);
+            self.j += 1;
+            return false;
+        }
         if ptab.is_none() && stop.pos > self.right_edge + 0.01 && stop.align == TabAlign::Left {
             // Not when only markers (a bookmark, say) are before it: the line is empty.
             if has_content(pl, self.c0, j) {

@@ -33,6 +33,7 @@ mod pages;
 mod styleref;
 mod symbol_field;
 mod symbol_font_lines;
+mod tab_to_right_indent;
 mod table_contact;
 mod textbox;
 mod vertical;
