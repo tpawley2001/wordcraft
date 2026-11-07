@@ -82,6 +82,8 @@ pub struct DocState {
     pub(super) also_selected: Vec<Pos>,
     pub(super) column: Option<ColumnBlock>,
     pub(super) column_mode: bool,
+    pub(super) extend_mode: bool,
+    pub(super) extend_history: Vec<Selection>,
     pub(super) widened: Option<Widened>,
     pub(super) edit_marks: Vec<Pos>,
     pub(super) go_back_step: usize,
@@ -136,6 +138,8 @@ impl DocState {
             also_selected: Vec::new(),
             column: None,
             column_mode: false,
+            extend_mode: false,
+            extend_history: Vec::new(),
             widened: None,
             edit_marks: Vec::new(),
             go_back_step: 0,
@@ -236,6 +240,8 @@ impl Session {
             also_selected: _,
             column: _,
             column_mode: _,
+            extend_mode: _,
+            extend_history: _,
             widened: _,
             edit_marks: _,
             go_back_step: _,
@@ -330,6 +336,8 @@ impl Session {
             also_selected,
             column,
             column_mode,
+            extend_mode,
+            extend_history,
             widened,
             edit_marks,
             go_back_step,
@@ -377,6 +385,8 @@ impl Session {
         swap(&mut self.also_selected, also_selected);
         swap(&mut self.column, column);
         swap(&mut self.column_mode, column_mode);
+        swap(&mut self.extend_mode, extend_mode);
+        swap(&mut self.extend_history, extend_history);
         swap(&mut self.widened, widened);
         swap(&mut self.edit_marks, edit_marks);
         swap(&mut self.go_back_step, go_back_step);

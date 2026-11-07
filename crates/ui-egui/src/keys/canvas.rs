@@ -424,6 +424,11 @@ fn key_press(app: &mut WordApp, ctx: &egui::Context, key: Key, modifiers: Modifi
     if key == Key::Escape && crate::table_pen::stop(app) {
         return;
     }
+    // Escape ends extend mode (F8) and keeps the selection, as in Word.
+    if key == Key::Escape && modifiers.is_none() && app.session.extend_mode {
+        let _ = app.run("select.extendOff", json!({}));
+        return;
+    }
     // File › Options › Advanced: the Insert key switches overtype only when asked to.
     if key == Key::Insert && modifiers.is_none() {
         if app.session.prefs.insert_key_overtype {

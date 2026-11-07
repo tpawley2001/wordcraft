@@ -230,6 +230,11 @@ pub struct Session {
     pub column: Option<ColumnBlock>,
     /// Column selection mode (Ctrl+Shift+F8): caret movement extends the block.
     pub column_mode: bool,
+    /// Extend mode (F8): caret movement extends the selection.
+    pub extend_mode: bool,
+    /// The selections before each F8 growth, oldest first (at most
+    /// [`crate::cmd::caret::EXTEND_HISTORY`]), for Shrink Selection (Shift+F8).
+    pub extend_history: Vec<Selection>,
     /// A selection widened to whole table cells or rows, and where it really runs (see
     /// [`Session::sel_ends`]).
     pub(crate) widened: Option<Widened>,

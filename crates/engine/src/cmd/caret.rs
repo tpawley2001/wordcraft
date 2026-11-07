@@ -493,3 +493,158 @@ fn select_text(s: &mut Session, v: &Value) -> CmdResult {
     let _ = StoryRef::Body;
     Err(CmdError::Failed(format!("`{needle}` not found")))
 }
+
+/// How many F8 growths Shrink Selection (Shift+F8) can step back through.
+pub(crate) const EXTEND_HISTORY: usize = 8;
+
+const EXTEND_STATUS: &str = "Extend Selection: arrow keys extend, Esc ends";
+
+/// Turn extend mode (F8) off and forget its growth history; the selection stays.
+pub(crate) fn extend_mode_off(s: &mut Session) {
+    if s.extend_mode && s.status == EXTEND_STATUS {
+        s.status.clear();
+    }
+    s.extend_mode = false;
+    s.extend_history.clear();
+}
+
+/// Extend mode around another command (called by `Session::run` for every command): an edit
+/// ends the mode, any other caret movement or selection forgets the F8 history, and while the
+/// mode is on caret movement extends, so the returned params carry `"extend": true`.
+pub(crate) fn extend_mode_params(s: &mut Session, id: &str, mutates: bool, v: &Value) -> Option<Value> {
+    if matches!(id, "select.extend" | "select.extendOff" | "select.shrink") {
+        return None;
+    }
+    if mutates && !id.starts_with("format.") && !id.starts_with("para.") {
+        extend_mode_off(s);
+        return None;
+    }
+    if id.starts_with("caret.") || id.starts_with("select.") {
+        s.extend_history.clear();
+    }
+    if !s.extend_mode || !id.starts_with("caret.") || id == "caret.set" {
+        return None;
+    }
+    let mut params = v.clone();
+    match params.as_object_mut() {
+        Some(o) => {
+            o.insert("extend".into(), Value::Bool(true));
+        }
+        None => params = serde_json::json!({"extend": true}),
+    }
+    Some(params)
+}
+
+/// Extend Selection (F8). The first press turns extend mode on (growing at once only when text
+/// is already selected); each further press grows the selection one step: word, sentence,
+/// paragraph, section (when there are several), document.
+pub(crate) fn extend_selection(s: &mut Session, v: &Value) -> CmdResult {
+    if p::bool(v, "on") == Some(false) {
+        extend_mode_off(s);
+        return sel_result(s);
+    }
+    let was_on = s.extend_mode;
+    s.extend_mode = true;
+    s.status = EXTEND_STATUS.into();
+    if !was_on && s.sel.is_collapsed() {
+        return sel_result(s);
+    }
+    let before = s.sel.clone();
+    let (a, b) = s.sel.ordered();
+    let para_len = s.doc.para_at(&a).map(|x| x.len()).unwrap_or(0);
+    if a == b {
+        select_unit(s, Unit::Word)?;
+    } else if a.path == b.path && (a.off > 0 || b.off < para_len) {
+        let unit = if s.doc.para_at(&a).map(|x| x.sentence_at(a.off)) == Some((a.off, b.off)) { Unit::Paragraph } else { Unit::Sentence };
+        select_unit(s, unit)?;
+    } else if let Some((sa, sb)) = section_range(s, &a).filter(|(sa, sb)| *sa <= a && b <= *sb && (sa, sb) != (&a, &b)) {
+        s.sel = Selection { anchor: sa, focus: sb };
+    } else {
+        select_all(s, &serde_json::json!({"whole": true}))?;
+    }
+    if s.sel != before {
+        s.extend_history.push(before);
+        let over = s.extend_history.len().saturating_sub(EXTEND_HISTORY);
+        s.extend_history.drain(..over);
+    }
+    sel_result(s)
+}
+
+/// The body section around top-level (not table) position `at`, section break included, when
+/// the document has more than one section.
+fn section_range(s: &Session, at: &Pos) -> Option<(Pos, Pos)> {
+    if at.story != StoryRef::Body || at.path.depth() > 0 {
+        return None;
+    }
+    let ends: Vec<usize> = s.doc.sections().iter().map(|(e, _)| *e).collect();
+    if ends.len() < 2 {
+        return None;
+    }
+    let block = *at.path.0.first()? as usize;
+    let i = ends.iter().position(|e| block <= *e)?;
+    let first = match i.checked_sub(1) {
+        Some(j) => ends.get(j)?.saturating_add(1),
+        None => 0,
+    };
+    let last = *ends.get(i)?;
+    let paths = s.doc.para_paths(StoryRef::Body);
+    let top = |p: &wordcraft_doc::Path| p.0.first().map(|&b| b as usize);
+    let start = paths.iter().find(|p| top(p) == Some(first))?;
+    let end = match paths.iter().find(|p| top(p).is_some_and(|b| b > last)) {
+        Some(next) => Pos { story: StoryRef::Body, path: next.clone(), off: 0 },
+        None => s.doc.end_of(StoryRef::Body),
+    };
+    Some((Pos { story: StoryRef::Body, path: start.clone(), off: 0 }, end))
+}
+
+/// Shrink Selection (Shift+F8): back to the selection before the last F8 growth.
+pub(crate) fn shrink_selection(s: &mut Session, _: &Value) -> CmdResult {
+    if let Some(prev) = s.extend_history.pop() {
+        s.sel = prev;
+    }
+    sel_result(s)
+}
+
+#[cfg(test)]
+mod extend_tests {
+    use serde_json::json;
+    use wordcraft_doc::{Document, StoryRef};
+
+    use crate::Session;
+
+    #[test]
+    fn f8_selects_the_caret_s_section_before_the_document() {
+        let mut s = Session::new(Document::from_text("One two.\nSix.\nThree four."));
+        s.run("caret.docStart", &json!({})).unwrap();
+        s.run("caret.down", &json!({})).unwrap();
+        s.run("caret.end", &json!({})).unwrap();
+        s.run("layout.break", &json!({"kind": "nextPage"})).unwrap();
+        assert_eq!(s.doc.sections().len(), 2);
+        s.run("caret.docStart", &json!({})).unwrap();
+        for _ in 0..5 {
+            s.run("select.extend", &json!({})).unwrap();
+        }
+        let text = s.selected_text();
+        assert!(text.starts_with("One two.") && text.contains("Six."), "{text:?}");
+        assert!(!text.contains("Three"), "only the first section: {text:?}");
+        s.run("select.extend", &json!({})).unwrap();
+        let (a, b) = s.sel.ordered();
+        assert_eq!((a, b), (s.doc.start_of(StoryRef::Body), s.doc.end_of(StoryRef::Body)));
+        s.run("select.shrink", &json!({})).unwrap();
+        assert!(!s.selected_text().contains("Three"), "Shift+F8 goes back to the section");
+    }
+
+    #[test]
+    fn typing_ends_extend_mode_and_its_history() {
+        let mut s = Session::new(Document::from_text("One two."));
+        s.run("caret.docStart", &json!({})).unwrap();
+        s.run("select.extend", &json!({})).unwrap();
+        s.run("select.extend", &json!({})).unwrap();
+        assert!(s.extend_mode);
+        s.run("text.insert", &json!({"text": "x"})).unwrap();
+        assert!(!s.extend_mode);
+        assert!(s.extend_history.is_empty());
+        s.run("caret.right", &json!({})).unwrap();
+        assert!(s.sel.is_collapsed(), "the arrows move the caret again");
+    }
+}
