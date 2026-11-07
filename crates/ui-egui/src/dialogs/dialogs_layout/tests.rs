@@ -903,3 +903,36 @@ fn text_direction_text_box_reads_applies_and_undoes() {
     a.run("edit.undo", json!({})).unwrap();
     assert_eq!(serde_json::to_value(&a.session.doc).unwrap(), before);
 }
+
+#[test]
+fn envelope_options_dialog_passes_positions_fonts_and_omit() {
+    let mut a = app();
+    let mut f = EnvelopeForm::read(&a);
+    f.delivery = "Jo".into();
+    f.ret = "Me".into();
+    f.omit_return = true;
+    f.delivery_options.left = Some(180.0);
+    f.delivery_options.top = Some(120.0);
+    f.delivery_options.font_name = "Courier New".into();
+    f.delivery_options.font_size = Some(14.0);
+    let v = f.params(true);
+    assert_eq!(v["omitReturn"], true);
+    assert!(v.get("returnLeft").is_none());
+    a.run("mailings.envelopes", v).unwrap();
+    let p = a
+        .session
+        .doc
+        .body
+        .iter()
+        .find_map(|b| match &**b {
+            wordcraft_doc::Block::Para(p) if p.text == "Jo" => Some(p),
+            _ => None,
+        })
+        .unwrap();
+    let frame = p.props.frame.as_ref().unwrap();
+    assert_eq!((frame.x, frame.y), (180.0, 120.0));
+    assert!(!a.session.doc.plain_text(wordcraft_doc::StoryRef::Body).contains("Me"));
+    let style = a.session.doc.styles.get("EnvelopeAddress").unwrap();
+    assert_eq!(style.chr.font.as_deref(), Some("Courier New"));
+    assert_eq!(style.chr.size, Some(14.0));
+}

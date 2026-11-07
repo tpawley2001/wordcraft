@@ -788,3 +788,45 @@ fn merge_uses_only_filtered_records_in_sort_order() {
     assert!(s.run("mailings.finish", &json!({})).is_err());
     assert!(s.run("mailings.editRecipients", &json!({})).is_ok());
 }
+
+#[test]
+fn envelope_options_preserve_existing_styles_and_validate_before_new_document() {
+    let mut d = Document::from_text("Letter");
+    let mut style = wordcraft_doc::styles::Style {
+        id: "EnvelopeAddress".into(),
+        name: "Custom address".into(),
+        chr: CharProps { font: Some("Serif".into()), size: Some(15.0), bold: Some(true), ..Default::default() },
+        ..Default::default()
+    };
+    std::sync::Arc::make_mut(&mut d.styles).styles.push(style.clone());
+    let mut s = Session::new(d);
+    let id = s.document_id();
+    for bad in [
+        json!({"deliveryLeft": "wrong"}),
+        json!({"deliveryLeft": 684.000001}),
+        json!({"deliveryFont": {"size": 0.99999999}}),
+        json!({"returnFont": {"size": null}}),
+        json!({"deliveryFont": []}),
+        json!({"deliveryTop": 298.0}),
+    ] {
+        assert!(matches!(s.run("mailings.envelopes", &bad), Err(CmdError::Params(_))));
+        assert_eq!(s.document_id(), id);
+        assert_eq!(s.doc.styles.get("EnvelopeAddress"), Some(&style));
+        assert_eq!(s.doc.plain_text(StoryRef::Body), "Letter");
+    }
+    s.run("mailings.envelopes", &json!({"delivery": "Jo", "add": true, "deliveryFont": {"size": 16.0}, "returnTop": 0.0, "return": "Me"})).unwrap();
+    style.chr.size = Some(16.0);
+    assert_eq!(s.doc.styles.get("EnvelopeAddress"), Some(&style));
+    let ret = s
+        .doc
+        .body
+        .iter()
+        .find_map(|b| match &**b {
+            Block::Para(p) if p.text == "Me" => Some(p),
+            _ => None,
+        })
+        .unwrap();
+    let f = ret.props.frame.as_ref().unwrap();
+    assert_eq!((f.x, f.y), (22.0, 0.0));
+    assert_eq!((f.h_space, f.v_space, f.wrap.as_str()), (9.0, 0.0, "around"));
+}

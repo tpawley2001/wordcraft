@@ -41,6 +41,102 @@ fn label_text(v: &Value, key: &str) -> Result<Option<String>, CmdError> {
     }
 }
 
+/// Validated font overrides, applied only after all envelope parameters are checked.
+#[derive(Default)]
+struct EnvelopeFont {
+    name: Option<String>,
+    size: Option<f32>,
+}
+
+impl EnvelopeFont {
+    fn read(v: &Value, key: &str) -> Result<Self, CmdError> {
+        let Some(v) = v.get(key) else { return Ok(Self::default()) };
+        if !v.is_object() {
+            return Err(CmdError::Params(format!("`{key}` must be a font object")));
+        }
+        let name = match v.get("name") {
+            None => None,
+            Some(v) => Some(
+                v.as_str()
+                    .filter(|n| !n.trim().is_empty() && n.chars().count() <= 31)
+                    .ok_or_else(|| CmdError::Params(format!("`{key}.name` must contain 1 to 31 characters")))?
+                    .to_string(),
+            ),
+        };
+        let size = envelope_number(v, "size", 1.0, 1638.0)?;
+        Ok(Self { name, size })
+    }
+
+    fn apply(&self, d: &mut Document, id: &str, name: &str, size: f32) {
+        use wordcraft_doc::{
+            props::{LineSpacing, ParaProps},
+            styles::Style,
+        };
+        let styles = std::sync::Arc::make_mut(&mut d.styles);
+        if styles.get(id).is_none() {
+            styles.styles.push(Style {
+                id: id.into(),
+                name: name.into(),
+                based_on: Some("Normal".into()),
+                builtin: true,
+                chr: CharProps { size: Some(size), ..Default::default() },
+                para: ParaProps {
+                    space_before: Some(0.0),
+                    space_after: Some(0.0),
+                    line_spacing: Some(LineSpacing::Multiple(1.0)),
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+        }
+        if let Some(style) = styles.get_mut(id) {
+            if let Some(name) = &self.name {
+                style.chr.font = Some(name.clone());
+            }
+            if let Some(size) = self.size {
+                style.chr.size = Some(size);
+            }
+        }
+    }
+}
+
+fn envelope_number(v: &Value, key: &str, min: f32, max: f32) -> Result<Option<f32>, CmdError> {
+    let Some(value) = v.get(key) else { return Ok(None) };
+    let n = value
+        .as_f64()
+        .filter(|n| n.is_finite() && (f64::from(min)..=f64::from(max)).contains(n))
+        .map(|n| n as f32)
+        .ok_or_else(|| CmdError::Params(format!("`{key}` must be between {min} and {max} pt")))?;
+    Ok(Some(n))
+}
+
+fn envelope_frame(
+    v: &Value,
+    left: &str,
+    top: &str,
+    w: f32,
+    h: f32,
+    defaults: (f32, f32),
+) -> Result<Option<wordcraft_doc::props::TextFrame>, CmdError> {
+    let x = envelope_number(v, left, 0.0, w)?;
+    let y = envelope_number(v, top, 0.0, h)?;
+    Ok((x.is_some() || y.is_some()).then(|| wordcraft_doc::props::TextFrame {
+        x: x.unwrap_or(defaults.0),
+        y: y.unwrap_or(defaults.1),
+        h_anchor: "page".into(),
+        v_anchor: "page".into(),
+        wrap: "around".into(),
+        w: None,
+        h: None,
+        h_exact: false,
+        x_align: None,
+        y_align: None,
+        anchor_lock: None,
+        h_space: 9.0,
+        v_space: 0.0,
+    }))
+}
+
 /// Envelopes: a landscape page with the return address at the top left and the delivery address
 /// in the middle. As a new document, or (`add`) as a section of its own at the start of this one.
 pub(super) fn envelopes(s: &mut Session, v: &Value) -> CmdResult {
@@ -49,6 +145,10 @@ pub(super) fn envelopes(s: &mut Session, v: &Value) -> CmdResult {
     });
     let ret = label_text(v, "return")?.unwrap_or_default();
     let (w, h) = envelope_size(v)?;
+    let delivery_frame = envelope_frame(v, "deliveryLeft", "deliveryTop", w, h, (w * 0.42, h * 0.45))?;
+    let return_frame = envelope_frame(v, "returnLeft", "returnTop", w, h, (22.0, 22.0))?;
+    let delivery_font = EnvelopeFont::read(v, "deliveryFont")?;
+    let return_font = EnvelopeFont::read(v, "returnFont")?;
     let sect = SectionProps {
         page_w: w,
         page_h: h,
@@ -62,9 +162,11 @@ pub(super) fn envelopes(s: &mut Session, v: &Value) -> CmdResult {
     // Addresses are capped: a pasted novel is not an address.
     let lines = |t: &str| t.split('\n').take(20).map(str::to_string).collect::<Vec<_>>();
     let mut blocks = Vec::new();
-    let ret_lines = if ret.is_empty() { Vec::new() } else { lines(&ret) };
+    let ret_lines = if ret.is_empty() || p::bool(v, "omitReturn") == Some(true) { Vec::new() } else { lines(&ret) };
     for l in &ret_lines {
-        blocks.push(para_block(Paragraph::with_text(l, CharProps { size: Some(10.0), ..Default::default() }).styled("NoSpacing")));
+        let mut p = Paragraph::with_text(l, CharProps::default()).styled("EnvelopeReturn");
+        p.props.frame = return_frame.clone();
+        blocks.push(para_block(p));
     }
     let spacer = (6 - ret_lines.len().min(6)).max(1);
     for _ in 0..spacer + 2 {
@@ -72,8 +174,11 @@ pub(super) fn envelopes(s: &mut Session, v: &Value) -> CmdResult {
     }
     let mut last = None;
     for l in lines(&delivery) {
-        let mut p = Paragraph::with_text(&l, CharProps::default()).styled("NoSpacing");
-        p.props.indent_left = Some(w * 0.42);
+        let mut p = Paragraph::with_text(&l, CharProps::default()).styled("EnvelopeAddress");
+        p.props.frame = delivery_frame.clone();
+        if delivery_frame.is_none() {
+            p.props.indent_left = Some(w * 0.42);
+        }
         if let Some(prev) = last.replace(p) {
             blocks.push(para_block(prev));
         }
@@ -84,12 +189,16 @@ pub(super) fn envelopes(s: &mut Session, v: &Value) -> CmdResult {
         end.section = Some(Box::new(sect));
         blocks.push(para_block(end));
         let n = blocks.len();
+        delivery_font.apply(&mut s.doc, "EnvelopeAddress", "envelope address", 12.0);
+        return_font.apply(&mut s.doc, "EnvelopeReturn", "envelope return", 10.0);
         s.doc.body.splice(0..0, blocks);
         s.sel = Selection::caret(s.doc.start_of(StoryRef::Body));
         return Ok(json!({"width": w, "height": h, "added": n}));
     }
     blocks.extend(last.map(para_block));
     let mut d = Document::new();
+    delivery_font.apply(&mut d, "EnvelopeAddress", "envelope address", 12.0);
+    return_font.apply(&mut d, "EnvelopeReturn", "envelope return", 10.0);
     d.last_section = sect;
     d.body = blocks;
     s.add_document(d);

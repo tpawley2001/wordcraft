@@ -220,7 +220,7 @@ pub fn specs() -> Vec<CommandSpec> {
         .key(super::non_mac("Alt+Shift+M"))
         .when(has_recipients),
         CommandSpec::new("mailings.envelopes", "Envelopes", "Mailings › Create", envelopes).params(
-            r#"{"delivery": string, "return"?: string, "size"?: "Envelope #10|#9|Monarch|DL|C4|C5|C6|B5", "width"?: pt, "height"?: pt, "add"?: bool (add to this document instead of a new one)}"#,
+            r#"{"delivery": string, "return"?: string, "omitReturn"?: bool, "deliveryLeft"?: pt, "deliveryTop"?: pt, "returnLeft"?: pt, "returnTop"?: pt, "deliveryFont"?: {"name"?: string, "size"?: pt}, "returnFont"?: {"name"?: string, "size"?: pt}, "size"?: "Envelope #10|#9|Monarch|DL|C4|C5|C6|B5", "width"?: pt, "height"?: pt, "add"?: bool (add to this document instead of a new one)}"#,
         ),
         CommandSpec::new("mailings.labels", "Labels", "Mailings › Create", labels).params(
             r#"{"text"?: string, "product"?: "letter-3x10|letter-2x10|letter-2x7|letter-2x5|letter-4x20|a4-3x7|a4-2x7|a4-3x8|a4-2x4", "rows"?: n, "cols"?: n, "fromRecipients"?: bool (one label per selected recipient, continuing across sheets), "single"?: {"row": n, "col": n}}"#,
