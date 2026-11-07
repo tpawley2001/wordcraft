@@ -107,10 +107,10 @@ Per-user screen settings, kept between runs; the document, its undo history, pri
 
 ## Revision history
 
-> 2026-11-07 · P0113: paragraph and character style shortcuts in Customize Keyboard’s Styles category and Modify Style › Format › Shortcut key; preferences persist the bindings and applying a style uses the existing undo path (#3910). New Style disables the shortcut item until creation. Readiness estimates unchanged.
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-07 | trivial | P0113: paragraph and character style shortcuts in Customize Keyboard’s Styles category and Modify Style › Format › Shortcut key; preferences persist the bindings and applying a style uses the existing undo path (#3910). New Style disables the shortcut item until creation. Readiness estimates unchanged. |
 | 2026-11-07 | trivial | P0107: Top of Window / Bottom of Window (`caret.windowTop` / `caret.windowBottom`) on Ctrl+Alt+PageUp / Ctrl+Alt+PageDown (Linux/Windows; no keys on macOS), Shift extends, the view doesn't scroll. Readiness unchanged |
 | 2026-11-07 | trivial | P0101: Read-only recommended and Password to modify as in Word: Save As › Tools › General Options… (password typed twice, Read-only recommended), File › Info › Protect Document › Always Open Read-Only, the "(Read-Only)" title, the password-to-modify prompt with Read Only, the read-only-recommended question, and Review › Track Changes › Lock Tracking… (password and reenter). Readiness unchanged |
 | 2026-11-07 | trivial | P0093: Building Blocks Organizer and Create New Building Block / Modify Building Block dialogs from Insert › Quick Parts (Save Selection to Quick Part Gallery…, AutoText › Save Selection to AutoText Gallery…); `insert.buildingBlocks` lists, creates, modifies, deletes and inserts the document's building blocks; insert behaviours content / own paragraph / own page (§17.12.1); F3 inserts AutoText by name. Readiness unchanged |

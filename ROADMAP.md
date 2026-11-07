@@ -857,7 +857,6 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 ## Revision history
 
-> 2026-11-07 · P0113: paragraph and character style shortcuts in Customize Keyboard’s Styles category and Modify Style › Format › Shortcut key; preferences persist the bindings and applying a style uses the existing undo path (#3910). New Style disables the shortcut item until creation. Readiness estimates unchanged.
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 > 2026-11-07 · P0105: CREATEDATE and PRINTDATE use document core dates on F9; successful printing records Last Printed and marks the document dirty; File › Info shows Related Dates. PDF export is unchanged; readiness estimates unchanged.
 > 2026-11-07 · P0103: `.doc` OLE EPRINT previews repair EMF byte, record and handle counts and clear the reserved field after validating the record chain through EOF; malformed chains remain unchanged. Readiness estimates unchanged.
@@ -894,6 +893,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-07 | trivial | P0113: paragraph and character style shortcuts in Customize Keyboard’s Styles category and Modify Style › Format › Shortcut key; preferences persist the bindings and applying a style uses the existing undo path (#3910). New Style disables the shortcut item until creation. Readiness estimates unchanged. |
 | 2026-11-07 | trivial | P0100: File › Options › Advanced › Show document content: crop marks (on, as in Word), text boundaries, picture placeholders and the draft font in Draft and Outline views; screen only, kept per user. Readiness unchanged |
 | 2026-11-06 | trivial | P0079: F2 / Shift+F2 relocate or copy selected rich text on Enter; Esc and edits cancel. |
 | 2026-11-06 | trivial | P0076: Ctrl+F6 / Alt+F6 and Ctrl+Shift+F6 / Alt+Shift+F6 cycle document windows in opening order; Ctrl+Shift+Q applies Symbol in one undo step (Linux/Windows; no default keys on macOS). Readiness unchanged |
