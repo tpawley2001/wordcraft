@@ -93,6 +93,16 @@ pub(super) fn view(app: &mut WordApp, ui: &mut Ui) {
         big(ui, app, "newWindow", "New\nWindow", "view.newWindow", json!({}), false);
         big(ui, app, "arrangeAll", "Arrange\nAll", "view.arrangeAll", json!({}), false);
         big(ui, app, "split", "Split", "view.split", json!({}), false);
+        // View Side by Side and its two companions, stacked small as Word draws them; the
+        // toggles show their on state.
+        let pair = app.session.side_by_side;
+        stack(ui, |ui| {
+            let action = |id, on| crate::widgets::ButtonAction::new(id, json!({}), on);
+            small(ui, app, "sideBySide", Some("View Side by Side"), "View Side by Side", action("view.sideBySide", pair.is_some()));
+            let sync = pair.is_some_and(|p| p.sync_scroll);
+            small(ui, app, "syncScroll", Some("Synchronous Scrolling"), "Synchronous Scrolling", action("view.syncScroll", sync));
+            small(ui, app, "resetWindowPosition", Some("Reset Window Position"), "Reset Window Position", action("view.resetWindowPosition", false));
+        });
         menu_button(
             ui,
             app,

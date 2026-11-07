@@ -520,8 +520,14 @@ impl WordApp {
                 }
                 "pasteSpecial" => self.dialog = Some(dialogs::Dialog::paste_special(self, req)),
                 "newWindow" => self.new_window(),
+                "arrangeAll" => self.arrange_all_windows(),
+                "resetWindowPosition" => self.side_by_side_windows(),
                 other => self.dialog = dialogs::Dialog::open(other, self),
             }
+        }
+        // View Side by Side turned on: the pair's windows take the two halves of the screen.
+        if req.get("sideBySide").is_some_and(Value::is_object) {
+            self.side_by_side_windows();
         }
         if req.get("close").is_some() {
             self.quit_requested = true;
