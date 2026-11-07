@@ -12,6 +12,7 @@ use crate::{Session, cmd};
 
 mod autonum_fields;
 mod bidi;
+mod browse_object;
 mod custom_prop_types;
 mod documents;
 mod font_sizes;
