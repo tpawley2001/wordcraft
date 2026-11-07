@@ -1,4 +1,5 @@
 use super::{Serialize, Ui, Value, WordApp, json};
+use wordcraft_engine::FindFormat;
 
 /// The Find and Replace dialog's search options beyond the first row (#543).
 #[derive(Clone, Debug, Default, Serialize)]
@@ -11,8 +12,12 @@ pub struct FindExtra {
     pub ignore_space: bool,
     /// The search options are shown.
     pub more: bool,
-    /// Special ▾ inserts into Replace with (it last had the focus), not Find what.
+    /// Special ▾ and Format ▾ go to Replace with (it last had the focus), not Find what.
     pub to_replace: bool,
+    /// Find what's formatting (Format ▾); `None` = No Formatting.
+    pub format: Option<FindFormat>,
+    /// Replace with's formatting.
+    pub replace_format: Option<FindFormat>,
 }
 
 /// The tabs of the Find and Replace dialog (#712).
@@ -121,6 +126,121 @@ pub(super) fn special_menu(ui: &mut Ui, extra: &FindExtra) -> Option<&'static st
         }
     });
     picked
+}
+
+/// Highlight colours Format ▾ › Highlight offers: (value, label).
+const FORMAT_HIGHLIGHTS: &[(&str, &str)] = &[
+    ("any", "Highlight"),
+    ("none", "Not Highlight"),
+    ("yellow", "Yellow"),
+    ("brightGreen", "Bright Green"),
+    ("turquoise", "Turquoise"),
+    ("pink", "Pink"),
+    ("red", "Red"),
+    ("gray25", "Gray-25%"),
+];
+
+/// One on/off condition: either way or not at all.
+fn tri_state(ui: &mut Ui, label: &str, value: &mut Option<bool>) {
+    ui.horizontal(|ui| {
+        ui.label(tl!(label));
+        for (v, l) in [(None, "Any"), (Some(true), "Yes"), (Some(false), "No")] {
+            ui.selectable_value(value, v, tl!(l));
+        }
+    });
+}
+
+/// Format ▾ (Font, Highlight, Style) and No Formatting, for the box that last had the focus, as
+/// in Word's More › Format. A compact picker: the conditions are kept in `extra` and sent with
+/// every search.
+pub(super) fn format_menu(app: &WordApp, ui: &mut Ui, extra: &mut FindExtra) {
+    let styles: Vec<(String, String)> = app.session.doc.styles.gallery().iter().map(|s| (s.name.clone(), crate::i18n::style_name(s))).collect();
+    let target = if extra.to_replace { &mut extra.replace_format } else { &mut extra.format };
+    ui.menu_button(format!("{} ▾", tl!("Format")), |ui| {
+        ui.menu_button(tl!("Font"), |ui| {
+            let f = target.get_or_insert_with(FindFormat::default);
+            tri_state(ui, "Bold", &mut f.bold);
+            tri_state(ui, "Italic", &mut f.italic);
+            tri_state(ui, "Underline", &mut f.underline);
+            ui.horizontal(|ui| {
+                let label = ui.label(tl!("Font:"));
+                let mut name = f.font.clone().unwrap_or_default();
+                if ui.add(egui::TextEdit::singleline(&mut name).desired_width(140.0)).labelled_by(label.id).changed() {
+                    f.font = (!name.trim().is_empty()).then_some(name);
+                }
+            });
+            ui.horizontal(|ui| {
+                let label = ui.label(tl!("Size:"));
+                let mut size = f.size.map(|s| s.to_string()).unwrap_or_default();
+                if ui.add(egui::TextEdit::singleline(&mut size).desired_width(60.0)).labelled_by(label.id).changed() {
+                    f.size = size.trim().parse::<f32>().ok().filter(|s| s.is_finite());
+                }
+            });
+            ui.horizontal(|ui| {
+                let label = ui.label(tl!("Font color:"));
+                let mut color = f.color.clone().unwrap_or_default();
+                if ui.add(egui::TextEdit::singleline(&mut color).desired_width(80.0).hint_text("RRGGBB")).labelled_by(label.id).changed() {
+                    f.color = (!color.trim().is_empty()).then(|| color.trim().to_string());
+                }
+            });
+        });
+        ui.menu_button(tl!("Highlight"), |ui| {
+            for (value, label) in FORMAT_HIGHLIGHTS {
+                let on = target.as_ref().and_then(|f| f.highlight.as_deref()) == Some(*value);
+                if ui.selectable_label(on, tl!(label)).clicked() {
+                    target.get_or_insert_with(FindFormat::default).highlight = (!on).then(|| value.to_string());
+                    ui.close();
+                }
+            }
+        });
+        ui.menu_button(tl!("Style"), |ui| {
+            for (name, shown) in &styles {
+                let on = target.as_ref().and_then(|f| f.style.as_deref()) == Some(name.as_str());
+                if ui.selectable_label(on, shown.as_str()).clicked() {
+                    target.get_or_insert_with(FindFormat::default).style = (!on).then(|| name.clone());
+                    ui.close();
+                }
+            }
+        });
+    });
+    if ui.add_enabled(target.is_some(), egui::Button::new(tl!("No Formatting"))).clicked() {
+        *target = None;
+    }
+    if target.as_ref().is_some_and(FindFormat::is_empty) {
+        *target = None;
+    }
+}
+
+/// The grey line under Find what or Replace with: "Format: Font: Bold, Not Italic".
+pub(super) fn format_line(app: &WordApp, f: &FindFormat) -> String {
+    let mut font: Vec<String> = Vec::new();
+    if let Some(n) = &f.font {
+        font.push(n.clone());
+    }
+    if let Some(sz) = f.size {
+        font.push(crate::i18n::fmt(tl!("{size} pt"), &[("size", &sz.to_string())]));
+    }
+    for (on, yes, no) in [(f.bold, "Bold", "Not Bold"), (f.italic, "Italic", "Not Italic"), (f.underline, "Underline", "No underline")] {
+        if let Some(b) = on {
+            font.push(tl!(if b { yes } else { no }).to_string());
+        }
+    }
+    if let Some(c) = &f.color {
+        font.push(format!("{} {c}", tl!("Font color:")));
+    }
+    let mut parts = Vec::new();
+    if !font.is_empty() {
+        parts.push(format!("{} {}", tl!("Font:"), font.join(", ")));
+    }
+    if let Some(h) = &f.highlight {
+        let label = FORMAT_HIGHLIGHTS.iter().find(|(v, _)| v == h).map_or("Highlight", |(_, l)| l);
+        parts.push(tl!(label).to_string());
+    }
+    if let Some(st) = &f.style {
+        let shown = app.session.doc.styles.find(st).map_or_else(|| st.clone(), crate::i18n::style_name);
+        parts.push(format!("{} {shown}", tl!("Style:")));
+    }
+    format!("{} {}", tl!("Format:"), parts.join(", "))
 }
 
 /// What Search lists before anything is typed: common commands (#819).

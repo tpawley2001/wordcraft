@@ -407,6 +407,9 @@ fn find_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             extra.to_replace = false;
         }
     });
+    if let Some(f) = &extra.format {
+        ui.label(egui::RichText::new(super::find::format_line(app, f)).weak());
+    }
     if replace_mode {
         ui.horizontal(|ui| {
             let replace_label = ui.label(tl!("Replace with:"));
@@ -414,6 +417,9 @@ fn find_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 extra.to_replace = true;
             }
         });
+        if let Some(f) = &extra.replace_format {
+            ui.label(egui::RichText::new(super::find::format_line(app, f)).weak());
+        }
     } else {
         extra.to_replace = false;
     }
@@ -443,6 +449,7 @@ fn find_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 if extra.to_replace { replace.push_str(code) } else { query.push_str(code) }
             }
         });
+        ui.horizontal(|ui| super::find::format_menu(app, ui, extra));
     }
     let opts = json!({
         "text": query,
@@ -455,6 +462,8 @@ fn find_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         "matchSuffix": extra.suffix,
         "ignorePunct": extra.ignore_punct,
         "ignoreSpace": extra.ignore_space,
+        "format": extra.format,
+        "replaceFormat": if replace_mode { json!(extra.replace_format) } else { json!(app.session.find.replace_format) },
     });
     if !replace_mode {
         ui.horizontal(|ui| {

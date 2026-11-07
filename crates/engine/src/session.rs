@@ -30,7 +30,7 @@ use crate::prefs;
 use crate::snapshot as snapshot_types;
 use crate::view;
 pub(crate) use doc_state::Widened;
-pub use doc_state::{CellRange, ColumnBlock, FindState, MathEdit, Selection, UNDO_LIST_MAX, next_math_session};
+pub use doc_state::{CellRange, ColumnBlock, FindFormat, FindState, MathEdit, Selection, UNDO_LIST_MAX, next_math_session};
 use doc_state::{TypedWord, Undo, doc_bib_style};
 use ime_state::ImeCaretState;
 pub use locale::set_system_locale;
