@@ -27,6 +27,7 @@ mod table_insert_delete_cells;
 mod table_row_column_ends;
 mod table_sort_keys;
 mod typing;
+mod word_window_keys;
 mod wordart;
 
 /// True, after saying so on stderr, when this build lacks the Language data the proofing tests

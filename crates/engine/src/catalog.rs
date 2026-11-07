@@ -49,6 +49,7 @@ Home|Clipboard|Copy Formatting|edit.copyFormat
 Home|Clipboard|Paste Formatting|edit.pasteFormat
 Home|Clipboard|Clipboard Pane|edit.clipboardPane
 Home|Font|Font|format.font
+Home|Font|Symbol Font|format.symbolFont
 Home|Font|Font Size|format.size
 Home|Font|Increase Font Size|format.growFont
 Home|Font|Decrease Font Size|format.shrinkFont
@@ -347,6 +348,8 @@ View|Window|Split|view.split
 View|Window|View Side by Side|view.sideBySide
 View|Window|Synchronous Scrolling|view.syncScroll
 View|Window|Switch Windows|view.switchWindows
+View|Window|Next Window|view.nextWindow
+View|Window|Previous Window|view.previousWindow
 View|Macros|Macros|tools.macros
 View|Macros|Record Macro|tools.recordMacro
 View|SharePoint|Properties|file.properties

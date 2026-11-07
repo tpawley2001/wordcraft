@@ -262,7 +262,8 @@ mod tests {
         m.assign(&reg, "format.italic", "Mod+B").unwrap();
         let back: KeyMap = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
         assert_eq!(back, m);
-        let junk = json!({"assigned": {"Hyper+X": "format.bold", "Mod+Q": 7, "Mod+J": "no.such", "Mod+Alt+K": "format.bold"}, "removed": ["Mod+U", 3, "F99", "Mod+Shift+Q"]});
+        assert!(reg.by_shortcut("Mod+Alt+Shift+F12").is_none());
+        let junk = json!({"assigned": {"Hyper+X": "format.bold", "Mod+Q": 7, "Mod+J": "no.such", "Mod+Alt+K": "format.bold"}, "removed": ["Mod+U", 3, "F99", "Mod+Alt+Shift+F12"]});
         let mut j: KeyMap = serde_json::from_value(junk).unwrap();
         j.retain_known(&reg);
         assert_eq!(j.assigned.len(), 1, "{j:?}");
