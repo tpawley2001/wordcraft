@@ -33,6 +33,7 @@ fn emf(tag: i32) -> Vec<u8> {
     h[44..48].copy_from_slice(&0x0001_0000u32.to_le_bytes());
     h[48..52].copy_from_slice(&128u32.to_le_bytes()); // nBytes
     h[52..56].copy_from_slice(&2u32.to_le_bytes()); // nRecords
+    h[56..58].copy_from_slice(&1u16.to_le_bytes()); // nHandles (metafile itself)
     let mut eof = vec![0u8; 20];
     eof[0..4].copy_from_slice(&14u32.to_le_bytes());
     eof[4..8].copy_from_slice(&20u32.to_le_bytes());
@@ -115,6 +116,35 @@ fn an_embedded_object_shows_its_eprint_picture_at_the_data_pictures_size() {
 }
 
 #[test]
+fn an_embedded_objects_eprint_header_is_repaired_before_becoming_a_picture() {
+    let (doc, _) = ole_doc(ole_char(OBJ_ID));
+    let mut eprint = emf(500);
+    let eof = eprint.split_off(108);
+    // EXTCREATEFONTINDIRECTW creates handle 1, CREATEPEN creates handle 3.
+    for (typ, size, index) in [(82u32, 332u32, 1u32), (37, 12, 1), (38, 28, 3), (37, 12, 0x8000_0007), (40, 12, 1)] {
+        let mut record = vec![0; size as usize];
+        record[0..4].copy_from_slice(&typ.to_le_bytes());
+        record[4..8].copy_from_slice(&size.to_le_bytes());
+        record[8..12].copy_from_slice(&index.to_le_bytes());
+        eprint.extend_from_slice(&record);
+    }
+    eprint.extend_from_slice(&eof);
+    eprint[48..52].copy_from_slice(&520u32.to_le_bytes());
+    eprint[52..56].copy_from_slice(&6u32.to_le_bytes());
+    eprint[56..58].copy_from_slice(&0u16.to_le_bytes());
+    eprint[58..60].copy_from_slice(&2u16.to_le_bytes());
+    let doc = with_object_pool(doc, &format!("_{OBJ_ID}"), &[("\u{3}EPRINT", &eprint), ("\u{1}Ole", &[0u8; 20])]);
+    let (bytes, w, h) = first_image(&doc);
+    assert_eq!(u32::from_le_bytes(bytes[48..52].try_into().unwrap()), 524);
+    assert_eq!(u32::from_le_bytes(bytes[52..56].try_into().unwrap()), 7);
+    assert_eq!(u16::from_le_bytes(bytes[56..58].try_into().unwrap()), 4);
+    assert_eq!(u16::from_le_bytes(bytes[58..60].try_into().unwrap()), 0);
+    assert_eq!(&bytes[..48], &eprint[..48]);
+    assert_eq!(&bytes[60..], &eprint[60..]);
+    assert_eq!((w, h), (72.0, 36.0));
+}
+
+#[test]
 fn without_an_eprint_stream_the_data_picture_stays() {
     let (doc, png) = ole_doc(ole_char(OBJ_ID));
     let doc = with_object_pool(doc, &format!("_{OBJ_ID}"), &[("\u{1}Ole", &[0u8; 20])]);
@@ -145,4 +175,42 @@ fn the_eprint_of_another_object_or_a_char_without_fole2_is_not_used() {
     let (doc, png) = ole_doc(plain);
     let doc = with_object_pool(doc, &format!("_{OBJ_ID}"), &[("\u{3}EPRINT", &emf(500))]);
     assert_eq!(first_image(&doc).0, png);
+}
+
+#[test]
+fn eprint_handle_counts_cover_every_object_record_and_clamp() {
+    for typ in [37u32, 38, 39, 40, 49, 82, 93, 94, 95, 99, 122] {
+        for index in [0u32, 7, 65535, 0x7FFF_FFFF] {
+            let mut bytes = emf(500);
+            let eof = bytes.split_off(108);
+            bytes.extend_from_slice(&typ.to_le_bytes());
+            bytes.extend_from_slice(&12u32.to_le_bytes());
+            bytes.extend_from_slice(&index.to_le_bytes());
+            bytes.extend_from_slice(&eof);
+            // Bytes after EOF are not records and must remain untouched.
+            bytes.extend_from_slice(&[0xA5; 9]);
+            let before = bytes.clone();
+            crate::ole::repair_emf_header(&mut bytes);
+            assert_eq!(
+                u16::from_le_bytes(bytes[56..58].try_into().unwrap()),
+                index.saturating_add(1).min(u32::from(u16::MAX)) as u16,
+                "record {typ}, index {index}"
+            );
+            assert_eq!(u32::from_le_bytes(bytes[48..52].try_into().unwrap()), 140);
+            assert_eq!(u32::from_le_bytes(bytes[52..56].try_into().unwrap()), 3);
+            assert_eq!(&bytes[..48], &before[..48]);
+            assert_eq!(&bytes[60..], &before[60..]);
+        }
+    }
+}
+
+#[test]
+fn eprint_repair_leaves_wrong_first_records_and_truncated_headers_unchanged() {
+    let mut wrong_first = emf(500);
+    wrong_first[..4].copy_from_slice(&2u32.to_le_bytes());
+    for mut bytes in [wrong_first, emf(500)[..59].to_vec()] {
+        let before = bytes.clone();
+        crate::ole::repair_emf_header(&mut bytes);
+        assert_eq!(bytes, before);
+    }
 }

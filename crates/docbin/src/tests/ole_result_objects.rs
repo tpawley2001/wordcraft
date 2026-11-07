@@ -135,6 +135,7 @@ fn a_valid_eprint_in_the_storage_is_preferred_over_meta() {
     emf[44..48].copy_from_slice(&0x0001_0000u32.to_le_bytes());
     emf[48..52].copy_from_slice(&128u32.to_le_bytes());
     emf[52..56].copy_from_slice(&2u32.to_le_bytes());
+    emf[56..58].copy_from_slice(&1u16.to_le_bytes()); // nHandles (metafile itself)
     let mut eof = vec![0u8; 20];
     eof[0..4].copy_from_slice(&14u32.to_le_bytes());
     eof[4..8].copy_from_slice(&20u32.to_le_bytes());
