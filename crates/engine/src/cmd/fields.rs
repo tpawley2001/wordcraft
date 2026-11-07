@@ -286,7 +286,7 @@ fn click(s: &mut Session, _: &Value) -> CmdResult {
     if f.end.is_some() || wordcraft_layout::fields::field_name(&f.instr) != "GOTOBUTTON" {
         return sel_result(s);
     }
-    let Some(dest) = f.instr.trim_start().split_whitespace().nth(1) else { return sel_result(s) };
+    let Some(dest) = f.instr.split_whitespace().nth(1) else { return sel_result(s) };
     let dest = dest.trim_matches('"');
     // `p<N>` goes to the start of page N; any other destination names a bookmark.
     let page = dest.strip_prefix(['p', 'P']).and_then(|n| n.parse::<u64>().ok());
