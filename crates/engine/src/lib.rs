@@ -5,6 +5,9 @@
 //! params description and a `run` function. Menus, ribbon, shortcuts, the command palette, the
 //! CLI, the JSON control channel and the MCP server all call [`Session::run`].
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+// The building-block acceptance tests (tests/building_blocks.rs) copy a document body with
+// `.iter().cloned().collect()`; that file is kept as written, so the style lint is allowed in tests.
+#![cfg_attr(test, allow(clippy::iter_cloned_collect))]
 
 pub mod brand;
 pub mod catalog;
