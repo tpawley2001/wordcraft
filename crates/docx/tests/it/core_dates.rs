@@ -157,8 +157,8 @@ fn status_and_the_other_core_properties_round_trip() {
         assert!(xml.contains(want), "{want}: {xml}");
     }
     let empty = core_xml_of("2014", "2014");
-    for tag in ["contentStatus", "lastPrinted", "language", "version", "identifier", "contentType"] {
-        assert!(!empty.contains(tag), "{tag}: {empty}");
+    for tag in ["cp:contentStatus", "cp:lastPrinted", "dc:language", "cp:version", "dc:identifier", "cp:contentType"] {
+        assert!(!empty.contains(&format!("<{tag}")), "{tag}: {empty}");
     }
 }
 
