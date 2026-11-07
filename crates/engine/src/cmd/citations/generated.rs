@@ -6,7 +6,7 @@ use super::{
     Block, CharProps, CmdError, CmdResult, Document, FieldCode, InlineObject, Paragraph, Path, Pos, Session, SortKey, StoryRef, TabAlign, TabLeader,
     TabStop, Value, delete_selection, heading_letter, p, sel_result, sort_key,
 };
-use crate::cmd::references::{page_at, page_formats, page_text};
+use crate::cmd::references::{bookmark_heading, page_at, page_formats, page_text};
 use std::sync::Arc;
 use wordcraft_doc::section::NumFormat;
 
@@ -18,7 +18,8 @@ pub fn figures_instr(v: &Value) -> String {
     let ident = seq_ident(&label);
     let ident = if ident.is_empty() { "Figure".to_string() } else { ident };
     let on = |k: &str| p::bool(v, k).unwrap_or(true);
-    let mut s = format!("TOC \\{} \"{ident}\"", if on("includeLabel") { 'c' } else { 'a' });
+    let links = if on("hyperlinks") { " \\h \\z" } else { "" };
+    let mut s = format!("TOC{links} \\{} \"{ident}\"", if on("includeLabel") { 'c' } else { 'a' });
     if !on("pageNumbers") {
         s.push_str(" \\n");
     } else if !on("rightAlign") {
@@ -297,15 +298,10 @@ pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
         while s.doc.body.get(i + 1).and_then(|b| b.as_para()).is_some_and(|p| p.props.style.as_deref() == Some(ENTRY_STYLE)) {
             s.doc.remove_block(StoryRef::Body, &Path::top(i + 1))?;
         }
-        let lines = entries_for(s, &kind);
+        let lines = entries_for(s, &kind)?;
         let width = crate::cmd::page::sect(s).text_width();
-        for (k, (text, hanging)) in lines.into_iter().enumerate() {
-            let mut para = Paragraph::with_text(&text, CharProps::default()).styled(ENTRY_STYLE);
-            if hanging {
-                para.props.indent_left = Some(36.0);
-                para.props.indent_first = Some(-36.0);
-            }
-            if text.contains('\t') {
+        for (k, mut para) in lines.into_iter().enumerate() {
+            if para.plain_text().contains('\t') {
                 para.props.tabs = Some(vec![TabStop { pos: width - 0.5, align: TabAlign::Right, leader }]);
             }
             s.doc.insert_block(StoryRef::Body, &Path::top(i + 1 + k), Block::Para(para))?;
@@ -340,15 +336,16 @@ fn page_of(s: &mut Session, formats: &[NumFormat], pos: &Pos) -> (usize, String)
     page_at(&l, formats, pos).map_or_else(|| (0, "1".into()), |(i, n, fmt)| (i, page_text(n, fmt)))
 }
 
-/// Entry lines (text, hanging indent) for a generated list.
-fn entries_for(s: &mut Session, kind: &str) -> Vec<(String, bool)> {
+/// Entry paragraphs for a generated list, including caption links when requested.
+fn entries_for(s: &mut Session, kind: &str) -> Result<Vec<Paragraph>, CmdError> {
     if kind.starts_with("BIBLIOGRAPHY") {
         let st = style(&s.bib_style);
-        return bib_order(&s.doc, st, crate::cmd::default_lang(s))
+        return Ok(bib_order(&s.doc, st, crate::cmd::default_lang(s))
             .into_iter()
             .enumerate()
             .filter_map(|(k, i)| s.doc.sources.get(i).map(|x| (entry(x, st.name, k.saturating_add(1)), !st.numbered())))
-            .collect();
+            .map(|(text, hanging)| plain_entry(text, hanging))
+            .collect());
     }
     // Collect marks with positions.
     let mut marks: Vec<(String, Pos)> = Vec::new();
@@ -373,6 +370,16 @@ fn entries_for(s: &mut Session, kind: &str) -> Vec<(String, bool)> {
                 }
             }
         }
+    }
+    let f = FieldCode::parse(kind);
+    // Bookmark objects change paragraph offsets, so collect all links before laying out pages.
+    let mut links = Vec::new();
+    if figures.is_some() && f.has('h') {
+        for (_, pos) in &marks {
+            let lead = s.doc.para(StoryRef::Body, &pos.path).map_or(0, |p| p.text.bytes().take_while(|b| *b == 0x0C).count());
+            links.push(bookmark_heading(s, &pos.path, lead)?);
+        }
+        s.touch();
     }
     let mut with_pages: Vec<(String, (usize, String))> = marks.into_iter().map(|(e, _)| (e, (0, String::new()))).collect();
     // Pages (layout once).
@@ -406,9 +413,35 @@ fn entries_for(s: &mut Session, kind: &str) -> Vec<(String, bool)> {
     }
     if figures.is_some() {
         // `\n` without page numbers; `\p` the separator before them (a tab by default).
-        let f = FieldCode::parse(kind);
         let sep = f.arg('p').unwrap_or("\t");
-        return with_pages.into_iter().map(|(t, p)| (if f.has('n') { t } else { format!("{t}{sep}{}", p.1) }, false)).collect();
+        return with_pages
+            .into_iter()
+            .enumerate()
+            .map(|(k, (text, page))| {
+                let bookmark = links.get(k);
+                let props = CharProps { link: bookmark.map(|b| format!("#{b}")), ..Default::default() };
+                let text = if f.has('n') {
+                    text
+                } else if bookmark.is_some() {
+                    format!("{text}{sep}")
+                } else {
+                    format!("{text}{sep}{}", page.1)
+                };
+                let mut para = Paragraph::with_text(&text, props.clone()).styled(ENTRY_STYLE);
+                if let Some(bookmark) = bookmark.filter(|_| !f.has('n')) {
+                    let field = InlineObject::Field {
+                        instr: format!("PAGEREF {bookmark} \\h"),
+                        result: page.1,
+                        locked: false,
+                        dirty: false,
+                        code: false,
+                        form: String::new(),
+                    };
+                    para.insert_object(para.len(), field, &props)?;
+                }
+                Ok(para)
+            })
+            .collect();
     }
     // Index / TOA: group by entry, sort, list pages.
     let lang = crate::cmd::default_lang(s);
@@ -433,7 +466,16 @@ fn entries_for(s: &mut Session, kind: &str) -> Vec<(String, bool)> {
         let list = pages.iter().map(|(_, label)| label.as_str()).collect::<Vec<_>>().join(", ");
         out.push(if kind.starts_with("INDEX") { (format!("{e}, {list}"), true) } else { (format!("{e}\t{list}"), false) });
     }
-    out
+    Ok(out.into_iter().map(|(text, hanging)| plain_entry(text, hanging)).collect())
+}
+
+fn plain_entry(text: String, hanging: bool) -> Paragraph {
+    let mut para = Paragraph::with_text(&text, CharProps::default()).styled(ENTRY_STYLE);
+    if hanging {
+        para.props.indent_left = Some(36.0);
+        para.props.indent_first = Some(-36.0);
+    }
+    para
 }
 
 #[cfg(test)]

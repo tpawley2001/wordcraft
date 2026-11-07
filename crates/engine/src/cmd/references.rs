@@ -30,8 +30,8 @@ use notes::{note, note_refs};
 pub use properties::{bookmark_text, date_picture};
 #[cfg(test)]
 use toc::cached_toc_tabs;
+pub(crate) use toc::{bookmark_heading, headings, toc_bookmark};
 pub use toc::{caret_in_toc, leader, level_range, toc_instr, update_toc};
-pub(crate) use toc::{headings, toc_bookmark};
 use toc::{insert_toc, remove_toc, toc_range};
 
 pub fn specs() -> Vec<CommandSpec> {

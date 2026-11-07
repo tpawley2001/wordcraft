@@ -248,6 +248,10 @@ fn table_of_figures_dialog_picks_the_caption_label() {
     assert_eq!(a.run("references.tableOfFigures", json!({})).unwrap(), json!({"pending": "tableOfFigures"}));
     let RefsDialog::Figures(mut f) = form(&a) else { panic!() };
     assert_eq!(f.label, "Figure");
+    assert!(f.hyperlinks);
+    assert_eq!(f.params()["hyperlinks"], true);
+    f.hyperlinks = false;
+    assert_eq!(f.params()["hyperlinks"], false);
     assert_eq!(f.labels, ["Equation", "Figure", "Table", "Specimen"]);
     f.label = "Table".into();
     f.leader = "underscore".into();
@@ -267,6 +271,7 @@ fn table_of_figures_dialog_picks_the_caption_label() {
         h.get_by_role_and_label(Role::CheckBox, "Page numbers at the right margin").accesskit_node().is_disabled()
     };
     assert!(!margin(&h));
+    h.get_by_role_and_label(Role::CheckBox, "Use hyperlinks instead of page numbers");
     h.get_by_role_and_label(Role::CheckBox, "Include page numbers").click();
     h.run_steps(2);
     assert!(margin(&h), "no page numbers: no right margin choice");
@@ -295,7 +300,7 @@ fn table_of_figures_dialog_picks_the_caption_label() {
     f.include_label = false;
     f.right_align = false;
     a.run("references.tableOfFigures", f.params()).unwrap();
-    assert!(instrs(&a).contains(&r#"TOC \a "Specimen" \p " ""#.to_string()), "{:?}", instrs(&a));
+    assert!(instrs(&a).contains(&r#"TOC \h \z \a "Specimen" \p " ""#.to_string()), "{:?}", instrs(&a));
     assert!(a.session.doc.plain_text(StoryRef::Body).contains("Rock 1"));
 }
 

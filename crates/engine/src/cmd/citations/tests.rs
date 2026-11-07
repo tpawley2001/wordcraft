@@ -299,11 +299,12 @@ fn table_of_figures_for_each_caption_label() {
 /// `\n` without page numbers, `\p " "` with the page right after the text.
 #[test]
 fn table_of_figures_options() {
-    assert_eq!(figures_instr(&json!({})), r#"TOC \c "Figure""#);
-    assert_eq!(figures_instr(&json!({"label": "Table", "includeLabel": false})), r#"TOC \a "Table""#);
-    assert_eq!(figures_instr(&json!({"pageNumbers": false})), r#"TOC \c "Figure" \n"#);
-    assert_eq!(figures_instr(&json!({"rightAlign": false})), r#"TOC \c "Figure" \p " ""#);
-    assert_eq!(figures_instr(&json!({"label": "\"\\ "})), r#"TOC \c "Figure""#, "an empty label is Figure");
+    assert_eq!(figures_instr(&json!({"hyperlinks": false})), r#"TOC \c "Figure""#);
+    assert_eq!(figures_instr(&json!({})), r#"TOC \h \z \c "Figure""#);
+    assert_eq!(figures_instr(&json!({"label": "Table", "includeLabel": false})), r#"TOC \h \z \a "Table""#);
+    assert_eq!(figures_instr(&json!({"pageNumbers": false})), r#"TOC \h \z \c "Figure" \n"#);
+    assert_eq!(figures_instr(&json!({"rightAlign": false})), r#"TOC \h \z \c "Figure" \p " ""#);
+    assert_eq!(figures_instr(&json!({"label": "\"\\ "})), r#"TOC \h \z \c "Figure""#, "an empty label is Figure");
     for (params, entry) in [
         (json!({"includeLabel": false}), "The kiln\t1"),
         (json!({"pageNumbers": false}), "Figure 1: The kiln"),
