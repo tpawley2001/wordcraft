@@ -318,6 +318,14 @@ impl WordApp {
         else {
             return;
         };
+        if matches!(message, printing::Feedback::Submitted(_)) {
+            // Submission may finish after the user switches to another document.
+            let document = self.print_document.unwrap_or(self.session.document_id());
+            let _ = self.session.with_document(document, |s| {
+                s.doc.core.last_printed = wordcraft_engine::cmd::now_iso();
+                s.dirty = true;
+            });
+        }
         let text = printing::feedback(&message, |label| i18n::t(label).to_owned());
         self.status(text);
         // Word returns to the document once a print job is away, the same as after Save; a

@@ -942,3 +942,27 @@ fn listnum_start_at_legal_and_outline_share_the_counters() {
     let want: Vec<(String, String)> = probe.iter().flat_map(|r| r.1.iter().zip(r.2.iter()).map(|(c, w)| (c.to_string(), w.to_string()))).collect();
     assert_eq!(got, want);
 }
+
+#[test]
+fn document_date_fields_accept_offsets_and_fractions_and_keep_locked_results() {
+    let mut s = Session::new(wordcraft_doc::Document::new());
+    for instr in [r#"CREATEDATE \@ "yyyy-MM-dd HH:mm:ss""#, r#"PRINTDATE \@ "yyyy-MM-dd HH:mm:ss""#] {
+        s.run("insert.field", &json!({"instr": instr, "result": "kept"})).unwrap();
+    }
+    s.doc.core.created = "2024-03-15T14:30:45.123+02:30".into();
+    s.doc.core.last_printed = "2024-03-15T08:00:45.987-04:00".into();
+    let unix = 1_710_504_045;
+    let expected = crate::cmd::insert::format_date_at("yyyy-MM-dd HH:mm:ss", unix, crate::cmd::local_offset_secs(unix));
+    s.run("references.updateFields", &json!({})).unwrap();
+    assert!(fields(&s).iter().all(|(_, result)| result == &expected));
+    for path in s.doc.para_paths(StoryRef::Body) {
+        for object in &mut s.doc.para_mut(StoryRef::Body, &path).unwrap().objects {
+            if let InlineObject::Field { locked, result, .. } = object {
+                *locked = true;
+                *result = "locked".into();
+            }
+        }
+    }
+    s.run("references.updateFields", &json!({})).unwrap();
+    assert!(fields(&s).iter().all(|(_, result)| result == "locked"));
+}

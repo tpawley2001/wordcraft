@@ -273,6 +273,8 @@ pub(crate) fn print_pdf_to_file(s: &mut Session, v: &Value) -> Result<Value, Cmd
     // Through `io`, so an agent confined to an automation write root (#769) can't print elsewhere.
     #[cfg(not(target_arch = "wasm32"))]
     crate::io::write_file(&path, &bytes).map_err(CmdError::Failed)?;
+    s.doc.core.last_printed = crate::cmd::now_iso();
+    s.dirty = true;
     Ok(json!({"path": path, "pages": plan.pages.len(), "chosen": plan.chosen, "copies": plan.copies, "bytes": bytes.len()}))
 }
 
@@ -427,9 +429,14 @@ mod tests {
         let inside = base.join("out/job").to_string_lossy().into_owned();
         let outside = base.join("outside/job").to_string_lossy().into_owned();
         confine(roots.as_ref(), || {
+            s.dirty = false;
             let e = s.run("file.printPdf", &json!({"path": outside})).unwrap_err().to_string();
             assert!(e.contains("outside the write root"), "{e}");
+            assert!(s.doc.core.last_printed.is_empty());
+            assert!(!s.dirty);
             s.run("file.printPdf", &json!({"path": inside})).unwrap();
+            assert!(s.dirty);
+            assert!(chrono::DateTime::parse_from_rfc3339(&s.doc.core.last_printed).is_ok());
         });
         assert!(!base.join("outside/job.pdf").exists(), "nothing printed outside the root");
         assert!(std::fs::read(base.join("out/job.pdf")).unwrap().starts_with(b"%PDF"));
