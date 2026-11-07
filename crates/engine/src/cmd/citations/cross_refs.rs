@@ -1,5 +1,5 @@
-use super::generated::page_of;
 use super::{CharProps, CmdError, CmdResult, Document, InlineObject, Paragraph, Pos, Selection, Session, StoryRef, Value, delete_selection, json, p};
+use crate::cmd::references::page_label;
 
 pub(super) fn cross_ref(s: &mut Session, v: &Value) -> CmdResult {
     let to = p::str(v, "to").unwrap_or("heading");
@@ -10,9 +10,10 @@ pub(super) fn cross_ref(s: &mut Session, v: &Value) -> CmdResult {
     let find = |ts: Vec<(String, Pos)>| ts.into_iter().find(|(t, _)| t == target || t.starts_with(target));
     let (text, pos) = find(targets).ok_or_else(|| CmdError::Params(format!("no {to} `{target}`")))?;
     let show = p::str(v, "show").unwrap_or("text");
-    let page = page_of(s, &pos);
     let result = match show {
-        "page" => page.to_string(),
+        // The page the target's text starts on (after its leading page breaks), as its footer
+        // shows it.
+        "page" => page_label(s, &Pos { off: leading_breaks(&s.doc, &pos), ..pos.clone() }),
         "number" => text.split(':').next().unwrap_or(&text).trim().to_string(),
         "aboveBelow" => {
             if pos < s.sel.focus {
@@ -160,6 +161,11 @@ pub fn ref_targets(s: &Session, to: &str) -> Vec<(String, Pos)> {
     targets
 }
 
+/// The page breaks at the start of the paragraph at `pos` (as bytes): its text starts after them.
+fn leading_breaks(doc: &Document, pos: &Pos) -> usize {
+    doc.para(pos.story, &pos.path).map_or(0, |p| p.text.bytes().take_while(|b| *b == 0x0C).count())
+}
+
 /// The hidden `_Ref` bookmark around the target paragraph at `pos` (its label and number only
 /// when `number_only`), reusing one already there. Returns its name and `at` moved past the
 /// bookmark marks inserted before it.
@@ -167,7 +173,9 @@ fn ref_bookmark(s: &mut Session, pos: &Pos, number_only: bool, mut at: Pos) -> R
     const MARK: usize = wordcraft_doc::para::OBJ.len_utf8();
     let para = s.doc.para(pos.story, &pos.path).ok_or_else(|| CmdError::Params("cross-reference target is gone".into()))?;
     let end = if number_only { para.text.find(':').unwrap_or(para.len()) } else { para.len() };
-    if let Some(InlineObject::BookmarkStart { name }) = para.object_at(0)
+    // The bookmark starts after the leading page breaks, so `PAGEREF` reads the page the text is on.
+    let start = leading_breaks(&s.doc, pos).min(end);
+    if let Some(InlineObject::BookmarkStart { name }) = para.object_at(start)
         && name.starts_with("_Ref")
     {
         // Reuse it when it covers the same extent: up to the colon, or the whole paragraph.
@@ -184,11 +192,11 @@ fn ref_bookmark(s: &mut Session, pos: &Pos, number_only: bool, mut at: Pos) -> R
     let name = format!("_Ref{next:09}");
     let props = CharProps::default();
     s.doc.insert_object(&Pos { off: end, ..pos.clone() }, InlineObject::BookmarkEnd { name: name.clone() }, &props)?;
-    s.doc.insert_object(&Pos { off: 0, ..pos.clone() }, InlineObject::BookmarkStart { name: name.clone() }, &props)?;
+    s.doc.insert_object(&Pos { off: start, ..pos.clone() }, InlineObject::BookmarkStart { name: name.clone() }, &props)?;
     if at.story == pos.story && at.path == pos.path {
         if at.off >= end {
             at.off = at.off.saturating_add(2 * MARK);
-        } else if at.off > 0 {
+        } else if at.off > start {
             at.off = at.off.saturating_add(MARK);
         }
     }
