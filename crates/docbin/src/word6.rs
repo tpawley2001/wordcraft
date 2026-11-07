@@ -113,7 +113,7 @@ pub(crate) fn read<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, word: &[u8],
                 // Field begin / separator / end: the result text is kept, as for Word 97.
                 0x13 => match field.as_mut() {
                     Some(f) => f.depth = f.depth.saturating_add(1),
-                    None => field = Some(FieldBuild { depth: 1, instr: String::new(), sep: None }),
+                    None => field = Some(FieldBuild { depth: 1, instr: String::new(), sep: None, object: false }),
                 },
                 0x14 => {
                     if let Some(f) = field.as_mut()

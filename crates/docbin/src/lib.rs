@@ -297,6 +297,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     let mut pics = media::Pictures::for_input(word.len().saturating_add(data.len()));
     // Object storages are not decrypted; an encrypted file keeps its Data stream pictures.
     let prints = if enc.is_none() { ole::Prints::read(&mut comp) } else { ole::Prints::default() };
+    let kept = std::cell::RefCell::new(ole::Kept::default());
     // Every materialised character comes from at least one byte of the WordDocument stream, so a
     // legitimate document's total text (body plus every header, footnote and text box, each read
     // once) cannot exceed its stream. A hostile piece or story table that aliases the same bytes
@@ -321,6 +322,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
         drawn: &[],
         sect_ends: &[],
         prints: &prints,
+        kept: &kept,
         budget: &budget,
         paragraphs: &paragraphs,
         work: &work,
@@ -446,6 +448,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     }
     doc.media.extend(pics.media);
     doc.linked_media.extend(pics.links);
+    kept.into_inner().finish(&mut doc.passthrough);
     doc.body = table::assemble(paras);
     doc.ensure_nonempty();
     work.log();
@@ -509,6 +512,8 @@ struct WalkCtx<'a> {
     sect_ends: &'a [u32],
     /// Embedded objects' print presentations, by storage id.
     prints: &'a ole::Prints,
+    /// Embedded objects kept whole for writing back, with the parts they use.
+    kept: &'a std::cell::RefCell<ole::Kept>,
     /// Characters still allowed across every story walk of this document. Story ranges (headers,
     /// footnotes, text boxes) are hostile and can each span a whole subdocument, so thousands of
     /// them could otherwise materialise the same text thousands of times; this bounds the total.
@@ -696,7 +701,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                         f.depth = f.depth.saturating_add(1);
                     }
                     None => {
-                        field = Some(FieldBuild { depth: 1, instr: String::new(), sep: None });
+                        field = Some(FieldBuild { depth: 1, instr: String::new(), sep: None, object: false });
                         object_id = None;
                     }
                 }
@@ -727,8 +732,14 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 continue;
             }
             '\u{1}' => {
-                let open = field.as_ref().filter(|f| f.depth == 1).map(|f| f.sep.is_some());
-                inline_picture(ctx, cp, open, &mut object_id, &mut pb, pics);
+                let top = field.as_ref().filter(|f| f.depth == 1);
+                let open = top.map(|f| f.sep.is_some());
+                let instr = top.map(|f| f.instr.as_str());
+                if inline_picture(ctx, cp, (open, instr), &mut object_id, &mut pb, pics)
+                    && let Some(f) = field.as_mut()
+                {
+                    f.object = true;
+                }
             }
             '\u{8}' => {
                 // Drawn object anchor: the floating shape or picture anchored at this CP.
@@ -781,7 +792,18 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
 /// that object's print presentation, when it has one. A result `\x01` that is itself an object
 /// reference (no object in the code) is drawn from the object's storage: its location is the
 /// storage id, not a Data stream fc.
-fn inline_picture(ctx: &WalkCtx<'_>, cp: u32, open: Option<bool>, object_id: &mut Option<u32>, pb: &mut ParaBuild, pics: &mut media::Pictures) {
+///
+/// In an `EMBED` field's result (`instr` is the field code), the picture of an object whose
+/// storage is kept carries the object itself (its `w:object`): true then, and the field leaves
+/// no trace of its own (the object replaces it, as in a .docx).
+fn inline_picture(
+    ctx: &WalkCtx<'_>,
+    cp: u32,
+    (open, instr): (Option<bool>, Option<&str>),
+    object_id: &mut Option<u32>,
+    pb: &mut ParaBuild,
+    pics: &mut media::Pictures,
+) -> bool {
     let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
     let chpx = ctx.chpx_bins.chpx(ctx.word, fc);
     let mut object = None;
@@ -826,6 +848,13 @@ fn inline_picture(ctx: &WalkCtx<'_>, cp: u32, open: Option<bool>, object_id: &mu
             // Every anchor of a picture gets its own copy of the alt text; the
             // copies are charged to the work budget (#3709).
             let alt = if ctx.work.charge(p.alt.len() as u64, Cost::AltText) { p.alt } else { String::new() };
+            let ole = match (open, instr, result_object.or(*object_id)) {
+                (Some(true), Some(instr), Some(id)) if ole::is_embed(instr) => {
+                    ctx.kept.borrow_mut().object(ctx.prints, id, instr, &p.key, &pics.media, (p.w, p.h))
+                }
+                _ => None,
+            };
+            let object = ole.is_some();
             pb.push('\u{FFFC}', CharProps::default());
             pb.objects.push(InlineObject::Image {
                 media: p.key,
@@ -835,11 +864,13 @@ fn inline_picture(ctx: &WalkCtx<'_>, cp: u32, open: Option<bool>, object_id: &mu
                 float: Default::default(),
                 crop: p.crop,
                 fx: Default::default(),
-                ole: None,
+                ole,
             });
+            return object;
         }
         None => pics.dropped(cp),
     }
+    false
 }
 
 /// Field assembly: `instr` collects everything before the separator (nested fields
@@ -848,6 +879,8 @@ struct FieldBuild {
     depth: u32,
     instr: String,
     sep: Option<FieldResult>,
+    /// An `EMBED` field whose object is kept whole: the object replaces the field.
+    object: bool,
 }
 
 /// A field's cached result: its text and, as runs, the formatting of that text. A run is added
@@ -889,6 +922,9 @@ fn object_cost(obj: &InlineObject) -> u64 {
 /// and each copy is charged to `work` ([`MAX_WORK`]); once that is spent the rest of the
 /// result is kept as plain text (#3708).
 fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &Work) {
+    if f.object {
+        return;
+    }
     let instr = f.instr.trim().to_string();
     let result = f.sep.unwrap_or_default();
     if let Some(target) = hyperlink_target(&instr) {
