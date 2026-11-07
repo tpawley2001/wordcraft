@@ -174,7 +174,7 @@ fn eprint<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<Ve
 
 /// Repairs an EMF's `EMR_HEADER` counts in place ([MS-EMF] 2.3.4.2).
 pub(crate) fn repair_emf_header(emf: &mut [u8]) {
-    let u32_at = |bytes: &[u8], at: usize| bytes.get(at..at + 4).and_then(|s| s.try_into().ok()).map(u32::from_le_bytes);
+    let u32_at = |bytes: &[u8], at: usize| bytes.get(at..at.checked_add(4)?).and_then(|s| s.try_into().ok()).map(u32::from_le_bytes);
     let Some(current_handles) = emf.get(56..58).and_then(|s| s.try_into().ok()).map(u16::from_le_bytes) else { return };
     let mut handles = u32::from(current_handles).max(1);
     let mut records = 0u32;
