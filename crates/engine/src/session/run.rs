@@ -104,6 +104,12 @@ impl Session {
         }
         // Typing, caret movement and selection outside the equation commands leave the equation.
         self.leave_math_for_command(id);
+        // A dead-key accent waits for the next typed character only: any other command cancels
+        // it, as in Word. `text.insert` consumes it and `text.composeAccent` replaces it.
+        if !matches!(id, "text.insert" | "text.composeAccent") {
+            self.pending_accent = None;
+            self.composed_word = false;
+        }
         // The undo stacks are snapshotted whole, not as a length: commands run nested commands,
         // whose checkpoints, undos and redos (and evictions at the limit) must be put back too.
         let ime_epoch_before = spec.mutates.then_some(self.ime_body_epoch);
@@ -155,7 +161,9 @@ impl Session {
             )
         });
         let typing = spec.id == "text.insert" || spec.id == "equation.type";
-        if spec.mutates && !typing {
+        // A dead key inserts nothing, so it doesn't end the typing undo group the letter after it
+        // belongs to.
+        if spec.mutates && !typing && spec.id != "text.composeAccent" {
             self.typing_open = false;
         }
         // Whether this command pushed an undo step (a no-op command's step is dropped below,

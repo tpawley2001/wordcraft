@@ -8,12 +8,14 @@ use wordcraft_doc::{Block, ListKind, Path, Pos, StoryRef, Table};
 use super::{delete_selection, delete_selection_effect, non_mac, sel_result, split_para, type_text, type_text_effect};
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
+mod accent;
 mod autoformat;
 mod autoformat_now;
 mod delete;
 mod enter_tab;
 mod unicode;
 
+pub use accent::{Accent, accent_for_shortcut};
 use autoformat::insert;
 use autoformat_now::autoformat_now;
 use delete::{backspace, delete, delete_word_back, delete_word_fwd};
@@ -59,5 +61,14 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("text.registered", "Registered Sign", "Insert › Symbols", |s, _| ins_char(s, '®')).key(non_mac("Mod+Alt+R")),
         CommandSpec::new("text.trademark", "Trademark Sign", "Insert › Symbols", |s, _| ins_char(s, '™')).key(non_mac("Mod+Alt+T")),
         CommandSpec::new("text.ellipsis", "Ellipsis", "Insert › Symbols", |s, _| ins_char(s, '…')).key(non_mac("Mod+Alt+.")),
+        // Word's dead-key accents: the shortcut inserts nothing and the next typed letter comes
+        // out composed. On macOS Option+key types the accent itself, so Word for Mac has no key.
+        CommandSpec::new("text.composeAccent", "Compose Accent", "Editing › Keyboard", accent::compose_accent)
+            .params(r#"{"accent": "acute|grave|circumflex|tilde|diaeresis|ring|ligature|cedilla|stroke"}"#)
+            .key(non_mac("Mod+' / Mod+` / Mod+Shift+6 / Mod+Shift+` / Mod+Shift+; / Mod+Shift+2 / Mod+Shift+7 / Mod+, / Mod+/")),
+        CommandSpec::new("text.invertedQuestion", "Inverted Question Mark", "Insert › Symbols", |s, _| ins_char(s, '¿'))
+            .key(non_mac("Mod+Alt+Shift+/")),
+        CommandSpec::new("text.invertedExclamation", "Inverted Exclamation Mark", "Insert › Symbols", |s, _| ins_char(s, '¡'))
+            .key(non_mac("Mod+Alt+Shift+1")),
     ]
 }

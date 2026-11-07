@@ -137,3 +137,92 @@ pub(super) fn compose_accent(s: &mut Session, v: &Value) -> CmdResult {
     s.pending_accent = Some(accent);
     Ok(json!({"accent": name}))
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use wordcraft_doc::StoryRef;
+
+    use super::*;
+
+    fn s() -> Session {
+        Session::new(wordcraft_doc::Document::new())
+    }
+
+    fn body(s: &Session) -> String {
+        s.doc.plain_text(StoryRef::Body).trim_end_matches(['\n', '\r']).to_string()
+    }
+
+    #[test]
+    fn every_shortcut_names_its_accent() {
+        for (key, accent) in [
+            ("Mod+'", "acute"),
+            ("Mod+`", "grave"),
+            ("Mod+Shift+6", "circumflex"),
+            ("Mod+Shift+`", "tilde"),
+            ("Mod+Shift+;", "diaeresis"),
+            ("Mod+Shift+2", "ring"),
+            ("Mod+Shift+7", "ligature"),
+            ("Mod+,", "cedilla"),
+            ("Mod+/", "stroke"),
+        ] {
+            assert_eq!(accent_for_shortcut(key), Some(accent), "{key}");
+        }
+        assert_eq!(accent_for_shortcut("Mod+B"), None);
+        assert_eq!(accent_for_shortcut("not a key"), None);
+    }
+
+    /// The dead key is session state: it adds no undo step and leaves the document unsaved.
+    #[test]
+    fn a_dead_key_is_not_an_edit() {
+        let mut s = s();
+        s.run("text.insert", &json!({"text": "a"})).unwrap();
+        let steps = s.undo_steps_so_far();
+        s.dirty = false;
+        s.run("text.composeAccent", &json!({"accent": "acute"})).unwrap();
+        assert_eq!(s.undo_steps_so_far(), steps, "no undo step");
+        assert!(!s.dirty, "not an unsaved change");
+        assert_eq!(body(&s), "a");
+        // The composed letter is ordinary typing: one more step, and it is undoable.
+        s.run("text.insert", &json!({"text": "e"})).unwrap();
+        assert_eq!(body(&s), "aé");
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(body(&s), "a");
+    }
+
+    /// A composed letter takes the formatting waiting at the caret, like the letter typed directly.
+    #[test]
+    fn a_composed_letter_takes_the_pending_formatting() {
+        let mut s = s();
+        s.run("format.bold", &json!({})).unwrap();
+        s.run("text.composeAccent", &json!({"accent": "diaeresis"})).unwrap();
+        s.run("text.insert", &json!({"text": "u"})).unwrap();
+        assert_eq!(body(&s), "ü");
+        let at = s.sel.focus.clone();
+        let bold = s.doc.para_at(&at).and_then(|p| p.props_of_char(at.off.saturating_sub(1)).bold);
+        assert_eq!(bold, Some(true));
+    }
+
+    /// A word typed with a dead key keeps its first letter as typed: AutoCorrect doesn't
+    /// capitalise it, and the next word is capitalised as usual.
+    #[test]
+    fn a_composed_word_is_not_capitalised() {
+        let mut s = s();
+        s.run("text.composeAccent", &json!({"accent": "acute"})).unwrap();
+        for c in ["e", "l", ".", " ", "p", "a", "s", "o", " "] {
+            s.run("text.insert", &json!({"text": c})).unwrap();
+        }
+        eprintln!("DBG composed={} body={:?}", s.composed_word, body(&s));
+        assert_eq!(body(&s), "él. Paso");
+    }
+
+    /// A multi-character insert ends the wait: the accent applies to one typed character only.
+    #[test]
+    fn a_multi_character_insert_ends_the_wait() {
+        let mut s = s();
+        s.run("text.composeAccent", &json!({"accent": "acute"})).unwrap();
+        s.run("text.insert", &json!({"text": "ab"})).unwrap();
+        s.run("text.insert", &json!({"text": "e"})).unwrap();
+        assert_eq!(body(&s), "abe");
+    }
+}
