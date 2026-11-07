@@ -23,6 +23,7 @@ mod ole_print;
 mod ole_result_objects;
 mod section_page_numbers;
 mod style_name_case;
+mod table_float;
 mod word6;
 mod wrap_polygon;
 
