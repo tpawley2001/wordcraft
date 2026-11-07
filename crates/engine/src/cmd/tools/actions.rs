@@ -1,4 +1,4 @@
-use super::{Arc, CmdError, CmdResult, Document, Pos, Selection, Session, StoryRef, Value, delete_selection, json, p, sel_result};
+use super::{Arc, CmdError, CmdResult, Document, Pos, Selection, Session, StoryRef, Value, json, p, sel_result};
 
 /// Options › Language › Set as default: only the saved default proofing language (what future
 /// blank documents are written in), as Word's Set as Preferred. A setting, like `file.options`: the
@@ -126,17 +126,16 @@ pub(super) fn quick_parts(s: &mut Session, v: &Value, gallery: &str) -> CmdResul
         s.doc.glossary.remove(i);
     }
     if let Some(name) = p::str(v, "insert") {
-        let frag = match s.building_blocks.get(name) {
-            Some(f) => f.clone(),
+        let (frag, behavior) = match s.building_blocks.get(name) {
+            Some(f) => (f.clone(), "content".to_string()),
             None => {
                 let e = document_entry(&s.doc, name, gallery).and_then(|i| s.doc.glossary.get(i));
                 let e = e.ok_or_else(|| CmdError::Params(format!("no Quick Part `{name}`")))?;
-                wordcraft_doc::edit::Fragment { blocks: e.blocks.iter().map(|b| (**b).clone()).collect(), parts: Default::default() }
+                let frag = wordcraft_doc::edit::Fragment { blocks: e.blocks.iter().map(|b| (**b).clone()).collect(), parts: Default::default() };
+                (frag, e.behaviors.first().cloned().unwrap_or_default())
             }
         };
-        let at = delete_selection(s)?;
-        let end = s.doc.insert_fragment(&at, &frag)?;
-        s.sel = Selection::caret(end);
+        super::building_blocks::insert_with_behavior(s, &frag, &behavior)?;
     }
     let document: Vec<&str> = s.doc.glossary.iter().filter(|e| e.gallery == gallery).map(|e| e.name.as_str()).collect();
     let mut parts: Vec<&str> = s.building_blocks.keys().map(String::as_str).collect();

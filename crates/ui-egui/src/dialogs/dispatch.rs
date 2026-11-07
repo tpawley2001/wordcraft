@@ -39,6 +39,8 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::Refs(f) => crate::dialogs_refs::body(app, ui, f),
         Dialog::Commands { .. } => commands_dialog(app, ui, d),
         Dialog::Macros { name } => macros(app, ui, name),
+        Dialog::BuildingBlocks { selected, sort, confirm_delete } => super::building_blocks::organizer(app, ui, selected, sort, confirm_delete),
+        Dialog::NewBuildingBlock { form } => super::building_blocks::new_building_block(app, ui, form),
         Dialog::Icons { query, category, selected } => icons_body(app, ui, query, category, selected),
         Dialog::PasteSpecial { .. } => paste_special_dialog(app, ui, d),
         Dialog::About { .. } => about_dialog(ui, d, app.ui.pirate_speak),

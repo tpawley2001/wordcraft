@@ -20,6 +20,7 @@ use crate::options::MeasureExt;
 use crate::theme::{Tokens, semibold};
 
 mod bookmarks;
+mod building_blocks;
 mod chrome;
 mod dispatch;
 mod find;
@@ -293,6 +294,19 @@ pub enum Dialog {
     Macros {
         name: String,
     },
+    /// Insert › Quick Parts › Building Blocks Organizer…: the document's building blocks.
+    BuildingBlocks {
+        /// The entry shown (its index in the document's glossary).
+        selected: Option<usize>,
+        sort: building_blocks::SortBy,
+        /// Asking whether to delete the selected entry.
+        confirm_delete: bool,
+    },
+    /// Create New Building Block (Save Selection to Quick Part / AutoText Gallery…), or Modify
+    /// Building Block from the organizer's Edit Properties….
+    NewBuildingBlock {
+        form: Box<building_blocks::BuildingBlockForm>,
+    },
     Commands {
         query: String,
         /// Opened by a shortcut that may also send its key's text (Alt+Q's "q", in the same frame
@@ -545,6 +559,9 @@ impl Dialog {
             Dialog::TableStyle { .. } => "modifyTableStyle",
             Dialog::Commands { .. } => "commands",
             Dialog::Macros { .. } => "macros",
+            Dialog::BuildingBlocks { .. } => "buildingBlocks",
+            Dialog::NewBuildingBlock { form } if form.modify.is_some() => "modifyBuildingBlock",
+            Dialog::NewBuildingBlock { .. } => "newBuildingBlock",
             Dialog::Insert(d) => d.name(),
             Dialog::Refs(d) => d.name(),
             Dialog::Icons { .. } => "icons",
@@ -800,6 +817,11 @@ impl Dialog {
             "newTableStyle" | "modifyTableStyle" => crate::dialogs_table_style::open(app, name)?,
             "commands" => Dialog::Commands { query: String::new(), swallow: true },
             "macros" => Dialog::Macros { name: String::new() },
+            "buildingBlocks" => Dialog::BuildingBlocks { selected: None, sort: building_blocks::SortBy::default(), confirm_delete: false },
+            "newBuildingBlock" | "newAutoText" => {
+                let gallery = if name == "newAutoText" { wordcraft_doc::AUTO_TEXT_GALLERY } else { wordcraft_doc::QUICK_PARTS_GALLERY };
+                Dialog::NewBuildingBlock { form: Box::new(building_blocks::BuildingBlockForm::create(app, gallery)) }
+            }
             "icons" => Dialog::Icons { query: String::new(), category: String::new(), selected: String::new() },
             "tableProperties" => {
                 let form = Box::new(TableForm::read(app)?);

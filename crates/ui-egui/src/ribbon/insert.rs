@@ -174,7 +174,34 @@ pub(super) fn insert(app: &mut WordApp, ui: &mut Ui) {
                             ui.close();
                         }
                     }
+                    // The document's AutoText, and saving the selection to it.
+                    ui.menu_button(tl!("AutoText"), |ui| {
+                        let auto: Vec<String> = app
+                            .session
+                            .doc
+                            .glossary
+                            .iter()
+                            .filter(|e| e.gallery == wordcraft_doc::AUTO_TEXT_GALLERY)
+                            .map(|e| e.name.clone())
+                            .collect();
+                        for name in auto {
+                            if ui.button(&name).clicked() {
+                                let _ = app.run("insert.autoText", json!({"insert": name}));
+                                ui.close();
+                            }
+                        }
+                        let selected = !app.session.sel.is_collapsed();
+                        ui.add_enabled_ui(selected, |ui| {
+                            mi(ui, app, "Save Selection to AutoText Gallery…", "ui.dialog", json!({"name": "newAutoText"}));
+                        });
+                    });
                     mi(ui, app, "Field…", "ui.dialog", json!({"name": "field"}));
+                    ui.separator();
+                    mi(ui, app, "Building Blocks Organizer…", "ui.dialog", json!({"name": "buildingBlocks"}));
+                    let selected = !app.session.sel.is_collapsed();
+                    ui.add_enabled_ui(selected, |ui| {
+                        mi(ui, app, "Save Selection to Quick Part Gallery…", "ui.dialog", json!({"name": "newBuildingBlock"}));
+                    });
                 },
             );
             menu_button(ui, app, crate::widgets::MenuButtonOptions::new("wordArt", Some("WordArt"), "WordArt", false, ""), |ui, app| {

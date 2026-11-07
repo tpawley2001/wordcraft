@@ -125,7 +125,7 @@ pub fn specs() -> Vec<CommandSpec> {
             step(s, 1)
         })
         // Elsewhere Ctrl+Page Down is Next by the browse object (`nav.browseNext`), Find by default.
-        .key(super::mac_or("Mod+G / F3 / Shift+F4 / Mod+PageDown", "Mod+G / F3 / Shift+F4 / Mod+Alt+Y"))
+        .key(super::mac_or("Mod+G / Shift+F4 / Mod+PageDown", "Mod+G / Shift+F4 / Mod+Alt+Y"))
         .params(r#"{"text"?: string, "matchCase"?: bool, "wholeWord"?: bool, "regex"?: bool, "format"?: {…} | null (as edit.find)}"#)
         .pure(),
         CommandSpec::new("edit.findPrevious", "Find Previous", "Home › Editing › Find", |s, v| {

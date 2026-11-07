@@ -2172,3 +2172,29 @@ fn select_browse_object_opens_the_palette_and_a_click_sets_the_object() {
     assert!(h.state().dialog.is_none(), "Escape closes the palette");
     assert_eq!(h.state_mut().session.run("nav.selectBrowseObject", &json!({})).unwrap()["current"], "heading");
 }
+
+/// Insert › Quick Parts: Building Blocks Organizer… and Save Selection to Quick Part / AutoText
+/// Gallery… open their dialogs; the organizer's Edit Properties opens Modify Building Block, whose
+/// OK saves through `insert.buildingBlocks`.
+#[test]
+fn building_block_dialogs_open_and_save() {
+    let mut app = app_with("Kind regards\nSecond line");
+    app.run("select.text", json!({"text": "Kind regards"})).unwrap();
+    app.dialog = Dialog::open("newBuildingBlock", &mut app);
+    let Some(Dialog::NewBuildingBlock { form }) = &app.dialog else { panic!("Create New Building Block opens") };
+    assert_eq!((form.name.as_str(), form.gallery.as_str(), form.category.as_str()), ("Kind regards", "docParts", "General"));
+    app.dialog = Dialog::open("newAutoText", &mut app);
+    let Some(Dialog::NewBuildingBlock { form }) = &app.dialog else { panic!("the AutoText gallery's opens") };
+    assert_eq!(form.gallery, "autoTxt");
+
+    app.run("insert.buildingBlocks", json!({"create": {"name": "Sig"}})).unwrap();
+    assert_eq!(app.run("insert.buildingBlocks", json!({})).unwrap(), json!({"pending": "buildingBlocks"}), "the button opens the organizer");
+    assert!(matches!(&app.dialog, Some(Dialog::BuildingBlocks { .. })));
+    let form = building_blocks::BuildingBlockForm::modify(&app, 0).expect("entry 0");
+    assert_eq!(form.name, "Sig");
+    app.dialog = Some(Dialog::NewBuildingBlock { form: Box::new(form) });
+    assert_eq!(app.dialog.as_ref().map(Dialog::name), Some("modifyBuildingBlock"));
+    let mut h = app_harness(app);
+    h.run_steps(4);
+    assert!(matches!(&h.state().dialog, Some(Dialog::NewBuildingBlock { .. })), "Modify Building Block is shown");
+}
