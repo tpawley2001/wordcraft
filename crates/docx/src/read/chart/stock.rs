@@ -23,7 +23,7 @@ impl Stock {
 
 /// The line of a `c:spPr` (`a:ln`): its solid colour, else the axis-text colour, and its width;
 /// none for `a:noFill`.
-fn outline(sp: Option<&El>, theme: &[Rgb]) -> Option<(Rgb, f32)> {
+pub(super) fn outline(sp: Option<&El>, theme: &[Rgb]) -> Option<(Rgb, f32)> {
     let ln = sp.and_then(|p| p.child("a:ln"));
     if ln.is_some_and(|l| l.child("a:noFill").is_some()) {
         return None;

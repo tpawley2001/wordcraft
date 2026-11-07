@@ -1,12 +1,13 @@
 //! Charts (ECMA-376 Part 1 §21.2): the cached data of a `c:chartSpace` drawn as items in points.
 //!
 //! Bar and column (clustered, stacked or 100% stacked), line, area, stock, pie, doughnut and scatter
-//! charts, with their values as data labels where `c:dLbls` shows them (`c:showVal`). The chart
+//! charts, their 3-D variants (drawn with depth, [`three_d`]) and pie-of-pie / bar-of-pie charts
+//! ([`of_pie`]), with their values as data labels where `c:dLbls` shows them (`c:showVal`). The chart
 //! types of a plot area (§21.2.2.145) share one frame (combo charts): areas drawn first, then bars,
 //! lines and scatters, each on the primary value axis or a secondary one on the right. Stock charts
 //! draw hi-low lines and up/down bars. Pie, doughnut and radar charts draw their first chart type
 //! alone; radar charts (standard, with markers or filled) as spokes, concentric grid polygons and
-//! one polygon per series. A chart of only other types (bubble, surface, 3-D…) draws a
+//! one polygon per series. A chart of only other types (bubble, surface) draws a
 //! placeholder: its frame, its title and the type it is. Text widths are estimated ([`CHAR_W`] em
 //! a character), so label places are approximate.
 
@@ -23,10 +24,12 @@ use crate::xml::El;
 mod canvas;
 mod format;
 mod model;
+mod of_pie;
 mod parse;
 mod plot;
 mod polar;
 mod stock;
+mod three_d;
 
 #[cfg(test)]
 use canvas::SWATCH;
@@ -36,12 +39,16 @@ use canvas::{Rect, clip_text, legend, text};
 use format::{civil, excel_stamp, format_value};
 use model::{Axis, Group, Kind, Pos};
 #[cfg(test)]
+use of_pie::of_pie_second;
+use of_pie::{OfPie, draw_of_pie};
+#[cfg(test)]
 use parse::{axis, category_text, labels, numbers};
 use parse::{read_series, text_size, title_of};
 #[cfg(test)]
 use plot::{Scale, narrow, nice_scale};
 use plot::{backdrop, cartesian};
 use polar::{pie, radar};
+use three_d::{View3d, pie_3d};
 
 /// Most series read from one chart.
 const MAX_SERIES: usize = 256;
@@ -107,6 +114,8 @@ pub(crate) fn chart_items(space: &El, theme: &[Rgb], w: f32, h: f32) -> Vec<Grap
         area = legend(&mut out, &entries, pos, area, chart.text_size);
     }
     match chart.kind {
+        Kind::Pie if chart.of_pie.is_some() => draw_of_pie(&mut out, &chart, area),
+        Kind::Pie if chart.pie3d => pie_3d(&mut out, &chart, area),
         Kind::Pie | Kind::Doughnut => pie(&mut out, &chart, area),
         Kind::Radar => radar(&mut out, &chart, area),
         _ => cartesian(&mut out, &chart, area),
@@ -150,11 +159,6 @@ fn unsupported_name(name: &str) -> &'static str {
     match name {
         "c:bubbleChart" => "Bubble chart",
         "c:surfaceChart" | "c:surface3DChart" => "Surface chart",
-        "c:ofPieChart" => "Pie of pie chart",
-        "c:bar3DChart" => "3-D bar chart",
-        "c:line3DChart" => "3-D line chart",
-        "c:area3DChart" => "3-D area chart",
-        "c:pie3DChart" => "3-D pie chart",
         _ => "Chart",
     }
 }
@@ -192,9 +196,18 @@ struct Chart {
     date1904: bool,
     /// Outline of the plot area, when the file draws one.
     plot_border: Option<Rgb>,
+    /// The 3-D view (`c:view3D`), for chart types drawn with depth.
+    view: View3d,
+    /// A 3-D pie (`c:pie3DChart`).
+    pie3d: bool,
+    /// A pie-of-pie or bar-of-pie chart (`c:ofPieChart`).
+    of_pie: Option<OfPie>,
 }
 
 #[cfg(test)]
 mod combo_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+#[allow(clippy::manual_contains)]
+mod three_d_tests;

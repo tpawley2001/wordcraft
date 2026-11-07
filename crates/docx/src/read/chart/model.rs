@@ -24,10 +24,10 @@ pub(super) enum Kind {
 impl Kind {
     pub(super) fn of(name: &str) -> Option<Kind> {
         Some(match name {
-            "c:barChart" => Kind::Bar,
-            "c:lineChart" => Kind::Line,
-            "c:areaChart" => Kind::Area,
-            "c:pieChart" => Kind::Pie,
+            "c:barChart" | "c:bar3DChart" => Kind::Bar,
+            "c:lineChart" | "c:line3DChart" => Kind::Line,
+            "c:areaChart" | "c:area3DChart" => Kind::Area,
+            "c:pieChart" | "c:pie3DChart" | "c:ofPieChart" => Kind::Pie,
             "c:doughnutChart" => Kind::Doughnut,
             "c:scatterChart" => Kind::Scatter,
             "c:radarChart" => Kind::Radar,
@@ -64,6 +64,18 @@ pub(super) struct Group {
     pub(super) first: usize,
     /// Hi-low lines and up/down bars (stock and line charts).
     pub(super) stock: Stock,
+    /// Drawn with depth (`c:bar3DChart`, `c:line3DChart`, `c:area3DChart`).
+    pub(super) depth: Option<Depth>,
+}
+
+/// How a 3-D bar, line or area chart type lays its series out along the depth axis.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Depth {
+    /// Each series in its own row, one behind another (`c:grouping` = `standard`; 3-D lines
+    /// always).
+    pub(super) rows: bool,
+    /// Gap between rows as a fraction of a row's depth (`c:gapDepth`).
+    pub(super) gap_depth: f32,
 }
 
 impl Group {

@@ -4,6 +4,7 @@ use super::model::{DataLabel, Group, Grouping, Kind, Series};
 use super::parse::category_text;
 use super::polar::{draw_data_labels, label_of};
 use super::stock::draw_stock;
+use super::three_d::{Projection, areas_3d, bars_3d, lines_3d, walls};
 use super::{AXIS, Axis, Chart, El, GAP, GRID, GraphicItem, LINE, MAX_LABEL, MAX_TICKS, PathSeg, Rgb, ShapeKind, TextAlign, fill_colour, measure};
 
 pub(super) fn label(s: &str) -> String {
@@ -69,8 +70,8 @@ pub(super) fn nice_scale(dlo: f64, dhi: f64, zero: bool, min: Option<f64>, max: 
 /// The plot rectangle and the scales that map values and categories onto it.
 #[derive(Clone, Copy)]
 pub(super) struct Frame {
-    plot: Rect,
-    horiz: bool,
+    pub(super) plot: Rect,
+    pub(super) horiz: bool,
     pub(super) n: usize,
     vs: Scale,
     xs: Option<Scale>,
@@ -222,8 +223,13 @@ pub(super) fn cartesian(out: &mut Vec<GraphicItem>, c: &Chart, area: Rect) {
     if plot.w < 1.0 || plot.h < 1.0 {
         return;
     }
+    // 3-D chart types: the front plane gives up room for the depth behind it.
+    let depth = Projection::of(c, plot);
+    let plot = depth.as_ref().map_or(plot, |p| p.front(plot));
     let g = Frame { plot, horiz: c.horizontal, n: c.n, vs: ax.vs, xs: ax.xs, mid: c.val.mid };
-    if c.val.grid {
+    if let Some(p) = &depth {
+        walls(out, c, &g, &ax.vticks, p);
+    } else if c.val.grid {
         draw_grid(out, &g, &ax.vticks);
     }
     // Secondary value axis: its own scale on the same frame (Word draws gridlines from the
@@ -234,6 +240,15 @@ pub(super) fn cartesian(out: &mut Vec<GraphicItem>, c: &Chart, area: Rect) {
     order.sort_by_key(|grp| grp.kind.layer());
     for grp in order {
         let f = if grp.secondary { g2.as_ref().unwrap_or(&g) } else { &g };
+        if let (Some(p), Some(_)) = (&depth, grp.depth) {
+            match grp.kind {
+                Kind::Bar => bars_3d(out, c, grp, f, p, &mut labels),
+                Kind::Line => lines_3d(out, c, grp, f, p, &mut labels),
+                Kind::Area => areas_3d(out, c, grp, f, p, &mut labels),
+                Kind::Stock | Kind::Scatter | Kind::Pie | Kind::Doughnut | Kind::Radar => {}
+            }
+            continue;
+        }
         match grp.kind {
             Kind::Bar => bars(out, c, grp, f, &mut labels),
             Kind::Line | Kind::Stock => {
@@ -383,17 +398,41 @@ fn x_extent(c: &Chart) -> (f64, f64) {
 }
 
 fn bars(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, labels: &mut Vec<DataLabel>) {
+    for b in bar_rects(c, grp, g) {
+        fill(out, rect_segs(b.x0, b.y0, b.x1, b.y1), b.color);
+        labels.extend(b.label);
+    }
+}
+
+/// One bar of a bar or column chart: its rectangle (the front face of a 3-D bar), colour, depth
+/// row and data label.
+pub(super) struct BarRect {
+    pub(super) x0: f32,
+    pub(super) y0: f32,
+    pub(super) x1: f32,
+    pub(super) y1: f32,
+    pub(super) color: Rgb,
+    /// Row along the depth axis (a 3-D chart's series one behind another), 0 at the front.
+    pub(super) row: usize,
+    pub(super) label: Option<DataLabel>,
+}
+
+/// The bars of a bar chart type, series by series, in drawing order for a flat chart.
+pub(super) fn bar_rects(c: &Chart, grp: &Group, g: &Frame) -> Vec<BarRect> {
     let stacked = grp.stacked();
-    let slots = if stacked { 1 } else { grp.series.len().max(1) };
-    let ov = if stacked { 0.0 } else { grp.overlap };
+    // A 3-D chart of series in rows: each series has the whole slot, in its own row.
+    let rows = grp.depth.is_some_and(|d| d.rows) && !stacked;
+    let slots = if stacked || rows { 1 } else { grp.series.len().max(1) };
+    let ov = if stacked || rows { 0.0 } else { grp.overlap };
     let ns = slots as f32;
     let band = g.band();
     let thick = band / (ns - (ns - 1.0) * ov + grp.gap);
     let group = thick * (ns - (ns - 1.0) * ov);
     let mut pos = vec![0.0f64; g.n];
     let mut neg = vec![0.0f64; g.n];
+    let mut out = Vec::new();
     for (j, s) in grp.series.iter().enumerate().filter(|(_, s)| has_values(s)) {
-        let slot = if stacked { 0 } else { j };
+        let slot = if stacked || rows { 0 } else { j };
         let slot = (if g.horiz { slots.saturating_sub(1 + slot) } else { slot }) as f32;
         for i in 0..g.n {
             let Some(v) = s.values.get(i).copied().flatten() else { continue };
@@ -413,9 +452,8 @@ fn bars(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, labels: &
             let a = g.band_start(i) + (band - group) / 2.0 + slot * thick * (1.0 - ov);
             let (p0, p1) = (g.val(v0), g.val(v1));
             let (p0, p1) = (p0.min(p1), p0.max(p1));
-            let segs = if g.horiz { rect_segs(p0, a, p1, a + thick) } else { rect_segs(a, p0, a + thick, p1) };
-            fill(out, segs, c.point_colour(grp, j, i));
-            if let Some(text) = label_of(s, i) {
+            let (x0, y0, x1, y1) = if g.horiz { (p0, a, p1, a + thick) } else { (a, p0, a + thick, p1) };
+            let label = label_of(s, i).map(|text| {
                 let mid = a + thick / 2.0;
                 let (x, y) = match (g.horiz, stacked) {
                     (true, true) => ((p0 + p1) / 2.0, mid),
@@ -424,10 +462,12 @@ fn bars(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, labels: &
                     (true, false) => (if v >= 0.0 { p1 } else { p0 }, mid),
                     (false, false) => (mid, if v >= 0.0 { p0 } else { p1 }),
                 };
-                labels.push(DataLabel { x, y, text, inside: stacked });
-            }
+                DataLabel { x, y, text, inside: stacked }
+            });
+            out.push(BarRect { x0, y0, x1, y1, color: c.point_colour(grp, j, i), row: if rows { j } else { 0 }, label });
         }
     }
+    out
 }
 
 /// Whether a series has any point to draw.
@@ -438,7 +478,25 @@ pub(super) fn has_values(s: &Series) -> bool {
 /// Line series; stacked ones are drawn at the running total of the series up to them. Stock
 /// series without a line (`a:ln/a:noFill`) only place their data labels.
 fn lines(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, labels: &mut Vec<DataLabel>) {
+    for (j, pts) in line_points(grp, g) {
+        if let Some(s) = grp.series.get(j) {
+            for (i, p) in pts.iter().enumerate() {
+                if let (Some((x, y)), Some(text)) = (p, label_of(s, i)) {
+                    labels.push(DataLabel { x: *x, y: *y, text, inside: false });
+                }
+            }
+            if grp.kind != Kind::Stock || s.line {
+                stroke(out, runs(pts.into_iter()), c.series_colour(grp, j), s.line_w);
+            }
+        }
+    }
+}
+
+/// The points of each line series with values (by series index); stacked ones at the running
+/// total of the series up to them.
+pub(super) fn line_points(grp: &Group, g: &Frame) -> Vec<(usize, Vec<Option<(f32, f32)>>)> {
     let mut total = vec![0.0f64; g.n];
+    let mut out = Vec::new();
     for (j, s) in grp.series.iter().enumerate().filter(|(_, s)| has_values(s)) {
         let pts: Vec<Option<(f32, f32)>> = (0..g.n)
             .map(|i| {
@@ -453,22 +511,13 @@ fn lines(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, labels: 
                 Some((g.cat_x(i), g.val(y)))
             })
             .collect();
-        for (i, p) in pts.iter().enumerate() {
-            if let (Some((x, y)), Some(text)) = (p, label_of(s, i)) {
-                labels.push(DataLabel { x: *x, y: *y, text, inside: false });
-            }
-        }
-        if grp.kind != Kind::Stock || s.line {
-            stroke(out, runs(pts.into_iter()), c.series_colour(grp, j), s.line_w);
-        }
+        out.push((j, pts));
     }
+    out
 }
 
 fn areas(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, labels: &mut Vec<DataLabel>) {
-    let mut base = vec![0.0f64; g.n];
-    for (j, s) in grp.series.iter().enumerate().filter(|(_, s)| has_values(s)) {
-        let vals = (0..g.n).map(|i| s.values.get(i).copied().flatten().unwrap_or(0.0));
-        let top: Vec<f64> = base.iter().zip(vals).map(|(b, v)| b + v).collect();
+    for (j, top, base) in area_bands(grp, g) {
         let mut segs = Vec::with_capacity(2 * g.n + 1);
         for (i, t) in top.iter().enumerate() {
             let (x, y) = (g.cat_x(i), g.val(*t));
@@ -479,13 +528,30 @@ fn areas(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, labels: 
         }
         segs.push(PathSeg::Close);
         fill(out, segs, c.series_colour(grp, j));
-        for (i, (t, b)) in top.iter().zip(&base).enumerate() {
-            if let Some(text) = label_of(s, i) {
-                labels.push(DataLabel { x: g.cat_x(i), y: g.val((t + b) / 2.0), text, inside: true });
-            }
-        }
-        if grp.stacked() {
-            base = top;
+        area_labels(grp, j, &top, &base, g, labels);
+    }
+}
+
+/// The top and base value of each category for every area series with values (by series index):
+/// stacked series sit on the ones before them.
+pub(super) fn area_bands(grp: &Group, g: &Frame) -> Vec<(usize, Vec<f64>, Vec<f64>)> {
+    let mut base = vec![0.0f64; g.n];
+    let mut out = Vec::new();
+    for (j, s) in grp.series.iter().enumerate().filter(|(_, s)| has_values(s)) {
+        let vals = (0..g.n).map(|i| s.values.get(i).copied().flatten().unwrap_or(0.0));
+        let top: Vec<f64> = base.iter().zip(vals).map(|(b, v)| b + v).collect();
+        let next = if grp.stacked() { top.clone() } else { base.clone() };
+        out.push((j, top, std::mem::replace(&mut base, next)));
+    }
+    out
+}
+
+/// Data labels of area series `j`, halfway between its base and top.
+pub(super) fn area_labels(grp: &Group, j: usize, top: &[f64], base: &[f64], g: &Frame, labels: &mut Vec<DataLabel>) {
+    let Some(s) = grp.series.get(j) else { return };
+    for (i, (t, b)) in top.iter().zip(base).enumerate() {
+        if let Some(text) = label_of(s, i) {
+            labels.push(DataLabel { x: g.cat_x(i), y: g.val((t + b) / 2.0), text, inside: true });
         }
     }
 }

@@ -178,31 +178,38 @@ pub(super) fn draw_data_labels(out: &mut Vec<GraphicItem>, labels: &[DataLabel],
 }
 
 /// A point at clockwise angle `t` (radians from 12 o'clock) on a circle of radius `r`.
-fn polar(cx: f64, cy: f64, r: f64, t: f64) -> (f64, f64) {
+pub(super) fn polar(cx: f64, cy: f64, r: f64, t: f64) -> (f64, f64) {
     (cx + r * t.sin(), cy - r * t.cos())
 }
 
-fn pt(p: (f64, f64)) -> PathSeg {
+pub(super) fn pt(p: (f64, f64)) -> PathSeg {
     PathSeg::Move(p.0 as f32, p.1 as f32)
 }
 
-fn line_to(p: (f64, f64)) -> PathSeg {
+pub(super) fn line_to(p: (f64, f64)) -> PathSeg {
     PathSeg::Line(p.0 as f32, p.1 as f32)
 }
 
 /// Cubic segments along a circle from angle `a` to `b` (the current point is at `a`). Each piece
 /// spans at most a quarter turn.
-fn arc(segs: &mut Vec<PathSeg>, (cx, cy, r): (f64, f64, f64), a: f64, b: f64) {
+pub(super) fn arc(segs: &mut Vec<PathSeg>, (cx, cy, r): (f64, f64, f64), a: f64, b: f64) {
+    ellipse_arc(segs, (cx, cy, r, r), a, b);
+}
+
+/// Cubic segments along an axis-aligned ellipse with radii `rx`, `ry` from angle `a` to `b`
+/// (clockwise from 12 o'clock on the circle the ellipse squashes; the current point is at `a`).
+pub(super) fn ellipse_arc(segs: &mut Vec<PathSeg>, (cx, cy, rx, ry): (f64, f64, f64, f64), a: f64, b: f64) {
     let n = (((b - a).abs() / FRAC_PI_2).ceil() as usize).clamp(1, 16);
     let d = (b - a) / n as f64;
     let k = 4.0 / 3.0 * (d / 4.0).tan();
+    let at = |t: f64| (cx + rx * t.sin(), cy - ry * t.cos());
     for j in 0..n {
         let t0 = a + d * j as f64;
         let t1 = t0 + d;
-        let p0 = polar(cx, cy, r, t0);
-        let p1 = polar(cx, cy, r, t1);
-        let c1 = (p0.0 + k * r * t0.cos(), p0.1 + k * r * t0.sin());
-        let c2 = (p1.0 - k * r * t1.cos(), p1.1 - k * r * t1.sin());
+        let p0 = at(t0);
+        let p1 = at(t1);
+        let c1 = (p0.0 + k * rx * t0.cos(), p0.1 + k * ry * t0.sin());
+        let c2 = (p1.0 - k * rx * t1.cos(), p1.1 - k * ry * t1.sin());
         segs.push(PathSeg::Cubic(c1.0 as f32, c1.1 as f32, c2.0 as f32, c2.1 as f32, p1.0 as f32, p1.1 as f32));
     }
 }
