@@ -208,6 +208,12 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("view.switchWindows", "Switch Windows", "View › Window", switch_windows)
             .params(r#"{"id"?: n (make this open document the active one)} → {"documents": [{"id", "title", "path", "dirty", "active"}]} in the order they were opened"#)
             .pure(),
+        CommandSpec::new("view.nextWindow", "Next Window", "View › Window", |s, _| cycle_window(s, false))
+            .key(super::mac_or("", "Mod+F6 / Alt+F6"))
+            .pure(),
+        CommandSpec::new("view.previousWindow", "Previous Window", "View › Window", |s, _| cycle_window(s, true))
+            .key(super::mac_or("", "Mod+Shift+F6 / Alt+Shift+F6"))
+            .pure(),
         CommandSpec::new("view.split", "Split", "View › Window", |s, _| {
             s.push_ui_request(json!({"toggle": "split"}));
             sel_result(s)
@@ -413,4 +419,20 @@ fn switch_windows(s: &mut Session, v: &Value) -> CmdResult {
         s.activate(id)?;
     }
     Ok(json!({"documents": s.documents()}))
+}
+
+/// Move through the open documents without changing their opening order or edit history.
+fn cycle_window(s: &mut Session, previous: bool) -> CmdResult {
+    let documents = s.documents();
+    if let Some(active) = documents.iter().position(|d| d.active) {
+        let target = if previous {
+            documents.iter().take(active).next_back().or_else(|| documents.last())
+        } else {
+            documents.get(active.saturating_add(1)).or_else(|| documents.first())
+        };
+        if let Some(document) = target {
+            s.activate(document.id)?;
+        }
+    }
+    switch_windows(s, &Value::Null)
 }
