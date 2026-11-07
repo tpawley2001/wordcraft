@@ -200,10 +200,8 @@ impl WordApp {
 /// The name an open document goes by in the window: the engine's title, with an untitled
 /// document's `Document2` in the interface language.
 pub fn display_title(d: &DocInfo) -> String {
-    if d.path.is_none() {
-        return untitled_title(&d.title).unwrap_or_else(|| d.title.clone());
-    }
-    d.title.clone()
+    let name = if d.path.is_none() { untitled_title(&d.title).unwrap_or_else(|| d.title.clone()) } else { d.title.clone() };
+    if d.read_only { format!("{name} {}", tl!("(Read-Only)")) } else { name }
 }
 
 /// `Document2` (the engine's English name for an untitled document) in the interface language,

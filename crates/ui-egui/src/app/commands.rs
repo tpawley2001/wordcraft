@@ -157,6 +157,13 @@ impl WordApp {
         }
         // Web: saving and exporting become downloads.
         if self.services.download.is_some() && matches!(id, "file.save" | "file.saveAs" | "file.exportPdf" | "file.exportPng") {
+            // A read-only document can't overwrite its own file: Save goes to Save As.
+            if id == "file.save"
+                && self.session.read_only
+                && params.get("path").and_then(Value::as_str).is_none_or(|p| self.session.path.as_deref() == Some(std::path::Path::new(p)))
+            {
+                return Err("the document is open read-only: save it under another name (Save As)".into());
+            }
             let name = params.get("path").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| self.web_save_name(id));
             let name = if id == "file.exportPdf" && !name.ends_with(".pdf") { format!("{name}.pdf") } else { name };
             // A save with a password encrypts this and later saves (`file.save`'s `password`).
@@ -203,6 +210,8 @@ impl WordApp {
             }
             if marked_saved {
                 self.session.dirty = false;
+                // Saving a read-only document under another name makes an ordinary document.
+                self.session.read_only = false;
                 // The host page keeps the file under this name now, as a desktop save would.
                 if self.services.host_save.is_some() {
                     self.session.path = Some(std::path::PathBuf::from(&name));
@@ -336,21 +345,45 @@ impl WordApp {
                 file_dialogs::Asked::Busy => Ok(json!({"saved": false})),
             };
         }
+        // A read-only document can't be saved over its file: Save goes to Save As, as in Word.
+        if id == "file.save"
+            && self.session.read_only
+            && params.get("path").and_then(Value::as_str).is_none_or(|p| self.session.path.as_deref() == Some(std::path::Path::new(p)))
+        {
+            return match self.save_as(file_dialogs::AfterSave::Nothing) {
+                file_dialogs::Asked::Done(r) => r,
+                file_dialogs::Asked::Pending => Ok(json!({"pending": "saveAs"})),
+                file_dialogs::Asked::Busy => Ok(json!({"saved": false})),
+            };
+        }
         let retry = (id == "file.open").then(|| params.clone());
         let retry_path = retry.clone();
         let r = self.execute(id, params);
-        if let (Err(e), Some(params)) = (&r, retry)
-            && wordcraft_engine::io::needs_password(e)
+        if let (Err(e), Some(params)) = (&r, retry.clone())
+            && (wordcraft_engine::io::needs_password(e) || wordcraft_engine::io::needs_modify_password(e))
         {
             let path = params.get("path").and_then(Value::as_str).unwrap_or("");
             let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| path.to_string());
-            self.dialog = Some(dialogs::Dialog::Password { name, params, password: Default::default(), message: String::new() });
+            let key = if wordcraft_engine::io::needs_modify_password(e) { "modifyPassword" } else { "password" };
+            self.dialog = Some(dialogs::Dialog::Password { name, params, password: Default::default(), key: key.into(), message: String::new() });
             return Ok(json!({"pending": "password"}));
         }
         // Whoever asked, a failed open names the file and the cause (#1103).
         if let (Err(e), Some(params)) = (&r, retry_path) {
             let path = params.get("path").and_then(Value::as_str).unwrap_or("");
             self.report_open_failure(path, e);
+        }
+        // Read-only recommended: Word asks whether to open it read-only. The document is open
+        // already; Yes reopens it read-only.
+        if let (Ok(v), Some(params)) = (&r, retry)
+            && v.get("readOnlyRecommended").and_then(Value::as_bool) == Some(true)
+            && v.get("readOnly").and_then(Value::as_bool) == Some(false)
+            && params.get("readOnly").is_none()
+        {
+            let path = params.get("path").and_then(Value::as_str).unwrap_or("");
+            let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| path.to_string());
+            self.dialog = Some(dialogs::Dialog::ReadOnlyRecommended { name, params });
+            return Ok(json!({"pending": "readOnlyRecommended"}));
         }
         r
     }

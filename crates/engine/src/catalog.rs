@@ -12,6 +12,7 @@ File|Backstage|New|file.new
 File|Backstage|Open|file.open
 File|Backstage|Save|file.save
 File|Backstage|Save As|file.saveAs
+File|Save As|General Options|file.generalOptions
 File|Backstage|Print|file.print
 File|Backstage|Print Markup|file.printMarkup
 File|Backstage|Close|file.close
@@ -313,6 +314,7 @@ Review|Tracking|Display for Review|review.markup
 Review|Tracking|Show Markup|review.showMarkup
 Review|Tracking|Reviewing Pane|review.changes
 Review|Tracking|Track Changes Options|review.trackingOptions
+Review|Tracking|Lock Tracking|review.lockTracking
 Review|Changes|Accept|review.accept
 Review|Changes|Reject|review.reject
 Review|Changes|Accept All|review.acceptAll

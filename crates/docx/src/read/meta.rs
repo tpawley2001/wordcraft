@@ -100,6 +100,7 @@ impl Reader<'_> {
                     s.endnote_pr = props::note_pr(k, false);
                 }
                 "w:documentProtection" => read_protection(k, s),
+                "w:writeProtection" => read_write_protection(k, s),
                 "w:captions" => s.captions = read_captions(k),
                 "w:zoom" => {
                     let percent = k.attr("w:percent").and_then(|v| u32_of(v.trim_end_matches('%'))).unwrap_or(100).clamp(10, 500);
@@ -418,6 +419,19 @@ pub(crate) fn read_captions(k: &El) -> wordcraft_doc::Captions {
         }
     }
     c
+}
+
+/// Read-only recommended and Password to modify (`w:writeProtection`, §17.15.1.93): the
+/// recommendation flag and the password hash attributes, in the same forms as
+/// `w:documentProtection`'s.
+fn read_write_protection(k: &El, s: &mut wordcraft_doc::Settings) {
+    let on = |v: &str| !matches!(v, "0" | "false" | "off");
+    let recommended = k.attr("w:recommended").is_some_and(on);
+    let hash: Vec<(String, String)> = PROTECTION_HASH_ATTRS
+        .iter()
+        .filter_map(|n| k.attr(n).filter(|v| !v.is_empty() && v.len() <= 1024).map(|v| (n.to_string(), v.to_string())))
+        .collect();
+    s.write_protection = Some(wordcraft_doc::WriteProtection { recommended, hash }).filter(|w| !w.is_empty());
 }
 
 fn read_protection(k: &El, s: &mut wordcraft_doc::Settings) {

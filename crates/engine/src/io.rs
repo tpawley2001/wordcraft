@@ -104,6 +104,16 @@ pub fn wrong_password(err: &str) -> bool {
     err.contains(wordcraft_docx::WRONG_PASSWORD)
 }
 
+/// Does this open error mean the document has a password to modify that wasn't given?
+pub fn needs_modify_password(err: &str) -> bool {
+    err.contains("password to modify")
+}
+
+/// Does this open error mean the password to modify given was wrong?
+pub fn wrong_modify_password(err: &str) -> bool {
+    err.contains("password is incorrect")
+}
+
 /// Is the file at `path` empty, zero bytes long? File Explorer's New › Microsoft Word Document
 /// makes one, and `file.open` opens it as a new blank document (#1384). False for a file that
 /// can't be read: opening it says why.

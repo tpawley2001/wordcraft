@@ -50,6 +50,10 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"value"?: bool (omit to toggle)}"#)
         .key("Mod+Shift+E"),
+        // Review › Track Changes › Lock Tracking: keeps Track Changes on under a password (which
+        // may be empty), as Restrict Editing's "Tracked changes" mode does.
+        CommandSpec::new("review.lockTracking", "Lock Tracking", "Review › Tracking", lock_tracking)
+            .params(r#"{"password"?: string (may be empty), "unlock"?: bool (stop it; the password is required when one was set)} → {"locked": bool}"#),
         CommandSpec::new("review.acceptAll", "Accept All Changes", "Review › Changes", |s, v| resolve_all_then(s, v, true))
             .params(r#"{"stopTracking"?: bool (also turn Track Changes off)}"#),
         CommandSpec::new("review.rejectAll", "Reject All Changes", "Review › Changes", |s, v| resolve_all_then(s, v, false))
@@ -139,6 +143,25 @@ pub fn specs() -> Vec<CommandSpec> {
         .pure(),
         CommandSpec::new("review.thesaurus", "Thesaurus", "Review › Proofing", thesaurus).key("Shift+F7").pure(),
     ]
+}
+
+/// Review › Track Changes › Lock Tracking: turns Track Changes on and enforces `trackedChanges`
+/// protection under `password` (which may be empty); `{"unlock": true}` stops it, with the
+/// password when one was set. Restrict Editing's own code paths do the work.
+fn lock_tracking(s: &mut Session, v: &Value) -> CmdResult {
+    let password = p::str(v, "password").unwrap_or("");
+    if p::bool(v, "unlock") == Some(true) {
+        if s.doc.settings.protection.as_deref() != Some("trackedChanges") {
+            return Ok(json!({"locked": false}));
+        }
+        super::protect::stop_protection(s, password)?;
+        return Ok(json!({"locked": false}));
+    }
+    if s.doc.settings.protection.is_some() {
+        return Err(CmdError::Disabled("the document is protected: stop protection first".into()));
+    }
+    super::protect::start(s, "trackedChanges", false, password)?;
+    Ok(json!({"locked": true}))
 }
 
 #[cfg(test)]

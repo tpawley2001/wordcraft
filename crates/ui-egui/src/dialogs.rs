@@ -447,6 +447,9 @@ pub enum Dialog {
         params: Value,
         #[serde(skip)]
         password: Password,
+        /// The parameter the password goes in: `password` (an encrypted document) or
+        /// `modifyPassword` (a password to modify).
+        key: String,
         message: String,
     },
     /// File › Info › Protect Document › Encrypt with Password: a password typed twice
@@ -456,6 +459,34 @@ pub enum Dialog {
         password: Password,
         #[serde(skip)]
         confirm: Password,
+        message: String,
+    },
+    /// Save As › Tools › General Options: the password to modify and Read-only recommended
+    /// (`file.generalOptions`). `has_password` is whether one is set already.
+    GeneralOptions {
+        #[serde(skip)]
+        password: Password,
+        #[serde(skip)]
+        confirm: Password,
+        recommended: bool,
+        has_password: bool,
+        message: String,
+    },
+    /// Opening a document whose file recommends read-only (`w:writeProtection w:recommended`):
+    /// Word's question, answered by reopening with `readOnly: true` or carrying on.
+    ReadOnlyRecommended {
+        name: String,
+        #[serde(skip)]
+        params: Value,
+    },
+    /// Review › Track Changes › Lock Tracking: the password typed twice (`review.lockTracking`).
+    /// `locked` is whether tracking is locked already, so the dialog offers Unlock.
+    LockTracking {
+        #[serde(skip)]
+        password: Password,
+        #[serde(skip)]
+        confirm: Password,
+        locked: bool,
         message: String,
     },
     /// Home › Paragraph › Multilevel List › Define New Multilevel List (#328).
@@ -585,6 +616,9 @@ impl Dialog {
             Dialog::CellMargins { .. } => "tableCellMargins",
             Dialog::Password { .. } => "password",
             Dialog::EncryptPassword { .. } => "encryptPassword",
+            Dialog::GeneralOptions { .. } => "generalOptions",
+            Dialog::LockTracking { .. } => "lockTracking",
+            Dialog::ReadOnlyRecommended { .. } => "readOnlyRecommended",
             Dialog::DefineList { .. } => "defineList",
             Dialog::TrackOptions { .. } => "trackChangesOptions",
             Dialog::Review(d) => d.name(),
@@ -882,6 +916,24 @@ impl Dialog {
                 Dialog::FieldCode { code: field.instr, edit: true, message: String::new() }
             }
             "encryptPassword" => Dialog::EncryptPassword { password: Password::default(), confirm: Password::default(), message: String::new() },
+            "generalOptions" => {
+                // Read the state directly: `file.generalOptions` is an edit, and opening the
+                // dialog must not mark the document changed.
+                let wp = app.session.doc.settings.write_protection.as_ref();
+                Dialog::GeneralOptions {
+                    password: Password::default(),
+                    confirm: Password::default(),
+                    recommended: wp.is_some_and(|w| w.recommended),
+                    has_password: wp.is_some_and(|w| !w.hash.is_empty()),
+                    message: String::new(),
+                }
+            }
+            "lockTracking" => Dialog::LockTracking {
+                password: Password::default(),
+                confirm: Password::default(),
+                locked: app.session.doc.settings.protection.as_deref() == Some("trackedChanges"),
+                message: String::new(),
+            },
             "ruleIf" | "ruleSkipIf" => {
                 let fields = app.session.merge.headers.clone();
                 Dialog::MergeRule {

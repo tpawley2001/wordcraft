@@ -121,9 +121,17 @@ fn restrict(s: &mut Session, v: &Value) -> CmdResult {
     if mode == "none" && !formatting {
         return stop_protection(s, "");
     }
-    let hash = match p::str(v, "password").filter(|p| !p.is_empty()) {
-        Some(pw) => wordcraft_docx::protection_hash(pw, wordcraft_docx::DEFAULT_SPIN_COUNT).map_err(|e| CmdError::Params(e.to_string()))?,
-        None => Vec::new(),
+    start(s, mode, formatting, p::str(v, "password").unwrap_or(""))?;
+    Ok(state(s))
+}
+
+/// Start enforcing `mode` (with `formatting` limited to unlocked styles) under `password`, which
+/// may be empty. The one place protection is turned on: Restrict Editing and Lock Tracking both
+/// come through here, so the hash and the enforcement can't drift apart.
+pub(crate) fn start(s: &mut Session, mode: &str, formatting: bool, password: &str) -> Result<(), CmdError> {
+    let hash = match password.is_empty() {
+        true => Vec::new(),
+        false => wordcraft_docx::protection_hash(password, wordcraft_docx::DEFAULT_SPIN_COUNT).map_err(|e| CmdError::Params(e.to_string()))?,
     };
     let st = &mut s.doc.settings;
     st.protection = Some(mode.to_string());
@@ -132,7 +140,7 @@ fn restrict(s: &mut Session, v: &Value) -> CmdResult {
     if mode == "trackedChanges" {
         st.track_changes = true;
     }
-    Ok(state(s))
+    Ok(())
 }
 
 /// The error Stop Protection reports when the document's password hash uses an algorithm or form
@@ -142,7 +150,7 @@ pub const UNSUPPORTED_PASSWORD: &str = "This password type isn't supported";
 /// Stop Protection: with the document's password when it has one. The password is checked like
 /// Word checks it — the current hash form and the legacy one (ECMA-376 Part 4 §14.8.1); a hash
 /// WordCraft can't check refuses ([`UNSUPPORTED_PASSWORD`]) rather than unlocking.
-fn stop_protection(s: &mut Session, password: &str) -> CmdResult {
+pub(crate) fn stop_protection(s: &mut Session, password: &str) -> CmdResult {
     if enforced(&s.doc) {
         use wordcraft_docx::PasswordCheck;
         match wordcraft_docx::check_protection_password(&s.doc.settings.protect_hash, password) {

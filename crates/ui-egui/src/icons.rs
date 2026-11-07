@@ -972,6 +972,13 @@ fn paint_draw_to_review(pen: &Pen, name: &str) -> bool {
             pen.line_c(&[(6.0, 8.0), (13.0, 8.0)], red);
             pen.lines(6.0, 13.0, &[12.0]);
         }
+        "lockTracking" => {
+            pen.page(3.0, 2.0, 13.0, 18.0);
+            pen.line_c(&[(5.0, 7.0), (11.0, 7.0)], red);
+            pen.lines(5.0, 11.0, &[11.0]);
+            pen.rect(11.0, 11.0, 18.0, 18.0, a);
+            pen.line(&[(12.5, 11.0), (12.5, 9.0), (16.5, 9.0), (16.5, 11.0)]);
+        }
         "accept" => {
             pen.page(4.0, 2.0, 15.0, 17.0);
             pen.line_c(&[(10.0, 14.5), (12.5, 17.0), (18.0, 11.0)], green);

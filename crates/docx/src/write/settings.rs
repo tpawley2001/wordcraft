@@ -24,6 +24,8 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
     let ns = xml::body_ns();
     let ns_refs: Vec<(&str, &str)> = ns.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
     w.open("w:settings", &ns_refs);
+    // §17.15.1.93: the first child of CT_Settings, before `w:view` and `w:zoom`.
+    write_protection(&mut w, s.write_protection.as_ref());
     let zoom = s.zoom.unwrap_or(wordcraft_doc::Zoom { percent: 100, fit: None });
     let percent = zoom.percent.clamp(10, 500).to_string();
     match zoom.fit {
@@ -120,6 +122,22 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
     write_captions(&mut w, &s.captions);
     w.close("w:settings");
     w.into_bytes()
+}
+
+/// `w:writeProtection` (§17.15.1.93): Read-only recommended and the password to modify's hash.
+fn write_protection(w: &mut W, wp: Option<&wordcraft_doc::WriteProtection>) {
+    let Some(wp) = wp.filter(|wp| !wp.is_empty()) else { return };
+    let mut a: Vec<(&str, &str)> = Vec::new();
+    if wp.recommended {
+        a.push(("w:recommended", "1"));
+    }
+    // Only the hash attributes the reader keeps, each once.
+    for name in crate::read::PROTECTION_HASH_ATTRS {
+        if let Some((_, v)) = wp.hash.iter().find(|(k, _)| k == name) {
+            a.push((name, v));
+        }
+    }
+    w.empty("w:writeProtection", &a);
 }
 
 fn write_note_settings(

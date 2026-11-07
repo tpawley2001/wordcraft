@@ -67,6 +67,9 @@ pub struct Session {
     /// name, not document metadata, so it is not part of the document or its undo history.
     pub file_name: Option<String>,
     pub dirty: bool,
+    /// Opened read-only (Word's "(Read-Only)"): editing is allowed, but Save can't overwrite the
+    /// document's own file. Saving under another name clears it.
+    pub read_only: bool,
     /// Where the custom dictionary is kept on disk, if the host wired one up. Only the desktop
     /// app does: headless sessions (MCP, `wordcraft-cli run`), tests and the web build leave
     /// `None`, so an agent's words stay in memory and never change the person's dictionary.

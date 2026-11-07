@@ -46,6 +46,7 @@ pub struct DocState {
     pub(super) path: Option<PathBuf>,
     pub(super) file_name: Option<String>,
     pub(super) dirty: bool,
+    pub(super) read_only: bool,
     pub(super) pending_move: Option<crate::cmd::moves::PendingMove>,
     pub(super) find: FindState,
     pub(super) goal_x: Option<f32>,
@@ -102,6 +103,7 @@ impl DocState {
             path: None,
             file_name: None,
             dirty: false,
+            read_only: false,
             pending_move: None,
             find: FindState::default(),
             goal_x: None,
@@ -157,6 +159,7 @@ impl DocState {
             title: title(self.path.as_deref(), self.file_name.as_deref(), &self.doc, self.untitled),
             path: self.path.clone(),
             dirty: self.dirty,
+            read_only: self.read_only,
             active: false,
         }
     }
@@ -175,6 +178,8 @@ pub struct DocInfo {
     pub path: Option<PathBuf>,
     /// Changed since it was opened or last saved.
     pub dirty: bool,
+    /// Opened read-only: the title bar shows " (Read-Only)" after the name.
+    pub read_only: bool,
     /// The active document, the one commands work on.
     pub active: bool,
 }
@@ -204,6 +209,7 @@ impl Session {
             path: _,
             file_name: _,
             dirty: _,
+            read_only: _,
             pending_move: _,
             find: _,
             goal_x: _,
@@ -305,6 +311,7 @@ impl Session {
             path,
             file_name,
             dirty,
+            read_only,
             pending_move,
             find,
             goal_x,
@@ -355,6 +362,7 @@ impl Session {
         swap(&mut self.path, path);
         swap(&mut self.file_name, file_name);
         swap(&mut self.dirty, dirty);
+        swap(&mut self.read_only, read_only);
         swap(&mut self.pending_move, pending_move);
         swap(&mut self.find, find);
         swap(&mut self.goal_x, goal_x);
@@ -444,6 +452,7 @@ impl Session {
                         title: title(self.path.as_deref(), self.file_name.as_deref(), &self.doc, self.untitled),
                         path: self.path.clone(),
                         dirty: self.dirty,
+                        read_only: self.read_only,
                         active: true,
                     })
                 } else {
