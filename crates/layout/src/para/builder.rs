@@ -134,13 +134,18 @@ impl<'a> Builder<'a> {
             }
         }
         let size = rc.draw_size() * if small { 0.8 } else { 1.0 };
-        // A symbol font that isn't installed, or is installed one em tall (Apple's Symbol), and a
-        // missing font Word's line is known for (Lucida Console) take the height Word gives them.
-        let (a, d) = match wordcraft_fonts::word::missing_font_line(&rc.font, &r) {
-            Some((a, d)) => (a * face.upem, d * face.upem),
-            None => wordcraft_fonts::word::line_metrics(&face),
+        // Word sizes missing symbol fonts (and Apple's one-em Symbol) by their own metrics.
+        // Keep these heights independent of the fallback face drawing each glyph: its taller
+        // ascent or descent must not enlarge a symbol run. Other known missing-font lines use
+        // the same override; installed fonts otherwise keep their real face metrics.
+        let (ascent, descent) = match wordcraft_fonts::word::missing_font_line(&rc.font, &r) {
+            Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
+            None => {
+                let (a, d) = wordcraft_fonts::word::line_metrics(&face);
+                let k = f64::from(size) / face.upem.max(1.0);
+                (a * k, d * k)
+            }
         };
-        let k = size as f64 / face.upem.max(1.0);
         // A fallback face (letters the requested font lacks) is emboldened or slanted when it has
         // no bold or italic of its own.
         let (synth_bold, synth_italic) = match face_override {
@@ -153,8 +158,8 @@ impl<'a> Builder<'a> {
             synth_bold,
             synth_italic,
             rc: rc.clone(),
-            ascent: (a * k) as f32,
-            descent: (d * k) as f32,
+            ascent: ascent as f32,
+            descent: descent as f32,
             shift: rc.baseline_shift(),
         };
         // A `u32` index (like the glyph ranges) counts more distinct formats than a paragraph can
