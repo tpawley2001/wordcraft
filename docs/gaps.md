@@ -184,6 +184,8 @@ Strict DOCX graphics (gap #2): chart and SmartArt children and all relationship 
 
 ## Revision history
 
+> 2026-11-06 · P0085: AUTONUM, AUTONUMLGL and AUTONUMOUT fields share nine level counters on F9 and output, with heading-derived levels, `\s`, `\e` and the outline style; locked fields do not count. Readiness estimates unchanged.
+
 > 2026-11-06 · P0077: body LISTNUM fields share nine level counters on F9 and output, with heading-derived levels, start-at and NumberDefault/LegalDefault/OutlineDefault formats; locked fields do not count. Insert LISTNUM and Repeat Find use Ctrl+Alt+L/Y on Windows/Linux. Readiness estimates unchanged.
 
 > 2026-11-06 · P0073: EQ radical indices use the field size with their baseline 0.67 em above the radicand; unindexed radicals unchanged; readiness estimates unchanged.
