@@ -21,6 +21,7 @@ mod linked_pictures;
 mod metadata;
 mod nested_table;
 mod nested_table_grid;
+mod ole_embed_keep;
 mod ole_print;
 mod ole_result_objects;
 mod section_page_numbers;
