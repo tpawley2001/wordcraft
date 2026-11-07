@@ -91,13 +91,14 @@ fn text_edits(s: &Session, para: &wordcraft_doc::Paragraph, mut depth: usize) ->
     let mut prev: Option<char> = None;
     let mut k = 0;
     while let Some(&(i, c)) = chars.get(k) {
-        if ok(k) && ac.smart_quotes && (c == '"' || c == '\'') {
-            if let Some(q) = smart_quote(prev, c) {
-                edits.push(Edit { start: i, end: i + 1, with: q });
-                prev = q.chars().next();
-                k += 1;
-                continue;
-            }
+        if ok(k)
+            && ac.smart_quotes
+            && let Some(q) = smart_quote(prev, c)
+        {
+            edits.push(Edit { start: i, end: i + 1, with: q });
+            prev = q.chars().next();
+            k += 1;
+            continue;
         }
         if ok(k) && ac.dashes && c == '-' {
             let double = ch(k + 1) == Some('-') && ok(k + 1) && ch(k + 2) != Some('-');
