@@ -20,6 +20,7 @@ mod horizontal_rules;
 mod linked_pictures;
 mod metadata;
 mod nested_table;
+mod nested_table_grid;
 mod ole_print;
 mod ole_result_objects;
 mod section_page_numbers;
