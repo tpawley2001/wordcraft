@@ -41,6 +41,26 @@ pub(super) fn clipboard(app: &mut WordApp, ui: &mut Ui) {
             ui.add_space(6.0);
         }
     });
+    ui.separator();
+    clipboard_options(app, ui);
+}
+
+/// The Clipboard pane's Options ▾ menu at its foot (`edit.clipboardOptions`).
+fn clipboard_options(app: &mut WordApp, ui: &mut Ui) {
+    let o = app.session.prefs.clipboard.clone();
+    ui.menu_button(format!("{} ▾", tl!("Options")), |ui| {
+        for (key, on, label) in [
+            ("showAutomatically", o.show_automatically, tl!("Show Clipboard Automatically")),
+            ("showOnCopyTwice", o.show_on_copy_twice, tl!("Show Clipboard When Ctrl+C Pressed Twice")),
+            ("collectWithoutShowing", o.collect_without_showing, tl!("Collect Without Showing Clipboard")),
+            ("showStatus", o.show_status, tl!("Show Status When Copying")),
+        ] {
+            let mut checked = on;
+            if ui.checkbox(&mut checked, label).changed() {
+                let _ = app.run("edit.clipboardOptions", json!({ key: checked }));
+            }
+        }
+    });
 }
 
 pub(super) fn styles(app: &mut WordApp, ui: &mut Ui) {

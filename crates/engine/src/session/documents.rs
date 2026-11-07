@@ -255,6 +255,7 @@ impl Session {
             clipboard_html: _,
             clipboard_rtf: _,
             clip_history: _,
+            last_copy: _,
             registry: _,
             author: _,
             initials: _,

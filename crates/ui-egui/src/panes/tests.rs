@@ -530,3 +530,39 @@ fn alt_f10_opens_the_selection_pane_and_the_eye_hides_an_object() {
     h.run_steps(4);
     assert_eq!(hidden(&mut h), [true, false], "the eye of row 0 hid the front-most object");
 }
+
+/// The Clipboard pane's Options ▾ menu sets its options through `edit.clipboardOptions`.
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn clipboard_options_menu_sets_the_options() {
+    use egui_kittest::kittest::Queryable;
+
+    let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello")), crate::Services::default());
+    app.run("edit.clipboardPane", serde_json::json!({"value": true})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut crate::WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        app,
+    );
+    h.run_steps(4);
+    assert!(!h.state().session.prefs.clipboard.show_automatically);
+    h.get_by_label("Options ▾").click();
+    h.run_steps(4);
+    h.get_by_label("Show Clipboard Automatically").click();
+    h.run_steps(4);
+    assert!(h.state().session.prefs.clipboard.show_automatically, "the check item turned the option on");
+    assert!(h.state().session.prefs.clipboard.collect_without_showing, "the others are unchanged");
+}
+
+/// A collected copy shows "Item N of 24 Clipboard collected" in the status bar.
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn collected_copy_shows_its_item_number() {
+    let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello")), crate::Services::default());
+    app.run("select.all", serde_json::json!({})).unwrap();
+    app.run("edit.copy", serde_json::json!({})).unwrap();
+    assert_eq!(app.status_msg.as_ref().map(|(m, _)| m.as_str()), Some("Item 1 of 24 Clipboard collected"));
+}

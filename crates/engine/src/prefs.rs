@@ -59,6 +59,28 @@ pub struct Prefs {
     /// in Word). A damaged saved value reads as the defaults.
     #[serde(deserialize_with = "crate::cmd::tools::lenient_autocorrect")]
     pub autocorrect: crate::cmd::tools::AutoCorrectPrefs,
+    /// The Clipboard pane's Options (`edit.clipboardOptions`).
+    pub clipboard: ClipboardPrefs,
+}
+
+/// The Clipboard pane's Options (Home › Clipboard › Clipboard Pane › Options), as in Word.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ClipboardPrefs {
+    /// Open the pane when a copy or cut makes it hold a second item.
+    pub show_automatically: bool,
+    /// Open the pane when the same selection is copied twice in a row.
+    pub show_on_copy_twice: bool,
+    /// Collect copies and cuts while the pane is hidden.
+    pub collect_without_showing: bool,
+    /// Report "Item N of 24" when a copy or cut is collected.
+    pub show_status: bool,
+}
+
+impl Default for ClipboardPrefs {
+    fn default() -> Self {
+        ClipboardPrefs { show_automatically: false, show_on_copy_twice: false, collect_without_showing: true, show_status: true }
+    }
 }
 
 impl Default for Prefs {
@@ -84,6 +106,7 @@ impl Default for Prefs {
             detect_language: true,
             default_language: None,
             autocorrect: Default::default(),
+            clipboard: Default::default(),
         }
     }
 }

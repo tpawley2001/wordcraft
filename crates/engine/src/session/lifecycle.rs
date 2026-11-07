@@ -105,6 +105,7 @@ impl Session {
             clipboard_html: String::new(),
             clipboard_rtf: String::new(),
             clip_history: Default::default(),
+            last_copy: None,
             find,
             goal_x,
             page_hint,
