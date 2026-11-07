@@ -32,6 +32,13 @@ pub struct KeyMap {
     pub removed: BTreeSet<String>,
 }
 
+/// What a key does: run a command, or apply a style (#3910).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeyTarget {
+    Command(String),
+    Style(String),
+}
+
 /// A key in canonical form: modifiers in the order `Mod+Ctrl+Alt+Shift+`, then the key (a single
 /// character upper-cased, a named key, or `F1`–`F24`). `None` when it isn't a key.
 pub fn normalize(key: &str) -> Option<String> {
@@ -186,6 +193,26 @@ impl KeyMap {
             self.removed.insert(key);
         }
         Ok(true)
+    }
+
+    /// What a key does now: a style bound to it, else the command [`KeyMap::resolve`] gives.
+    pub fn resolve_target(&self, _reg: &Registry, _key: &str) -> Option<KeyTarget> {
+        todo!("#3910")
+    }
+
+    /// Bind `key` to `style`; returns the key's previous owner.
+    pub fn assign_style(&mut self, _reg: &Registry, _style: &str, _key: &str) -> Result<Option<KeyTarget>, String> {
+        todo!("#3910")
+    }
+
+    /// Take `key` away from `style`. Returns whether it had the key.
+    pub fn remove_style(&mut self, _reg: &Registry, _style: &str, _key: &str) -> Result<bool, String> {
+        todo!("#3910")
+    }
+
+    /// The keys bound to `style`.
+    pub fn keys_for_style(&self, _style: &str) -> Vec<String> {
+        todo!("#3910")
     }
 
     /// Back to the built-in keys only.

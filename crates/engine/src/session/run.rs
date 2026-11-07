@@ -58,6 +58,12 @@ impl Session {
         doc.same_content(&self.doc) && *sel == self.sel && *column == self.column && *pending == self.pending
     }
 
+    /// Run what a pressed key does (#3910): a style key applies the style (`styles.apply`), a
+    /// command key runs its command. `None` when the key does nothing.
+    pub fn press_key(&mut self, _key: &str) -> Option<Result<Value, CmdError>> {
+        todo!("#3910")
+    }
+
     /// Run a command by id with JSON params (the single entry point for the UI, CLI, MCP and
     /// control channel). Mutating commands are undoable; a failed command leaves the document as
     /// it was; a panic inside a command becomes an error.
