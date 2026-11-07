@@ -3,6 +3,7 @@ use super::ime_state::ImeCaretState;
 use super::snapshot_types::RunSnapshot;
 use super::{CharProps, CmdError, Document, Fragment, ImeEditOutcome, Pos, Session, StoryRef, Value, document_id_mark};
 use crate::CommandSpec;
+use serde_json::json;
 
 struct SuccessContext<'a> {
     id: &'a str,
@@ -56,6 +57,15 @@ impl Session {
     /// unsaved changes, forces no relayout and leaves the redo stack alone (#23).
     fn unchanged(&self, doc: &Document, sel: &Selection, column: &Option<ColumnBlock>, pending: &Option<CharProps>) -> bool {
         doc.same_content(&self.doc) && *sel == self.sel && *column == self.column && *pending == self.pending
+    }
+
+    /// Run what a pressed key does (#3910): a style key applies the style (`styles.apply`), a
+    /// command key runs its command. `None` when the key does nothing.
+    pub fn press_key(&mut self, key: &str) -> Option<crate::CmdResult> {
+        match self.keymap.resolve_target(&self.registry, key)? {
+            crate::KeyTarget::Command(id) => Some(self.run(&id, &json!({}))),
+            crate::KeyTarget::Style(style) => Some(self.run("styles.apply", &json!({"style": style}))),
+        }
     }
 
     /// Run a command by id with JSON params (the single entry point for the UI, CLI, MCP and

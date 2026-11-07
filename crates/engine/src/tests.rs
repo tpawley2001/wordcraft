@@ -52,6 +52,7 @@ mod page_number_formats_in_lists;
 mod figures_hyperlinks;
 mod window_edge_keys;
 mod write_protection;
+mod style_keys;
 
 /// True, after saying so on stderr, when this build lacks the Language data the proofing tests
 /// need (craft-proof built without `CRAFT_I18N_DIR`). The probes are craft-proof's public
