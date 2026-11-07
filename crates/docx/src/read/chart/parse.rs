@@ -1,6 +1,8 @@
 use super::format::{date_text, excel_stamp, format_value, is_date_code};
-use super::model::{Axis, Group, Grouping, Kind, Pos, Series, Stock};
+use super::model::{Axis, Depth, Group, Grouping, Kind, Pos, Series, Stock};
+use super::of_pie::OfPie;
 use super::plot::label;
+use super::three_d::View3d;
 use super::{Chart, El, FONT, LINE_W, MAX_CELLS, MAX_POINTS, MAX_RADAR_SERIES, MAX_SERIES, MAX_SPOKES, Rgb, fill_colour, int, measure, slot};
 
 impl Chart {
@@ -55,6 +57,7 @@ impl Chart {
                 secondary,
                 first: 0,
                 stock: if matches!(k, Kind::Line | Kind::Stock) { Stock::parse(ty, theme) } else { Stock::default() },
+                depth: Depth::parse(ty),
             });
         }
         if groups.is_empty() {
@@ -114,12 +117,16 @@ impl Chart {
             [g] => title_of(chart, &g.series),
             _ => title_of(chart, &[]),
         };
+        let view = View3d::parse(chart, theme);
+        let pie3d = ty.name == "c:pie3DChart";
+        // A 3-D pie has no c:firstSliceAng: it starts at the view's rotation.
+        let first_angle = if pie3d { view.rot_y } else { num("c:firstSliceAng").unwrap_or(0).clamp(0, 360) as f64 };
         Some(Chart {
             kind,
             horizontal,
             groups,
             hole: num("c:holeSize").unwrap_or(50).clamp(10, 90) as f32 / 100.0,
-            first_angle: num("c:firstSliceAng").unwrap_or(0).clamp(0, 360) as f64,
+            first_angle,
             radar_fill: radar_style == Some("filled"),
             radar_marks: radar_style == Some("marker"),
             vary: matches!(kind, Kind::Pie | Kind::Doughnut) && ty.child("c:varyColors").and_then(|v| v.attr("val")).is_none_or(truthy),
@@ -136,6 +143,9 @@ impl Chart {
             sec_fmt,
             date1904,
             plot_border: plot.child("c:spPr").and_then(|p| p.child("a:ln")).and_then(|l| fill_colour(l, theme)),
+            view,
+            pie3d,
+            of_pie: (ty.name == "c:ofPieChart").then(|| OfPie::parse(ty, theme)),
         })
     }
 
@@ -143,7 +153,7 @@ impl Chart {
         self.groups.first().is_some_and(Group::stacked)
     }
 
-    fn accent(&self, i: usize) -> Rgb {
+    pub(super) fn accent(&self, i: usize) -> Rgb {
         self.accents.get(i % 6).copied().unwrap_or(Rgb::BLACK)
     }
 
@@ -441,6 +451,6 @@ fn rich_into(e: &El, s: &mut String) {
     }
 }
 
-fn truthy(v: &str) -> bool {
+pub(super) fn truthy(v: &str) -> bool {
     matches!(v.trim(), "1" | "true")
 }
