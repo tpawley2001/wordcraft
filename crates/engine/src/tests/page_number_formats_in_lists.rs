@@ -97,7 +97,7 @@ fn index_pages_follow_the_section_format() {
     run(&mut s, "references.index", json!({"columns": 1, "rightAlign": false}));
     let text = s.doc.plain_text(StoryRef::Body);
     // The index is the last thing in the document: its lines start with the entry.
-    let entry = |name: &str| text.lines().filter(|l| l.starts_with(name)).last().unwrap_or_default().to_string();
+    let entry = |name: &str| text.lines().rfind(|l| l.starts_with(name)).unwrap_or_default().to_string();
     let preface = entry("Preface");
     assert!(preface.ends_with("ii"), "index line {preface:?} in {text:?}");
     let chapter = entry("Chapter");
