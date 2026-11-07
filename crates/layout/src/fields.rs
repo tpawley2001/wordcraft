@@ -320,6 +320,12 @@ pub fn field_text_on(instr: &str, result: &str, ctx: &FieldCtx, page: u32) -> (S
     }
 }
 
+/// The display text of a `GOTOBUTTON` or `MACROBUTTON` field (ECMA-376 Part 1 §17.16.5.24,
+/// §17.16.5.34); `None` for any other field.
+pub fn button_display_text(_instr: &str) -> Option<String> {
+    None // TODO(P0083): implement
+}
+
 /// The words of a field instruction: quoted text is one word (without its quotes) and a
 /// backslash starts a new word (`\f"Symbol"` is `\f`, `Symbol`).
 fn instr_words(instr: &str) -> Vec<String> {
