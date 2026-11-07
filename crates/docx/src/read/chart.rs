@@ -189,4 +189,6 @@ struct Chart {
 }
 
 #[cfg(test)]
+mod combo_tests;
+#[cfg(test)]
 mod tests;
