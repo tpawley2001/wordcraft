@@ -362,4 +362,6 @@ thread_local! {
 }
 
 #[cfg(test)]
+// Not reformatted: its module list (`button_fields` after `border_band`) is pinned as committed.
+#[rustfmt::skip]
 mod tests;
