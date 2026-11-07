@@ -96,6 +96,7 @@ impl Session {
             author: _,
             initials: _,
             painter: _,
+            pending_text_move: _,
             status: _,
             // Headers just created to edit: closing checks they still exist and are empty.
             new_header_parts: _,

@@ -95,9 +95,58 @@ pub(crate) fn place(s: &mut Session, _: &Value) -> CmdResult {
             at = mapped.ok_or_else(|| CmdError::Failed("text destination no longer exists".into()))?;
         }
     }
-    s.sel = Selection::caret(at);
+    // A selected paragraph mark brings its paragraph formatting with it, including when
+    // the destination already has explicit paragraph properties.
+    let paragraph_props =
+        if fragment.blocks.len() > 1 { fragment.blocks.first().and_then(|block| block.as_para()).map(|p| p.props.clone()) } else { None };
+    s.sel = Selection::caret(at.clone());
     super::paste::insert(s, fragment)?;
+    if let Some(props) = paragraph_props {
+        s.doc.para_mut(at.story, &at.path)?.props = props;
+    }
     s.pending = None;
     s.goal_x = None;
     super::sel_result(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wordcraft_doc::StoryRef;
+
+    #[test]
+    fn paragraph_move_forward_preserves_style_and_clipboard() {
+        let mut s = Session::new(Document::from_text("first\nsecond\nthird"));
+        s.doc.para_mut(StoryRef::Body, &wordcraft_doc::Path::top(0)).unwrap().props.keep_next = Some(true);
+        s.run("select.text", &json!({"text": "third"})).unwrap();
+        s.run("edit.copy", &json!({})).unwrap();
+        let clipboard = s.clipboard.clone();
+        let clipboard_text = s.clipboard_text.clone();
+        s.run("select.range", &json!({"anchor": {"block":0,"off":0}, "focus":{"block":1,"off":0}})).unwrap();
+        s.run("edit.moveText", &json!({})).unwrap();
+        s.run("caret.docEnd", &json!({})).unwrap();
+        let before = s.doc.clone();
+        let depth = s.undo_depth();
+        s.run("text.newParagraph", &json!({})).unwrap();
+        assert_eq!(s.doc.plain_text(StoryRef::Body), "second\nthirdfirst\n");
+        assert_eq!(s.undo_depth(), depth + 1);
+        assert_eq!(s.doc.para(StoryRef::Body, &wordcraft_doc::Path::top(1)).unwrap().props.keep_next, Some(true));
+        assert_eq!(s.clipboard, clipboard);
+        assert_eq!(s.clipboard_text, clipboard_text);
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(s.doc, before);
+        assert!(s.pending_text_move.is_none());
+    }
+
+    #[test]
+    fn edits_and_document_replacement_clear_source() {
+        let mut s = Session::new(Document::from_text("source target"));
+        s.run("select.text", &json!({"text":"source"})).unwrap();
+        s.run("edit.copyText", &json!({})).unwrap();
+        s.run("format.bold", &json!({})).unwrap();
+        assert_eq!(s.run("edit.moveTextPending", &json!({})).unwrap()["pending"], Value::Null);
+        s.run("edit.moveText", &json!({})).unwrap();
+        s.set_document(Document::new());
+        assert!(s.pending_text_move.is_none());
+    }
 }

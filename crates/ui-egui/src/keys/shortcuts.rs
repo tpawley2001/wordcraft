@@ -262,6 +262,10 @@ pub fn global_shortcuts(app: &mut WordApp, ctx: &egui::Context) {
             break;
         }
         if let egui::Event::Key { key, pressed: true, modifiers, .. } = e {
+            if key == Key::Escape && app.session.pending_text_move.is_some() {
+                let _ = app.run("edit.moveTextCancel", json!({}));
+                continue;
+            }
             if leave_full_screen(app, ctx, key, modifiers, false) {
                 continue;
             }
