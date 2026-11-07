@@ -17,6 +17,7 @@ mod font_sizes;
 mod grid_settings;
 mod fonts;
 mod ime_noop;
+mod listnum_fields;
 mod mark_toc_entry;
 mod negative_margins;
 mod para_sort_keys;
