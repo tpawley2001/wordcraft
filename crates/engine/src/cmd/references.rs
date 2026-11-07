@@ -10,12 +10,16 @@ use wordcraft_doc::{Block, Paragraph, PartKind, Path, Pos, StoryRef, para_block}
 use super::{delete_selection, sel_result};
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
+mod captions;
 mod fields;
 mod notes;
 mod numbers;
 mod properties;
 mod toc;
 
+pub use captions::{AUTO_EQUATION, AUTO_OBJECTS, AUTO_TABLE, all_labels as all_caption_labels, label_options as caption_label_options};
+pub(crate) use captions::{add_auto_caption, below_caption};
+use captions::{auto_caption, caption_label};
 use fields::caption;
 pub use fields::{
     CHAPTER_SEPARATORS, REFERENCE_NOT_FOUND, output_fields, refresh_date_fields, seq_format, update_fields, update_fields_in, update_seq,
@@ -93,6 +97,11 @@ pub fn specs() -> Vec<CommandSpec> {
         .pure(),
         CommandSpec::new("references.caption", "Insert Caption", "References › Captions", caption)
             .params(r#"{"label"?: "Figure|Table|Equation|any label", "text"?: string, "position"?: "below|above", "excludeLabel"?: bool, "format"?: "ARABIC|alphabetic|ALPHABETIC|roman|ROMAN", "chapter"?: heading level 1-9, "separator"?: "-|.|:|—|–"}"#),
+        CommandSpec::new("references.captionLabel", "New Label", "References › Captions", caption_label)
+            .params(r#"{"add"?: string, "delete"?: string (not Figure, Table or Equation)} -> {"labels": [Figure, Table, Equation, the document's own…]}"#),
+        CommandSpec::new("references.autoCaption", "AutoCaption", "References › Captions", auto_caption).params(
+            r#"{"set"?: {"object": "Microsoft Word Table|Microsoft Equation|…", "label": label name or null (off), "position"?: "above|below", "format"?: "decimal|upperLetter|lowerLetter|upperRoman|lowerRoman", "chapter"?: heading level 1-9 or 0 (none), "separator"?: "-|.|:|—|–"}} -> {"objects": [{"name", "label", "position", "format"?, "chapter"?, "separator"?}…], "labels": […]}"#,
+        ),
         // F9: update fields; the selected ones that showed their code show their result again.
         CommandSpec::new("references.updateFields", "Update Field", "References", |s, v| {
             update_fields_in(s, v.get("all").and_then(Value::as_bool).unwrap_or(false))?;

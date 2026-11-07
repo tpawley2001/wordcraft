@@ -106,6 +106,14 @@ pub fn caption_labels(s: &Session) -> Vec<String> {
             labels.push(l);
         }
     }
+    // The document's own labels (New Label, kept in `w:captions`), captioned yet or not.
+    for l in &s.doc.settings.captions.labels {
+        if !labels.iter().any(|x| x.eq_ignore_ascii_case(&l.name))
+            && !wordcraft_doc::BUILTIN_CAPTION_LABELS.iter().any(|b| b.eq_ignore_ascii_case(&l.name))
+        {
+            labels.push(l.name.clone());
+        }
+    }
     labels
 }
 

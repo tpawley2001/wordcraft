@@ -426,3 +426,34 @@ fn the_source_manager_imports_a_word_sources_file() {
     assert!(h.state().status_msg.as_ref().is_some_and(|(m, _)| m.contains("Imported 2 sources")), "{:?}", h.state().status_msg);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Insert Caption › AutoCaption…: the form lists the table and equation, and OK turns
+/// AutoCaption on with the chosen label and position, so the next table gets its caption. New
+/// Label keeps the label in the document.
+#[test]
+fn auto_caption_dialog_turns_it_on() {
+    let mut a = app("Intro");
+    let mut f = {
+        let c = CaptionForm::read(&a);
+        AutoCaptionForm::read(&mut a, c)
+    };
+    let names: Vec<&str> = f.objects.iter().map(|o| o.name.as_str()).collect();
+    assert_eq!(names, ["Microsoft Word Table", "Microsoft Equation"]);
+    assert!(f.objects.iter().all(|o| !o.on));
+    let row = &mut f.objects[0];
+    row.on = true;
+    row.label = "Table".into();
+    row.position = "above".into();
+    f.apply(&mut a).unwrap();
+    a.run("caret.docEnd", json!({})).unwrap();
+    a.run("insert.table", json!({"rows": 1, "cols": 1})).unwrap();
+    assert!(a.session.doc.plain_text(StoryRef::Body).contains("Table 1"));
+    let back = {
+        let c = CaptionForm::read(&a);
+        AutoCaptionForm::read(&mut a, c)
+    };
+    assert_eq!((back.objects[0].on, back.objects[0].position.as_str()), (true, "above"));
+
+    a.run("references.captionLabel", json!({"add": "Exhibit"})).unwrap();
+    assert!(CaptionForm::read(&a).labels.contains(&"Exhibit".to_string()), "the document's label is offered");
+}

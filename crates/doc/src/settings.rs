@@ -233,6 +233,141 @@ pub struct Settings {
     /// it is laid out.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub odf: Option<OdfLayout>,
+    /// Caption labels of the document's own and AutoCaption (`w:captions`, ECMA-376 §17.15.1.18).
+    #[serde(skip_serializing_if = "Captions::is_empty")]
+    pub captions: Captions,
+}
+
+/// Most caption labels, and most AutoCaption entries, a document keeps.
+pub const MAX_CAPTION_ENTRIES: usize = 256;
+
+/// The caption labels every document has without a `w:caption` entry.
+pub const BUILTIN_CAPTION_LABELS: [&str; 3] = ["Figure", "Table", "Equation"];
+
+/// Caption settings (References › Insert Caption): labels made with New Label or whose options
+/// differ from the defaults (`w:caption`), and the objects that get a caption as they are
+/// inserted (`w:autoCaption`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Captions {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<CaptionLabel>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub auto: Vec<AutoCaption>,
+}
+
+impl Captions {
+    pub fn is_empty(&self) -> bool {
+        self.labels.is_empty() && self.auto.is_empty()
+    }
+
+    /// The label named `name` (any case, as Word matches labels).
+    pub fn label(&self, name: &str) -> Option<&CaptionLabel> {
+        self.labels.iter().find(|l| l.name.eq_ignore_ascii_case(name))
+    }
+
+    /// The label AutoCaption adds for objects of type `object`.
+    pub fn auto_label(&self, object: &str) -> Option<&str> {
+        self.auto.iter().find(|a| a.object == object).map(|a| a.label.as_str())
+    }
+}
+
+/// One caption label and its options (`w:caption`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct CaptionLabel {
+    pub name: String,
+    /// `w:pos`: the caption goes above the item (below by default).
+    pub above: bool,
+    /// `w:numFmt`: `decimal`, `upperLetter`, `lowerLetter`, `upperRoman` or `lowerRoman`.
+    pub num_fmt: String,
+    /// `w:chapNum`: the number includes the chapter number.
+    pub chapter: bool,
+    /// `w:heading`: the heading level (1-9) chapters start at; 0 when unset.
+    pub heading: u8,
+    /// `w:sep`: between the chapter number and the caption number.
+    pub separator: CaptionSep,
+    /// `w:noLabel`: the caption is the number without the label.
+    pub no_label: bool,
+}
+
+impl Default for CaptionLabel {
+    fn default() -> Self {
+        CaptionLabel {
+            name: String::new(),
+            above: false,
+            num_fmt: "decimal".into(),
+            chapter: false,
+            heading: 0,
+            separator: CaptionSep::Hyphen,
+            no_label: false,
+        }
+    }
+}
+
+impl CaptionLabel {
+    pub fn new(name: &str) -> Self {
+        CaptionLabel { name: name.to_string(), ..Default::default() }
+    }
+
+    /// Whether every option is the default, so a built-in label needs no `w:caption` entry.
+    pub fn is_default(&self) -> bool {
+        *self == CaptionLabel::new(&self.name)
+    }
+}
+
+/// The caption numbering formats a label can have (ST_NumberFormat's values Word offers).
+pub const CAPTION_NUM_FORMATS: [&str; 5] = ["decimal", "upperLetter", "lowerLetter", "upperRoman", "lowerRoman"];
+
+/// `w:sep` (ST_ChapterSep).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CaptionSep {
+    #[default]
+    Hyphen,
+    Period,
+    Colon,
+    EmDash,
+    EnDash,
+}
+
+impl CaptionSep {
+    pub const ALL: [CaptionSep; 5] = [CaptionSep::Hyphen, CaptionSep::Period, CaptionSep::Colon, CaptionSep::EmDash, CaptionSep::EnDash];
+
+    /// The attribute value.
+    pub fn ooxml(self) -> &'static str {
+        match self {
+            CaptionSep::Hyphen => "hyphen",
+            CaptionSep::Period => "period",
+            CaptionSep::Colon => "colon",
+            CaptionSep::EmDash => "emDash",
+            CaptionSep::EnDash => "enDash",
+        }
+    }
+
+    pub fn from_ooxml(v: &str) -> Option<CaptionSep> {
+        CaptionSep::ALL.into_iter().find(|s| s.ooxml() == v)
+    }
+
+    /// The character it stands for.
+    pub fn text(self) -> &'static str {
+        match self {
+            CaptionSep::Hyphen => "-",
+            CaptionSep::Period => ".",
+            CaptionSep::Colon => ":",
+            CaptionSep::EmDash => "\u{2014}",
+            CaptionSep::EnDash => "\u{2013}",
+        }
+    }
+}
+
+/// AutoCaption for one kind of object (`w:autoCaption`): inserting one adds a caption with `label`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AutoCaption {
+    /// The object type, as Word names it (`Microsoft Word Table`).
+    pub object: String,
+    pub label: String,
 }
 
 /// A document opened from ODF, for the layout: rules of the standard that differ from Word's (a
@@ -410,6 +545,7 @@ impl Default for Settings {
             remove_personal_info: false,
             remove_date_time: false,
             odf: None,
+            captions: Captions::default(),
         }
     }
 }

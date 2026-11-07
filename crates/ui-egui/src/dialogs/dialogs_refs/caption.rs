@@ -1,14 +1,14 @@
 use super::common::{BUILT_IN_LABELS, NUMBER_FORMATS, SEPARATORS, choice};
 use super::shell::{Next, go};
-use super::{Block, RefsDialog, Serialize, Ui, Value, WordApp, buttons, json, vec2};
+use super::{AutoCaptionForm, Block, RefsDialog, Serialize, Ui, Value, WordApp, buttons, json, vec2};
 
 /// The Caption dialog's fields.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptionForm {
     pub label: String,
-    /// Built-in labels and the user's own (kept with the interface settings, like Word's
-    /// Normal template keeps them).
+    /// Built-in labels, the document's own (`references.captionLabel`) and the user's (kept
+    /// with the interface settings, like Word's Normal template keeps them).
     pub labels: Vec<String>,
     pub text: String,
     /// `below` or `above`.
@@ -27,7 +27,7 @@ pub struct CaptionForm {
 impl CaptionForm {
     pub fn read(app: &WordApp) -> CaptionForm {
         let mut labels: Vec<String> = BUILT_IN_LABELS.iter().map(ToString::to_string).collect();
-        for l in &app.ui.caption_labels {
+        for l in wordcraft_engine::cmd::references::all_caption_labels(&app.session).iter().chain(&app.ui.caption_labels) {
             if !labels.contains(l) {
                 labels.push(l.clone());
             }
@@ -43,11 +43,14 @@ impl CaptionForm {
                 .is_some_and(|b| matches!(&**b, Block::Table(_)));
         let last = &app.ui.last_caption_label;
         let label = if labels.contains(last) { last.as_str() } else { "Figure" };
+        let label = if in_table { "Table" } else { label };
+        // The label's own position, as the document keeps it (below unless it says otherwise).
+        let above = wordcraft_engine::cmd::references::caption_label_options(&app.session, label).above;
         CaptionForm {
-            label: if in_table { "Table" } else { label }.into(),
+            label: label.into(),
             labels,
             text: String::new(),
-            position: "below".into(),
+            position: if above { "above" } else { "below" }.into(),
             exclude_label: false,
             format: "ARABIC".into(),
             chapter: false,
@@ -142,11 +145,19 @@ pub(super) fn caption_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CaptionForm) ->
         let custom = !BUILT_IN_LABELS.contains(&f.label.as_str());
         if ui.add_enabled(custom, egui::Button::new(tl!("Delete Label"))).clicked() {
             app.ui.caption_labels.retain(|l| *l != f.label);
+            if wordcraft_engine::cmd::references::all_caption_labels(&app.session).contains(&f.label)
+                && let Err(e) = app.run("references.captionLabel", json!({"delete": f.label}))
+            {
+                app.status(e);
+            }
             f.labels.retain(|l| *l != f.label);
             f.label = "Figure".into();
         }
         if ui.button(tl!("Numbering…")).clicked() {
             then = Some(RefsDialog::CaptionNumbering { was: Box::new(f.clone()), form: f.clone() });
+        }
+        if ui.button(tl!("AutoCaption…")).clicked() {
+            then = Some(RefsDialog::AutoCaption(Box::new(AutoCaptionForm::read(app, f.clone()))));
         }
     });
     if let Some(g) = then {
@@ -209,7 +220,7 @@ pub(super) fn numbering_ui(ui: &mut Ui, f: &mut CaptionForm, was: &CaptionForm) 
 }
 
 /// Draws the new caption label field with focus, sanitizes an accepted label, remembers custom
-/// labels, and returns to the caption dialog.
+/// labels (with the interface settings and in the document), and returns to the caption dialog.
 pub(super) fn new_label_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CaptionForm) -> Next {
     let label = ui.label(tl!("Label:"));
     let r = ui.add(egui::TextEdit::singleline(&mut f.new_label).desired_width(260.0)).labelled_by(label.id);
@@ -224,6 +235,10 @@ pub(super) fn new_label_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CaptionForm) 
         }
         if !BUILT_IN_LABELS.contains(&name.as_str()) && !app.ui.caption_labels.contains(&name) {
             app.ui.caption_labels.push(name.clone());
+        }
+        // Kept in the document too (`w:captions`), so it is there when the file is reopened.
+        if let Err(e) = app.run("references.captionLabel", json!({"add": name})) {
+            app.status(e);
         }
         f.label = name;
     }

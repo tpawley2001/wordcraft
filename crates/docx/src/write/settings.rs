@@ -117,6 +117,7 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
     if let Some(m) = &s.math {
         math::math_pr(&mut w, m);
     }
+    write_captions(&mut w, &s.captions);
     w.close("w:settings");
     w.into_bytes()
 }
@@ -144,6 +145,40 @@ fn write_note_settings(
         }
         w.close(tag);
     }
+}
+
+/// `w:captions` (ECMA-376 §17.15.1.18), when the document has caption labels or AutoCaption.
+pub(crate) fn write_captions(w: &mut W, c: &wordcraft_doc::Captions) {
+    if c.is_empty() {
+        return;
+    }
+    w.open("w:captions", &[]);
+    for l in c.labels.iter().take(wordcraft_doc::MAX_CAPTION_ENTRIES) {
+        let heading = l.heading.min(9).to_string();
+        let mut a: Vec<(&str, &str)> = vec![("w:name", &l.name), ("w:pos", if l.above { "above" } else { "below" })];
+        if wordcraft_doc::CAPTION_NUM_FORMATS.contains(&l.num_fmt.as_str()) {
+            a.push(("w:numFmt", &l.num_fmt));
+        }
+        if l.chapter {
+            a.push(("w:chapNum", "1"));
+        }
+        if l.heading > 0 {
+            a.push(("w:heading", &heading));
+        }
+        a.push(("w:sep", l.separator.ooxml()));
+        if l.no_label {
+            a.push(("w:noLabel", "1"));
+        }
+        w.empty("w:caption", &a);
+    }
+    if !c.auto.is_empty() {
+        w.open("w:autoCaptions", &[]);
+        for a in c.auto.iter().take(wordcraft_doc::MAX_CAPTION_ENTRIES) {
+            w.empty("w:autoCaption", &[("w:name", &a.object), ("w:caption", &a.label)]);
+        }
+        w.close("w:autoCaptions");
+    }
+    w.close("w:captions");
 }
 
 fn write_compatibility_settings(w: &mut W, doc: &Document) {

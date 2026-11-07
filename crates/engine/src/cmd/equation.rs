@@ -237,7 +237,16 @@ fn insert_nodes_as_equation(s: &mut Session, nodes: Arg, v: &Value) -> CmdResult
         _ => MathPos::new(Vec::new(), me::units(&nodes)),
     };
     let obj = InlineObject::Equation { linear, display, math: Math { nodes, ..Default::default() } };
-    let end = s.doc.insert_object(&at, obj, &props)?;
+    let mut end = s.doc.insert_object(&at, obj, &props)?;
+    // AutoCaption: a display equation gets the label's caption, in the same undo step.
+    let mut at = at;
+    if display {
+        s.sel = Selection::caret(at.clone());
+        if crate::cmd::references::add_auto_caption(s, crate::cmd::references::AUTO_EQUATION)? == Some(true) {
+            at.path = crate::cmd::references::below_caption(&at.path);
+            end.path = crate::cmd::references::below_caption(&end.path);
+        }
+    }
     if p::bool(v, "edit").unwrap_or(true) {
         let Some(session) = crate::next_math_session() else {
             return Err(CmdError::Failed("no equation editing session available".into()));
