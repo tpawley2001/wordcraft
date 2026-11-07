@@ -1,11 +1,11 @@
 //! Print settings (#641): which pages go out, how many copies, as a PDF.
 //!
 //! WordCraft prints through a PDF (the host opens it in the system's print flow), so the settings
-//! that can be delivered are the ones that shape the PDF: the page range, odd/even pages, copies
+//! that can be delivered are the ones that shape the PDF: the page range, odd/even pages, copies,
 //! collation and reverse page order. Hidden text and field codes use the per-user printing
 //! options (or job overrides), independently of the on-screen display. Reverse order applies
-//! only to single-page sheets. Physical sheet imposition is shared with the preview; printer choice and duplex
-//! are handled by the host.
+//! only to single-page sheets. Physical sheet imposition is shared with the preview; printer
+//! choice and duplex are handled by the host.
 //!
 //! Page ranges and copies come from users and control channels, so they are bounded: a range
 //! text is at most [`MAX_SPEC_CHARS`] long, copies are clamped to [`MAX_COPIES`], and the
@@ -308,6 +308,30 @@ mod tests {
         assert_eq!(p(json!({"range": "current", "copies": 1e12})).map(|v| v.len()), Ok(MAX_COPIES as usize));
         assert!(plan(&json!({"copies": 999}), 600, (0, 0)).is_err());
         assert_eq!(p(json!({"copies": -5, "range": "current"})), Ok(vec![2]));
+    }
+
+    #[test]
+    fn reverse_is_ignored_for_imposed_sheets() {
+        for imposition in [json!(2), json!(4), json!("booklet"), json!("bookletReverse")] {
+            let v = json!({"reverse": true, "copies": 2, "pagesPerSheet": imposition});
+            assert_eq!(plan(&v, 3, (0, 0)).unwrap().pages, vec![0, 1, 2, 0, 1, 2]);
+            let mut s = Session::new(crate::sample::sample_document());
+            s.prefs.print_reverse = true;
+            let (_, actual) = s.print_job_pdf(&v).unwrap();
+            let mut forward = v.clone();
+            forward["reverse"] = json!(false);
+            assert_eq!(actual, s.print_job_pdf(&forward).unwrap().1);
+        }
+    }
+
+    #[test]
+    fn print_options_reject_non_booleans_before_changing_settings() {
+        for key in ["printHiddenText", "printFieldCodes", "printReverse"] {
+            let mut s = Session::new(wordcraft_doc::Document::new());
+            let before = s.prefs.clone();
+            assert!(s.run("file.options", &json!({"ignoreUppercase": false, key: "true"})).is_err());
+            assert_eq!(s.prefs, before);
+        }
     }
 
     #[test]
