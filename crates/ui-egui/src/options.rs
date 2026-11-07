@@ -324,6 +324,7 @@ fn display(app: &mut WordApp, ui: &mut Ui) {
     status_count_picker(app, ui);
     ui.add_space(8.0);
     section(ui, "Printing");
+    flag(app, ui, "Print hidden text", "printHiddenText", app.session.prefs.print_hidden_text);
     ui.checkbox(&mut app.ui.print_backgrounds, tl!("Print the page color"));
     ui.checkbox(&mut app.ui.update_fields_before_print, tl!("Update fields before printing"));
 }
@@ -586,6 +587,10 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     {
         let _ = app.run("ui.alignmentGuides", json!({"value": guides}));
     }
+    ui.add_space(8.0);
+    section(ui, "Print");
+    flag(app, ui, "Print pages in reverse order", "printReverse", pr.print_reverse);
+    flag(app, ui, "Print field codes instead of their values", "printFieldCodes", pr.print_field_codes);
     ui.add_space(8.0);
     section(ui, "Display");
     crate::rtl::Table::new("options_display").columns(2).spacing(vec2(8.0, 6.0)).show(ui, |t| {

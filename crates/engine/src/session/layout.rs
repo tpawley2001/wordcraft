@@ -173,9 +173,16 @@ impl Session {
 
     /// [`Session::export_layout_with`] of `doc`, this document as it is output.
     pub(crate) fn export_layout_of(&self, doc: &Document, markup: bool) -> Arc<DocLayout> {
+        self.output_layout_of(doc, markup, false, false)
+    }
+
+    /// Output layout with print visibility independent of the screen's display settings.
+    pub(crate) fn output_layout_of(&self, doc: &Document, markup: bool, show_hidden: bool, field_codes: bool) -> Arc<DocLayout> {
         let (fn_name, fn_path) = self.resolved_filenames();
         let opts = LayoutOptions {
             view: ViewMode::Print,
+            show_hidden,
+            field_codes,
             comment_balloons: markup && self.prefs.markup.comments,
             numeral: self.view.numeral.resolve(SYSTEM_LOCALE.get().map(String::as_str)),
             filename: Some(Arc::from(fn_name.as_str())),

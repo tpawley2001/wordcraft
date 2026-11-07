@@ -2,7 +2,9 @@
 //!
 //! WordCraft prints through a PDF (the host opens it in the system's print flow), so the settings
 //! that can be delivered are the ones that shape the PDF: the page range, odd/even pages, copies
-//! and collation. Physical sheet imposition is shared with the preview; printer choice and duplex
+//! collation and reverse page order. Hidden text and field codes use the per-user printing
+//! options (or job overrides), independently of the on-screen display. Reverse order applies
+//! only to single-page sheets. Physical sheet imposition is shared with the preview; printer choice and duplex
 //! are handled by the host.
 //!
 //! Page ranges and copies come from users and control channels, so they are bounded: a range
@@ -91,7 +93,8 @@ pub struct PrintPlan {
 /// sit on pages `current` (first, last). Params:
 /// `range` (`all` | `current` | `selection` | `custom`; `custom` is implied by `pages`),
 /// `pages` (text like `1-3,5`), `parity` (`all` | `odd` | `even`), `copies` (1–999),
-/// `collate` (default true: 1,2,3 1,2,3; false: 1,1,2,2,3,3).
+/// `collate` (default true: 1,2,3 1,2,3; false: 1,1,2,2,3,3),
+/// `reverse` (default false: reverse chosen pages before copies; ignored for N-up/booklet).
 pub fn plan(v: &Value, total: usize, current: (usize, usize)) -> Result<PrintPlan, CmdError> {
     let bad = |m: String| CmdError::Params(m);
     let pages_text = p::str(v, "pages").filter(|t| !t.trim().is_empty());
@@ -113,6 +116,9 @@ pub fn plan(v: &Value, total: usize, current: (usize, usize)) -> Result<PrintPla
     }
     if pages.is_empty() {
         return Err(bad("no pages to print with these settings".into()));
+    }
+    if p::bool(v, "reverse").unwrap_or(false) && imposition(v)? == Imposition::Single {
+        pages.reverse();
     }
     let copies = p::u64(v, "copies").unwrap_or(1).clamp(1, u64::from(MAX_COPIES)) as u32;
     let chosen = pages.len();
@@ -205,18 +211,21 @@ impl Session {
         self.print_pdf_with(v, true)
     }
 
-    /// The PDF sent to a printer for job `v`: [`Self::print_pdf`] without link annotations,
-    /// which print nothing, and which a printer driver can't fit to the paper ("flatten page
-    /// annotations before using shrink-to-fit", #4734).
-    /// The layout a print job with settings `v` renders.
-    // TODO(P0098 stub): apply Print hidden text / Print field codes (prefs, overridden by the
-    // `hiddenText` / `fieldCodes` params) and use this from `print_pdf_with`.
+    /// The layout a print job with settings `v` renders. `hiddenText` and `fieldCodes` override
+    /// the per-user print preferences; on-screen visibility does not affect printing.
     pub fn print_layout(&self, v: &Value) -> std::sync::Arc<DocLayout> {
         let markup = crate::cmd::file::export_options(self, v);
         let out = crate::cmd::references::output_fields(&self.doc);
-        self.export_layout_of(out.as_ref().unwrap_or(&self.doc), markup.markup)
+        self.output_layout_of(
+            out.as_ref().unwrap_or(&self.doc),
+            markup.markup,
+            p::bool(v, "hiddenText").unwrap_or(self.prefs.print_hidden_text),
+            p::bool(v, "fieldCodes").unwrap_or(self.prefs.print_field_codes),
+        )
     }
 
+    /// The PDF sent to a printer: [`Self::print_pdf`] without link annotations, which print
+    /// nothing and can prevent a printer driver fitting the page to paper (#4734).
     pub fn print_job_pdf(&self, v: &Value) -> Result<(Vec<u8>, PrintPlan), CmdError> {
         self.print_pdf_with(v, false)
     }
@@ -230,9 +239,11 @@ impl Session {
         let markup = crate::cmd::file::export_options(self, v);
         let out = crate::cmd::references::output_fields(&self.doc);
         let doc = out.as_ref().unwrap_or(&self.doc);
-        let lay = self.export_layout_of(doc, markup.markup);
-        let plan = plan(v, lay.pages.len(), self.current_pages(&lay))?;
-        let mut single = v.clone();
+        let lay = self.print_layout(v);
+        let mut settings = v.clone();
+        settings["reverse"] = json!(p::bool(v, "reverse").unwrap_or(self.prefs.print_reverse));
+        let plan = plan(&settings, lay.pages.len(), self.current_pages(&lay))?;
+        let mut single = settings;
         single["copies"] = json!(1);
         let single_plan = self::plan(&single, lay.pages.len(), self.current_pages(&lay))?;
         let paper = imposed_paper(v, &lay, &single_plan.pages)?;
