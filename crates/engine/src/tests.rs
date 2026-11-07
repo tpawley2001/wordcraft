@@ -46,6 +46,7 @@ mod typing;
 mod word_window_keys;
 mod button_fields;
 mod wordart;
+mod write_protection;
 
 /// True, after saying so on stderr, when this build lacks the Language data the proofing tests
 /// need (craft-proof built without `CRAFT_I18N_DIR`). The probes are craft-proof's public
