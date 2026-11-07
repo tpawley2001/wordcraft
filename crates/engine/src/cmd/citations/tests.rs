@@ -488,6 +488,32 @@ fn table_of_authorities_updates() {
     assert!(after.matches("Doe v. Roe").count() > t.matches("Doe v. Roe").count(), "{after}");
 }
 
+/// #3856: the table of figures and the table of authorities write each page as its footer shows
+/// it, in the section's number format; the authority cited on pages i and ii lists both.
+#[test]
+fn figures_and_authorities_follow_the_page_number_format() {
+    let mut s = Session::new(wordcraft_doc::Document::from_text("Smith v. Jones held it.\nSmith v. Jones again."));
+    s.run("select.text", &json!({"text": "Smith v. Jones again"})).unwrap();
+    s.run("caret.home", &json!({})).unwrap();
+    s.run("layout.break", &json!({"kind": "page"})).unwrap();
+    s.run("references.caption", &json!({"label": "Figure", "text": "The court"})).unwrap();
+    for occurrence in [1, 2] {
+        s.run("select.text", &json!({"text": "Smith v. Jones", "occurrence": occurrence})).unwrap();
+        s.run("references.markCitation", &json!({})).unwrap();
+    }
+    s.run("caret.docStart", &json!({})).unwrap();
+    s.run("layout.pageNumberFormat", &json!({"format": "lowerRoman", "start": 1})).unwrap();
+    s.run("caret.docEnd", &json!({})).unwrap();
+    s.run("text.newParagraph", &json!({})).unwrap();
+    s.run("references.tableOfFigures", &json!({})).unwrap();
+    s.run("caret.docEnd", &json!({})).unwrap();
+    s.run("text.newParagraph", &json!({})).unwrap();
+    s.run("references.tableOfAuthorities", &json!({})).unwrap();
+    let t = s.doc.plain_text(StoryRef::Body);
+    assert!(t.contains("Figure 1: The court\tii"), "{t}");
+    assert!(t.contains("Smith v. Jones\ti, ii"), "{t}");
+}
+
 /// Field instructions and results in the body, in order.
 fn fields(s: &Session) -> Vec<(String, String)> {
     let mut out = Vec::new();
