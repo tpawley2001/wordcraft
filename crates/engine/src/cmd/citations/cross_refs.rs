@@ -161,14 +161,14 @@ pub fn ref_targets(s: &Session, to: &str) -> Vec<(String, Pos)> {
     targets
 }
 
-/// The hidden `_Ref` bookmark around the target paragraph at `pos` (its label and number only
-/// when `number_only`), reusing one already there. Returns its name and `at` moved past the
-/// bookmark marks inserted before it.
 /// The page breaks at the start of the paragraph at `pos` (as bytes): its text starts after them.
 fn leading_breaks(doc: &Document, pos: &Pos) -> usize {
     doc.para(pos.story, &pos.path).map_or(0, |p| p.text.bytes().take_while(|b| *b == 0x0C).count())
 }
 
+/// The hidden `_Ref` bookmark around the target paragraph at `pos` (its label and number only
+/// when `number_only`), reusing one already there. Returns its name and `at` moved past the
+/// bookmark marks inserted before it.
 fn ref_bookmark(s: &mut Session, pos: &Pos, number_only: bool, mut at: Pos) -> Result<(String, Pos), CmdError> {
     const MARK: usize = wordcraft_doc::para::OBJ.len_utf8();
     let para = s.doc.para(pos.story, &pos.path).ok_or_else(|| CmdError::Params("cross-reference target is gone".into()))?;
