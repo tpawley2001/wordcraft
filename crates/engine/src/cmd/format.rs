@@ -524,19 +524,20 @@ fn span_matches(
 
 /// Explicit palette/automation colours set highlighting; the shortcut (no colour) toggles
 /// the last choice off only when the whole formatting target already has that colour.
+/// A highlight colour by its OOXML name, its display name or its variant name (any case).
+pub(crate) fn parse_highlight(c: &str) -> Option<Highlight> {
+    Highlight::ALL.iter().copied().find(|h| {
+        h.ooxml().eq_ignore_ascii_case(c)
+            || h.name().replace(['-', ' ', '%'], "").eq_ignore_ascii_case(&c.replace(['-', ' ', '%'], ""))
+            || format!("{h:?}").eq_ignore_ascii_case(c)
+    })
+}
+
 fn highlight(s: &mut Session, v: &Value) -> CmdResult {
     let color = v.get("color").map(|_| p::req_str(v, "color")).transpose()?;
     let h = match color {
         None => s.last_highlight,
-        Some(c) => Highlight::ALL
-            .iter()
-            .copied()
-            .find(|h| {
-                h.ooxml().eq_ignore_ascii_case(c)
-                    || h.name().replace(['-', ' ', '%'], "").eq_ignore_ascii_case(&c.replace(['-', ' ', '%'], ""))
-                    || format!("{h:?}").eq_ignore_ascii_case(c)
-            })
-            .ok_or_else(|| CmdError::Params(format!("unknown highlight colour `{c}`")))?,
+        Some(c) => parse_highlight(c).ok_or_else(|| CmdError::Params(format!("unknown highlight colour `{c}`")))?,
     };
     let remove = color.is_none() && target_has_highlight(s, h);
     let value = if remove { Highlight::None } else { h };

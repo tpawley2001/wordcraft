@@ -120,6 +120,37 @@ pub struct FindState {
     /// What Next and Previous (Ctrl+PageDown / Ctrl+PageUp) browse by: Select Browse Object.
     #[serde(skip)]
     pub browse: crate::cmd::browse::BrowseObject,
+    /// Find what's formatting (Find › Format); `None` = No Formatting.
+    pub format: Option<FindFormat>,
+    /// Replace with's formatting (Replace › Format); `None` = No Formatting.
+    pub replace_format: Option<FindFormat>,
+}
+
+/// Formatting conditions for Find what, or formatting to give each match for Replace with. A
+/// missing field is no condition; `Some(false)` is one (not bold).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct FindFormat {
+    pub bold: Option<bool>,
+    pub italic: Option<bool>,
+    pub underline: Option<bool>,
+    pub font: Option<String>,
+    /// Points.
+    pub size: Option<f32>,
+    /// `RRGGBB` or `auto`.
+    pub color: Option<String>,
+    /// A highlight name as `format.highlight` takes it (`none` = no highlight, `any` = any
+    /// colour).
+    pub highlight: Option<String>,
+    /// A paragraph or character style name (or id).
+    pub style: Option<String>,
+}
+
+impl FindFormat {
+    /// No conditions at all.
+    pub fn is_empty(&self) -> bool {
+        *self == FindFormat::default()
+    }
 }
 
 #[derive(Clone)]

@@ -716,8 +716,12 @@ impl Dialog {
                         || app.session.find.match_prefix
                         || app.session.find.match_suffix
                         || app.session.find.ignore_punct
-                        || app.session.find.ignore_space,
+                        || app.session.find.ignore_space
+                        || app.session.find.format.is_some()
+                        || app.session.find.replace_format.is_some(),
                     to_replace: false,
+                    format: app.session.find.format.clone(),
+                    replace_format: app.session.find.replace_format.clone(),
                 },
                 tab: match name {
                     "replace" => FindTab::Replace,
