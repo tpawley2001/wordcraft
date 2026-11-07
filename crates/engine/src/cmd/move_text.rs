@@ -81,7 +81,16 @@ pub(crate) fn place(s: &mut Session, _: &Value) -> CmdResult {
     if at.story == source.start.story && at >= source.start && at <= source.end {
         return super::sel_result(s);
     }
-    let fragment = s.doc.copy_range(&source.start, &source.end);
+    let mut fragment = s.doc.copy_range(&source.start, &source.end);
+    // A moved inline run ends at the destination's caret boundary. Give that boundary the
+    // destination's formatting, so the text after it does not inherit the moved run's emphasis.
+    if fragment.blocks.len() == 1
+        && let Some(wordcraft_doc::Block::Para(p)) = fragment.blocks.first_mut()
+        && let Some(tail) = s.doc.para_at(&at).map(|p| p.props_of_char(at.off).clone())
+        && let Some(run) = p.runs.last_mut()
+    {
+        run.props = tail;
+    }
     if !source.copy {
         let dest_offset = offset(&s.doc, &at)?;
         let old_end = s.doc.end_of(at.story);
