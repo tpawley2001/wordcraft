@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use wordcraft_doc::Rgb;
-use wordcraft_doc::para::Paragraph;
-use wordcraft_doc::props::{Align, Borders, CellProps, HeightRule, RowProps, TableProps, VAlign, VMerge};
+use wordcraft_doc::para::{Anchor, FloatAlign, Paragraph};
+use wordcraft_doc::props::{Align, Borders, CellProps, HeightRule, ParaProps, RowProps, TableFloat, TableProps, TextFrame, VAlign, VMerge};
 use wordcraft_doc::table::{Cell, Row, Table};
 use wordcraft_doc::{Block, Blocks, para_block};
 
@@ -44,6 +44,16 @@ const T_VERT_ALIGN: u16 = 0xD62C;
 const T_SET_SHD: u16 = 0xD62D;
 const T_CANT_SPLIT: u16 = 0x3466;
 const T_CELL_WIDTH: u16 = 0xD635;
+// Floating-table positioning ([MS-DOC] §2.6.4): the TAP counterparts of the paragraph frame
+// sprms, with the same operands (PositionCodeOperand, XAS, YAS, twips).
+const T_PC: u16 = 0x360D;
+const T_DXA_ABS: u16 = 0x940E;
+const T_DYA_ABS: u16 = 0x940F;
+const T_DXA_FROM_TEXT: u16 = 0x9410;
+const T_DYA_FROM_TEXT: u16 = 0x9411;
+const T_DXA_FROM_TEXT_RIGHT: u16 = 0x941E;
+const T_DYA_FROM_TEXT_BOTTOM: u16 = 0x941F;
+const T_F_NO_ALLOW_OVERLAP: u16 = 0x3465;
 
 /// Most grid columns we build from a `sprmTDefTable` (the model's own cap is 63; one more
 /// edge is fine but merged rows can sum spans slightly over, so clamp when assembling).
@@ -79,6 +89,12 @@ pub(crate) struct RowInfo {
     widths: Vec<(u8, f32)>,
     width_pcts: Vec<(u8, f32)>,
     valign: Vec<(u8, VAlign)>,
+    /// Floating-table sprms from the TAP, as the paragraph frame sprm (opcode) each matches.
+    tap_frame: Vec<(u16, [u8; 2])>,
+    /// `sprmTDxaFromTextRight` / `sprmTDyaFromTextBottom`, points.
+    tap_dist_right: Option<f32>,
+    tap_dist_bottom: Option<f32>,
+    tap_no_overlap: Option<bool>,
 }
 
 /// Read the table context out of a paragraph mark's PAPX grpprl.
@@ -240,6 +256,26 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
                     }
                 }
             }
+            T_PC | T_DXA_ABS | T_DYA_ABS | T_DXA_FROM_TEXT | T_DYA_FROM_TEXT => {
+                let op = match prl.op {
+                    T_PC => fmt::P_PC,
+                    T_DXA_ABS => fmt::P_DXA_ABS,
+                    T_DYA_ABS => fmt::P_DYA_ABS,
+                    T_DXA_FROM_TEXT => fmt::P_DXA_FROM_TEXT,
+                    _ => fmt::P_DYA_FROM_TEXT,
+                };
+                let operand = match prl.operand {
+                    [a, b, ..] => [*a, *b],
+                    [a] => [*a, 0],
+                    [] => continue,
+                };
+                // Bounded: one slot per sprm, a later one replacing it.
+                r.tap_frame.retain(|(o, _)| *o != op);
+                r.tap_frame.push((op, operand));
+            }
+            T_DXA_FROM_TEXT_RIGHT => r.tap_dist_right = s16(&prl).map(dist_pt),
+            T_DYA_FROM_TEXT_BOTTOM => r.tap_dist_bottom = s16(&prl).map(dist_pt),
+            T_F_NO_ALLOW_OVERLAP => r.tap_no_overlap = prl.operand.first().map(|b| *b != 0),
             T_VERT_ALIGN => {
                 if let [_, a, b, va, ..] = prl.operand {
                     let v = match va {
@@ -263,6 +299,58 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
     r
 }
 
+/// A distance from the text in twips as points, clamped like the frame distances.
+fn dist_pt(v: i16) -> f32 {
+    (f32::from(v) / 20.0).clamp(0.0, 1584.0)
+}
+
+/// The table position a row says: its paragraph frame (`frame`, from the row's TTP or first
+/// cell paragraph) with the TAP's floating-table sprms over it, field by field, mapped as
+/// `w:tblpPr` is (ECMA-376 §17.4.58). `None` when neither positions the table.
+fn row_float(frame: Option<TextFrame>, info: &RowInfo) -> Option<TableFloat> {
+    // Only the position sprms float a table; distances and overlap only refine one.
+    let positioned = info.tap_frame.iter().any(|(op, _)| matches!(*op, fmt::P_PC | fmt::P_DXA_ABS | fmt::P_DYA_ABS));
+    if frame.is_none() && !positioned {
+        return None;
+    }
+    let mut p = ParaProps { frame, ..Default::default() };
+    for (op, operand) in &info.tap_frame {
+        fmt::apply_frame(&mut p, &Prl { op: *op, operand });
+    }
+    let f = p.frame?;
+    let anchor = |a: &str, text: Anchor| match a {
+        "page" => Anchor::Page,
+        "margin" => Anchor::Margin,
+        _ => text,
+    };
+    let h_align = match f.x_align.as_deref() {
+        Some("left") => Some(FloatAlign::Start),
+        Some("center") => Some(FloatAlign::Center),
+        Some("right") => Some(FloatAlign::End),
+        Some("inside") => Some(FloatAlign::Inside),
+        Some("outside") => Some(FloatAlign::Outside),
+        _ => None,
+    };
+    let v_align = match f.y_align.as_deref() {
+        Some("top") => Some(FloatAlign::Start),
+        Some("center") => Some(FloatAlign::Center),
+        Some("bottom") => Some(FloatAlign::End),
+        Some("inside") => Some(FloatAlign::Inside),
+        Some("outside") => Some(FloatAlign::Outside),
+        _ => None,
+    };
+    Some(TableFloat {
+        h_rel: anchor(&f.h_anchor, Anchor::Column),
+        v_rel: anchor(&f.v_anchor, Anchor::Paragraph),
+        x: f.x,
+        y: f.y,
+        h_align,
+        v_align,
+        dist: [f.h_space, f.v_space, info.tap_dist_right.unwrap_or(f.h_space), info.tap_dist_bottom.unwrap_or(f.v_space)],
+        overlap: !info.tap_no_overlap.unwrap_or(false),
+    })
+}
+
 /// A finished paragraph plus the bookkeeping the block assembly needs.
 pub(crate) struct ParaOut {
     pub(crate) para: Paragraph,
@@ -284,6 +372,8 @@ pub(crate) fn assemble(paras: Vec<ParaOut>) -> Blocks {
     let mut props = TableProps::default();
     let mut open = false;
     let mut depth_seen = 0u32;
+    // The frame of the table's first paragraph, the fallback when its first row-end has none.
+    let mut first_frame: Option<TextFrame> = None;
 
     fn flush_cell(cells: &mut Vec<Cell>, cell: &mut Blocks) {
         let mut blocks = std::mem::take(cell);
@@ -373,8 +463,8 @@ pub(crate) fn assemble(paras: Vec<ParaOut>) -> Blocks {
         rows.clear();
     }
 
-    for p in paras {
-        let Some(info) = p.row else {
+    for mut p in paras {
+        let Some(info) = p.row.take() else {
             if open {
                 flush_table(&mut out, &mut rows, &mut cells, &mut cell, &grid, &props, depth_seen > 1);
                 grid.clear();
@@ -384,14 +474,22 @@ pub(crate) fn assemble(paras: Vec<ParaOut>) -> Blocks {
                 // Word's default 108-twip gap, and every later table — including the
                 // change history with its own 40-twip gap — inherited 5.4 pt margins).
                 props = TableProps::default();
+                first_frame = None;
                 open = false;
                 depth_seen = 0;
             }
             out.push(para_block(p.para));
             continue;
         };
+        // In a table the frame sprms position the table, not each paragraph: the first row's
+        // say where the table floats, and no paragraph in it keeps a frame of its own.
+        let frame = p.para.props.frame.take();
         if !open {
             open = true;
+            first_frame = frame.clone();
+        }
+        if info.ttp && rows.is_empty() {
+            props.float = row_float(frame.or_else(|| first_frame.take()), &info);
         }
         depth_seen = depth_seen.max(info.depth);
         if grid.is_empty() {

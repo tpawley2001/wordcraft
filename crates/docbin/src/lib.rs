@@ -1081,6 +1081,10 @@ fn stream<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, name: &str) -> Option
 mod tests;
 
 #[cfg(test)]
+#[path = "tests/table_float_tap.rs"]
+mod table_float_tap;
+
+#[cfg(test)]
 mod character_style_tests {
     use super::*;
 

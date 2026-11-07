@@ -29,14 +29,14 @@ pub(crate) const C_ISTD: u16 = 0x4A30; // character style
 
 // Paragraph sprms ([MS-DOC] §2.6.2).
 // Frame (absolute position) sprms.
-const P_PC: u16 = 0x261B;
-const P_DXA_ABS: u16 = 0x8418;
-const P_DYA_ABS: u16 = 0x8419;
+pub(crate) const P_PC: u16 = 0x261B;
+pub(crate) const P_DXA_ABS: u16 = 0x8418;
+pub(crate) const P_DYA_ABS: u16 = 0x8419;
 const P_DXA_WIDTH: u16 = 0x841A;
 const P_WR: u16 = 0x2423;
 const P_WHEIGHT_ABS: u16 = 0x442B;
-const P_DYA_FROM_TEXT: u16 = 0x842E;
-const P_DXA_FROM_TEXT: u16 = 0x842F;
+pub(crate) const P_DYA_FROM_TEXT: u16 = 0x842E;
+pub(crate) const P_DXA_FROM_TEXT: u16 = 0x842F;
 const P_JC: u16 = 0x2461;
 const P_JC80: u16 = 0x2403;
 const P_DXA_LEFT: u16 = 0x845E;
@@ -351,7 +351,7 @@ fn default_frame() -> TextFrame {
 
 /// Apply a frame sprm to the paragraph's frame, creating it with the PAP defaults. Each sprm
 /// changes only its own fields, so a frame merges field by field along the style chain.
-fn apply_frame(p: &mut ParaProps, prl: &Prl) {
+pub(crate) fn apply_frame(p: &mut ParaProps, prl: &Prl) {
     let len = |v: i16| (f32::from(v) / 20.0).clamp(-1584.0, 1584.0);
     let byte = prl.operand.first().copied();
     let word = s16_of(prl);
