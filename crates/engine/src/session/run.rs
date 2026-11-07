@@ -161,9 +161,7 @@ impl Session {
             )
         });
         let typing = spec.id == "text.insert" || spec.id == "equation.type";
-        // A dead key inserts nothing, so it doesn't end the typing undo group the letter after it
-        // belongs to.
-        if spec.mutates && !typing && spec.id != "text.composeAccent" {
+        if spec.mutates && !typing {
             self.typing_open = false;
         }
         // Whether this command pushed an undo step (a no-op command's step is dropped below,

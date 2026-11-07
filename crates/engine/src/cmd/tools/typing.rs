@@ -10,11 +10,8 @@ pub fn autocorrect(s: &mut Session) -> Result<(), CmdError> {
 /// AutoCorrect the word ending at the caret; `on_enter` means Enter finished it (no trigger
 /// character was typed).
 pub fn autocorrect_word(s: &mut Session, on_enter: bool) -> Result<(), CmdError> {
-    // A word typed with a dead-key accent (`text.composeAccent`) is left as typed: the composed
-    // letter is the user's own choice, so AutoCorrect doesn't capitalise the word. The flag lasts
-    // for the word being typed, so it is read and cleared here, where a word is finished.
+    // A word containing a dead-key composition keeps its first letter as typed.
     let composed = std::mem::take(&mut s.composed_word);
-    eprintln!("DBG autocorrect composed={composed}");
     if !s.prefs.autocorrect.enabled {
         return Ok(());
     }

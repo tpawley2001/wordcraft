@@ -65,7 +65,8 @@ pub fn specs() -> Vec<CommandSpec> {
         // out composed. On macOS Option+key types the accent itself, so Word for Mac has no key.
         CommandSpec::new("text.composeAccent", "Compose Accent", "Editing › Keyboard", accent::compose_accent)
             .params(r#"{"accent": "acute|grave|circumflex|tilde|diaeresis|ring|ligature|cedilla|stroke"}"#)
-            .key(non_mac("Mod+' / Mod+` / Mod+Shift+6 / Mod+Shift+` / Mod+Shift+; / Mod+Shift+2 / Mod+Shift+7 / Mod+, / Mod+/")),
+            .key(non_mac("Mod+' / Mod+` / Mod+Shift+6 / Mod+Shift+` / Mod+Shift+; / Mod+Shift+2 / Mod+Shift+7 / Mod+, / Mod+/"))
+            .pure(),
         CommandSpec::new("text.invertedQuestion", "Inverted Question Mark", "Insert › Symbols", |s, _| ins_char(s, '¿'))
             .key(non_mac("Mod+Alt+Shift+/")),
         CommandSpec::new("text.invertedExclamation", "Inverted Exclamation Mark", "Insert › Symbols", |s, _| ins_char(s, '¡'))

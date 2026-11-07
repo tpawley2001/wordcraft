@@ -54,9 +54,7 @@ pub struct Session {
     /// The accent a dead-key shortcut (`text.composeAccent`) waits to compose with the next typed
     /// character. Session state: not part of the document, its undo history or its snapshots.
     pub(crate) pending_accent: Option<crate::cmd::text::Accent>,
-    /// The word being typed holds a character a dead-key accent composed. AutoCorrect leaves that
-    /// word's first letter as typed: the composed letter is the user's own choice, not a keystroke
-    /// AutoCorrect capitalises. Session state, like [`Self::pending_accent`].
+    /// The word being typed contains a dead-key composition, whose first letter stays as typed.
     pub(crate) composed_word: bool,
     /// Last highlighter choice for the shortcut; palette state, outside document undo.
     pub(crate) last_highlight: wordcraft_doc::props::Highlight,

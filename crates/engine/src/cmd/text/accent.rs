@@ -60,30 +60,10 @@ impl Accent {
                 ('d', 'ð'),
                 ('D', 'Ð'),
             ],
-            Self::Grave => &[
-                ('a', 'à'),
-                ('e', 'è'),
-                ('i', 'ì'),
-                ('o', 'ò'),
-                ('u', 'ù'),
-                ('A', 'À'),
-                ('E', 'È'),
-                ('I', 'Ì'),
-                ('O', 'Ò'),
-                ('U', 'Ù'),
-            ],
-            Self::Circumflex => &[
-                ('a', 'â'),
-                ('e', 'ê'),
-                ('i', 'î'),
-                ('o', 'ô'),
-                ('u', 'û'),
-                ('A', 'Â'),
-                ('E', 'Ê'),
-                ('I', 'Î'),
-                ('O', 'Ô'),
-                ('U', 'Û'),
-            ],
+            Self::Grave => &[('a', 'à'), ('e', 'è'), ('i', 'ì'), ('o', 'ò'), ('u', 'ù'), ('A', 'À'), ('E', 'È'), ('I', 'Ì'), ('O', 'Ò'), ('U', 'Ù')],
+            Self::Circumflex => {
+                &[('a', 'â'), ('e', 'ê'), ('i', 'î'), ('o', 'ô'), ('u', 'û'), ('A', 'Â'), ('E', 'Ê'), ('I', 'Î'), ('O', 'Ô'), ('U', 'Û')]
+            }
             Self::Tilde => &[('a', 'ã'), ('n', 'ñ'), ('o', 'õ'), ('A', 'Ã'), ('N', 'Ñ'), ('O', 'Õ')],
             Self::Diaeresis => &[
                 ('a', 'ä'),
@@ -135,6 +115,8 @@ pub(super) fn compose_accent(s: &mut Session, v: &Value) -> CmdResult {
     let name = p::req_str(v, "accent")?;
     let accent = Accent::parse(name).ok_or_else(|| CmdError::Params(format!("`accent` must be one of {}", NAMES.join(", "))))?;
     s.pending_accent = Some(accent);
+    // The dead key separates the typing before and after it without adding an undo step.
+    s.close_typing();
     Ok(json!({"accent": name}))
 }
 
@@ -179,9 +161,11 @@ mod tests {
         s.run("text.insert", &json!({"text": "a"})).unwrap();
         let steps = s.undo_steps_so_far();
         s.dirty = false;
+        let rev = s.rev();
         s.run("text.composeAccent", &json!({"accent": "acute"})).unwrap();
         assert_eq!(s.undo_steps_so_far(), steps, "no undo step");
         assert!(!s.dirty, "not an unsaved change");
+        assert_eq!(s.rev(), rev, "no relayout");
         assert_eq!(body(&s), "a");
         // The composed letter is ordinary typing: one more step, and it is undoable.
         s.run("text.insert", &json!({"text": "e"})).unwrap();
@@ -203,16 +187,14 @@ mod tests {
         assert_eq!(bold, Some(true));
     }
 
-    /// A word typed with a dead key keeps its first letter as typed: AutoCorrect doesn't
-    /// capitalise it, and the next word is capitalised as usual.
+    /// A word containing a dead-key composition keeps its first letter as typed.
     #[test]
     fn a_composed_word_is_not_capitalised() {
         let mut s = s();
         s.run("text.composeAccent", &json!({"accent": "acute"})).unwrap();
-        for c in ["e", "l", ".", " ", "p", "a", "s", "o", " "] {
+        for c in ["e", "l", ".", "p", "a", "s", "o", " "] {
             s.run("text.insert", &json!({"text": c})).unwrap();
         }
-        eprintln!("DBG composed={} body={:?}", s.composed_word, body(&s));
         assert_eq!(body(&s), "él. Paso");
     }
 
@@ -224,5 +206,16 @@ mod tests {
         s.run("text.insert", &json!({"text": "ab"})).unwrap();
         s.run("text.insert", &json!({"text": "e"})).unwrap();
         assert_eq!(body(&s), "abe");
+    }
+
+    #[test]
+    fn a_pending_accent_is_not_saved_in_an_edit_snapshot() {
+        let mut s = s();
+        s.run("text.composeAccent", &json!({"accent": "acute"})).unwrap();
+        let snapshot = s.edit_snapshot();
+        s.run("caret.right", &json!({})).unwrap();
+        s.restore(snapshot);
+        s.run("text.insert", &json!({"text": "e"})).unwrap();
+        assert_eq!(body(&s), "e");
     }
 }
