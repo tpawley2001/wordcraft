@@ -177,7 +177,6 @@ Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text wi
 
 ## Revision history
 
-> 2026-11-07 · P0112: #15 References depth: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 > 2026-11-07 · P0111: #13 narrowed: 3-D column, bar, line, area and pie charts are drawn from their cached data with depth (oblique projection from `c:view3D` rotX/rotY/depthPercent; shaded tops and sides, walls and floor when styled), and pie-of-pie / bar-of-pie charts draw both plots, the Other slice and series lines, instead of a placeholder. Readiness estimates unchanged.
 > 2026-11-07 · P0110: #15 References depth: TOC entries, index pages, tables of figures and authorities and Insert › Cross-reference › Page number write the page in its section's number format (`ii`, not `2`), as F9 on `PAGEREF` already did (#3856). Readiness estimates unchanged.
 > 2026-11-07 · P0109: #13 narrowed: combo charts (bar + line…) draw every chart type of the plot area on one frame (areas, bars, lines, scatters, back to front), with a secondary value axis on the right (#5090); stock charts draw hi-low lines and up/down bars instead of a placeholder. Readiness estimates unchanged.
@@ -227,6 +226,7 @@ Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text wi
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-07 | trivial | #15 References depth: P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged. |
 | 2026-11-06 | trivial | P0080: Select Browse Object (Alt+Ctrl+Home) with Ctrl+PageDown / Ctrl+PageUp browsing by heading, table, field, graphic, comment, note, edit, section or page; Find stays the default (Linux/Windows). Readiness unchanged |
 | 2026-11-06 | trivial | P0079: F2 / Shift+F2 relocate or copy selected rich text on Enter; Esc and edits cancel. |
 | 2026-11-06 | trivial | P0083: GOTOBUTTON and MACROBUTTON fields show their display text, F9 stores it, a click in a MACROBUTTON selects it and Alt+Shift+F9 follows a GOTOBUTTON; readiness unchanged |

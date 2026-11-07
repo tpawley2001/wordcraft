@@ -268,15 +268,16 @@ fn table_of_figures_for_each_caption_label() {
         s.run("select.text", &json!({"text": text})).unwrap();
         s.run("references.caption", &json!({"label": label, "text": text})).unwrap();
     }
+    // Keep this label/leader regression in plain-text mode; hyperlink defaults have separate coverage.
     s.run("caret.docEnd", &json!({})).unwrap();
-    s.run("references.tableOfFigures", &json!({"label": "Table", "tabLeader": "hyphen"})).unwrap();
+    s.run("references.tableOfFigures", &json!({"label": "Table", "tabLeader": "hyphen", "hyperlinks": false})).unwrap();
     assert_eq!(list_entries(&s), [("Table 1: Press\t1".to_string(), Some(TabLeader::Hyphen))]);
     s.run("caret.docEnd", &json!({})).unwrap();
     s.run("text.newParagraph", &json!({})).unwrap();
-    s.run("references.tableOfFigures", &json!({"label": "Photo Plate"})).unwrap();
+    s.run("references.tableOfFigures", &json!({"label": "Photo Plate", "hyperlinks": false})).unwrap();
     s.run("caret.docEnd", &json!({})).unwrap();
     s.run("text.newParagraph", &json!({})).unwrap();
-    s.run("references.tableOfFigures", &json!({})).unwrap();
+    s.run("references.tableOfFigures", &json!({"hyperlinks": false})).unwrap();
     let instrs: Vec<String> = fields(&s).into_iter().map(|(i, _)| i).filter(|i| i.starts_with("TOC")).collect();
     assert_eq!(instrs, [r#"TOC \c "Table""#, r#"TOC \c "Photo_Plate""#, r#"TOC \c "Figure""#]);
     let want = [
