@@ -24,7 +24,7 @@ use crate::fkp::Bins;
 use crate::sections::{self, Section};
 use crate::sprm::Prl;
 use crate::table::{self, ParaOut};
-use crate::{DocbinError, FieldBuild, MAX_TOTAL_CHARS, MAX_WORK, ParaBuild, Work, finish_field, fmt, metadata};
+use crate::{DocbinError, FieldBuild, FieldResult, MAX_TOTAL_CHARS, MAX_WORK, ParaBuild, Work, finish_field, fmt, metadata};
 
 /// Most pieces any real file has; more means a corrupt `PlcPcd`.
 const MAX_PIECES: usize = 1_000_000;
@@ -120,7 +120,7 @@ pub(crate) fn read<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, word: &[u8],
                         && f.depth == 1
                         && f.sep.is_none()
                     {
-                        f.sep = Some(Vec::new());
+                        f.sep = Some(FieldResult::default());
                     }
                 }
                 0x15 => {
@@ -178,7 +178,7 @@ fn para_out(done: ParaBuild, end_cp: u32) -> ParaOut {
     ParaOut {
         para: Paragraph { text: done.text, runs: done.runs, props: done.props, mark: done.mark, objects: done.objects, ..Default::default() },
         end_cp,
-        row: table::RowInfo::default(),
+        row: None,
     }
 }
 
@@ -186,7 +186,7 @@ fn para_out(done: ParaBuild, end_cp: u32) -> ParaOut {
 fn push(pb: &mut ParaBuild, field: Option<&mut FieldBuild>, c: char, props: CharProps) {
     match field {
         Some(f) => match f.sep.as_mut() {
-            Some(result) => result.push((c, props)),
+            Some(result) => result.push(c, props),
             None => f.instr.push(c),
         },
         None => pb.push(c, props),
