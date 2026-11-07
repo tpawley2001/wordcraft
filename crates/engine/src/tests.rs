@@ -11,6 +11,7 @@ use wordcraft_doc::{Pos, StoryRef};
 use crate::{Session, cmd};
 
 mod autonum_fields;
+mod auto_caption;
 mod bidi;
 mod browse_object;
 mod custom_prop_types;
