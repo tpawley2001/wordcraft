@@ -284,7 +284,13 @@ fn word_default_shortcuts_resolve_per_platform() {
 
 #[test]
 fn word_default_shortcuts_resolve_function_keys() {
-    assert_eq!(id("Mod+PageUp"), Some("edit.findPrevious"));
+    // Ctrl+PageUp browses back by the browse object (Find by default); Word for Mac keeps
+    // ⌘PageUp on Find Previous.
+    if cfg!(target_os = "macos") {
+        assert_eq!(id("Mod+PageUp"), Some("edit.findPrevious"));
+    } else {
+        assert_eq!(id("Mod+PageUp"), Some("nav.browsePrevious"));
+    }
     // The Spike: Word's Ctrl+F3 and Ctrl+Shift+F3 (⌘F3 and ⌘⇧F3 in Word for Mac).
     assert_eq!(id("Mod+F3"), Some("edit.spike"));
     assert_eq!(id("Mod+Shift+F3"), Some("edit.insertSpike"));
