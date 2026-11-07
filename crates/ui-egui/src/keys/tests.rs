@@ -1335,3 +1335,43 @@ fn typing_with_smart_art_selected_types_into_an_item() {
     let g = wordcraft_engine::cmd::smart_art::selected_smart_art(&a.session).expect("still there");
     assert_eq!(g.items[0].text, "Ada", "one undo step for the typing");
 }
+
+/// Ctrl+Alt+PageUp / Ctrl+Alt+PageDown (Word for Windows' StartOfWindow / EndOfWindow) take the
+/// window's edges from the canvas and leave the view where it is.
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn window_edge_keys_use_the_visible_canvas() {
+    let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
+    for i in 0..40 {
+        if i > 0 {
+            a.run("text.newParagraph", json!({})).unwrap();
+        }
+        a.run("text.insert", json!({"text": format!("Line {i:02}")})).unwrap();
+    }
+    a.run("caret.docStart", json!({})).unwrap();
+    let (w, h) = {
+        let l = a.session.layout();
+        let p = l.pages.first().unwrap();
+        (p.w, p.h)
+    };
+    // Page 0 at scale 1, scrolled 100 pt down; the window shows 300 pt of it.
+    a.canvas.scale = 1.0;
+    a.canvas.page_rects = vec![egui::Rect::from_min_size(egui::pos2(0.0, -100.0), egui::vec2(w, h))];
+    a.canvas.viewport = Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(w, 300.0)));
+    let expect = |a: &mut WordApp, id: &str, y: f32| {
+        let mut s = wordcraft_engine::Session::new(a.session.doc.clone());
+        s.run(id, &json!({"page": 0, "y": y})).unwrap();
+        s.sel.focus
+    };
+    let m = Modifiers::COMMAND | Modifiers::ALT;
+    a.canvas.scroll_to_caret = false;
+    assert!(shortcuts::dispatch(&mut a, Key::PageUp, m));
+    let want = expect(&mut a, "caret.windowTop", 100.0);
+    assert_eq!(a.session.sel.focus, want);
+    assert!(!a.canvas.scroll_to_caret, "Top of Window scrolled");
+    assert!(shortcuts::dispatch(&mut a, Key::PageDown, m | Modifiers::SHIFT));
+    let want = expect(&mut a, "caret.windowBottom", 400.0);
+    assert_eq!(a.session.sel.focus, want);
+    assert!(!a.session.sel.is_collapsed(), "Shift extends");
+    assert!(!a.canvas.scroll_to_caret, "Bottom of Window scrolled");
+}

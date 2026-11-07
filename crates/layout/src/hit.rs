@@ -729,6 +729,45 @@ impl DocLayout {
         None
     }
 
+    /// Word's StartOfWindow (`bottom` false) / EndOfWindow: a position on the first line of
+    /// `story` shown whole below `y` on page `page`, or the last one shown whole above it. A line
+    /// counts as shown when its text (the caret's extent) is, with half a point of slack. With no
+    /// such line on `page`, the first line of the next page that has one (the last line of the
+    /// previous one for `bottom`).
+    pub fn window_edge_line(&self, page: usize, y: f32, story: StoryRef, bottom: bool) -> Option<Pos> {
+        let pages = &self.pages;
+        if page >= pages.len() {
+            return None;
+        }
+        // (text top, text bottom) of a line, as `caret_on` measures it.
+        let band = |l: &LineHit| {
+            let line = l.para.lines.get(l.li);
+            let (asc, desc) = l.para.caret_metrics(l.li);
+            let base = l.top + line.map_or(0.0, |x| x.baseline - x.top);
+            let top = (base - asc).max(l.top);
+            (top, top + (base + desc - top).max(4.0))
+        };
+        let at = |l: &LineHit| Pos { story: l.story, path: l.path.clone(), off: l.para.lines.get(l.li).map_or(0, |x| x.start) };
+        if bottom {
+            for pi in (0..=page).rev() {
+                let lines = page_lines(pages.get(pi)?, story);
+                let best = lines.iter().filter(|l| pi < page || band(l).1 <= y + 0.5).max_by(|a, b| band(a).1.total_cmp(&band(b).1));
+                if let Some(l) = best {
+                    return Some(at(l));
+                }
+            }
+        } else {
+            for (pi, p) in pages.iter().enumerate().skip(page) {
+                let lines = page_lines(p, story);
+                let best = lines.iter().filter(|l| pi > page || band(l).0 >= y - 0.5).min_by(|a, b| band(a).0.total_cmp(&band(b).0));
+                if let Some(l) = best {
+                    return Some(at(l));
+                }
+            }
+        }
+        None
+    }
+
     /// Word's selection bar (#856): when (x, y) is in the page margin beside the text column,
     /// the start of the body line at that height. The bar is the left margin for a left-to-right
     /// paragraph and the right margin for a right-to-left one. Not in the header/footer area,

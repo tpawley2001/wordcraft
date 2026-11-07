@@ -8,6 +8,7 @@ use super::{parse_pos, sel_result};
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
 const EXTEND: &str = r#"{"extend"?: bool}"#;
+const WINDOW_EDGE: &str = r#"{"page": n, "y": pt, "extend"?: bool}"#;
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
@@ -48,6 +49,16 @@ pub fn specs() -> Vec<CommandSpec> {
             .pure(),
         CommandSpec::new("caret.pageUp", "Page Up", "Navigation", |s, v| page(s, v, -1)).key("PageUp").params(EXTEND).pure(),
         CommandSpec::new("caret.pageDown", "Page Down", "Navigation", |s, v| page(s, v, 1)).key("PageDown").params(EXTEND).pure(),
+        // Word for Windows' StartOfWindow / EndOfWindow; Word for Mac has no keys for them. The
+        // shell passes the window's top (bottom) edge in page coordinates.
+        CommandSpec::new("caret.windowTop", "Top of Window", "Navigation", |s, v| window_edge(s, v, false))
+            .key(super::non_mac("Mod+Alt+PageUp"))
+            .params(WINDOW_EDGE)
+            .pure(),
+        CommandSpec::new("caret.windowBottom", "Bottom of Window", "Navigation", |s, v| window_edge(s, v, true))
+            .key(super::non_mac("Mod+Alt+PageDown"))
+            .params(WINDOW_EDGE)
+            .pure(),
         CommandSpec::new("caret.set", "Set Caret", "Navigation", set)
             .params(r#"{"pos": Pos, "extend"?: bool} | {"page": n, "x": pt, "y": pt}"#)
             .pure(),
@@ -278,6 +289,29 @@ fn page(s: &mut Session, v: &Value, dir: i32) -> CmdResult {
     let to = l.hit(np, c.x, c.top + 1.0, from.story).unwrap_or(from);
     s.page_hint = np;
     apply(s, to, ext);
+    sel_result(s)
+}
+
+/// Top of Window (`bottom` false) / Bottom of Window: the start of the first line shown whole
+/// below the window's top edge, or the end of the last one shown whole above its bottom edge. The
+/// edge is `page` and `y` (points from that page's top); the document doesn't scroll.
+fn window_edge(s: &mut Session, v: &Value, bottom: bool) -> CmdResult {
+    let (Some(pg), Some(y)) = (p::u64(v, "page"), p::f32(v, "y")) else {
+        return Err(CmdError::Params("`page` and `y` required".into()));
+    };
+    if !y.is_finite() {
+        return Err(CmdError::Params("bad `y`".into()));
+    }
+    let ext = extend(v);
+    let page = usize::try_from(pg).unwrap_or(usize::MAX);
+    let story = s.sel.focus.story;
+    let l = s.layout();
+    let at = l.window_edge_line(page, y, story, bottom).ok_or_else(|| CmdError::Params("no text shown in the window".into()))?;
+    let hint = l.caret_on(&at, page).map_or(page, |c| c.page);
+    let (start, end) = l.line_bounds(&at, hint).unwrap_or_else(|| (at.clone(), at.clone()));
+    s.page_hint = hint;
+    s.goal_x = None;
+    apply(s, if bottom { end } else { start }, ext);
     sel_result(s)
 }
 

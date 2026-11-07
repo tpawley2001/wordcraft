@@ -78,3 +78,24 @@ pub fn page_to_screen(app: &mut WordApp, page: usize, x: f32, y: f32) -> Option<
     let scale = layout.pages.get(page).map_or(app.canvas.scale, |page_data| page_screen_scale(*r, page_data, app.canvas.scale));
     Some(to_screen(pos2(0.0, 0.0), *r, scale, x, y))
 }
+
+/// The window's top edge (`bottom` false) or bottom edge as a page and a height on it (points),
+/// for Top of Window / Bottom of Window. An edge in the gap between pages is the top of the next
+/// page (the bottom of the previous one for `bottom`).
+pub fn window_edge(app: &mut WordApp, bottom: bool) -> Option<(usize, f32)> {
+    let view = app.canvas.viewport?;
+    let edge = if bottom { view.max.y } else { view.min.y };
+    let layout = app.session.layout();
+    let rects = &app.canvas.page_rects;
+    let scale = app.canvas.scale;
+    let on = |i: usize, r: &Rect| {
+        let page = layout.pages.get(i)?;
+        let s = page_screen_scale(*r, page, scale);
+        (s > 0.0).then(|| ((edge - r.min.y) / s).clamp(0.0, page.h))
+    };
+    if bottom {
+        rects.iter().enumerate().rev().find(|(_, r)| r.min.y < edge).and_then(|(i, r)| Some((i, on(i, r)?)))
+    } else {
+        rects.iter().enumerate().find(|(_, r)| r.max.y > edge).and_then(|(i, r)| Some((i, on(i, r)?)))
+    }
+}
