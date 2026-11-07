@@ -215,6 +215,24 @@ pub struct LayoutOptions {
     pub filename: Option<Arc<str>>,
     /// Document full path for FILENAME \p fields ([`FieldCtx::filepath`]).
     pub filepath: Option<Arc<str>>,
+    /// File › Options › Advanced › Use draft font in Draft and Outline views: every run is shown
+    /// in this one font and size there (bold, italic, underline and colour kept). Ignored in the
+    /// other views; see [`LayoutOptions::draft_font`].
+    pub draft_font: Option<DraftFont>,
+}
+
+/// The draft font ([`LayoutOptions::draft_font`]): a family name and a size in points.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DraftFont {
+    pub name: Arc<str>,
+    pub size: f32,
+}
+
+impl std::hash::Hash for DraftFont {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.name.hash(h);
+        self.size.to_bits().hash(h);
+    }
 }
 
 /// The word being typed ([`LayoutOptions::typing_word`]): the paragraph by its revision
@@ -241,6 +259,14 @@ impl Default for ProofOptions {
 }
 
 impl LayoutOptions {
+    /// The draft font, in the views that show it (Draft and Outline), with its size kept to the
+    /// sizes a run can have.
+    pub fn draft_font(&self) -> Option<(&str, f32)> {
+        let d = self.draft_font.as_ref().filter(|_| matches!(self.view, ViewMode::Draft | ViewMode::Outline))?;
+        let size = if d.size.is_finite() { d.size.clamp(1.0, 1638.0) } else { wordcraft_doc::props::DEFAULT_FONT_SIZE };
+        (!d.name.trim().is_empty()).then_some((&*d.name, size))
+    }
+
     /// Which tracked deletions in `story` take no space and draw nothing.
     pub fn hides_deleted(&self, story: StoryRef) -> HideDeleted {
         if self.hide_deleted || (self.deletions_in_balloons && story == StoryRef::Body) { HideDeleted::ALL } else { self.hide_marked }

@@ -571,6 +571,44 @@ fn accessibility(app: &mut WordApp, ui: &mut Ui) {
     }
 }
 
+/// Advanced › Show document content, in Word's order: picture placeholders, text boundaries, crop
+/// marks, and the draft font with its name and size. Screen settings, kept between runs.
+fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
+    section(ui, "Show document content");
+    for (label, id, mut on) in [
+        (tl!("Show picture placeholders"), "ui.picturePlaceholders", app.ui.picture_placeholders),
+        (tl!("Show text boundaries"), "ui.textBoundaries", app.ui.text_boundaries),
+        (tl!("Show crop marks"), "ui.cropMarks", app.ui.crop_marks),
+    ] {
+        if ui.checkbox(&mut on, label).changed() {
+            let _ = app.run(id, json!({"value": on}));
+        }
+    }
+    let mut draft = app.ui.draft_font;
+    if ui.checkbox(&mut draft, tl!("Use draft font in Draft and Outline views")).changed() {
+        let _ = app.run("ui.draftFont", json!({"value": draft}));
+    }
+    ui.add_enabled_ui(app.ui.draft_font, |ui| {
+        ui.horizontal(|ui| {
+            ui.add_space(24.0);
+            ui.label(tl!("Name:"));
+            let fams = app.previews.families();
+            let name = app.ui.draft_font_name.clone();
+            if let Some(f) = crate::widgets::font_combo(ui, "options_draft_font", 170.0, &name, &fams, None)
+                && f != crate::widgets::ADD_FONT
+                && f != crate::widgets::LOAD_SYSTEM_FONTS
+            {
+                let _ = app.run("ui.draftFont", json!({"name": f}));
+            }
+            let size_label = ui.label(tl!("Size:"));
+            let mut size = app.ui.draft_font_size;
+            if ui.add(egui::DragValue::new(&mut size).range(1.0..=1638.0).speed(0.5)).labelled_by(size_label.id).changed() {
+                let _ = app.run("ui.draftFont", json!({"size": size}));
+            }
+        });
+    });
+}
+
 /// Draws Advanced options: typing and overtype behavior, alignment guides, recent-document count,
 /// measurement units, region, keytips, caret animation, file locations and customization.
 fn advanced(app: &mut WordApp, ui: &mut Ui) {
@@ -587,6 +625,8 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     {
         let _ = app.run("ui.alignmentGuides", json!({"value": guides}));
     }
+    ui.add_space(8.0);
+    show_document_content(app, ui);
     ui.add_space(8.0);
     section(ui, "Print");
     flag(app, ui, "Print pages in reverse order", "printReverse", pr.print_reverse);

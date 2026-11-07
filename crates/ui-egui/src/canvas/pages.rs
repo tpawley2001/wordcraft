@@ -9,6 +9,7 @@ pub(super) fn view_key(app: &WordApp, dim_body: bool, hidden: Option<&Pos>) -> u
     let v = &app.session.view;
     (v.marks, app.session.prefs.marks, v.show_markup, v.dark_mode, wordcraft_render::DARK_PAPER, v.hide_ink, v.draw.replay).hash(&mut h);
     (v.read_mode, v.read_page_color).hash(&mut h);
+    app.ui.picture_placeholders.hash(&mut h);
     app.session.prefs.markup.hash(&mut h);
     dim_body.hash(&mut h);
     format!("{:?}{:?}{:?}", app.session.doc.settings.page_color, app.session.doc.settings.page_picture, app.session.doc.settings.watermark)
@@ -136,12 +137,43 @@ pub(super) const DRAWING_GRID_MIN_PX: f32 = 4.0;
 /// Most grid lines drawn each way on one page (page sizes come from files).
 pub(super) const DRAWING_GRID_MAX_LINES: usize = 2000;
 
+/// How far each crop mark runs into the margin, in points (WordCraft's choice), unless the page
+/// edge is nearer.
+pub(super) const CROP_MARK_LEN: f32 = 18.0;
+
 /// File › Options › Advanced › Show crop marks: the eight short lines at the corners of the
 /// page's text area, in document points, each from a corner out into the margins. Screen only.
-// Acceptance-test stub (P05-052): replace with the real geometry.
-#[allow(dead_code)]
-pub(super) fn crop_marks(_body: wordcraft_geom::Rect, _page_w: f32, _page_h: f32) -> Vec<[(f32, f32); 2]> {
-    Vec::new()
+/// A mark with no margin to run into is left out.
+pub(super) fn crop_marks(body: wordcraft_geom::Rect, page_w: f32, page_h: f32) -> Vec<[(f32, f32); 2]> {
+    let (l, t, r, b) = (body.x, body.y, body.right(), body.bottom());
+    if ![l, t, r, b, page_w, page_h].iter().all(|v| v.is_finite()) {
+        return Vec::new();
+    }
+    // Room from the body's edges to the page's: left, up, right, down.
+    let room = |d: f32| d.clamp(0.0, CROP_MARK_LEN);
+    let (left, up, right, down) = (room(l), room(t), room(page_w - r), room(page_h - b));
+    let mut out = Vec::with_capacity(8);
+    for (x, y, across, down_by) in [(l, t, -left, -up), (r, t, right, -up), (l, b, -left, down), (r, b, right, down)] {
+        if across != 0.0 {
+            out.push([(x, y), (x + across, y)]);
+        }
+        if down_by != 0.0 {
+            out.push([(x, y), (x, y + down_by)]);
+        }
+    }
+    out
+}
+
+/// File › Options › Advanced › Show text boundaries: the page's text area, or one rectangle per
+/// column when its section has several. `columns` are the section's
+/// ([`wordcraft_doc::SectionProps::column_boxes`]): x from the text area's left edge and width, as
+/// layout places the columns. Screen only.
+pub(super) fn text_boundaries(page: &Page, columns: &[(f32, f32)]) -> Vec<wordcraft_geom::Rect> {
+    let body = page.body;
+    if columns.len() <= 1 {
+        return vec![body];
+    }
+    columns.iter().map(|&(x, w)| wordcraft_geom::Rect::new(body.x + x, body.y, w, body.h)).collect()
 }
 
 /// The View › Gridlines drawing grid over a page's text area, in document points: the x of each
@@ -277,6 +309,7 @@ pub(super) fn page_render_options(app: &WordApp, dim_body: bool) -> wordcraft_re
     }
     opts.display.dim_header = !dim_body;
     opts.display.dim_body = dim_body;
+    opts.display.picture_placeholders = app.ui.picture_placeholders;
     opts
 }
 

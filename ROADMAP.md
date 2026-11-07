@@ -884,6 +884,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-07 | trivial | P0100: File › Options › Advanced › Show document content: crop marks (on, as in Word), text boundaries, picture placeholders and the draft font in Draft and Outline views; screen only, kept per user. Readiness unchanged |
 | 2026-11-06 | trivial | P0079: F2 / Shift+F2 relocate or copy selected rich text on Enter; Esc and edits cancel. |
 | 2026-11-06 | trivial | P0076: Ctrl+F6 / Alt+F6 and Ctrl+Shift+F6 / Alt+Shift+F6 cycle document windows in opening order; Ctrl+Shift+Q applies Symbol in one undo step (Linux/Windows; no default keys on macOS). Readiness unchanged |
 | 2026-11-06 | trivial | P0071: missing Aptos and Aptos Display retain Word's single-line height (ascent 0.939 em, descent 0.282 em); substitute widths and readiness estimates unchanged |

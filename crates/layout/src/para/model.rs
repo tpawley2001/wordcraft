@@ -398,4 +398,6 @@ pub struct ParaEnv<'a> {
     /// Heights of the paragraph's inline text boxes that resize to fit their text, by object
     /// index: they take these instead of their saved heights.
     pub fitted: &'a [(usize, f32)],
+    /// The draft font's name and size, which every run takes ([`crate::LayoutOptions::draft_font`]).
+    pub draft_font: Option<(&'a str, f32)>,
 }

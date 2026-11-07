@@ -36,6 +36,50 @@ pub fn page_display(doc: &Document, page: &Page, opts: &DisplayOptions) -> Vec<D
     stories_display(doc, &[&page.header[..], &page.footer[..]], None, opts, &authors, ha, &mut out);
     stories_display(doc, &[&page.items[..]], None, opts, &authors, ba, &mut out);
     body_change_bars(doc, page, &page.items, opts, ba, &mut out);
+    if opts.picture_placeholders {
+        out = picture_placeholders(out, 0);
+    }
+    out
+}
+
+/// Colour of a picture placeholder's outline (Show picture placeholders).
+const PICTURE_PLACEHOLDER_COLOR: Rgb = Rgb(0x80, 0x80, 0x80);
+
+/// Deepest nesting of turned, rotated and clipped groups searched for pictures.
+const MAX_PLACEHOLDER_DEPTH: usize = 32;
+
+/// `draws` with every picture swapped for a thin outline of its rectangle, inside rotated,
+/// clipped and turned groups too (Show picture placeholders).
+fn picture_placeholders(draws: Vec<Draw>, depth: usize) -> Vec<Draw> {
+    if depth > MAX_PLACEHOLDER_DEPTH {
+        return draws;
+    }
+    let mut out = Vec::with_capacity(draws.len());
+    for d in draws {
+        match d {
+            Draw::Image { rect, .. } => {
+                let (x0, y0, x1, y1) = (rect.x, rect.y, rect.right(), rect.bottom());
+                for (a, b) in [((x0, y0), (x1, y0)), ((x1, y0), (x1, y1)), ((x1, y1), (x0, y1)), ((x0, y1), (x0, y0))] {
+                    out.push(Draw::Line {
+                        x0: a.0,
+                        y0: a.1,
+                        x1: b.0,
+                        y1: b.1,
+                        width: 0.75,
+                        color: PICTURE_PLACEHOLDER_COLOR,
+                        stroke: Stroke::Solid,
+                        alpha: 1.0,
+                        text_bg: None,
+                    });
+                }
+            }
+            Draw::Turned { x, y, turn, items } => out.push(Draw::Turned { x, y, turn, items: picture_placeholders(items, depth + 1) }),
+            Draw::Rotated { cx, cy, spin, items } => out.push(Draw::Rotated { cx, cy, spin, items: picture_placeholders(items, depth + 1) }),
+            Draw::Clip { rect, items } => out.push(Draw::Clip { rect, items: picture_placeholders(items, depth + 1) }),
+            Draw::Figure { alt, kind, draws } => out.push(Draw::Figure { alt, kind, draws: picture_placeholders(draws, depth + 1) }),
+            other => out.push(other),
+        }
+    }
     out
 }
 
@@ -130,6 +174,10 @@ pub fn page_layers(doc: &Document, page: &Page, opts: &DisplayOptions) -> [(f32,
     stories_display(doc, &[&page.header[..], &page.footer[..]], None, opts, &authors, 1.0, &mut hf);
     stories_display(doc, &[&page.items[..]], None, opts, &authors, 1.0, &mut body);
     body_change_bars(doc, page, &page.items, opts, 1.0, &mut body);
+    if opts.picture_placeholders {
+        hf = picture_placeholders(hf, 0);
+        body = picture_placeholders(body, 0);
+    }
     [(ha, hf), (ba, body)]
 }
 

@@ -360,6 +360,7 @@ mod label_spacing_tests {
             read_line_spacing: None,
             fit_objects: false,
             fitted: &[],
+            draft_font: None,
         };
         let mut p = Paragraph::with_text(if wrap { "Alpha probe synthetic business text repeated" } else { "Alpha probe" }, Default::default());
         p.props.line_spacing = Some(spacing);
