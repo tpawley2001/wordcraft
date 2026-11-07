@@ -147,7 +147,9 @@ pub fn autocorrect_word(s: &mut Session, on_enter: bool) -> Result<(), CmdError>
     } else {
         last
     };
-    let mut sentence = sentence_on && starts_sentence(before_word, &exceptions) && should_capitalize(first, next);
+    // A word containing a dead-key composition keeps its first letter as typed.
+    let composed = s.composed_at.as_ref().is_some_and(|c| c.story == f.story && c.path == f.path && (start..end).contains(&c.off));
+    let mut sentence = !composed && sentence_on && starts_sentence(before_word, &exceptions) && should_capitalize(first, next);
     let prev = if sentence { prev_token(before_word) } else { String::new() };
     // Typing the word again after backspacing an automatic capital: the user doesn't want it
     // (Word's "Automatically add words to list"); an exception, so no capital this time either.

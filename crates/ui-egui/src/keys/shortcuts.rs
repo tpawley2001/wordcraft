@@ -25,6 +25,10 @@ pub fn key_name(k: Key) -> Option<&'static str> {
         Key::Comma => ",",
         Key::OpenBracket => "[",
         Key::CloseBracket => "]",
+        Key::Quote => "'",
+        Key::Backtick => "`",
+        Key::Semicolon => ";",
+        Key::Slash => "/",
         Key::Num0 => "0",
         Key::Num1 => "1",
         Key::Num2 => "2",
@@ -132,7 +136,16 @@ pub(super) fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
         if m.alt && !crate::widgets::enabled(app, spec.id) {
             return false;
         }
-        let _ = app.run(spec.id, json!({}));
+        // The dead-key accents share one command; the key pressed says which accent it waits for.
+        let params = if spec.id == "text.composeAccent" {
+            match name.and_then(|n| wordcraft_engine::cmd::text::accent_for_shortcut(&combo(m, n, true))) {
+                Some(accent) => json!({"accent": accent}),
+                None => json!({}),
+            }
+        } else {
+            json!({})
+        };
+        let _ = app.run(spec.id, params);
         return true;
     }
     let Some(name) = name else { return false };

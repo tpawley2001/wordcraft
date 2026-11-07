@@ -91,6 +91,8 @@ impl Session {
             sel,
             view,
             pending,
+            pending_accent: None,
+            composed_at: None,
             last_highlight: wordcraft_doc::props::Highlight::Yellow,
             last_bookmark: None,
             path,

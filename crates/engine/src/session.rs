@@ -51,6 +51,12 @@ pub struct Session {
     pub view: ViewState,
     /// Formatting picked with a collapsed caret, applied to the next typed text.
     pub pending: Option<CharProps>,
+    /// The accent a dead-key shortcut (`text.composeAccent`) waits to compose with the next typed
+    /// character. Session state: not part of the document, its undo history or its snapshots.
+    pub(crate) pending_accent: Option<crate::cmd::text::Accent>,
+    /// Where the last dead-key composition was typed, while typing goes on: AutoCorrect leaves
+    /// the first letter of a word containing it as typed.
+    pub(crate) composed_at: Option<wordcraft_doc::Pos>,
     /// Last highlighter choice for the shortcut; palette state, outside document undo.
     pub(crate) last_highlight: wordcraft_doc::props::Highlight,
     /// The visible bookmark `insert.bookmark` added last, which Insert › Bookmark offers when the

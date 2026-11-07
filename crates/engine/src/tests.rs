@@ -35,6 +35,7 @@ mod table_insert_delete_cells;
 mod table_row_column_ends;
 mod table_sort_keys;
 mod symbol_field_update;
+mod accent_compose;
 mod typing;
 mod word_window_keys;
 mod button_fields;

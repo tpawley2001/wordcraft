@@ -40,6 +40,15 @@ impl Session {
         }
     }
 
+    fn leave_accent_for_command(&mut self, id: &str) {
+        // A dead-key accent waits for the next typed character only: any other command cancels
+        // it, as in Word. `text.insert` consumes it and `text.composeAccent` replaces it.
+        if !matches!(id, "text.insert" | "text.composeAccent") {
+            self.pending_accent = None;
+            self.composed_at = None;
+        }
+    }
+
     /// Whether the command changed nothing: the document, the selection, the formatting
     /// waiting at the caret and the column selection are as they were before it ran.
     ///
@@ -104,6 +113,7 @@ impl Session {
         }
         // Typing, caret movement and selection outside the equation commands leave the equation.
         self.leave_math_for_command(id);
+        self.leave_accent_for_command(id);
         // The undo stacks are snapshotted whole, not as a length: commands run nested commands,
         // whose checkpoints, undos and redos (and evictions at the limit) must be put back too.
         let ime_epoch_before = spec.mutates.then_some(self.ime_body_epoch);

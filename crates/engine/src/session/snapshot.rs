@@ -74,6 +74,9 @@ impl Session {
             sel,
             view: _,
             pending: _,
+            // A dead key waiting for its letter: transient typing state, not an edit.
+            pending_accent: _,
+            composed_at: _,
             last_highlight: _,
             // Dialog convenience, like the highlighter choice: not an edit.
             last_bookmark: _,

@@ -151,6 +151,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 - 2026-11-06: P0078: unlocked SYMBOL fields show their evaluated character despite stale stored results; F9 refreshes the result; missing, nonnumeric and non-Unicode codes above 255 show `###`. Locked fields keep their stored result; readiness estimates unchanged.
 - 2026-11-06: P0079: F2 / Shift+F2 move or copy selected rich text to the caret on Enter (Windows/Linux), with persistent status prompts, Esc cancellation and one undo step; clipboard unchanged.
 
+- 2026-11-07: P0087: Word's accent-composition shortcuts (Ctrl+' then e types é) and Ctrl+Alt+Shift+? / ! for ¿ / ¡ on Windows/Linux; pending accents are transient session state. Readiness unchanged.
 - 2026-11-06: P0076: Ctrl+F6 / Alt+F6 and Ctrl+Shift+F6 / Alt+Shift+F6 cycle document windows in opening order; Ctrl+Shift+Q applies Symbol in one undo step (Linux/Windows; no default keys on macOS). Readiness unchanged.
 - 2026-11-06: P0077: body LISTNUM fields share nine level counters on F9 and output, with heading-derived levels, start-at and NumberDefault/LegalDefault/OutlineDefault formats; locked fields do not count. Insert LISTNUM and Repeat Find use Ctrl+Alt+L/Y on Windows/Linux. Readiness estimates unchanged.
 

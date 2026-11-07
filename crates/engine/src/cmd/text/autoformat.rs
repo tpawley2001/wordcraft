@@ -69,12 +69,28 @@ pub(super) fn insert(s: &mut Session, v: &Value) -> CmdResult {
     let text = p::req_str(v, "text")?;
     let raw = p::bool(v, "raw").unwrap_or(false);
     if p::bool(v, "paragraphs").unwrap_or(false) {
+        s.pending_accent = None;
         return insert_paragraphs(s, text);
     }
+    // A dead-key accent (`text.composeAccent`) composes the next single typed character; one it
+    // has no form for is typed unchanged. Anything else ends the wait.
+    let composed = s.pending_accent.take().and_then(|accent| {
+        let mut chars = text.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) => Some(accent.compose(c).unwrap_or(c).to_string()),
+            _ => None,
+        }
+    });
+    let text = composed.as_deref().unwrap_or(text);
     typing_options(s, text);
     let smart_quote = if raw { None } else { autoformat(s, text) };
     let was_collapsed = s.sel.is_collapsed();
     let effect = type_text_effect(s, smart_quote.as_deref().unwrap_or(text))?;
+    if composed.is_some() {
+        let mut at = s.sel.focus.clone();
+        at.off = at.off.saturating_sub(text.len());
+        s.composed_at = Some(at);
+    }
     let mut outcome = crate::ImeEditOutcome {
         classified: true,
         content_changed: effect.content_changed,

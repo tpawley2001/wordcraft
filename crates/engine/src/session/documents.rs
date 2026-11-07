@@ -246,6 +246,9 @@ impl Session {
             edit_marks: _,
             go_back_step: _,
             // Shared by every open document.
+            // A dead key waiting for its letter: the next keystroke goes to the active document.
+            pending_accent: _,
+            composed_at: _,
             user_dict_path: _,
             clipboard: _,
             clipboard_text: _,
