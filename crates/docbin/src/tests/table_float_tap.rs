@@ -40,7 +40,9 @@ fn mark(text: &str, prls: &[(u16, &[u8])], cell_mark: bool) -> ParaOut {
     }
     let mut row = table::decode(&papx);
     row.cell_mark = cell_mark;
-    ParaOut { para, end_cp: 0, row: Some(Box::new(row)) }
+    // As the reader does: no row context outside a table.
+    let row = row.is_table().then(|| Box::new(row));
+    ParaOut { para, end_cp: 0, row }
 }
 
 /// A one-row, two-cell table ("a" "b") then "tail": `cell` and `ttp` are the extra sprms of the
