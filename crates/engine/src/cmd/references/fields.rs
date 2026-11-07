@@ -122,15 +122,7 @@ impl ListNumCount {
             return format!("{}.", parts.join("."));
         }
         let (fmt, prefix, suffix) = if name.eq_ignore_ascii_case("OutlineDefault") {
-            match level {
-                1 => (NumFormat::UpperRoman, "", "."),
-                2 => (NumFormat::UpperLetter, "", "."),
-                3 => (NumFormat::Decimal, "", "."),
-                4 => (NumFormat::LowerLetter, "", ")"),
-                5 => (NumFormat::Decimal, "(", ")"),
-                6 | 8 => (NumFormat::LowerLetter, "(", ")"),
-                _ => (NumFormat::LowerRoman, "(", ")"),
-            }
+            outline_format(level)
         } else {
             let fmt = match level {
                 2 | 5 | 8 => NumFormat::LowerLetter,
@@ -149,10 +141,63 @@ impl ListNumCount {
     }
 }
 
+/// The number format, prefix and suffix of a level in the outline style (`OutlineDefault`).
+fn outline_format(level: u8) -> (NumFormat, &'static str, &'static str) {
+    match level {
+        1 => (NumFormat::UpperRoman, "", "."),
+        2 => (NumFormat::UpperLetter, "", "."),
+        3 => (NumFormat::Decimal, "", "."),
+        4 => (NumFormat::LowerLetter, "", ")"),
+        5 => (NumFormat::Decimal, "(", ")"),
+        6 | 8 => (NumFormat::LowerLetter, "(", ")"),
+        _ => (NumFormat::LowerRoman, "(", ")"),
+    }
+}
+
+/// AUTONUM, AUTONUMLGL and AUTONUMOUT's shared level counters (ECMA-376 §17.16.5.4-6), separate
+/// from LISTNUM's and SEQ's.
+#[derive(Default)]
+struct AutoNumCount {
+    levels: [u32; 9],
+    last_heading: u8,
+}
+
+impl AutoNumCount {
+    /// Count a field of `name` in a paragraph of heading level `heading` and give its result.
+    fn result(&mut self, name: &str, field: &FieldCode, heading: Option<u8>) -> String {
+        let level = heading.unwrap_or_else(|| self.last_heading.saturating_add(1).min(9));
+        let index = usize::from(level.saturating_sub(1));
+        for (i, n) in self.levels.iter_mut().enumerate() {
+            if i == index {
+                *n = n.saturating_add(1);
+            } else if i > index {
+                *n = 0;
+            }
+        }
+        let n = self.levels.get(index).copied().unwrap_or(0);
+        match name {
+            "AUTONUMLGL" => {
+                let parts: Vec<String> = self.levels.iter().take(usize::from(level)).map(|n| n.max(&1).to_string()).collect();
+                let sep = if field.has('e') { "" } else { "." };
+                format!("{}{sep}", parts.join("."))
+            }
+            "AUTONUMOUT" => {
+                let (fmt, prefix, suffix) = outline_format(level);
+                format!("{prefix}{}{suffix}", fmt.format(n))
+            }
+            _ => {
+                let sep = field.arg('s').and_then(|s| s.chars().next()).unwrap_or('.');
+                format!("{n}{sep}")
+            }
+        }
+    }
+}
+
 /// The SEQ numbering so far while the document is walked in order.
 #[derive(Default)]
 struct SeqCount {
     listnum: ListNumCount,
+    autonum: AutoNumCount,
     /// How many headings of each level there have been (for `\s`).
     headings: [u32; 9],
     /// Per sequence: its number, and the heading count it was last restarted at.
@@ -171,6 +216,7 @@ fn seq_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
         let Some(p) = doc.para(StoryRef::Body, &path) else { continue };
         if let Some(l) = heading_style_level(p) {
             count.listnum.last_heading = l;
+            count.autonum.last_heading = l;
         }
         if let Some(l) = heading_style_level(p)
             && let Some(k) = (l as usize).checked_sub(1)
@@ -200,6 +246,11 @@ fn count_seq(doc: &wordcraft_doc::Document, story: StoryRef, path: &Path, p: &Pa
         let f = FieldCode::parse(instr);
         if f.name == "LISTNUM" {
             let result = count.listnum.result(&f, heading_style_level(p));
+            count.out.push((story, path.clone(), k, result));
+            continue;
+        }
+        if matches!(f.name.as_str(), "AUTONUM" | "AUTONUMLGL" | "AUTONUMOUT") {
+            let result = count.autonum.result(&f.name, &f, heading_style_level(p));
             count.out.push((story, path.clone(), k, result));
             continue;
         }

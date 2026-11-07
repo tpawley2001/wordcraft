@@ -10,6 +10,7 @@ use wordcraft_doc::{Pos, StoryRef};
 
 use crate::{Session, cmd};
 
+mod autonum_fields;
 mod bidi;
 mod custom_prop_types;
 mod documents;
