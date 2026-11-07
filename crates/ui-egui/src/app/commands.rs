@@ -109,6 +109,19 @@ impl WordApp {
         r
     }
 
+    /// The Clipboard pane's copy status ("Item 3 of 24 Clipboard collected") for a Copy or Cut
+    /// result that collected an item, shown for about two seconds: the status bar keeps a
+    /// message six.
+    fn copy_status(&mut self, id: &str, r: &Result<Value, String>) {
+        let Some(c) = r.as_ref().ok().filter(|_| matches!(id, "edit.copy" | "edit.cut")).and_then(|v| v.get("collected")) else { return };
+        let n = |k: &str| c.get(k).and_then(Value::as_u64).unwrap_or(0).to_string();
+        let msg = i18n::fmt(tl!("Item {n} of {max} Clipboard collected"), &[("n", &n("item")), ("max", &n("of"))]);
+        self.status(msg);
+        if let Some((_, at)) = &mut self.status_msg {
+            *at -= 4000.0;
+        }
+    }
+
     /// Run a command for a script or an agent (control channel, MCP bridge): never asks first.
     /// UI-level commands (`ui.*`) are handled here, the rest by the engine.
     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value, String> {
@@ -244,19 +257,7 @@ impl WordApp {
             // Its HTML too when it has some (an equation as MathML, #816).
             crate::system_clipboard::put_result(self, ctx, v);
         }
-        // The Clipboard pane's copy status ("Item 3 of 24 Clipboard collected"), for about two
-        // seconds: the status bar keeps a message six.
-        if matches!(id, "edit.copy" | "edit.cut")
-            && let Ok(v) = &r
-            && let Some(c) = v.get("collected")
-        {
-            let n = |k: &str| c.get(k).and_then(Value::as_u64).unwrap_or(0).to_string();
-            let msg = crate::i18n::fmt(tl!("Item {n} of {max} Clipboard collected"), &[("n", &n("item")), ("max", &n("of"))]);
-            self.status(msg);
-            if let Some((_, at)) = &mut self.status_msg {
-                *at -= 4000.0;
-            }
-        }
+        self.copy_status(id, &r);
         // Another document is shown (not when Open only showed its picker): the window's state
         // for the one it showed is put aside.
         if self.session.document_id() != document {
