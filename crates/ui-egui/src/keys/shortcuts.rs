@@ -145,6 +145,7 @@ pub(super) fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
         } else {
             json!({})
         };
+        let params = window_edge_params(app, spec.id, params);
         let _ = app.run(spec.id, params);
         return true;
     }
@@ -154,10 +155,28 @@ pub(super) fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
         && let Some(spec) = app.session.keymap.resolve(&reg, &combo(m, name, false))
         && let Some(params) = shift_variant_params(spec.id)
     {
+        let params = window_edge_params(app, spec.id, params);
         let _ = app.run(spec.id, params);
         return true;
     }
     false
+}
+
+/// Top of Window / Bottom of Window take the window's edge from the canvas: the engine has no
+/// window.
+pub(super) fn window_edge_params(app: &mut WordApp, id: &str, mut params: Value) -> Value {
+    let bottom = match id {
+        "caret.windowTop" => false,
+        "caret.windowBottom" => true,
+        _ => return params,
+    };
+    if let Some((page, y)) = crate::canvas::window_edge(app, bottom)
+        && let Some(o) = params.as_object_mut()
+    {
+        o.insert("page".into(), json!(page));
+        o.insert("y".into(), json!(y));
+    }
+    params
 }
 
 /// How a command bound to a plain key runs when Shift is also held and nothing is bound to the

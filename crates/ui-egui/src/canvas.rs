@@ -56,7 +56,7 @@ use margins::MIN_TEXT;
 pub(crate) use margins::{MarginEdge, dragged_margin, margin_drag};
 #[cfg(test)]
 use navigation::top_page;
-pub use navigation::{nearest_page, page_at, page_to_screen};
+pub use navigation::{nearest_page, page_at, page_to_screen, window_edge};
 use navigation::{scrollbar_page_tip, viewed_page};
 #[cfg(test)]
 use pages::{DRAWING_GRID_MAX_LINES, DRAWING_GRID_MIN_PX};

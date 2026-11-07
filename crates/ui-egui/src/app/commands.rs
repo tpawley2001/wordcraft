@@ -440,6 +440,9 @@ impl WordApp {
         );
         if (self.session.selects_whole_story() && !self.session.sel.is_collapsed()) || id == "select.all" || self.canvas.keep_view {
             self.canvas.scroll_to_caret = false;
+        } else if matches!(id, "caret.windowTop" | "caret.windowBottom") {
+            // The caret lands on a line shown in the window: the view stays.
+            self.canvas.scroll_to_caret = false;
         } else if !file_keeps_view && !["ui.", "view.", "document.", "format.state", "draw."].iter().any(|p| id.starts_with(p)) {
             self.canvas.scroll_to_caret = true;
         }
