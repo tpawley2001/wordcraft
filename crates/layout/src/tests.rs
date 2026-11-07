@@ -32,6 +32,7 @@ mod numeral;
 mod pages;
 mod styleref;
 mod symbol_field;
+mod symbol_font_lines;
 mod table_contact;
 mod textbox;
 mod vertical;
