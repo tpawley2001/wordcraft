@@ -84,6 +84,9 @@ pub(super) fn insert(s: &mut Session, v: &Value) -> CmdResult {
     if composed.is_some() {
         s.composed_word = true;
     }
+    if text == "." {
+        s.composed_word = true;
+    }
     let text = composed.as_deref().unwrap_or(text);
     typing_options(s, text);
     let smart_quote = if raw { None } else { autoformat(s, text) };

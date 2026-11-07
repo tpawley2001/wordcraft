@@ -192,7 +192,7 @@ mod tests {
     fn a_composed_word_is_not_capitalised() {
         let mut s = s();
         s.run("text.composeAccent", &json!({"accent": "acute"})).unwrap();
-        for c in ["e", "l", ".", "p", "a", "s", "o", " "] {
+        for c in ["e", "l", ".", " ", "p", "a", "s", "o", " "] {
             s.run("text.insert", &json!({"text": c})).unwrap();
         }
         assert_eq!(body(&s), "él. Paso");
