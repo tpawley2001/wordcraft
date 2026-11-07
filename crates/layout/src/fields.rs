@@ -310,6 +310,8 @@ pub fn field_text_on(instr: &str, result: &str, ctx: &FieldCtx, page: u32) -> (S
             (apply_case_switch(instr, text), false)
         }
         "SYMBOL" => (symbol_text(instr), false),
+        // GOTOBUTTON and MACROBUTTON show the text in their code, whatever result is stored.
+        "GOTOBUTTON" | "MACROBUTTON" => (button_display_text(instr).unwrap_or_default(), false),
         // ASK and SET only assign text to a bookmark: they never show a result (ECMA-376 §17.16.5).
         "ASK" | "SET" => (String::new(), false),
         "STYLEREF" => match &ctx.styleref {
@@ -322,8 +324,22 @@ pub fn field_text_on(instr: &str, result: &str, ctx: &FieldCtx, page: u32) -> (S
 
 /// The display text of a `GOTOBUTTON` or `MACROBUTTON` field (ECMA-376 Part 1 §17.16.5.24,
 /// §17.16.5.34); `None` for any other field.
-pub fn button_display_text(_instr: &str) -> Option<String> {
-    None // TODO(P0083): implement
+pub fn button_display_text(instr: &str) -> Option<String> {
+    let rest = instr.trim_start();
+    let name = rest.split_whitespace().next()?;
+    if !name.eq_ignore_ascii_case("GOTOBUTTON") && !name.eq_ignore_ascii_case("MACROBUTTON") {
+        return None;
+    }
+    // The destination or macro name is the second word; the display text is everything after it.
+    let after_name = rest.get(name.len()..)?.trim_start();
+    let target = after_name.split_whitespace().next().unwrap_or("");
+    let text = after_name.get(target.len()..).unwrap_or("").trim();
+    // A single quoted string shows without its quotes.
+    let text = match text.strip_prefix('"').and_then(|t| t.strip_suffix('"')) {
+        Some(inner) if !inner.contains('"') => inner,
+        _ => text,
+    };
+    Some(text.to_string())
 }
 
 /// The words of a field instruction: quoted text is one word (without its quotes) and a

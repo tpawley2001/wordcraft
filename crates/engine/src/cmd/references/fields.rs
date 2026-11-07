@@ -575,6 +575,12 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
                     let text = if has_switch(instr, 'p') { fn_path } else { fn_name };
                     updates.push((k, text_result(instr, text)));
                 }
+                // GOTOBUTTON and MACROBUTTON store the text their code shows.
+                "GOTOBUTTON" | "MACROBUTTON" => {
+                    if let Some(text) = wordcraft_layout::fields::button_display_text(instr) {
+                        updates.push((k, text));
+                    }
+                }
                 _ => {}
             }
         }

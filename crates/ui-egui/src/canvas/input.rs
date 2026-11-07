@@ -351,6 +351,17 @@ fn handle_primary_press(
         return;
     }
     app.canvas.column_drag = None;
+    // A single click in a MACROBUTTON field selects the whole field, as Word's "click here and
+    // type" placeholder does, so the next typed text replaces it.
+    if clicks == 1 && !mods.shift && !mods.command && !mods.alt {
+        let _ = app.run("caret.set", json!({"pos": pj}));
+        if let Some(sel) = wordcraft_engine::cmd::fields::click_selection(&app.session, &pos) {
+            app.session.sel = sel;
+            app.session.page_hint = page;
+            app.canvas.dragging = true;
+            return;
+        }
+    }
     let _ = app.run("caret.set", json!({"pos": pj, "extend": mods.shift}));
     // Double-click selects a word, triple-click a paragraph, Ctrl/⌘+click a sentence; holding
     // the button and dragging then extends by whole units (Word, #549).

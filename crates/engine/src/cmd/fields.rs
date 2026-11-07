@@ -36,6 +36,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("fields.previous", "Previous Field", "Insert › Text › Quick Parts", |s, _| go(s, false))
             .key("Shift+F11 / Alt+Shift+F1")
             .pure(),
+        CommandSpec::new("fields.click", "Do Field Click", "Insert › Text › Quick Parts › Field", click).key("Alt+Shift+F9").pure(),
         CommandSpec::new("fields.selected", "Selected Fields", "Insert › Text › Quick Parts", |s, _| {
             Ok(Value::Array(selected(s).iter().map(|f| f.json()).collect()))
         })
@@ -248,6 +249,49 @@ fn unlink(s: &mut Session, _: &Value) -> CmdResult {
     Ok(json!({"fields": fields.len()}))
 }
 
+/// The field a click at `pos` acts on: the simple field whose object is at `pos` or just before
+/// it, else the range field around it.
+fn field_at(s: &Session, pos: &Pos) -> Option<FieldAt> {
+    let width = OBJ.len_utf8();
+    let all = story_fields(s, pos.story);
+    let simple = |off: usize| all.iter().find(|f| f.end.is_none() && f.at.path == pos.path && f.at.off == off).cloned();
+    simple(pos.off)
+        .or_else(|| pos.off.checked_sub(width).and_then(simple))
+        .or_else(|| all.into_iter().rfind(|f| f.end.as_ref().is_some_and(|e| f.at < *pos && *pos <= *e)))
+}
+
+/// The range a single click at `pos` selects: a MACROBUTTON field's whole field (Word's "click
+/// here and type" placeholder, so typing replaces it), else nothing.
+pub fn click_selection(s: &Session, pos: &Pos) -> Option<Selection> {
+    let f = field_at(s, pos)?;
+    if f.end.is_some() || wordcraft_layout::fields::field_name(&f.instr) != "MACROBUTTON" {
+        return None;
+    }
+    let end = Pos { off: f.at.off.saturating_add(OBJ.len_utf8()), ..f.at.clone() };
+    Some(Selection { anchor: f.at, focus: end })
+}
+
+/// Alt+Shift+F9 (Word's Do Field Click): a GOTOBUTTON goes to its bookmark, or to the start of
+/// page `p<N>`; a MACROBUTTON does nothing (macros never run); any other field does nothing.
+fn click(s: &mut Session, _: &Value) -> CmdResult {
+    let (a, b) = s.sel.ordered();
+    let pos = if a == b { a } else { b };
+    let Some(f) = field_at(s, &pos) else { return sel_result(s) };
+    if f.end.is_some() || wordcraft_layout::fields::field_name(&f.instr) != "GOTOBUTTON" {
+        return sel_result(s);
+    }
+    let Some(dest) = f.instr.trim_start().split_whitespace().nth(1) else { return sel_result(s) };
+    let dest = dest.trim_matches('"');
+    // `p<N>` goes to the start of page N; any other destination names a bookmark.
+    let page = dest.strip_prefix(['p', 'P']).and_then(|n| n.parse::<u64>().ok());
+    let params = match page {
+        Some(n) => json!({"page": n}),
+        None if super::insert::bookmark_range(&s.doc, dest).is_some() => json!({"bookmark": dest}),
+        None => return sel_result(s),
+    };
+    super::edit::goto(s, &params)
+}
+
 /// Alt+F1 / Shift+F11: select the next or previous field in the story (wrapping around).
 fn go(s: &mut Session, forward: bool) -> CmdResult {
     let (a, _) = s.sel.ordered();
@@ -273,6 +317,7 @@ mod tests {
     use serde_json::json;
     use wordcraft_doc::para::InlineObject;
 
+    use super::click_selection;
     use crate::Session;
 
     fn session_with_fields() -> Session {
@@ -461,6 +506,28 @@ mod tests {
         // Nothing selected: an error, not a no-op undo step.
         s.run("caret.docStart", &json!({})).unwrap();
         assert!(s.run("fields.lock", &json!({})).is_err());
+    }
+
+    /// A single click in a MACROBUTTON field selects the whole field (Word's "click here and
+    /// type" placeholder); a click elsewhere, or in another field, selects nothing.
+    #[test]
+    fn click_in_a_macrobutton_selects_the_field() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("text.insert", &json!({"text": "Name: "})).unwrap();
+        s.run("insert.field", &json!({"instr": "MACROBUTTON NoMacro [Click here and type]"})).unwrap();
+        s.run("text.insert", &json!({"text": " after"})).unwrap();
+        let width = wordcraft_doc::para::OBJ.len_utf8();
+        let at = 6;
+        let sel = click_selection(&s, &wordcraft_doc::Pos::body(0, at)).expect("the click is in the field");
+        assert_eq!(sel.anchor, wordcraft_doc::Pos::body(0, at));
+        assert_eq!(sel.focus, wordcraft_doc::Pos::body(0, at + width));
+        assert!(click_selection(&s, &wordcraft_doc::Pos::body(0, at + width)).is_some(), "just after it too");
+        assert!(click_selection(&s, &wordcraft_doc::Pos::body(0, 0)).is_none());
+        assert!(click_selection(&s, &wordcraft_doc::Pos::body(0, at + width + 3)).is_none());
+
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("insert.field", &json!({"instr": "PAGE"})).unwrap();
+        assert!(click_selection(&s, &wordcraft_doc::Pos::body(0, 0)).is_none(), "other fields aren't selected");
     }
 
     #[test]
