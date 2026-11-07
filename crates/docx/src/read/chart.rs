@@ -198,3 +198,12 @@ struct Chart {
 mod combo_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod three_d_tests;
+
+/// Which points of a pie-of-pie or bar-of-pie chart go to the second plot (`c:splitType`,
+/// `c:splitPos`, `c:custSplit`): their indices, ascending. Not implemented yet.
+#[allow(dead_code, unused_variables)]
+fn of_pie_second(vals: &[f64], split_type: &str, split_pos: Option<f64>, cust: &[usize]) -> Vec<usize> {
+    Vec::new()
+}
