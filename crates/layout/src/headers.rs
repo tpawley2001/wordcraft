@@ -237,7 +237,11 @@ pub(crate) fn headers_footers_refer_to_pages(doc: &Document) -> bool {
 
 /// Where each bookmark in the body starts: the number and number format of the page it is placed
 /// on (with two of the same name, the first in the document).
-pub(crate) fn bookmark_pages(doc: &Document, pages: &[Page], sections: &[(usize, &SectionProps)]) -> fields::BookmarkPages {
+pub(crate) fn bookmark_pages(
+    doc: &Document,
+    pages: &[Page],
+    sections: &[(usize, &SectionProps)],
+) -> (fields::BookmarkPages, HashMap<String, String>) {
     // Each paragraph's bookmarks: name, offset, and its line in the paragraph layout last looked
     // up (the pieces of a paragraph usually share one).
     let mut wanted: HashMap<Path, Vec<(String, usize, Option<(usize, usize)>)>> = HashMap::new();
@@ -256,6 +260,7 @@ pub(crate) fn bookmark_pages(doc: &Document, pages: &[Page], sections: &[(usize,
         }
     }
     let mut out = fields::BookmarkPages::new();
+    let mut chapters = HashMap::new();
     for page in pages {
         if wanted.is_empty() {
             break;
@@ -277,6 +282,7 @@ pub(crate) fn bookmark_pages(doc: &Document, pages: &[Page], sections: &[(usize,
                 if !(*l0..*l1).contains(&li) {
                     return true;
                 }
+                chapters.insert(name.clone(), page.chapter.clone());
                 out.insert(std::mem::take(name), (page.number, format));
                 false
             });
@@ -285,7 +291,7 @@ pub(crate) fn bookmark_pages(doc: &Document, pages: &[Page], sections: &[(usize,
             }
         }
     }
-    out
+    (out, chapters)
 }
 
 /// A key for caches standing for `marks` (0 for none).
@@ -296,6 +302,62 @@ pub(crate) fn marks_key(marks: &fields::BookmarkPages) -> u64 {
     let mut v: Vec<_> = marks.iter().collect();
     v.sort_by(|a, b| a.0.cmp(b.0));
     hash_of(&v)
+}
+
+pub(crate) fn chapter_numbers(doc: &Document, pages: &mut [Page], sections: &[(usize, &SectionProps)]) {
+    if !sections.iter().any(|(_, s)| s.chapter_style.is_some()) {
+        return;
+    }
+    let mut counters = wordcraft_doc::numbering::Counters::default();
+    let mut headings = Vec::new();
+    for path in doc.para_paths(StoryRef::Body) {
+        let Some(p) = doc.para(StoryRef::Body, &path) else { continue };
+        let props = doc.styles.resolve_para(&p.props);
+        let Some(n) = p.props.numbering.or(props.numbering).filter(|n| n.num != 0) else { continue };
+        let Some((label, definition)) = counters.next_label(&doc.numbering, n.num, n.level) else { continue };
+        if matches!(definition.format, wordcraft_doc::section::NumFormat::Bullet | wordcraft_doc::section::NumFormat::None) {
+            continue;
+        }
+        let level = p.props.outline_level.or(props.outline_level).filter(|l| *l < 9).or_else(|| {
+            p.props
+                .style
+                .as_deref()
+                .and_then(|s| s.strip_prefix("Heading"))
+                .and_then(|s| s.trim().parse::<u8>().ok())
+                .filter(|n| (1..=9).contains(n))
+                .map(|n| n - 1)
+        });
+        if let Some(level) = level {
+            let label = label.trim_end_matches(|c: char| !c.is_alphanumeric()).to_string();
+            if !label.is_empty() {
+                headings.push((path, level + 1, label));
+            }
+        }
+    }
+    for page in pages {
+        let Some((_, sect)) = sections.get(page.section) else { continue };
+        let Some(level) = sect.chapter_style else { continue };
+        let top = page
+            .items
+            .iter()
+            .filter_map(|it| match it {
+                Placed::Lines { story: StoryRef::Body, path, .. } => Some(path.clone()),
+                _ => None,
+            })
+            .min()
+            .unwrap_or_else(|| Path::top(page.first_block));
+        if let Some((_, _, label)) = headings.iter().rev().find(|(path, l, _)| *l == level && *path <= top) {
+            use wordcraft_doc::section::ChapterSep;
+            let sep = match sect.chapter_sep.unwrap_or(ChapterSep::Hyphen) {
+                ChapterSep::Hyphen => "-",
+                ChapterSep::Period => ".",
+                ChapterSep::Colon => ":",
+                ChapterSep::EmDash => "—",
+                ChapterSep::EnDash => "–",
+            };
+            page.chapter = format!("{label}{sep}");
+        }
+    }
 }
 
 pub(crate) fn headers_footers(ctx: &mut Ctx, pages: &mut [Page], sections: &[(usize, &SectionProps)], totals: &Totals) {
@@ -341,6 +403,7 @@ pub(crate) fn headers_footers(ctx: &mut Ctx, pages: &mut [Page], sections: &[(us
         }
         ctx.fields.page = page.number;
         ctx.fields.page_format = sect.page_num_format;
+        ctx.fields.chapter = page.chapter.clone();
         ctx.fields.pages = total;
         ctx.fields.section_pages = totals.section(page.section);
         ctx.fields.section = page.section as u32 + 1;
@@ -390,6 +453,7 @@ pub(crate) fn headers_footers(ctx: &mut Ctx, pages: &mut [Page], sections: &[(us
         }
     }
     ctx.fields.styleref = None;
+    ctx.fields.chapter.clear();
 }
 
 /// Mirrored margins: even pages have the inside margin (and gutter) on the right, so their

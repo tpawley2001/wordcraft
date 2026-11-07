@@ -333,7 +333,7 @@ fn add_entry_style(s: &mut Session) {
 /// in its section's format (`ii`), as the list writes it. Page "1" (index 0) when no page holds it.
 fn page_of(s: &mut Session, formats: &[NumFormat], pos: &Pos) -> (usize, String) {
     let l = s.layout();
-    page_at(&l, formats, pos).map_or_else(|| (0, "1".into()), |(i, n, fmt)| (i, page_text(n, fmt)))
+    page_at(&l, formats, pos).map_or_else(|| (0, "1".into()), |(i, n, fmt, chapter)| (i, page_text(n, fmt, chapter)))
 }
 
 /// Entry paragraphs for a generated list, including caption links when requested.

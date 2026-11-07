@@ -628,3 +628,39 @@ fn a_page_ends_when_a_multiple_spaced_lines_text_no_longer_fits() {
         assert!(past_margin > 0, "{multiple}: some shift should leave the last line's leading past the margin");
     }
 }
+
+/// Chapter prefixes use the heading at the page top, including style-linked numbering, and
+/// header/footer caches must follow chapter changes even when page numbers stay the same.
+#[test]
+fn footer_page_includes_chapter_number() {
+    use wordcraft_doc::props::NumRef;
+    let mut d = Document::from_text("Chapter\nFirst page\nSecond page\nLater chapter");
+    let num = Arc::make_mut(&mut d.numbering).add_list(wordcraft_doc::ListKind::Numbered);
+    for i in [0, 3] {
+        let p = d.para_mut(StoryRef::Body, &Path::top(i)).unwrap();
+        p.props.style = Some("Heading1".into());
+    }
+    Arc::make_mut(&mut d.styles).get_mut("Heading1").unwrap().para.numbering = Some(NumRef { num, level: 0 });
+    d.para_mut(StoryRef::Body, &Path::top(2)).unwrap().props.page_break_before = Some(true);
+    d.last_section.chapter_style = Some(1);
+    let mut footer = Paragraph::new();
+    footer
+        .insert_object(
+            0,
+            InlineObject::Field { instr: "PAGE".into(), result: "9".into(), locked: false, dirty: false, code: false, form: String::new() },
+            &Default::default(),
+        )
+        .unwrap();
+    let id = d.add_part(PartKind::Footer, vec![para_block(footer)]);
+    d.last_section.footers.default = Some(id);
+    let mut cache = LayoutCache::new();
+    let l = layout(&d, &mut cache, &LayoutOptions::default());
+    assert_eq!(footer_shown(&l), ["1-1", "1-2"]);
+    // A heading later on page 2 cannot change that page's chapter.
+    d.last_section.chapter_sep = Some(wordcraft_doc::section::ChapterSep::EnDash);
+    let l = layout(&d, &mut cache, &LayoutOptions::default());
+    assert_eq!(footer_shown(&l), ["1–1", "1–2"]);
+    d.last_section.chapter_style = None;
+    let l = layout(&d, &mut cache, &LayoutOptions::default());
+    assert_eq!(footer_shown(&l), ["1", "2"]);
+}

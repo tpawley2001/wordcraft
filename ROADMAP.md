@@ -1,5 +1,6 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-07 · **Change:** trivial (P0115: Include chapter number in Page Number Format; numbered headings supply chapter prefixes in footers and generated page references (#3999). Readiness estimates unchanged.)
 > **Last updated:** 2026-11-07 · **Change:** trivial (P0113: paragraph and character style shortcuts in Customize Keyboard’s Styles category and Modify Style › Format › Shortcut key; preferences persist the bindings and applying a style uses the existing undo path (#3910). New Style disables the shortcut item until creation. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-07 · **Change:** trivial (P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.); previously trivial (P0105: CREATEDATE and PRINTDATE use document core dates on F9; successful printing records Last Printed and marks the document dirty; File › Info shows Related Dates. PDF export is unchanged; readiness estimates unchanged.); previously trivial (P0103: `.doc` OLE EPRINT EMF headers repaired before use as pictures); previously trivial (P0102: missing Century uses synthetic bold on the regular substitute face, preserving regular advances; Century Schoolbook keeps its real bold. Readiness estimates unchanged.); previously trivial (P0097: Envelope Options adds address positions, style fonts and Omit; Auto layout and readiness estimates unchanged); previously trivial (P0098: Options persists Print hidden text, Print field codes instead of their values and Print pages in reverse order; print jobs accept overrides independent of screen display. Reverse order precedes copies and is ignored for N-up/booklet. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-06 · **Change:** trivial (P0085: AUTONUM, AUTONUMLGL and AUTONUMOUT fields share nine level counters on F9 and output, with heading-derived levels, `\s`, `\e` and the outline style; locked fields do not count. Readiness estimates unchanged.); previously trivial (P0077: body LISTNUM fields share nine level counters on F9 and output, with heading-derived levels, start-at and NumberDefault/LegalDefault/OutlineDefault formats; locked fields do not count. Insert LISTNUM and Repeat Find use Ctrl+Alt+L/Y on Windows/Linux. Readiness estimates unchanged.)
@@ -149,6 +150,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-07: Page Number Format includes chapter numbers from numbered headings, shared by footers and generated page references (#3999).
 - 2026-11-07: P0113: paragraph and character style shortcuts in Customize Keyboard’s Styles category and Modify Style › Format › Shortcut key; preferences persist the bindings and applying a style uses the existing undo path (#3910). New Style disables the shortcut item until creation. Readiness estimates unchanged.
 - 2026-11-07: P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 - 2026-11-07: P0105: CREATEDATE and PRINTDATE use document core dates on F9; successful printing records Last Printed and marks the document dirty; File › Info shows Related Dates. PDF export is unchanged; readiness estimates unchanged.
@@ -856,6 +858,8 @@ Section page-numbering settings preserve `w:chapStyle` values across the full un
 MATH glyphs that reference the same construction now share its immutable variants and assembly data (#3630). Glyph mappings, values and the existing partial-record fallback stay unchanged. Repeated glyph IDs keep their last valid reference without retaining superseded constructions. Distinct overlapping constructions and assembly-only sharing remain separate.
 
 ## Revision history
+
+> 2026-11-07 · P0115: Page Number Format sets chapter heading level and separator; PAGE in headers/footers, PAGEREF, TOC, index, figures and authorities share chapter-aware page labels (#3999). Readiness estimates unchanged.
 
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 > 2026-11-07 · P0105: CREATEDATE and PRINTDATE use document core dates on F9; successful printing records Last Printed and marks the document dirty; File › Info shows Related Dates. PDF export is unchanged; readiness estimates unchanged.
