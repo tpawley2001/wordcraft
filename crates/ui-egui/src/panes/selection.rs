@@ -34,7 +34,7 @@ pub(super) fn selection(app: &mut WordApp, ui: &mut Ui) {
         ui.label(egui::RichText::new(tl!("There are no pictures or shapes in the document.")).small().weak());
         return;
     }
-    let id = ui.id().with("selection_pane_rename");
+    let id = ui.scope_id().with("selection_pane_rename");
     let mut renaming: Renaming = ui.ctx().data(|d| d.get_temp(id)).unwrap_or_default();
     if renaming.index.is_some_and(|i| i >= entries.len()) {
         renaming = Renaming::default();
@@ -85,6 +85,6 @@ fn eye_button(ui: &mut Ui, open: bool, label: &str, t: &Tokens) -> egui::Respons
     }
     let icon = if open { "eye" } else { "eyeClosed" };
     crate::icons::paint(ui.painter(), egui::Rect::from_center_size(r.center(), egui::vec2(14.0, 14.0)), icon, t.icon, t.accent);
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
     resp.on_hover_text(label)
 }
