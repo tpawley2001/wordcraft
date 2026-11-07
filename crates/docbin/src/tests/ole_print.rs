@@ -33,6 +33,7 @@ fn emf(tag: i32) -> Vec<u8> {
     h[44..48].copy_from_slice(&0x0001_0000u32.to_le_bytes());
     h[48..52].copy_from_slice(&128u32.to_le_bytes()); // nBytes
     h[52..56].copy_from_slice(&2u32.to_le_bytes()); // nRecords
+    h[56..58].copy_from_slice(&1u16.to_le_bytes()); // nHandles (metafile itself)
     let mut eof = vec![0u8; 20];
     eof[0..4].copy_from_slice(&14u32.to_le_bytes());
     eof[4..8].copy_from_slice(&20u32.to_le_bytes());
@@ -112,6 +113,35 @@ fn an_embedded_object_shows_its_eprint_picture_at_the_data_pictures_size() {
     let (bytes, w, h) = first_image(&doc);
     assert_eq!(bytes, eprint, "the picture is the object's EPRINT presentation");
     assert_eq!((w, h), (72.0, 36.0), "size is the Data picture's PICF goal size (1440 x 720 twips)");
+}
+
+#[test]
+fn an_embedded_objects_eprint_header_is_repaired_before_becoming_a_picture() {
+    let (doc, _) = ole_doc(ole_char(OBJ_ID));
+    let mut eprint = emf(500);
+    let eof = eprint.split_off(108);
+    // EXTCREATEFONTINDIRECTW creates handle 1, CREATEPEN creates handle 3.
+    for (typ, size, index) in [(82u32, 332u32, 1u32), (37, 12, 1), (38, 28, 3), (37, 12, 0x8000_0007), (40, 12, 1)] {
+        let mut record = vec![0; size as usize];
+        record[0..4].copy_from_slice(&typ.to_le_bytes());
+        record[4..8].copy_from_slice(&size.to_le_bytes());
+        record[8..12].copy_from_slice(&index.to_le_bytes());
+        eprint.extend_from_slice(&record);
+    }
+    eprint.extend_from_slice(&eof);
+    eprint[48..52].copy_from_slice(&520u32.to_le_bytes());
+    eprint[52..56].copy_from_slice(&6u32.to_le_bytes());
+    eprint[56..58].copy_from_slice(&0u16.to_le_bytes());
+    eprint[58..60].copy_from_slice(&2u16.to_le_bytes());
+    let doc = with_object_pool(doc, &format!("_{OBJ_ID}"), &[("\u{3}EPRINT", &eprint), ("\u{1}Ole", &[0u8; 20])]);
+    let (bytes, w, h) = first_image(&doc);
+    assert_eq!(u32::from_le_bytes(bytes[48..52].try_into().unwrap()), 524);
+    assert_eq!(u32::from_le_bytes(bytes[52..56].try_into().unwrap()), 7);
+    assert_eq!(u16::from_le_bytes(bytes[56..58].try_into().unwrap()), 4);
+    assert_eq!(u16::from_le_bytes(bytes[58..60].try_into().unwrap()), 0);
+    assert_eq!(&bytes[..48], &eprint[..48]);
+    assert_eq!(&bytes[60..], &eprint[60..]);
+    assert_eq!((w, h), (72.0, 36.0));
 }
 
 #[test]

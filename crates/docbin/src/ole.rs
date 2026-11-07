@@ -168,12 +168,50 @@ fn eprint<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<Ve
     }
     let mut v = Vec::new();
     s.by_ref().take(cap.saturating_add(1)).read_to_end(&mut v).ok()?;
+    repair_emf_header(&mut v);
     (v.len() as u64 <= cap && is_emf(&v)).then_some(v)
 }
 
-/// Repairs an EMF's `EMR_HEADER` counts in place ([MS-EMF] 2.3.4.2). Stub: not implemented yet.
-#[allow(dead_code)]
-pub(crate) fn repair_emf_header(_emf: &mut [u8]) {}
+/// Repairs an EMF's `EMR_HEADER` counts in place ([MS-EMF] 2.3.4.2).
+pub(crate) fn repair_emf_header(emf: &mut [u8]) {
+    let u32_at = |bytes: &[u8], at: usize| bytes.get(at..at + 4).and_then(|s| s.try_into().ok()).map(u32::from_le_bytes);
+    let Some(current_handles) = emf.get(56..58).and_then(|s| s.try_into().ok()).map(u16::from_le_bytes) else { return };
+    let mut handles = u32::from(current_handles).max(1);
+    let mut records = 0u32;
+    let mut offset = 0usize;
+    loop {
+        let Some(tail) = emf.get(offset..) else { return };
+        let (Some(typ), Some(size)) = (u32_at(tail, 0), u32_at(tail, 4)) else { return };
+        if size < 8 || !size.is_multiple_of(4) || (offset == 0 && (typ != EMR_HEADER || size < MIN_HEADER)) {
+            return;
+        }
+        let Ok(size) = usize::try_from(size) else { return };
+        let Some(record) = tail.get(..size) else { return };
+        if matches!(typ, 37 | 38 | 39 | 40 | 49 | 82 | 93 | 94 | 95 | 99 | 122) {
+            let Some(index) = u32_at(record, 8) else { return };
+            // SELECTOBJECT and DELETEOBJECT can name stock objects, which need no handle slot.
+            if !matches!(typ, 37 | 40) || index & 0x8000_0000 == 0 {
+                handles = handles.max(index.saturating_add(1));
+            }
+        }
+        let (Some(next), Some(count)) = (offset.checked_add(size), records.checked_add(1)) else { return };
+        offset = next;
+        records = count;
+        if typ == 14 {
+            break;
+        }
+    }
+    let Ok(bytes) = u32::try_from(offset) else { return };
+    // Defer all writes until the complete chain through EOF is valid: a partial repair could
+    // leave a damaged presentation looking usable to a strict EMF reader.
+    if let Some(fields) = emf.get_mut(48..60) {
+        let handles = handles.min(u32::from(u16::MAX)) as u16;
+        let [lo, hi] = handles.to_le_bytes();
+        for (field, value) in fields.chunks_exact_mut(4).zip([bytes.to_le_bytes(), records.to_le_bytes(), [lo, hi, 0, 0]]) {
+            field.copy_from_slice(&value);
+        }
+    }
+}
 
 /// The Windows Metafile in the object's `\x03META` stream (after its METAFILEPICT16 header), if
 /// it is well-formed and within the per-picture cap.
