@@ -25,6 +25,7 @@ pub mod insert;
 pub mod inspector;
 pub mod lists;
 pub mod mailings;
+pub mod move_text;
 pub mod moves;
 pub mod objects;
 pub mod options;
@@ -69,6 +70,7 @@ pub fn registry() -> Registry {
     v.extend(column::specs());
     v.extend(edit::specs());
     v.extend(browse::specs());
+    v.extend(move_text::specs());
     v.extend(paste::specs());
     v.extend(format::specs());
     v.extend(font::specs());

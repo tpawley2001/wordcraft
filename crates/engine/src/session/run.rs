@@ -53,6 +53,10 @@ impl Session {
     /// control channel). Mutating commands are undoable; a failed command leaves the document as
     /// it was; a panic inside a command becomes an error.
     pub fn run(&mut self, id: &str, params: &Value) -> Result<Value, CmdError> {
+        crate::cmd::move_text::invalidate(self);
+        if matches!(id, "edit.undo" | "edit.undoTo" | "edit.redo") {
+            self.pending_text_move = None;
+        }
         // The document the command starts in, and the first id a document it opens can have.
         let home = self.document_id;
         let mark = document_id_mark();
@@ -278,6 +282,7 @@ impl Session {
                 self.status = e.to_string();
             }
         }
+        crate::cmd::move_text::invalidate(self);
         result
     }
 
