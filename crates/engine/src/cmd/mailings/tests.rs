@@ -798,10 +798,17 @@ fn envelope_options_preserve_existing_styles_and_validate_before_new_document() 
         chr: CharProps { font: Some("Serif".into()), size: Some(15.0), bold: Some(true), ..Default::default() },
         ..Default::default()
     };
-    d.styles.styles.push(style.clone());
+    std::sync::Arc::make_mut(&mut d.styles).styles.push(style.clone());
     let mut s = Session::new(d);
     let id = s.document_id();
-    for bad in [json!({"deliveryLeft": "wrong"}), json!({"returnFont": {"size": null}}), json!({"deliveryFont": []}), json!({"deliveryTop": 298.0})] {
+    for bad in [
+        json!({"deliveryLeft": "wrong"}),
+        json!({"deliveryLeft": 684.000001}),
+        json!({"deliveryFont": {"size": 0.99999999}}),
+        json!({"returnFont": {"size": null}}),
+        json!({"deliveryFont": []}),
+        json!({"deliveryTop": 298.0}),
+    ] {
         assert!(matches!(s.run("mailings.envelopes", &bad), Err(CmdError::Params(_))));
         assert_eq!(s.document_id(), id);
         assert_eq!(s.doc.styles.get("EnvelopeAddress"), Some(&style));

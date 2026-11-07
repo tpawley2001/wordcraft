@@ -72,8 +72,9 @@ impl EnvelopeFont {
             props::{LineSpacing, ParaProps},
             styles::Style,
         };
-        if d.styles.get(id).is_none() {
-            d.styles.styles.push(Style {
+        let styles = std::sync::Arc::make_mut(&mut d.styles);
+        if styles.get(id).is_none() {
+            styles.styles.push(Style {
                 id: id.into(),
                 name: name.into(),
                 based_on: Some("Normal".into()),
@@ -88,7 +89,7 @@ impl EnvelopeFont {
                 ..Default::default()
             });
         }
-        if let Some(style) = d.styles.get_mut(id) {
+        if let Some(style) = styles.get_mut(id) {
             if let Some(name) = &self.name {
                 style.chr.font = Some(name.clone());
             }
@@ -103,8 +104,8 @@ fn envelope_number(v: &Value, key: &str, min: f32, max: f32) -> Result<Option<f3
     let Some(value) = v.get(key) else { return Ok(None) };
     let n = value
         .as_f64()
+        .filter(|n| n.is_finite() && (f64::from(min)..=f64::from(max)).contains(n))
         .map(|n| n as f32)
-        .filter(|n| n.is_finite() && (min..=max).contains(n))
         .ok_or_else(|| CmdError::Params(format!("`{key}` must be between {min} and {max} pt")))?;
     Ok(Some(n))
 }

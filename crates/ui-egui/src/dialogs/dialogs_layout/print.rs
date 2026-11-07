@@ -122,7 +122,7 @@ pub(super) fn envelopes_ui(app: &mut WordApp, ui: &mut Ui, f: &mut EnvelopeForm)
             heading(ui, tl!("Return address:"));
             draft.return_options.ui(ui, w, h, (22.0, 22.0), 10.0);
         });
-        let (ok, cancel) = buttons(ui, true);
+        let (ok, cancel) = buttons(ui, tl!("OK"), true);
         if ok {
             *f = *draft;
         } else if !cancel {
