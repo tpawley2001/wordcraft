@@ -260,6 +260,12 @@ fn field_at(s: &Session, pos: &Pos) -> Option<FieldAt> {
         .or_else(|| all.into_iter().rfind(|f| f.end.as_ref().is_some_and(|e| f.at < *pos && *pos <= *e)))
 }
 
+/// The name of the field at `pos` (`GOTOBUTTON`, `MACROBUTTON`, `PAGE`…), for the canvas's
+/// double-click on a button field.
+pub fn field_name_at(s: &Session, pos: &Pos) -> Option<String> {
+    field_at(s, pos).map(|f| wordcraft_layout::fields::field_name(&f.instr))
+}
+
 /// The range a single click at `pos` selects: a MACROBUTTON field's whole field (Word's "click
 /// here and type" placeholder, so typing replaces it), else nothing.
 pub fn click_selection(s: &Session, pos: &Pos) -> Option<Selection> {

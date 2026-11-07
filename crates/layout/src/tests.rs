@@ -10,6 +10,7 @@ mod bidi;
 mod blank_side_page;
 mod border_band;
 mod budget;
+mod button_fields;
 mod cell_floats;
 mod complex;
 mod eq_fields;
