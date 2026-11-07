@@ -1121,6 +1121,7 @@ fn para_ahead(ctx: &mut Ctx, p: &Paragraph, width: f32, counters: &mut Counters)
                 grid: ctx.grid,
                 fit_objects: false,
                 fitted: &[],
+                draft_font: ctx.opts.draft_font(),
             };
             Arc::new(para::layout_para(p, &env))
         }

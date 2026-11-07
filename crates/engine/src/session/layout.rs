@@ -76,6 +76,7 @@ impl Session {
             typing_word: typing,
             filename: filename.clone(),
             filepath: filepath.clone(),
+            draft_font: self.view.draft_font.clone(),
         };
         let l = Arc::new(wordcraft_layout::layout(&self.doc, &mut self.cache, &opts));
         let [newest, _] = std::mem::take(&mut self.layout);
@@ -190,6 +191,15 @@ impl Session {
             ..Default::default()
         };
         Arc::new(wordcraft_layout::layout(doc, &mut LayoutCache::new(), &opts))
+    }
+
+    /// Show Draft and Outline views in `font` (File › Options › Advanced › Use draft font), or in
+    /// the document's own fonts (`None`). A screen setting: the document doesn't change.
+    pub fn set_draft_font(&mut self, font: Option<wordcraft_layout::DraftFont>) {
+        if self.view.draft_font != font {
+            self.view.draft_font = font;
+            self.layout = Default::default();
+        }
     }
 
     /// Invalidate the cached layout (fonts changed etc.).

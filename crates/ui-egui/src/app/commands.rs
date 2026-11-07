@@ -157,6 +157,13 @@ impl WordApp {
         }
         // Web: saving and exporting become downloads.
         if self.services.download.is_some() && matches!(id, "file.save" | "file.saveAs" | "file.exportPdf" | "file.exportPng") {
+            // A read-only document can't overwrite its own file: Save goes to Save As.
+            if id == "file.save"
+                && self.session.read_only
+                && params.get("path").and_then(Value::as_str).is_none_or(|p| self.session.path.as_deref() == Some(std::path::Path::new(p)))
+            {
+                return Err("the document is open read-only: save it under another name (Save As)".into());
+            }
             let name = params.get("path").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| self.web_save_name(id));
             let name = if id == "file.exportPdf" && !name.ends_with(".pdf") { format!("{name}.pdf") } else { name };
             // A save with a password encrypts this and later saves (`file.save`'s `password`).
@@ -203,6 +210,8 @@ impl WordApp {
             }
             if marked_saved {
                 self.session.dirty = false;
+                // Saving a read-only document under another name makes an ordinary document.
+                self.session.read_only = false;
                 // The host page keeps the file under this name now, as a desktop save would.
                 if self.services.host_save.is_some() {
                     self.session.path = Some(std::path::PathBuf::from(&name));
@@ -336,21 +345,45 @@ impl WordApp {
                 file_dialogs::Asked::Busy => Ok(json!({"saved": false})),
             };
         }
+        // A read-only document can't be saved over its file: Save goes to Save As, as in Word.
+        if id == "file.save"
+            && self.session.read_only
+            && params.get("path").and_then(Value::as_str).is_none_or(|p| self.session.path.as_deref() == Some(std::path::Path::new(p)))
+        {
+            return match self.save_as(file_dialogs::AfterSave::Nothing) {
+                file_dialogs::Asked::Done(r) => r,
+                file_dialogs::Asked::Pending => Ok(json!({"pending": "saveAs"})),
+                file_dialogs::Asked::Busy => Ok(json!({"saved": false})),
+            };
+        }
         let retry = (id == "file.open").then(|| params.clone());
         let retry_path = retry.clone();
         let r = self.execute(id, params);
-        if let (Err(e), Some(params)) = (&r, retry)
-            && wordcraft_engine::io::needs_password(e)
+        if let (Err(e), Some(params)) = (&r, retry.clone())
+            && (wordcraft_engine::io::needs_password(e) || wordcraft_engine::io::needs_modify_password(e))
         {
             let path = params.get("path").and_then(Value::as_str).unwrap_or("");
             let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| path.to_string());
-            self.dialog = Some(dialogs::Dialog::Password { name, params, password: Default::default(), message: String::new() });
+            let key = if wordcraft_engine::io::needs_modify_password(e) { "modifyPassword" } else { "password" };
+            self.dialog = Some(dialogs::Dialog::Password { name, params, password: Default::default(), key: key.into(), message: String::new() });
             return Ok(json!({"pending": "password"}));
         }
         // Whoever asked, a failed open names the file and the cause (#1103).
         if let (Err(e), Some(params)) = (&r, retry_path) {
             let path = params.get("path").and_then(Value::as_str).unwrap_or("");
             self.report_open_failure(path, e);
+        }
+        // Read-only recommended: Word asks whether to open it read-only. The document is open
+        // already; Yes reopens it read-only.
+        if let (Ok(v), Some(params)) = (&r, retry)
+            && v.get("readOnlyRecommended").and_then(Value::as_bool) == Some(true)
+            && v.get("readOnly").and_then(Value::as_bool) == Some(false)
+            && params.get("readOnly").is_none()
+        {
+            let path = params.get("path").and_then(Value::as_str).unwrap_or("");
+            let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| path.to_string());
+            self.dialog = Some(dialogs::Dialog::ReadOnlyRecommended { name, params });
+            return Ok(json!({"pending": "readOnlyRecommended"}));
         }
         r
     }
@@ -810,6 +843,53 @@ impl WordApp {
                 }
                 json!({"alignmentGuides": self.ui.alignment_guides})
             }
+            "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" => {
+                // File › Options › Advanced › Show document content: `value` true or false turns
+                // crop marks, text boundaries or picture placeholders on or off; no value reads
+                // it. Screen only: the document, printing and exports never see them.
+                let (key, slot) = match id {
+                    "ui.cropMarks" => ("cropMarks", &mut self.ui.crop_marks),
+                    "ui.textBoundaries" => ("textBoundaries", &mut self.ui.text_boundaries),
+                    _ => ("picturePlaceholders", &mut self.ui.picture_placeholders),
+                };
+                match p.get("value") {
+                    None => {}
+                    Some(Value::Bool(on)) => *slot = *on,
+                    Some(_) => return Some(Err("`value` must be true or false".into())),
+                }
+                json!({ key: *slot })
+            }
+            "ui.draftFont" => {
+                // File › Options › Advanced › Show document content › Use draft font in Draft and
+                // Outline views: `value` true or false, `name` a font name, `size` 1–1638 points;
+                // none reads it. A bad parameter is an error and changes nothing.
+                let on = match p.get("value") {
+                    None => None,
+                    Some(Value::Bool(on)) => Some(*on),
+                    Some(_) => return Some(Err("`value` must be true or false".into())),
+                };
+                let name = match p.get("name") {
+                    None => None,
+                    Some(Value::String(n)) if !n.trim().is_empty() && n.len() <= crate::MAX_FONT_NAME_BYTES => Some(n.trim().to_string()),
+                    Some(_) => return Some(Err("`name` must be a font name".into())),
+                };
+                let size = match p.get("size").map(Value::as_f64) {
+                    None => None,
+                    Some(Some(s)) if (1.0..=1638.0).contains(&s) => Some(s as f32),
+                    Some(_) => return Some(Err("`size` must be a number of points from 1 to 1638".into())),
+                };
+                if let Some(on) = on {
+                    self.ui.draft_font = on;
+                }
+                if let Some(name) = name {
+                    self.ui.draft_font_name = name;
+                }
+                if let Some(size) = size {
+                    self.ui.draft_font_size = size;
+                }
+                self.session.set_draft_font(self.ui.shown_draft_font());
+                json!({"draftFont": self.ui.draft_font, "name": self.ui.draft_font_name, "size": self.ui.draft_font_size})
+            }
             "ui.startScreen" => {
                 // File › Options › General › Start-up (#766): `value` true or false turns showing
                 // File › Home at start-up on or off; no value reads it.
@@ -978,6 +1058,7 @@ fn input_dialog_mailings(id: &str, params: &Value) -> Option<&'static str> {
 fn input_dialog_insert(id: &str, params: &Value) -> Option<&'static str> {
     match id {
         "insert.symbol" if !has_value(params, "char") => Some("symbol"),
+        "insert.buildingBlocks" if no_settings(params) => Some("buildingBlocks"),
         "insert.field" if !has_value(params, "instr") => Some("field"),
         "insert.smartArt" if !has_value(params, "layout") && !has_value(params, "items") => Some("insertSmartArt"),
         "insert.chart" if !has_value(params, "type") && !has_value(params, "data") => Some("insertChart"),

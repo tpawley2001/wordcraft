@@ -16,11 +16,21 @@ struct Resolver<'a> {
     doc: &'a Document,
     style: Option<&'a str>,
     table: Option<&'a CharProps>,
+    draft_font: Option<(&'a str, f32)>,
 }
 
 impl Resolver<'_> {
     fn char(&self, c: &CharProps) -> Arc<ResolvedChar> {
-        Arc::new(self.doc.styles.resolve_char_in(self.style, self.table, c))
+        let mut rc = self.doc.styles.resolve_char_in(self.style, self.table, c);
+        // The draft font replaces every font and size; the rest of the formatting stays.
+        if let Some((name, size)) = self.draft_font {
+            rc.font = name.to_string();
+            rc.font_cs = name.to_string();
+            rc.font_ea = None;
+            rc.size = size;
+            rc.size_cs = size;
+        }
+        Arc::new(rc)
     }
 }
 
@@ -618,7 +628,7 @@ fn joined_cluster_starts(p: &Paragraph, clusters: &[Cluster]) -> Vec<usize> {
 pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     let doc = env.doc;
     let rp = paragraph_props(p, env);
-    let res = Resolver { doc, style: p.props.style.as_deref(), table: env.table.map(|t| &t.chr) };
+    let res = Resolver { doc, style: p.props.style.as_deref(), table: env.table.map(|t| &t.chr), draft_font: env.draft_font };
     let levels = bidi_levels(&p.text, rp.bidi);
     let b = Builder {
         env,

@@ -675,6 +675,15 @@ fn save_as_page(app: &mut WordApp, ui: &mut Ui) {
     if ui.button(egui::RichText::new(tl!("Browse…")).font(medium(14.0))).clicked() {
         app.save_as_dialog();
     }
+    // Save As › Tools › General Options: the password to modify and Read-only recommended.
+    ui.add_space(8.0);
+    if ui
+        .button(egui::RichText::new(tl!("Tools › General Options…")).font(medium(14.0)))
+        .on_hover_text(tl!("Set a password to modify and whether the document opens read-only."))
+        .clicked()
+    {
+        let _ = app.run("ui.dialog", json!({"name": "generalOptions"}));
+    }
     // A Word template in the user templates folder, which File › New lists under Personal (#2852).
     ui.add_space(8.0);
     if ui
@@ -777,6 +786,17 @@ fn info_properties(app: &mut WordApp, ui: &mut Ui, info: &serde_json::Value) {
         .clicked()
     {
         let _ = if marked { app.run("file.markAsFinal", json!({"final": false})) } else { app.run("ui.dialog", json!({"name": "markAsFinal"})) };
+    }
+    // Always Open Read-Only: the document's Read-only recommended flag (`w:writeProtection`).
+    ui.add_space(8.0);
+    let recommended = app.session.doc.settings.write_protection.as_ref().is_some_and(|w| w.recommended);
+    let label = if recommended { tl!("Always Open Read-Only ✓") } else { tl!("Always Open Read-Only") };
+    if ui
+        .button(egui::RichText::new(label).font(medium(13.5)))
+        .on_hover_text(tl!("Word asks whether to open this document read-only. Save the document to keep the change."))
+        .clicked()
+    {
+        let _ = app.run("file.generalOptions", json!({"readOnlyRecommended": !recommended}));
     }
 }
 

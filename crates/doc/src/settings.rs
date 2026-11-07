@@ -121,6 +121,28 @@ pub struct CoreProps {
     pub content_type: String,
 }
 
+/// Read-only recommended and Password to modify (`w:writeProtection`, ECMA-376 Part 1
+/// §17.15.1.93). Not encryption and not an editing restriction: a document opened read-only can
+/// be edited, but Save can't overwrite its file.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct WriteProtection {
+    /// `w:recommended="1"`: Word asks whether to open the document read-only.
+    pub recommended: bool,
+    /// The password to modify's hash, as the element's attributes (`w:algorithmName`,
+    /// `w:hashValue`, `w:saltValue`, `w:spinCount`, or the older `w:cryptAlgorithmSid`,
+    /// `w:hash`, `w:salt`…). Empty: no password.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hash: Vec<(String, String)>,
+}
+
+impl WriteProtection {
+    /// Whether the element says anything: a recommendation or a password.
+    pub fn is_empty(&self) -> bool {
+        !self.recommended && self.hash.is_empty()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
@@ -171,6 +193,9 @@ pub struct Settings {
     /// `w:cryptAlgorithmSid`, `w:hash`, `w:salt`…). Empty: no password.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub protect_hash: Vec<(String, String)>,
+    /// Read-only recommended and Password to modify (`w:writeProtection`, §17.15.1.93).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub write_protection: Option<WriteProtection>,
     /// Word compatibility mode the document is laid out in (`compatibilityMode`): 15 for Word
     /// 2013 and later, which places a table's border at the margin rather than its text and lets
     /// justified lines shrink their spaces to fit more text.
@@ -535,6 +560,7 @@ impl Default for Settings {
             protection: None,
             protect_formatting: false,
             protect_hash: Vec::new(),
+            write_protection: None,
             compat_mode: COMPAT_MODE_CURRENT,
             roman_fonts: Vec::new(),
             web_divs: Vec::new(),

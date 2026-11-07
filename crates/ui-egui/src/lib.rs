@@ -404,6 +404,18 @@ pub struct UiState {
     /// File › Options › Advanced › Editing: moving a picture or shape snaps it to alignment
     /// guides (on by default; Alt moves freely).
     pub alignment_guides: bool,
+    /// File › Options › Advanced › Show document content: crop marks at the corners of the text
+    /// area in Print Layout (on, as in Word). Screen only.
+    pub crop_marks: bool,
+    /// … a dotted outline round the text area (each column) in Print Layout. Screen only.
+    pub text_boundaries: bool,
+    /// … pictures drawn as empty outlined rectangles. Screen only.
+    pub picture_placeholders: bool,
+    /// … Draft and Outline views show all text in [`UiState::draft_font_name`] at
+    /// [`UiState::draft_font_size`] points. Screen only.
+    pub draft_font: bool,
+    pub draft_font_name: String,
+    pub draft_font_size: f32,
     /// File › Options › General: start on File › Home (Blank document, templates, Recent) when
     /// the app opens without a document (#766); on, as in Word. See [`WordApp::start_screen`].
     pub start_screen: bool,
@@ -429,6 +441,10 @@ pub const DEFAULT_TAB: &str = "Home";
 
 /// ⌘Q, which only the Mac sends: quit.
 const QUIT: egui::KeyboardShortcut = egui::KeyboardShortcut::new(egui::Modifiers::MAC_CMD, egui::Key::Q);
+/// The draft font Word starts with (File › Options › Advanced › Show document content).
+pub const DEFAULT_DRAFT_FONT: &str = "Courier New";
+/// The draft font's size Word starts with, in points.
+pub const DEFAULT_DRAFT_FONT_SIZE: f32 = 10.0;
 /// Most recent documents kept (File › Options › Advanced offers 0–50, as Word does).
 pub const MAX_RECENT: usize = 50;
 /// Most custom dictionary words read back from `ui.json`.
@@ -491,6 +507,12 @@ impl Default for UiState {
             recent_count: 12,
             mini_toolbar: true,
             alignment_guides: true,
+            crop_marks: true,
+            text_boundaries: false,
+            picture_placeholders: false,
+            draft_font: false,
+            draft_font_name: DEFAULT_DRAFT_FONT.into(),
+            draft_font_size: DEFAULT_DRAFT_FONT_SIZE,
             start_screen: true,
             print_backgrounds: false,
             update_fields_before_print: false,
@@ -512,6 +534,19 @@ impl UiState {
         }
         migrate_units(&mut v);
         Some(options::lenient(&v))
+    }
+
+    /// The font Draft and Outline views show text in, when the draft font is on; a junk saved
+    /// name or size reads as Word's.
+    pub fn shown_draft_font(&self) -> Option<wordcraft_layout::DraftFont> {
+        if !self.draft_font {
+            return None;
+        }
+        let name = self.draft_font_name.trim();
+        let name = if name.is_empty() { DEFAULT_DRAFT_FONT } else { name };
+        let size = self.draft_font_size;
+        let size = if size.is_finite() && (1.0..=1638.0).contains(&size) { size } else { DEFAULT_DRAFT_FONT_SIZE };
+        Some(wordcraft_layout::DraftFont { name: name.into(), size })
     }
 
     /// How many recent documents to list.

@@ -83,6 +83,7 @@ impl WordApp {
         self.session.ribbon = std::mem::take(&mut self.ui.ribbon);
         self.session.ribbon.retain_known(&reg);
         self.session.view.draw.pens = std::mem::take(&mut self.ui.ink_pens);
+        self.session.set_draft_font(self.ui.shown_draft_font());
     }
 
     /// Follow the desktop's light/dark choice while the app runs (Linux, where winit reports no

@@ -14,6 +14,7 @@ mod autonum_fields;
 mod auto_caption;
 mod bidi;
 mod browse_object;
+mod building_blocks;
 mod clipboard_options;
 mod custom_prop_types;
 mod documents;
@@ -45,6 +46,7 @@ mod typing;
 mod word_window_keys;
 mod button_fields;
 mod wordart;
+mod write_protection;
 
 /// True, after saying so on stderr, when this build lacks the Language data the proofing tests
 /// need (craft-proof built without `CRAFT_I18N_DIR`). The probes are craft-proof's public
@@ -303,7 +305,9 @@ fn word_default_shortcuts_resolve_function_keys() {
     // The Spike: Word's Ctrl+F3 and Ctrl+Shift+F3 (⌘F3 and ⌘⇧F3 in Word for Mac).
     assert_eq!(id("Mod+F3"), Some("edit.spike"));
     assert_eq!(id("Mod+Shift+F3"), Some("edit.insertSpike"));
-    assert_eq!(id("F3"), Some("edit.findNext"));
+    // Word for Windows: F3 inserts the AutoText entry named by the text before the caret; Find
+    // Next repeats on Shift+F4.
+    assert_eq!(id("F3"), Some("insert.autoTextByName"));
     assert_eq!(id("Shift+F3"), Some("format.changeCase"));
     assert_eq!(id("F12"), Some("file.saveAs"));
     assert_eq!(id("Mod+Alt+M"), Some("review.newComment"));

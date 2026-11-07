@@ -62,8 +62,8 @@ use navigation::{scrollbar_page_tip, viewed_page};
 use pages::{DRAWING_GRID_MAX_LINES, DRAWING_GRID_MIN_PX};
 pub(crate) use pages::{PageKeys, dark_page, page_doc, page_screen_scale, preview_sel, screen_render_options};
 use pages::{
-    drawing_grid, drawing_grid_from, drawing_grid_step, gridline_cells, page_image, page_key, page_render_options, shown_layout, texel_aligned_rect,
-    view_key, visible_tiles,
+    crop_marks, drawing_grid, drawing_grid_from, drawing_grid_step, gridline_cells, page_image, page_key, page_render_options, shown_layout,
+    texel_aligned_rect, text_boundaries, view_key, visible_tiles,
 };
 pub(crate) use reading::turn_read_page;
 #[cfg(test)]
@@ -912,6 +912,30 @@ fn draw_page_gridlines(app: &WordApp, painter: &egui::Painter, t: &Tokens, page:
     }
 }
 
+/// File › Options › Advanced › Show document content: crop marks at the text area's corners and
+/// dotted text boundaries (Print Layout, on screen only; never printed or exported).
+fn draw_text_area_guides(app: &WordApp, painter: &egui::Painter, page: &Page, visual_sr: Rect, page_scale: f32) {
+    if app.session.view.mode != wordcraft_layout::ViewMode::Print || app.session.view.read_mode {
+        return;
+    }
+    // Grey, as Word draws them: legible on white paper and on a dark page alike.
+    let stroke = Stroke::new(1.0, Color32::GRAY);
+    let at = |(x, y): (f32, f32)| pos2(visual_sr.min.x + x * page_scale, visual_sr.min.y + y * page_scale);
+    if app.ui.crop_marks {
+        for [a, b] in crop_marks(page.body, page.w, page.h) {
+            painter.line_segment([at(a), at(b)], stroke);
+        }
+    }
+    if app.ui.text_boundaries {
+        let sections = app.session.doc.sections();
+        let columns = sections.get(page.section).map(|(_, s)| s.column_boxes()).unwrap_or_default();
+        for r in text_boundaries(page, &columns) {
+            let (tl, tr, br, bl) = (at((r.x, r.y)), at((r.right(), r.y)), at((r.right(), r.bottom())), at((r.x, r.bottom())));
+            painter.extend(egui::Shape::dotted_line(&[tl, tr, br, bl, tl], stroke.color, 3.0, 0.5));
+        }
+    }
+}
+
 /// Grid lines at page points `xs` and `ys`, clipped to the body, on screen.
 fn draw_grid_lines(
     painter: &egui::Painter,
@@ -1070,6 +1094,7 @@ fn paint_pages(pass: PagePaint<'_>) -> PagePaintOutput {
             }
         }
         draw_page_gridlines(app, &painter, t, page, visual_sr, page_scale);
+        draw_text_area_guides(app, &painter, page, visual_sr, page_scale);
         // The current header/footer's cells have editing guides; explicit View Gridlines
         // still outlines every table. Neither kind of guide is part of the document.
         if app.session.view.table_gridlines || grid_story.is_some() {
@@ -1715,5 +1740,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     );
 }
 
+#[cfg(test)]
+mod show_content_tests;
 #[cfg(test)]
 mod tests;

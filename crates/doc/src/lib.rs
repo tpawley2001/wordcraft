@@ -90,7 +90,7 @@ pub use position::{Path, Pos, StoryRef};
 pub use settings::{
     AutoCaption, BUILTIN_CAPTION_LABELS, CAPTION_NUM_FORMATS, COMPAT_MODE_CURRENT, CaptionLabel, CaptionSep, Captions, CoreProps, CustomProp,
     DEFAULT_GRID, DEFAULT_HYPHENATION_ZONE, LEGACY_COMPAT_MODE, MAX_CAPTION_ENTRIES, MAX_DIV_DEPTH, OdfLayout, PagePicture, Settings, Source,
-    THEME_COLORS, WORD2003_COMPAT_MODE, Watermark, WebDiv, Zoom, ZoomFit, div_margins,
+    THEME_COLORS, WORD2003_COMPAT_MODE, Watermark, WebDiv, WriteProtection, Zoom, ZoomFit, div_margins,
 };
 pub(crate) use text_walk::{PARA_WALK_DEPTH, walk_between};
 pub use text_walk::{count_chars, count_chars_no_spaces, count_words};

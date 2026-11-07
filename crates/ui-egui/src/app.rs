@@ -253,6 +253,8 @@ impl WordApp {
             self.applied_editing = Some((lang, editing));
         }
         options::sync(self);
+        // Every open document's Draft and Outline views follow the draft font setting.
+        self.session.set_draft_font(self.ui.shown_draft_font());
         self.settle_async_saves();
         // Chinese text wants the Chinese face before the Japanese one (one glyph style per line).
         // An installed CJK font is read only once CJK text is shown (#241): a CJK interface, the

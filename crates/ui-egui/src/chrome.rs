@@ -291,10 +291,16 @@ pub(crate) fn window_title(app: &WordApp) -> String {
     } else {
         tl!("Not saved")
     };
-    if wordcraft_engine::compatibility_mode(&app.session) {
-        format!("{} {} — {}", crate::i18n::isolate(&app.title_stem()), tl!("[Compatibility Mode]"), state)
+    // Word's "(Read-Only)" after the name: the document can be edited, but not saved over its file.
+    let name = if app.session.read_only {
+        format!("{} {}", crate::i18n::isolate(&app.title_stem()), tl!("(Read-Only)"))
     } else {
-        format!("{} — {}", crate::i18n::isolate(&app.title_stem()), state)
+        crate::i18n::isolate(&app.title_stem())
+    };
+    if wordcraft_engine::compatibility_mode(&app.session) {
+        format!("{name} {} — {}", tl!("[Compatibility Mode]"), state)
+    } else {
+        format!("{name} — {state}")
     }
 }
 

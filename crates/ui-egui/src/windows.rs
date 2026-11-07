@@ -574,6 +574,9 @@ impl WordApp {
         let mut name = self.windows.menu_title(self.windows.shown).map(str::to_string).unwrap_or_else(|| self.title_stem());
         // X11 converts window titles to C strings, which cannot contain NUL (#3634).
         name.retain(|c| c != '\0');
+        if self.session.read_only {
+            name.push_str(" (Read-Only)");
+        }
         title(&name, self.session.dirty)
     }
 

@@ -186,11 +186,14 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
 /// Ascent and descent (em) of Word's symbol fonts, which aren't open fonts. Their characters are
 /// drawn from other faces (`wordcraft_doc::symbol_fonts`), but Word sizes a line by the font
 /// itself: a Symbol bullet makes its line taller than the text alone. The values are those Word's
-/// PDFs give the fonts (`/Ascent`, `/Descent`).
+/// embedded fonts give in hhea and OS/2 win metrics (unitsPerEm 2048, lineGap 0).
 pub fn symbol_font_metrics(family: &str) -> Option<(f64, f64)> {
     match family.trim().to_ascii_lowercase().as_str() {
         "symbol" | "symbol (pcl6)" => Some((1.005, 0.216)),
-        "wingdings" => Some((0.899, 0.205)),
+        "wingdings" => Some((0.899, 0.211)),
+        "wingdings 2" => Some((0.8433, 0.2109)),
+        "wingdings 3" => Some((0.9277, 0.2109)),
+        "webdings" => Some((0.7998, 0.2002)),
         _ => None,
     }
 }

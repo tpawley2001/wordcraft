@@ -89,6 +89,11 @@ pub struct ViewState {
     /// How digits look on screen (Word › File › Options › Advanced › Numeral).
     #[serde(default)]
     pub numeral: NumeralMode,
+    /// File › Options › Advanced › Use draft font in Draft and Outline views: the font and size
+    /// every run is shown in there (`None`: the document's own). The UI keeps the setting; the
+    /// layout of the other views and every export ignore it.
+    #[serde(skip)]
+    pub draft_font: Option<wordcraft_layout::DraftFont>,
     /// Review › Hide Ink: ink strokes aren't shown on screen (they stay in the document).
     #[serde(default)]
     pub hide_ink: bool,
@@ -210,6 +215,7 @@ impl Default for ViewState {
             track_changes_pane: false,
             proofing: true,
             numeral: NumeralMode::default(),
+            draft_font: None,
             hide_ink: false,
             draw: Default::default(),
             field_codes: false,

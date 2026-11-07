@@ -150,6 +150,8 @@ impl<'a> Exempt<'a> {
         names.extend(app.session.doc.styles.styles.iter().map(|s| s.name.clone()));
         // Fonts a document asks for, installed or not (Aptos is drawn with a substitute).
         names.extend([wordcraft_doc::styles::BODY_FONT, wordcraft_doc::styles::HEADING_FONT].map(str::to_string));
+        // The draft font (File › Options › Advanced), installed or not: a font name, the user's choice.
+        names.insert(app.ui.draft_font_name.clone());
         // The selected SmartArt graphic's items (the Text Pane): document content.
         if let Some(g) = wordcraft_engine::cmd::smart_art::selected_smart_art(&app.session) {
             names.extend(g.items.iter().map(|i| i.text.clone()));
@@ -297,6 +299,8 @@ fn untranslated_interface_text() {
         "pageNumbers",
         "link",
         "bookmark",
+        "buildingBlocks",
+        "newBuildingBlock",
         "wordCount",
         "zoom",
         "watermark",
@@ -739,6 +743,8 @@ fn the_arabic_interface_is_mirrored_and_never_panics() {
         "pageSetup",
         "link",
         "bookmark",
+        "buildingBlocks",
+        "newBuildingBlock",
         "wordCount",
         "zoom",
         "watermark",

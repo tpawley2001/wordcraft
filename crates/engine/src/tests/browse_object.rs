@@ -42,7 +42,8 @@ fn browse_keys() {
         assert_eq!(id("Mod+PageDown"), Some("nav.browseNext"));
         assert_eq!(id("Mod+PageUp"), Some("nav.browsePrevious"));
         assert_eq!(id("Mod+Alt+Home"), Some("nav.selectBrowseObject"));
-        assert_eq!(id("F3"), Some("edit.findNext"), "Find Next keeps F3");
+        assert_eq!(id("Shift+F4"), Some("edit.findNext"), "Find Next keeps Shift+F4");
+        assert_eq!(id("F3"), Some("insert.autoTextByName"), "F3 inserts AutoText by name");
     }
 }
 

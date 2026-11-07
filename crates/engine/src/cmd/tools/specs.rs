@@ -2,6 +2,7 @@ use super::actions::{
     customize_keyboard, customize_ribbon, hf_nav, language, macros, preferred_language, quick_parts, search_commands, select_similar,
 };
 use super::autocorrect::autocorrect_options;
+use super::building_blocks;
 use super::compare::{COMPARE_PARAMS, compare};
 use super::inspect::{accessibility, inspect_doc};
 use super::{
@@ -173,6 +174,12 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("insert.autoText", "AutoText", "Insert › Text › Quick Parts", |s, v| quick_parts(s, v, wordcraft_doc::AUTO_TEXT_GALLERY))
             .key(crate::cmd::non_mac("Alt+F3"))
             .params(r#"{"save"?: name, "in"?: "document", "insert"?: name, "delete"?: name} → {"parts": names, "document": the document's AutoText}"#),
+        CommandSpec::new("insert.buildingBlocks", "Building Blocks Organizer", "Insert › Text › Quick Parts", building_blocks::organizer).params(
+            r#"{"create"?: {"name", "gallery"?: "docParts|autoTxt|coverPg|hdrs|ftrs|pgNum|tbls|txtBox|watermarks|eq|bib|custom1…" (docParts), "category"?: (General), "description"?, "behavior"?: "content|p|pg" (content)} (the selection; same name and gallery redefines it), "modify"?: index, "name"?, "gallery"?, "category"?, "description"?, "behavior"?, "delete"?: index, "insert"?: index} → {"entries": [{"index" (in the document's glossary), "name", "gallery", "category", "description", "behavior"}] by gallery, category, name}"#,
+        ),
+        CommandSpec::new("insert.autoTextByName", "Insert AutoText", "Insert › Text › Quick Parts", building_blocks::auto_text_by_name)
+            .key("F3")
+            .params(r#"{} (the word before the caret becomes the AutoText entry of that name, or the only one starting with it) → {"word"}"#),
         CommandSpec::new("insert.docProperty", "Document Property", "Insert › Text › Quick Parts", |s, v| {
             let name = p::str(v, "name").unwrap_or("Title").to_string();
             let c = &s.doc.core;

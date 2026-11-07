@@ -90,7 +90,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("file.new", "New", "File", new).key("Mod+N").params(r#"{"template"?: "blank|sample|letter|resume|report"}"#).pure(),
         CommandSpec::new("file.open", "Open", "File", open)
             .key("Mod+O / Mod+F12 / Mod+Alt+F2")
-            .params(r#"{"path": string, "data"?: base64 (the file's bytes; `path` then only names it), "password"?: string (for a password-protected Word document)}"#)
+            .params(r#"{"path": string, "data"?: base64 (the file's bytes; `path` then only names it), "password"?: string (for a password-protected Word document), "modifyPassword"?: string (the file's password to modify), "readOnly"?: bool (open read-only instead of giving the password to modify)} → {"readOnly": bool, "readOnlyRecommended": bool, …}"#)
             .pure(),
         CommandSpec::new("file.save", "Save", "File", save)
             .key("Mod+S / Shift+F12 / Alt+Shift+F2")
@@ -99,6 +99,19 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("file.saveAs", "Save As", "File", save_as).key(super::mac_or("F12 / Mod+Shift+S", "F12 / Alt+F2")).params(r#"{"path": string, "password"?: string, "markup"?: bool, "format"?: string (as file.save)}"#).pure(),
         // Pure: the password must not land in Repeat or a recorded macro, and it isn't an edit
         // to undo; it marks the document as changed itself.
+        // Word's "(Read-Only)": the document can be edited, but Save can't overwrite its file.
+        CommandSpec::new("file.readOnly", "Read Only", "File › Info › Protect Document", |s, v| {
+            if let Some(on) = p::bool(v, "value") {
+                s.read_only = on;
+            }
+            Ok(json!({"readOnly": s.read_only}))
+        })
+        .params(r#"{"value"?: bool (omit to read it)} → {"readOnly": bool}"#)
+        .pure(),
+        // Save As › Tools › General Options: the password to modify and Read-only recommended
+        // (`w:writeProtection`), saved by the next save.
+        CommandSpec::new("file.generalOptions", "General Options", "File › Save As › Tools", general_options)
+            .params(r#"{"modifyPassword"?: string ("" removes it), "readOnlyRecommended"?: bool} → {"modifyPassword": bool, "readOnlyRecommended": bool}"#),
         CommandSpec::new("file.encrypt", "Encrypt with Password", "File › Info › Protect Document", encrypt)
             .params(r#"{"password": string (Word documents are saved encrypted with it) | null or "" (saved unencrypted)}"#)
             .pure(),
@@ -253,9 +266,16 @@ fn open(s: &mut Session, v: &Value) -> CmdResult {
         && let Some(id) = s.find_open(std::path::Path::new(path))
     {
         s.activate(id)?;
-        return Ok(
-            json!({"path": s.path, "paragraphs": s.doc.paragraph_count(), "words": s.doc.word_count(), "encrypted": s.password.is_some(), "alreadyOpen": true, "id": id}),
-        );
+        return Ok(json!({
+            "path": s.path,
+            "paragraphs": s.doc.paragraph_count(),
+            "words": s.doc.word_count(),
+            "encrypted": s.password.is_some(),
+            "alreadyOpen": true,
+            "id": id,
+            "readOnly": s.read_only,
+            "readOnlyRecommended": s.doc.settings.write_protection.as_ref().is_some_and(|w| w.recommended),
+        }));
     }
     let password = p::str(v, "password");
     let (mut doc, encrypted) = if let Some(data) = p::str(v, "data") {
@@ -271,6 +291,25 @@ fn open(s: &mut Session, v: &Value) -> CmdResult {
         (normal_document(s), false)
     } else {
         crate::io::open_path_in(std::path::Path::new(path), password, &s.region()).map_err(CmdError::Failed)?
+    };
+    // Read-only recommended and Password to modify (`w:writeProtection`): a password must be
+    // given, or the user must choose Read Only, before the document opens.
+    let recommended = doc.settings.write_protection.as_ref().is_some_and(|w| w.recommended);
+    let read_only = match doc.settings.write_protection.as_ref().filter(|w| !w.hash.is_empty()) {
+        Some(wp) => {
+            let given = p::str(v, "modifyPassword");
+            let correct = given.is_some_and(|pw| wordcraft_docx::check_protection_password(&wp.hash, pw) == wordcraft_docx::PasswordCheck::Correct);
+            if correct {
+                false
+            } else if p::bool(v, "readOnly") == Some(true) {
+                true
+            } else if given.is_none() {
+                return Err(CmdError::Params(format!("{path}: this document has a password to modify: give it, or open it read-only")));
+            } else {
+                return Err(CmdError::Params(format!("{path}: the password is incorrect")));
+            }
+        }
+        None => p::bool(v, "readOnly") == Some(true),
     };
     // Plain text and Markdown carry no language: they are in the editing language.
     let ext = std::path::Path::new(path).extension().and_then(std::ffi::OsStr::to_str).unwrap_or("").to_ascii_lowercase();
@@ -290,13 +329,21 @@ fn open(s: &mut Session, v: &Value) -> CmdResult {
         super::view::restore_zoom(s, z);
     }
     s.path = Some(path.into());
+    s.read_only = read_only;
     // Like Word, a document opened with a password is saved with it again.
     if encrypted {
         s.password = password.map(crate::io::Password::new);
     }
-    Ok(
-        json!({"path": path, "paragraphs": s.doc.paragraph_count(), "words": s.doc.word_count(), "encrypted": encrypted, "alreadyOpen": false, "id": s.document_id()}),
-    )
+    Ok(json!({
+        "path": path,
+        "paragraphs": s.doc.paragraph_count(),
+        "words": s.doc.word_count(),
+        "encrypted": encrypted,
+        "alreadyOpen": false,
+        "id": s.document_id(),
+        "readOnly": read_only,
+        "readOnlyRecommended": recommended,
+    }))
 }
 
 /// Close a document with no window to ask about it (agents, headless sessions).
@@ -314,6 +361,42 @@ fn close_document(s: &mut Session, v: &Value) -> CmdResult {
     }
     s.close_document(id)?;
     Ok(json!({"closed": id, "active": s.document_id(), "documents": s.documents()}))
+}
+
+/// Save As › Tools › General Options: the password to modify and Read-only recommended
+/// (`w:writeProtection`, ECMA-376 Part 1 §17.15.1.93). An edit, saved by the next save.
+fn general_options(s: &mut Session, v: &Value) -> CmdResult {
+    let password = match v.get("modifyPassword") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(pw)) if pw.is_empty() => Some(None),
+        Some(Value::String(pw)) => {
+            let hash = wordcraft_docx::protection_hash(pw, wordcraft_docx::DEFAULT_SPIN_COUNT).map_err(|e| CmdError::Params(e.to_string()))?;
+            Some(Some(hash))
+        }
+        Some(_) => return Err(CmdError::Params("`modifyPassword` must be a string (\"\" removes it)".into())),
+    };
+    let recommended = p::bool(v, "readOnlyRecommended");
+    if password.is_none() && recommended.is_none() {
+        return Ok(general_options_state(s));
+    }
+    let mut wp = s.doc.settings.write_protection.clone().unwrap_or_default();
+    if let Some(hash) = password {
+        wp.hash = hash.unwrap_or_default();
+    }
+    if let Some(on) = recommended {
+        wp.recommended = on;
+    }
+    s.doc.settings.write_protection = Some(wp).filter(|w| !w.is_empty());
+    Ok(general_options_state(s))
+}
+
+/// The General Options state, as `file.generalOptions` returns it.
+fn general_options_state(s: &Session) -> Value {
+    let wp = s.doc.settings.write_protection.as_ref();
+    json!({
+        "modifyPassword": wp.is_some_and(|w| !w.hash.is_empty()),
+        "readOnlyRecommended": wp.is_some_and(|w| w.recommended),
+    })
 }
 
 /// File › Info › Protect Document › Encrypt with Password: the password Word documents are saved
@@ -342,10 +425,17 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
     let path = match p::str(v, "path").map(std::path::PathBuf::from).or_else(|| s.path.clone()) {
         Some(p) => p,
         None => {
+            if s.read_only {
+                return Err(CmdError::Disabled("the document is open read-only: save it under another name (Save As)".into()));
+            }
             s.push_ui_request(json!({"open": "saveAs"}));
             return Ok(json!({"saved": false}));
         }
     };
+    // A read-only document can't overwrite its own file: Save goes to Save As.
+    if s.read_only && s.path.as_deref() == Some(path.as_path()) {
+        return Err(CmdError::Disabled("the document is open read-only: save it under another name (Save As)".into()));
+    }
     if let Some(pw) = v.get("password").filter(|pw| !pw.is_null()) {
         let Some(pw) = pw.as_str().filter(|pw| !pw.is_empty()) else {
             return Err(CmdError::Params("`password` must be a non-empty string (file.encrypt removes a password)".into()));
@@ -392,6 +482,10 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
         s.path = Some(path.clone());
         s.dirty = false;
         s.relayout();
+    }
+    // Saving a read-only document under another name makes an ordinary, editable document.
+    if s.read_only && !own_file {
+        s.read_only = false;
     }
     Ok(json!({"saved": true, "path": path.to_string_lossy(), "encrypted": encrypted}))
 }

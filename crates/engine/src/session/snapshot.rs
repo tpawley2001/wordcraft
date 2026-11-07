@@ -17,6 +17,7 @@ impl Session {
         self.doc = doc;
         self.doc.ensure_nonempty();
         self.password = None;
+        self.read_only = false;
         self.file_name = None;
         self.last_bookmark = None;
         // The old document's equation is gone: its editing session cannot carry over.
@@ -85,6 +86,8 @@ impl Session {
             // The custom dictionary file, like the file path: host wiring, not an edit.
             user_dict_path: _,
             dirty,
+            // Whether the document was opened read-only: session state, not an edit.
+            read_only: _,
             clipboard: _,
             // Like the clipboard: what the next paste can make a move of.
             pending_move: _,

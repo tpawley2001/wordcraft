@@ -49,6 +49,9 @@ pub struct DisplayOptions {
     /// Leave this object out of the page: while it is dragged, the preview under the pointer
     /// stands in for it, so the page must not also show it where it was.
     pub hide_object: Option<wordcraft_doc::Pos>,
+    /// File › Options › Advanced › Show picture placeholders: every picture is drawn as an empty
+    /// outlined rectangle of its size and place. Screen only; exports leave it off.
+    pub picture_placeholders: bool,
 }
 
 impl Default for DisplayOptions {
@@ -63,6 +66,7 @@ impl Default for DisplayOptions {
             hide_ink: false,
             revisions: MarkupOptions::default(),
             hide_object: None,
+            picture_placeholders: false,
         }
     }
 }

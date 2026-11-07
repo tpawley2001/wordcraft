@@ -220,6 +220,7 @@ impl Ctx<'_> {
             grid: para::Grid::default(),
             fit_objects: false,
             fitted: &[],
+            draft_font: None,
         };
         let pl = Arc::new(para::layout_para(&p, &env));
         self.numbers.insert(n, pl.clone());
@@ -467,6 +468,7 @@ impl Ctx<'_> {
             grid: self.grid,
             fit_objects: self.boxes.inside(),
             fitted,
+            draft_font: self.opts.draft_font(),
         }
     }
 }

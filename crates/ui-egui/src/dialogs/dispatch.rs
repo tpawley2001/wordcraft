@@ -39,6 +39,8 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::Refs(f) => crate::dialogs_refs::body(app, ui, f),
         Dialog::Commands { .. } => commands_dialog(app, ui, d),
         Dialog::Macros { name } => macros(app, ui, name),
+        Dialog::BuildingBlocks { selected, sort, confirm_delete } => super::building_blocks::organizer(app, ui, selected, sort, confirm_delete),
+        Dialog::NewBuildingBlock { form } => super::building_blocks::new_building_block(app, ui, form),
         Dialog::Icons { query, category, selected } => icons_body(app, ui, query, category, selected),
         Dialog::PasteSpecial { .. } => paste_special_dialog(app, ui, d),
         Dialog::About { .. } => about_dialog(ui, d, app.ui.pirate_speak),
@@ -48,6 +50,9 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::InsertMergeField { .. } => insert_merge_field_dialog(app, ui, d),
         Dialog::Password { .. } => password_dialog(app, ui, d),
         Dialog::EncryptPassword { .. } => encrypt_password_dialog(app, ui, d),
+        Dialog::GeneralOptions { .. } => general_options_dialog(app, ui, d),
+        Dialog::LockTracking { .. } => lock_tracking_dialog(app, ui, d),
+        Dialog::ReadOnlyRecommended { .. } => read_only_recommended_dialog(app, ui, d),
         Dialog::DefineList { form } => crate::dialogs_lists::define_list(app, ui, form),
         Dialog::TrackOptions { form } => crate::dialogs_lists::track_options(app, ui, form),
         Dialog::Review(d) => crate::dialogs_review::body(app, ui, d),
@@ -1288,10 +1293,16 @@ fn insert_merge_field_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> 
 }
 
 fn password_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::Password { name, params, password, message } = d else {
+    let Dialog::Password { name, params, password, key, message } = d else {
         return false;
     };
-    ui.label(crate::i18n::fmt(tl!("{name} is protected with a password."), &[("name", name)]));
+    let modify = key == "modifyPassword";
+    if modify {
+        ui.label(crate::i18n::fmt(tl!("{name} has a password to modify."), &[("name", name)]));
+        ui.label(egui::RichText::new(tl!("Type it to edit the document, or open it read-only.")).small());
+    } else {
+        ui.label(crate::i18n::fmt(tl!("{name} is protected with a password."), &[("name", name)]));
+    }
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.label(tl!("Password:"));
@@ -1303,11 +1314,28 @@ fn password_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     if !message.is_empty() {
         ui.label(egui::RichText::new(message.as_str()).small().color(ui.visuals().error_fg_color));
     }
+    let mut read_only = false;
     let (ok, cancel) = buttons(ui, tl!("OK"));
+    if modify && ui.button(tl!("Read Only")).clicked() {
+        read_only = true;
+    }
+    if read_only {
+        let mut p = params.clone();
+        if let Some(o) = p.as_object_mut() {
+            o.insert("readOnly".into(), json!(true));
+        }
+        match app.execute("file.open", p) {
+            Ok(_) => {
+                app.ui.backstage = false;
+                return true;
+            }
+            Err(e) => *message = e,
+        }
+    }
     if ok && !password.is_empty() {
         let mut p = params.clone();
         if let Some(o) = p.as_object_mut() {
-            o.insert("password".into(), json!(password.as_str()));
+            o.insert(key.clone(), json!(password.as_str()));
         }
         // `execute`, not `run`: Save Changes was asked when the open began.
         match app.execute("file.open", p) {
@@ -1315,7 +1343,7 @@ fn password_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 app.ui.backstage = false;
                 return true;
             }
-            Err(e) if wordcraft_engine::io::wrong_password(&e) => {
+            Err(e) if wordcraft_engine::io::wrong_password(&e) || wordcraft_engine::io::wrong_modify_password(&e) => {
                 *message = tl!("That password isn't right. Check it (passwords are case-sensitive) and try again.").to_string();
                 password.as_mut_string().clear();
             }
@@ -1373,6 +1401,151 @@ fn encrypt_password_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bo
                 });
                 return true;
             }
+            Err(e) => *message = e,
+        }
+    }
+    cancel
+}
+
+fn read_only_recommended_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
+    let Dialog::ReadOnlyRecommended { name, params } = d else {
+        return false;
+    };
+    ui.label(crate::i18n::fmt(tl!("{name} was saved with the recommendation to open it read-only."), &[("name", name)]));
+    ui.label(egui::RichText::new(tl!("Open it read-only? You can still edit it, but Save will ask for another name.")).small());
+    ui.add_space(4.0);
+    let mut open_read_only = false;
+    let mut no = false;
+    ui.horizontal(|ui| {
+        ui.with_layout(crate::rtl::far_side(ui, egui::Align::Center), |ui| {
+            if ui.add(crate::widgets::primary_button(ui, tl!("Yes"))).clicked() {
+                open_read_only = true;
+            }
+            if ui.button(tl!("No")).clicked() {
+                no = true;
+            }
+        });
+    });
+    if open_read_only {
+        let mut p = params.clone();
+        if let Some(o) = p.as_object_mut() {
+            o.insert("readOnly".into(), json!(true));
+        }
+        match app.execute("file.open", p) {
+            Ok(_) => {
+                app.ui.backstage = false;
+                return true;
+            }
+            Err(e) => app.status(e),
+        }
+    }
+    no
+}
+
+fn general_options_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
+    let Dialog::GeneralOptions { password, confirm, recommended, has_password, message } = d else {
+        return false;
+    };
+    ui.label(tl!("A password to modify lets the document be opened read-only by anyone who doesn't know it."));
+    ui.add_space(4.0);
+    crate::rtl::Table::new("general_options").columns(2).spacing(vec2(10.0, 6.0)).show(ui, |t| {
+        t.row(|r| {
+            r.cell(|ui| ui.label(tl!("Password to modify:")));
+            r.cell(|ui| {
+                let field = ui.add(egui::TextEdit::singleline(password.as_mut_string()).password(true).desired_width(220.0));
+                if password.is_empty() && confirm.is_empty() && !field.has_focus() {
+                    field.request_focus();
+                }
+            });
+        });
+        t.row(|r| {
+            r.cell(|ui| ui.label(tl!("Confirm password:")));
+            r.cell(|ui| ui.add(egui::TextEdit::singleline(confirm.as_mut_string()).password(true).desired_width(220.0)));
+        });
+    });
+    ui.checkbox(recommended, tl!("Read-only recommended"));
+    ui.label(egui::RichText::new(tl!("Leave both password boxes empty to remove the password to modify.")).small().weak());
+    if !message.is_empty() {
+        ui.label(egui::RichText::new(message.as_str()).small().color(ui.visuals().error_fg_color));
+    }
+    // Remove Password to Modify: only offered while one is set.
+    let mut remove = false;
+    if *has_password && ui.button(tl!("Remove Password to Modify")).clicked() {
+        remove = true;
+    }
+    let (ok, cancel) = buttons(ui, tl!("OK"));
+    if remove {
+        match app.run("file.generalOptions", json!({"modifyPassword": ""})) {
+            Ok(_) => {
+                *has_password = false;
+                app.status(tl!("The password to modify is removed. Save the document to keep the change."));
+                return true;
+            }
+            Err(e) => *message = e,
+        }
+    }
+    if ok {
+        if password != confirm {
+            *message = tl!("The passwords don't match.").to_string();
+            confirm.as_mut_string().clear();
+            return false;
+        }
+        // An empty box keeps the password that is set; Remove takes it away.
+        let mut p = json!({"readOnlyRecommended": *recommended});
+        if !password.is_empty() {
+            p["modifyPassword"] = json!(password.as_str());
+        }
+        match app.run("file.generalOptions", p) {
+            Ok(_) => {
+                app.status(tl!("Save the document to keep the change."));
+                return true;
+            }
+            Err(e) => *message = e,
+        }
+    }
+    cancel
+}
+
+fn lock_tracking_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
+    let Dialog::LockTracking { password, confirm, locked, message } = d else {
+        return false;
+    };
+    if *locked {
+        ui.label(tl!("Tracking is locked. Type the password to unlock it."));
+    } else {
+        ui.label(tl!("Lock Tracking keeps Track Changes on. The password is optional; without it anyone can unlock it."));
+    }
+    ui.add_space(4.0);
+    crate::rtl::Table::new("lock_tracking").columns(2).spacing(vec2(10.0, 6.0)).show(ui, |t| {
+        t.row(|r| {
+            r.cell(|ui| ui.label(tl!("Password:")));
+            r.cell(|ui| {
+                let field = ui.add(egui::TextEdit::singleline(password.as_mut_string()).password(true).desired_width(220.0));
+                if password.is_empty() && confirm.is_empty() && !field.has_focus() {
+                    field.request_focus();
+                }
+            });
+        });
+        if !*locked {
+            t.row(|r| {
+                r.cell(|ui| ui.label(tl!("Confirm password:")));
+                r.cell(|ui| ui.add(egui::TextEdit::singleline(confirm.as_mut_string()).password(true).desired_width(220.0)));
+            });
+        }
+    });
+    if !message.is_empty() {
+        ui.label(egui::RichText::new(message.as_str()).small().color(ui.visuals().error_fg_color));
+    }
+    let (ok, cancel) = buttons(ui, tl!("OK"));
+    if ok {
+        if !*locked && password != confirm {
+            *message = tl!("The passwords don't match.").to_string();
+            confirm.as_mut_string().clear();
+            return false;
+        }
+        let p = if *locked { json!({"unlock": true, "password": password.as_str()}) } else { json!({"password": password.as_str()}) };
+        match app.run("review.lockTracking", p) {
+            Ok(_) => return true,
             Err(e) => *message = e,
         }
     }

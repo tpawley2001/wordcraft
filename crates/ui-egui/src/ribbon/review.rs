@@ -56,6 +56,17 @@ pub(super) fn review(app: &mut WordApp, ui: &mut Ui) {
         let r = big(ui, app, "trackChanges", if on { "Track\nChanges ✓" } else { "Track\nChanges" }, "review.trackChanges", json!({}), false);
         let _ = r;
         stack(ui, |ui| {
+            // Review › Track Changes › Lock Tracking: keeps Track Changes on under a password.
+            let locked = app.session.doc.settings.protection.as_deref() == Some("trackedChanges");
+            let label = if locked { "Lock Tracking ✓" } else { "Lock Tracking…" };
+            small(
+                ui,
+                app,
+                "lockTracking",
+                Some(label),
+                "Lock Tracking",
+                crate::widgets::ButtonAction::new("ui.dialog", json!({"name": "lockTracking"}), false),
+            );
             menu_button(
                 ui,
                 app,

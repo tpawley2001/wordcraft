@@ -14,6 +14,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
 mod actions;
 mod autocorrect;
+mod building_blocks;
 mod compare;
 mod compat;
 mod inspect;
