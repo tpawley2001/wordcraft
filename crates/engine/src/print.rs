@@ -208,6 +208,15 @@ impl Session {
     /// The PDF sent to a printer for job `v`: [`Self::print_pdf`] without link annotations,
     /// which print nothing, and which a printer driver can't fit to the paper ("flatten page
     /// annotations before using shrink-to-fit", #4734).
+    /// The layout a print job with settings `v` renders.
+    // TODO(P0098 stub): apply Print hidden text / Print field codes (prefs, overridden by the
+    // `hiddenText` / `fieldCodes` params) and use this from `print_pdf_with`.
+    pub fn print_layout(&self, v: &Value) -> std::sync::Arc<DocLayout> {
+        let markup = crate::cmd::file::export_options(self, v);
+        let out = crate::cmd::references::output_fields(&self.doc);
+        self.export_layout_of(out.as_ref().unwrap_or(&self.doc), markup.markup)
+    }
+
     pub fn print_job_pdf(&self, v: &Value) -> Result<(Vec<u8>, PrintPlan), CmdError> {
         self.print_pdf_with(v, false)
     }

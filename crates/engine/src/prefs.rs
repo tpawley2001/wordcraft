@@ -14,6 +14,13 @@ pub struct Prefs {
     /// balloons beside each page and tracked changes as marked up; HTML, Markdown and text
     /// copies end with the comments (`file.printMarkup`).
     pub print_markup: bool,
+    /// File › Options › Display › Print hidden text (Word's default: off). Showing hidden text on
+    /// screen does not print it.
+    pub print_hidden_text: bool,
+    /// File › Options › Advanced › Print field codes instead of their values (off).
+    pub print_field_codes: bool,
+    /// File › Options › Advanced › Print pages in reverse order (off).
+    pub print_reverse: bool,
     /// Language › Detect language automatically (per user, as in Word).
     pub detect_language: bool,
     /// Set Proofing Language › Set As Default: overrides the interface language for future
@@ -89,6 +96,9 @@ impl Default for Prefs {
             count_notes: true,
             markup: Default::default(),
             print_markup: false,
+            print_hidden_text: false,
+            print_field_codes: false,
+            print_reverse: false,
             typing_replaces_selection: true,
             insert_key_overtype: false,
             overtype: false,
