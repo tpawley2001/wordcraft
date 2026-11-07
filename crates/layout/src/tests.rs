@@ -9,9 +9,12 @@ mod autospace_legacy_lists;
 mod bidi;
 mod blank_side_page;
 mod border_band;
-mod button_fields;
 mod budget;
+<<<<<<< HEAD
 mod cell_floats;
+=======
+mod button_fields;
+>>>>>>> 50137f27 (P0083: worker changes (auto-commit))
 mod complex;
 mod eq_fields;
 mod eq_integral_limits;

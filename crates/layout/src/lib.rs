@@ -362,5 +362,4 @@ thread_local! {
 }
 
 #[cfg(test)]
-#[rustfmt::skip]
 mod tests;

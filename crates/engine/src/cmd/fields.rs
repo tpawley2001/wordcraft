@@ -270,10 +270,13 @@ pub fn field_name_at(s: &Session, pos: &Pos) -> Option<String> {
 /// here and type" placeholder, so typing replaces it), else nothing.
 pub fn click_selection(s: &Session, pos: &Pos) -> Option<Selection> {
     let f = field_at(s, pos)?;
-    if f.end.is_some() || wordcraft_layout::fields::field_name(&f.instr) != "MACROBUTTON" {
+    if wordcraft_layout::fields::field_name(&f.instr) != "MACROBUTTON" {
         return None;
     }
-    let end = Pos { off: f.at.off.saturating_add(OBJ.len_utf8()), ..f.at.clone() };
+    // The whole field: a simple field's object, or a range field from its start marker to just
+    // past its end marker.
+    let last = f.end.clone().unwrap_or_else(|| f.at.clone());
+    let end = Pos { off: last.off.saturating_add(OBJ.len_utf8()), ..last };
     Some(Selection { anchor: f.at, focus: end })
 }
 
@@ -281,9 +284,10 @@ pub fn click_selection(s: &Session, pos: &Pos) -> Option<Selection> {
 /// page `p<N>`; a MACROBUTTON does nothing (macros never run); any other field does nothing.
 fn click(s: &mut Session, _: &Value) -> CmdResult {
     let (a, b) = s.sel.ordered();
-    let pos = if a == b { a } else { b };
-    let Some(f) = field_at(s, &pos) else { return sel_result(s) };
-    if f.end.is_some() || wordcraft_layout::fields::field_name(&f.instr) != "GOTOBUTTON" {
+    // A selection acts on the first field starting in it; a caret on the field at or around it.
+    let first = if a == b { None } else { selected(s).into_iter().next() };
+    let Some(f) = first.or_else(|| field_at(s, &b)) else { return sel_result(s) };
+    if wordcraft_layout::fields::field_name(&f.instr) != "GOTOBUTTON" {
         return sel_result(s);
     }
     let Some(dest) = f.instr.split_whitespace().nth(1) else { return sel_result(s) };
@@ -534,6 +538,89 @@ mod tests {
         let mut s = Session::new(wordcraft_doc::Document::new());
         s.run("insert.field", &json!({"instr": "PAGE"})).unwrap();
         assert!(click_selection(&s, &wordcraft_doc::Pos::body(0, 0)).is_none(), "other fields aren't selected");
+    }
+
+    /// "See below. " then a range field (`FieldStart`, result "old", `FieldEnd`, as read from
+    /// .docx) and " after", and a second paragraph "Target text" whose "Target" is bookmarked
+    /// as `Chapter1`. Returns the session and the field's start and end-marker offsets.
+    fn with_range_button(instr: &str) -> (Session, usize, usize) {
+        use wordcraft_doc::props::CharProps;
+        use wordcraft_doc::{Path, Pos, StoryRef};
+        let mut doc = wordcraft_doc::Document::from_text("See below. ");
+        let c = CharProps::default();
+        let p = doc.para_mut(StoryRef::Body, &Path::top(0)).unwrap();
+        let start = p.len();
+        let width = wordcraft_doc::para::OBJ.len_utf8();
+        p.insert_object(start, InlineObject::FieldStart { instr: instr.into(), locked: false, dirty: false }, &c).unwrap();
+        let n = p.insert_text(start + width, "old", &c).unwrap();
+        let end = start + width + n;
+        p.insert_object(end, InlineObject::FieldEnd, &c).unwrap();
+        let len = p.len();
+        p.insert_text(len, " after", &c).unwrap();
+        let mut s = Session::new(doc);
+        s.run("caret.docEnd", &json!({})).unwrap();
+        s.run("text.newParagraph", &json!({})).unwrap();
+        s.run("text.insert", &json!({"text": "Target text"})).unwrap();
+        s.sel = crate::Selection { anchor: Pos::body(1, 0), focus: Pos::body(1, 6) };
+        s.run("insert.bookmark", &json!({"name": "Chapter1"})).unwrap();
+        assert_eq!(s.doc.field_ranges(StoryRef::Body).len(), 1);
+        (s, start, end)
+    }
+
+    /// A click in a MACROBUTTON range field selects it from its start marker to just past its end
+    /// marker, so typing replaces the whole field.
+    #[test]
+    fn click_in_a_macrobutton_range_field_selects_the_whole_field() {
+        let (mut s, start, end) = with_range_button("MACROBUTTON NoMacro [Click here]");
+        let width = wordcraft_doc::para::OBJ.len_utf8();
+        let sel = click_selection(&s, &wordcraft_doc::Pos::body(0, start + width + 1)).expect("the click is in the field");
+        assert_eq!(sel.anchor, wordcraft_doc::Pos::body(0, start));
+        assert_eq!(sel.focus, wordcraft_doc::Pos::body(0, end + width));
+        assert!(click_selection(&s, &wordcraft_doc::Pos::body(0, 2)).is_none());
+        s.sel = sel;
+        s.run("text.insert", &json!({"text": "Ann"})).unwrap();
+        assert_eq!(s.doc.plain_text(wordcraft_doc::StoryRef::Body).lines().next(), Some("See below. Ann after"));
+        assert!(s.doc.field_ranges(wordcraft_doc::StoryRef::Body).is_empty());
+    }
+
+    /// Alt+Shift+F9 on a GOTOBUTTON range field selects its bookmark, with the caret inside the
+    /// field or the field selected.
+    #[test]
+    fn do_field_click_follows_a_gotobutton_range_field() {
+        let (mut s, start, _) = with_range_button("GOTOBUTTON Chapter1 Go to chapter");
+        s.sel = crate::Selection::caret(wordcraft_doc::Pos::body(0, start + 2));
+        s.run("fields.click", &json!({})).unwrap();
+        assert_eq!(s.selected_text(), "Target");
+
+        let (mut s, _, _) = with_range_button("GOTOBUTTON Chapter1 Go to chapter");
+        s.run("fields.previous", &json!({})).unwrap();
+        s.run("fields.click", &json!({})).unwrap();
+        assert_eq!(s.selected_text(), "Target");
+    }
+
+    /// F9 stores a button range field's display text as its result (the content between the
+    /// markers); a locked one keeps its result.
+    #[test]
+    fn f9_stores_the_display_text_in_a_button_range_field() {
+        let result = |s: &Session| {
+            let r = s.doc.field_ranges(wordcraft_doc::StoryRef::Body).into_iter().next().unwrap();
+            let inner = wordcraft_doc::Pos { off: r.start.off + wordcraft_doc::para::OBJ.len_utf8(), ..r.start.clone() };
+            s.doc.copy_range(&inner, &r.end).plain_text()
+        };
+        let (mut s, _, _) = with_range_button("MACROBUTTON NoMacro [Click  here and type]");
+        s.run("references.updateFields", &json!({"all": true})).unwrap();
+        assert_eq!(result(&s), "[Click  here and type]");
+        assert_eq!(s.doc.plain_text(wordcraft_doc::StoryRef::Body).lines().next(), Some("See below. [Click  here and type] after"));
+
+        let (mut s, _, _) = with_range_button("GOTOBUTTON Chapter1 \"Go to chapter\"");
+        s.run("references.updateFields", &json!({"all": true})).unwrap();
+        assert_eq!(result(&s), "Go to chapter");
+
+        let (mut s, _, _) = with_range_button("GOTOBUTTON Chapter1 Go");
+        s.run("fields.next", &json!({})).unwrap();
+        s.run("fields.lock", &json!({})).unwrap();
+        s.run("references.updateFields", &json!({"all": true})).unwrap();
+        assert_eq!(result(&s), "old");
     }
 
     #[test]
