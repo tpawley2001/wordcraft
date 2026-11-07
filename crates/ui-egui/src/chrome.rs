@@ -800,9 +800,11 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                             let _ = app.run("view.focus", json!({}));
                         }
                     });
-                    if let Some((msg, at)) = &app.status_msg
-                        && crate::now_ms() - at < 6000.0
-                    {
+                    let prompt = wordcraft_engine::cmd::move_text::pending_status(&app.session)
+                        .map(|status| if status == "Move to where?" { tl!("Move to where?").to_string() } else { tl!("Copy to where?").to_string() });
+                    let message =
+                        prompt.as_ref().or_else(|| app.status_msg.as_ref().filter(|(_, at)| crate::now_ms() - at < 6000.0).map(|(msg, _)| msg));
+                    if let Some(msg) = message {
                         let font = TypeRung::Caption.regular();
                         let track = TypeRung::Caption.tracking();
                         // The room the message has: what is left between here and the controls.
@@ -818,7 +820,8 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                             let rect = Rect::from_min_size(at, vec2(w + 1.0, TypeRung::Caption.line_height()));
                             // The whole message is in the tooltip; the bar only has room for the
                             // beginning of it (#2402).
-                            let _ = ui.interact(rect, status_message_id(), Sense::hover()).on_hover_text(msg.clone());
+                            let response = ui.interact(rect, status_message_id(), Sense::hover()).on_hover_text(msg.clone());
+                            response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, msg));
                             paint_text(ui.painter(), rect.min, Align2::LEFT_TOP, &msg_shown, &font, track, t.accent_text);
                             ui.allocate_space(vec2(w + 1.0, TypeRung::Caption.line_height()));
                         }

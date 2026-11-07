@@ -89,6 +89,10 @@ fn read_mode_events(app: &mut WordApp, ctx: &egui::Context, events: &[egui::Even
         match e {
             // Not while a dialog or menu that takes Escape is open.
             egui::Event::Key { key: Key::Escape, pressed: true, .. } if app.escape_free => {
+                if app.session.pending_text_move.is_some() {
+                    let _ = app.run("edit.moveTextCancel", json!({}));
+                    break;
+                }
                 // Focus or Full Screen first (#1678), then Read Mode.
                 let id = crate::chrome::Screen::of(&app.session.view).exit_command().unwrap_or("view.printLayout");
                 let _ = app.run(id, json!({"value": false}));
@@ -211,6 +215,10 @@ fn drop_refused_replacement(app: &mut WordApp, e: &egui::Event, b: &mut Batch) -
 
 /// Alt shortcut text, Alt codes and pasted picture files take their events before typing.
 fn prefilter(app: &mut WordApp, ctx: &egui::Context, e: &egui::Event, alt_codes: bool) -> bool {
+    if matches!(e, egui::Event::Key { key: Key::Escape, pressed: true, .. }) && app.session.pending_text_move.is_some() {
+        let _ = app.run("edit.moveTextCancel", json!({}));
+        return true;
+    }
     // An Alt shortcut (Alt+Shift+D, Alt+F7…) may also send its key's text; it isn't typed.
     match &e {
         egui::Event::Key { pressed: true, .. } => {

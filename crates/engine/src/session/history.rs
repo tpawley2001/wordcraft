@@ -176,6 +176,7 @@ impl Session {
     /// was its automatic capital, swaps the document, selection, pending formatting and column with
     /// the redo snapshot, replaces the body identity, refreshes equation editing and touches layout.
     pub fn undo(&mut self) -> bool {
+        self.pending_text_move = None;
         self.typing_open = false;
         // Undoing the automatic capitalisation's own step makes its word an exception; any
         // other Undo forgets the capital.
@@ -208,6 +209,7 @@ impl Session {
     /// Redoes the newest undone step by swapping the snapshots back, replacing the body identity,
     /// refreshing equation editing and touching layout.
     pub fn redo(&mut self) -> bool {
+        self.pending_text_move = None;
         self.typing_open = false;
         let Some(u) = self.redo.pop().map(Arc::unwrap_or_clone) else { return false };
         let cur = Undo {

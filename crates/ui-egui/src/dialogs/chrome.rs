@@ -164,6 +164,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
         Dialog::Bookmark { .. } => "Bookmark",
         Dialog::WordCount { .. } => "Word Count",
         Dialog::Zoom { .. } => "Zoom",
+        Dialog::BrowseObject { .. } => "Select Browse Object",
         Dialog::Watermark { .. } => "Custom Watermark",
         Dialog::Phonetic { .. } => "Phonetic Guide",
         Dialog::NewStyle { .. } => "Create New Style",

@@ -5,6 +5,7 @@ use super::{Document, Session, StoryRef, next_document_id};
 impl Session {
     /// Replace the document (open/new).
     pub fn set_document(&mut self, doc: Document) {
+        self.pending_text_move = None;
         self.autocap = None;
         let replaced = self.document_id;
         self.document_id = next_document_id();
@@ -95,6 +96,7 @@ impl Session {
             author: _,
             initials: _,
             painter: _,
+            pending_text_move: _,
             status: _,
             // Headers just created to edit: closing checks they still exist and are empty.
             new_header_parts: _,

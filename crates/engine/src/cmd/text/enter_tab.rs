@@ -58,6 +58,9 @@ fn sample_text(s: &Session) -> Option<String> {
 
 /// `text.newParagraph`: Enter, unless the selection is in a control that takes no paragraph break.
 pub(super) fn new_paragraph(s: &mut Session, _: &Value) -> CmdResult {
+    if s.pending_text_move.is_some() {
+        return crate::cmd::move_text::place(s, &serde_json::json!({}));
+    }
     // Enter in a one-line plain text control (or a check box or list) does nothing, as in Word.
     if crate::cmd::controls::refuses_paragraph(s) {
         return sel_result(s);

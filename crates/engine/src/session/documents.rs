@@ -256,6 +256,7 @@ impl Session {
             author: _,
             initials: _,
             painter: _,
+            pending_text_move: _,
             status: _,
             last_command: _,
             recording: _,
@@ -342,6 +343,7 @@ impl Session {
             edit_marks,
             go_back_step,
         } = d;
+        self.pending_text_move = None;
         swap(&mut self.doc, doc);
         swap(&mut self.sel, sel);
         swap(&mut self.view, view);

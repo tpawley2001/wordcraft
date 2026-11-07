@@ -7539,3 +7539,25 @@ fn focus_hides_the_ribbon_and_escape_brings_it_back() {
     h.step();
     assert!(h.state().session.view.read_mode && shown(&h, "Focus"), "Immersive Reader keeps the status bar");
 }
+
+#[test]
+#[cfg(not(target_os = "macos"))]
+fn f2_pending_prompt_and_escape() {
+    for (modifiers, prompt) in [(egui::Modifiers::NONE, "Move to where?"), (egui::Modifiers::SHIFT, "Copy to where?")] {
+        let mut a = app();
+        a.run("document.setText", json!({"text": "source destination"})).unwrap();
+        a.run("select.text", json!({"text": "source"})).unwrap();
+        let mut h = harness(a);
+        h.run();
+        h.event(egui::Event::Key { key: egui::Key::F2, physical_key: None, pressed: true, repeat: false, modifiers });
+        h.run();
+        assert!(h.query_by_label(prompt).is_some());
+        h.state_mut().run("caret.docEnd", json!({})).unwrap();
+        h.run();
+        assert!(h.query_by_label(prompt).is_some(), "navigation keeps the prompt");
+        h.key_press(egui::Key::Escape);
+        h.run();
+        assert!(h.query_by_label(prompt).is_none());
+        assert!(h.state().session.pending_text_move.is_none());
+    }
+}
