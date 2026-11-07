@@ -33,8 +33,12 @@ fn other_codes_are_ansi_or_unicode() {
         (r"SYMBOL 0x20AC \u", "\u{20ac}"),
         (r#"SYMBOL 65 \f "Times New Roman""#, "A"),
         ("SYMBOL 129", ""),
-        ("SYMBOL", ""),
-        ("SYMBOL abc", ""),
+        ("SYMBOL 0", ""),
+        ("SYMBOL 300", "###"),
+        (r"SYMBOL 300 \u", "Ĭ"),
+        (r"SYMBOL \f Symbol", "###"),
+        ("SYMBOL", "###"),
+        ("SYMBOL abc", "###"),
     ];
     for (instr, want) in cases {
         assert_eq!(shown(instr), want, "{instr}");
@@ -42,8 +46,8 @@ fn other_codes_are_ansi_or_unicode() {
 }
 
 #[test]
-fn a_stored_result_is_kept_and_the_field_is_not_page_dependent() {
+fn a_stale_result_is_recomputed_and_the_field_is_not_page_dependent() {
     let ctx = FieldCtx::default();
-    assert_eq!(field_text(r#"SYMBOL 211 \f "Symbol""#, "x", &ctx), ("x".into(), false));
+    assert_eq!(field_text(r#"SYMBOL 211 \f "Symbol""#, "x", &ctx), ("\u{a9}".into(), false));
     assert_eq!(field_text(r#"SYMBOL 211 \f "Symbol""#, "", &ctx), ("\u{a9}".into(), false));
 }
