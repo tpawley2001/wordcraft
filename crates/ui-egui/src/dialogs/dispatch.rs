@@ -1613,10 +1613,8 @@ fn convert_document_dialog(app: &mut WordApp, ui: &mut Ui) -> bool {
 fn mark_as_final_dialog(app: &mut WordApp, ui: &mut Ui) -> bool {
     ui.label(tl!("This document will be marked as final and then saved."));
     let (ok, cancel) = buttons(ui, tl!("OK"));
-    if ok {
-        if let Err(e) = app.run("file.markAsFinal", json!({"final": true})).and_then(|_| app.run("file.save", json!({}))) {
-            app.status(e);
-        }
+    if ok && let Err(e) = app.run("file.markAsFinal", json!({"final": true})).and_then(|_| app.run("file.save", json!({}))) {
+        app.status(e);
     }
     ok || cancel
 }
