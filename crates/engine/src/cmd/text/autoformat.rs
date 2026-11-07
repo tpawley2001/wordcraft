@@ -81,17 +81,16 @@ pub(super) fn insert(s: &mut Session, v: &Value) -> CmdResult {
             _ => None,
         }
     });
-    if composed.is_some() {
-        s.composed_word = true;
-    }
-    if text == "." {
-        s.composed_word = true;
-    }
     let text = composed.as_deref().unwrap_or(text);
     typing_options(s, text);
     let smart_quote = if raw { None } else { autoformat(s, text) };
     let was_collapsed = s.sel.is_collapsed();
     let effect = type_text_effect(s, smart_quote.as_deref().unwrap_or(text))?;
+    if composed.is_some() {
+        let mut at = s.sel.focus.clone();
+        at.off = at.off.saturating_sub(text.len());
+        s.composed_at = Some(at);
+    }
     let mut outcome = crate::ImeEditOutcome {
         classified: true,
         content_changed: effect.content_changed,

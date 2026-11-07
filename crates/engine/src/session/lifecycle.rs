@@ -92,7 +92,7 @@ impl Session {
             view,
             pending,
             pending_accent: None,
-            composed_word: false,
+            composed_at: None,
             last_highlight: wordcraft_doc::props::Highlight::Yellow,
             last_bookmark: None,
             path,

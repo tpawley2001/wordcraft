@@ -45,7 +45,7 @@ impl Session {
         // it, as in Word. `text.insert` consumes it and `text.composeAccent` replaces it.
         if !matches!(id, "text.insert" | "text.composeAccent") {
             self.pending_accent = None;
-            self.composed_word = false;
+            self.composed_at = None;
         }
     }
 

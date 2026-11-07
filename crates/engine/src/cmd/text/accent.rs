@@ -187,7 +187,8 @@ mod tests {
         assert_eq!(bold, Some(true));
     }
 
-    /// A word containing a dead-key composition keeps its first letter as typed.
+    /// A word containing a dead-key composition keeps its first letter as typed; the next
+    /// sentence is capitalised as usual.
     #[test]
     fn a_composed_word_is_not_capitalised() {
         let mut s = s();
@@ -195,7 +196,7 @@ mod tests {
         for c in ["e", "l", ".", " ", "p", "a", "s", "o", " "] {
             s.run("text.insert", &json!({"text": c})).unwrap();
         }
-        assert_eq!(body(&s), "él. Paso");
+        assert_eq!(body(&s), "él. Paso ");
     }
 
     /// A multi-character insert ends the wait: the accent applies to one typed character only.

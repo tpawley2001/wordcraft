@@ -592,6 +592,7 @@ With an F2 / Shift+F2 source pending, Enter places that rich text at the caret i
 |---|---|---|
 | 2026-11-06 | trivial | AutoFormat Now (Ctrl+Alt+K): quotes, dashes and typed list labels in existing text, one undo step |
 | 2026-11-07 | trivial | P0087: Word's accent-composition shortcuts and direct inverted question/exclamation marks on Windows/Linux; composed characters use ordinary typing, formatting and undo, and a word containing one keeps its first letter as typed |
+| 2026-11-07 | trivial | P0087: Word's accent-composition shortcuts and direct inverted question/exclamation marks on Windows/Linux; composed characters use ordinary typing, formatting and undo, and AutoCorrect leaves the first letter of a word containing one as typed |
 | 2026-10-30 | trivial | Equations: `\int` + Space waits for its limits; `_x^y` then Space builds them, Space alone builds the operator without, typing goes into its operand, and Enter or an arrow key builds it without going into the operand (#4917). Review: any character that can't continue `\name` corrects it (`\int_0^1`, `\alpha+`), and `∫∫` takes the operand into the inner operator; the Word rows are now observed in Word for Windows on #4938, Enter, arrows and `∫∫` are not |
 | 2026-11-03 | trivial | Alt+numpad codes type their character in text boxes too (Find what, dialog fields), not the digits or nothing (#4403) |
 | 2026-11-06 | trivial | P0079: F2 / Shift+F2 relocate or copy selected rich text on Enter; Esc and edits cancel. |
