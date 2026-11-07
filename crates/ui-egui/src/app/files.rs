@@ -318,6 +318,10 @@ impl WordApp {
         else {
             return;
         };
+        if matches!(message, printing::Feedback::Submitted(_)) {
+            self.session.doc.core.last_printed = wordcraft_engine::cmd::now_iso();
+            self.session.dirty = true;
+        }
         let text = printing::feedback(&message, |label| i18n::t(label).to_owned());
         self.status(text);
         // Word returns to the document once a print job is away, the same as after Save; a

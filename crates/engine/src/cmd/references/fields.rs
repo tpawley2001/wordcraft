@@ -495,9 +495,17 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
             let name = wordcraft_layout::fields::field_name(instr);
             match name.as_str() {
                 "SYMBOL" => updates.push((k, wordcraft_layout::fields::symbol_text(instr))),
-                "DATE" | "TIME" | "CREATEDATE" | "SAVEDATE" | "PRINTDATE" => {
+                "DATE" | "TIME" | "SAVEDATE" => {
                     let pic = date_picture(instr).unwrap_or_else(|| if name == "TIME" { "h:mm am/pm".into() } else { "M/d/yyyy".into() });
                     updates.push((k, text_result(instr, crate::cmd::insert::format_date(&pic))));
+                }
+                "CREATEDATE" | "PRINTDATE" => {
+                    let value = if name == "CREATEDATE" { &core.created } else { &core.last_printed };
+                    if let Some(unix) = chrono::DateTime::parse_from_rfc3339(value).ok().and_then(|date| u64::try_from(date.timestamp()).ok()) {
+                        let pic = date_picture(instr).unwrap_or_else(|| "M/d/yyyy".into());
+                        let text = crate::cmd::insert::format_date_at(&pic, unix, crate::cmd::local_offset_secs(unix));
+                        updates.push((k, text_result(instr, text)));
+                    }
                 }
                 "REF" | "PAGEREF" => {
                     let f = FieldCode::parse(instr);

@@ -755,6 +755,22 @@ fn info_properties(app: &mut WordApp, ui: &mut Ui, info: &serde_json::Value) {
     {
         let _ = app.run("ui.dialog", json!({"name": "customProperties"}));
     }
+    ui.add_space(18.0);
+    ui.label(egui::RichText::new(tl!("Related Dates")).font(semibold(15.0)));
+    crate::rtl::Table::new("related-dates").columns(2).spacing(vec2(12.0, 6.0)).show(ui, |t| {
+        for (label, value) in [
+            ("Created", &app.session.doc.core.created),
+            ("Last Modified", &app.session.doc.core.modified),
+            ("Last Printed", &app.session.doc.core.last_printed),
+        ] {
+            if !value.is_empty() {
+                t.row(|r| {
+                    r.cell(|ui| ui.label(tl!(label)));
+                    r.cell(|ui| ui.label(value.split_once('T').map_or(value.as_str(), |(date, _)| date)));
+                });
+            }
+        }
+    });
     compatibility_section(app, ui);
     inspect_section(app, ui);
     // Protect Document › Encrypt with Password (#55).

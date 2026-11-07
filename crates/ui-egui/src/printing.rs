@@ -245,6 +245,8 @@ pub fn submit(app: &mut crate::WordApp, params: &serde_json::Value) -> Result<se
             app.print_feedback_seen = None;
         } else if let Some(print) = &app.services.print {
             print(&bytes)?;
+            app.session.doc.core.last_printed = wordcraft_engine::cmd::now_iso();
+            app.session.dirty = true;
         }
         Ok(len)
     });
