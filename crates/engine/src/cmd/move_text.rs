@@ -81,16 +81,7 @@ pub(crate) fn place(s: &mut Session, _: &Value) -> CmdResult {
     if at.story == source.start.story && at >= source.start && at <= source.end {
         return super::sel_result(s);
     }
-    let mut fragment = s.doc.copy_range(&source.start, &source.end);
-    // A moved inline run ends at the destination's caret boundary. Give that boundary the
-    // destination's formatting, so the text after it does not inherit the moved run's emphasis.
-    if fragment.blocks.len() == 1
-        && let Some(wordcraft_doc::Block::Para(p)) = fragment.blocks.first_mut()
-        && let Some(tail) = s.doc.para_at(&at).map(|p| p.props_of_char(at.off).clone())
-        && let Some(run) = p.runs.last_mut()
-    {
-        run.props = tail;
-    }
+    let fragment = s.doc.copy_range(&source.start, &source.end);
     if !source.copy {
         let dest_offset = offset(&s.doc, &at)?;
         let old_end = s.doc.end_of(at.story);
@@ -165,5 +156,19 @@ mod tests {
         s.run("edit.moveText", &json!({})).unwrap();
         s.set_document(Document::new());
         assert!(s.pending_text_move.is_none());
+    }
+
+    #[test]
+    fn moved_text_keeps_its_runs_and_the_text_after_it_keeps_its_own() {
+        let mut s = Session::new(Document::from_text("plain bold"));
+        s.run("select.text", &json!({"text": "bold"})).unwrap();
+        s.run("format.bold", &json!({})).unwrap();
+        s.run("edit.moveText", &json!({})).unwrap();
+        s.run("caret.docStart", &json!({})).unwrap();
+        s.run("edit.moveTextHere", &json!({})).unwrap();
+        let p = s.doc.para(StoryRef::Body, &wordcraft_doc::Path::top(0)).unwrap();
+        assert_eq!(p.text, "boldplain ");
+        assert_eq!(p.props_of_char(3).bold, Some(true));
+        assert_ne!(p.props_of_char(4).bold, Some(true));
     }
 }
