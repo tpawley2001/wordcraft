@@ -2145,4 +2145,29 @@ fn font_dialog_opens_at_its_final_size() {
         widths.push(h.get_by_label("OK").rect().min.x);
     }
     assert!(widths[2..].windows(2).all(|w| w[0] == w[1]), "the dialog keeps growing: {widths:?}");
+
+/// Select Browse Object (Alt+Ctrl+Home): the shortcut's command opens the palette on the current
+/// object; a click on Heading makes headings what Ctrl+PageDown / Ctrl+PageUp browse by and
+/// closes it; Escape closes it without a change.
+#[test]
+fn select_browse_object_opens_the_palette_and_a_click_sets_the_object() {
+    use egui_kittest::kittest::Queryable;
+    let mut app = app_with("Lanterns");
+    app.run("nav.selectBrowseObject", json!({})).unwrap();
+    assert!(matches!(&app.dialog, Some(Dialog::BrowseObject { current, objects, .. }) if current == "find" && objects.len() == 12));
+    let mut h = app_harness(app);
+    h.run_steps(3);
+    let dialog = h.ctx.memory(|m| m.area_rect(egui::Id::unique(("dialog", "Select Browse Object")))).expect("the palette is open");
+    h.query_all_by_label("Heading").find(|n| dialog.contains(n.rect().center())).expect("a Heading button").click();
+    h.run_steps(3);
+    assert!(h.state().dialog.is_none(), "picking an object closes the palette");
+    assert_eq!(h.state_mut().session.run("nav.selectBrowseObject", &json!({})).unwrap()["current"], "heading");
+
+    h.state_mut().run("nav.selectBrowseObject", json!({})).unwrap();
+    assert!(matches!(&h.state().dialog, Some(Dialog::BrowseObject { current, .. }) if current == "heading"));
+    h.run_steps(2);
+    h.key_press(egui::Key::Escape);
+    h.run_steps(2);
+    assert!(h.state().dialog.is_none(), "Escape closes the palette");
+    assert_eq!(h.state_mut().session.run("nav.selectBrowseObject", &json!({})).unwrap()["current"], "heading");
 }

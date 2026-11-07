@@ -96,6 +96,10 @@ impl WordApp {
         if id == "file.accessibility" && r.is_ok() {
             self.session.view.accessibility_pane = true;
         }
+        // Alt+Ctrl+Home opens the Select Browse Object palette; scripts just get the list.
+        if id == "nav.selectBrowseObject" && r.is_ok() {
+            self.dialog = dialogs::Dialog::open("browseObject", self);
+        }
         // Match Fields and Check for Errors show what they found.
         if let Ok(v) = &r
             && let Some(d) = dialogs::Dialog::report(id, v)

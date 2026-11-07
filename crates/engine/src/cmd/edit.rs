@@ -121,15 +121,17 @@ pub fn specs() -> Vec<CommandSpec> {
             read_opts(s, v);
             step(s, 1)
         })
-        .key(super::mac_or("Mod+G / F3 / Shift+F4 / Mod+PageDown", "Mod+G / F3 / Shift+F4 / Mod+PageDown / Mod+Alt+Y"))
+        // Elsewhere Ctrl+Page Down is Next by the browse object (`nav.browseNext`), Find by default.
+        .key(super::mac_or("Mod+G / F3 / Shift+F4 / Mod+PageDown", "Mod+G / F3 / Shift+F4 / Mod+Alt+Y"))
         .params(r#"{"text"?: string, "matchCase"?: bool, "wholeWord"?: bool, "regex"?: bool}"#)
         .pure(),
         CommandSpec::new("edit.findPrevious", "Find Previous", "Home › Editing › Find", |s, v| {
             read_opts(s, v);
             step(s, -1)
         })
-        // Elsewhere Ctrl+Shift+G is Word Count; Ctrl+Page Up/Down browse the find results.
-        .key(super::mac_or("Mod+Shift+G / Mod+PageUp", "Mod+PageUp"))
+        // Elsewhere Ctrl+Shift+G is Word Count and Ctrl+Page Up is Previous by the browse
+        // object (`nav.browsePrevious`), Find by default.
+        .key(super::mac_or("Mod+Shift+G / Mod+PageUp", ""))
         .params(r#"{"text"?: string, "matchCase"?: bool, "wholeWord"?: bool, "regex"?: bool}"#)
         .pure(),
         CommandSpec::new("edit.replace", "Replace", "Home › Editing", replace).params(r#"{"text": string, "with": string, …options of edit.replaceAll}"#),
@@ -610,6 +612,8 @@ fn read_opts(s: &mut Session, v: &Value) {
     s.find.highlights = None;
     if let Some(t) = p::str(v, "text") {
         s.find.query = t.to_string();
+        // Finding new text makes Find the browse object again, as in Word.
+        s.find.browse = super::browse::BrowseObject::Find;
     }
     if let Some(b) = p::bool(v, "matchCase") {
         s.find.match_case = b;
@@ -694,6 +698,18 @@ fn advanced_find(s: &mut Session, v: &Value) -> CmdResult {
     s.find.current = 0;
     s.find.results = found;
     Ok(json!({"count": n, "matches": matches, "highlight": s.find.highlight}))
+}
+
+/// Find Next (`dir` 1) or Find Previous (-1) with the current options: Next / Previous when
+/// browsing by Find.
+pub(super) fn find_step(s: &mut Session, dir: i64) -> CmdResult {
+    read_opts(s, &Value::Null);
+    step(s, dir)
+}
+
+/// Go To: opens the dialog without params.
+pub(super) fn goto_command(s: &mut Session, v: &Value) -> CmdResult {
+    goto(s, v)
 }
 
 fn step(s: &mut Session, dir: i64) -> CmdResult {

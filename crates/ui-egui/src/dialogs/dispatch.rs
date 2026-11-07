@@ -28,6 +28,7 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::Bookmark { name, by_location, hidden, deleted } => bookmark(app, ui, name, by_location, hidden, deleted),
         Dialog::WordCount { .. } => word_count_dialog(app, ui, d),
         Dialog::Zoom { .. } => zoom_dialog(app, ui, d),
+        Dialog::BrowseObject { objects, current, focus } => browse_object_dialog(app, ui, objects, current, focus),
         Dialog::Watermark { .. } => watermark_dialog(app, ui, d),
         Dialog::Phonetic { .. } => phonetic_dialog(app, ui, d),
         Dialog::NewStyle { .. } => new_style_dialog(app, ui, d),
@@ -1625,4 +1626,51 @@ fn compatibility_dialog(ui: &mut Ui, issues: &[String], version: &str) -> bool {
         close |= ui.add(crate::widgets::primary_button(ui, tl!("OK"))).clicked();
     });
     close
+}
+
+/// Select Browse Object: one button per object (tooltip "Browse by Heading"…); picking one runs
+/// `nav.browseBy` and closes. Tab moves between the buttons, Enter or Space picks, Escape closes.
+fn browse_object_dialog(app: &mut WordApp, ui: &mut Ui, objects: &[String], current: &str, focus: &mut bool) -> bool {
+    let mut picked = None;
+    egui::Grid::new("browse_objects").num_columns(6).show(ui, |ui| {
+        for (i, name) in objects.iter().enumerate() {
+            let Some(o) = wordcraft_engine::cmd::browse::BrowseObject::from_name(name) else { continue };
+            let r = ui.selectable_label(name == current, tl!(browse_object_text(name))).on_hover_text(tl!(o.label()));
+            if *focus && name == current {
+                r.request_focus();
+            }
+            if r.clicked() {
+                picked = Some(name.clone());
+            }
+            if i % 6 == 5 {
+                ui.end_row();
+            }
+        }
+    });
+    *focus = false;
+    if let Some(name) = picked {
+        if let Err(e) = app.run("nav.browseBy", json!({"object": name})) {
+            app.status(e);
+        }
+        return true;
+    }
+    super::chrome::cancel_key_pressed(ui)
+}
+
+/// A browse object's button text.
+fn browse_object_text(name: &str) -> &'static str {
+    match name {
+        "goto" => "Go To",
+        "find" => "Find",
+        "edit" => "Edits",
+        "heading" => "Heading",
+        "graphic" => "Graphic",
+        "table" => "Table",
+        "field" => "Field",
+        "endnote" => "Endnote",
+        "footnote" => "Footnote",
+        "comment" => "Comment",
+        "section" => "Section",
+        _ => "Page",
+    }
 }

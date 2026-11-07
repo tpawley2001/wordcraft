@@ -218,6 +218,14 @@ pub enum Dialog {
     Zoom {
         percent: f32,
     },
+    /// Select Browse Object (Alt+Ctrl+Home): what Ctrl+PageDown / Ctrl+PageUp move by.
+    BrowseObject {
+        /// `nav.browseBy` names, in the palette's order.
+        objects: Vec<String>,
+        current: String,
+        /// Put the keyboard on the current object on the first frame.
+        focus: bool,
+    },
     Watermark {
         text: String,
         diagonal: bool,
@@ -524,6 +532,7 @@ impl Dialog {
             Dialog::Bookmark { .. } => "bookmark",
             Dialog::WordCount { .. } => "wordCount",
             Dialog::Zoom { .. } => "zoom",
+            Dialog::BrowseObject { .. } => "browseObject",
             Dialog::Watermark { .. } => "watermark",
             Dialog::Phonetic { .. } => "phonetic",
             Dialog::NewStyle { .. } => "newStyle",
@@ -753,6 +762,15 @@ impl Dialog {
             }
             "bookmark" => Dialog::Bookmark { name: bookmark_at_caret(&app.session), by_location: false, hidden: false, deleted: false },
             "wordCount" => Dialog::WordCount { stats: app.session.run("review.wordCount", &json!({})).unwrap_or_default() },
+            "browseObject" => {
+                let st = app.session.run("nav.selectBrowseObject", &json!({})).unwrap_or_default();
+                let objects = st
+                    .get("objects")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+                    .unwrap_or_default();
+                Dialog::BrowseObject { objects, current: st.get("current").and_then(Value::as_str).unwrap_or("find").into(), focus: true }
+            }
             "zoom" => Dialog::Zoom { percent: (app.session.view.zoom * 100.0).round() },
             "watermark" => Dialog::Watermark { text: "CONFIDENTIAL".into(), diagonal: true },
             "phonetic" => {

@@ -117,6 +117,9 @@ pub struct FindState {
     /// Highlighted matches, for the document revision they were found in.
     #[serde(skip)]
     pub highlights: Option<(u64, Vec<(Pos, Pos)>)>,
+    /// What Next and Previous (Ctrl+PageDown / Ctrl+PageUp) browse by: Select Browse Object.
+    #[serde(skip)]
+    pub browse: crate::cmd::browse::BrowseObject,
 }
 
 #[derive(Clone)]
