@@ -214,6 +214,14 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("view.previousWindow", "Previous Window", "View › Window", |s, _| cycle_window(s, true))
             .key(super::mac_or("", "Mod+Shift+F6 / Alt+Shift+F6"))
             .pure(),
+        // Word's Selection Pane (Layout › Arrange), a side pane listing the body's drawings.
+        CommandSpec::new("view.selectionPane", "Selection Pane", "Layout › Arrange", |s, v| {
+            s.view.selection_pane = p::bool(v, "value").unwrap_or(!s.view.selection_pane);
+            Ok(json!({"pane": s.view.selection_pane}))
+        })
+        .params(r#"{"value"?: bool (show/hide the pane)}"#)
+        .key(super::mac_or("", "Alt+F10"))
+        .pure(),
         CommandSpec::new("view.split", "Split", "View › Window", |s, _| {
             s.push_ui_request(json!({"toggle": "split"}));
             sel_result(s)

@@ -259,6 +259,8 @@ impl Writer<'_> {
 
     pub(super) fn drawing_open(&mut self, w: &mut W, info: DrawingInfo<'_>) {
         let DrawingInfo { float, size: (iw, ih), docpr, name, alt } = info;
+        // The name the drawing was read or renamed with; ink keeps the name its tool gives it.
+        let name = if float.name.is_empty() || name.starts_with("Ink ") { name } else { float.name.as_str() };
         let (cx, cy) = (emu(iw.max(0.0)), emu(ih.max(0.0)));
         if float.wrap == Wrap::Inline {
             w.open("wp:inline", &[("distT", "0"), ("distB", "0"), ("distL", "0"), ("distR", "0")]);

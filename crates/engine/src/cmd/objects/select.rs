@@ -282,21 +282,100 @@ pub(crate) fn all_objects(s: &Session) -> Vec<(Pos, InlineObject)> {
     v
 }
 
+/// The body's drawings as the Selection Pane lists them, front-most first: floating objects by
+/// stacking order (`relativeHeight`, highest first; equal ones later in the document first, as
+/// they are drawn on top), then inline ones in document order. Each with its document-order index.
+pub(crate) fn pane_objects(s: &Session) -> Vec<(usize, Pos, InlineObject)> {
+    let mut v: Vec<(usize, Pos, InlineObject)> = all_objects(s).into_iter().enumerate().map(|(i, (pos, o))| (i, pos, o)).collect();
+    v.sort_by(|(ia, _, a), (ib, _, b)| match (a.is_floating(), b.is_floating()) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        (false, false) => ia.cmp(ib),
+        (true, true) => {
+            let z = |o: &InlineObject| o.frame().map_or(0, |(_, _, f)| f.z);
+            z(b).cmp(&z(a)).then(ib.cmp(ia))
+        }
+    });
+    v
+}
+
+/// The position of Selection Pane entry `index` (`{"index": n}`).
+fn pane_pos(s: &Session, v: &Value) -> Result<Pos, CmdError> {
+    let n = p::u64(v, "index").ok_or_else(|| CmdError::Params("`index` is required".into()))?;
+    let n = usize::try_from(n).unwrap_or(usize::MAX);
+    pane_objects(s).into_iter().nth(n).map(|(_, pos, _)| pos).ok_or_else(|| CmdError::Params(format!("no object {n} in the Selection Pane")))
+}
+
+/// Selection Pane: click an entry to select its object.
+pub(super) fn pane_select(s: &mut Session, v: &Value) -> CmdResult {
+    let pos = pane_pos(s, v)?;
+    s.also_selected.clear();
+    select_object(s, &pos);
+    Ok(json!({"pos": crate::cmd::pos_json(&pos)}))
+}
+
+/// Selection Pane: the eye button, showing or hiding one object.
+pub(super) fn pane_visible(s: &mut Session, v: &Value) -> CmdResult {
+    let visible = p::bool(v, "visible").ok_or_else(|| CmdError::Params("`visible` is required".into()))?;
+    let pos = pane_pos(s, v)?;
+    set_hidden(s, &pos, !visible)?;
+    Ok(json!({"hidden": !visible}))
+}
+
+/// Selection Pane: Show All / Hide All.
+pub(super) fn pane_all(s: &mut Session, hidden: bool) -> CmdResult {
+    for (pos, _) in all_objects(s) {
+        set_hidden(s, &pos, hidden)?;
+    }
+    Ok(json!({"hidden": hidden}))
+}
+
+fn set_hidden(s: &mut Session, pos: &Pos, hidden: bool) -> Result<(), CmdError> {
+    let para = s.doc.para_mut(pos.story, &pos.path)?;
+    let f = para.object_at_mut(pos.off).and_then(InlineObject::float_mut).ok_or_else(|| CmdError::Failed("object vanished".into()))?;
+    if f.hidden != hidden {
+        f.hidden = hidden;
+        para.touch();
+    }
+    Ok(())
+}
+
+/// Selection Pane: rename an object (its `wp:docPr/@name`).
+pub(super) fn pane_rename(s: &mut Session, v: &Value) -> CmdResult {
+    let name = p::req_str(v, "name")?.trim();
+    if name.is_empty() {
+        return Err(CmdError::Params("the name can't be empty".into()));
+    }
+    let name = wordcraft_doc::para::cap_alt(name);
+    let pos = pane_pos(s, v)?;
+    let para = s.doc.para_mut(pos.story, &pos.path)?;
+    let f = para.object_at_mut(pos.off).and_then(InlineObject::float_mut).ok_or_else(|| CmdError::Failed("object vanished".into()))?;
+    f.name = name.clone();
+    para.touch();
+    Ok(json!({"name": name}))
+}
+
 pub(super) fn objects_list(s: &mut Session, _: &Value) -> CmdResult {
+    let picked = picked_objects(s);
     Ok(Value::Array(
-        all_objects(s)
+        pane_objects(s)
             .into_iter()
             .enumerate()
-            .map(|(i, (pos, o))| {
-                let (kind, name) = match &o {
+            .map(|(index, (i, pos, o))| {
+                let (kind, default) = match &o {
                     InlineObject::Image { alt, .. } => ("picture", if alt.is_empty() { format!("Picture {}", i + 1) } else { alt.clone() }),
                     InlineObject::Shape { kind, .. } => ("shape", format!("{kind:?} {}", i + 1)),
                     InlineObject::Graphic { graphic, .. } => ("graphic", format!("{:?} {}", graphic.kind, i + 1)),
                     InlineObject::Group { .. } => ("group", format!("Group {}", i + 1)),
                     _ => ("object", format!("Object {}", i + 1)),
                 };
-                let hidden = o.frame().is_some_and(|(_, _, f)| f.hidden);
-                json!({"index": i, "kind": kind, "name": name, "pos": crate::cmd::pos_json(&pos), "size": obj_size(&o), "hidden": hidden})
+                let (hidden, name) = match o.frame() {
+                    Some((_, _, f)) if !f.name.is_empty() => (f.hidden, f.name.clone()),
+                    Some((_, _, f)) => (f.hidden, default),
+                    None => (false, default),
+                };
+                let selected = picked.contains(&pos);
+                json!({"index": index, "kind": kind, "name": name, "pos": crate::cmd::pos_json(&pos), "size": obj_size(&o), "hidden": hidden, "selected": selected})
             })
             .collect(),
     ))

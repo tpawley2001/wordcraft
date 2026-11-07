@@ -23,6 +23,7 @@ impl Reader<'_> {
         let mut float = if anchored { anchor_float(c) } else { Float::default() };
         float.alt = meta;
         float.hidden = c.child("wp:docPr").is_some_and(|p| on_off_attr(p, "hidden"));
+        float.name = c.child("wp:docPr").and_then(|p| p.attr("name")).map(|n| wordcraft_doc::para::cap_alt(n.trim())).unwrap_or_default();
         if let Some(e) = c.child("wp:effectExtent") {
             for (slot, n) in float.effect.iter_mut().zip(["l", "t", "r", "b"]) {
                 // Negative for a rotated object narrower than its frame; settled below.
@@ -97,6 +98,12 @@ impl Reader<'_> {
                 // Ink's round ends belong to its tool, not the optional shape outline. Keep
                 // its canonical model unchanged when reading the round cap the writer adds.
                 extra.cap = Default::default();
+            }
+            // Ink's name follows its tool (written from it on save), not the stored name.
+            if let InlineObject::Shape { freeform: Some(f), float, .. } = &mut obj
+                && f.ink.is_some()
+            {
+                float.name.clear();
             }
             obj
         };

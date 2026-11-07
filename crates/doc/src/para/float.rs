@@ -174,6 +174,10 @@ pub struct Float {
     /// decorative mark). See [`InlineObject::alt_text`].
     #[serde(skip_serializing_if = "AltText::is_empty")]
     pub alt: AltText,
+    /// The drawing's name (`wp:docPr/@name`), as the Selection Pane lists it; empty = none kept
+    /// (a default such as "Picture 3" is shown and written). Capped at [`MAX_ALT_TEXT`] characters.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub name: String,
     /// Hidden (`wp:docPr/@hidden`, VML `visibility:hidden`): kept and saved, but neither drawn nor
     /// laid out, as Word for Windows does (Word for Mac draws hidden VML shapes).
     #[serde(skip_serializing_if = "is_false")]
