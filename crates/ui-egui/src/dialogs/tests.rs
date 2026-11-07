@@ -2145,6 +2145,7 @@ fn font_dialog_opens_at_its_final_size() {
         widths.push(h.get_by_label("OK").rect().min.x);
     }
     assert!(widths[2..].windows(2).all(|w| w[0] == w[1]), "the dialog keeps growing: {widths:?}");
+}
 
 /// Select Browse Object (Alt+Ctrl+Home): the shortcut's command opens the palette on the current
 /// object; a click on Heading makes headings what Ctrl+PageDown / Ctrl+PageUp browse by and
