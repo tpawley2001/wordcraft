@@ -1,3 +1,4 @@
+use super::auto_caption::auto_caption_ui;
 use super::caption::{CaptionForm, caption_ui, new_label_ui, numbering_ui};
 use super::cross_ref::{CrossRefForm, cross_ref_ui};
 use super::index::{IndexForm, MarkForm, index_ui, mark_ui};
@@ -27,6 +28,7 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut RefsDialog) -> bool {
         RefsDialog::Caption(f) => caption_ui(app, ui, f),
         RefsDialog::CaptionNumbering { form, was } => numbering_ui(ui, form, was),
         RefsDialog::NewLabel(f) => new_label_ui(app, ui, f),
+        RefsDialog::AutoCaption(f) => auto_caption_ui(app, ui, f),
         RefsDialog::CrossRef(f) => cross_ref_ui(app, ui, f),
         RefsDialog::Index(f) => index_ui(app, ui, f),
         RefsDialog::MarkEntry(f) => mark_ui(app, ui, f),

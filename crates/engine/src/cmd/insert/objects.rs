@@ -38,7 +38,12 @@ pub(super) fn table(s: &mut Session, v: &Value) -> CmdResult {
         t.props.bidi_visual = true;
     }
     let story = s.sel.focus.story;
-    let path = insert_block_at_caret(s, Block::Table(t))?;
+    let mut path = insert_block_at_caret(s, Block::Table(t))?;
+    // AutoCaption: the label's caption above or below the table, in the same undo step.
+    s.sel = Selection::caret(Pos { story, path: path.clone(), off: 0 });
+    if crate::cmd::references::add_auto_caption(s, crate::cmd::references::AUTO_TABLE)? == Some(true) {
+        path = crate::cmd::references::below_caption(&path);
+    }
     let mut first = path.0.clone();
     first.extend([0, 0, 0]);
     s.sel = Selection::caret(Pos { story, path: Path(first), off: 0 });

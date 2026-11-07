@@ -100,6 +100,7 @@ impl Reader<'_> {
                     s.endnote_pr = props::note_pr(k, false);
                 }
                 "w:documentProtection" => read_protection(k, s),
+                "w:captions" => s.captions = read_captions(k),
                 "w:zoom" => {
                     let percent = k.attr("w:percent").and_then(|v| u32_of(v.trim_end_matches('%'))).unwrap_or(100).clamp(10, 500);
                     let fit = match k.attr("w:val") {
@@ -357,6 +358,62 @@ pub(crate) const PROTECTION_HASH_ATTRS: [&str; 16] = [
 /// Restrict Editing (`w:documentProtection`, §17.15.1.29): the editing restriction, whether
 /// formatting is limited to unlocked styles, and the password hash. Only enforced protection is
 /// kept; a hostile attribute value can't be longer than a hash needs.
+/// Longest caption label or object type name kept.
+const MAX_CAPTION_NAME: usize = 255;
+
+/// `w:captions` (ECMA-376 §17.15.1.18): caption labels (`w:caption`) and AutoCaption entries
+/// (`w:autoCaptions/w:autoCaption`), [`wordcraft_doc::MAX_CAPTION_ENTRIES`] of each. An attribute
+/// with a value the schema doesn't have is ignored; an entry without a name is skipped.
+pub(crate) fn read_captions(k: &El) -> wordcraft_doc::Captions {
+    use wordcraft_doc::{AutoCaption, CAPTION_NUM_FORMATS, CaptionLabel, CaptionSep, MAX_CAPTION_ENTRIES};
+    let name = |e: &El, attr: &str| {
+        e.attr(attr).map(str::trim).filter(|n| !n.is_empty() && n.len() <= MAX_CAPTION_NAME && !n.chars().any(char::is_control)).map(str::to_string)
+    };
+    let flag = |e: &El, attr: &str| match e.attr(attr) {
+        Some("1" | "true" | "on") => Some(true),
+        Some("0" | "false" | "off") => Some(false),
+        _ => None,
+    };
+    let mut c = wordcraft_doc::Captions::default();
+    for e in k.children("w:caption") {
+        if c.labels.len() >= MAX_CAPTION_ENTRIES {
+            break;
+        }
+        let Some(n) = name(e, "w:name") else { continue };
+        if c.labels.iter().any(|l| l.name.eq_ignore_ascii_case(&n)) {
+            continue;
+        }
+        let mut l = CaptionLabel::new(&n);
+        match e.attr("w:pos") {
+            Some("above") => l.above = true,
+            Some("below") => l.above = false,
+            _ => {}
+        }
+        if let Some(f) = e.attr("w:numFmt").filter(|f| CAPTION_NUM_FORMATS.contains(f)) {
+            l.num_fmt = f.to_string();
+        }
+        l.chapter = flag(e, "w:chapNum").unwrap_or(false);
+        if let Some(h) = e.attr("w:heading").and_then(|h| h.trim().parse::<u8>().ok()).filter(|h| *h <= 9) {
+            l.heading = h;
+        }
+        if let Some(sep) = e.attr("w:sep").and_then(CaptionSep::from_ooxml) {
+            l.separator = sep;
+        }
+        l.no_label = flag(e, "w:noLabel").unwrap_or(false);
+        c.labels.push(l);
+    }
+    for e in k.children("w:autoCaptions").flat_map(|a| a.children("w:autoCaption")) {
+        if c.auto.len() >= MAX_CAPTION_ENTRIES {
+            break;
+        }
+        let (Some(object), Some(label)) = (name(e, "w:name"), name(e, "w:caption")) else { continue };
+        if !c.auto.iter().any(|a| a.object == object) {
+            c.auto.push(AutoCaption { object, label });
+        }
+    }
+    c
+}
+
 fn read_protection(k: &El, s: &mut wordcraft_doc::Settings) {
     let on = |v: &str| !matches!(v, "0" | "false" | "off");
     if !k.attr("w:enforcement").is_some_and(on) {

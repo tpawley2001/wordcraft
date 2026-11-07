@@ -163,3 +163,39 @@ fn do_not_track_moves_round_trips() {
     assert!(s.contains("<w:doNotTrackMoves/>"), "{s}");
     assert!(!wordcraft_docx::read(&wordcraft_docx::write(&doc).unwrap()).unwrap().settings.track_moves);
 }
+
+/// `w:captions` (ECMA-376 §17.15.1.18): caption labels and AutoCaption are read into the model,
+/// every attribute survives a save, it is written once (not also kept from the original) at its
+/// CT_Settings place, unknown attribute values are ignored, and a document without any writes none.
+#[test]
+fn caption_labels_and_autocaption_round_trip() {
+    use wordcraft_doc::{AutoCaption, CaptionLabel, CaptionSep};
+    let captions = r#"<w:captions><w:caption w:name="Exhibit" w:pos="above" w:numFmt="upperLetter" w:chapNum="1" w:heading="2" w:sep="emDash" w:noLabel="1"/><w:caption w:name="Plate" w:pos="sideways" w:numFmt="bogus" w:heading="12" w:sep="tilde"/><w:caption w:pos="above"/><w:autoCaptions><w:autoCaption w:name="Microsoft Word Table" w:caption="Exhibit"/><w:autoCaption w:name="Microsoft Equation"/></w:autoCaptions></w:captions>"#;
+    let settings = SETTINGS.replace(r#"<w:decimalSymbol"#, &format!("{captions}<w:decimalSymbol"));
+    let doc = wordcraft_docx::read(&with_settings(&settings)).unwrap();
+    let c = &doc.settings.captions;
+    let exhibit = CaptionLabel {
+        name: "Exhibit".into(),
+        above: true,
+        num_fmt: "upperLetter".into(),
+        chapter: true,
+        heading: 2,
+        separator: CaptionSep::EmDash,
+        no_label: true,
+    };
+    assert_eq!(c.labels, vec![exhibit, CaptionLabel::new("Plate")], "unknown values ignored, nameless entry skipped");
+    assert_eq!(c.auto, vec![AutoCaption { object: "Microsoft Word Table".into(), label: "Exhibit".into() }]);
+
+    let s = text(&save(&doc), "word/settings.xml");
+    assert_eq!(s.matches("<w:captions>").count(), 1, "{s}");
+    assert!(pos(&s, "m:mathPr") < pos(&s, "<w:captions>") && pos(&s, "<w:captions>") < pos(&s, "w:decimalSymbol"), "{s}");
+    let back = wordcraft_docx::read(&wordcraft_docx::write(&doc).unwrap()).unwrap();
+    assert_eq!(back.settings.captions, doc.settings.captions);
+
+    // A generated part (no original) carries them too, and a document without any has none.
+    let mut fresh = wordcraft_doc::Document::new();
+    assert!(!text(&save(&fresh), "word/settings.xml").contains("w:captions"));
+    fresh.settings.captions = doc.settings.captions.clone();
+    let back = wordcraft_docx::read(&wordcraft_docx::write(&fresh).unwrap()).unwrap();
+    assert_eq!(back.settings.captions, doc.settings.captions);
+}

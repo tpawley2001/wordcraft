@@ -1,4 +1,4 @@
-//! References dialogs (#402): Caption (with New Label and Numbering), Cross-reference (#916),
+//! References dialogs (#402): Caption (with New Label, Numbering and AutoCaption), Cross-reference (#916),
 //! Index and Mark Index Entry, Custom Table of Contents (with Options and the TOC styles), Table of
 //! Figures (#3013), and the Source Manager with Create / Edit Source. Each fills a form from the
 //! session and ends in a command (`references.caption`, `insert.crossReference`, `references.index`,
@@ -18,6 +18,7 @@ use crate::dialogs::{Dialog, buttons};
 use crate::file_dialogs::{AfterPick, Asked, FileDialogRequest};
 use crate::theme::{Tokens, semibold};
 
+mod auto_caption;
 mod caption;
 mod common;
 mod cross_ref;
@@ -26,6 +27,7 @@ mod shell;
 mod sources;
 mod toc;
 
+pub use auto_caption::{AutoCaptionForm, AutoCaptionRow};
 pub use caption::CaptionForm;
 pub use cross_ref::CrossRefForm;
 #[cfg(test)]
@@ -49,6 +51,8 @@ pub enum RefsDialog {
     },
     /// Caption › New Label….
     NewLabel(CaptionForm),
+    /// Caption › AutoCaption….
+    AutoCaption(Box<AutoCaptionForm>),
     CrossRef(CrossRefForm),
     Index(IndexForm),
     MarkEntry(MarkForm),
@@ -77,6 +81,7 @@ impl RefsDialog {
             RefsDialog::Caption(_) => "caption",
             RefsDialog::CaptionNumbering { .. } => "captionNumbering",
             RefsDialog::NewLabel(_) => "newLabel",
+            RefsDialog::AutoCaption(_) => "autoCaption",
             RefsDialog::CrossRef(_) => "crossReference",
             RefsDialog::Index(_) => "index",
             RefsDialog::MarkEntry(_) => "markEntry",
@@ -96,6 +101,7 @@ impl RefsDialog {
             RefsDialog::Caption(_) => "Caption",
             RefsDialog::CaptionNumbering { .. } => "Caption Numbering",
             RefsDialog::NewLabel(_) => "New Label",
+            RefsDialog::AutoCaption(_) => "AutoCaption",
             RefsDialog::CrossRef(_) => "Cross-reference",
             RefsDialog::Index(_) => "Index",
             RefsDialog::MarkEntry(_) => "Mark Index Entry",

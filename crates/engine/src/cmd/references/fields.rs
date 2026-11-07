@@ -32,7 +32,11 @@ pub(super) fn caption(s: &mut Session, v: &Value) -> CmdResult {
     // SEQ identifiers are one word: Word joins a multi-word label with underscores.
     let ident = label.split_whitespace().collect::<Vec<_>>().join("_");
     let text = p::str(v, "text").unwrap_or("").to_string();
-    let above = p::str(v, "position") == Some("above");
+    // Without a position, the label's own (Insert Caption › Position, AutoCaption), else below.
+    let above = match p::str(v, "position") {
+        Some(pos) => pos == "above",
+        None => s.doc.settings.captions.label(&label).is_some_and(|l| l.above),
+    };
     let format = seq_format(p::str(v, "format").unwrap_or("ARABIC"));
     let chapter = p::u64(v, "chapter").filter(|l| (1..=9).contains(l));
     let sep = p::str(v, "separator").and_then(|x| CHAPTER_SEPARATORS.iter().find(|s| **s == x)).copied().unwrap_or("-");

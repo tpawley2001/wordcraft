@@ -40,6 +40,7 @@ const OWNED: &[&str] = &[
     "w:footnotePr",
     "w:endnotePr",
     "m:mathPr",
+    "w:captions",
 ];
 
 /// Owned children whose original, when there is one, is kept as is.
