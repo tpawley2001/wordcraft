@@ -614,7 +614,7 @@ mod extend_tests {
 
     #[test]
     fn f8_selects_the_caret_s_section_before_the_document() {
-        let mut s = Session::new(Document::from_text("One two.\nSix.\nThree four."));
+        let mut s = Session::new(Document::from_text("One two. Five.\nSix.\nThree four."));
         s.run("caret.docStart", &json!({})).unwrap();
         s.run("caret.down", &json!({})).unwrap();
         s.run("caret.end", &json!({})).unwrap();
@@ -625,7 +625,7 @@ mod extend_tests {
             s.run("select.extend", &json!({})).unwrap();
         }
         let text = s.selected_text();
-        assert!(text.starts_with("One two.") && text.contains("Six."), "{text:?}");
+        assert!(text.starts_with("One two. Five.") && text.contains("Six."), "{text:?}");
         assert!(!text.contains("Three"), "only the first section: {text:?}");
         s.run("select.extend", &json!({})).unwrap();
         let (a, b) = s.sel.ordered();
