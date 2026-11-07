@@ -207,7 +207,7 @@ pub(crate) fn repair_emf_header(emf: &mut [u8]) {
     if let Some(fields) = emf.get_mut(48..60) {
         let handles = handles.min(u32::from(u16::MAX)) as u16;
         let [lo, hi] = handles.to_le_bytes();
-        for (field, value) in fields.chunks_exact_mut(4).zip([bytes.to_le_bytes(), records.to_le_bytes(), [lo, hi, 0, 0]]) {
+        for (field, value) in fields.as_chunks_mut::<4>().0.iter_mut().zip([bytes.to_le_bytes(), records.to_le_bytes(), [lo, hi, 0, 0]]) {
             field.copy_from_slice(&value);
         }
     }
