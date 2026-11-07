@@ -466,6 +466,12 @@ fn substitute(db: &FontDb, family: &str) -> Option<&'static str> {
         .or_else(|| installed.first().copied())
 }
 
+/// Windows ships Century only as Regular, and Word's PDF embeds that face for bold runs with
+/// regular advances (C059 Bold is about 11–13% wider), so substitutes must use synthetic bold.
+fn windows_has_no_bold(family: &str) -> bool {
+    family.eq_ignore_ascii_case("century")
+}
+
 fn style_name(bold: bool, italic: bool) -> &'static str {
     match (bold, italic) {
         (false, false) => "Regular",
@@ -513,8 +519,14 @@ pub fn resolve(family: &str, bold: bool, italic: bool) -> Resolved {
     } else {
         (substitute(db, base).unwrap_or(crate::FALLBACK_FAMILY).to_string(), true)
     };
-    let face = db.face(&fam, style_name(bold, italic));
-    let r = Resolved { synth_bold: bold && face.weight < 600.0, synth_italic: italic && !face.italic, substituted, face: FaceRef::of(&face) };
+    let force_synth_bold = substituted && windows_has_no_bold(base);
+    let face = db.face(&fam, style_name(bold && !force_synth_bold, italic));
+    let r = Resolved {
+        synth_bold: bold && (force_synth_bold || face.weight < 600.0),
+        synth_italic: italic && !face.italic,
+        substituted,
+        face: FaceRef::of(&face),
+    };
     let mut c = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if cacheable && c.0 == generation {
         if c.1.len() >= FAMILY_CACHE_MAX {
