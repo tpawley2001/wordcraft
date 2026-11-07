@@ -72,7 +72,7 @@ fn moved_text_keeps_its_formatting() {
     assert_eq!(text(&s), "boldplain ");
     let p = s.doc.para(StoryRef::Body, &s.doc.para_paths(StoryRef::Body)[0]).unwrap();
     assert_eq!(p.props_at(0).bold, Some(true), "moved text stays bold");
-    assert_ne!(p.props_at("bold".len()).bold, Some(true), "the text after it is not bold");
+    assert_ne!(p.props_of_char("bold".len()).bold, Some(true), "the text after it is not bold");
 }
 
 #[test]
