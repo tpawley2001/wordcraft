@@ -21,6 +21,7 @@ mod linked_pictures;
 mod metadata;
 mod nested_table;
 mod nested_table_grid;
+mod ole_embed_forms;
 mod ole_embed_keep;
 mod ole_print;
 mod ole_result_objects;
@@ -2799,7 +2800,7 @@ fn a_long_hyperlink_over_a_long_result_is_one_linked_run() {
     // what the copies charge to the work budget, which a busy machine can't skew.
     let mut result = super::FieldResult::default();
     (0..n).for_each(|_| result.push('y', wordcraft_doc::props::CharProps::default()));
-    let f = super::FieldBuild { depth: 1, instr: format!("HYPERLINK \"http://{target}\""), sep: Some(result) };
+    let f = super::FieldBuild { depth: 1, instr: format!("HYPERLINK \"http://{target}\""), sep: Some(result), object: false };
     let work = super::Work::new(u64::MAX);
     super::finish_field(&mut super::ParaBuild::default(), f, &work);
     assert_eq!(u64::MAX - work.left.get(), ("http://".len() + n) as u64, "one copy of the target");
@@ -2813,7 +2814,7 @@ fn hyperlink_target_copies_are_charged_to_the_work_budget() {
     let bold = CharProps { bold: Some(true), ..Default::default() };
     let mut result = super::FieldResult::default();
     (0..1000).for_each(|i| result.push('a', if i % 2 == 0 { bold.clone() } else { CharProps::default() }));
-    let f = super::FieldBuild { depth: 1, instr: format!("HYPERLINK \"{}\"", "u".repeat(100)), sep: Some(result) };
+    let f = super::FieldBuild { depth: 1, instr: format!("HYPERLINK \"{}\"", "u".repeat(100)), sep: Some(result), object: false };
     let mut pb = super::ParaBuild::default();
     let budget = super::Work::new(10_000);
     super::finish_field(&mut pb, f, &budget);
@@ -2918,7 +2919,7 @@ fn field_results_keep_their_text_and_runs() {
     {
         result.push(c, p);
     }
-    let f = super::FieldBuild { depth: 1, instr: "HYPERLINK \"http://x\"".into(), sep: Some(result) };
+    let f = super::FieldBuild { depth: 1, instr: "HYPERLINK \"http://x\"".into(), sep: Some(result), object: false };
     let mut pb = super::ParaBuild::default();
     super::finish_field(&mut pb, f, &super::Work::new(u64::MAX));
     assert_eq!(pb.text, "a\u{e9}\u{20ac}bc");

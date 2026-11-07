@@ -8,9 +8,17 @@
 //! the field's result, with no picture in the Data stream. Word draws those from the storage: its
 //! `\x03EPRINT` when there is one, else the Windows Metafile in `\x03META` (after an 8-byte
 //! METAFILEPICT16 header), at the goal size in `\x03PIC`.
+//!
+//! Each object storage is also kept whole: a copy of it as a standalone compound file, written
+//! back by a .docx save as `word/embeddings/oleObjectN.bin` behind a `w:object` (ECMA-376
+//! §17.3.3.19) whose `o:OLEObject` names it, so the object stays editable ([`Kept`]).
 
-use std::collections::HashMap;
-use std::io::{Read, Seek};
+use std::collections::{BTreeMap, HashMap};
+use std::io::{Cursor, Read, Seek, Write};
+use std::path::Path;
+use std::sync::Arc;
+
+use wordcraft_doc::graphic::{Embedded, EmbeddedRef};
 
 use crate::{media, officeart, sprm};
 
@@ -33,6 +41,22 @@ const PIC_DYA_GOAL: usize = 24;
 const PIC_MX: usize = 44;
 const PIC_MY: usize = 48;
 const PIC_MIN_LEN: usize = 52;
+/// Most entries (streams and storages) in one object storage that is kept.
+const MAX_STORAGE_ENTRIES: usize = 4096;
+/// Deepest sub-storage path (in names below the object storage) of one object that is kept.
+const MAX_STORAGE_DEPTH: usize = 16;
+/// Most bytes of `\x01CompObj` read for the object's ProgID.
+const MAX_COMP_OBJ: u64 = 4096;
+/// `\x01CompObj`: the CompObjHeader before AnsiUserType ([MS-OLEDS] §2.3.8).
+const COMP_OBJ_HEADER: usize = 28;
+/// Longest ProgID (COM's limit is 39 characters).
+const MAX_PROG_ID: usize = 39;
+/// The `Document::passthrough` key of the manifest of kept parts the .docx writer reads
+/// (`wordcraft_docx::package::EMBEDDED_PARTS`): `P\tpart\tcontent type` lines.
+const EMBEDDED_PARTS: &str = "wordcraft:embedded.parts";
+const OLE_OBJECT_CT: &str = "application/vnd.openxmlformats-officedocument.oleObject";
+const REL_OLE_OBJECT: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject";
+const REL_IMAGE: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 
 /// The print presentations (EMF bytes) of the document's embedded objects, by storage id, and
 /// the pictures of objects referenced from a field result.
@@ -43,6 +67,17 @@ pub(crate) struct Prints {
     metas: HashMap<u32, Vec<u8>>,
     /// Storage id → goal size in points from `\x03PIC`.
     goals: HashMap<u32, (f32, f32)>,
+    /// Storage id → the storage kept whole, for objects within the caps.
+    stored: HashMap<u32, Stored>,
+}
+
+/// An object storage kept to be written back: a standalone compound file holding every stream
+/// and sub-storage of `ObjectPool/_<id>`, its ProgID from `\x01CompObj`, and its `\x03PIC` goal
+/// size in twips (unscaled).
+pub(crate) struct Stored {
+    bin: Arc<Vec<u8>>,
+    prog_id: Option<String>,
+    goal_twips: Option<(u32, u32)>,
 }
 
 /// The picture of an object referenced from a field result: its bytes, media extension and
@@ -64,9 +99,17 @@ impl Prints {
             Err(_) => return prints,
         };
         let mut total = 0usize;
+        let mut kept = 0u64;
         for id in ids {
-            if let Some(goal) = pic_goal(comp, id) {
+            let pic = pic_stream(comp, id);
+            if let Some(goal) = pic.and_then(pic_goal) {
                 prints.goals.insert(id, goal);
+            }
+            let room = (media::MAX_MEDIA_BYTES as u64).saturating_sub(kept);
+            if let Some(bin) = copy_storage(comp, id, room) {
+                kept = kept.saturating_add(bin.len() as u64);
+                let goal_twips = pic.map(|[dxa, dya, ..]| (dxa, dya)).filter(|&(x, y)| x > 0 && y > 0 && x <= MAX_GOAL_TWIPS && y <= MAX_GOAL_TWIPS);
+                prints.stored.insert(id, Stored { bin: Arc::new(bin), prog_id: comp_obj_prog_id(comp, id), goal_twips });
             }
             let (bytes, is_meta) = match eprint(comp, id) {
                 Some(b) => (b, false),
@@ -102,6 +145,10 @@ impl Prints {
         self.by_id.get(&id).map(Vec::as_slice)
     }
 }
+
+/// Largest `\x03PIC` goal size taken as the object's original size: ten times the largest
+/// page Word allows (22 in), in twips.
+const MAX_GOAL_TWIPS: u32 = 316_800;
 
 /// The id of an object storage named `_<decimal id>`.
 fn storage_id(name: &str) -> Option<u32> {
@@ -141,14 +188,19 @@ fn meta<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<Vec<
     is_wmf(wmf).then(|| wmf.to_vec())
 }
 
-/// The object's goal size in points from its `\x03PIC` stream: dxaGoal x dyaGoal twips scaled
-/// by mx/my per mille. `None` when the stream is missing or short, or a size is 0.
-fn pic_goal<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<(f32, f32)> {
+/// The object's `\x03PIC` dxaGoal, dyaGoal (twips) and mx, my (per mille). `None` when the
+/// stream is missing or short.
+fn pic_stream<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<[u32; 4]> {
     let s = comp.open_stream(format!("/ObjectPool/_{id}/\u{3}PIC")).ok()?;
     let mut v = Vec::new();
     s.take(PIC_MIN_LEN as u64).read_to_end(&mut v).ok()?;
     let u32_at = |at: usize| v.get(at..at + 4).and_then(|s| s.try_into().ok()).map(u32::from_le_bytes);
-    let (dxa, dya, mx, my) = (u32_at(PIC_DXA_GOAL)?, u32_at(PIC_DYA_GOAL)?, u32_at(PIC_MX)?, u32_at(PIC_MY)?);
+    Some([u32_at(PIC_DXA_GOAL)?, u32_at(PIC_DYA_GOAL)?, u32_at(PIC_MX)?, u32_at(PIC_MY)?])
+}
+
+/// The object's goal size in points from its `\x03PIC` fields: dxaGoal x dyaGoal twips scaled
+/// by mx/my per mille. `None` when a size is 0 or out of range.
+fn pic_goal([dxa, dya, mx, my]: [u32; 4]) -> Option<(f32, f32)> {
     let pt = |goal: u32, scale: u32| f64::from(goal) * f64::from(scale) / 1000.0 / 20.0;
     let (w, h) = (pt(dxa, mx), pt(dya, my));
     // Hostile sizes are refused: at most ten times the largest page Word allows (22 in = 1584 pt).
@@ -190,6 +242,194 @@ pub(crate) fn object_id(chpx: &[u8]) -> Option<u32> {
         }
     }
     id.filter(|_| ole)
+}
+
+/// A copy of storage `ObjectPool/_<id>` as a standalone compound file: every stream (bytes
+/// unchanged) and sub-storage at the same path below the root, and the root's CLSID the
+/// storage's. `None` when the storage is missing or unreadable, has more than
+/// [`MAX_STORAGE_ENTRIES`] entries or a path deeper than [`MAX_STORAGE_DEPTH`], or its streams
+/// hold more than `cap` bytes.
+fn copy_storage<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32, cap: u64) -> Option<Vec<u8>> {
+    let root = format!("/ObjectPool/_{id}");
+    let mut root_clsid = None;
+    let mut storages = Vec::new();
+    let mut streams = Vec::new();
+    let mut size = 0u64;
+    for (n, e) in comp.walk_storage(&root).ok()?.enumerate() {
+        if n > MAX_STORAGE_ENTRIES {
+            return None;
+        }
+        let rel = e.path().strip_prefix(&root).ok()?.to_path_buf();
+        if rel.components().count() > MAX_STORAGE_DEPTH {
+            return None;
+        }
+        if rel.as_os_str().is_empty() {
+            root_clsid = Some(*e.clsid());
+        } else if e.is_storage() {
+            storages.push((rel, *e.clsid()));
+        } else {
+            size = size.checked_add(e.len()).filter(|&s| s <= cap)?;
+            streams.push((rel, e.len()));
+        }
+    }
+    let mut out = cfb::CompoundFile::create_with_version(cfb::Version::V3, Cursor::new(Vec::new())).ok()?;
+    out.set_storage_clsid("/", root_clsid?).ok()?;
+    for (rel, clsid) in storages {
+        let path = Path::new("/").join(rel);
+        out.create_storage(&path).ok()?;
+        out.set_storage_clsid(&path, clsid).ok()?;
+    }
+    for (rel, len) in streams {
+        let mut bytes = Vec::new();
+        comp.open_stream(Path::new(&root).join(&rel)).ok()?.take(len).read_to_end(&mut bytes).ok()?;
+        if bytes.len() as u64 != len {
+            return None;
+        }
+        out.create_stream(Path::new("/").join(rel)).ok()?.write_all(&bytes).ok()?;
+    }
+    out.flush().ok()?;
+    Some(out.into_inner().into_inner())
+}
+
+/// The ProgID in the object's `\x01CompObj` stream ([MS-OLEDS] §2.3.8): after the header, the
+/// AnsiUserType and the AnsiClipboardFormat, the length-prefixed ANSI string that holds it.
+fn comp_obj_prog_id<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<String> {
+    let s = comp.open_stream(format!("/ObjectPool/_{id}/\u{1}CompObj")).ok()?;
+    let mut v = Vec::new();
+    s.take(MAX_COMP_OBJ).read_to_end(&mut v).ok()?;
+    let u32_at = |at: usize| v.get(at..at.checked_add(4)?).and_then(|s| s.try_into().ok()).map(u32::from_le_bytes);
+    // AnsiUserType: a LengthPrefixedAnsiString.
+    let len = u32_at(COMP_OBJ_HEADER)? as usize;
+    let mut at = COMP_OBJ_HEADER.checked_add(4)?.checked_add(len)?;
+    // AnsiClipboardFormat: a marker (a standard format id follows) or a string's length.
+    at = match u32_at(at)? {
+        0 => at.checked_add(4)?,
+        0xFFFF_FFFF | 0xFFFF_FFFE => at.checked_add(8)?,
+        n => at.checked_add(4)?.checked_add(n as usize)?,
+    };
+    let len = u32_at(at)? as usize;
+    let start = at.checked_add(4)?;
+    let raw = v.get(start..start.checked_add(len)?)?;
+    let text = raw.split(|&b| b == 0).next()?;
+    prog_id(std::str::from_utf8(text).ok()?)
+}
+
+/// `s` as a ProgID: 1 to 39 ASCII letters, digits, `.`, `_` or `-`, starting with a letter.
+fn prog_id(s: &str) -> Option<String> {
+    let ok = s.len() <= MAX_PROG_ID
+        && s.starts_with(|c: char| c.is_ascii_alphabetic())
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    ok.then(|| s.to_string())
+}
+
+/// Is `instr` an `EMBED` field code?
+pub(crate) fn is_embed(instr: &str) -> bool {
+    instr.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case("EMBED"))
+}
+
+/// The class name an `EMBED` field code names (`EMBED Excel.Sheet.8 \s` → `Excel.Sheet.8`).
+fn embed_prog_id(instr: &str) -> Option<String> {
+    let mut words = instr.split_whitespace();
+    words.next().filter(|w| w.eq_ignore_ascii_case("EMBED"))?;
+    words.next().filter(|w| !w.starts_with('\\')).and_then(prog_id)
+}
+
+/// The content type of a kept picture part, by its file extension.
+fn image_content_type(ext: &str) -> &'static str {
+    match ext {
+        "emf" => "image/x-emf",
+        "wmf" => "image/x-wmf",
+        "png" => "image/png",
+        "jpeg" | "jpg" => "image/jpeg",
+        "gif" => "image/gif",
+        "bmp" => "image/bmp",
+        "tiff" | "tif" => "image/tiff",
+        _ => "application/octet-stream",
+    }
+}
+
+/// A length in points as written in a VML style: at most two decimals, no trailing zeros.
+fn pt(v: f32) -> String {
+    let s = format!("{:.2}", if v.is_finite() { v.max(0.0) } else { 0.0 });
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+/// The embedded objects kept while reading: one `w:object` markup per storage id, numbered from
+/// 1 in the order the reader meets them, and the parts they use.
+#[derive(Default)]
+pub(crate) struct Kept {
+    by_id: HashMap<u32, Arc<Embedded>>,
+    /// (part name, bytes, content type), in order.
+    parts: Vec<(String, Arc<Vec<u8>>, &'static str)>,
+}
+
+impl Kept {
+    /// The `w:object` of the object in storage `id`, shown as media entry `media_key` at `w` x `h`
+    /// points; `instr` is its `EMBED` field code. `None` when the storage wasn't kept or the
+    /// picture's bytes are gone.
+    pub(crate) fn object(
+        &mut self,
+        prints: &Prints,
+        id: u32,
+        instr: &str,
+        media_key: &str,
+        media: &BTreeMap<String, Arc<Vec<u8>>>,
+        (w, h): (f32, f32),
+    ) -> Option<Arc<Embedded>> {
+        if let Some(e) = self.by_id.get(&id) {
+            return Some(e.clone());
+        }
+        let stored = prints.stored.get(&id)?;
+        let picture = media.get(media_key)?.clone();
+        let n = self.by_id.len().saturating_add(1);
+        let ext = media_key.rsplit_once('.').map_or("bin", |(_, e)| e);
+        let bin_part = format!("word/embeddings/oleObject{n}.bin");
+        let image_part = format!("word/media/oleObject{n}.{ext}");
+        let prog = embed_prog_id(instr).or_else(|| stored.prog_id.clone()).unwrap_or_else(|| "Package".to_string());
+        let twips = |pt: f32| (f64::from(pt) * 20.0).round().clamp(0.0, f64::from(MAX_GOAL_TWIPS)) as u32;
+        let (dxa, dya) = stored.goal_twips.unwrap_or((twips(w), twips(h)));
+        let shape = format!("_x0000_i{}", n.saturating_add(1024));
+        let xml = format!(
+            concat!(
+                "<w:object xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" ",
+                "xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" ",
+                "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" w:dxaOrig=\"{dxa}\" w:dyaOrig=\"{dya}\">",
+                "<v:shape id=\"{shape}\" type=\"#_x0000_t75\" style=\"width:{w}pt;height:{h}pt\" o:ole=\"\">",
+                "<v:imagedata r:id=\"rIdPic\" o:title=\"\"/></v:shape>",
+                "<o:OLEObject Type=\"Embed\" ProgID=\"{prog}\" ShapeID=\"{shape}\" DrawAspect=\"Content\" ObjectID=\"_{id}\" r:id=\"rIdOle\"/>",
+                "</w:object>"
+            ),
+            dxa = dxa,
+            dya = dya,
+            shape = shape,
+            w = pt(w),
+            h = pt(h),
+            prog = prog,
+            id = id,
+        );
+        let refs = vec![
+            EmbeddedRef { id: "rIdPic".into(), kind: REL_IMAGE.into(), target: image_part.clone(), external: false },
+            EmbeddedRef { id: "rIdOle".into(), kind: REL_OLE_OBJECT.into(), target: bin_part.clone(), external: false },
+        ];
+        self.parts.push((bin_part, stored.bin.clone(), OLE_OBJECT_CT));
+        self.parts.push((image_part, picture, image_content_type(ext)));
+        let e = Arc::new(Embedded { xml, refs });
+        self.by_id.insert(id, e.clone());
+        Some(e)
+    }
+
+    /// Put the kept parts, and the manifest naming their content types, into `passthrough`.
+    pub(crate) fn finish(self, passthrough: &mut BTreeMap<String, Arc<Vec<u8>>>) {
+        if self.parts.is_empty() {
+            return;
+        }
+        let mut manifest = String::new();
+        for (name, bytes, ct) in self.parts {
+            manifest.push_str(&format!("P\t{name}\t{ct}\n"));
+            passthrough.insert(name, bytes);
+        }
+        passthrough.insert(EMBEDDED_PARTS.into(), Arc::new(manifest.into_bytes()));
+    }
 }
 
 #[cfg(test)]
@@ -237,5 +477,79 @@ mod tests {
         h[48..52].copy_from_slice(&88u32.to_le_bytes());
         h[4..8].copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(!is_emf(&h));
+    }
+
+    /// A compound file holding storage `ObjectPool/_5` with sub-storages `nest` levels deep below
+    /// it (`s0/s1/…`), a stream of `len` bytes at the bottom and a `\x01Ole` stream; the object
+    /// storage's CLSID is all 0x11 and the first sub-storage's all 0x22.
+    fn pool(nest: usize, len: usize) -> cfb::CompoundFile<Cursor<Vec<u8>>> {
+        let mut comp = cfb::CompoundFile::create(Cursor::new(Vec::new())).unwrap();
+        comp.create_storage_all("/ObjectPool/_5").unwrap();
+        let mut path = String::from("/ObjectPool/_5");
+        for i in 0..nest {
+            path.push_str(&format!("/s{i}"));
+            comp.create_storage(&path).unwrap();
+        }
+        comp.create_stream(format!("{path}/Data")).unwrap().write_all(&vec![7u8; len]).unwrap();
+        comp.create_stream("/ObjectPool/_5/\u{1}Ole").unwrap().write_all(&[1, 2, 3]).unwrap();
+        comp.flush().unwrap();
+        // CLSIDs are poked into the directory entries (128 bytes each, name first, CLSID at 0x50).
+        let mut bytes = comp.into_inner().into_inner();
+        for (name, fill) in [("_5", 0x11u8), ("s0", 0x22)] {
+            let mut entry: Vec<u8> = name.encode_utf16().flat_map(u16::to_le_bytes).collect();
+            entry.extend_from_slice(&[0, 0]);
+            let at = (0..bytes.len().saturating_sub(128)).step_by(128).find(|&i| bytes[i..].starts_with(&entry));
+            if let Some(at) = at {
+                bytes[at + 0x50..at + 0x60].fill(fill);
+            }
+        }
+        cfb::CompoundFile::open(Cursor::new(bytes)).unwrap()
+    }
+
+    fn read_stream(comp: &mut cfb::CompoundFile<Cursor<Vec<u8>>>, path: &str) -> Vec<u8> {
+        let mut v = Vec::new();
+        comp.open_stream(path).unwrap().read_to_end(&mut v).unwrap();
+        v
+    }
+
+    #[test]
+    fn a_storage_is_copied_whole_with_its_clsids() {
+        let mut src = pool(2, 5000);
+        let bin = copy_storage(&mut src, 5, 1 << 20).expect("copied");
+        let mut out = cfb::CompoundFile::open(Cursor::new(bin)).unwrap();
+        assert_eq!(read_stream(&mut out, "/s0/s1/Data"), vec![7u8; 5000]);
+        assert_eq!(read_stream(&mut out, "/\u{1}Ole"), vec![1, 2, 3]);
+        assert_eq!(out.root_entry().clsid().as_bytes(), &[0x11; 16], "the root CLSID is the storage's");
+        assert_eq!(out.entry("/s0").unwrap().clsid().as_bytes(), &[0x22; 16]);
+        assert!(!out.exists("/ObjectPool"), "nothing but the object's own tree");
+    }
+
+    #[test]
+    fn a_storage_past_the_caps_is_not_copied() {
+        // Bigger than the byte cap (the media cap in a real read).
+        let mut src = pool(0, 5000);
+        assert!(copy_storage(&mut src, 5, 5002).is_none());
+        assert!(copy_storage(&mut src, 5, 5003).is_some());
+        // Deeper than the depth cap.
+        let mut src = pool(MAX_STORAGE_DEPTH, 1);
+        assert!(copy_storage(&mut src, 5, 1 << 20).is_none());
+        let mut src = pool(MAX_STORAGE_DEPTH - 1, 1);
+        assert!(copy_storage(&mut src, 5, 1 << 20).is_some());
+        // A missing storage.
+        assert!(copy_storage(&mut src, 6, 1 << 20).is_none());
+    }
+
+    #[test]
+    fn prog_ids_are_checked_names() {
+        assert_eq!(embed_prog_id(" EMBED Excel.Sheet.8 \\s "), Some("Excel.Sheet.8".into()));
+        assert_eq!(embed_prog_id("embed Equation.3"), Some("Equation.3".into()));
+        assert_eq!(embed_prog_id("EMBED \\s"), None);
+        assert_eq!(embed_prog_id("EMBED"), None);
+        assert_eq!(embed_prog_id("LINK Excel.Sheet.8"), None);
+        assert_eq!(embed_prog_id("EMBED a\"b"), None);
+        assert_eq!(embed_prog_id(&format!("EMBED {}", "A".repeat(40))), None);
+        assert_eq!(pt(144.0), "144");
+        assert_eq!(pt(12.345), "12.35");
+        assert_eq!(pt(f32::NAN), "0");
     }
 }
