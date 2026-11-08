@@ -15,6 +15,7 @@ mod drawing;
 mod emf_header_repair;
 mod empty_inline_shape;
 mod encrypted;
+mod field_result_props;
 mod frames;
 mod header_guard;
 mod horizontal_rules;
@@ -3091,7 +3092,7 @@ fn formatting_runs_break_where_the_chpx_changes() {
     let doc = read(&rich_doc(&spec)).expect("opens");
     let p = para0(&doc);
     let shape: Vec<(usize, Option<bool>, Option<bool>)> = p.runs.iter().map(|r| (r.len, r.props.bold, r.props.italic)).collect();
-    // "aaaa" bold, "bbbb" plain plus the field's anchor (3 bytes, default formatting), "ccd" bold
-    // (the run from the field to CP 20), "d(ee" italic.
-    assert_eq!(shape, [(4, Some(true), None), (7, None, None), (3, Some(true), None), (4, None, Some(true))], "{shape:?}");
+    // "aaaa" bold, "bbbb" plain, the field's anchor (3 bytes, formatted as its bold result "12")
+    // with "ccd" bold (the run from the field to CP 20), "d(ee" italic.
+    assert_eq!(shape, [(4, Some(true), None), (4, None, None), (6, Some(true), None), (4, None, Some(true))], "{shape:?}");
 }
