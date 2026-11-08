@@ -1760,6 +1760,7 @@ fn compound_borders_round_trip() {
     assert_eq!(tops(&back), want);
 }
 
+mod foreign_styles;
 mod legacy_pn;
 mod object_result;
 mod section_revisions;
