@@ -51,6 +51,7 @@ mod styles_without_id;
 mod text_alignment;
 mod text_boxes;
 mod text_whitespace;
+mod thumbnail;
 mod toc_ranges;
 mod twips_wrap;
 mod undefined_style;
