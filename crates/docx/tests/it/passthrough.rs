@@ -119,7 +119,6 @@ fn unmodelled_parts_are_carried_with_relationships_and_content_types() {
         "word/stylesWithEffects.xml",
         "word/people.xml",
         "word/unknownPart.xml",
-        "docProps/thumbnail.jpeg",
         "word/webextensions/taskpanes.xml",
         "word/webextensions/webextension1.xml",
     ] {
@@ -130,7 +129,9 @@ fn unmodelled_parts_are_carried_with_relationships_and_content_types() {
         assert_eq!(doc_rels.matches(ty).count(), 1, "{ty}: {doc_rels}");
     }
     let root_rels = text(&files, "_rels/.rels");
-    assert!(root_rels.contains(r#"Target="docProps/thumbnail.jpeg""#) && root_rels.contains("webextensiontaskpanes"), "{root_rels}");
+    assert!(root_rels.contains("webextensiontaskpanes"), "{root_rels}");
+    // The old thumbnail would show the first page as it was: it is left out (#3627, thumbnail.rs).
+    assert!(!files.contains_key("docProps/thumbnail.jpeg") && !root_rels.contains("thumbnail"), "{root_rels}");
     assert!(text(&files, "word/webextensions/_rels/taskpanes.xml.rels").contains("webextension1.xml"));
     let ct = text(&files, "[Content_Types].xml");
     for (part, ty) in [
@@ -138,11 +139,11 @@ fn unmodelled_parts_are_carried_with_relationships_and_content_types() {
         ("/word/stylesWithEffects.xml", "stylesWithEffects+xml"),
         ("/word/people.xml", "people+xml"),
         ("/word/webextensions/taskpanes.xml", "webextensiontaskpanes+xml"),
-        ("/docProps/thumbnail.jpeg", "image/jpeg"),
     ] {
         let entry = ct.split("<Override ").find(|o| o.contains(&format!(r#"PartName="{part}""#))).unwrap_or_else(|| panic!("{part}: {ct}"));
         assert!(entry.contains(ty), "{part}: {entry}");
     }
+    assert!(!ct.contains("/docProps/thumbnail"), "{ct}");
     // Saved again: the same parts, still once each (`unzip` rejects duplicates).
     let again = save(&wordcraft_docx::read(&wordcraft_docx::write(&doc).unwrap()).unwrap());
     assert_eq!(again.get("word/webSettings.xml"), input.get("word/webSettings.xml"));

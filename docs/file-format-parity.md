@@ -1,4 +1,6 @@
 # File-format parity with Microsoft Word
+
+> **Last updated:** 2026-11-07 · **Change:** trivial (P0116: DOCX saves always omit stale package thumbnails, including their relationships and content-type overrides (#3627); other kept parts still round-trip. Readiness estimates unchanged.)
 > **2026-11-07:** P0099: core properties Status, Last Printed, Language, Version, Identifier and Content Type are kept through open and save; Mark as Final's `_MarkAsFinal` property and Status `Final`.
 > **2026-11-05:** DOCX paragraph `w:adjustRightInd` keeps its default and explicit values through style resolution and schema-ordered repeated saves.
 
@@ -278,8 +280,10 @@ point at a relationship (a mail-merge data source) are dropped. Files WordCraft 
 
 ## Unmodelled-part preservation
 
+DOCX save always leaves out kept package thumbnails: they can show content changed or removed since the originating application saved the file (#3627).
+
 Parts the package or the main document relate to that WordCraft neither models nor writes (web
-settings, styles-with-effects, add-in task panes, people, the thumbnail, future parts) are
+settings, styles-with-effects, add-in task panes, people, future parts) are
 carried verbatim with their relationships and content types. The glossary document is carried the
 same way while its building blocks are as read; once they change it is written from the model. Relationship types the writer
 produces, and any the document's markup refers to by id, are not (`HANDLED_RELS` in
@@ -320,6 +324,8 @@ flags, style sorting and native/DOCX save behavior remain unchanged. Multi-sourc
 CSL and library import are separate work.
 
 ## Revision history
+
+> 2026-11-07 · P0116: DOCX saves always omit stale package thumbnails, including their relationships and content-type overrides (#3627); other kept parts still round-trip. Readiness estimates unchanged.
 
 > 2026-11-07 · P0103: `.doc` OLE EPRINT previews repair EMF byte, record and handle counts and clear the reserved field after validating the record chain through EOF; malformed chains remain unchanged. Readiness estimates unchanged.
 
