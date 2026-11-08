@@ -206,6 +206,8 @@ struct Chart {
 }
 
 #[cfg(test)]
+mod chartex_box_tests;
+#[cfg(test)]
 mod chartex_tests;
 #[cfg(test)]
 mod combo_tests;

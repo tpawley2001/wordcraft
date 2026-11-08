@@ -1888,6 +1888,46 @@ fn office_2016_waterfall_is_drawn_from_its_data_and_saved_whole() {
     }
 }
 
+/// A box & whisker chart (synthetic data) is drawn from its data, not its fallback picture; saving
+/// still writes the chart part.
+#[test]
+fn office_2016_box_whisker_is_drawn_from_its_data_and_saved_whole() {
+    let vals = [-78, -10, 0, 5, 10, 128];
+    let cats: String = vals.iter().enumerate().map(|(k, _)| format!(r#"<cx:pt idx="{k}">Group A</cx:pt>"#)).collect();
+    let pts: String = vals.iter().enumerate().map(|(k, v)| format!(r#"<cx:pt idx="{k}">{v}</cx:pt>"#)).collect();
+    let chart = format!(
+        r#"<cx:chartSpace xmlns:cx="{CHARTEX_NS}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><cx:chartData><cx:externalData r:id="rId1" cx:autoUpdate="0"/><cx:data id="0"><cx:strDim type="cat"><cx:lvl ptCount="6">{cats}</cx:lvl></cx:strDim><cx:numDim type="val"><cx:lvl ptCount="6" formatCode="General">{pts}</cx:lvl></cx:numDim></cx:data></cx:chartData><cx:chart><cx:title/><cx:plotArea><cx:plotAreaRegion><cx:series layoutId="boxWhisker"><cx:tx><cx:txData><cx:v>Scores</cx:v></cx:txData></cx:tx><cx:dataId val="0"/><cx:layoutPr><cx:visibility meanLine="0" meanMarker="1" nonoutliers="0" outliers="1"/><cx:statistics quartileMethod="exclusive"/></cx:layoutPr></cx:series></cx:plotAreaRegion><cx:axis id="0"><cx:catScaling gapWidth="1"/><cx:tickLabels/></cx:axis><cx:axis id="1"><cx:valScaling/><cx:majorGridlines/><cx:tickLabels/></cx:axis></cx:plotArea><cx:legend pos="t"/></cx:chart></cx:chartSpace>"#
+    );
+    let mut d = wordcraft_docx::read(&chartex_package("cx1", "http://schemas.microsoft.com/office/drawing/2015/9/8/chartex", false, &chart)).unwrap();
+    for _ in 0..2 {
+        let g = graphics(&d);
+        let [InlineObject::Graphic { graphic, .. }] = g.as_slice() else { panic!("{g:?}") };
+        assert!(
+            !graphic.items.iter().any(|i| matches!(i, wordcraft_doc::graphic::GraphicItem::Image { .. })),
+            "drawn, not the picture: {:?}",
+            graphic.items
+        );
+        let texts: Vec<&str> = graphic
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                wordcraft_doc::graphic::GraphicItem::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        for t in ["Chart Title", "Scores", "Group A", "-100", "150"] {
+            assert!(texts.contains(&t), "{t} in {texts:?}");
+        }
+        let files = unzip(&wordcraft_docx::write(&d).unwrap());
+        let body = text(&files, "word/document.xml");
+        let doc_rels = text(&files, "word/_rels/document.xml.rels");
+        let [cx_id] = attr_values(&body, "cx:chart", "r:id").try_into().unwrap_or_else(|_| panic!("chart lost: {body}"));
+        assert_eq!(text(&files, &part_at("word", &rel(&doc_rels, &cx_id).1)), chart);
+        let entries: Vec<_> = files.iter().map(|(name, bytes)| (name.as_str(), bytes.as_slice())).collect();
+        d = wordcraft_docx::read(&zip(&entries)).unwrap();
+    }
+}
+
 /// #5267: a link on an Office 2016 chart's drawing is the chart's link (not an earlier choice's),
 /// and saving keeps it on both branches (the writer rebuilds their frames).
 #[test]
