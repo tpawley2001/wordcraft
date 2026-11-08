@@ -79,6 +79,12 @@ pub fn parse_page_range(spec: &str, total: usize) -> Result<Vec<usize>, String> 
     Ok(keep.iter().enumerate().filter(|(_, k)| **k).map(|(i, _)| i).collect())
 }
 
+/// Like [`parse_page_range`], with Word's section forms (`p2s1`, `s3`, `p2s1-p3s2`); `ids[i]` is
+/// physical page `i`'s (1-based section, displayed page number). Not implemented yet.
+pub fn parse_page_range_in(spec: &str, ids: &[(usize, u32)]) -> Result<Vec<usize>, String> {
+    parse_page_range(spec, ids.len())
+}
+
 /// What a print job holds: the pages (0-based, copies included, in print order).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PrintPlan {
@@ -87,6 +93,12 @@ pub struct PrintPlan {
     /// Distinct pages chosen (before copies).
     pub chosen: usize,
     pub copies: u32,
+}
+
+/// [`plan`] against a layout whose physical pages have these (1-based section, displayed
+/// number) ids. Not implemented yet.
+pub fn plan_in(v: &Value, ids: &[(usize, u32)], current: (usize, usize)) -> Result<PrintPlan, CmdError> {
+    plan(v, ids.len(), current)
 }
 
 /// Works out the print plan for `v` against a layout of `total` pages whose caret and selection
