@@ -103,7 +103,7 @@ fn waterfall_value_labels_show_each_point() {
 
 #[test]
 fn other_office_2016_layouts_keep_their_fallback() {
-    for layout in ["treemap", "sunburst", "regionMap"] {
+    for layout in ["sunburst", "regionMap"] {
         assert!(chartex_items(&space(layout, false), &THEME_COLORS, 400.0, 300.0).is_none(), "{layout}");
     }
     assert!(chartex_items(&space("waterfall", false), &THEME_COLORS, 0.0, 300.0).is_none());

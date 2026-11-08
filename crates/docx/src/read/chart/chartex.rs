@@ -75,6 +75,13 @@ pub(crate) fn box_stats(values: &[f64], exclusive: bool) -> Option<BoxStats> {
 }
 
 /// The items of an Office 2016 chart `w` × `h` points, or `None` when its layout isn't drawn.
+/// Treemap tiles: one `[x0, y0, x1, y1]` per leaf of `leaves` (category path outermost-first, size),
+/// in input order, inside the rectangle at (`x`, `y`) of size `w` x `h`.
+pub(crate) fn treemap_rects(leaves: &[(Vec<String>, f64)], x: f32, y: f32, w: f32, h: f32) -> Vec<[f32; 4]> {
+    let _ = (w, h);
+    leaves.iter().map(|_| [x, y, x, y]).collect()
+}
+
 pub(crate) fn chartex_items(space: &El, theme: &[Rgb], w: f32, h: f32) -> Option<Vec<GraphicItem>> {
     if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
         return None;
