@@ -246,7 +246,8 @@ pub(super) fn cover_page(s: &mut Session, v: &Value) -> CmdResult {
 pub(super) fn drop_cap_off(s: &Session) -> Option<&'static str> {
     let why = drop_cap_selection_off(s)?;
     let story = s.sel.focus.story;
-    let has_cap = crate::cmd::selected_paths(s).iter().any(|path| s.doc.para(story, path).is_some_and(|p| p.props.drop_cap.is_some()));
+    let has_cap =
+        crate::cmd::selected_paths(s).iter().any(|path| s.doc.para(story, path).is_some_and(|p| s.doc.styles.resolve_para(&p.props).drop_cap > 0));
     (!has_cap).then_some(why)
 }
 
@@ -288,20 +289,29 @@ pub(super) fn drop_cap(s: &mut Session, v: &Value) -> CmdResult {
     if !none && let Some(why) = drop_cap_selection_off(s) {
         return Err(CmdError::Failed(why.into()));
     }
-    // `keep` (the menu's Dropped / In margin): a paragraph that has a drop cap keeps its own
-    // lines, distance and font unless given here.
+    // `keep` (the menu's Dropped / In margin): a paragraph that has a drop cap keeps its
+    // resolved lines, distance and font unless given here.
     let keep = !none && v.get("keep").and_then(Value::as_bool) == Some(true);
     let (distance_given, font_given) = (p::f32(v, "distance").is_some(), v.get("font").is_some());
     let styles = s.doc.styles.clone();
     crate::cmd::para::fmt(s, &|p| {
-        let was_margin = p.drop_cap.is_some() && p.drop_cap_margin == Some(true);
+        let resolved = styles.resolve_para(p);
+        // Clearing direct cap fields reveals whether None needs to override an inherited cap.
+        let style_cap = styles
+            .resolve_para(&wordcraft_doc::props::ParaProps {
+                drop_cap: None,
+                drop_cap_margin: None,
+                drop_cap_distance: None,
+                drop_cap_font: None,
+                drop_cap_indent_first: None,
+                ..p.clone()
+            })
+            .drop_cap;
+        let was_margin = resolved.drop_cap > 0 && resolved.drop_cap_margin;
         if !none && margin && !was_margin {
             // Character-unit indents must become points before leaving the text paragraph.
-            p.drop_cap_indent_first = if p.indent_first_chars.is_some_and(|c| c.is_finite() && c != 0.0) {
-                Some(styles.resolve_para(p).indent_first)
-            } else {
-                p.indent_first
-            };
+            p.drop_cap_indent_first =
+                if p.indent_first_chars.is_some_and(|c| c.is_finite() && c != 0.0) { Some(resolved.indent_first) } else { p.indent_first };
             p.indent_first = None;
             p.indent_first_chars = None;
         } else if (none || !margin)
@@ -310,14 +320,12 @@ pub(super) fn drop_cap(s: &mut Session, v: &Value) -> CmdResult {
             p.indent_first = Some(indent);
             p.indent_first_chars = None;
         }
-        let own = keep && p.drop_cap.is_some();
-        p.drop_cap = (!none).then(|| if own && !lines_given { p.drop_cap.unwrap_or(lines) } else { lines });
+        let kept = keep && resolved.drop_cap > 0;
+        p.drop_cap = if none { (style_cap > 0).then_some(0) } else { Some(if kept && !lines_given { resolved.drop_cap } else { lines }) };
         p.drop_cap_margin = (!none && margin).then_some(true);
-        let d = if own && !distance_given { p.drop_cap_distance.unwrap_or(0.0) } else { distance };
+        let d = if kept && !distance_given { resolved.drop_cap_distance } else { distance };
         p.drop_cap_distance = (!none && d > 0.0).then_some(d);
-        if !(own && !font_given) {
-            p.drop_cap_font = font.clone().filter(|_| !none);
-        }
+        p.drop_cap_font = if kept && !font_given { resolved.drop_cap_font } else { font.clone().filter(|_| !none) };
     })
 }
 

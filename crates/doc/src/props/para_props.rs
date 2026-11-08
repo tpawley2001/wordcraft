@@ -517,7 +517,8 @@ pub struct ParaProps {
     /// Paragraph text direction (`w:textDirection`); `None` inherits from the paragraph style.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_direction: Option<ParagraphTextDirection>,
-    /// Drop cap: lines to drop (0 = none) — applies to the first character(s).
+    /// Drop cap: lines to drop — applies to the first character(s).
+    /// `None` inherits from the style; `Some(0)` explicitly disables its drop cap.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drop_cap: Option<u8>,
     /// Drop cap "In margin" (`w:dropCap="margin"`): the letter hangs in the left margin and the

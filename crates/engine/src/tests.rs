@@ -12,6 +12,7 @@ use crate::{Session, cmd};
 
 mod autonum_fields;
 mod auto_caption;
+mod drop_cap_from_style;
 mod drop_cap_in_margin;
 mod bidi;
 mod browse_object;
@@ -12991,4 +12992,20 @@ fn resolving_away_an_empty_paragraph_with_a_section_break_keeps_the_next_paragra
         assert_eq!(s.doc.sections().len(), 1, "{cmd}");
         assert_eq!(s.doc.last_section.margin_left, 72.0, "{cmd}: the following section's setup stays");
     }
+}
+
+#[test]
+fn drop_cap_menu_availability_uses_the_resolved_cap() {
+    let mut s = s();
+    let mut style = s.doc.styles.get("Normal").cloned().unwrap();
+    style.id = "CapPara".into();
+    style.based_on = Some("Normal".into());
+    style.para.drop_cap = Some(4);
+    Arc::make_mut(&mut s.doc.styles).upsert(style);
+    s.doc.para_mut(StoryRef::Body, &wordcraft_doc::Path::top(0)).unwrap().props.style = Some("CapPara".into());
+    assert_eq!(s.why_disabled("insert.dropCap"), None, "None can remove an inherited cap even in an empty paragraph");
+    run(&mut s, "insert.dropCap", json!({"position": "none"}));
+    assert!(s.why_disabled("insert.dropCap").is_some(), "an explicit off value is not a cap");
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(s.why_disabled("insert.dropCap"), None);
 }
