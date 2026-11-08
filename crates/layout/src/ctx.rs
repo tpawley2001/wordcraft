@@ -64,7 +64,7 @@ pub(crate) struct Ctx<'a> {
     pub(crate) header_tables: HashMap<(usize, u32, bool), Vec<Rect>>,
     /// Heights of text boxes that resize to fit their text, by story, width and page fields,
     /// worked out once per matching layout context ([`textbox::fitted_height`]).
-    pub(crate) fitted: HashMap<(u32, u32, (u32, u32, u32, u32, u64, wordcraft_doc::section::NumFormat)), Option<f32>>,
+    pub(crate) fitted: HashMap<(u32, u32, (u32, u32, u32, u32, u64, wordcraft_doc::section::NumFormat, String)), Option<f32>>,
     /// Each body float's latest placement: on which page and with what wrap area, when it is
     /// above its anchor paragraph with text before it ([`EarlyFloats`]).
     pub(crate) floats_above: HashMap<(usize, usize), Option<(usize, WrapArea)>>,

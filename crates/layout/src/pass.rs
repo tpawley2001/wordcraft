@@ -471,9 +471,13 @@ fn fill_headers_footers(
         return Some(found);
     }
     ctx.track_totals = false;
+    super::headers::chapter_numbers(ctx.doc, pages, sections);
     if headers_footers_refer_to_pages(ctx.doc) {
-        let marks = bookmark_pages(ctx.doc, pages, sections);
-        ctx.fields.bookmarks_key = marks_key(&marks);
+        let (marks, chapters) = bookmark_pages(ctx.doc, pages, sections);
+        let mut sorted: Vec<_> = chapters.iter().collect();
+        sorted.sort();
+        ctx.fields.bookmarks_key = marks_key(&marks) ^ super::cache::hash_of(&sorted);
+        ctx.fields.bookmark_chapters = Arc::new(chapters);
         ctx.fields.bookmark_pages = Arc::new(marks);
     }
     headers_footers(ctx, pages, sections, &found);

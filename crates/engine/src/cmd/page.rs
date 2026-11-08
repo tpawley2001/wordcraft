@@ -72,7 +72,19 @@ pub fn specs() -> Vec<CommandSpec> {
         }),
         CommandSpec::new("layout.pageNumberFormat", "Format Page Numbers", "Insert › Header & Footer › Page Number", |s, v| {
             let fmt = p::str(v, "format").map(wordcraft_doc::section::NumFormat::from_ooxml);
+            let chapter = match v.get("chapterStyle") {
+                None => None,
+                Some(Value::Null) => Some(None),
+                Some(value) => Some(Some(value.as_u64().filter(|n| (1..=9).contains(n))
+                    .ok_or_else(|| CmdError::Params("chapterStyle must be 1–9 or null".into()))? as u8)),
+            };
+            let separator = v.get("chapterSeparator").map(|value| {
+                value.as_str().and_then(wordcraft_doc::section::ChapterSep::from_ooxml)
+                    .ok_or_else(|| CmdError::Params("unknown chapterSeparator".into()))
+            }).transpose()?;
             with_sect(s, |x| {
+                if let Some(chapter) = chapter { x.chapter_style = chapter; }
+                if let Some(separator) = separator { x.chapter_sep = Some(separator); }
                 if let Some(f) = fmt {
                     x.page_num_format = f;
                 }
@@ -85,7 +97,7 @@ pub fn specs() -> Vec<CommandSpec> {
             })
         })
         .params(
-            r#"{"format"?: "decimal|lowerRoman|upperRoman|lowerLetter|upperLetter", "start"?: n | null} ("start" left out: the numbering keeps its start; null: the pages number on from the section before; a number: numbering starts there)"#,
+            r#"{"format"?: "decimal|lowerRoman|upperRoman|lowerLetter|upperLetter", "start"?: n | null, "chapterStyle"?: 1-9 | null, "chapterSeparator"?: "hyphen|period|colon|emDash|enDash"} ("start" left out: the numbering keeps its start; null: the pages number on from the section before; a number: numbering starts there)"#,
         ),
         CommandSpec::new("layout.documentGrid", "Document Grid", "Layout › Page Setup › Document Grid", document_grid).params(
             r#"{"type"?: "none|lines|linesAndChars|snapToChars", "linesPerPage"?: n (sets the line pitch from the text height), "charsPerLine"?: n (sets the character pitch from the text width), "linePitch"?: pt, "charSpace"?: n (4096ths of a point added to the default font size: the character pitch)} — left out stays as it is; returns the grid with its lines per page and characters per line"#,

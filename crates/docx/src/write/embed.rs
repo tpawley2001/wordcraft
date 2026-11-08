@@ -120,7 +120,7 @@ impl<'d> EmbedWriter<'d> {
     /// Names this writer may give its own parts later (headers, footers, package parts).
     fn reserved(lower: &str) -> bool {
         lower.ends_with(".rels")
-            || (lower.starts_with("docprops/") && !lower.starts_with("docprops/thumbnail."))
+            || lower.starts_with("docprops/")
             || lower.starts_with("_rels/")
             || ((lower.starts_with("word/header") || lower.starts_with("word/footer")) && lower.ends_with(".xml"))
     }
@@ -217,6 +217,14 @@ impl<'d> EmbedWriter<'d> {
             let fields: Vec<&str> = line.split('\t').collect();
             let [source, kind, target] = fields.as_slice() else { continue };
             if *source != owner || (self.drop_glossary && owner == "D" && rel_is(kind, rt::GLOSSARY)) {
+                continue;
+            }
+            // A kept preview can expose text since edited or removed; without a new rendering,
+            // omit it on every save, independently of the personal-information setting (#3627).
+            if owner == "P"
+                && (kind.eq_ignore_ascii_case("http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail")
+                    || kind.eq_ignore_ascii_case("http://purl.oclc.org/ooxml/officeDocument/relationships/metadata/thumbnail"))
+            {
                 continue;
             }
             if let Some(name) = self.copy_tree(target, &mut memo, &mut written) {
@@ -856,6 +864,44 @@ fn valid_part_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn package_thumbnail_types_are_case_insensitive_and_owner_scoped() {
+        use crate::package::{EmbeddedPart, UNMODELLED_ROOTS};
+
+        for kind in [
+            "http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail",
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/metadata/thumbnail",
+            "urn:example:metadata/thumbnail",
+        ] {
+            for kind in [kind.to_string(), kind.to_ascii_uppercase()] {
+                for owner in ["P", "D"] {
+                    let mut doc = wordcraft_doc::Document::new();
+                    let target = "word/unknown.bin";
+                    let mut manifest = EmbeddedManifest::default();
+                    manifest.parts.insert(target.into(), EmbeddedPart { content_type: "application/octet-stream".into(), rels: Vec::new() });
+                    doc.passthrough.insert(EMBEDDED_PARTS.into(), Arc::new(manifest.to_bytes()));
+                    doc.passthrough.insert(UNMODELLED_ROOTS.into(), Arc::new(format!("{owner}\t{kind}\t{target}\n").into_bytes()));
+                    doc.passthrough.insert(target.into(), Arc::new(b"kept bytes".to_vec()));
+                    let mut writer = EmbedWriter::new(&doc);
+                    let mut rels = PartRels::default();
+                    writer.unmodelled_rels(owner, &mut rels);
+                    let dropped = owner == "P" && !kind.to_ascii_lowercase().starts_with("urn:");
+                    assert_eq!(writer.parts.is_empty(), dropped, "{owner}: {kind}");
+                    assert_eq!(rels.is_empty(), dropped, "{owner}: {kind}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn kept_parts_cannot_take_thumbnail_names() {
+        let doc = wordcraft_doc::Document::new();
+        let mut writer = EmbedWriter::new(&doc);
+        for name in ["docProps/thumbnail.jpeg", "DOCPROPS/THUMBNAIL.PNG", "docProps/thumbnail.emf", "docProps/thumbnail.wmf"] {
+            assert!(!writer.alloc(name).to_ascii_lowercase().starts_with("docprops/"));
+        }
+    }
 
     #[test]
     fn charts_cut_to_the_limits_on_save_say_so_once() {

@@ -220,7 +220,7 @@ pub struct CanvasState {
     pub(crate) auto_scroll: crate::autoscroll::AutoScroll,
     /// The scroll offset and its maximum at the end of last frame.
     pub(crate) scroll_offset: egui::Vec2,
-    scroll_max: egui::Vec2,
+    pub(crate) scroll_max: egui::Vec2,
     /// Explicit scroll position to apply on the next frame (reading navigation buttons/keys, a
     /// window moving into another viewport).
     pub(crate) scroll_request: Option<egui::Vec2>,
@@ -229,6 +229,8 @@ pub struct CanvasState {
     pub(crate) sync_scroll_out: f32,
     /// This frame's scroll mirrors the other window's: it isn't passed back (no ping-pong).
     pub(crate) sync_scroll_mirrored: bool,
+    /// View › Window › Split: the second pane's scroll and which pane is active (#3254).
+    pub(crate) split: crate::split_view::SplitPanes,
     /// The viewport (the content's visible rect on screen) at the end of last frame; the
     /// drag-select edge auto-scroll decides this frame's scroll from it (#688).
     pub(crate) viewport: Option<egui::Rect>,
@@ -451,6 +453,7 @@ impl Default for CanvasState {
             scroll_request: None,
             sync_scroll_out: 0.0,
             sync_scroll_mirrored: false,
+            split: Default::default(),
             viewport: None,
             cols: 1,
             balloon: None,
@@ -731,7 +734,7 @@ fn configure_scroll_area(app: &mut WordApp, ui: &Ui, view: &CanvasView, motion: 
     // whole columns instead.
     let mut scroll_area = egui::ScrollArea::both()
         // One scroll position per open document, so switching back finds the page as it was left.
-        .id_salt(("canvas_scroll", app.session.document_id()))
+        .id_salt(("canvas_scroll", app.session.document_id(), app.canvas.split.drawing))
         .auto_shrink([false, false])
         // Bringing the caret into view glides there, or jumps with animation effects off.
         .animated(view.animate)
@@ -768,7 +771,7 @@ fn prepare_layout(app: &mut WordApp, ui: &Ui, full: Rect) -> std::sync::Arc<DocL
     let reflow_anchor = update_viewport(app, ui, full, now);
     // While a modal dialog ("Save changes?" too) is up, keys answer it rather than edit the
     // document behind it, also in the frame it opens, before the canvas has given up focus.
-    if app.canvas.focused && !app.modal_open() {
+    if app.canvas.focused && !app.modal_open() && !app.canvas.split.passive {
         crate::keys::canvas_events(app, ui.ctx());
     } else {
         app.canvas.alt_code.clear();
@@ -1163,13 +1166,14 @@ fn paint_read_aloud_highlight(
     }
 }
 
-fn canvas_response(ui: &mut Ui, content: Rect, scroll_target: Option<Rect>) -> egui::Response {
+fn canvas_response(ui: &mut Ui, id: egui::Id, content: Rect, scroll_target: Option<Rect>) -> egui::Response {
     // A fixed id: an automatic one follows how many widgets came before, which Read Mode's
     // chrome changes, and a new id dropped the keyboard focus, so the arrows, Page Up/Down
     // and Escape did nothing in Read Mode until the reader clicked a page (#1772).
-    // It also keeps the focus when Focus hides the rulers (#1678).
+    // It also keeps the focus when Focus hides the rulers (#1678). A split window's top pane has
+    // its own (`split_view`).
     ui.advance_cursor_after_rect(content);
-    let response = ui.interact(content, egui::Id::unique("wordcraft_canvas"), Sense::click_and_drag());
+    let response = ui.interact(content, id, Sense::click_and_drag());
     if let Some(target) = scroll_target {
         ui.scroll_to_rect(Rect::from_min_size(ui.min_rect().min + target.min.to_vec2(), target.size()), None);
     }
@@ -1280,6 +1284,10 @@ fn handle_secondary_selection(app: &mut WordApp, resp: &egui::Response, rects: &
 
 fn finish_canvas_frame(finish: CanvasFinish<'_>, out: egui::scroll_area::ScrollAreaOutput<(egui::Response, Vec<Rect>)>) {
     let CanvasFinish { app, ui, layout, geo, caret, ime_geometry, ime_interrupt, area, dim_body, hruler, vruler } = finish;
+    if app.canvas.split.passive {
+        finish_passive_pane(PassivePane { app, ui, layout, geo, hruler, vruler }, out);
+        return;
+    }
     update_canvas_scroll_state(app, ui, layout, geo, caret, &out);
     let (resp, rects) = out.inner;
     // A click on the page leaves the selected comment balloon.
@@ -1432,6 +1440,64 @@ fn finish_canvas_frame(finish: CanvasFinish<'_>, out: egui::scroll_area::ScrollA
     }
 }
 
+/// Drops the textures of pages that no longer exist or lie well out of view (`near`, in content
+/// coordinates), and of tiles not on screen. In a split window the pass of the pane that isn't
+/// active only notes what it shows, and the active pane's pass keeps that too (#3254).
+fn retain_textures(app: &mut WordApp, geo: &Geometry, n: usize, near: Rect, visible_tile_keys: HashSet<(usize, usize)>) {
+    if app.canvas.split.passive {
+        app.canvas.split.keep = Some((near, visible_tile_keys));
+        return;
+    }
+    let keep = app.canvas.split.keep.take().filter(|_| app.canvas.split.drawing.is_some());
+    let other = keep.as_ref().map(|(r, _)| *r);
+    app.canvas.textures.retain(|k, _| *k < n && geo.rects.get(*k).is_some_and(|r| r.intersects(near) || other.is_some_and(|o| r.intersects(o))));
+    app.canvas.tiles.retain(|id, _| visible_tile_keys.contains(id) || keep.as_ref().is_some_and(|(_, k)| k.contains(id)));
+}
+
+/// Object frames, ink and table tools over the pages. The SmartArt frame button is a window of
+/// its own: only the active pane of a split window shows it.
+fn paint_object_overlays(app: &mut WordApp, ui: &Ui, painter: &egui::Painter, t: &Tokens, layout: &DocLayout, rects: &[Rect], scale: f32) {
+    crate::objects::paint(app, painter, t, layout, rects, scale);
+    if !app.canvas.split.passive {
+        crate::dialogs_smart_art::frame_button(app, ui.ctx(), layout, rects, scale, ui.clip_rect());
+    }
+    crate::ink::paint(app, painter, rects, layout, scale);
+    crate::table_pen::paint(app, painter, t, layout, rects, scale);
+    crate::table_resize::paint(app, painter, t, layout, rects, scale);
+    crate::table_mouse::paint(app, painter, t, layout, rects, scale);
+}
+
+struct PassivePane<'a> {
+    app: &'a mut WordApp,
+    ui: &'a mut Ui,
+    layout: &'a std::sync::Arc<DocLayout>,
+    geo: &'a Geometry,
+    hruler: Option<Rect>,
+    vruler: Option<Rect>,
+}
+
+/// The end of a split window's pane that isn't active (#3254): it keeps its scroll and takes the
+/// mouse, and a press makes it the active pane; keys, focus and menus stay with the active pane.
+fn finish_passive_pane(pane: PassivePane<'_>, out: egui::scroll_area::ScrollAreaOutput<(egui::Response, Vec<Rect>)>) {
+    let PassivePane { app, ui, layout, geo, hruler, vruler } = pane;
+    app.canvas.scroll_offset = out.state.clamped_offset();
+    app.canvas.scroll_max = (out.content_size - out.inner_rect.size()).max(egui::Vec2::ZERO);
+    app.canvas.viewport = Some(out.inner_rect);
+    let (resp, rects) = out.inner;
+    let middle_gesture = app.canvas.auto_scroll.blocks_input();
+    handle_primary_pointer(app, ui, &resp, &rects, layout, geo, middle_gesture);
+    if resp.is_pointer_button_down_on() || resp.clicked() || resp.drag_started() || resp.secondary_clicked() {
+        app.canvas.split.activate = true;
+    }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+    }
+    app.canvas.auto_scroll.paint(ui, out.inner_rect);
+    if let (Some(h), Some(v)) = (hruler, vruler) {
+        rulers(app, ui, h, v, &rects, layout, geo.scale);
+    }
+}
+
 /// Lays out and paints the document pages for print, Read and Web views, settles viewports, draw
 /// rulers and overlays, anchors zoom and scrolling, and routes pointer, selection, IME and caret
 /// input.
@@ -1481,7 +1547,10 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let full = ui.available_rect_before_wrap();
     let layout = prepare_layout(app, ui, full);
     let view = prepare_view(app, ui, full, &layout);
-    let scroll_target = if hold_scroll_for_preview(app) { None } else { update_caret_scroll(app, &view) };
+    // Only the active pane of a split window follows the caret.
+    let passive = app.canvas.split.passive;
+    let scroll_target = if passive || hold_scroll_for_preview(app) { None } else { update_caret_scroll(app, &view) };
+    let widget_id = app.canvas.split.widget_id();
     let motion = scroll_motion(app, ui, full, &view);
     let scroll_area = configure_scroll_area(app, ui, &view, motion);
     let CanvasView { area, hruler, vruler, paper, geo, dim_body, grid_story, caret, .. } = view;
@@ -1497,7 +1566,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         ui.set_style(inherited);
         origin = ui.min_rect().min - viewport.min.to_vec2();
         let content = Rect::from_min_size(ui.min_rect().min, geo.size);
-        let resp = canvas_response(ui, content, scroll_target);
+        let resp = canvas_response(ui, widget_id, content, scroll_target);
         // Read Mode's neighbouring columns end right at the viewport's edges: keep their
         // shadows from showing there as hairlines.
         let clip = if app.session.view.read_mode { ui.clip_rect().shrink2(vec2(3.0, 0.0)) } else { ui.clip_rect() };
@@ -1533,11 +1602,10 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         let n = layout.pages.len();
         let clip = ui.clip_rect();
         let near = clip.expand2(vec2(clip.width(), clip.height() * TEXTURE_KEEP_SCREENS));
-        app.canvas.textures.retain(|k, _| *k < n && geo.rects.get(*k).is_some_and(|r| r.translate(content_origin.to_vec2()).intersects(near)));
-        app.canvas.tiles.retain(|id, _| visible_tile_keys.contains(id));
+        retain_textures(app, &geo, n, near.translate(-content_origin.to_vec2()), visible_tile_keys);
         app.canvas.page_rects = rects.clone();
         let view_rect = ui.clip_rect();
-        if floating_comments(app) {
+        if floating_comments(app) && !passive {
             // Its own layer, so presses on the card never reach the canvas under it.
             let ctx = ui.ctx().clone();
             egui::Area::new(egui::Id::unique("floating_comment"))
@@ -1624,7 +1692,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         // top left, an options strip at its right) and draw the caret inside it.
         let mut math_caret = false;
         app.canvas.eq_options = None;
-        if let Some(m) = app.session.math.clone()
+        if let Some(m) = app.session.math.clone().filter(|_| !passive)
             && let Some(bx) = layout.equation_box(&m.at, app.session.page_hint)
             && let Some(pr) = rects.get(bx.page)
         {
@@ -1691,6 +1759,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             }
         }
         if !math_caret
+            && !passive
             && let Some(c) = layout.caret_on(&preview_sel(app).unwrap_or(&app.session.sel).focus, app.session.page_hint)
             && let Some(pr) = rects.get(c.page)
         {
@@ -1765,12 +1834,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 ime_geometry = Some((cr, cr));
             }
         }
-        crate::objects::paint(app, &painter, &t, &layout, &rects, geo.scale);
-        crate::dialogs_smart_art::frame_button(app, ui.ctx(), &layout, &rects, geo.scale, ui.clip_rect());
-        crate::ink::paint(app, &painter, &rects, &layout, geo.scale);
-        crate::table_pen::paint(app, &painter, &t, &layout, &rects, geo.scale);
-        crate::table_resize::paint(app, &painter, &t, &layout, &rects, geo.scale);
-        crate::table_mouse::paint(app, &painter, &t, &layout, &rects, geo.scale);
+        paint_object_overlays(app, ui, &painter, &t, &layout, &rects, geo.scale);
         (resp, rects)
     });
     finish_canvas_frame(
