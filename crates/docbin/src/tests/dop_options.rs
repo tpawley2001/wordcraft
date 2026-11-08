@@ -6,7 +6,8 @@ use super::{FibSpec, Piece, cfb_file, fib_bytes, plcpcd, read};
 const DOP_PAIR: usize = 31;
 /// Where the test DOP starts in the Table stream (past the Clx).
 const DOP_AT: u32 = 0x100;
-/// Sizes of the DOP versions ([MS-DOC] §2.7): Dop97, Dop2000, Dop2003.
+/// Sizes of the DOP versions ([MS-DOC] §2.7): Dop95, Dop97, Dop2000, Dop2003.
+const DOP95: usize = 88;
 const DOP97: usize = 500;
 const DOP2000: usize = 544;
 const DOP2003: usize = 616;
@@ -73,6 +74,8 @@ fn expand_shift_return_flag_is_read() {
 fn html_auto_spacing_flag_is_read() {
     assert!(doc_with_dop(Some(&dop(DOP2000, false, true, false))).settings.sum_paragraph_spacing);
     assert!(!doc_with_dop(Some(&dop(DOP2003, true, false, true))).settings.sum_paragraph_spacing);
+    // A Dop2000 with the bit clear collapses (HTML auto spacing).
+    assert!(!doc_with_dop(Some(&dop(DOP2000, false, false, false))).settings.sum_paragraph_spacing);
 }
 
 #[test]
@@ -84,11 +87,21 @@ fn same_style_space_in_table_flag_is_read() {
 }
 
 #[test]
-fn short_dop_keeps_later_defaults() {
-    // A Dop97 (shorter than Dop2000): the Copts60 flag is read, the Dop2000 ones stay default.
+fn short_dop_sums_paragraph_spacing() {
+    // A Dop97 (shorter than Dop2000) predates HTML paragraph auto spacing: Word adds the space after
+    // a paragraph to the space before the next. The Copts60 flag is still read; the Word 2003 option
+    // stays default.
     let s = doc_with_dop(Some(&dop(DOP97, true, false, false))).settings;
     assert!(s.do_not_expand_shift_return);
-    assert!(!s.sum_paragraph_spacing && !s.allow_space_of_same_style_in_table);
+    assert!(s.sum_paragraph_spacing);
+    assert!(!s.allow_space_of_same_style_in_table);
+    let s = doc_with_dop(Some(&dop(DOP97, false, false, false))).settings;
+    assert!(!s.do_not_expand_shift_return && s.sum_paragraph_spacing);
+    // A Dop95-sized DOP (Word 95) sums too.
+    let s = doc_with_dop(Some(&dop(DOP95, false, false, false))).settings;
+    assert!(s.sum_paragraph_spacing && !s.allow_space_of_same_style_in_table);
+    let s = doc_with_dop(Some(&dop(DOP2000 - 1, false, false, false))).settings;
+    assert!(s.sum_paragraph_spacing);
     // A DOP too short even for Dop95 keeps every default.
     let s = doc_with_dop(Some(&[0xFF; 60])).settings;
     assert!(!s.do_not_expand_shift_return && !s.sum_paragraph_spacing && !s.allow_space_of_same_style_in_table);
