@@ -1,6 +1,7 @@
 //! The Document Properties (`Dop`, [MS-DOC] §2.7) in the Table stream, located by the FIB's
 //! `fcDop`/`lcbDop`. Only the compatibility options the layout engine models are read; every
-//! option whose containing structure lies beyond `lcbDop` keeps its default.
+//! option whose containing structure lies beyond `lcbDop` keeps its default, except that
+//! Dop95/Dop97 predate HTML paragraph auto spacing and therefore sum paragraph spacing.
 
 use wordcraft_doc::Settings;
 
@@ -27,7 +28,8 @@ const DOP2000_LEN: usize = 544;
 const DOP2003_LEN: usize = 616;
 
 /// Apply the DOP's compatibility options to `settings`. A DOP outside the Table stream is
-/// ignored (the defaults stay).
+/// ignored (the defaults stay). A valid Dop95/Dop97 sums paragraph spacing because HTML
+/// paragraph auto spacing was introduced with Dop2000.
 pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Settings) {
     let Some((fc, lcb)) = pair else { return };
     let (Ok(fc), Ok(lcb)) = (usize::try_from(fc), usize::try_from(lcb)) else { return };
@@ -36,6 +38,9 @@ pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Setti
         && let Some(copts60) = u16_at(dop, OFF_COPTS60)
     {
         settings.do_not_expand_shift_return = copts60 & F_EXP_SH_RTN != 0;
+    }
+    if (DOP95_LEN..DOP2000_LEN).contains(&dop.len()) {
+        settings.sum_paragraph_spacing = true;
     }
     if dop.len() >= DOP2000_LEN
         && let Some(flags) = u32_at(dop, OFF_COPTS_FLAGS)
