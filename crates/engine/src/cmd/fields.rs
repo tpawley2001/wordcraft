@@ -198,6 +198,7 @@ fn shown_text(s: &mut Session, f: &FieldAt) -> String {
     let ctx = wordcraft_layout::fields::FieldCtx {
         page: page.map(|p| p.number).unwrap_or(1),
         page_format,
+        chapter: page.map(|p| p.chapter.clone()).unwrap_or_default(),
         pages: u32::try_from(l.pages.len()).unwrap_or(u32::MAX),
         section_pages,
         section,

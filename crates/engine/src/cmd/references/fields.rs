@@ -448,16 +448,16 @@ pub(crate) fn page_formats(s: &Session) -> Vec<NumFormat> {
 
 /// The page holding `pos` in `l`: its index in the layout, its number, and its section's page
 /// number format (`formats` from [`page_formats`]). `None` when no page holds it.
-pub(crate) fn page_at(l: &wordcraft_layout::DocLayout, formats: &[NumFormat], pos: &Pos) -> Option<(usize, u32, NumFormat)> {
+pub(crate) fn page_at<'a>(l: &'a wordcraft_layout::DocLayout, formats: &[NumFormat], pos: &Pos) -> Option<(usize, u32, NumFormat, &'a str)> {
     let c = l.caret(pos)?;
     let page = l.pages.get(c.page)?;
-    Some((c.page, page.number, formats.get(page.section).copied().unwrap_or_default()))
+    Some((c.page, page.number, formats.get(page.section).copied().unwrap_or_default(), &page.chapter))
 }
 
 /// A page number as the page's footer shows it (`ii` in a lowerRoman section), as the `PAGE`
 /// and `PAGEREF` fields write it without a `\*` switch.
-pub(crate) fn page_text(number: u32, fmt: NumFormat) -> String {
-    wordcraft_layout::fields::field_number("", fmt, number)
+pub(crate) fn page_text(number: u32, fmt: NumFormat, chapter: &str) -> String {
+    wordcraft_layout::fields::page_label("", fmt, number, chapter)
 }
 
 /// The page number of the page holding `pos`, in its section's number format: what generated
@@ -466,7 +466,7 @@ pub(crate) fn page_text(number: u32, fmt: NumFormat) -> String {
 pub(crate) fn page_label(s: &mut Session, pos: &Pos) -> String {
     let formats = page_formats(s);
     let l = s.layout();
-    page_at(&l, &formats, pos).map_or_else(|| "1".into(), |(_, n, fmt)| page_text(n, fmt))
+    page_at(&l, &formats, pos).map_or_else(|| "1".into(), |(_, n, fmt, chapter)| page_text(n, fmt, chapter))
 }
 
 /// [`update_fields`], or with `all` the whole document: the body (with SEQ, citations and TOC) and
@@ -477,12 +477,13 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
     if in_body {
         update_seq(s)?;
     }
-    let mut pages: std::collections::HashMap<String, (u32, NumFormat)> = Default::default();
+    let mut pages: std::collections::HashMap<String, (u32, NumFormat, String)> = Default::default();
     let formats = page_formats(s);
     let marks = s.doc.bookmarks();
     for (name, pos) in marks {
         let l = s.layout();
-        let page_info = page_at(&l, &formats, &pos).map_or((1, NumFormat::Decimal), |(_, n, fmt)| (n, fmt));
+        let page_info =
+            page_at(&l, &formats, &pos).map_or((1, NumFormat::Decimal, String::new()), |(_, n, fmt, chapter)| (n, fmt, chapter.to_string()));
         pages.entry(name).or_insert(page_info);
     }
     let stories: Vec<StoryRef> =
@@ -553,9 +554,9 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
                             })
                         }
                     } else if !has_switch(instr, 'p') {
-                        pages.get(target).map(|(num, page_fmt)| {
+                        pages.get(target).map(|(num, page_fmt, chapter)| {
                             let fmt = wordcraft_layout::fields::format_switch(instr).unwrap_or(*page_fmt);
-                            wordcraft_layout::fields::field_number(instr, fmt, *num)
+                            wordcraft_layout::fields::page_label(instr, fmt, *num, chapter)
                         })
                     } else {
                         None

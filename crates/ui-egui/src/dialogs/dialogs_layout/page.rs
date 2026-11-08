@@ -227,6 +227,9 @@ pub struct PageNumbersForm {
     pub format: String,
     pub cont: bool,
     pub start: u32,
+    pub chapter: bool,
+    pub chapter_style: u8,
+    pub chapter_separator: String,
 }
 
 impl PageNumbersForm {
@@ -236,6 +239,9 @@ impl PageNumbersForm {
         PageNumbersForm {
             section: wordcraft_engine::cmd::page::section_index_of_focus(&app.session),
             format: sp.page_num_format.ooxml().to_string(),
+            chapter: sp.chapter_style.is_some(),
+            chapter_style: sp.chapter_style.unwrap_or(1).clamp(1, 9),
+            chapter_separator: sp.chapter_sep.unwrap_or(wordcraft_doc::section::ChapterSep::Hyphen).ooxml().to_string(),
             cont: sp.page_num_start.is_none(),
             start: sp.page_num_start.unwrap_or(1).clamp(1, 100_000),
         }
@@ -254,7 +260,9 @@ impl PageNumbersForm {
     /// section before.
     pub fn params(&self) -> Value {
         let start = if self.cont { Value::Null } else { json!(self.start) };
-        json!({"format": self.format, "start": start})
+        json!({"format": self.format, "start": start,
+            "chapterStyle": if self.chapter { json!(self.chapter_style) } else { Value::Null },
+            "chapterSeparator": self.chapter_separator})
     }
 }
 
@@ -267,6 +275,31 @@ pub(super) fn page_numbers_ui(app: &mut WordApp, ui: &mut Ui, f: &mut PageNumber
         for (v, l) in crate::dialogs_notes::FORMATS {
             ui.selectable_value(&mut f.format, v.to_string(), l);
         }
+    });
+    ui.checkbox(&mut f.chapter, tl!("Include chapter number"));
+    ui.add_enabled_ui(f.chapter, |ui| {
+        ui.label(tl!("Chapter starts with style"));
+        craft_ui::ComboBox::from_id_salt("pnum_chapter_style")
+            .selected_text(crate::i18n::fmt(tl!("Heading {n}"), &[("n", &f.chapter_style.to_string())]))
+            .show_ui(ui, |ui| {
+                for level in 1..=9u8 {
+                    ui.selectable_value(&mut f.chapter_style, level, crate::i18n::fmt(tl!("Heading {n}"), &[("n", &level.to_string())]));
+                }
+            });
+        ui.label(tl!("Use separator"));
+        let separators = [
+            ("hyphen", tl!("- (hyphen)")),
+            ("period", tl!(". (period)")),
+            ("colon", tl!(": (colon)")),
+            ("emDash", tl!("— (em dash)")),
+            ("enDash", tl!("– (en dash)")),
+        ];
+        let shown = separators.iter().find(|(v, _)| *v == f.chapter_separator).map(|(_, label)| *label).unwrap_or_default();
+        craft_ui::ComboBox::from_id_salt("pnum_chapter_separator").selected_text(shown).show_ui(ui, |ui| {
+            for (value, label) in separators {
+                ui.selectable_value(&mut f.chapter_separator, value.to_string(), label);
+            }
+        });
     });
     heading(ui, "Page numbering");
     ui.radio_value(&mut f.cont, true, tl!("Continue from previous section"));

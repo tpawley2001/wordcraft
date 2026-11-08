@@ -11,6 +11,9 @@ pub struct FieldCtx {
     /// Current page number (as numbered) and its format.
     pub page: u32,
     pub page_format: NumFormat,
+    /// Chapter number followed by the section's separator.
+    pub chapter: String,
+    pub bookmark_chapters: Arc<HashMap<String, String>>,
     /// Total pages in the document.
     pub pages: u32,
     /// Pages in the current section.
@@ -64,8 +67,8 @@ impl FieldCtx {
         self.page_from.iter().rev().find(|(from, _)| *from <= off).map_or(self.page, |(_, page)| *page)
     }
     /// A key for caches: the parts of the context a page-dependent paragraph depends on.
-    pub fn page_key(&self) -> (u32, u32, u32, u32, u64, NumFormat) {
-        (self.page, self.pages, self.section_pages, self.section, self.bookmarks_key, self.page_format)
+    pub fn page_key(&self) -> (u32, u32, u32, u32, u64, NumFormat, String) {
+        (self.page, self.pages, self.section_pages, self.section, self.bookmarks_key, self.page_format, self.chapter.clone())
     }
     /// A key for caches of paragraph `p` with STYLEREF fields (0 when they show their stored
     /// result): a hash of the results its STYLEREF fields have on this page, so an edit to body
@@ -82,6 +85,11 @@ impl FieldCtx {
         }
         std::hash::Hasher::finish(&h).max(1)
     }
+}
+
+/// A section-formatted page number with its resolved chapter prefix.
+pub fn page_label(instr: &str, fmt: NumFormat, number: u32, chapter: &str) -> String {
+    format!("{chapter}{}", field_number(instr, fmt, number))
 }
 
 /// The field's name (first word of the instruction, upper-cased).
@@ -289,12 +297,15 @@ pub fn field_text_on(instr: &str, result: &str, ctx: &FieldCtx, page: u32) -> (S
     let name = field_name(instr);
     let fmt = format_switch(instr);
     match name.as_str() {
-        "PAGE" => (field_number(instr, format_switch(instr).unwrap_or(ctx.page_format), page), true),
+        "PAGE" => (page_label(instr, fmt.unwrap_or(ctx.page_format), page, &ctx.chapter), true),
         "NUMPAGES" => (field_number(instr, fmt.unwrap_or(NumFormat::Decimal), ctx.pages), true),
         "SECTIONPAGES" => (field_number(instr, fmt.unwrap_or(NumFormat::Decimal), ctx.section_pages), true),
         "SECTION" => (field_number(instr, fmt.unwrap_or(NumFormat::Decimal), ctx.section), true),
         "PAGEREF" => match pageref_page(instr, ctx) {
-            Some((n, page_format)) => (field_number(instr, fmt.unwrap_or(page_format), n), true),
+            Some((n, page_format)) => {
+                let chapter = pageref_target(instr).and_then(|target| ctx.bookmark_chapters.get(target)).map(String::as_str).unwrap_or("");
+                (page_label(instr, fmt.unwrap_or(page_format), n, chapter), true)
+            }
             None => (result.to_string(), false),
         },
         "TITLE" if result.is_empty() => (apply_case_switch(instr, ctx.title.to_string()), false),

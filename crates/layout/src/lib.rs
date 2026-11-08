@@ -302,6 +302,8 @@ pub struct Page {
     pub section: usize,
     /// Page number as displayed (after section restarts).
     pub number: u32,
+    /// Numbered chapter and separator at the top of this page, or empty when unavailable.
+    pub chapter: String,
     pub items: Vec<Placed>,
     /// Header / footer items (drawn dimmed while editing the body).
     pub header: Vec<Placed>,

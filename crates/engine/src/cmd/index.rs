@@ -196,7 +196,7 @@ fn collect(s: &mut Session, lang: Option<&str>) -> BTreeMap<Vec<SortKey>, Node> 
     let formats = page_formats(s);
     let l = s.layout();
     // A page's index in the layout and its number as its footer shows it (`ii`).
-    let page = |pos: &Pos| page_at(&l, &formats, pos).map_or_else(|| (0, "1".to_string()), |(i, n, fmt)| (i, page_text(n, fmt)));
+    let page = |pos: &Pos| page_at(&l, &formats, pos).map_or_else(|| (0, "1".to_string()), |(i, n, fmt, chapter)| (i, page_text(n, fmt, chapter)));
     let bookmark_end = |name: &str| {
         s.doc.para_paths(StoryRef::Body).into_iter().find_map(|path| {
             let p = s.doc.para(StoryRef::Body, &path)?;

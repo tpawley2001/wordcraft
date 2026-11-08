@@ -936,3 +936,22 @@ fn envelope_options_dialog_passes_positions_fonts_and_omit() {
     assert_eq!(style.chr.font.as_deref(), Some("Courier New"));
     assert_eq!(style.chr.size, Some(14.0));
 }
+
+#[test]
+fn page_numbers_dialog_reads_and_applies_chapter_options() {
+    let mut a = app();
+    a.run("layout.pageNumberFormat", json!({"chapterStyle": 3, "chapterSeparator": "colon"})).unwrap();
+    a.run("ui.dialog", json!({"name": "pageNumbers"})).unwrap();
+    let LayoutDialog::PageNumbers(mut f) = form(&mut a) else { panic!("page numbers") };
+    assert!(f.chapter);
+    assert_eq!(f.chapter_style, 3);
+    assert_eq!(f.chapter_separator, "colon");
+    f.chapter_style = 9;
+    f.chapter_separator = "emDash".into();
+    a.run("layout.pageNumberFormat", f.params()).unwrap();
+    assert_eq!(a.session.doc.last_section.chapter_style, Some(9));
+    assert_eq!(a.session.doc.last_section.chapter_sep, Some(wordcraft_doc::section::ChapterSep::EmDash));
+    f.chapter = false;
+    a.run("layout.pageNumberFormat", f.params()).unwrap();
+    assert_eq!(a.session.doc.last_section.chapter_style, None);
+}
