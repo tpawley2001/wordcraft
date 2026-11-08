@@ -262,6 +262,10 @@ fn count_seq(doc: &wordcraft_doc::Document, story: StoryRef, path: &Path, p: &Pa
         }
         let InlineObject::Field { instr, locked, .. } = o else { continue };
         let f = FieldCode::parse(instr);
+        // A locked LISTNUM or AUTONUM keeps its result and doesn't count; only SEQ counts locked.
+        if *locked && f.name != "SEQ" {
+            continue;
+        }
         if f.name == "LISTNUM" {
             let result = count.listnum.result(&f, heading_style_level(p));
             count.out.push((story, path.clone(), k, result));
