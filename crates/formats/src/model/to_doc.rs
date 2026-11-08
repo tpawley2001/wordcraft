@@ -753,24 +753,6 @@ impl<'a> Builder<'a> {
         nid
     }
 
-    /// A silent level shares its abstract list's counters without consuming a number.
-    fn silent_list(&mut self, num: u32, level: u8) -> u32 {
-        let numbering = Arc::make_mut(&mut self.doc.numbering);
-        let Some(source) = numbering.num(num) else { return num };
-        let abstract_id = source.abstract_id;
-        if let Some(existing) = numbering.nums.iter().find(|n| {
-            n.abstract_id == abstract_id
-                && n.level_overrides.iter().any(|(lv, def)| *lv == level && def.format == wordcraft_doc::section::NumFormat::None)
-        }) {
-            return existing.id;
-        }
-        let mut definition = numbering.level(num, level).cloned().unwrap_or_default();
-        definition.format = wordcraft_doc::section::NumFormat::None;
-        let id = numbering.nums.iter().map(|n| n.id).max().unwrap_or(0).saturating_add(1);
-        numbering.nums.push(Num { id, abstract_id, level_overrides: vec![(level, definition)], ..Default::default() });
-        id
-    }
-
     fn blocks(&mut self, blocks: &[FBlock], depth: usize) -> Blocks {
         let mut out = Blocks::new();
         let mut i = 0;
@@ -821,13 +803,10 @@ impl<'a> Builder<'a> {
                     };
                     for q in blocks.get(i..j).unwrap_or(&[]) {
                         if let FBlock::Para(q) = q {
-                            let paragraph_num =
-                                if let Some(li) = q.list.filter(|li| li.label.is_some_and(|l| l.format == wordcraft_doc::section::NumFormat::None)) {
-                                    self.silent_list(num, li.level)
-                                } else {
-                                    num
-                                };
-                            let para = self.para(q, Some(paragraph_num));
+                            // A "none" item (RTF \pnlvlcont) stays in the run but gets no number: a
+                            // Word "none" level would count and show its text (#4985).
+                            let silent = q.list.is_some_and(|li| li.label.is_some_and(|l| l.format == wordcraft_doc::section::NumFormat::None));
+                            let para = self.para(q, (!silent).then_some(num));
                             out.push(para_block(para));
                         }
                     }
