@@ -9,8 +9,8 @@ use wordcraft_doc::props::Rgb;
 use super::canvas::{Rect, clip_text, fill, legend, rect_segs, runs, seg, stroke, text, text_at, text_w, widest};
 use super::model::Pos;
 use super::parse::truthy;
-use super::plot::{Scale, label, nice_scale};
-use super::{FONT, GAP, GRID, LINE, MAX_POINTS, MAX_SERIES, PAD, ShapeKind, TEXT, fill_colour, int, title_block};
+use super::plot::{Scale, label};
+use super::{FONT, GAP, GRID, LINE, MAX_POINTS, MAX_SERIES, PAD, ShapeKind, TEXT, TITLE_SIZE, fill_colour, int, measure};
 use crate::xml::El;
 
 /// Gap between bars as a fraction of a bar's width when `cx:catScaling` doesn't say.
@@ -98,10 +98,29 @@ fn frame(space: &El, chart: &El, theme: &[Rgb], w: f32, h: f32) -> (Vec<GraphicI
     if let Some(bg) = space.child("cx:spPr").and_then(|p| fill_colour(p, theme)) {
         fill(&mut out, rect_segs(0.0, 0.0, w, h), bg);
     }
+    let ln = space.child("cx:spPr").and_then(|p| p.child("a:ln"));
+    let border = match ln {
+        Some(l) if l.child("a:noFill").is_some() => None,
+        Some(l) => fill_colour(l, theme).or(Some(GRID)),
+        None => Some(GRID),
+    };
+    if let Some(colour) = border {
+        let width = ln.and_then(|l| l.attr("w")).and_then(|v| measure(v, 12_700.0)).unwrap_or(0.75).max(0.0);
+        stroke(&mut out, rect_segs(0.0, 0.0, w, h), colour, width);
+    }
     let mut area = Rect { x: PAD, y: PAD, w: (w - 2.0 * PAD).max(1.0), h: (h - 2.0 * PAD).max(1.0) };
     if let Some(t) = chart.child("cx:title") {
         let s = label(t.deep_text().trim());
-        area = title_block(&mut out, if s.is_empty() { "Chart Title" } else { &s }, area);
+        let lh = TITLE_SIZE * LINE;
+        text(
+            &mut out,
+            Rect { x: area.x, y: area.y, w: area.w, h: lh },
+            if s.is_empty() { "Chart Title" } else { &s },
+            TITLE_SIZE,
+            TextAlign::Center,
+            false,
+        );
+        area = Rect { y: area.y + lh + PAD, h: (area.h - lh - PAD).max(1.0), ..area };
     }
     (out, area)
 }
@@ -116,6 +135,33 @@ fn chart_legend(out: &mut Vec<GraphicItem>, chart: &El, entries: &[(String, Rgb)
         _ => Pos::Right,
     };
     legend(out, entries, pos, area, size)
+}
+
+/// Office 2016 value axes use about ten intervals with steps of 1, 2 or 5 times a
+/// power of ten. Explicit bounds replace the padded ends and are not rounded.
+fn value_scale(plot: &El, lo: f64, hi: f64) -> Scale {
+    let scaling = plot.children("cx:axis").find_map(|a| a.child("cx:valScaling"));
+    let bound = |name| scaling.and_then(|s| s.attr(name)).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite());
+    let (min, max) = (bound("min"), bound("max"));
+    let (lo, hi) = (lo.min(0.0), hi.max(0.0));
+    let hi = if hi > lo { hi } else { lo + 1.0 };
+    let span = hi - lo;
+    let lo = min.unwrap_or(if lo < 0.0 { lo - 0.05 * span } else { lo });
+    let hi = max.unwrap_or(if hi > 0.0 { hi + 0.05 * span } else { hi });
+    // Invalid or overflowing input must not produce non-finite drawing coordinates.
+    let fallback = Scale { lo: 0.0, hi: 1.0, step: 0.1 };
+    if !(hi > lo && hi.is_finite() && lo.is_finite()) {
+        return fallback;
+    }
+    let raw = (hi - lo) / 10.0;
+    let mag = 10f64.powf(raw.log10().floor());
+    let step = [1.0, 2.0, 5.0, 10.0].into_iter().map(|m| m * mag).find(|s| *s >= raw).unwrap_or(10.0 * mag);
+    let lo = if min.is_some() { lo } else { (lo / step + 1e-9).floor() * step };
+    let hi = if max.is_some() { hi } else { (hi / step - 1e-9).ceil() * step };
+    if !(step.is_finite() && step > 0.0 && lo.is_finite() && hi.is_finite() && hi > lo) {
+        return fallback;
+    }
+    Scale { lo, hi, step }
 }
 
 /// A value axis on `scale`: tick labels at the left of `area`, gridlines when the value axis has
@@ -193,7 +239,7 @@ fn waterfall(space: &El, chart: &El, plot: &El, series: &El, theme: &[Rgb], w: f
     if !(lo.is_finite() && hi.is_finite()) {
         return None;
     }
-    let scale = nice_scale(lo, hi, true, None, None);
+    let scale = value_scale(plot, lo, hi);
     let size = text_size(space);
     let lh = size * LINE;
 
@@ -326,7 +372,7 @@ fn box_whisker(space: &El, chart: &El, plot: &El, region: &El, theme: &[Rgb], w:
     if cats.is_empty() {
         cats.push(String::new());
     }
-    let scale = nice_scale(lo, hi, true, None, None);
+    let scale = value_scale(plot, lo, hi);
     let size = text_size(space);
 
     let (mut out, area) = frame(space, chart, theme, w, h);
@@ -480,4 +526,41 @@ fn text_size(space: &El) -> f32 {
         .and_then(|d| d.attr("sz"))
         .and_then(int)
         .map_or(FONT, |v| (v as f32 / 100.0).clamp(6.0, 24.0))
+}
+
+#[cfg(test)]
+mod polish_tests {
+    use super::*;
+
+    fn plot(bounds: &str) -> El {
+        crate::xml::parse(format!(r#"<cx:plotArea xmlns:cx="http://schemas.microsoft.com/office/drawing/2014/chartex"><cx:axis><cx:valScaling {bounds}/></cx:axis></cx:plotArea>"#).as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn explicit_value_bounds_are_not_rounded() {
+        let p = plot(r#"min="3" max="173""#);
+        assert_eq!(value_scale(&p, 0.0, 170.0), Scale { lo: 3.0, hi: 173.0, step: 20.0 });
+        let p = plot(r#"max="173""#);
+        assert_eq!(value_scale(&p, 0.0, 170.0), Scale { lo: 0.0, hi: 173.0, step: 20.0 });
+    }
+
+    #[test]
+    fn automatic_value_scale_includes_zero_and_pads_the_full_span() {
+        let p = plot("");
+        assert_eq!(value_scale(&p, 150.0, 170.0), Scale { lo: 0.0, hi: 180.0, step: 20.0 });
+        assert_eq!(value_scale(&p, -170.0, -150.0), Scale { lo: -180.0, hi: 0.0, step: 20.0 });
+        let zero = value_scale(&p, 0.0, 0.0);
+        assert!(zero.lo == 0.0 && zero.hi >= 1.0 && zero.step > 0.0);
+    }
+
+    #[test]
+    fn invalid_value_bounds_and_extreme_spans_have_finite_scales() {
+        for p in [plot(r#"min="NaN" max="inf""#), plot(r#"min="10" max="-10""#), plot("")] {
+            for (lo, hi) in [(0.0, 170.0), (-f64::MAX, f64::MAX), (0.0, f64::MIN_POSITIVE)] {
+                let s = value_scale(&p, lo, hi);
+                assert!(s.lo.is_finite() && s.hi.is_finite() && s.step.is_finite());
+                assert!(s.hi > s.lo && s.step > 0.0);
+            }
+        }
+    }
 }
