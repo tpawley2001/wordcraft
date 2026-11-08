@@ -1,5 +1,5 @@
-//! Office 2016 charts (`cx:chartSpace`, chartex namespace) drawn from their data: waterfall and
-//! box & whisker charts. Other layouts return `None`, so the caller keeps the fallback picture.
+//! Office 2016 charts (`cx:chartSpace`, chartex namespace) drawn from their data: waterfall,
+//! box & whisker and treemap charts. Other layouts return `None`, so the caller keeps the fallback picture.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -74,14 +74,132 @@ pub(crate) fn box_stats(values: &[f64], exclusive: bool) -> Option<BoxStats> {
     Some(BoxStats { q1, median, q3, lo, hi, mean, outliers })
 }
 
-/// The items of an Office 2016 chart `w` × `h` points, or `None` when its layout isn't drawn.
 /// Treemap tiles: one `[x0, y0, x1, y1]` per leaf of `leaves` (category path outermost-first, size),
-/// in input order, inside the rectangle at (`x`, `y`) of size `w` x `h`.
+/// in input order, inside the rectangle at (`x`, `y`) of size `w` x `h`. Sizes that aren't finite
+/// and positive get an empty tile at (`x`, `y`).
+///
+/// Each level is tiled with the squarified algorithm (Bruls, Huizing and van Wijk): items largest
+/// first, a strip along the shorter side of the free rectangle grows while its worst tile improves,
+/// then the rest is tiled the same way; a group's children are tiled inside its tile. As Word does,
+/// a tile is scored against [`TREEMAP_RATIO`] rather than against a square: its thickness across
+/// the strip over its length along it, `t / l`, scores `max(t / (l * r), r * l / t)`. So two
+/// near-equal items share a strip as tall-ish tiles where a square-seeking layout would stack them.
 pub(crate) fn treemap_rects(leaves: &[(Vec<String>, f64)], x: f32, y: f32, w: f32, h: f32) -> Vec<[f32; 4]> {
-    let _ = (w, h);
-    leaves.iter().map(|_| [x, y, x, y]).collect()
+    let mut out = vec![[x, y, x, y]; leaves.len()];
+    if !([x, y, w, h].iter().all(|v| v.is_finite()) && w > 0.0 && h > 0.0) {
+        return out;
+    }
+    // Sizes relative to the largest, so sums stay finite.
+    let max = leaves.iter().map(|l| l.1).filter(|v| v.is_finite() && *v > 0.0).fold(0.0f64, f64::max);
+    if max <= 0.0 {
+        return out;
+    }
+    let sizes: Vec<f64> = leaves.iter().map(|l| if l.1.is_finite() && l.1 > 0.0 { l.1 / max } else { 0.0 }).collect();
+    let members: Vec<usize> = (0..leaves.len()).filter(|&i| sizes.get(i).is_some_and(|v| *v > 0.0)).collect();
+    let (x, y) = (f64::from(x), f64::from(y));
+    let tree = Treemap { leaves, sizes: &sizes };
+    tree.level(&members, 0, [x, y, x + f64::from(w), y + f64::from(h)], &mut out);
+    out
 }
 
+/// Deepest category level a treemap nests; deeper path parts are ignored.
+const MAX_TREEMAP_LEVELS: usize = 16;
+/// The tile shape treemaps aim for, as thickness across a strip over length along it. Fitted to
+/// Word's tiling of a three-level treemap: every value from 1.10 to 1.26 reproduces all its tiles,
+/// 1 (a plain squarified layout) stacks two near-equal leaves Word puts side by side.
+const TREEMAP_RATIO: f64 = 1.2;
+
+struct Treemap<'a> {
+    leaves: &'a [(Vec<String>, f64)],
+    sizes: &'a [f64],
+}
+
+impl Treemap<'_> {
+    /// Tiles leaves `members` (all sharing the first `depth` path parts) into `rect`.
+    fn level(&self, members: &[usize], depth: usize, rect: [f64; 4], out: &mut [[f32; 4]]) {
+        // (total size, leaves, is a group), groups in order of first appearance.
+        let mut items: Vec<(f64, Vec<usize>, bool)> = Vec::new();
+        let mut group_of: HashMap<&str, usize> = HashMap::new();
+        for &i in members {
+            let (Some((path, _)), Some(&v)) = (self.leaves.get(i), self.sizes.get(i)) else { continue };
+            let name = if depth + 1 < path.len().min(MAX_TREEMAP_LEVELS) { path.get(depth) } else { None };
+            match name {
+                Some(name) => {
+                    let k = *group_of.entry(name.as_str()).or_insert_with(|| {
+                        items.push((0.0, Vec::new(), true));
+                        items.len() - 1
+                    });
+                    if let Some(item) = items.get_mut(k) {
+                        item.0 += v;
+                        item.1.push(i);
+                    }
+                }
+                None => items.push((v, vec![i], false)),
+            }
+        }
+        items.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let values: Vec<f64> = items.iter().map(|it| it.0).collect();
+        for ((_, ids, group), r) in items.iter().zip(squarify(&values, rect, TREEMAP_RATIO)) {
+            if *group {
+                self.level(ids, depth + 1, r, out);
+            } else if let Some(slot) = ids.first().and_then(|&i| out.get_mut(i)) {
+                *slot = r.map(|v| v as f32);
+            }
+        }
+    }
+}
+
+/// Squarified tiles `[x0, y0, x1, y1]` of positive `values` (largest first) in `rect`.
+fn squarify(values: &[f64], rect: [f64; 4], ratio: f64) -> Vec<[f64; 4]> {
+    let [mut x0, mut y0, x1, y1] = rect;
+    let mut rest: f64 = values.iter().sum();
+    let mut out = Vec::with_capacity(values.len());
+    let mut i = 0;
+    while i < values.len() {
+        let (fw, fh) = ((x1 - x0).max(0.0), (y1 - y0).max(0.0));
+        // Wide free space takes a column at its left, tall free space a row at its top.
+        let column = fw >= fh;
+        let side = if column { fh } else { fw };
+        let depth = if column { fw } else { fh };
+        let score = |strip: &[f64]| -> f64 {
+            let sum: f64 = strip.iter().sum();
+            let t = depth * sum / rest;
+            if !(t > 0.0 && side > 0.0) {
+                return 0.0;
+            }
+            strip.iter().map(|v| side * v / sum).map(|l| (t / (l * ratio)).max(ratio * l / t)).fold(0.0, f64::max)
+        };
+        let mut j = i + 1;
+        let mut best = values.get(i..j).map_or(0.0, score);
+        while let Some(next) = values.get(i..j + 1).map(score) {
+            if next > best {
+                break;
+            }
+            best = next;
+            j += 1;
+        }
+        let strip = values.get(i..j).unwrap_or_default();
+        let sum: f64 = strip.iter().sum();
+        let t = if j >= values.len() || rest <= 0.0 { depth } else { depth * sum / rest };
+        let mut acc = 0.0;
+        for (k, v) in strip.iter().enumerate() {
+            let a = side * acc / sum;
+            acc += v;
+            let b = if k + 1 == strip.len() { side } else { side * acc / sum };
+            out.push(if column { [x0, y0 + a, x0 + t, y0 + b] } else { [x0 + a, y0, x0 + b, y0 + t] });
+        }
+        if column {
+            x0 += t;
+        } else {
+            y0 += t;
+        }
+        rest -= sum;
+        i = j;
+    }
+    out
+}
+
+/// The items of an Office 2016 chart `w` × `h` points, or `None` when its layout isn't drawn.
 pub(crate) fn chartex_items(space: &El, theme: &[Rgb], w: f32, h: f32) -> Option<Vec<GraphicItem>> {
     if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
         return None;
@@ -95,6 +213,7 @@ pub(crate) fn chartex_items(space: &El, theme: &[Rgb], w: f32, h: f32) -> Option
         Some("boxWhisker") if region.children("cx:series").all(|s| s.attr("layoutId") == Some("boxWhisker")) => {
             box_whisker(space, chart, plot, region, theme, w, h)
         }
+        Some("treemap") => treemap(space, chart, series, theme, w, h),
         _ => None,
     }
 }
@@ -302,6 +421,141 @@ fn waterfall(space: &El, chart: &El, plot: &El, series: &El, theme: &[Rgb], w: f
         text_at(&mut out, cx, y, &s, size);
     }
     Some(out)
+}
+
+/// Treemap label inset from a tile's left edge, points.
+const TILE_INSET: f32 = 7.0;
+/// Treemap label first baseline below a tile's top edge, points.
+const TILE_BASELINE: f32 = 16.0;
+/// Treemap tile outline width, points.
+const TILE_OUTLINE: f32 = 1.5;
+
+/// A treemap: one tile per leaf, nested by category level, coloured by top-level group.
+fn treemap(space: &El, chart: &El, series: &El, theme: &[Rgb], w: f32, h: f32) -> Option<Vec<GraphicItem>> {
+    let data = series_data(space, series)?;
+    let leaves = treemap_leaves(data);
+    if leaves.is_empty() {
+        return None;
+    }
+    // Top-level groups, largest first (ties in data order), as the tiles are placed.
+    let mut groups: Vec<(String, f64)> = Vec::new();
+    for (path, v) in &leaves {
+        let name = path.first().cloned().unwrap_or_default();
+        let v = if v.is_finite() && *v > 0.0 { *v } else { 0.0 };
+        match groups.iter_mut().find(|g| g.0 == name) {
+            Some(g) => g.1 += v,
+            None => groups.push((name, v)),
+        }
+    }
+    groups.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let colour_of = |k: usize| accent(theme, 4 + k % 6);
+    let group_of = |path: &[String]| -> usize {
+        let name = path.first().map_or("", String::as_str);
+        groups.iter().position(|g| g.0 == name).unwrap_or(0)
+    };
+
+    let size = text_size(space);
+    let (mut out, area) = frame(space, chart, theme, w, h);
+    let entries: Vec<(String, Rgb)> = groups.iter().enumerate().map(|(k, g)| (g.0.clone(), colour_of(k))).collect();
+    let area = chart_legend(&mut out, chart, &entries, area, size);
+    let tiles = treemap_rects(&leaves, area.x, area.y, area.w, area.h);
+
+    for ((path, _), r) in leaves.iter().zip(&tiles) {
+        let (tw, th) = (r[2] - r[0], r[3] - r[1]);
+        if tw > 0.0 && th > 0.0 {
+            let rect = [r[0], r[1], tw, th];
+            let fill = Some(colour_of(group_of(path)));
+            out.push(GraphicItem::Shape { rect, kind: ShapeKind::Rectangle, fill, stroke: Some(Rgb(0xFF, 0xFF, 0xFF)), stroke_width: TILE_OUTLINE });
+        }
+    }
+
+    let Some(dl) = series.child("cx:dataLabels") else { return Some(out) };
+    let vis = dl.child("cx:visibility");
+    if !flag(vis, "categoryName", true) {
+        return Some(out);
+    }
+    let parents = series
+        .child("cx:layoutPr")
+        .and_then(|l| l.child("cx:parentLabelLayout"))
+        .and_then(|p| p.attr("val"))
+        .map(str::trim)
+        .is_none_or(|v| v != "none");
+    let lh = size * LINE;
+    let label_at = |out: &mut Vec<GraphicItem>, r: [f32; 4], line: f32, s: &str, colour: Rgb, bold: bool| {
+        let top = r[1] + TILE_BASELINE - size + line * lh;
+        let width = r[2] - r[0] - 2.0 * TILE_INSET;
+        if s.is_empty() || width < text_w("0", size) || top + lh > r[3] {
+            return;
+        }
+        let rect = Rect { x: r[0] + TILE_INSET, y: top, w: width, h: lh };
+        let text = clip_text(s, width, size);
+        out.push(GraphicItem::Text { rect: rect.arr(), text, size, color: colour, bold, align: TextAlign::Left, font: None });
+    };
+    // Group labels sit at their group's top-left, over the first tile, whose own label moves down.
+    let mut group_tiles: Vec<Option<[f32; 4]>> = vec![None; groups.len()];
+    if parents {
+        for ((path, _), r) in leaves.iter().zip(&tiles) {
+            if path.len() < 2 || r[2] <= r[0] || r[3] <= r[1] {
+                continue;
+            }
+            if let Some(slot) = group_tiles.get_mut(group_of(path)) {
+                let u = slot.get_or_insert(*r);
+                *u = [u[0].min(r[0]), u[1].min(r[1]), u[2].max(r[2]), u[3].max(r[3])];
+            }
+        }
+    }
+    for ((path, _), r) in leaves.iter().zip(&tiles) {
+        let k = group_of(path);
+        let colour = label_colour(colour_of(k));
+        let under_group =
+            path.len() >= 2 && group_tiles.get(k).copied().flatten().is_some_and(|g| (g[0] - r[0]).abs() < 0.01 && (g[1] - r[1]).abs() < 0.01);
+        let name = path.last().map_or("", String::as_str);
+        label_at(&mut out, *r, if under_group { 1.0 } else { 0.0 }, name, colour, false);
+    }
+    for ((name, _), (k, g)) in groups.iter().zip(group_tiles.iter().enumerate()) {
+        if let Some(g) = g {
+            label_at(&mut out, *g, 0.0, name, label_colour(colour_of(k)), true);
+        }
+    }
+    Some(out)
+}
+
+/// Text colour on a tile filled `fill`: white on dark fills, the chart text colour on light ones.
+fn label_colour(fill: Rgb) -> Rgb {
+    let luma = 0.299 * f32::from(fill.0) + 0.587 * f32::from(fill.1) + 0.114 * f32::from(fill.2);
+    if luma < 160.0 { Rgb(0xFF, 0xFF, 0xFF) } else { TEXT }
+}
+
+/// A treemap's leaves: category path outermost-first (`cx:strDim type="cat"` levels are written
+/// innermost first) and size (`cx:numDim type="size"`), for every point with a size.
+fn treemap_leaves(data: &El) -> Vec<(Vec<String>, f64)> {
+    let Some(lvl) = data.children("cx:numDim").find(|d| d.attr("type") == Some("size")).and_then(|d| d.child("cx:lvl")) else {
+        return Vec::new();
+    };
+    let mut sizes: BTreeMap<usize, f64> = BTreeMap::new();
+    for p in lvl.children("cx:pt").take(MAX_POINTS) {
+        let (Some(k), Ok(v)) = (p.attr("idx").and_then(index), p.text().trim().parse::<f64>()) else { continue };
+        sizes.insert(k, v);
+    }
+    let levels: Vec<HashMap<usize, String>> = data
+        .children("cx:strDim")
+        .find(|d| d.attr("type") == Some("cat"))
+        .into_iter()
+        .flat_map(|d| d.children("cx:lvl"))
+        .take(MAX_TREEMAP_LEVELS)
+        .map(|l| l.children("cx:pt").filter_map(|p| Some((p.attr("idx").and_then(index)?, label(p.text().trim())))).collect())
+        .collect();
+    sizes
+        .into_iter()
+        .map(|(k, v)| {
+            let mut path: Vec<String> = levels.iter().rev().map(|l| l.get(&k).cloned().unwrap_or_default()).collect();
+            // A missing inner name makes the point a leaf one level up.
+            while path.len() > 1 && path.last().is_some_and(String::is_empty) {
+                path.pop();
+            }
+            (path, v)
+        })
+        .collect()
 }
 
 /// What one box & whisker series shows (`cx:layoutPr`).
@@ -569,5 +823,56 @@ mod polish_tests {
                 assert!(s.hi > s.lo && s.step > 0.0);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod treemap_hostile_tests {
+    use super::*;
+
+    fn leaf(path: &[&str], v: f64) -> (Vec<String>, f64) {
+        (path.iter().map(|s| s.to_string()).collect(), v)
+    }
+
+    #[test]
+    fn hostile_sizes_and_rects_stay_finite_and_inside() {
+        let ls = vec![
+            leaf(&["A", "x"], f64::NAN),
+            leaf(&["A", "y"], f64::INFINITY),
+            leaf(&[], 5.0),
+            leaf(&["B"], f64::MAX),
+            leaf(&["B", "z", "deep"], f64::MAX),
+            leaf(&["C"], f64::MIN_POSITIVE),
+        ];
+        for (w, h) in [(100.0, 50.0), (0.0, 50.0), (-3.0, 4.0), (f32::NAN, 1.0), (1e-30, 1e30)] {
+            let got = treemap_rects(&ls, 1.0, 2.0, w, h);
+            assert_eq!(got.len(), ls.len());
+            for r in &got {
+                assert!(r.iter().all(|v| v.is_finite()) && r[2] >= r[0] && r[3] >= r[1], "{w}x{h}: {r:?}");
+            }
+        }
+        let got = treemap_rects(&ls, 0.0, 0.0, 100.0, 50.0);
+        let area = |r: [f32; 4]| (r[2] - r[0]) * (r[3] - r[1]);
+        assert!(area(got[0]) == 0.0 && area(got[1]) == 0.0);
+        assert!((area(got[3]) - 2500.0).abs() < 1.0 && (area(got[4]) - 2500.0).abs() < 1.0, "{got:?}");
+    }
+
+    #[test]
+    fn mixed_depth_paths_nest_inside_their_group() {
+        let ls = vec![leaf(&["A", "a1"], 2.0), leaf(&["A"], 2.0), leaf(&["B", "b1", "b2"], 4.0)];
+        let got = treemap_rects(&ls, 0.0, 0.0, 80.0, 10.0);
+        let area = |r: [f32; 4]| (r[2] - r[0]) * (r[3] - r[1]);
+        for r in &got {
+            assert!((area(*r) - 200.0).abs() < 0.5 || (area(*r) - 400.0).abs() < 0.5, "{got:?}");
+        }
+        // The two leaves of group A share one half of the plot.
+        assert!(got[0][2].max(got[1][2]) <= 40.01 || got[0][0].min(got[1][0]) >= 39.99, "{got:?}");
+    }
+
+    #[test]
+    fn treemap_without_sizes_keeps_the_fallback() {
+        let x = br#"<cx:chartSpace xmlns:cx="x"><cx:chartData><cx:data id="0"><cx:strDim type="cat"><cx:lvl><cx:pt idx="0">A</cx:pt></cx:lvl></cx:strDim></cx:data></cx:chartData><cx:chart><cx:plotArea><cx:plotAreaRegion><cx:series layoutId="treemap"><cx:dataId val="0"/></cx:series></cx:plotAreaRegion></cx:plotArea></cx:chart></cx:chartSpace>"#;
+        let space = crate::xml::parse(x).unwrap();
+        assert!(chartex_items(&space, &[], 300.0, 200.0).is_none());
     }
 }
