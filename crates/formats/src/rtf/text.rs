@@ -260,6 +260,13 @@ impl Reader {
                 }
             }
             Dest::Info(_) => self.info_text.push_str(s),
+            Dest::Generator => {
+                if let Some(g) = self.generator.as_mut()
+                    && g.len() < 256
+                {
+                    g.push_str(s);
+                }
+            }
             Dest::FldInst => {
                 if let Some(f) = self.st.field.and_then(|i| self.fields.get_mut(i))
                     && f.len() < 4096

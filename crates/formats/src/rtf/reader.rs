@@ -48,6 +48,8 @@ pub(super) struct Reader {
     pub(super) style_cur: i32,
     pub(super) style_name: String,
     pub(super) style_def_cur: StyleDef,
+    /// The text of `{\*\generator …}`, when the file names the program that wrote it.
+    pub(super) generator: Option<String>,
     pub(super) meta: Meta,
     pub(super) info_text: String,
     // Lists: list id → ordered per level; override ls → list id.

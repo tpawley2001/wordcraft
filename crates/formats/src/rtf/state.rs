@@ -48,6 +48,8 @@ pub(super) enum Dest {
     PnTxtB,
     /// The text after the number of a `{\*\pn …}` group (`{\pntxta …}`): the label's suffix.
     PnTxtA,
+    /// The program that wrote the file (`{\*\generator …}`): its text is kept.
+    Generator,
 }
 
 /// Word 6.0/95 paragraph numbering (`{\*\pn …}`, RTF 1.9.1 "Bullets and Numbering"): what one

@@ -23,6 +23,9 @@ struct Parsed {
     default_font: Option<String>,
     /// Each section's headers and footers, in order, the last section's last.
     headers_footers: Vec<Vec<(HeaderFooter, Vec<FBlock>)>>,
+    /// Another program's heading, title and quote styles: the document style each stands for,
+    /// with the formatting its stylesheet entry gives it.
+    foreign_styles: Vec<(String, wordcraft_doc::props::ParaProps, wordcraft_doc::props::CharProps)>,
 }
 
 /// Where the document `{\rtf…}` starting at `start` ends: just past the last `}` that closes it
@@ -287,7 +290,8 @@ fn finalize(mut r: Reader) -> Parsed {
         blocks.push(FBlock::Para(Para::default()));
     }
     let default_font = r.fonts.get(&r.deff).filter(|n| !model::is_mono(n)).map(|n| n.to_string());
-    Parsed { flow: Flow { blocks, meta: r.meta }, page: r.page, last_section, default_font, headers_footers }
+    let foreign_styles = r.foreign_styles();
+    Parsed { flow: Flow { blocks, meta: r.meta }, page: r.page, last_section, default_font, headers_footers, foreign_styles }
 }
 
 /// The column grid of a table from its rows' cell right edges: every distinct edge starts a grid
@@ -362,7 +366,7 @@ fn set_section_revisions(doc: &mut Document) {
 /// Parse RTF bytes into a document.
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
     model::begin_import();
-    let Parsed { flow, last_section, default_font, headers_footers, .. } = parse_full(bytes)?;
+    let Parsed { flow, last_section, default_font, headers_footers, foreign_styles, .. } = parse_full(bytes)?;
     let mut doc = model::to_doc_in(&flow, last_section);
     // Each section's own headers and footers; those it leaves out stay linked to the previous.
     let mut sets = Vec::with_capacity(headers_footers.len());
@@ -403,6 +407,14 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     dp.line_spacing = Some(wordcraft_doc::props::LineSpacing::Multiple(1.0));
     if default_font.is_some() {
         Arc::make_mut(&mut doc.styles).default_chr.font = default_font;
+    }
+    // Another program's styles have what its stylesheet sets, not WordCraft's built-in
+    // formatting; the outline level a heading style gives stays.
+    for (id, para, chr) in foreign_styles {
+        if let Some(s) = Arc::make_mut(&mut doc.styles).get_mut(&id) {
+            s.para = wordcraft_doc::props::ParaProps { outline_level: s.para.outline_level, ..para };
+            s.chr = chr;
+        }
     }
     Ok(doc)
 }
