@@ -22,6 +22,7 @@ use crate::units::{int, measure};
 use crate::xml::El;
 
 mod canvas;
+pub(crate) mod chartex;
 mod format;
 mod model;
 mod of_pie;
@@ -204,6 +205,8 @@ struct Chart {
     of_pie: Option<OfPie>,
 }
 
+#[cfg(test)]
+mod chartex_tests;
 #[cfg(test)]
 mod combo_tests;
 #[cfg(test)]
