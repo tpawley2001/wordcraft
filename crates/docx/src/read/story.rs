@@ -30,6 +30,8 @@ const INK_URI: &str = "http://schemas.microsoft.com/office/word/2010/wordprocess
 const INK_REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml";
 /// The `a:graphicData` URI of an Office 2016 chart (`cx:chart`).
 const CHARTEX_URI: &str = "http://schemas.microsoft.com/office/drawing/2014/chartex";
+/// Relationship to an Office 2016 chart part (`cx:chartSpace`).
+const CHARTEX_REL: &str = "http://schemas.microsoft.com/office/2014/relationships/chartEx";
 
 /// Deepest table nesting we build (deeper tables become plain paragraphs).
 const MAX_TABLE_DEPTH: usize = 24;
