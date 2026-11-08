@@ -92,7 +92,12 @@ pub(super) fn view(app: &mut WordApp, ui: &mut Ui) {
     group(ui, "Window", None, app, |ui, app| {
         big(ui, app, "newWindow", "New\nWindow", "view.newWindow", json!({}), false);
         big(ui, app, "arrangeAll", "Arrange\nAll", "view.arrangeAll", json!({}), false);
-        big(ui, app, "split", "Split", "view.split", json!({}), false);
+        // While split the button is pressed and reads Remove Split, as Word's does (#3254).
+        if v.split.is_some() {
+            big_toggle(ui, app, "split", "Remove\nSplit", "view.split", true);
+        } else {
+            big(ui, app, "split", "Split", "view.split", json!({}), false);
+        }
         // View Side by Side and its two companions, stacked small as Word draws them; the
         // toggles show their on state.
         let pair = app.session.side_by_side;
