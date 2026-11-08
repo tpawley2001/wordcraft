@@ -105,7 +105,7 @@ fn frame(space: &El, chart: &El, theme: &[Rgb], w: f32, h: f32) -> (Vec<GraphicI
         None => Some(GRID),
     };
     if let Some(colour) = border {
-        let width = ln.and_then(|l| l.attr("w")).and_then(|v| measure(v, 12_700.0)).unwrap_or(0.75).clamp(0.0, 20.0);
+        let width = ln.and_then(|l| l.attr("w")).and_then(|v| measure(v, 12_700.0)).unwrap_or(0.75).max(0.0);
         stroke(&mut out, rect_segs(0.0, 0.0, w, h), colour, width);
     }
     let mut area = Rect { x: PAD, y: PAD, w: (w - 2.0 * PAD).max(1.0), h: (h - 2.0 * PAD).max(1.0) };
@@ -533,7 +533,7 @@ mod polish_tests {
     use super::*;
 
     fn plot(bounds: &str) -> El {
-        crate::xml::parse(format!(r#"<cx:plotArea><cx:axis><cx:valScaling {bounds}/></cx:axis></cx:plotArea>"#).as_bytes()).unwrap()
+        crate::xml::parse(format!(r#"<cx:plotArea xmlns:cx="http://schemas.microsoft.com/office/drawing/2014/chartex"><cx:axis><cx:valScaling {bounds}/></cx:axis></cx:plotArea>"#).as_bytes()).unwrap()
     }
 
     #[test]
