@@ -314,6 +314,10 @@ impl Reader {
             "fonttbl" => Some(Dest::FontTbl),
             "colortbl" => Some(Dest::ColorTbl),
             "stylesheet" => Some(Dest::StyleSheet),
+            "generator" => {
+                self.generator.get_or_insert_with(String::new);
+                Some(Dest::Generator)
+            }
             "info" => Some(Dest::Skip),
             "title" if self.st.dest == Dest::Skip && self.in_info() => Some(Dest::Info(1)),
             "author" if self.in_info() => Some(Dest::Info(2)),
@@ -338,8 +342,8 @@ impl Reader {
             | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "bkmkend" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
-            | "rsidtbl" | "generator" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb"
-            | "fontfile" | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl" => Some(Dest::Skip),
+            | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb" | "fontfile"
+            | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl" => Some(Dest::Skip),
             // Word 6.0/95 paragraph numbering: read, so the paragraph imports as a list.
             "pn" => {
                 self.pn_cur = Pn::default();
@@ -421,6 +425,21 @@ impl Reader {
                     "i" => def.italic = Some(on),
                     "fs" => def.size = (value > 0).then(|| (value as f32 / 2.0).clamp(1.0, 1638.0)),
                     "f" => def.font = Some(value),
+                    "cf" => def.color = Some(value),
+                    "sb" => def.sb = Some(value),
+                    "sa" => def.sa = Some(value),
+                    "sl" => def.sl = Some(value),
+                    "slmult" => def.slmult = Some(on),
+                    "li" | "lin" => def.li = Some(value),
+                    "ri" | "rin" => def.ri = Some(value),
+                    "fi" => def.fi = Some(value),
+                    "keepn" => def.keep_next = Some(on),
+                    "keep" => def.keep_lines = Some(on),
+                    "ql" => def.align = Some(Align::Left),
+                    "qc" => def.align = Some(Align::Center),
+                    "qr" => def.align = Some(Align::Right),
+                    "qj" => def.align = Some(Align::Justify),
+                    "qd" => def.align = Some(Align::Distribute),
                     _ => {}
                 }
                 true
@@ -453,8 +472,8 @@ impl Reader {
                 self.picture_word(word, value);
                 true
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark if !matches!(word, "u" | "uc") => true,
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark => false,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator if !matches!(word, "u" | "uc") => true,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator => false,
             Dest::OldProps(false) if matches!(word, "crauth" | "crdate") => {
                 if word == "crauth" {
                     self.st.old_rev.0 = Some(value);

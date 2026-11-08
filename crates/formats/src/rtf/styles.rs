@@ -1,7 +1,9 @@
 use super::export::HEAD_SIZES;
 use super::state::{Pn, PnKind, St};
-use super::{Fmt, Kind, ListInfo, Para, Reader, model};
+use super::{Align, Fmt, Kind, ListInfo, Para, Reader, model};
 use model::Label;
+use wordcraft_doc::TextColor;
+use wordcraft_doc::props::{CharProps, ParaProps};
 
 impl Reader {
     pub(super) fn commit_style(&mut self) {
@@ -15,7 +17,13 @@ impl Reader {
         self.style_cur = 0;
     }
 
-    /// The character formatting style `id` gives its runs in this file: its stylesheet entry's,
+    /// Whether another program wrote the file: its `{\*\generator …}` names one that isn't
+    /// WordCraft. Such a file's styles have only what their stylesheet entries set.
+    pub(super) fn foreign(&self) -> bool {
+        self.generator.as_deref().is_some_and(|g| !g.trim_start().starts_with("WordCraft"))
+    }
+
+    /// The formatting style `id` has in this file: its stylesheet entry's,
     /// then its `\sbasedon` ancestors' (a bounded walk: loops and missing ids end it).
     fn file_style(&self, id: i32) -> StyleDef {
         let mut out = StyleDef::default();
@@ -31,6 +39,17 @@ impl Reader {
             out.italic = out.italic.or(d.italic);
             out.size = out.size.or(d.size);
             out.font = out.font.or(d.font);
+            out.color = out.color.or(d.color);
+            out.sb = out.sb.or(d.sb);
+            out.sa = out.sa.or(d.sa);
+            out.sl = out.sl.or(d.sl);
+            out.slmult = out.slmult.or(d.slmult);
+            out.li = out.li.or(d.li);
+            out.ri = out.ri.or(d.ri);
+            out.fi = out.fi.or(d.fi);
+            out.keep_next = out.keep_next.or(d.keep_next);
+            out.keep_lines = out.keep_lines.or(d.keep_lines);
+            out.align = out.align.or(d.align);
             cur = d.based_on;
         }
         out
@@ -40,11 +59,14 @@ impl Reader {
     /// entry and `\sbasedon` chain set no character formatting (a bare `{\s2 heading 2;}`) has
     /// WordCraft's own (`style_fmt`); otherwise what the chain doesn't set is RTF's default (not
     /// bold, not italic, 12 pt). The font alone falls back per property: WordCraft writes the code
-    /// font on each code paragraph, not in its Code entry.
+    /// font on each code paragraph, not in its Code entry. In another program's file a heading,
+    /// title or quote style always has the chain's formatting and RTF's defaults (see
+    /// [`Reader::foreign_styles`]).
     pub(super) fn style_base(&self, kind: Kind, id: i32) -> Fmt {
         let mut f = style_fmt(kind);
         let d = self.file_style(id);
-        if d.bold.is_some() || d.italic.is_some() || d.size.is_some() || d.font.is_some() {
+        let own = self.foreign() && foreign_style_id(kind).is_some();
+        if own || d.bold.is_some() || d.italic.is_some() || d.size.is_some() || d.font.is_some() {
             f.bold = d.bold.unwrap_or(false);
             f.italic = d.italic.unwrap_or(false);
             f.size = Some(d.size.unwrap_or(12.0));
@@ -57,13 +79,64 @@ impl Reader {
         f
     }
 
-    /// The paragraph kind `st`'s style names, if it names one.
-    pub(super) fn style_kind(&self, st: &St) -> Option<Kind> {
-        let name = self.styles.get(&st.style).map(|s| s.to_ascii_lowercase()).unwrap_or_default();
+    /// In another program's file, the document style each heading, title and quote entry of the
+    /// stylesheet stands for, with exactly the formatting the entry and its `\sbasedon` chain set
+    /// and RTF's defaults for the rest (RTF 1.9.1, "Style sheet": no space before or after, no
+    /// keeps, single spacing, no indents, left aligned, not bold or italic, 12 pt, auto colour).
+    /// None of WordCraft's built-in formatting for those styles comes in; the outline level does.
+    /// Empty for WordCraft's own files and files that don't name their program.
+    pub(super) fn foreign_styles(&self) -> Vec<(String, ParaProps, CharProps)> {
+        use wordcraft_doc::props::LineSpacing;
+        if !self.foreign() {
+            return Vec::new();
+        }
+        let mut ids: Vec<i32> = self.styles.keys().copied().collect();
+        ids.sort_unstable();
+        let mut out: Vec<(String, ParaProps, CharProps)> = Vec::new();
+        for id in ids {
+            let Some(style) = self.name_kind(id).and_then(foreign_style_id) else { continue };
+            // The first entry naming a style gives it its formatting.
+            if out.iter().any(|(s, _, _)| *s == style) {
+                continue;
+            }
+            let d = self.file_style(id);
+            let pt = |v: i32| (v as f32 / 20.0).clamp(-1584.0, 1584.0);
+            let st = St { sl: d.sl.unwrap_or(0), slmult: d.slmult.unwrap_or(false), ..Default::default() };
+            let line = spacing(&st).line.unwrap_or(LineSpacing::Multiple(1.0));
+            let para = ParaProps {
+                align: Some(d.align.unwrap_or(Align::Left)),
+                indent_left: Some(d.li.map_or(0.0, pt)),
+                indent_right: Some(d.ri.map_or(0.0, pt)),
+                indent_first: Some(d.fi.map_or(0.0, pt)),
+                space_before: Some(d.sb.map_or(0.0, |v| pt(v).max(0.0))),
+                space_after: Some(d.sa.map_or(0.0, |v| pt(v).max(0.0))),
+                line_spacing: Some(line),
+                contextual_spacing: Some(false),
+                keep_next: Some(d.keep_next.unwrap_or(false)),
+                keep_lines: Some(d.keep_lines.unwrap_or(false)),
+                ..Default::default()
+            };
+            let color = d.color.and_then(|i| usize::try_from(i).ok()).and_then(|i| self.colors.get(i).copied().flatten());
+            let chr = CharProps {
+                font: d.font.and_then(|i| self.fonts.get(&i)).map(|n| n.to_string()),
+                size: Some(d.size.unwrap_or(12.0)),
+                bold: Some(d.bold.unwrap_or(false)),
+                italic: Some(d.italic.unwrap_or(false)),
+                color: Some(color.map_or(TextColor::Auto, TextColor::Rgb)),
+                ..Default::default()
+            };
+            out.push((style, para, chr));
+        }
+        out
+    }
+
+    /// The paragraph kind the stylesheet entry `id`'s name gives.
+    fn name_kind(&self, id: i32) -> Option<Kind> {
+        let name = self.styles.get(&id).map(|s| s.to_ascii_lowercase()).unwrap_or_default();
         if let Some(n) = name.strip_prefix("heading").and_then(|r| r.trim().parse::<u8>().ok()) {
             return Some(Kind::Heading(n.clamp(1, 6)));
         }
-        if st.style != 0 {
+        if id != 0 {
             match name.as_str() {
                 "title" => return Some(Kind::Title),
                 "quote" | "intense quote" => return Some(Kind::Quote),
@@ -72,6 +145,11 @@ impl Reader {
             }
         }
         None
+    }
+
+    /// The paragraph kind `st`'s style names, if it names one.
+    pub(super) fn style_kind(&self, st: &St) -> Option<Kind> {
+        self.name_kind(st.style)
     }
 
     fn para_kind(&self, st: &St) -> Kind {
@@ -140,6 +218,17 @@ impl Reader {
     }
 }
 
+/// The document style a paragraph of kind `kind` takes, when another program's stylesheet entry
+/// gives it its formatting. Code paragraphs keep WordCraft's code style.
+fn foreign_style_id(kind: Kind) -> Option<String> {
+    match kind {
+        Kind::Heading(n) => Some(format!("Heading{}", n.clamp(1, 6))),
+        Kind::Title => Some("Title".into()),
+        Kind::Quote => Some("Quote".into()),
+        Kind::Code | Kind::Normal | Kind::Rule => None,
+    }
+}
+
 /// The character formatting the paragraph style of `kind` gives its runs, as the writer's
 /// stylesheet and paragraph properties set it.
 pub(super) fn style_fmt(kind: Kind) -> Fmt {
@@ -166,7 +255,8 @@ pub(super) fn styled(base: &Fmt, f: &Fmt) -> Fmt {
     e
 }
 
-/// A `\stylesheet` entry's character formatting; `None` where the entry doesn't set it.
+/// A `\stylesheet` entry's formatting; `None` where the entry doesn't set it. Spacing and
+/// indents are in twips, as written.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct StyleDef {
     pub(super) based_on: Option<i32>,
@@ -175,6 +265,18 @@ pub(super) struct StyleDef {
     pub(super) size: Option<f32>,
     /// A `\fonttbl` index, named when it's used (the table may follow).
     pub(super) font: Option<i32>,
+    /// A `\colortbl` index (`\cf`).
+    pub(super) color: Option<i32>,
+    pub(super) sb: Option<i32>,
+    pub(super) sa: Option<i32>,
+    pub(super) sl: Option<i32>,
+    pub(super) slmult: Option<bool>,
+    pub(super) li: Option<i32>,
+    pub(super) ri: Option<i32>,
+    pub(super) fi: Option<i32>,
+    pub(super) keep_next: Option<bool>,
+    pub(super) keep_lines: Option<bool>,
+    pub(super) align: Option<Align>,
 }
 
 /// Clear from `f` the formatting a paragraph of kind `kind` gets from its style, whose
