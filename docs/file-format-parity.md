@@ -1,6 +1,7 @@
 # File-format parity with Microsoft Word
+
+> **Last updated:** 2026-11-08 · **Change:** trivial (P0120: `.doc` field anchors keep the first nonempty cached result run’s formatting, including hidden, bold and size; empty results keep the begin character’s formatting. Readiness estimates unchanged.)
 > **2026-11-05:** A Word template opened from the file manager starts a new document based on it, and is never saved over (#3433).
-> **Last updated:** 2026-11-08 · **Change:** trivial (P0119: `.doc` Dop95/Dop97 sums paragraph spacing; Dop2000 and later use the stored HTML auto-spacing flag. Readiness estimates unchanged.)
 > **2026-11-05:** Strict Open XML documents open with their shapes, text boxes, groups and canvases (#3548).
 
 > **2026-11-05:** DOCX paragraph `w:adjustRightInd` keeps its default and explicit values through style resolution and schema-ordered repeated saves.
@@ -351,6 +352,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 ## Revision history
 
+> 2026-11-08 · P0120: `.doc` field anchors keep the first nonempty cached result run’s formatting, including hidden, bold and size; empty results keep the begin character’s formatting. Readiness estimates unchanged.
 > 2026-11-08 · P0119: `.doc` Dop95/Dop97 sums paragraph spacing; Dop2000 and later use the stored HTML auto-spacing flag. Readiness estimates unchanged.
 
 > 2026-11-07 · VML text boxes: `mso-layout-flow-alt:bottom-to-top` reads as `vert270` with any `layout-flow`, and `layout-flow:vertical` or `vertical-ideographic` otherwise as `vert`, so a compatibility-mode header's turned text box is drawn turned (#5193, `it::text_boxes::vml_text_boxes_keep_their_inset_fit_and_anchor`).
