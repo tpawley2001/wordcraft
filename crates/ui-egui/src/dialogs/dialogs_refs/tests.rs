@@ -462,3 +462,19 @@ fn auto_caption_dialog_turns_it_on() {
     a.run("references.captionLabel", json!({"add": "Exhibit"})).unwrap();
     assert!(CaptionForm::read(&a).labels.contains(&"Exhibit".to_string()), "the document's label is offered");
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn index_automark_picker_marks_and_reports_count() {
+    let dir = std::env::temp_dir().join(format!("wc-index-picker-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("concordance.html");
+    std::fs::write(&path, "<table><tr><td>fox</td><td>Animals:Fox</td></tr></table>").unwrap();
+    let mut a = app("fox fox");
+    let result = a.finish_pick(crate::file_dialogs::AfterPick::AutoMark, Some(path.to_string_lossy().into_owned())).unwrap();
+    assert_eq!(result, json!({"marked": 1, "rows": 1}));
+    assert_eq!(a.status_msg.as_ref().map(|(text, _)| text.as_str()), Some("1 entries marked."));
+    a.run("edit.undo", json!({})).unwrap();
+    assert_eq!(a.session.doc.plain_text(StoryRef::Body), "fox fox");
+    let _ = std::fs::remove_dir_all(dir);
+}

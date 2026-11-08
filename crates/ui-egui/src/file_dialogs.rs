@@ -75,6 +75,9 @@ pub(crate) enum AfterPick {
     /// document through Manage Sources (#2640).
     #[cfg(not(target_arch = "wasm32"))]
     Sources,
+    /// Mark index entries from a concordance document.
+    #[cfg(not(target_arch = "wasm32"))]
+    AutoMark,
     /// Hand the picked path to the open dialog (`WordApp::dialog_pick`): Templates and Add-ins,
     /// Organizer (#377).
     ForDialog,
@@ -273,6 +276,19 @@ impl WordApp {
                         n => crate::i18n::fmt(tl!("Imported {n} sources"), &[("n", &n.to_string())]),
                     };
                     self.status(msg);
+                }
+                r
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            AfterPick::AutoMark => {
+                let Some(path) = picked else { return Ok(json!({"cancelled": true})) };
+                let r = self.run("references.autoMark", json!({"path": path}));
+                match &r {
+                    Ok(v) => self.status(crate::i18n::fmt(
+                        tl!("{n} entries marked."),
+                        &[("n", &v.get("marked").and_then(Value::as_u64).unwrap_or(0).to_string())],
+                    )),
+                    Err(e) => self.status(e.clone()),
                 }
                 r
             }
