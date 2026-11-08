@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-08 · **Change:** trivial (P0118: Drop Cap None overrides an inherited style cap; Dropped and In margin with `keep` preserve resolved lines, distance and font (#4144). Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-07 · **Change:** trivial (P0117: In margin moves first-line and hanging indents to the cap frame and restores them on None or Dropped; DOCX preserves the separate frame indent (#4173). Layout unchanged; readiness estimates unchanged.)
 > **CLI path update:** 2026-11-04 · Options before a non-Unicode input filename no longer make the CLI reject that filename; text option values still require Unicode; `run --file` and `run --script` retain native paths. No ranked gap or readiness estimate changes.
 
@@ -201,6 +203,8 @@ Strict DOCX graphics (gap #2): chart and SmartArt children and all relationship 
 Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text without the clipboard on Windows/Linux. Broader shortcut and UI gaps remain open.
 
 ## Revision history
+
+> 2026-11-08 · P0118: Drop Cap None overrides an inherited style cap; Dropped and In margin with `keep` preserve resolved lines, distance and font (#4144). Readiness estimates unchanged.
 
 > 2026-11-07 · P0116: DOCX saves always omit stale package thumbnails, including their relationships and content-type overrides (#3627); other kept parts still round-trip. Readiness estimates unchanged.
 > 2026-11-07 · P0114: #27 narrowed: View › Window › Split shows two panes on one document (`view.split` takes `value`/`ratio`), Remove Split (`view.removeSplit`, Alt+Shift+C on Linux/Windows); Repeat also on Alt+Enter (#3254). Readiness estimates unchanged.
