@@ -54,7 +54,7 @@ fn automark_marks_first_whole_word_match_in_each_paragraph() {
     // XE fields are hidden text, as Mark Entry makes them.
     let p = s.doc.para(StoryRef::Body, &Path::top(0)).unwrap();
     let byte = p.text.char_indices().nth(13).unwrap().0;
-    assert_eq!(p.props_at(byte).hidden, Some(true));
+    assert_eq!(p.props_of_char(byte).hidden, Some(true));
 }
 
 /// Running AutoMark again adds nothing: a paragraph that already holds a row's XE is skipped.
