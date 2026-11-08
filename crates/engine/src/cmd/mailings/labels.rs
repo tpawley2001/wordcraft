@@ -390,7 +390,7 @@ impl LabelSheet {
         let number = |key: &str, default: Option<f32>, positive: bool| -> Result<f32, CmdError> {
             let n = match custom.get(key) {
                 None => default,
-                Some(v) => v.as_f64().map(|n| n as f32),
+                Some(v) => v.as_f64().filter(|n| n.is_finite() && if positive { *n > 0.0 } else { *n >= 0.0 }).map(|n| n as f32),
             };
             n.filter(|n| n.is_finite() && if positive { *n > 0.0 } else { *n >= 0.0 }).ok_or_else(|| {
                 CmdError::Params(format!("custom {key} must be a {} number in points", if positive { "positive" } else { "nonnegative" }))
@@ -519,4 +519,46 @@ pub(super) fn labels(s: &mut Session, v: &Value) -> CmdResult {
     s.add_document(d);
     let _ = Pos::body(0, 0);
     Ok(json!({"labels": if single.is_some() { 1 } else { sheets * per_sheet }, "filled": made, "product": prod.id}))
+}
+
+#[cfg(test)]
+mod custom_tests {
+    use super::*;
+
+    #[test]
+    fn invalid_custom_measurements_do_not_create_documents() {
+        let valid = json!({"top": 0, "side": 0, "width": 100, "height": 50, "cols": 2, "rows": 3});
+        for (key, bad) in [
+            ("top", json!(-1e-100)),
+            ("side", json!(-1e-100)),
+            ("width", json!(1e100)),
+            ("height", Value::Null),
+            ("cols", json!(2.5)),
+            ("cols", json!(11)),
+            ("rows", json!(41)),
+            ("pageWidth", json!(0)),
+            ("pageHeight", json!("Letter")),
+            ("hPitch", json!(99)),
+            ("vPitch", json!(49)),
+        ] {
+            let mut custom = valid.clone();
+            custom[key] = bad;
+            let mut s = Session::new(Document::from_text("Keep this"));
+            assert!(matches!(labels(&mut s, &json!({"custom": custom})), Err(CmdError::Params(_))), "{key}");
+            assert_eq!(s.doc.plain_text(StoryRef::Body).trim(), "Keep this");
+        }
+    }
+
+    #[test]
+    fn custom_counts_override_product_and_top_level_counts() {
+        let mut s = Session::new(Document::new());
+        let result = labels(
+            &mut s,
+            &json!({"text": "Label", "product": "unknown", "rows": 40, "cols": 10,
+            "custom": {"top": 0, "side": 0, "width": 100, "height": 50, "cols": 2, "rows": 3}}),
+        )
+        .unwrap();
+        assert_eq!(result["labels"], 6);
+        assert_eq!(result["filled"], 6);
+    }
 }
