@@ -137,7 +137,7 @@ fn auto_mark(s: &mut Session, v: &Value) -> CmdResult {
             table
                 .rows
                 .iter()
-                .map(|row| (row.cells.first().map(&cell_text).unwrap_or_default(), row.cells.get(1).map(&cell_text).unwrap_or_default()))
+                .map(|row| (row.cells.first().map(cell_text).unwrap_or_default(), row.cells.get(1).map(cell_text).unwrap_or_default()))
                 .collect()
         }
         (None, Some(entries)) => {
@@ -578,6 +578,10 @@ mod automark_tests {
         assert_eq!(r, json!({"marked": 2, "rows": 2}));
         let para = s.doc.para(StoryRef::Body, &Path::top(0)).unwrap();
         assert!(para.objects.iter().any(|o| matches!(o, InlineObject::Field { instr, .. } if instr == "XE \"éclair\"")));
+        for (off, _) in para.objects_with_offsets() {
+            assert_eq!(para.props_of_char(off).hidden, Some(true), "the XE character is hidden");
+            assert_ne!(para.props_at(off).hidden, Some(true), "typing before the XE keeps the word visible");
+        }
         assert!(s.doc.para(StoryRef::Body, &Path::top(1)).unwrap().objects.is_empty());
     }
 }
