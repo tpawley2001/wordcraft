@@ -1,7 +1,7 @@
 use super::{
-    AltText, Anchor, Arc, Blocks, CHARTEX_URI, ConnEnd, ContentTypes, El, Embedded, Float, FloatAlign, Glow, Graphic, GraphicItem, GraphicKind,
-    INK_REL, INK_URI, InlineObject, MAX_STORY_DEPTH, Node, PartKind, Reader, Rels, Rgb, Shadow, ShapeEffects, ShapeExtra, ShapeKind, StoryCtx,
-    TextWarp, Wrap, WrapText, cap_alt, children_of_choice, int, measure, on_off_attr, own_fill, preset_kind, rt, shape_paint, u32_of,
+    AltText, Anchor, Arc, Blocks, CHARTEX_REL, CHARTEX_URI, ConnEnd, ContentTypes, El, Embedded, Float, FloatAlign, Glow, Graphic, GraphicItem,
+    GraphicKind, INK_REL, INK_URI, InlineObject, MAX_STORY_DEPTH, Node, PartKind, Reader, Rels, Rgb, Shadow, ShapeEffects, ShapeExtra, ShapeKind,
+    StoryCtx, TextWarp, Wrap, WrapText, cap_alt, children_of_choice, int, measure, on_off_attr, own_fill, preset_kind, rt, shape_paint, u32_of,
 };
 
 impl Reader<'_> {
@@ -198,9 +198,23 @@ impl Reader<'_> {
         let Some(InlineObject::Image { media, w, h, alt, float, .. }) = self.read_drawing(sc, fallback.child("w:drawing")?, rels) else {
             return None;
         };
-        let items = vec![GraphicItem::Image { rect: [0.0, 0.0, w, h], media }];
+        let items = self.chartex_drawn(choice, rels, w, h).unwrap_or_else(|| vec![GraphicItem::Image { rect: [0.0, 0.0, w, h], media }]);
         let graphic = Arc::new(Graphic { kind: GraphicKind::Chart, items, w, h, source: Some(source), ..Default::default() });
         Some(InlineObject::Graphic { w, h, alt, float, graphic })
+    }
+
+    /// The chart part of a chartex choice (`cx:chart r:id`) drawn from its data, `None` when its
+    /// layout isn't drawn (or the file's graphic budget is spent) so the fallback picture shows.
+    fn chartex_drawn(&mut self, choice: &El, rels: &Rels, w: f32, h: f32) -> Option<Vec<GraphicItem>> {
+        if self.chunks.graphic == 0 {
+            return None;
+        }
+        let id = choice.find("cx:chart")?.attr("r:id")?;
+        let part = crate::read::part_of(rels, id, CHARTEX_REL)?;
+        let space = self.graphic_part(&part)?;
+        let items = crate::read::chart::chartex::chartex_items(&space, &self.doc.settings.theme_colors, w, h)?;
+        self.chunks.graphic = self.chunks.graphic.saturating_sub(graphic_work(&items));
+        Some(items)
     }
 
     /// A group or canvas member that is native ink (`content`, a `w14:contentPart`, inside

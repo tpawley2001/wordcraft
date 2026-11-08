@@ -1773,6 +1773,11 @@ fn chartex_docx(requires: &str, requires_ns: &str) -> Vec<u8> {
 /// after a first choice linked elsewhere, which needs a namespace no reader knows, so a reader
 /// takes the chart's choice.
 fn chartex_docx_linked(requires: &str, requires_ns: &str, link: bool) -> Vec<u8> {
+    chartex_package(requires, requires_ns, link, CHARTEX_XML)
+}
+
+/// [`chartex_docx_linked`] with `chart` as its chart part.
+fn chartex_package(requires: &str, requires_ns: &str, link: bool, chart: &str) -> Vec<u8> {
     let click = if link { r#"<a:hlinkClick r:id="rIdWeb"/>"# } else { "" };
     let other = if link {
         r#"<mc:Choice xmlns:w99="urn:example:unsupported" Requires="w99"><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="254000" cy="254000"/><wp:docPr id="9" name="Other"><a:hlinkClick r:id="rIdOther"/></wp:docPr><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp><wps:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice>"#
@@ -1796,7 +1801,7 @@ fn chartex_docx_linked(requires: &str, requires_ns: &str, link: bool) -> Vec<u8>
         ("_rels/.rels", ROOT_RELS.as_bytes()),
         ("word/document.xml", doc.as_bytes()),
         ("word/_rels/document.xml.rels", doc_rels.as_bytes()),
-        ("word/charts/chartEx1.xml", CHARTEX_XML.as_bytes()),
+        ("word/charts/chartEx1.xml", chart.as_bytes()),
         ("word/charts/_rels/chartEx1.xml.rels", chart_rels.as_bytes()),
         ("word/charts/colors1.xml", COLORS_XML.as_bytes()),
         ("word/embeddings/Microsoft_Excel_Worksheet.xlsx", WORKBOOK.as_bytes()),
@@ -1839,6 +1844,47 @@ fn office_2016_chart_keeps_its_chart_part_and_fallback_through_saves() {
             let entries: Vec<_> = files.iter().map(|(name, bytes)| (name.as_str(), bytes.as_slice())).collect();
             d = wordcraft_docx::read(&zip(&entries)).unwrap();
         }
+    }
+}
+
+/// A waterfall chart (synthetic data) is drawn from its data, not its fallback picture; saving
+/// still writes the chart part and the fallback.
+#[test]
+fn office_2016_waterfall_is_drawn_from_its_data_and_saved_whole() {
+    let pts: String = [100, 20, 50, -40, 130].iter().enumerate().map(|(k, v)| format!(r#"<cx:pt idx="{k}">{v}</cx:pt>"#)).collect();
+    let chart = format!(
+        r#"<cx:chartSpace xmlns:cx="{CHARTEX_NS}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><cx:chartData><cx:externalData r:id="rId1" cx:autoUpdate="0"/><cx:data id="0"><cx:numDim type="val"><cx:f>Sheet1!$B$2:$B$6</cx:f><cx:lvl ptCount="5" formatCode="General">{pts}</cx:lvl></cx:numDim></cx:data></cx:chartData><cx:chart><cx:title/><cx:plotArea><cx:plotAreaRegion><cx:series layoutId="waterfall"><cx:dataLabels pos="outEnd"><cx:visibility seriesName="0" categoryName="0" value="1"/></cx:dataLabels><cx:dataId val="0"/><cx:layoutPr><cx:subtotals><cx:idx val="0"/><cx:idx val="4"/></cx:subtotals></cx:layoutPr></cx:series></cx:plotAreaRegion><cx:axis id="0"><cx:catScaling gapWidth="0.5"/><cx:tickLabels/></cx:axis><cx:axis id="1"><cx:valScaling/><cx:majorGridlines/><cx:tickLabels/></cx:axis></cx:plotArea><cx:legend pos="t"/></cx:chart></cx:chartSpace>"#
+    );
+    let mut d = wordcraft_docx::read(&chartex_package("cx1", "http://schemas.microsoft.com/office/drawing/2015/9/8/chartex", false, &chart)).unwrap();
+    for _ in 0..2 {
+        let g = graphics(&d);
+        let [InlineObject::Graphic { graphic, .. }] = g.as_slice() else { panic!("{g:?}") };
+        assert!(
+            !graphic.items.iter().any(|i| matches!(i, wordcraft_doc::graphic::GraphicItem::Image { .. })),
+            "drawn, not the picture: {:?}",
+            graphic.items
+        );
+        let texts: Vec<&str> = graphic
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                wordcraft_doc::graphic::GraphicItem::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        for t in ["Chart Title", "Increase", "Decrease", "Total", "-40", "130"] {
+            assert!(texts.contains(&t), "{t} in {texts:?}");
+        }
+        let files = unzip(&wordcraft_docx::write(&d).unwrap());
+        let body = text(&files, "word/document.xml");
+        let doc_rels = text(&files, "word/_rels/document.xml.rels");
+        let [cx_id] = attr_values(&body, "cx:chart", "r:id").try_into().unwrap_or_else(|_| panic!("chart lost: {body}"));
+        assert_eq!(text(&files, &part_at("word", &rel(&doc_rels, &cx_id).1)), chart);
+        let fallback = body.split("<mc:Fallback>").nth(1).unwrap_or_else(|| panic!("no fallback: {body}"));
+        let [pic_id] = attr_values(fallback, "a:blip", "r:embed").try_into().unwrap_or_else(|_| panic!("fallback picture lost: {body}"));
+        assert_eq!(files.get(&part_at("word", &rel(&doc_rels, &pic_id).1)).map(Vec::as_slice), Some(&b"fallback picture bytes"[..]));
+        let entries: Vec<_> = files.iter().map(|(name, bytes)| (name.as_str(), bytes.as_slice())).collect();
+        d = wordcraft_docx::read(&zip(&entries)).unwrap();
     }
 }
 
