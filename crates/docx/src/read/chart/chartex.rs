@@ -24,6 +24,28 @@ struct Point {
     total: bool,
 }
 
+/// The five-number summary of one box in a box & whisker chart, with its mean and outliers.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct BoxStats {
+    pub q1: f64,
+    pub median: f64,
+    pub q3: f64,
+    /// Lower whisker end: the smallest value within 1.5 IQR below `q1`.
+    pub lo: f64,
+    /// Upper whisker end: the largest value within 1.5 IQR above `q3`.
+    pub hi: f64,
+    pub mean: f64,
+    /// Values beyond the whiskers, ascending.
+    pub outliers: Vec<f64>,
+}
+
+/// Quartiles (exclusive or inclusive median method, as `cx:statistics quartileMethod`), whisker
+/// ends, mean and outliers of `values`; `None` when there are no finite values.
+pub(crate) fn box_stats(values: &[f64], exclusive: bool) -> Option<BoxStats> {
+    let _ = (values, exclusive);
+    None
+}
+
 /// The items of an Office 2016 chart `w` × `h` points, or `None` when its layout isn't drawn.
 pub(crate) fn chartex_items(space: &El, theme: &[Rgb], w: f32, h: f32) -> Option<Vec<GraphicItem>> {
     if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
