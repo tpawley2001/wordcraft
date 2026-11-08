@@ -362,24 +362,94 @@ impl LabelProduct {
     }
 }
 
+/// Validated sheet geometry, independent of a product's static display metadata.
+struct LabelSheet {
+    geometry: LabelProduct,
+    page_w: f32,
+    page_h: f32,
+}
+
+impl LabelSheet {
+    fn read(v: &Value) -> Result<Self, CmdError> {
+        let Some(custom) = v.get("custom") else {
+            let mut geometry = match p::str(v, "product") {
+                Some(id) => *LabelProduct::by_id(id).ok_or_else(|| CmdError::Params(format!("unknown label product `{id}`")))?,
+                None => LABEL_PRODUCTS[0],
+            };
+            geometry.rows = p::u64(v, "rows").map_or(geometry.rows, |n| n.clamp(1, 40) as usize);
+            geometry.cols = p::u64(v, "cols").map_or(geometry.cols, |n| n.clamp(1, 10) as usize);
+            let (page_w, page_h) = if geometry.paper == "A4" { (595.3, 841.9) } else { (612.0, 792.0) };
+            return Ok(Self { geometry, page_w, page_h });
+        };
+        if !custom.is_object() {
+            return Err(CmdError::Params("custom must be an object".into()));
+        }
+        if custom.get("name").is_some_and(|n| !n.is_string()) {
+            return Err(CmdError::Params("custom name must be a string".into()));
+        }
+        let number = |key: &str, default: Option<f32>, positive: bool| -> Result<f32, CmdError> {
+            let n = match custom.get(key) {
+                None => default,
+                Some(v) => v.as_f64().map(|n| n as f32),
+            };
+            n.filter(|n| n.is_finite() && if positive { *n > 0.0 } else { *n >= 0.0 }).ok_or_else(|| {
+                CmdError::Params(format!("custom {key} must be a {} number in points", if positive { "positive" } else { "nonnegative" }))
+            })
+        };
+        let count = |key: &str, max: u64| -> Result<usize, CmdError> {
+            custom
+                .get(key)
+                .and_then(Value::as_u64)
+                .filter(|n| (1..=max).contains(n))
+                .map(|n| n as usize)
+                .ok_or_else(|| CmdError::Params(format!("custom {key} must be an integer from 1 to {max}")))
+        };
+        let width = number("width", None, true)?;
+        let height = number("height", None, true)?;
+        let geometry = LabelProduct {
+            id: "custom",
+            kind: "address",
+            paper: "",
+            width,
+            height,
+            top: number("top", None, false)?,
+            side: number("side", None, false)?,
+            h_pitch: number("hPitch", Some(width), true)?,
+            v_pitch: number("vPitch", Some(height), true)?,
+            cols: count("cols", 10)?,
+            rows: count("rows", 40)?,
+        };
+        if geometry.h_pitch < width || geometry.v_pitch < height {
+            return Err(CmdError::Params("Label pitch must be at least the label size.".into()));
+        }
+        let page_w = number("pageWidth", Some(612.0), true)?;
+        let page_h = number("pageHeight", Some(792.0), true)?;
+        // Compute in f64 so hostile finite f32 lengths cannot overflow during the fit check.
+        let extent = |margin: f32, pitch: f32, count: usize, size: f32| f64::from(margin) + f64::from(pitch) * (count - 1) as f64 + f64::from(size);
+        if extent(geometry.side, geometry.h_pitch, geometry.cols, width) > f64::from(page_w) + 0.01
+            || extent(geometry.top, geometry.v_pitch, geometry.rows, height) > f64::from(page_h) + 0.01
+        {
+            return Err(CmdError::Params("The labels don't fit on the page.".into()));
+        }
+        Ok(Self { geometry, page_w, page_h })
+    }
+}
+
 /// Labels: a new document with a table of labels laid out like the sheet (`product`; spacer
 /// columns and rows stand for the gaps). A full page of the same `text`, as many sheets as
 /// needed for one label per recipient, or (`single`: `{"row", "col"}`, from 1) one label
 /// at that place on the sheet.
 pub(super) fn labels(s: &mut Session, v: &Value) -> CmdResult {
-    let prod = match p::str(v, "product") {
-        Some(id) => *LabelProduct::by_id(id).ok_or_else(|| CmdError::Params(format!("unknown label product `{id}`")))?,
-        None => LABEL_PRODUCTS[0],
-    };
-    let rows = p::u64(v, "rows").map_or(prod.rows, |n| n.clamp(1, 40) as usize);
-    let cols = p::u64(v, "cols").map_or(prod.cols, |n| n.clamp(1, 10) as usize);
+    let sheet = LabelSheet::read(v)?;
+    let prod = sheet.geometry;
+    let (rows, cols) = (prod.rows, prod.cols);
     let single = v.get("single").filter(|x| !x.is_null()).map(|x| {
         let at = |k: &str| x.get(k).and_then(Value::as_u64).unwrap_or(1).max(1) as usize;
         (at("row").min(rows), at("col").min(cols))
     });
     let from_rec = single.is_none() && p::bool(v, "fromRecipients").unwrap_or(!s.merge.rows.is_empty() && p::str(v, "text").is_none());
     let text = label_text(v, "text")?.unwrap_or_else(|| "Name\nAddress\nCity, ST 00000".into());
-    let (page_w, page_h) = if prod.paper == "A4" { (595.3, 841.9) } else { (612.0, 792.0) };
+    let (page_w, page_h) = (sheet.page_w, sheet.page_h);
     let h_gap = (prod.h_pitch - prod.width).max(0.0);
     let v_gap = (prod.v_pitch - prod.height).max(0.0);
     let mut d = Document::new();
