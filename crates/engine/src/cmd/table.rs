@@ -180,7 +180,7 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"text"?: string, "title"?: string} (empty clears)"#)),
         t(CommandSpec::new("table.sort", "Sort", "Table Layout › Data", sort_table)
-            .params(r#"{"keys"?: [{"column": n, "type"?: "text|number|date", "descending"?: bool}] (1 to 3; ties go to the next key), "column"?: n, "descending"?: bool (one key, numbers then text), "header"?: bool}"#)),
+            .params(r#"{"keys"?: [{"column": n, "type"?: "text|number|date", "descending"?: bool}] (1 to 3; ties go to the next key), "column"?: non-negative JSON integer (0-based, default 0; must name a column in the table), "descending"?: bool (one key, numbers then text), "header"?: bool}"#)),
         t(CommandSpec::new("table.toText", "Convert to Text", "Table Layout › Data", to_text)
             .params(r#"{"separator"?: "tab|comma|paragraph|other", "char"?: string (with other)} (the selected rows, or the whole table)"#)),
         t(CommandSpec::new("table.formula", "Formula", "Table Layout › Data", formula).params(r#"{"formula"?: "=SUM(ABOVE)"}"#)),

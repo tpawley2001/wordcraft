@@ -157,8 +157,8 @@ impl Chart {
         self.accents.get(i % 6).copied().unwrap_or(Rgb::BLACK)
     }
 
-    /// Colour of series `j` of group `g`: its own, else the accent its `c:idx` picks (its place
-    /// among all the chart's series when it has none).
+    /// Colour of series `j` of group `g`: its own, else the accent its `c:idx` picks (as Word
+    /// does; `c:order` doesn't matter), else the one its place among all the chart's series picks.
     pub(super) fn series_colour(&self, g: &Group, j: usize) -> Rgb {
         let s = g.series.get(j);
         s.and_then(|s| s.color).unwrap_or_else(|| self.accent(s.and_then(|s| s.idx).unwrap_or(g.first + j)))
@@ -317,6 +317,7 @@ pub(super) fn text_size(space: &El) -> f32 {
 impl Series {
     fn parse(ser: &El, scatter: bool, theme: &[Rgb], cap: usize) -> Series {
         let name = ser.child("c:tx").and_then(|t| t.find("c:v")).map(|v| label(v.text().trim())).unwrap_or_default();
+        let idx = ser.child("c:idx").and_then(|e| e.attr("val")).and_then(|v| v.trim().parse::<u32>().ok()).and_then(|v| usize::try_from(v).ok());
         let sp = ser.child("c:spPr");
         let ln = sp.and_then(|p| p.child("a:ln"));
         let marker = ser.child("c:marker").and_then(|m| m.child("c:spPr")).and_then(|p| fill_colour(p, theme));
@@ -337,7 +338,6 @@ impl Series {
             }
         }
         let labels = show_values(ser.child("c:dLbls"));
-        let idx = ser.child("c:idx").and_then(|e| e.attr("val")).and_then(int).and_then(|i| usize::try_from(i).ok());
         let order = ser.child("c:order").and_then(|e| e.attr("val")).and_then(int);
         Series { name, idx, order, color, line_w, line, values, xs, points, fmt, x_fmt, labels, raw: Vec::new() }
     }

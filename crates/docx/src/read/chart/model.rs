@@ -135,7 +135,8 @@ pub(super) struct Axis {
 
 pub(super) struct Series {
     pub(super) name: String,
-    /// `c:idx`: picks the default colour.
+    /// The series' `c:idx` (an `xsd:unsignedInt`), which picks its automatic colour; `None`
+    /// when missing or not a valid number.
     pub(super) idx: Option<usize>,
     /// `c:order`: the place in the legend.
     pub(super) order: Option<i64>,

@@ -35,7 +35,17 @@ pub(super) fn sort_table(s: &mut Session, v: &Value) -> CmdResult {
                 })
                 .collect::<Result<_, CmdError>>()?
         }
-        None => vec![(p::u64(v, "column").unwrap_or(0) as usize, SortType::Auto, p::bool(v, "descending").unwrap_or(false))],
+        None => {
+            let column = match v.get("column") {
+                None => 0,
+                Some(value) => value.as_u64().ok_or_else(|| CmdError::Params("`column` must be a non-negative JSON integer".into()))?,
+            };
+            let col = usize::try_from(column)
+                .ok()
+                .filter(|&col| t.rows.iter().any(|row| col < row.cells.len()))
+                .ok_or_else(|| CmdError::Params("`column` is outside the table".into()))?;
+            vec![(col, SortType::Auto, p::bool(v, "descending").unwrap_or(false))]
+        }
     };
     let skip = usize::from(header.unwrap_or(t.rows.first().is_some_and(|r| r.props.header))).min(t.rows.len());
     // Each body row's values, one per key: a total order, so sorting never sees inconsistent

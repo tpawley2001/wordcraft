@@ -17,6 +17,13 @@ pub(crate) struct Runtime {
     pub(crate) manual_window_open: bool,
 }
 
+impl WordApp {
+    /// Upstream turns its self-update off for a process started with another program's AppImage
+    /// variables (#5653). This build has no self-update, so there is nothing to turn off.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn disable_self_update(&mut self) {}
+}
+
 pub(crate) fn check(app: &mut WordApp) {
     app.updates_rt.manual_window_open = true;
     app.status(message());
