@@ -218,3 +218,5 @@ mod tests;
 #[cfg(test)]
 #[allow(clippy::manual_contains)]
 mod three_d_tests;
+#[cfg(test)]
+mod treemap_tests;
