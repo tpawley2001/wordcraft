@@ -433,6 +433,30 @@ mod custom_label_tests {
     use super::*;
 
     #[test]
+    fn custom_fit_checks_pitch_counts_and_page_tolerance() {
+        let custom = CustomLabel {
+            top: 0.0,
+            side: 0.0,
+            width: 306.0,
+            height: 396.0,
+            h_pitch: 306.0,
+            v_pitch: 396.0,
+            cols: 2,
+            rows: 2,
+            ..CustomLabel::from_product(&LABEL_PRODUCTS[0])
+        };
+        assert!(custom.fits());
+        assert!(CustomLabel { side: 0.005, top: 0.005, ..custom.clone() }.fits());
+        assert!(!CustomLabel { side: 0.02, ..custom.clone() }.fits());
+        assert!(!CustomLabel { top: 0.02, ..custom.clone() }.fits());
+        assert!(!CustomLabel { h_pitch: 305.0, ..custom.clone() }.fits());
+        assert!(!CustomLabel { v_pitch: 395.0, ..custom.clone() }.fits());
+        assert!(!CustomLabel { cols: 0, ..custom.clone() }.fits());
+        assert!(!CustomLabel { rows: 0, ..custom.clone() }.fits());
+        assert!(!CustomLabel { width: f32::NAN, ..custom }.fits());
+    }
+
+    #[test]
     fn custom_params_replace_product() {
         let custom = CustomLabel::from_product(&LABEL_PRODUCTS[0]);
         let form = LabelsForm { text: "Address".into(), product: 0, custom: Some(custom.clone()), single: false, row: 1, col: 1, recipients: false };
