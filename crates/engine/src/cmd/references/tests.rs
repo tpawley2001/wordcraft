@@ -677,20 +677,10 @@ fn output_shows_fresh_seq_styleref_and_ref_results() {
     assert_eq!(fields(&s).iter().map(|f| f.1.as_str()).collect::<Vec<_>>(), stored, "the document keeps them");
     let pdf = s.print_pdf(&json!({})).unwrap().0;
     assert!(pdf.len() > 1000);
-    // Once the fields are current, output copies the document as it is.
+    // Once the fields are current, output copies nothing.
     update_seq(&mut s).unwrap();
     update_fields(&mut s).unwrap();
-    let out = output_fields(&s.doc).expect("output always has a document to lay out");
-    let shown: Vec<String> = out
-        .para_paths(StoryRef::Body)
-        .iter()
-        .flat_map(|p| out.para(StoryRef::Body, p).unwrap().objects.clone())
-        .filter_map(|o| match o {
-            InlineObject::Field { result, .. } => Some(result),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(shown, stored);
+    assert!(output_fields(&s.doc).is_none());
 }
 
 #[test]
