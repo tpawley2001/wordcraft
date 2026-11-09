@@ -32,6 +32,7 @@ mod ole_embed_forms;
 mod ole_embed_keep;
 mod ole_print;
 mod ole_result_objects;
+mod section_columns;
 mod section_page_numbers;
 mod style_name_case;
 mod table_float;
