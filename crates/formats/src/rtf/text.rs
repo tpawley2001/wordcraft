@@ -189,49 +189,52 @@ impl Reader {
         }
     }
 
+    /// Document text: a run in the current formatting, or a shape field's result.
+    fn body_text(&mut self, s: &str) {
+        if self.st.hidden {
+            return;
+        }
+        let mut f = self.st.fmt.clone();
+        if s.contains([MARK_OPEN, MARK_CLOSE]) {
+            self.para.push_text(&s.replace([MARK_OPEN, MARK_CLOSE], "\u{FFFD}"), &f);
+            self.para_has = true;
+            return;
+        }
+        let r = self.st.rev;
+        if r.ins {
+            f.ins = Some(self.rev_mark(r.auth, r.dttm));
+        }
+        if r.del {
+            f.del = Some(self.rev_mark(r.authdel, r.dttmdel));
+        }
+        let c = &self.st.chg_c;
+        if let Some(words) = c.old.clone() {
+            let mark = self.rev_mark(c.auth, c.date);
+            let old = self.old_fmt(&words);
+            f.fmt_change = Some(Box::new(model::FmtChange { mark, old }));
+        }
+        if !self.shapes.is_empty()
+            && let Some(instr) =
+                self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty() && super::word::hyperlink(s).is_none())
+        {
+            if let Some(Inline::Field { instr: old, result, .. }) = self.para.inlines.last_mut()
+                && old == instr
+            {
+                result.push_str(s);
+            } else {
+                self.para.inlines.push(Inline::Field { instr: instr.clone(), result: s.to_string(), fmt: f, locked: false });
+            }
+        } else {
+            self.para.push_text(s, &f);
+        }
+        self.para_has = true;
+    }
+
     pub(super) fn text(&mut self, s: &str) {
         match self.st.dest {
             Dest::ShapeName | Dest::ShapeValue => self.shape_property_text(s),
             Dest::ShapeInst => {}
-            Dest::Body => {
-                if self.st.hidden {
-                    return;
-                }
-                let mut f = self.st.fmt.clone();
-                if s.contains([MARK_OPEN, MARK_CLOSE]) {
-                    self.para.push_text(&s.replace([MARK_OPEN, MARK_CLOSE], "\u{FFFD}"), &f);
-                    self.para_has = true;
-                    return;
-                }
-                let r = self.st.rev;
-                if r.ins {
-                    f.ins = Some(self.rev_mark(r.auth, r.dttm));
-                }
-                if r.del {
-                    f.del = Some(self.rev_mark(r.authdel, r.dttmdel));
-                }
-                let c = &self.st.chg_c;
-                if let Some(words) = c.old.clone() {
-                    let mark = self.rev_mark(c.auth, c.date);
-                    let old = self.old_fmt(&words);
-                    f.fmt_change = Some(Box::new(model::FmtChange { mark, old }));
-                }
-                if !self.shapes.is_empty()
-                    && let Some(instr) =
-                        self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty() && super::word::hyperlink(s).is_none())
-                {
-                    if let Some(Inline::Field { instr: old, result, .. }) = self.para.inlines.last_mut()
-                        && old == instr
-                    {
-                        result.push_str(s);
-                    } else {
-                        self.para.inlines.push(Inline::Field { instr: instr.clone(), result: s.to_string(), fmt: f, locked: false });
-                    }
-                } else {
-                    self.para.push_text(s, &f);
-                }
-                self.para_has = true;
-            }
+            Dest::Body => self.body_text(s),
             Dest::FontTbl => {
                 for c in s.chars() {
                     if c == ';' {
