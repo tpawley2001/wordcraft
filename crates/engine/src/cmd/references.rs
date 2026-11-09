@@ -12,6 +12,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
 mod captions;
 mod fields;
+mod includetext;
 mod notes;
 mod numbers;
 mod properties;

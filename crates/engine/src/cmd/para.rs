@@ -20,7 +20,7 @@ mod tools;
 
 use format::{align, asian_typography, cur, direction, line_spacing, ls, set_align, set_props, tog};
 pub use format::{cur as selection_para, fmt, indent, outdent};
-pub use lists::{ListButtons, list_buttons, manage_list, touch_all};
+pub use lists::{ListButtons, list_buttons, manage_list, style_description, touch_all};
 use lists::{list, restart_numbering};
 pub(crate) use outline::{ensure_heading_style, set_heading};
 use outline::{move_paras, outline_step, sort};
