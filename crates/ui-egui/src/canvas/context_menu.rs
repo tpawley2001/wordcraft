@@ -122,6 +122,9 @@ pub(super) fn context_menu(app: &mut WordApp, ui: &mut Ui) {
     }
     item(ui, app, "Font…", "ui.dialog", json!({"name": "font"}));
     item(ui, app, "Paragraph…", "ui.dialog", json!({"name": "paragraph"}));
+    if wordcraft_engine::cmd::lists::caret_list(&app.session).is_some() {
+        item(ui, app, "Adjust List Indents…", "list.adjustIndents", json!({}));
+    }
     item(ui, app, "Link…", "ui.dialog", json!({"name": "link"}));
     item(ui, app, "New Comment", "review.newComment", json!({}));
     if !wordcraft_engine::cmd::fields::selected(&app.session).is_empty() {
