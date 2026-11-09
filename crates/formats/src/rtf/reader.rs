@@ -434,6 +434,7 @@ impl Reader {
 
     /// End the current paragraph (`\par`, `\cell`).
     pub(super) fn end_para(&mut self, in_cell: bool) {
+        self.flush_high_surrogate();
         let read = std::mem::take(&mut self.para);
         let props = self.para_props(&self.st);
         let mut p = Para { inlines: read.inlines, mark_ins: read.mark_ins, mark_del: read.mark_del, ..props };
@@ -475,6 +476,7 @@ impl Reader {
     }
 
     pub(super) fn end_row(&mut self) {
+        self.flush_high_surrogate();
         if self.para_has {
             self.end_cell();
         }
