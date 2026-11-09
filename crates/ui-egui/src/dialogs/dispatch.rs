@@ -54,6 +54,7 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::LockTracking { .. } => lock_tracking_dialog(app, ui, d),
         Dialog::ReadOnlyRecommended { .. } => read_only_recommended_dialog(app, ui, d),
         Dialog::DefineList { form } => crate::dialogs_lists::define_list(app, ui, form),
+        Dialog::AdjustListIndents { form } => crate::dialogs_lists::adjust_list_indents(app, ui, form),
         Dialog::TrackOptions { form } => crate::dialogs_lists::track_options(app, ui, form),
         Dialog::Review(d) => crate::dialogs_review::body(app, ui, d),
         Dialog::CustomizeKeyboard { form, .. } => crate::dialogs_keyboard::customize_keyboard(app, ui, form),

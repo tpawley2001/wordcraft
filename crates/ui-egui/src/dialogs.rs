@@ -505,6 +505,10 @@ pub enum Dialog {
     DefineList {
         form: Box<crate::dialogs_lists::ListForm>,
     },
+    /// Right-click a list item › Adjust List Indents: the caret's level of the caret's list.
+    AdjustListIndents {
+        form: Box<crate::dialogs_lists::IndentsForm>,
+    },
     /// Review › Tracking › Track Changes Options (#328).
     TrackOptions {
         form: Box<crate::dialogs_lists::TrackForm>,
@@ -634,6 +638,7 @@ impl Dialog {
             Dialog::LockTracking { .. } => "lockTracking",
             Dialog::ReadOnlyRecommended { .. } => "readOnlyRecommended",
             Dialog::DefineList { .. } => "defineList",
+            Dialog::AdjustListIndents { .. } => "adjustListIndents",
             Dialog::TrackOptions { .. } => "trackChangesOptions",
             Dialog::Review(d) => d.name(),
             Dialog::CustomizeKeyboard { .. } => "customizeKeyboard",
@@ -992,6 +997,13 @@ impl Dialog {
             "compatibilityChecker" => {
                 return Self::report("file.compatibility", &app.session.run("file.compatibility", &json!({})).unwrap_or_default());
             }
+            "adjustListIndents" => match crate::dialogs_lists::IndentsForm::read(app) {
+                Some(form) => Dialog::AdjustListIndents { form: Box::new(form) },
+                None => {
+                    app.status(tl!("Put the caret in a list first."));
+                    return None;
+                }
+            },
             "controlProperties" => match crate::dialogs_controls::ControlForm::read(app) {
                 Some(form) => Dialog::Control { form: Box::new(form) },
                 None => {

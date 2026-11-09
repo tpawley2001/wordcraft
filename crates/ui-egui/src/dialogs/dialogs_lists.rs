@@ -608,6 +608,109 @@ pub fn track_options(app: &mut WordApp, ui: &mut Ui, f: &mut TrackForm) -> bool 
     ok || cancel
 }
 
+/// The Adjust List Indents fields, in the interface unit.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Indents {
+    pub number_position: f32,
+    pub text_indent: f32,
+    pub follow: String,
+    pub tab_on: bool,
+    pub tab_at: f32,
+}
+
+impl Indents {
+    /// The tab stop the fields ask for: none unless the number is followed by a tab.
+    fn tab(&self) -> Option<f32> {
+        (self.tab_on && self.follow == "tab").then_some(self.tab_at)
+    }
+}
+
+/// Adjust List Indents (right-click a list item): the caret's level of the caret's list, as
+/// opened (`start`) and as edited (`now`).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct IndentsForm {
+    pub now: Indents,
+    #[serde(skip)]
+    start: Indents,
+}
+
+impl IndentsForm {
+    /// The caret's level, or `None` when the caret is not in a list.
+    pub fn read(app: &WordApp) -> Option<IndentsForm> {
+        let s = &app.session;
+        let num = caret_list(s)?;
+        let para = s.doc.para_at(&s.sel.focus)?;
+        let level = para.props.numbering.or_else(|| s.doc.styles.resolve_para(&para.props).numbering).map_or(0, |n| usize::from(n.level));
+        let level = level.min(LEVELS - 1);
+        let l = LevelForm::read(level, &level_json(levels_of(s, num)?.get(level)?));
+        let start = Indents { number_position: l.aligned_at, text_indent: l.indent_at, follow: l.follow, tab_on: l.tab_on, tab_at: l.tab_at };
+        Some(IndentsForm { now: start.clone(), start })
+    }
+
+    /// `list.adjustIndents` parameters: only the fields that changed (none: nothing to do).
+    pub fn params(&self) -> Value {
+        let k = crate::options::unit().pt_per_unit();
+        let (a, b) = (&self.start, &self.now);
+        let mut out = serde_json::Map::new();
+        if a.number_position != b.number_position {
+            out.insert("numberPosition".into(), json!(b.number_position * k));
+        }
+        if a.text_indent != b.text_indent {
+            out.insert("textIndent".into(), json!(b.text_indent * k));
+        }
+        if a.follow != b.follow {
+            out.insert("follow".into(), json!(b.follow));
+        }
+        if a.tab() != b.tab() {
+            out.insert("tabAt".into(), b.tab().map_or(Value::Null, |t| json!(t * k)));
+        }
+        Value::Object(out)
+    }
+}
+
+/// Adjust List Indents. Returns true to close.
+pub fn adjust_list_indents(app: &mut WordApp, ui: &mut Ui, f: &mut IndentsForm) -> bool {
+    let unit = crate::options::unit();
+    fn len(v: &mut f32, unit: wordcraft_geom::Unit) -> egui::DragValue<'_> {
+        egui::DragValue::new(v).speed(0.01).range(-10.0..=22.0).measure(unit).max_decimals(2)
+    }
+    let l = &mut f.now;
+    crate::rtl::grid(ui, egui::Grid::new("adjust_list_indents").num_columns(2).spacing(vec2(12.0, 6.0)), |ui| {
+        ui.label(tl!("Number position:"));
+        ui.add(len(&mut l.number_position, unit));
+        ui.end_row();
+        ui.label(tl!("Text indent:"));
+        ui.add(len(&mut l.text_indent, unit));
+        ui.end_row();
+        ui.label(tl!("Follow number with:"));
+        let follow = |k: &str| match k {
+            "space" => tl!("Space"),
+            "nothing" => tl!("Nothing"),
+            _ => tl!("Tab character"),
+        };
+        craft_ui::ComboBox::from_id_salt("ali_follow").selected_text(follow(&l.follow)).show_ui(ui, |ui| {
+            for k in ["tab", "space", "nothing"] {
+                ui.selectable_value(&mut l.follow, k.to_string(), follow(k));
+            }
+        });
+        ui.end_row();
+        let tab = l.follow == "tab";
+        ui.add_enabled_ui(tab, |ui| ui.checkbox(&mut l.tab_on, tl!("Add tab stop at:")));
+        ui.add_enabled(tab && l.tab_on, len(&mut l.tab_at, unit));
+        ui.end_row();
+    });
+    let (ok, cancel) = buttons(ui, tl!("OK"));
+    let params = f.params();
+    if ok
+        && params.as_object().is_some_and(|p| !p.is_empty())
+        && let Err(e) = app.run("list.adjustIndents", params)
+    {
+        app.status(e);
+    }
+    ok || cancel
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -731,5 +834,32 @@ mod tests {
         for (v, _) in super::DELETE_MARKS {
             a.run("review.trackingOptions", json!({"deleteMark": v, "moveFromMark": v})).unwrap();
         }
+    }
+
+    /// The context menu's Adjust List Indents opens on the caret's level; OK sends only what
+    /// changed, Cancel nothing.
+    #[test]
+    fn adjust_list_indents_opens_on_the_caret_level_and_sends_changes() {
+        let mut a = app();
+        a.run("text.insert", json!({"text": "Item"})).unwrap();
+        assert_eq!(a.run("list.adjustIndents", json!({})).unwrap(), json!({"pending": "adjustListIndents"}));
+        assert!(a.dialog.is_none(), "not in a list: no dialog");
+        a.run("para.numbering", json!({})).unwrap();
+        assert_eq!(a.run("list.adjustIndents", json!({})).unwrap(), json!({"pending": "adjustListIndents"}));
+        let Some(Dialog::AdjustListIndents { form }) = &mut a.dialog else { panic!("dialog") };
+        assert_eq!(form.params(), json!({}), "unchanged: nothing to send");
+        let k = crate::options::unit().pt_per_unit();
+        form.now.text_indent += 9.0 / k;
+        form.now.follow = "space".into();
+        let params = form.params();
+        assert!(params.get("numberPosition").is_none() && params.get("textIndent").is_some(), "{params}");
+        assert_eq!(params["follow"], json!("space"));
+        a.dialog = None;
+        let before = a.session.run("list.get", &json!({})).unwrap();
+        a.run("list.adjustIndents", params).unwrap();
+        let got = a.session.run("list.get", &json!({})).unwrap();
+        let ind = |v: &serde_json::Value| v["levels"][0]["indentAt"].as_f64().unwrap();
+        assert!((ind(&got) - ind(&before) - 9.0).abs() < 0.01);
+        assert_eq!(got["levels"][0]["follow"], json!("space"));
     }
 }
