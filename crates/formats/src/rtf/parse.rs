@@ -28,51 +28,73 @@ struct Parsed {
     foreign_styles: Vec<(String, wordcraft_doc::props::ParaProps, wordcraft_doc::props::CharProps)>,
 }
 
-/// Where the document `{\rtf…}` starting at `start` ends: just past the last `}` that closes it
-/// (RTF spec, "RTF Syntax": the file is one group). Text, control words and raw bytes after that
-/// brace are not part of it, nor is another group starting `{\rtf` there. A stray `}` inside the
-/// document that closes the outer group early doesn't end it while more groups close after it.
+/// Where the document `{\rtf…}` starting at `start` ends: just past the `}` that first brings the
+/// depth back to 0, or the end of the bytes if the outer group never closes (RTF spec, "RTF
+/// Syntax": the file is one group). Anything after that brace is not part of the document: text,
+/// control words, raw bytes and groups, another `{\rtf` group included. A stray `}` inside the
+/// document closes the outer group there, so what follows it is ignored too. `\binN` data is
+/// skipped by the count the parser reads, so braces in it don't count.
 fn document_end(bytes: &[u8], start: usize) -> usize {
     let mut depth = 0usize;
-    let mut end = bytes.len();
-    let mut closed = false;
     let mut i = start;
     while let Some(&c) = bytes.get(i) {
         match c {
             b'{' => {
-                if closed && depth == 0 && bytes.get(i + 1..).is_some_and(|b| b.starts_with(b"\\rtf")) {
-                    break;
-                }
                 depth = depth.saturating_add(1);
                 i += 1;
             }
             b'}' => {
-                depth = depth.saturating_sub(1);
                 i += 1;
-                if depth == 0 {
-                    end = i;
-                    closed = true;
+                if depth <= 1 {
+                    return i;
                 }
+                depth -= 1;
             }
-            b'\\' if bytes.get(i + 1..).is_some_and(|b| b.starts_with(b"bin")) => {
-                // `\binN` and its N raw bytes, which may hold braces.
-                let mut k = i + 4;
-                let mut n = 0usize;
-                while let Some(d) = bytes.get(k).filter(|d| d.is_ascii_digit()) {
-                    n = n.saturating_mul(10).saturating_add(usize::from(d - b'0'));
-                    k += 1;
-                }
-                if bytes.get(k) == Some(&b' ') {
-                    k += 1;
-                }
-                i = k.saturating_add(n);
-            }
-            // An escaped brace or backslash is text.
-            b'\\' => i += 2,
+            b'\\' => i = past_control(bytes, i),
             _ => i += 1,
         }
     }
-    end
+    bytes.len()
+}
+
+/// Where the control symbol or word starting with the `\` at `i` ends, lexed as `parse_full`
+/// lexes it: up to 32 letters, an optional `-`, at most 10 digits (clamped to `i32`) and one
+/// optional space. After `\bin` that is past its data too. An escaped brace or backslash is text.
+fn past_control(bytes: &[u8], i: usize) -> usize {
+    if !bytes.get(i + 1).is_some_and(u8::is_ascii_alphabetic) {
+        return i.saturating_add(2);
+    }
+    let mut j = i + 1;
+    while bytes.get(j).is_some_and(u8::is_ascii_alphabetic) && j - i <= 32 {
+        j += 1;
+    }
+    let is_bin = bytes.get(i + 1..j) == Some(b"bin".as_slice());
+    let mut k = j;
+    let neg = bytes.get(k) == Some(&b'-');
+    if neg {
+        k += 1;
+    }
+    let d0 = k;
+    let mut v = 0i64;
+    while let Some(d) = bytes.get(k).filter(|d| d.is_ascii_digit()) {
+        if k - d0 >= 10 {
+            break;
+        }
+        v = v * 10 + i64::from(d - b'0');
+        k += 1;
+    }
+    if k == d0 && neg {
+        k -= 1;
+    }
+    if bytes.get(k) == Some(&b' ') {
+        k += 1;
+    }
+    if !is_bin {
+        return k;
+    }
+    let v = if neg { -v } else { v };
+    let n = usize::try_from(v.clamp(0, i64::from(i32::MAX))).unwrap_or(0);
+    k.saturating_add(n)
 }
 
 fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
