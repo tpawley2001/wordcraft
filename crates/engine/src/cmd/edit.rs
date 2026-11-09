@@ -156,7 +156,7 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(r#"{"text": string, "with": string (^p ^t ^& ^c …; \\1 with wildcards; with regex also $1 ${n} ${name} $0 $$ \\1 \\n (paragraph mark) \\t), "format"?, "replaceFormat"?: {…} | null (Replace with's formatting; empty `with` keeps the text and only formats it), …options of edit.find}"#),
         CommandSpec::new("edit.goto", "Go To", "Home › Editing › Find", goto)
             .key("Mod+Alt+G / F5")
-            .params(r#"{"page"?: n, "pageBy"?: int (pages forward, negative back, from the caret's page), "bookmark"?: string (selects its text), "paragraph"?: n} | {"what": "page|section|bookmark|comment|footnote|endnote|field|table|graphic|equation|object|heading", "n"?: n (1-based, clamped), "by"?: int (+k after / -k before the selection; neither = Next), "name"?: string (bookmark; comment reviewer; field type such as PAGE)}; none opens Find and Replace on its Go To tab"#)
+            .params(r#"{"page"?: n, "pageBy"?: int (pages forward, negative back, from the caret's page), "bookmark"?: string (selects its text), "paragraph"?: n} | {"what": "page|section|line|bookmark|comment|footnote|endnote|field|table|graphic|equation|object|heading", "n"?: n (1-based, clamped), "by"?: int (+k after / -k before the selection; neither = Next), "name"?: string (bookmark; comment reviewer; field type such as PAGE)}; none opens Find and Replace on its Go To tab"#)
             .pure(),
         CommandSpec::new("edit.goBack", "Go Back", "Navigation", |s, _| {
             let p = s.go_back().ok_or_else(|| CmdError::Failed("no edits to go back to yet".into()))?;
@@ -979,6 +979,7 @@ fn goto_what(s: &mut Session, v: &Value, what: &str) -> CmdResult {
             };
             return goto(s, &page);
         }
+        "line" => return goto_line(s, n, by),
         "bookmark" if name.is_empty() => return Err(CmdError::Params("`name` (the bookmark) is required".into())),
         "bookmark" => return goto(s, &json!({"bookmark": name})),
         "section" => Target::SectionStarts,
@@ -1029,6 +1030,57 @@ fn goto_what(s: &mut Session, v: &Value, what: &str) -> CmdResult {
     if let Some(o) = r.as_object_mut() {
         o.insert("found".into(), json!(true));
         o.insert("what".into(), json!(what));
+        o.insert("index".into(), json!(idx + 1));
+        o.insert("count".into(), json!(count));
+    }
+    Ok(r)
+}
+
+/// Go To › Line: the start of the `n`-th layout line of the main text (counted over every page),
+/// or `by` lines down (up when negative) from the caret's line, clamped to the document.
+fn goto_line(s: &mut Session, n: Option<u64>, by: Option<i64>) -> CmdResult {
+    let focus = s.sel.focus.clone();
+    let l = s.layout();
+    // (page, start of the line); `here` is the caret's line.
+    let mut lines: Vec<(usize, Pos)> = Vec::new();
+    let mut here = None;
+    for (pi, page) in l.pages.iter().enumerate() {
+        for it in &page.items {
+            let wordcraft_layout::Placed::Lines { story: StoryRef::Body, path, para, l0, l1, .. } = it else { continue };
+            let caret_line = (focus.story == StoryRef::Body && focus.path == *path).then(|| para.line_of(focus.off));
+            for li in *l0..*l1 {
+                let Some(ln) = para.lines.get(li) else { break };
+                if here.is_none() && caret_line == Some(li) {
+                    here = Some(lines.len());
+                }
+                lines.push((pi, Pos { story: StoryRef::Body, path: path.clone(), off: ln.start }));
+            }
+        }
+    }
+    let count = lines.len();
+    if count == 0 {
+        return Err(CmdError::Failed("This document has no lines.".into()));
+    }
+    let idx = match (n, by) {
+        (Some(n), _) => usize::try_from(n).unwrap_or(usize::MAX).clamp(1, count) - 1,
+        (None, Some(0)) | (None, None) => return Ok(json!({"found": false, "what": "line", "count": count})),
+        (None, Some(k)) => {
+            let here = here.unwrap_or(0);
+            let steps = usize::try_from(k.unsigned_abs()).unwrap_or(usize::MAX);
+            if k > 0 { here.saturating_add(steps).min(count - 1) } else { here.saturating_sub(steps) }
+        }
+    };
+    let Some((page, at)) = lines.into_iter().nth(idx) else {
+        return Ok(json!({"found": false, "what": "line", "count": count}));
+    };
+    s.sel = Selection::caret(at);
+    s.goal_x = None;
+    s.page_hint = page;
+    s.push_ui_request(json!({"scrollTo": "caret"}));
+    let mut r = sel_result(s)?;
+    if let Some(o) = r.as_object_mut() {
+        o.insert("found".into(), json!(true));
+        o.insert("what".into(), json!("line"));
         o.insert("index".into(), json!(idx + 1));
         o.insert("count".into(), json!(count));
     }

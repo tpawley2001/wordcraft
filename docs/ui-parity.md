@@ -1,6 +1,6 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-09 · **Change:** trivial (P0124: Adjust List Indents dialog from a list item's context menu. Readiness estimates unchanged); previously trivial (P0159: Review › Proofing › Readability Statistics (`review.readability`: counts, averages, Flesch Reading Ease, Flesch-Kincaid Grade Level; no passive sentences, #4152) and File › Options › Proofing › Show readability statistics, shown in the Proofing pane when the check is complete. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-09 · **Change:** trivial (P0162: Find and Replace › Go To lists Line, going to the n-th layout line of the main text or +n/-n lines from the caret. Readiness estimates unchanged.); previously trivial (P0124: Adjust List Indents dialog from a list item's context menu. Readiness estimates unchanged); previously trivial (P0159: Review › Proofing › Readability Statistics (`review.readability`: counts, averages, Flesch Reading Ease, Flesch-Kincaid Grade Level; no passive sentences, #4152) and File › Options › Proofing › Show readability statistics, shown in the Proofing pane when the check is complete. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-09 · **Change:** trivial (P0150: View › Window › Reset Window Position puts the two windows viewed side by side back on equal halves of the screen, keeping Synchronous Scrolling; gap #27. Readiness estimates unchanged.)
 
@@ -163,6 +163,7 @@ Insert Hyperlink › E-mail Address accepts an address and subject and lists rec
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-09 | trivial | P0162: Find and Replace › Go To lists Line ("Enter line number:"): a number goes to that layout line of the main text, +n/-n move from the caret's line, clamped to the document. Readiness estimates unchanged. |
 | 2026-11-09 | trivial | Adjust List Indents… in a list item's context menu: number position, text indent, follow number with and tab stop for that level of the list, in the interface unit (`list.adjustIndents`). |
 | 2026-11-09 | trivial | P0144: Insert › Text from File takes a Range bookmark and inserts only that bookmark's text, as Word's Insert File dialog does; an unknown bookmark is an error and changes nothing. Readiness estimates unchanged. |
 | 2026-11-08 | trivial | P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged. |

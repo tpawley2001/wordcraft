@@ -69,6 +69,8 @@ fn go_to_reads_its_number_box_for_every_kind() {
     }
     assert_eq!(goto_number(GoToWhat::Section, "2"), Some(json!({"what": "section", "n": 2})));
     assert_eq!(goto_number(GoToWhat::Heading, "-2"), Some(json!({"what": "heading", "by": -2})));
+    assert_eq!(goto_number(GoToWhat::Line, "12"), Some(json!({"what": "line", "n": 12})));
+    assert_eq!(goto_number(GoToWhat::Line, "+3"), Some(json!({"what": "line", "by": 3})));
 }
 
 /// Insert › Bookmark (#1236), as in Word: it opens on the bookmark around the caret, lists by
