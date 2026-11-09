@@ -185,9 +185,10 @@ fn axis_margins(c: &Chart, ax: &Axes, area: Rect) -> Margins {
     } else {
         0.0
     };
-    let sec_on = !c.horizontal && c.sec.as_ref().is_some_and(|a| !a.deleted);
+    // The secondary value axis: on the right of a column chart, along the top of bars across.
+    let sec_on = ax.sec.is_some() && c.sec.as_ref().is_some_and(|a| !a.deleted);
     let right = match &ax.sec {
-        Some((_, ticks)) if sec_on => ticks.iter().map(|(_, s)| text_w(s, fs)).fold(0.0, f32::max) + GAP,
+        Some((_, ticks)) if sec_on && !c.horizontal => ticks.iter().map(|(_, s)| text_w(s, fs)).fold(0.0, f32::max) + GAP,
         _ => 0.0,
     };
     let band_w = (area.w - left - right).max(1.0) / c.n as f32;
@@ -207,7 +208,13 @@ fn axis_margins(c: &Chart, ax: &Axes, area: Rect) -> Margins {
     } else {
         0.0
     };
-    let top = if !c.horizontal && (val_on || sec_on) { lh / 2.0 } else { 0.0 };
+    let top = if c.horizontal {
+        if sec_on { lh + GAP } else { 0.0 }
+    } else if val_on || sec_on {
+        lh / 2.0
+    } else {
+        0.0
+    };
     Margins { left, right, top, bottom, wrapped, skip }
 }
 
@@ -267,15 +274,25 @@ pub(super) fn cartesian(out: &mut Vec<GraphicItem>, c: &Chart, area: Rect) {
     }
     if let (Some(g2), Some((_, ticks)), Some(sec)) = (g2, &ax.sec, &c.sec)
         && !sec.deleted
-        && !g.horiz
     {
-        if sec.line {
-            stroke(out, seg(plot.right(), plot.y, plot.right(), plot.bottom()), AXIS, 0.75);
-        }
         let (fs, lh) = (c.text_size, c.text_size * LINE);
-        for (t, s) in ticks {
-            let r = Rect { x: plot.right() + GAP, y: g2.val(*t) - lh / 2.0, w: (m.right - GAP).max(0.0), h: lh };
-            text(out, r, s, fs, TextAlign::Left, false);
+        if g.horiz {
+            // Bars across: the axis runs along the top, its labels in a row above the plot, each
+            // centred on its tick.
+            if sec.line {
+                stroke(out, seg(plot.x, plot.y, plot.right(), plot.y), AXIS, 0.75);
+            }
+            for (t, s) in ticks {
+                text_at(out, g2.val(*t), plot.y - GAP / 2.0 - lh, s, fs);
+            }
+        } else {
+            if sec.line {
+                stroke(out, seg(plot.right(), plot.y, plot.right(), plot.bottom()), AXIS, 0.75);
+            }
+            for (t, s) in ticks {
+                let r = Rect { x: plot.right() + GAP, y: g2.val(*t) - lh / 2.0, w: (m.right - GAP).max(0.0), h: lh };
+                text(out, r, s, fs, TextAlign::Left, false);
+            }
         }
     }
     if !c.cat.deleted {
