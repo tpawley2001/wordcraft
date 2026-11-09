@@ -40,7 +40,7 @@ pub(crate) use dispatch::search_results;
 pub(crate) use find::swallow_shortcut_text;
 pub use find::{FindExtra, FindTab, GoToWhat};
 #[cfg(test)]
-use find::{command_matches, goto_page};
+use find::{command_matches, goto_number};
 #[cfg(test)]
 use font::{apply_font, preview_size};
 use font::{east_asian_char, font_props};

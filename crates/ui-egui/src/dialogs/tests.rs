@@ -40,18 +40,35 @@ fn the_table_grid_previews_the_hovered_table_until_the_click() {
     assert_eq!(h.state().canvas.table_preview, None, "the inserted table isn't previewed again");
 }
 
-/// Go To's page box (#712): a number, +n / -n from the current page (a typographic minus
-/// too), empty for the next page; anything else is refused.
+/// Go To's number box (#712): a number, +n / -n from the selection (a typographic minus too),
+/// empty for the next one; anything else is refused. The same for every numbered kind.
 #[test]
 fn go_to_reads_its_page_box() {
-    assert_eq!(goto_page("7"), Some(json!({"page": 7})));
-    assert_eq!(goto_page(" +2 "), Some(json!({"pageBy": 2})));
-    assert_eq!(goto_page("-1"), Some(json!({"pageBy": -1})));
-    assert_eq!(goto_page("\u{2212}3"), Some(json!({"pageBy": -3})));
-    assert_eq!(goto_page(""), Some(json!({"pageBy": 1})));
+    let page = |t: &str| goto_number(GoToWhat::Page, t);
+    assert_eq!(page("7"), Some(json!({"what": "page", "n": 7})));
+    assert_eq!(page(" +2 "), Some(json!({"what": "page", "by": 2})));
+    assert_eq!(page("-1"), Some(json!({"what": "page", "by": -1})));
+    assert_eq!(page("\u{2212}3"), Some(json!({"what": "page", "by": -3})));
+    assert_eq!(page(""), Some(json!({"what": "page", "by": 1})));
     for junk in ["0", "abc", "+x", "1.5", "99999999999999999999999"] {
-        assert_eq!(goto_page(junk), None, "{junk}");
+        assert_eq!(page(junk), None, "{junk}");
     }
+}
+
+/// Go To's other numbered kinds read their box the same way and name their kind.
+#[test]
+fn go_to_reads_its_number_box_for_every_kind() {
+    let n = |t: &str| goto_number(GoToWhat::Footnote, t);
+    assert_eq!(n(""), Some(json!({"what": "footnote", "by": 1})));
+    assert_eq!(n("+2"), Some(json!({"what": "footnote", "by": 2})));
+    assert_eq!(n("-1"), Some(json!({"what": "footnote", "by": -1})));
+    assert_eq!(n("\u{2212}1"), Some(json!({"what": "footnote", "by": -1})));
+    assert_eq!(n("3"), Some(json!({"what": "footnote", "n": 3})));
+    for junk in ["x", "1.5", "+-1", "0"] {
+        assert_eq!(n(junk), None, "{junk}");
+    }
+    assert_eq!(goto_number(GoToWhat::Section, "2"), Some(json!({"what": "section", "n": 2})));
+    assert_eq!(goto_number(GoToWhat::Heading, "-2"), Some(json!({"what": "heading", "by": -2})));
 }
 
 /// Insert › Bookmark (#1236), as in Word: it opens on the bookmark around the caret, lists by
