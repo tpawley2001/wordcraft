@@ -563,7 +563,8 @@ fn recent_rows_can_be_removed_one_by_one_or_all_at_once() {
     h.get_by_label("Clear all").click();
     h.run_steps(4);
     assert!(h.state().ui.recent.is_empty(), "Clear all empties the list");
-    assert!(h.query_by_label("Documents you open will show up here.").is_some());
+    // The fork words the empty list in its own voice when pirate speak is on (brand::no_recent).
+    assert!(h.query_by_label(crate::brand::no_recent(h.state().ui.pirate_speak)).is_some());
     assert!(row(&h, "beta.docx").is_none(), "and Clear all goes with it");
 }
 
