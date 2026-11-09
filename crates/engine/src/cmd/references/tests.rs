@@ -690,7 +690,8 @@ fn output_shows_fresh_seq_styleref_and_ref_results() {
             _ => None,
         })
         .collect();
-    assert_eq!(shown, stored);
+    // NUMWORDS counts the words F9 has just put in the fields.
+    assert_eq!(shown, ["1", "Chapter One", "Target words", "11", "9"]);
 }
 
 #[test]
