@@ -70,7 +70,6 @@ pub mod table_ruler;
 pub mod theme;
 pub mod updates_ui;
 pub mod widgets;
-mod window_arrange;
 pub mod window_close;
 pub mod window_geometry;
 mod window_ui;

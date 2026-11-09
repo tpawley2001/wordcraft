@@ -2,7 +2,7 @@ use super::{CharProps, CmdError, CmdResult, InlineObject, Pos, Selection, Sessio
 
 /// What a link can point to inside the document (Insert › Link › Place in This Document): the top
 /// of the document, its headings (body block, level, text) and its bookmarks, without the hidden
-/// ones (names starting with `_`).
+/// ones (names starting with `_`), plus distinct body e-mail link targets in document order.
 pub(super) fn link_targets(s: &mut Session, _: &Value) -> CmdResult {
     let headings: Vec<Value> = crate::cmd::references::headings(s)
         .into_iter()
@@ -14,7 +14,72 @@ pub(super) fn link_targets(s: &mut Session, _: &Value) -> CmdResult {
             bookmarks.push(name);
         }
     }
-    Ok(json!({"top": true, "headings": headings, "bookmarks": bookmarks}))
+    let mut seen = std::collections::HashSet::new();
+    let mut emails = Vec::new();
+    for path in s.doc.para_paths(StoryRef::Body) {
+        let Some(para) = s.doc.para(StoryRef::Body, &path) else { continue };
+        for (_, props) in para.run_ranges() {
+            let Some(target) = props.link.as_deref() else { continue };
+            let Some(rest) = mailto_address(target) else { continue };
+            if !seen.insert(target) {
+                continue;
+            }
+            let (address, headers) = rest.split_once('?').unwrap_or((rest, ""));
+            let subject = headers.split('&').filter_map(|h| h.split_once('=')).find(|(name, _)| name.eq_ignore_ascii_case("subject"));
+            emails.push(json!({"address": address, "subject": subject.map(|(_, value)| decode_subject(value)).unwrap_or_default()}));
+        }
+    }
+    Ok(json!({"top": true, "headings": headings, "bookmarks": bookmarks, "emails": emails}))
+}
+
+/// Accept the URI scheme case-insensitively, without slicing inside a UTF-8 character.
+fn mailto_address(value: &str) -> Option<&str> {
+    value.get(..7).filter(|prefix| prefix.eq_ignore_ascii_case("mailto:"))?;
+    value.get(7..)
+}
+
+fn decode_subject(value: &str) -> String {
+    let mut bytes = value.bytes();
+    let mut decoded = Vec::with_capacity(value.len());
+    while let Some(byte) = bytes.next() {
+        if byte == b'%' {
+            let mut next = bytes.clone();
+            if let (Some(a), Some(b)) = (next.next(), next.next())
+                && let (Some(a), Some(b)) = ((a as char).to_digit(16), (b as char).to_digit(16))
+            {
+                decoded.push((a * 16 + b) as u8);
+                bytes = next;
+                continue;
+            }
+        }
+        decoded.push(byte);
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
+fn email_target(email: &str, subject: &str) -> Result<String, CmdError> {
+    let email = email.trim();
+    let address = mailto_address(email).unwrap_or(email);
+    if address.trim().is_empty() || address.len() > 4089 {
+        return Err(CmdError::Params("bad email address".into()));
+    }
+    let mut target = format!("mailto:{address}");
+    if !subject.is_empty() {
+        target.push_str("?subject=");
+        for byte in subject.bytes() {
+            // Bound the encoded URI as it grows, even for a hostile oversized subject.
+            if target.len() > 4096 {
+                return Err(CmdError::Params("bad url".into()));
+            }
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+                target.push(byte as char);
+            } else {
+                use std::fmt::Write;
+                let _ = write!(target, "%{byte:02X}");
+            }
+        }
+    }
+    Ok(target)
 }
 
 /// The address and the default text of a link to a place in this document, from `top`, `bookmark`
@@ -42,6 +107,10 @@ fn place_target(s: &mut Session, v: &Value) -> Result<Option<(String, String)>, 
 pub(super) fn link(s: &mut Session, v: &Value) -> CmdResult {
     let (url, label) = match p::str(v, "url") {
         Some(url) => (url.to_string(), url.to_string()),
+        None if p::str(v, "email").is_some() => {
+            let target = email_target(p::req_str(v, "email")?, p::str(v, "subject").unwrap_or_default())?;
+            (target.clone(), target)
+        }
         None => match place_target(s, v)? {
             Some(t) => t,
             None => {
@@ -201,4 +270,33 @@ pub(super) fn bookmark(s: &mut Session, v: &Value) -> CmdResult {
         s.last_bookmark = Some(name);
     }
     sel_result(s)
+}
+
+#[cfg(test)]
+mod email_tests {
+    use super::*;
+
+    #[test]
+    fn email_target_bounds_and_unreserved_bytes() {
+        assert_eq!(email_target("a@b.c", "AZaz09-._~").unwrap(), "mailto:a@b.c?subject=AZaz09-._~");
+        assert!(email_target("MAILTO:   ", "").is_err());
+        assert_eq!(email_target(&"a".repeat(4089), "").unwrap().len(), 4096);
+        assert!(email_target(&"a".repeat(4090), "").is_err());
+        let mut s = Session::new(wordcraft_doc::Document::from_text("selected"));
+        s.run("select.all", &json!({})).unwrap();
+        let before = s.doc.clone();
+        assert!(s.run("insert.link", &json!({"email": "a@b.c", "subject": "é".repeat(4096)})).is_err());
+        assert_eq!(s.doc, before);
+        s.run("insert.link", &json!({"email": "a@b.c", "subject": "Hi"})).unwrap();
+        let para = s.doc.body.first().and_then(|b| b.as_para()).unwrap();
+        assert_eq!(para.text, "selected");
+        assert!(para.run_ranges().all(|(_, props)| props.link.as_deref() == Some("mailto:a@b.c?subject=Hi")));
+    }
+
+    #[test]
+    fn malformed_percent_escapes_and_plus_stay_literal() {
+        assert_eq!(decode_subject("%4%41%+%a%"), "%4A%+%a%");
+        assert_eq!(decode_subject("a+b%2Bc"), "a+b+c");
+        assert_eq!(mailto_address("éééé"), None);
+    }
 }
