@@ -1,5 +1,8 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-08 · **Change:** trivial (P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.)
+
+
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged.)
 
@@ -162,6 +165,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-08 · P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.
 
 - 2026-11-08: P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged.
 - 2026-11-08 · P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged.
@@ -935,6 +940,8 @@ Section page-numbering settings preserve `w:chapStyle` values across the full un
 MATH glyphs that reference the same construction now share its immutable variants and assembly data (#3630). Glyph mappings, values and the existing partial-record fallback stay unchanged. Repeated glyph IDs keep their last valid reference without retaining superseded constructions. Distinct overlapping constructions and assembly-only sharing remain separate.
 
 ## Revision history
+
+> 2026-11-08 · P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.
 
 > 2026-11-08 · P0125: Office 2016 waterfall and box & whisker charts use regular 14 pt titles, a default light grey frame with explicit line overrides, and about ten value-axis intervals in 1/2/5 steps. Classic charts unchanged; readiness estimates unchanged.
 
