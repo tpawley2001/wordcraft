@@ -28,6 +28,7 @@ mod find_format;
 mod font_sizes;
 mod grid_settings;
 mod fonts;
+mod goto_what;
 mod ime_noop;
 mod autoformat_now;
 mod extend_selection;

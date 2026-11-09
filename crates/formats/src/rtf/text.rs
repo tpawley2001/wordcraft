@@ -150,6 +150,18 @@ impl Reader {
         }
     }
 
+    /// A high surrogate from `\uN` pairs only with a low one in the very next `\u`. Anything else
+    /// after it (text, another high surrogate, a paragraph end, the end of the document) first
+    /// emits it as U+FFFD, in the current formatting.
+    pub(super) fn flush_high_surrogate(&mut self) {
+        if self.pending_high.take().is_none() {
+            return;
+        }
+        // Multibyte text read before the surrogate comes first.
+        self.finish_multibyte();
+        self.text("\u{FFFD}");
+    }
+
     pub(super) fn finish_pict(&mut self) {
         if self.pict_half.take().is_some() {
             // Odd hex digit count: drop the dangling nibble.
@@ -231,6 +243,7 @@ impl Reader {
     }
 
     pub(super) fn text(&mut self, s: &str) {
+        self.flush_high_surrogate();
         match self.st.dest {
             Dest::ShapeName | Dest::ShapeValue => self.shape_property_text(s),
             Dest::ShapeInst => {}
@@ -351,6 +364,7 @@ impl Reader {
             self.skip_chars -= 1;
             return;
         }
+        self.flush_high_surrogate();
         self.finish_multibyte();
         // Only a literal `;` ends a font name: an escaped one (`\'3b`, `\u59?`) belongs to it.
         if c == ';' && self.st.dest == Dest::FontTbl {
