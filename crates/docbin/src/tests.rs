@@ -8,6 +8,7 @@ use proptest::prelude::*;
 use super::read;
 
 mod auto_spacing;
+mod cell_padding;
 mod cfb_tolerance;
 mod char_styles;
 mod compat_mode;

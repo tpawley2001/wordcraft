@@ -270,6 +270,14 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"value"?: bool}"#)
         .when(|s| if s.windows.side_by_side.is_some() { None } else { Some("turn on View Side by Side first") })
         .pure(),
+        // Puts the pair back on equal halves of the screen; pairing and scrolling stay as they are.
+        CommandSpec::new("view.resetWindowPosition", "Reset Window Position", "View › Window", |s, _| {
+            let Some(with) = s.windows.side_by_side else { return Err(CmdError::Disabled("turn on View Side by Side first".into())) };
+            s.ui_requests.push(json!({"windows": "resetPosition", "with": with}));
+            Ok(json!({"window": with}))
+        })
+        .when(|s| if s.windows.side_by_side.is_some() { None } else { Some("turn on View Side by Side first") })
+        .pure(),
         // The window fills the screen, OS-level full screen (#980). F11 as in browsers and most
         // desktop apps; ⌃⌘F first on macOS, where Ctrl is a key of its own (elsewhere Mod is Ctrl,
         // so "Mod+Ctrl+F" would read Ctrl+Ctrl+F). Escape also leaves it. The front end applies it.
