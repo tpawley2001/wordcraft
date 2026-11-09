@@ -4,7 +4,7 @@
 //! content only and §17.3.3.1 puts `br` in a run; Word opens such files and re-saves the
 //! markup as sibling `w:t`/`w:br` elements). All markup here is synthetic.
 
-use wordcraft_doc::para::LINE_BREAK;
+use wordcraft_doc::para::{LINE_BREAK, OBJ};
 use wordcraft_doc::{Block, Document};
 
 const NS: &str = r#"xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main""#;
@@ -59,11 +59,8 @@ fn instr_text_inside_a_field_stays_hidden() {
         r#"<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>result</w:t></w:r>"#,
         r#"<w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:t xml:space="preserve"> end</w:t></w:r></w:p>"#
     );
-    let t = read_texts(body);
-    assert_eq!(t.len(), 1);
-    assert!(t[0].contains("result"), "{:?}", t[0]);
-    assert!(!t[0].contains("code"), "{:?}", t[0]);
-    assert!(!t[0].contains(LINE_BREAK), "{:?}", t[0]);
+    // The field is one inline object; its code (with the break inside it) is not body text.
+    assert_eq!(read_texts(body), vec![format!("start {OBJ} end")]);
 }
 
 #[test]
