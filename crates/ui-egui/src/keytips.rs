@@ -392,6 +392,7 @@ fn controls(tab: &str) -> Vec<Control> {
             c("Split", "view.split"),
             c("View Side by Side", "view.sideBySide"),
             c("Synchronous Scrolling", "view.syncScroll"),
+            c("Reset Window Position", "view.resetWindowPosition"),
             m("Switch Windows", "view.switchWindows"),
             c("Full Screen", "view.fullScreen"),
             c("Macros", "tools.macros"),
