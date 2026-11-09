@@ -1,8 +1,6 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-08 · **Change:** trivial (P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged.)
-> **Last updated:** 2026-11-08 · **Change:** trivial (P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.)
-
+> **Last updated:** 2026-11-09 · **Change:** trivial (P0144: Insert › Text from File takes a Range bookmark and inserts only that bookmark's text. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged.)
 
@@ -160,6 +158,7 @@ Insert Hyperlink › E-mail Address accepts an address and subject and lists rec
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-09 | trivial | P0144: Insert › Text from File takes a Range bookmark and inserts only that bookmark's text, as Word's Insert File dialog does; an unknown bookmark is an error and changes nothing. Readiness estimates unchanged. |
 | 2026-11-08 | trivial | P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged. |
 | 2026-11-08 | trivial | P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged. |
 | 2026-11-08 | trivial | P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged. |
