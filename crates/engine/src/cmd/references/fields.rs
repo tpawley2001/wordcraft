@@ -438,7 +438,9 @@ pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Doc
     if !refs.is_empty() {
         apply_results(out.get_or_insert_with(|| doc.clone()), refs).ok()?;
     }
-    out
+    // A document whose fields are all current still gets a copy: output lays out the copy, and
+    // `None` would mean "nothing to show".
+    Some(out.unwrap_or_else(|| doc.clone()))
 }
 
 /// Whether `instr` has the one-letter switch `\sw`, also run together with another (`\p\h`).
@@ -788,7 +790,9 @@ mod listnum_tests {
         };
         assert_eq!(results(&fresh), [("1)".into(), false), ("stale".into(), true), ("2)".into(), false)]);
         assert_eq!(results(&doc), vec![("stale".into(), true); 3]);
-        assert!(output_fields(&fresh).is_none());
+        // Current results: output lays out the document as it is.
+        let again = output_fields(&fresh).unwrap();
+        assert_eq!(results(&again), results(&fresh));
     }
 
     #[test]
