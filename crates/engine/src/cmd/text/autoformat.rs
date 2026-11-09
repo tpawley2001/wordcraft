@@ -194,6 +194,17 @@ pub(super) fn list_kind(prefix: &str) -> Option<ListKind> {
 /// Make the paragraph at `path` a `kind` list item and delete its first `len` bytes (the label),
 /// when the AutoFormat option for bullets or numbering is on. Returns whether it did.
 pub(super) fn apply_list(s: &mut Session, story: StoryRef, path: &Path, len: usize, kind: ListKind) -> Result<bool, CmdError> {
+    if !make_list_item(s, story, path, kind)? {
+        return Ok(false);
+    }
+    s.doc.para_mut(story, path)?.delete(0, len)?;
+    Ok(true)
+}
+
+/// Make the paragraph at `path` a `kind` list item, leaving its text alone, when the AutoFormat
+/// option for bullets or numbering is on. Returns whether it did. AutoFormat Now removes the
+/// label itself, so that it can be a tracked deletion.
+pub(super) fn make_list_item(s: &mut Session, story: StoryRef, path: &Path, kind: ListKind) -> Result<bool, CmdError> {
     let Some(para) = s.doc.para(story, path) else { return Ok(false) };
     // A style-linked list (a heading-linked Multilevel List preset, #1793) numbers the paragraph
     // without `props.numbering` itself being set: resolve it, so autoformat doesn't paper over an
@@ -213,7 +224,6 @@ pub(super) fn apply_list(s: &mut Session, story: StoryRef, path: &Path, len: usi
         None => Arc::make_mut(&mut s.doc.numbering).try_add_list(kind)?,
     };
     let para = s.doc.para_mut(story, path)?;
-    para.delete(0, len)?;
     para.props.numbering = Some(NumRef { num, level: 0 });
     // A heading stays a heading (Word: "1. " in a Heading 1 gives a numbered Heading 1).
     if para.props.style.as_deref().is_none_or(|st| st == "Normal") {

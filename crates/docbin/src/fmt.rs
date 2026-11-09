@@ -20,7 +20,8 @@ const C_KUL: u16 = 0x2A3E; // underline style (Kul)
 const C_ICO: u16 = 0x2A42; // palette colour
 const C_CR: u16 = 0x6870; // explicit COLORREF
 const C_HPS: u16 = 0x4A43; // half-points
-const C_HPS_POS: u16 = 0x4845; // super/subscript by half-points
+const C_HPS_POS: u16 = 0x4845; // raised (+) / lowered (-) by signed half-points: w:position
+const C_ISS: u16 = 0x2A48; // superscript / subscript: w:vertAlign
 const C_FTC0: u16 = 0x4A4F; // font index (ASCII)
 const C_FTC1: u16 = 0x4A50; // East Asian font index (sprmCRgFtc1)
 const C_FTC_BI: u16 = 0x4A5E; // complex-script font index (sprmCFtcBi)
@@ -256,14 +257,20 @@ pub(crate) fn apply_char(p: &mut CharProps, prl: &Prl, base: &CharProps, fonts: 
                 p.size = Some((hps as f32 / 2.0).clamp(1.0, 1638.0));
             }
         }
+        // [MS-DOC] §2.6.1: half-points the text is raised or lowered at full size, which is
+        // OOXML `w:position` (ECMA-376 Part 1 §17.3.2.24), not superscript or subscript.
         C_HPS_POS => {
             if let Some(pos) = s16_of(prl) {
-                p.vert_align = Some(match pos {
-                    pos if pos > 0 => VertAlign::Superscript,
-                    pos if pos < 0 => VertAlign::Subscript,
-                    _ => VertAlign::Baseline,
-                });
+                p.position = Some((f32::from(pos) / 2.0).clamp(-1584.0, 1584.0));
             }
+        }
+        C_ISS => {
+            p.vert_align = match prl.operand.first() {
+                Some(0) => Some(VertAlign::Baseline),
+                Some(1) => Some(VertAlign::Superscript),
+                Some(2) => Some(VertAlign::Subscript),
+                _ => p.vert_align,
+            };
         }
         C_FTC0 => {
             if let Some(name) = u16_of(prl).and_then(|i| fonts.get(i as usize)) {
