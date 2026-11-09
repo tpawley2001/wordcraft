@@ -493,7 +493,12 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
     let mut pages: std::collections::HashMap<String, (u32, NumFormat, String)> = Default::default();
     let formats = page_formats(s);
     let marks = s.doc.bookmarks();
-    for (name, pos) in marks {
+    for (name, mut pos) in marks {
+        // A hidden `_Ref` bookmark from the start of a heading that starts with page breaks reads
+        // the page its text is on, as when its cross-reference was inserted.
+        if pos.off == 0 && name.starts_with("_Ref") {
+            pos.off = crate::cmd::citations::leading_breaks(&s.doc, &pos);
+        }
         let l = s.layout();
         let page_info =
             page_at(&l, &formats, &pos).map_or((1, NumFormat::Decimal, String::new()), |(_, n, fmt, chapter)| (n, fmt, chapter.to_string()));
