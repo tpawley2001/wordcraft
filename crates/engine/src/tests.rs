@@ -58,6 +58,7 @@ mod wordart;
 mod page_number_formats_in_lists;
 mod chapter_page_numbers;
 mod figures_hyperlinks;
+mod reset_window_position;
 mod window_edge_keys;
 mod write_protection;
 mod style_keys;
