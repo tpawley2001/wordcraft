@@ -1765,6 +1765,7 @@ mod foreign_styles;
 mod legacy_pn;
 mod object_result;
 mod paper_source;
+mod section_extras;
 mod section_revisions;
 mod shape_text;
 mod tabs_spacing;
