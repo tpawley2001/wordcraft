@@ -60,6 +60,8 @@ impl Reader {
             "u" => {
                 let u = (pv as i64).rem_euclid(65_536) as u16;
                 if (0xD800..0xDC00).contains(&u) {
+                    // An earlier high surrogate not followed by a low one stands alone.
+                    self.flush_high_surrogate();
                     self.pending_high = Some(u);
                 } else {
                     let c = match self.pending_high.take() {

@@ -434,6 +434,7 @@ impl Reader {
 
     /// End the current paragraph (`\par`, `\cell`).
     pub(super) fn end_para(&mut self, in_cell: bool) {
+        self.flush_high_surrogate();
         let read = std::mem::take(&mut self.para);
         let props = self.para_props(&self.st);
         let mut p = Para { inlines: read.inlines, mark_ins: read.mark_ins, mark_del: read.mark_del, ..props };
@@ -475,6 +476,7 @@ impl Reader {
     }
 
     pub(super) fn end_row(&mut self) {
+        self.flush_high_surrogate();
         if self.para_has {
             self.end_cell();
         }
@@ -551,6 +553,9 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "headery" => sec.page.header = Some(pv),
         "footery" => sec.page.footer = Some(pv),
         "lndscpsxn" => sec.page.landscape = on,
+        // Printer bin codes; 0 (the default) and values outside u16 leave the bin unset.
+        "binfsxn" => sec.bin_first = u16::try_from(pv).ok().filter(|&v| v != 0),
+        "binsxn" => sec.bin_other = u16::try_from(pv).ok().filter(|&v| v != 0),
         "sbknone" => sec.start = SectionStart::Continuous,
         "sbkcol" => sec.start = SectionStart::NextColumn,
         "sbkpage" => sec.start = SectionStart::NextPage,
