@@ -568,6 +568,57 @@ impl WordApp {
     }
 
     /// Commands that live in the UI layer.
+    /// `ui.cropMarks`, `ui.textBoundaries`, `ui.picturePlaceholders`.
+    fn show_content_option(&mut self, id: &str, p: &Value) -> Result<Value, String> {
+        // File › Options › Advanced › Show document content: `value` true or false turns
+        // crop marks, text boundaries or picture placeholders on or off; no value reads
+        // it. Screen only: the document, printing and exports never see them.
+        let (key, slot) = match id {
+            "ui.cropMarks" => ("cropMarks", &mut self.ui.crop_marks),
+            "ui.textBoundaries" => ("textBoundaries", &mut self.ui.text_boundaries),
+            _ => ("picturePlaceholders", &mut self.ui.picture_placeholders),
+        };
+        match p.get("value") {
+            None => {}
+            Some(Value::Bool(on)) => *slot = *on,
+            Some(_) => return Err("`value` must be true or false".into()),
+        }
+        Ok(json!({ key: *slot }))
+    }
+
+    /// `ui.draftFont`.
+    fn draft_font_command(&mut self, p: &Value) -> Result<Value, String> {
+        // File › Options › Advanced › Show document content › Use draft font in Draft and
+        // Outline views: `value` true or false, `name` a font name, `size` 1–1638 points;
+        // none reads it. A bad parameter is an error and changes nothing.
+        let on = match p.get("value") {
+            None => None,
+            Some(Value::Bool(on)) => Some(*on),
+            Some(_) => return Err("`value` must be true or false".into()),
+        };
+        let name = match p.get("name") {
+            None => None,
+            Some(Value::String(n)) if !n.trim().is_empty() && n.len() <= crate::MAX_FONT_NAME_BYTES => Some(n.trim().to_string()),
+            Some(_) => return Err("`name` must be a font name".into()),
+        };
+        let size = match p.get("size").map(Value::as_f64) {
+            None => None,
+            Some(Some(s)) if (1.0..=1638.0).contains(&s) => Some(s as f32),
+            Some(_) => return Err("`size` must be a number of points from 1 to 1638".into()),
+        };
+        if let Some(on) = on {
+            self.ui.draft_font = on;
+        }
+        if let Some(name) = name {
+            self.ui.draft_font_name = name;
+        }
+        if let Some(size) = size {
+            self.ui.draft_font_size = size;
+        }
+        self.session.set_draft_font(self.ui.shown_draft_font());
+        Ok(json!({"draftFont": self.ui.draft_font, "name": self.ui.draft_font_name, "size": self.ui.draft_font_size}))
+    }
+
     pub(crate) fn ui_command(&mut self, id: &str, p: &Value) -> Option<Result<Value, String>> {
         let s = |k: &str| p.get(k).and_then(Value::as_str);
         Some(Ok(match id {
@@ -858,53 +909,8 @@ impl WordApp {
                 }
                 json!({"alignmentGuides": self.ui.alignment_guides})
             }
-            "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" => {
-                // File › Options › Advanced › Show document content: `value` true or false turns
-                // crop marks, text boundaries or picture placeholders on or off; no value reads
-                // it. Screen only: the document, printing and exports never see them.
-                let (key, slot) = match id {
-                    "ui.cropMarks" => ("cropMarks", &mut self.ui.crop_marks),
-                    "ui.textBoundaries" => ("textBoundaries", &mut self.ui.text_boundaries),
-                    _ => ("picturePlaceholders", &mut self.ui.picture_placeholders),
-                };
-                match p.get("value") {
-                    None => {}
-                    Some(Value::Bool(on)) => *slot = *on,
-                    Some(_) => return Some(Err("`value` must be true or false".into())),
-                }
-                json!({ key: *slot })
-            }
-            "ui.draftFont" => {
-                // File › Options › Advanced › Show document content › Use draft font in Draft and
-                // Outline views: `value` true or false, `name` a font name, `size` 1–1638 points;
-                // none reads it. A bad parameter is an error and changes nothing.
-                let on = match p.get("value") {
-                    None => None,
-                    Some(Value::Bool(on)) => Some(*on),
-                    Some(_) => return Some(Err("`value` must be true or false".into())),
-                };
-                let name = match p.get("name") {
-                    None => None,
-                    Some(Value::String(n)) if !n.trim().is_empty() && n.len() <= crate::MAX_FONT_NAME_BYTES => Some(n.trim().to_string()),
-                    Some(_) => return Some(Err("`name` must be a font name".into())),
-                };
-                let size = match p.get("size").map(Value::as_f64) {
-                    None => None,
-                    Some(Some(s)) if (1.0..=1638.0).contains(&s) => Some(s as f32),
-                    Some(_) => return Some(Err("`size` must be a number of points from 1 to 1638".into())),
-                };
-                if let Some(on) = on {
-                    self.ui.draft_font = on;
-                }
-                if let Some(name) = name {
-                    self.ui.draft_font_name = name;
-                }
-                if let Some(size) = size {
-                    self.ui.draft_font_size = size;
-                }
-                self.session.set_draft_font(self.ui.shown_draft_font());
-                json!({"draftFont": self.ui.draft_font, "name": self.ui.draft_font_name, "size": self.ui.draft_font_size})
-            }
+            "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" => return Some(self.show_content_option(id, p)),
+            "ui.draftFont" => return Some(self.draft_font_command(p)),
             "ui.startScreen" => {
                 // File › Options › General › Start-up (#766): `value` true or false turns showing
                 // File › Home at start-up on or off; no value reads it.
