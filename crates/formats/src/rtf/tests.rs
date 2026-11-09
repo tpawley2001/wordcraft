@@ -1097,6 +1097,7 @@ fn old_formatting_in_a_code_paragraph_has_the_code_font() {
     let mut p = Para { kind: Kind::Code, ..Default::default() };
     p.push_text("x", &Fmt { font: Some("Arial".into()), fmt_change: Some(Box::new(FmtChange { mark, old: Fmt::default() })), ..Default::default() });
     let mut w = Writer {
+        marks: Vec::new(),
         t: Tables { fonts: vec!["Aptos".into()], colors: Vec::new() },
         lists: Vec::new(),
         authors: None,
@@ -1763,8 +1764,10 @@ fn compound_borders_round_trip() {
 mod foreign_styles;
 mod legacy_pn;
 mod object_result;
+mod paper_source;
 mod section_revisions;
 mod shape_text;
 mod tabs_spacing;
 mod trailing_data;
+mod unicode_surrogates;
 mod widow_control;

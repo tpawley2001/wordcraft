@@ -225,6 +225,21 @@ fn general(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Interface");
     theme_picker(app, ui);
     interface_size_picker(app, ui);
+    ui.horizontal(|ui| {
+        use wordcraft_engine::cmd::view::PaperColor;
+        let label = ui.label(tl!("Screen paper color:"));
+        let selected = app.session.prefs.paper_color;
+        let combo = craft_ui::ComboBox::from_id_salt("screen_paper_color").selected_text(tl!(selected.label())).width(220.0).show_ui(ui, |ui| {
+            for color in PaperColor::ALL {
+                if ui.selectable_label(selected == color, tl!(color.label())).clicked() {
+                    let _ = app.run("view.paperColor", json!({"value": color}));
+                }
+            }
+        });
+        combo.response.labelled_by(label.id).on_hover_text(tl!(
+            "Screen only. Document backgrounds, printing and exports keep their colours. Dark page and explicit Read Mode colours take precedence."
+        ));
+    });
     ui.checkbox(&mut app.ui.mini_toolbar, tl!("Show the mini toolbar when text is selected"));
     let mut dark_page = app.session.view.dark_mode;
     if ui
@@ -345,6 +360,10 @@ fn proofing(app: &mut WordApp, ui: &mut Ui) {
     let spelling = app.session.view.proofing;
     flag(app, ui, "Check spelling as you type", "checkSpelling", spelling);
     ui.add_enabled_ui(app.session.view.proofing, |ui| flag(app, ui, "Mark grammar errors as you type", "markGrammar", pr.mark_grammar));
+    let mut readability = pr.show_readability;
+    if ui.checkbox(&mut readability, tl!("Show readability statistics")).changed() {
+        let _ = app.run("review.showReadability", json!({"value": readability}));
+    }
     ui.add_space(8.0);
     section(ui, "Custom dictionary");
     custom_dictionary(app, ui);
@@ -630,6 +649,8 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     ui.add_space(8.0);
     section(ui, "Print");
     flag(app, ui, "Print pages in reverse order", "printReverse", pr.print_reverse);
+    flag(app, ui, "Print on front of the sheet for duplex printing", "printDuplexFront", pr.print_duplex_front);
+    flag(app, ui, "Print on back of the sheet for duplex printing", "printDuplexBack", pr.print_duplex_back);
     flag(app, ui, "Print field codes instead of their values", "printFieldCodes", pr.print_field_codes);
     ui.add_space(8.0);
     section(ui, "Display");

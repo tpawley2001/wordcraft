@@ -1,6 +1,7 @@
-//! Every story of a `.doc` header subdocument ends with a guard paragraph mark Word does not show
-//! ([MS-DOC] §2.8.25 Plcfhdd). Synthetic stories, shaped like the ones measured in real files
-//! (`Confidential…\r\r`, `FOOTER…\r\r\r`).
+//! A Plcfhdd story ([MS-DOC] §2.8.25) ending in two marks (a paragraph mark `\r`, or a
+//! cell/row mark `\x07`, followed by a final `\r`) carries a guard paragraph Word does not show.
+//! Exactly one trailing `\r` is dropped; a single-mark story is unchanged. Further empty
+//! paragraphs before the guard are kept (`Footer\r\r\r` becomes `Footer`, `` (empty)).
 
 use super::{StructSpec, plc, read, struct_doc, structured_spec};
 use wordcraft_doc::Document;

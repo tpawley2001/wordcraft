@@ -1,4 +1,4 @@
-use super::state::{Dest, MAX_PICT, St};
+use super::state::{Dest, MARK_CLOSE, MARK_OPEN, MAX_PICT, St};
 use super::{Fmt, Inline, Reader, Rgb, make_img, model};
 use std::sync::Arc;
 
@@ -150,6 +150,18 @@ impl Reader {
         }
     }
 
+    /// A high surrogate from `\uN` pairs only with a low one in the very next `\u`. Anything else
+    /// after it (text, another high surrogate, a paragraph end, the end of the document) first
+    /// emits it as U+FFFD, in the current formatting.
+    pub(super) fn flush_high_surrogate(&mut self) {
+        if self.pending_high.take().is_none() {
+            return;
+        }
+        // Multibyte text read before the surrogate comes first.
+        self.finish_multibyte();
+        self.text("\u{FFFD}");
+    }
+
     pub(super) fn finish_pict(&mut self) {
         if self.pict_half.take().is_some() {
             // Odd hex digit count: drop the dangling nibble.
@@ -189,44 +201,53 @@ impl Reader {
         }
     }
 
+    /// Document text: a run in the current formatting, or a shape field's result.
+    fn body_text(&mut self, s: &str) {
+        if self.st.hidden {
+            return;
+        }
+        let mut f = self.st.fmt.clone();
+        if s.contains([MARK_OPEN, MARK_CLOSE]) {
+            self.para.push_text(&s.replace([MARK_OPEN, MARK_CLOSE], "\u{FFFD}"), &f);
+            self.para_has = true;
+            return;
+        }
+        let r = self.st.rev;
+        if r.ins {
+            f.ins = Some(self.rev_mark(r.auth, r.dttm));
+        }
+        if r.del {
+            f.del = Some(self.rev_mark(r.authdel, r.dttmdel));
+        }
+        let c = &self.st.chg_c;
+        if let Some(words) = c.old.clone() {
+            let mark = self.rev_mark(c.auth, c.date);
+            let old = self.old_fmt(&words);
+            f.fmt_change = Some(Box::new(model::FmtChange { mark, old }));
+        }
+        if !self.shapes.is_empty()
+            && let Some(instr) =
+                self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty() && super::word::hyperlink(s).is_none())
+        {
+            if let Some(Inline::Field { instr: old, result, .. }) = self.para.inlines.last_mut()
+                && old == instr
+            {
+                result.push_str(s);
+            } else {
+                self.para.inlines.push(Inline::Field { instr: instr.clone(), result: s.to_string(), fmt: f, locked: false });
+            }
+        } else {
+            self.para.push_text(s, &f);
+        }
+        self.para_has = true;
+    }
+
     pub(super) fn text(&mut self, s: &str) {
+        self.flush_high_surrogate();
         match self.st.dest {
             Dest::ShapeName | Dest::ShapeValue => self.shape_property_text(s),
             Dest::ShapeInst => {}
-            Dest::Body => {
-                if self.st.hidden {
-                    return;
-                }
-                let mut f = self.st.fmt.clone();
-                let r = self.st.rev;
-                if r.ins {
-                    f.ins = Some(self.rev_mark(r.auth, r.dttm));
-                }
-                if r.del {
-                    f.del = Some(self.rev_mark(r.authdel, r.dttmdel));
-                }
-                let c = &self.st.chg_c;
-                if let Some(words) = c.old.clone() {
-                    let mark = self.rev_mark(c.auth, c.date);
-                    let old = self.old_fmt(&words);
-                    f.fmt_change = Some(Box::new(model::FmtChange { mark, old }));
-                }
-                if !self.shapes.is_empty()
-                    && let Some(instr) =
-                        self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty() && super::word::hyperlink(s).is_none())
-                {
-                    if let Some(Inline::Field { instr: old, result, .. }) = self.para.inlines.last_mut()
-                        && old == instr
-                    {
-                        result.push_str(s);
-                    } else {
-                        self.para.inlines.push(Inline::Field { instr: instr.clone(), result: s.to_string(), fmt: f, locked: false });
-                    }
-                } else {
-                    self.para.push_text(s, &f);
-                }
-                self.para_has = true;
-            }
+            Dest::Body => self.body_text(s),
             Dest::FontTbl => {
                 for c in s.chars() {
                     if c == ';' {
@@ -265,6 +286,11 @@ impl Reader {
                     && g.len() < 256
                 {
                     g.push_str(s);
+                }
+            }
+            Dest::Atn(_) => {
+                if self.atn_text.len() < 256 {
+                    self.atn_text.push_str(s);
                 }
             }
             Dest::FldInst => {
@@ -338,6 +364,7 @@ impl Reader {
             self.skip_chars -= 1;
             return;
         }
+        self.flush_high_surrogate();
         self.finish_multibyte();
         // Only a literal `;` ends a font name: an escaped one (`\'3b`, `\u59?`) belongs to it.
         if c == ';' && self.st.dest == Dest::FontTbl {

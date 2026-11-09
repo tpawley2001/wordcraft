@@ -30,6 +30,7 @@ mod parse;
 mod plot;
 mod polar;
 mod stock;
+mod sunburst;
 mod three_d;
 
 #[cfg(test)]
@@ -213,6 +214,8 @@ mod chartex_polish_tests;
 mod chartex_tests;
 #[cfg(test)]
 mod combo_tests;
+#[cfg(test)]
+mod sunburst_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

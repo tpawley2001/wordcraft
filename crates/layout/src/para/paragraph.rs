@@ -557,8 +557,29 @@ impl<'a> BreakText<'a> {
 /// Mark the clusters a line may break after.
 fn mark_break_opportunities(clusters: &mut [Cluster], bt: &BreakText, rp: &ResolvedPara) {
     let opps: std::collections::HashSet<usize> = break_positions(&bt.text, rp).into_iter().filter_map(|i| bt.to_para(i)).collect();
-    for c in clusters {
+    for c in clusters.iter_mut() {
         c.break_after = opps.contains(&c.end) || matches!(c.kind, ClKind::Object(_) | ClKind::Tab);
+    }
+    // An inline picture that takes room on the line is a character of the word it touches: Word
+    // keeps it and the text right after it (no space between) on one line. Zero-size objects
+    // (float anchors, empty separators) keep their break.
+    //
+    // `glue` is where the last sized picture is while only markers follow it; markers between
+    // the picture and its text keep no break either.
+    let mut glue: Option<usize> = None;
+    for i in 0..clusters.len() {
+        let Some(kind) = clusters.get(i).map(|c| (c.kind, c.adv > 0.0 || c.obj_h > 0.0)) else { break };
+        match kind {
+            (ClKind::Marker, _) => {}
+            (ClKind::Text, _) => {
+                for c in glue.and_then(|g| clusters.get_mut(g..i)).into_iter().flatten() {
+                    c.break_after = false;
+                }
+                glue = None;
+            }
+            (ClKind::Object(_), true) => glue = Some(i),
+            _ => glue = None,
+        }
     }
 }
 
@@ -677,6 +698,8 @@ fn shown_text(cx: &Cx) -> Option<String> {
 
 /// Lay out one paragraph.
 pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
+    #[cfg(test)]
+    crate::test_fonts();
     let doc = env.doc;
     let rp = paragraph_props(p, env);
     let res = Resolver { doc, style: p.props.style.as_deref(), table: env.table.map(|t| &t.chr), draft_font: env.draft_font };
