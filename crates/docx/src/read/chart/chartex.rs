@@ -1,5 +1,5 @@
 //! Office 2016 charts (`cx:chartSpace`, chartex namespace) drawn from their data: waterfall,
-//! box & whisker and treemap charts. Other layouts return `None`, so the caller keeps the fallback picture.
+//! box & whisker, treemap and sunburst charts. Other layouts return `None`, so the caller keeps the fallback picture.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -10,6 +10,7 @@ use super::canvas::{Rect, clip_text, fill, legend, rect_segs, runs, seg, stroke,
 use super::model::Pos;
 use super::parse::truthy;
 use super::plot::{Scale, label};
+use super::sunburst::{MAX_LEVELS, draw_sunburst};
 use super::{FONT, GAP, GRID, LINE, MAX_POINTS, MAX_SERIES, PAD, ShapeKind, TEXT, TITLE_SIZE, fill_colour, int, measure};
 use crate::xml::El;
 
@@ -214,6 +215,7 @@ pub(crate) fn chartex_items(space: &El, theme: &[Rgb], w: f32, h: f32) -> Option
             box_whisker(space, chart, plot, region, theme, w, h)
         }
         Some("treemap") => treemap(space, chart, series, theme, w, h),
+        Some("sunburst") => sunburst(space, chart, series, theme, w, h),
         _ => None,
     }
 }
@@ -556,6 +558,42 @@ fn treemap_leaves(data: &El) -> Vec<(Vec<String>, f64)> {
             (path, v)
         })
         .collect()
+}
+
+/// A sunburst chart: one ring per category level, each branch in its top-level accent colour.
+fn sunburst(space: &El, chart: &El, series: &El, theme: &[Rgb], w: f32, h: f32) -> Option<Vec<GraphicItem>> {
+    let data = series_data(space, series)?;
+    let leaves = category_paths(data);
+    if !leaves.iter().any(|(_, v)| v.is_finite() && *v > 0.0) {
+        return None;
+    }
+    let (mut out, area) = frame(space, chart, theme, w, h);
+    // Word's sunburst reaches up to just under the title.
+    let area = if chart.child("cx:title").is_some() { Rect { y: area.y - GAP, h: area.h + GAP, ..area } } else { area };
+    let labels = series.child("cx:dataLabels").is_some_and(|d| d.child("cx:visibility").and_then(|v| v.attr("categoryName")).is_some_and(truthy));
+    let colour = |group: usize| accent(theme, 4 + group % 6);
+    draw_sunburst(&mut out, &leaves, area.arr(), &colour, labels);
+    Some(out)
+}
+
+/// Each point's category path, top level first (`cx:strDim type="cat"` lists the leaf level
+/// first), with its `cx:numDim type="size"` value; blank names where a level has none.
+fn category_paths(data: &El) -> Vec<(Vec<String>, f64)> {
+    let Some(lvl) = data.children("cx:numDim").find(|d| d.attr("type") == Some("size")).and_then(|d| d.child("cx:lvl")) else {
+        return Vec::new();
+    };
+    let values: Vec<(usize, f64)> =
+        lvl.children("cx:pt").filter_map(|p| Some((p.attr("idx").and_then(index)?, p.text().trim().parse::<f64>().ok()?))).take(MAX_POINTS).collect();
+    let mut levels: Vec<HashMap<usize, String>> = data
+        .children("cx:strDim")
+        .find(|d| d.attr("type") == Some("cat"))
+        .into_iter()
+        .flat_map(|d| d.children("cx:lvl"))
+        .take(MAX_LEVELS)
+        .map(|l| l.children("cx:pt").take(MAX_POINTS).filter_map(|p| Some((p.attr("idx").and_then(index)?, label(p.text().trim())))).collect())
+        .collect();
+    levels.reverse();
+    values.into_iter().map(|(k, v)| (levels.iter().map(|l| l.get(&k).cloned().unwrap_or_default()).collect(), v)).collect()
 }
 
 /// What one box & whisker series shows (`cx:layoutPr`).
