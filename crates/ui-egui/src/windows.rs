@@ -36,6 +36,8 @@ use wordcraft_engine::WindowView;
 
 use crate::{WordApp, documents, window_ui::WindowUi};
 
+pub(crate) mod arrange;
+
 /// The window title for a document called `name`.
 pub(crate) fn title(name: &str, dirty: bool) -> String {
     format!("{name}{} - {}", if dirty { " •" } else { "" }, crate::brand::APP_NAME)
@@ -60,9 +62,6 @@ pub(crate) struct Window {
     /// document is drawn. `None` while the session holds it: for the drawn window, and for the
     /// window on each other document whose view is parked with that document.
     view: Option<WindowView>,
-    /// Vertical scrolling the window it scrolls with did (View › Window › Synchronous
-    /// Scrolling), applied to its page when it draws next.
-    sync_scroll_in: f32,
 }
 
 /// The app's windows. See the module documentation.
@@ -93,6 +92,8 @@ pub struct Windows {
     input_plugin: bool,
     /// The viewport driver draws the windows this frame, and titles them.
     driven: bool,
+    /// View › Window: Side by Side and Synchronous Scrolling (#322).
+    arranged: arrange::State,
 }
 
 impl Windows {
@@ -106,7 +107,7 @@ impl Windows {
             native: cfg!(not(target_arch = "wasm32")),
             list,
             viewports: Some(viewports),
-            open: vec![Window { key: 1, id: Some(id), doc, ui: None, requests: Vec::new(), title: String::new(), view: None, sync_scroll_in: 0.0 }],
+            open: vec![Window { key: 1, id: Some(id), doc, ui: None, requests: Vec::new(), title: String::new(), view: None }],
             shown: 1,
             next_key: 2,
             showing: false,
@@ -116,6 +117,7 @@ impl Windows {
             builder: egui::ViewportBuilder::default().with_inner_size([1440.0, 920.0]).with_min_inner_size([760.0, 480.0]),
             input_plugin: false,
             driven: false,
+            arranged: arrange::State::default(),
         }
     }
 
@@ -383,7 +385,7 @@ impl WordApp {
         // Faces borrowed for the interface (non-Latin file names) stay installed.
         state.canvas.ime_faces = self.canvas.ime_faces.clone();
         self.ui.backstage = false;
-        self.windows.open.push(Window { key, id: None, doc, ui: Some(state), requests: Vec::new(), title: String::new(), view, sync_scroll_in: 0.0 });
+        self.windows.open.push(Window { key, id: None, doc, ui: Some(state), requests: Vec::new(), title: String::new(), view });
         self.enter_window(key);
         self.focus_window(key);
     }
@@ -475,16 +477,7 @@ impl WordApp {
             self.windows.next_key = self.windows.next_key.saturating_add(1);
             let mut state = Box::new(WindowUi::new(d.id));
             state.canvas.ime_faces = self.canvas.ime_faces.clone();
-            self.windows.open.push(Window {
-                key,
-                id: None,
-                doc: d.id,
-                ui: Some(state),
-                requests: Vec::new(),
-                title: String::new(),
-                view: None,
-                sync_scroll_in: 0.0,
-            });
+            self.windows.open.push(Window { key, id: None, doc: d.id, ui: Some(state), requests: Vec::new(), title: String::new(), view: None });
             changed = true;
         }
         if changed {
@@ -705,106 +698,17 @@ impl WordApp {
         if self.windows.shown != key {
             return;
         }
-        self.mirror_scroll_in(key);
         self.window_ui(ui);
+        arrange::forward_scroll(self, &ctx);
         // Drawing can close the window or bring another forward: the fields then hold another
         // window's state.
         if self.windows.shown != key {
             return;
         }
-        self.mirror_scroll_out(&ctx, key);
         let title = self.sent_title.clone();
         if let Some(w) = self.windows.get_mut(key) {
             w.title = title;
         }
-    }
-
-    /// Synchronous Scrolling: window `key` (drawn now) scrolls by what the window it scrolls with
-    /// scrolled since it last drew. That scroll isn't passed back.
-    fn mirror_scroll_in(&mut self, key: u64) {
-        let Some(dy) = self.windows.get_mut(key).map(|w| std::mem::take(&mut w.sync_scroll_in)) else { return };
-        if dy == 0.0 || !dy.is_finite() {
-            return;
-        }
-        let from = self.canvas.scroll_request.unwrap_or(self.canvas.scroll_offset);
-        self.canvas.scroll_request = Some(from + egui::vec2(0.0, dy));
-        self.canvas.sync_scroll_mirrored = true;
-    }
-
-    /// Synchronous Scrolling: what window `key` (just drawn) scrolled goes to the other window of
-    /// the side-by-side pair, which scrolls by as much when it draws next.
-    fn mirror_scroll_out(&mut self, ctx: &egui::Context, key: u64) {
-        let dy = std::mem::take(&mut self.canvas.sync_scroll_out);
-        if dy == 0.0 || !self.windows.native {
-            return;
-        }
-        let Some(pair) = self.session.side_by_side.filter(|p| p.sync_scroll) else { return };
-        let doc = self.windows.get(key).map(|w| w.doc);
-        let other = if doc == Some(pair.left) {
-            pair.right
-        } else if doc == Some(pair.right) {
-            pair.left
-        } else {
-            return;
-        };
-        let Some(to) = self.windows.of_doc(other).filter(|&k| k != key) else { return };
-        if let Some(w) = self.windows.get_mut(to) {
-            w.sync_scroll_in = (w.sync_scroll_in + dy).clamp(-1.0e7, 1.0e7);
-        }
-        ctx.request_repaint_of(self.windows.viewport(to));
-    }
-
-    /// The viewport of window `key` when it has a native window of its own to move.
-    fn movable_viewport(&self, key: u64) -> Option<ViewportId> {
-        let id = self.windows.get(key)?.id?;
-        Some(self.windows.viewports.as_ref()?.viewport_id(id))
-    }
-
-    /// The screen area the windows are arranged on: the monitor egui reports for the active
-    /// window. `None` where it isn't known; the windows then stay where they are.
-    fn work_area(&self, ctx: &egui::Context) -> Option<egui::Rect> {
-        let size = ctx.input_for(self.active_viewport(), |i| i.viewport().monitor_size)?;
-        (size.is_finite() && size.x > 0.0 && size.y > 0.0).then(|| egui::Rect::from_min_size(egui::Pos2::ZERO, size))
-    }
-
-    /// Move window `key` so its outer rectangle is `rect`: out of the maximized state, to the
-    /// position, at the inner size that leaves room for the decoration its viewport reports.
-    fn place_window(&self, ctx: &egui::Context, key: u64, rect: egui::Rect) {
-        let Some(viewport) = self.movable_viewport(key) else { return };
-        let (outer, inner) = ctx.input_for(viewport, |i| (i.viewport().outer_rect, i.viewport().inner_rect));
-        let decoration = match (outer, inner) {
-            (Some(o), Some(i)) if o.is_finite() && i.is_finite() => (o.size() - i.size()).max(egui::Vec2::ZERO),
-            _ => egui::Vec2::ZERO,
-        };
-        let size = (rect.size() - decoration).max(egui::vec2(1.0, 1.0));
-        ctx.send_viewport_cmd_to(viewport, ViewportCommand::Maximized(false));
-        // The arranged size may be smaller than a new window's minimum (three windows stacked).
-        ctx.send_viewport_cmd_to(viewport, ViewportCommand::MinInnerSize(size.min(crate::window_geometry::MIN_SIZE)));
-        ctx.send_viewport_cmd_to(viewport, ViewportCommand::OuterPosition(rect.min));
-        ctx.send_viewport_cmd_to(viewport, ViewportCommand::InnerSize(size));
-    }
-
-    /// View › Window › Arrange All: every window stacked top to bottom on the screen, in opening
-    /// order. The active window stays active. One window (the web app) stays as it is.
-    pub(crate) fn arrange_all_windows(&mut self) {
-        let Some(ctx) = self.ctx.clone().filter(|_| self.windows.native) else { return };
-        let Some(area) = self.work_area(&ctx) else { return };
-        let keys: Vec<u64> = self.windows.open.iter().map(|w| w.key).collect();
-        for (key, rect) in keys.iter().zip(crate::window_arrange::arrange_all(area, keys.len())) {
-            self.place_window(&ctx, *key, rect);
-        }
-    }
-
-    /// View Side by Side and Reset Window Position: the pair's left document's window on the left
-    /// half of the screen, the other's on the right half.
-    pub(crate) fn side_by_side_windows(&mut self) {
-        let Some(ctx) = self.ctx.clone().filter(|_| self.windows.native) else { return };
-        let Some(pair) = self.session.side_by_side else { return };
-        let Some(area) = self.work_area(&ctx) else { return };
-        let (Some(left), Some(right)) = (self.windows.of_doc(pair.left), self.windows.of_doc(pair.right)) else { return };
-        let [l, r] = crate::window_arrange::side_by_side(area);
-        self.place_window(&ctx, left, l);
-        self.place_window(&ctx, right, r);
     }
 
     /// The windows' focus changes and close requests from this frame.

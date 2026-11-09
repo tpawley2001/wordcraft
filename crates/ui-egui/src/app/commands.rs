@@ -457,6 +457,9 @@ impl WordApp {
         for req in std::mem::take(&mut self.session.ui_requests) {
             self.handle_request(&req);
         }
+        // The open document goes to the front of the recent list after every command. The recent
+        // commands (`ui.recentRemove`, `ui.recentClear`) return from `ui_command` before this
+        // runs, so taking a document off the list is never undone by the re-add (#2716).
         if let Some(p) = self.session.path.as_ref().map(|p| p.to_string_lossy().to_string())
             && self.ui.recent.first() != Some(&p)
         {
@@ -528,18 +531,13 @@ impl WordApp {
                 }
                 "pasteSpecial" => self.dialog = Some(dialogs::Dialog::paste_special(self, req)),
                 "newWindow" => self.new_window(),
-                "arrangeAll" => self.arrange_all_windows(),
-                "resetWindowPosition" => self.side_by_side_windows(),
                 other => self.dialog = dialogs::Dialog::open(other, self),
             }
-        }
-        // View Side by Side turned on: the pair's windows take the two halves of the screen.
-        if req.get("sideBySide").is_some_and(Value::is_object) {
-            self.side_by_side_windows();
         }
         if req.get("close").is_some() {
             self.quit_requested = true;
         }
+        crate::windows::arrange::request(self, req);
     }
 
     /// A request made for document `document`, which isn't shown and which no other window
@@ -570,6 +568,57 @@ impl WordApp {
     }
 
     /// Commands that live in the UI layer.
+    /// `ui.cropMarks`, `ui.textBoundaries`, `ui.picturePlaceholders`.
+    fn show_content_option(&mut self, id: &str, p: &Value) -> Result<Value, String> {
+        // File › Options › Advanced › Show document content: `value` true or false turns
+        // crop marks, text boundaries or picture placeholders on or off; no value reads
+        // it. Screen only: the document, printing and exports never see them.
+        let (key, slot) = match id {
+            "ui.cropMarks" => ("cropMarks", &mut self.ui.crop_marks),
+            "ui.textBoundaries" => ("textBoundaries", &mut self.ui.text_boundaries),
+            _ => ("picturePlaceholders", &mut self.ui.picture_placeholders),
+        };
+        match p.get("value") {
+            None => {}
+            Some(Value::Bool(on)) => *slot = *on,
+            Some(_) => return Err("`value` must be true or false".into()),
+        }
+        Ok(json!({ key: *slot }))
+    }
+
+    /// `ui.draftFont`.
+    fn draft_font_command(&mut self, p: &Value) -> Result<Value, String> {
+        // File › Options › Advanced › Show document content › Use draft font in Draft and
+        // Outline views: `value` true or false, `name` a font name, `size` 1–1638 points;
+        // none reads it. A bad parameter is an error and changes nothing.
+        let on = match p.get("value") {
+            None => None,
+            Some(Value::Bool(on)) => Some(*on),
+            Some(_) => return Err("`value` must be true or false".into()),
+        };
+        let name = match p.get("name") {
+            None => None,
+            Some(Value::String(n)) if !n.trim().is_empty() && n.len() <= crate::MAX_FONT_NAME_BYTES => Some(n.trim().to_string()),
+            Some(_) => return Err("`name` must be a font name".into()),
+        };
+        let size = match p.get("size").map(Value::as_f64) {
+            None => None,
+            Some(Some(s)) if (1.0..=1638.0).contains(&s) => Some(s as f32),
+            Some(_) => return Err("`size` must be a number of points from 1 to 1638".into()),
+        };
+        if let Some(on) = on {
+            self.ui.draft_font = on;
+        }
+        if let Some(name) = name {
+            self.ui.draft_font_name = name;
+        }
+        if let Some(size) = size {
+            self.ui.draft_font_size = size;
+        }
+        self.session.set_draft_font(self.ui.shown_draft_font());
+        Ok(json!({"draftFont": self.ui.draft_font, "name": self.ui.draft_font_name, "size": self.ui.draft_font_size}))
+    }
+
     pub(crate) fn ui_command(&mut self, id: &str, p: &Value) -> Option<Result<Value, String>> {
         let s = |k: &str| p.get(k).and_then(Value::as_str);
         Some(Ok(match id {
@@ -860,53 +909,8 @@ impl WordApp {
                 }
                 json!({"alignmentGuides": self.ui.alignment_guides})
             }
-            "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" => {
-                // File › Options › Advanced › Show document content: `value` true or false turns
-                // crop marks, text boundaries or picture placeholders on or off; no value reads
-                // it. Screen only: the document, printing and exports never see them.
-                let (key, slot) = match id {
-                    "ui.cropMarks" => ("cropMarks", &mut self.ui.crop_marks),
-                    "ui.textBoundaries" => ("textBoundaries", &mut self.ui.text_boundaries),
-                    _ => ("picturePlaceholders", &mut self.ui.picture_placeholders),
-                };
-                match p.get("value") {
-                    None => {}
-                    Some(Value::Bool(on)) => *slot = *on,
-                    Some(_) => return Some(Err("`value` must be true or false".into())),
-                }
-                json!({ key: *slot })
-            }
-            "ui.draftFont" => {
-                // File › Options › Advanced › Show document content › Use draft font in Draft and
-                // Outline views: `value` true or false, `name` a font name, `size` 1–1638 points;
-                // none reads it. A bad parameter is an error and changes nothing.
-                let on = match p.get("value") {
-                    None => None,
-                    Some(Value::Bool(on)) => Some(*on),
-                    Some(_) => return Some(Err("`value` must be true or false".into())),
-                };
-                let name = match p.get("name") {
-                    None => None,
-                    Some(Value::String(n)) if !n.trim().is_empty() && n.len() <= crate::MAX_FONT_NAME_BYTES => Some(n.trim().to_string()),
-                    Some(_) => return Some(Err("`name` must be a font name".into())),
-                };
-                let size = match p.get("size").map(Value::as_f64) {
-                    None => None,
-                    Some(Some(s)) if (1.0..=1638.0).contains(&s) => Some(s as f32),
-                    Some(_) => return Some(Err("`size` must be a number of points from 1 to 1638".into())),
-                };
-                if let Some(on) = on {
-                    self.ui.draft_font = on;
-                }
-                if let Some(name) = name {
-                    self.ui.draft_font_name = name;
-                }
-                if let Some(size) = size {
-                    self.ui.draft_font_size = size;
-                }
-                self.session.set_draft_font(self.ui.shown_draft_font());
-                json!({"draftFont": self.ui.draft_font, "name": self.ui.draft_font_name, "size": self.ui.draft_font_size})
-            }
+            "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" => return Some(self.show_content_option(id, p)),
+            "ui.draftFont" => return Some(self.draft_font_command(p)),
             "ui.startScreen" => {
                 // File › Options › General › Start-up (#766): `value` true or false turns showing
                 // File › Home at start-up on or off; no value reads it.
@@ -916,6 +920,38 @@ impl WordApp {
                     Some(_) => return Some(Err("`value` must be true or false".into())),
                 }
                 json!({"startScreen": self.ui.start_screen})
+            }
+            "ui.recentRemove" => {
+                // Backstage ▸ Home/Open ▸ Recent: take one document off the list (Word's context
+                // menu Remove). The path must be an entry that is on the list (#2716).
+                let Some(path) = p.get("path").and_then(Value::as_str) else {
+                    return Some(Err("`path` must name a document on the recent list".into()));
+                };
+                let before = self.ui.recent.len();
+                self.ui.recent.retain(|r| r != path);
+                if self.ui.recent.len() == before {
+                    return Some(Err(format!("`{path}` is not on the recent list")));
+                }
+                let saved = self.save_prefs_now();
+                if !matches!(saved, Some(Err(_))) {
+                    let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or(path.to_string());
+                    self.status(i18n::fmt(tl!("Removed {name} from the recent list"), &[("name", &name)]));
+                }
+                let mut r = json!({"removed": 1, "recent": self.ui.recent});
+                add_saved(&mut r, saved);
+                r
+            }
+            "ui.recentClear" => {
+                // Clear the whole list, as Word's registry clear does for recent documents (#2716).
+                let removed = self.ui.recent.len();
+                self.ui.recent.clear();
+                let saved = self.save_prefs_now();
+                if !matches!(saved, Some(Err(_))) {
+                    self.status(i18n::fmt(tl!("Removed {count} documents from the recent list"), &[("count", &removed.to_string())]));
+                }
+                let mut r = json!({"removed": removed, "recent": self.ui.recent});
+                add_saved(&mut r, saved);
+                r
             }
             "ui.displayServer" => {
                 // File › Options › Advanced › Linux display server (#2184): `value` `auto`,
@@ -1142,6 +1178,19 @@ fn input_dialog_other(id: &str, params: &Value) -> Option<&'static str> {
     }
 }
 
+/// The result fields of a command that saves the preferences at once: `saved` is true when the
+/// write worked, false with `saveError` when it failed (the change still holds for this run) and
+/// null when the host has no preferences hook or wrote nothing.
+fn add_saved(r: &mut Value, saved: Option<Result<(), String>>) {
+    r["saved"] = match &saved {
+        None => Value::Null,
+        Some(res) => json!(res.is_ok()),
+    };
+    if let Some(Err(e)) = saved {
+        r["saveError"] = json!(e);
+    }
+}
+
 /// Commands that work while no document is open (#1129): opening or creating one, closing the
 /// window, Help, adding fonts (a font file dropped on the empty window), and the settings (File ›
 /// Options, the view and interface preferences it sets, AutoCorrect Options, Customize Ribbon and
@@ -1167,6 +1216,7 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "tools.customizeKeyboard"
             | "tools.customizeRibbon"
             | "view.darkMode"
+            | "view.paperColor"
             | "view.marks"
             | "view.ruler"
             | "view.numeral"
@@ -1190,6 +1240,8 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.pirateSpeak"
             | "ui.caretAnimation"
             | "ui.startScreen"
+            | "ui.recentRemove"
+            | "ui.recentClear"
             | "ui.displayServer"
             | "ui.statusCount"
             | "ui.checkForUpdates"
