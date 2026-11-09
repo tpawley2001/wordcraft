@@ -277,8 +277,47 @@ fn a_hidden_warped_box_draws_nothing() {
 }
 
 /// A warped box whose lines are cut off by a clipped cell: both paths draw them flat in the clip.
-/// The fixture is left to the change (see the spec, case 4); until then this test fails.
 #[test]
 fn a_warped_box_cut_off_by_a_clipped_cell_draws_as_page_display() {
-    panic!("build the clipped-cell fixture (spec case 4) and compare item by item with page_display");
+    // The box's text sits in a one-cell table whose exact-height row is too short for it.
+    let (mut d, id) = wordart("textArchUp", false, &["Your Text Here"]);
+    let Some(part) = d.parts.get_mut(&id) else { panic!("the box story") };
+    let mut t = wordcraft_doc::Table::new(1, 1, 242.25);
+    t.rows[0].props.height = Some(10.0);
+    t.rows[0].props.height_rule = wordcraft_doc::props::HeightRule::Exact;
+    t.rows[0].cells[0].blocks = part.blocks.clone();
+    part.blocks = vec![std::sync::Arc::new(wordcraft_doc::Block::Table(t))];
+    let l = lay(&d);
+    let page = &l.pages[0];
+    let in_box = |it: &&Placed| matches!(it, Placed::Lines { story: StoryRef::Part(s), .. } if *s == id);
+    assert!(page.items.iter().any(|it| matches!(it, Placed::Cell { story: StoryRef::Part(s), clip: true, .. } if *s == id)), "the cell clips");
+    let lines: Vec<&Placed> = page.items.iter().filter(in_box).collect();
+    assert!(!lines.is_empty(), "the box's lines are laid out");
+    let opts = Default::default();
+    let whole = page_display(&d, page, &opts);
+    let shown = ItemDisplay::new(&d, page);
+    let draws: Vec<Draw> = page.header.iter().chain(&page.footer).chain(&page.items).flat_map(|it| shown.draws(it, &opts)).collect();
+    assert!(!whole.iter().any(|dr| matches!(dr, Draw::Art { .. })), "the page draws the clipped text flat");
+    assert!(!draws.iter().any(|dr| matches!(dr, Draw::Art { .. })), "so does the item-by-item path");
+    // The same glyph runs for the box's lines, each in the cell's clip.
+    let glyphs = |ds: &[Draw]| -> Vec<String> {
+        fn walk(ds: &[Draw], out: &mut Vec<String>) {
+            for dr in ds {
+                match dr {
+                    Draw::Glyphs { text, glyphs, .. } => out.push(format!("{text}@{glyphs:?}")),
+                    Draw::Clip { items, .. } => walk(items, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(ds, &mut out);
+        out.retain(|g| ["Your", "Text", "Here"].iter().any(|w| g.contains(w)));
+        out
+    };
+    let mine = glyphs(&draws);
+    assert!(!mine.is_empty(), "the clipped text is drawn");
+    assert_eq!(mine, glyphs(&whole));
+    let clipped = |ds: &[Draw]| ds.iter().filter(|dr| matches!(dr, Draw::Clip { .. })).count();
+    assert!(clipped(&draws) > 0 && clipped(&whole) > 0, "drawn in the cell's clip");
 }
