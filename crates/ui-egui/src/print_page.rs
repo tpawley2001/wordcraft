@@ -177,6 +177,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let lay = layout_of(app, &ctx);
     let total = lay.pages.len();
     let current = app.session.current_pages(&lay);
+    let ids = wordcraft_engine::print::page_ids(&lay);
     app.ui.print.preview = app.ui.print.preview.min(total.saturating_sub(1));
 
     let settings = |app: &mut WordApp, ui: &mut Ui| {
@@ -251,7 +252,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     && ui
                         .add(
                             egui::TextEdit::singleline(&mut app.ui.print.pages)
-                                .hint_text(tl!("Pages like 1-3, 5"))
+                                .hint_text(tl!("Pages like 1-3, 5 or p1s2-p3s2"))
                                 .desired_width(260.0)
                                 .char_limit(wordcraft_engine::print::MAX_SPEC_CHARS),
                         )
@@ -295,7 +296,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     std::iter::once((NO_SCALING, "No Scaling")).chain(wordcraft_geom::PAPER_SIZES.iter().map(|(n, _, _)| (*n, *n))).collect();
                 choice(ui, "print_paper", &mut app.ui.print.paper, &papers, &paper_label);
 
-                match wordcraft_engine::print::plan(&app.ui.print.params(), total, current) {
+                match wordcraft_engine::print::plan_in(&app.ui.print.params(), &ids, current) {
                     Ok(plan) => {
                         let msg = crate::i18n::fmt(
                             tl!("{count} of {total} pages will print"),

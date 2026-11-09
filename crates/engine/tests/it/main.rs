@@ -22,4 +22,5 @@ mod rtf_sections;
 mod safe_save;
 mod three_column_headers;
 
+mod print_section_ranges;
 mod ref_paragraph_numbers;

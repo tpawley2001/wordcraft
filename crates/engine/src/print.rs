@@ -27,48 +27,104 @@ pub const MAX_PRINT_PAGES: usize = 5000;
 /// Parses a custom page range like `1-3, 5, 8-` into 0-based page indexes, in the order typed
 /// (Word prints them in document order; so does this: sorted, without repeats). Pages are
 /// 1-based in the text; `8-` means "to the last page" and `-3` "from the first". An empty text,
-/// page 0, a page past `total`, a reversed range or anything else is an error.
+/// page 0, a page past `total`, a reversed range or anything else is an error. The section forms
+/// of [`parse_page_range_in`] see the whole document as section 1.
 pub fn parse_page_range(spec: &str, total: usize) -> Result<Vec<usize>, String> {
+    parse_page_range_in(spec, &unsectioned(total))
+}
+
+/// Page ids for `total` pages numbered 1, 2, 3… in one section.
+fn unsectioned(total: usize) -> Vec<(usize, u32)> {
+    (1..=total).map(|n| (1, u32::try_from(n).unwrap_or(u32::MAX))).collect()
+}
+
+/// Like [`parse_page_range`], with Word's section forms: `p2s1` is the first page whose
+/// displayed number is 2 in section 1, `s3` every page of section 3, and `p2s1-p3s2` every page
+/// from one to the other in document order. Plain numbers stay physical positions. `ids[i]` is
+/// physical page `i`'s (1-based section, displayed page number).
+pub fn parse_page_range_in(spec: &str, ids: &[(usize, u32)]) -> Result<Vec<usize>, String> {
     if spec.chars().count() > MAX_SPEC_CHARS {
         return Err("the page range is too long".into());
     }
+    let total = ids.len();
     if total == 0 {
         return Err("the document has no pages".into());
     }
+    let sections = ids.iter().map(|(s, _)| *s).max().unwrap_or(0);
     let mut keep = vec![false; total];
     let mut any = false;
     for item in spec.split([',', ';']) {
-        let item: String = item.chars().filter(|c| !c.is_whitespace()).collect();
+        let item: String = item.chars().filter(|c| !c.is_whitespace()).map(|c| c.to_ascii_lowercase()).collect();
         if item.is_empty() {
             continue;
         }
-        let page = |t: &str| -> Result<usize, String> {
-            let not_a_page = || format!("`{item}` isn't a page or a range like 2-4");
-            if !t.bytes().all(|b| b.is_ascii_digit()) {
+        let not_a_page = || format!("`{item}` isn't a page or a range like 2-4 or p1s2-p3s2");
+        let number = |t: &str| -> Result<usize, String> {
+            if t.is_empty() || !t.bytes().all(|b| b.is_ascii_digit()) {
                 return Err(not_a_page());
             }
-            let n: usize = t.parse().map_err(|_| not_a_page())?;
+            t.parse().map_err(|_| not_a_page())
+        };
+        let page = |t: &str| -> Result<usize, String> {
+            let n = number(t)?;
             if n == 0 || n > total {
                 return Err(format!("page {n} doesn't exist; the document has {total} page{}", if total == 1 { "" } else { "s" }));
             }
             Ok(n)
         };
-        let (from, to) = match item.split_once('-') {
-            None => {
-                let n = page(&item)?;
-                (n, n)
+        let section = |t: &str| -> Result<usize, String> {
+            let m = number(t)?;
+            if m == 0 || m > sections {
+                return Err(format!("section {m} doesn't exist; the document has {sections} section{}", if sections == 1 { "" } else { "s" }));
             }
-            Some(("", "")) => return Err("`-` isn't a page or a range like 2-4".into()),
-            Some((a, b)) => {
-                let from = if a.is_empty() { 1 } else { page(a)? };
-                let to = if b.is_empty() { total } else { page(b)? };
-                if from > to {
-                    return Err(format!("`{item}` runs backwards"));
+            Ok(m)
+        };
+        // `pNsM` as a 1-based physical position: the first page numbered N in section M.
+        let section_page = |t: &str| -> Result<usize, String> {
+            let (n, m) = t.strip_prefix('p').and_then(|r| r.split_once('s')).ok_or_else(not_a_page)?;
+            let (n, m) = (number(n)?, section(m)?);
+            ids.iter()
+                .position(|(s, num)| *s == m && usize::try_from(*num).is_ok_and(|num| num == n))
+                .map(|i| i + 1)
+                .ok_or_else(|| format!("section {m} has no page {n}"))
+        };
+        let sectioned = item.contains(['p', 's']);
+        let (from, to) = if let Some(m) = item.strip_prefix('s') {
+            let m = section(m)?;
+            let first = ids.iter().position(|(s, _)| *s == m);
+            let last = ids.iter().rposition(|(s, _)| *s == m);
+            match (first, last) {
+                (Some(a), Some(b)) => (a + 1, b + 1),
+                _ => return Err(format!("section {m} has no pages")),
+            }
+        } else {
+            match item.split_once('-') {
+                None if sectioned => {
+                    let n = section_page(&item)?;
+                    (n, n)
                 }
-                (from, to)
+                None => {
+                    let n = page(&item)?;
+                    (n, n)
+                }
+                Some(("", "")) => return Err("`-` isn't a page or a range like 2-4".into()),
+                Some((a, b)) if sectioned => {
+                    if !(a.starts_with('p') && b.starts_with('p')) {
+                        return Err(format!("`{item}` mixes a section page with a plain page; write both ends like p2s1"));
+                    }
+                    (section_page(a)?, section_page(b)?)
+                }
+                Some((a, b)) => {
+                    let from = if a.is_empty() { 1 } else { page(a)? };
+                    let to = if b.is_empty() { total } else { page(b)? };
+                    (from, to)
+                }
             }
         };
-        for flag in keep.iter_mut().take(to).skip(from - 1) {
+        if from > to {
+            return Err(format!("`{item}` runs backwards"));
+        }
+        for flag in keep.iter_mut().take(to).skip(from.saturating_sub(1)) {
             *flag = true;
         }
         any = true;
@@ -77,6 +133,11 @@ pub fn parse_page_range(spec: &str, total: usize) -> Result<Vec<usize>, String> 
         return Err("type the pages to print, like 1-3, 5".into());
     }
     Ok(keep.iter().enumerate().filter(|(_, k)| **k).map(|(i, _)| i).collect())
+}
+
+/// The (1-based section, displayed page number) of each page of `lay`, for [`plan_in`].
+pub fn page_ids(lay: &DocLayout) -> Vec<(usize, u32)> {
+    lay.pages.iter().map(|pg| (pg.section.saturating_add(1), pg.number)).collect()
 }
 
 /// What a print job holds: the pages (0-based, copies included, in print order).
@@ -96,6 +157,13 @@ pub struct PrintPlan {
 /// `collate` (default true: 1,2,3 1,2,3; false: 1,1,2,2,3,3),
 /// `reverse` (default false: reverse chosen pages before copies; ignored for N-up/booklet).
 pub fn plan(v: &Value, total: usize, current: (usize, usize)) -> Result<PrintPlan, CmdError> {
+    plan_in(v, &unsectioned(total), current)
+}
+
+/// [`plan`] against a layout whose physical pages have these (1-based section, displayed
+/// number) ids (see [`page_ids`]), so a custom range can name section pages like `p2s1`.
+pub fn plan_in(v: &Value, ids: &[(usize, u32)], current: (usize, usize)) -> Result<PrintPlan, CmdError> {
+    let total = ids.len();
     let bad = |m: String| CmdError::Params(m);
     let pages_text = p::str(v, "pages").filter(|t| !t.trim().is_empty());
     let range = p::str(v, "range").unwrap_or(if pages_text.is_some() { "custom" } else { "all" });
@@ -104,7 +172,7 @@ pub fn plan(v: &Value, total: usize, current: (usize, usize)) -> Result<PrintPla
         "all" => (0..total).collect(),
         "current" => vec![current.0.min(last)],
         "selection" => (current.0.min(last)..=current.1.min(last).max(current.0.min(last))).collect(),
-        "custom" => parse_page_range(pages_text.unwrap_or(""), total).map_err(bad)?,
+        "custom" => parse_page_range_in(pages_text.unwrap_or(""), ids).map_err(bad)?,
         other => return Err(bad(format!("unknown range `{other}`; use all, current, selection or custom"))),
     };
     match p::str(v, "parity").unwrap_or("all") {
@@ -191,7 +259,7 @@ pub fn sheets(v: &Value, lay: &DocLayout, current: (usize, usize)) -> Result<Vec
     }
     let mut single = v.clone();
     single["copies"] = json!(1);
-    let pages = plan(&single, lay.pages.len(), current)?.pages;
+    let pages = plan_in(&single, &page_ids(lay), current)?.pages;
     imposition(v)?.sheets(lay, &pages, imposed_paper(v, lay, &pages)?).map_err(|e| CmdError::Failed(e.to_string()))
 }
 
@@ -242,10 +310,11 @@ impl Session {
         let lay = self.print_layout(v);
         let mut settings = v.clone();
         settings["reverse"] = json!(p::bool(v, "reverse").unwrap_or(self.prefs.print_reverse));
-        let plan = plan(&settings, lay.pages.len(), self.current_pages(&lay))?;
+        let ids = page_ids(&lay);
+        let plan = plan_in(&settings, &ids, self.current_pages(&lay))?;
         let mut single = settings;
         single["copies"] = json!(1);
-        let single_plan = self::plan(&single, lay.pages.len(), self.current_pages(&lay))?;
+        let single_plan = plan_in(&single, &ids, self.current_pages(&lay))?;
         let paper = imposed_paper(v, &lay, &single_plan.pages)?;
         let opts = wordcraft_pdf::PdfOptions {
             pages: Some(single_plan.pages),
@@ -292,6 +361,15 @@ mod tests {
             assert!(parse_page_range(bad, 6).is_err(), "`{bad}` is refused");
         }
         assert!(parse_page_range("1", 0).is_err());
+    }
+
+    #[test]
+    fn section_ranges_refuse_hostile_text() {
+        let ids = [(1, 1), (1, 2), (2, 1)];
+        for bad in ["p99999999999999999999999s1", "p1s99999999999999999999", "-p1s1", "p1s1-", "s1-s2", "p1s", "1s1", "pp1s1", "p1-p2s1"] {
+            assert!(parse_page_range_in(bad, &ids).is_err(), "`{bad}` is refused");
+        }
+        assert_eq!(parse_page_range_in("p1s2-p1s2; s1", &ids), Ok(vec![0, 1, 2]));
     }
 
     #[test]
