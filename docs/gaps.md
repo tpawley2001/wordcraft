@@ -212,6 +212,7 @@ Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text wi
 ## Revision history
 
 > 2026-11-08 · P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.
+> 2026-11-08 · P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.
 > 2026-11-08 · trivial · P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.
 
 > 2026-11-08 · P0128: #13 narrowed: Office 2016 treemap charts (`cx:chart`, `layoutId="treemap"`) are drawn from their data (one tile per leaf nested by category level and tiled as Word tiles them, top-level group colours and legend, leaf and group name labels) instead of the fallback picture; saving still writes both branches. Readiness estimates unchanged.
