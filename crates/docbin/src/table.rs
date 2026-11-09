@@ -48,6 +48,10 @@ const T_VERT_ALIGN: u16 = 0xD62C;
 const T_SET_SHD: u16 = 0xD62D;
 const T_CANT_SPLIT: u16 = 0x3466;
 const T_CELL_WIDTH: u16 = 0xD635;
+/// `sprmTCellPadding` / `sprmTCellPaddingDefault`: a CSSA operand giving cell margins for a
+/// cell range / the whole table ([MS-DOC] §2.6.4, §2.9.43).
+const T_CELL_PADDING: u16 = 0xD632;
+const T_CELL_PADDING_DEFAULT: u16 = 0xD634;
 // Floating-table positioning ([MS-DOC] §2.6.4): the TAP counterparts of the paragraph frame
 // sprms, with the same operands (PositionCodeOperand, XAS, YAS, twips).
 const T_PC: u16 = 0x360D;
@@ -87,6 +91,11 @@ pub(crate) struct RowInfo {
     align: Option<Align>,
     indent: Option<f32>,
     borders: Option<Borders>,
+    /// Default cell margins `[top, left, bottom, right]` (points), from
+    /// `sprmTCellPaddingDefault` with `sprmTDxaGapHalf` for an unset left or right side.
+    cell_margins: Option<[f32; 4]>,
+    /// Per-cell margin overrides from `sprmTCellPadding`, one slot per cell.
+    cell_padding: Vec<(u8, [Option<f32>; 4])>,
     /// Horizontal merges: (itcFirst, itcLim) cell-index ranges.
     merges: Vec<(u8, u8)>,
     /// Per-cell overrides keyed by (pre-merge) cell index.
@@ -133,7 +142,13 @@ impl RowInfo {
     /// How many per-cell overrides the row keeps, for tests.
     #[cfg(test)]
     pub(crate) fn overrides(&self) -> usize {
-        self.vmerge.len() + self.shading.len() + self.widths.len() + self.width_pcts.len() + self.valign.len() + self.merges.len()
+        self.vmerge.len()
+            + self.cell_padding.len()
+            + self.shading.len()
+            + self.widths.len()
+            + self.width_pcts.len()
+            + self.valign.len()
+            + self.merges.len()
     }
 
     /// The width percentage cell `i` ends up with, for tests.
@@ -156,6 +171,7 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
     let mut r = RowInfo::default();
     let mut gap_half: Option<i16> = None;
     let mut dxa_left: Option<i16> = None;
+    let mut padding: [Option<f32>; 4] = [None; 4];
     for prl in sprm::iter(papx) {
         // The membership sprms are paragraph sprms (sgc 1); the rest here are table sprms
         // (sgc 5), so match opcodes directly.
@@ -266,6 +282,12 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
                     }
                 }
             }
+            T_CELL_PADDING_DEFAULT => {
+                if let Some((_, _, sides)) = cssa(prl.operand) {
+                    merge_sides(&mut padding, &sides);
+                }
+            }
+            T_CELL_PADDING => set_cell_padding(&mut r.cell_padding, prl.operand),
             T_PC | T_DXA_ABS | T_DYA_ABS | T_DXA_FROM_TEXT | T_DYA_FROM_TEXT => {
                 let op = match prl.op {
                     T_PC => fmt::P_PC,
@@ -306,7 +328,60 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
         let gap = gap_half.unwrap_or(0) as f32 / 20.0;
         r.indent = Some(((l as f32 / 20.0) - gap).clamp(-1584.0, 1584.0));
     }
+    r.cell_margins = cell_margins(padding, gap_half);
     r
+}
+
+/// The table's default cell margins: the padding sides set, with the gap half as the left and
+/// right margin wherever the padding Prls leave them. `None` when neither is given.
+fn cell_margins(padding: [Option<f32>; 4], gap_half: Option<i16>) -> Option<[f32; 4]> {
+    let gap = gap_half.map(dist_pt);
+    if padding.iter().all(Option::is_none) && gap.is_none() {
+        return None;
+    }
+    let [top, left, bottom, right] = padding;
+    Some([top.unwrap_or(0.0), left.or(gap).unwrap_or(0.0), bottom.unwrap_or(0.0), right.or(gap).unwrap_or(0.0)])
+}
+
+/// Apply a `sprmTCellPadding` operand to its cell range, one slot per cell.
+fn set_cell_padding(slots: &mut Vec<(u8, [Option<f32>; 4])>, operand: &[u8]) {
+    let Some((a, b, sides)) = cssa(operand) else { return };
+    for c in a..b.min(MAX_COLS as u8) {
+        match slots.iter_mut().find(|(k, _)| *k == c) {
+            Some(slot) => merge_sides(&mut slot.1, &sides),
+            None => slots.push((c, sides)),
+        }
+    }
+}
+
+/// A CSSA operand (after its cb byte): itcFirst, itcLim, grfbrc, ftsWidth, wWidth. Returns the
+/// cell range and the margin (points) for each side grfbrc names, in `[top, left, bottom,
+/// right]` order; `None` when truncated or the width isn't in twips (ftsNil and the rest).
+fn cssa(operand: &[u8]) -> Option<(u8, u8, [Option<f32>; 4])> {
+    let [_, first, lim, grfbrc, fts, w0, w1, ..] = operand else { return None };
+    if *fts != 3 {
+        return None;
+    }
+    let w = (f32::from(u16::from_le_bytes([*w0, *w1])) / 20.0).clamp(0.0, 1584.0);
+    let mut sides = [None; 4];
+    // grfbrc bits: top, left (start), bottom, right (end).
+    for (i, bit) in [0x01, 0x02, 0x04, 0x08].into_iter().enumerate() {
+        if grfbrc & bit != 0
+            && let Some(s) = sides.get_mut(i)
+        {
+            *s = Some(w);
+        }
+    }
+    Some((*first, *lim, sides))
+}
+
+/// Set each side `new` gives, keeping the rest: a later Prl wins for the same side.
+fn merge_sides(into: &mut [Option<f32>; 4], new: &[Option<f32>; 4]) {
+    for (d, s) in into.iter_mut().zip(new) {
+        if s.is_some() {
+            *d = *s;
+        }
+    }
 }
 
 /// A distance from the text in twips as points, clamped like the frame distances.
@@ -466,6 +541,9 @@ impl TableBuilder {
         if self.props.indent.is_none() {
             self.props.indent = info.indent;
         }
+        if self.props.cell_margins.is_none() {
+            self.props.cell_margins = info.cell_margins;
+        }
         if !cell_end {
             self.cell.push(para_block(para));
             return;
@@ -558,6 +636,9 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
         }
         if let Some((_, v)) = info.valign.iter().rfind(|(k, _)| *k == i) {
             c.props.valign = Some(*v);
+        }
+        if let Some((_, m)) = info.cell_padding.iter().find(|(k, _)| *k == i) {
+            c.props.partial_margins = Some(*m);
         }
     }
     for &(a, b) in info.merges.iter().take(MAX_COLS) {

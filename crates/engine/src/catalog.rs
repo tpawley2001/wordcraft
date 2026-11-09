@@ -352,6 +352,7 @@ View|Window|Split|view.split
 View|Window|Remove Split|view.removeSplit
 View|Window|View Side by Side|view.sideBySide
 View|Window|Synchronous Scrolling|view.syncScroll
+View|Window|Reset Window Position|view.resetWindowPosition
 View|Window|Switch Windows|view.switchWindows
 View|Window|Next Window|view.nextWindow
 View|Window|Previous Window|view.previousWindow

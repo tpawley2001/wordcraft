@@ -24,6 +24,12 @@ pub struct Prefs {
     pub print_field_codes: bool,
     /// File › Options › Advanced › Print pages in reverse order (off).
     pub print_reverse: bool,
+    /// File › Options › Advanced › Print on front of the sheet for duplex printing (off): a manual
+    /// duplex job prints the fronts in reverse order.
+    pub print_duplex_front: bool,
+    /// File › Options › Advanced › Print on back of the sheet for duplex printing (off): a manual
+    /// duplex job prints the backs in reverse order.
+    pub print_duplex_back: bool,
     /// Language › Detect language automatically (per user, as in Word).
     pub detect_language: bool,
     /// Set Proofing Language › Set As Default: overrides the interface language for future
@@ -103,6 +109,8 @@ impl Default for Prefs {
             print_hidden_text: false,
             print_field_codes: false,
             print_reverse: false,
+            print_duplex_front: false,
+            print_duplex_back: false,
             typing_replaces_selection: true,
             insert_key_overtype: false,
             overtype: false,
