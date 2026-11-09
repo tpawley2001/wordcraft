@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-08 · **Change:** trivial (P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged.)
 
@@ -207,6 +209,8 @@ Strict DOCX graphics (gap #2): chart and SmartArt children and all relationship 
 Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text without the clipboard on Windows/Linux. Broader shortcut and UI gaps remain open.
 
 ## Revision history
+
+> 2026-11-08 · trivial · P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.
 
 > 2026-11-08 · P0128: #13 narrowed: Office 2016 treemap charts (`cx:chart`, `layoutId="treemap"`) are drawn from their data (one tile per leaf nested by category level and tiled as Word tiles them, top-level group colours and legend, leaf and group name labels) instead of the fallback picture; saving still writes both branches. Readiness estimates unchanged.
 
