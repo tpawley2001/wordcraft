@@ -1768,6 +1768,7 @@ mod paper_source;
 mod section_extras;
 mod section_revisions;
 mod shape_text;
+mod surrogate_boundaries;
 mod tabs_spacing;
 mod trailing_data;
 mod unicode_surrogates;
