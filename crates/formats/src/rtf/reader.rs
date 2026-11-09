@@ -538,7 +538,7 @@ impl Reader {
 
 /// Applies section formatting word `w` (parameter `p`) to `sec`. False when `w` isn't one.
 pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> bool {
-    use wordcraft_doc::section::{NumFormat, SectionStart};
+    use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NumFormat, SectionStart};
     let on = p != Some(0);
     let pv = p.unwrap_or(0);
     match w {
@@ -569,6 +569,24 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "pgnlcrm" => sec.pgn_fmt = NumFormat::LowerRoman,
         "pgnucltr" => sec.pgn_fmt = NumFormat::UpperLetter,
         "pgnlcltr" => sec.pgn_fmt = NumFormat::LowerLetter,
+        "linemod" => sec.line_mod = Some(pv),
+        "linex" => sec.line_x = Some(pv),
+        "linestarts" => sec.line_starts = Some(pv),
+        "lineppage" => sec.line_restart = Some(LineNumberRestart::Page),
+        "linerestart" => sec.line_restart = Some(LineNumberRestart::Section),
+        "linecont" => sec.line_restart = Some(LineNumberRestart::Continuous),
+        "rtlsect" => sec.rtl = true,
+        "ltrsect" => sec.rtl = false,
+        "pgnhn" => {
+            if let Ok(n @ 1..=9) = u8::try_from(pv) {
+                sec.chapter_style = Some(n);
+            }
+        }
+        "pgnhnsh" => sec.chapter_sep = Some(ChapterSep::Hyphen),
+        "pgnhnsp" => sec.chapter_sep = Some(ChapterSep::Period),
+        "pgnhnsc" => sec.chapter_sep = Some(ChapterSep::Colon),
+        "pgnhnsm" => sec.chapter_sep = Some(ChapterSep::EmDash),
+        "pgnhnsn" => sec.chapter_sep = Some(ChapterSep::EnDash),
         _ => return false,
     }
     true
