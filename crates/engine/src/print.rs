@@ -150,6 +150,12 @@ pub struct PrintPlan {
     pub copies: u32,
 }
 
+/// File › Print › Document Info: the paragraphs of the report Word prints for `what`
+/// (`properties` | `markup` | `styles` | `autotext`). Stub: see the task spec.
+pub fn document_info(_s: &Session, what: &str) -> Result<Vec<String>, CmdError> {
+    Err(CmdError::Params(format!("document info {what} is not implemented yet")))
+}
+
 /// Works out the print plan for `v` against a layout of `total` pages whose caret and selection
 /// sit on pages `current` (first, last). Params:
 /// `range` (`all` | `current` | `selection` | `custom`; `custom` is implied by `pages`),
