@@ -482,6 +482,17 @@ pub(crate) fn page_label(s: &mut Session, pos: &Pos) -> String {
     page_at(&l, &formats, pos).map_or_else(|| "1".into(), |(_, n, fmt, chapter)| page_text(n, fmt, chapter))
 }
 
+/// Where `PAGEREF` reads bookmark `name` (starting at `pos`): a hidden `_Ref` bookmark from the
+/// start of a heading that starts with page breaks reads the page its text is on, as when its
+/// cross-reference was inserted.
+fn bookmark_page_pos(doc: &wordcraft_doc::Document, name: &str, pos: Pos) -> Pos {
+    if pos.off == 0 && name.starts_with("_Ref") {
+        let off = crate::cmd::citations::leading_breaks(doc, &pos);
+        return Pos { off, ..pos };
+    }
+    pos
+}
+
 /// [`update_fields`], or with `all` the whole document: the body (with SEQ, citations and TOC) and
 /// every part story, wherever the caret is (what printing needs).
 pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
@@ -494,6 +505,7 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
     let formats = page_formats(s);
     let marks = s.doc.bookmarks();
     for (name, pos) in marks {
+        let pos = bookmark_page_pos(&s.doc, &name, pos);
         let l = s.layout();
         let page_info =
             page_at(&l, &formats, &pos).map_or((1, NumFormat::Decimal, String::new()), |(_, n, fmt, chapter)| (n, fmt, chapter.to_string()));

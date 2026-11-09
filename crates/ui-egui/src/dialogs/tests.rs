@@ -280,6 +280,28 @@ fn command_search_matches_every_word() {
     assert!(!command_matches(table, "   "));
 }
 
+/// #3398: the interactive command-search result opens the paper-colour selector. The engine
+/// command itself remains parameterised for scripts, agents and other programmatic callers.
+#[test]
+fn screen_paper_color_search_result_opens_general_options() {
+    use egui_kittest::kittest::Queryable;
+    use wordcraft_engine::cmd::view::PaperColor;
+
+    let mut app = app_with("Unchanged document");
+    app.dialog = Some(Dialog::Commands { query: "screen paper color".into(), swallow: false });
+    let mut h = app_harness(app);
+    h.run_steps(4);
+    h.query(egui_kittest::kittest::By::new().role(egui::accesskit::Role::Button).label_contains("Screen Paper Color"))
+        .expect("the paper-colour command is a search result")
+        .click();
+    h.run_steps(3);
+
+    assert!(h.state().ui.backstage);
+    assert_eq!(h.state().ui.backstage_page, "options");
+    assert_eq!(h.state().ui.options_pane, "general");
+    assert_eq!(h.state().session.prefs.paper_color, PaperColor::Document, "opening the selector does not choose a preset");
+}
+
 /// Ordinary Turkish queries must find dotted-I labels, while canonical English labels and
 /// ASCII command IDs retain their old case-insensitive search in every interface language.
 #[test]
@@ -2336,4 +2358,81 @@ fn building_block_dialogs_open_and_save() {
     let mut h = app_harness(app);
     h.run_steps(4);
     assert!(matches!(&h.state().dialog, Some(Dialog::NewBuildingBlock { .. })), "Modify Building Block is shown");
+}
+
+/// PR #5541 review: imported properties whose stored form the Value box shows reduced (a date
+/// with a time, a 64-bit integer, a `1` boolean).
+fn imported_custom_props_form() -> CustomPropertiesForm {
+    let mut app = app_with("Report body");
+    for (name, kind, value) in [("Due", "filetime", "2026-11-30T14:05:00Z"), ("Big", "i8", "9007199254740993"), ("Flag", "bool", "1")] {
+        app.session.doc.custom_props.push(wordcraft_doc::CustomProp {
+            name: name.into(),
+            kind: kind.into(),
+            value: value.into(),
+            ..Default::default()
+        });
+    }
+    CustomPropertiesForm::read(&app)
+}
+
+fn custom_triples(f: &CustomPropertiesForm) -> Vec<(String, String, String)> {
+    f.props.iter().map(|p| (p.name.clone(), p.kind.clone(), p.value.clone())).collect()
+}
+
+/// Modify with nothing edited keeps each stored kind and value, so OK sends nothing.
+#[test]
+fn custom_property_modify_without_edits_keeps_stored_values() {
+    let mut f = imported_custom_props_form();
+    let before = custom_triples(&f);
+    for i in 0..3 {
+        f.select(i);
+        f.modify();
+        assert!(f.message.is_empty(), "row {i}: {}", f.message);
+    }
+    assert_eq!(custom_triples(&f), before);
+    assert_eq!(f.params(), json!({"custom": {}}));
+}
+
+/// A rename keeps the stored value when `file.properties` can store it again as it is, and is
+/// refused when it can't (an i8 above 2^53 would be rounded through f64).
+#[test]
+fn custom_property_rename_keeps_or_refuses_stored_values() {
+    let mut f = imported_custom_props_form();
+    f.select(0);
+    f.name = "Deadline".into();
+    f.modify();
+    assert!(f.message.is_empty(), "{}", f.message);
+    let p = f.props.iter().find(|p| p.name == "Deadline").expect("renamed");
+    assert_eq!((p.kind.as_str(), p.value.as_str()), ("filetime", "2026-11-30T14:05:00Z"));
+    assert_eq!(f.params(), json!({"custom": {"Due": null, "Deadline": {"value": "2026-11-30T14:05:00Z", "type": "date"}}}));
+
+    let mut f = imported_custom_props_form();
+    let before = custom_triples(&f);
+    f.select(1);
+    f.name = "Huge".into();
+    f.modify();
+    assert!(!f.message.is_empty(), "the rename is refused with a message");
+    assert_eq!(custom_triples(&f), before, "the list is unchanged");
+    assert_eq!(f.params(), json!({"custom": {}}));
+
+    let mut f = imported_custom_props_form();
+    f.select(2);
+    f.name = "Flag2".into();
+    f.modify();
+    assert!(f.message.is_empty(), "{}", f.message);
+    let p = f.props.iter().find(|p| p.name == "Flag2").expect("renamed");
+    assert_eq!(p.kind, "bool");
+    assert!(matches!(p.value.as_str(), "1" | "true"), "{}", p.value);
+}
+
+/// An edited value is still parsed for its type, as before.
+#[test]
+fn custom_property_modify_with_an_edit_still_retypes() {
+    let mut f = imported_custom_props_form();
+    f.select(0);
+    f.value = "2026-12-01".into();
+    f.modify();
+    assert!(f.message.is_empty(), "{}", f.message);
+    let p = f.props.iter().find(|p| p.name == "Due").unwrap();
+    assert_eq!((p.kind.as_str(), p.value.as_str()), ("filetime", "2026-12-01T00:00:00Z"));
 }

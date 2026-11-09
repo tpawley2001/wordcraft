@@ -281,7 +281,9 @@ enum Found {
     },
     /// A shape with no picture, not linked and not a horizontal line (some writers put one
     /// after a text box anchored as a character): Word lays it out as an invisible object of
-    /// its size, so its line keeps the room.
+    /// its size, so its line keeps the room. Only an absent picture (no `OfficeArtFBSE` in
+    /// the container) is empty; an FBSE whose BLIP can't be read is a failed decode and stays
+    /// a dropped picture with its warning.
     Empty {
         w: f32,
         h: f32,
@@ -332,9 +334,11 @@ fn locate(data: &[u8], fc_pic: u32, pics: &mut Pictures) -> Option<Found> {
         }
         return match blip {
             Some(key) => Some(Found::Shape { w, h, key, props }),
-            // No BLIP: a picture linked to a file ([MS-ODRAW] §2.3.23.3 `pibFlags` LinkToFile,
-            // or a file name) is kept at its size; so is a shape with no picture at all, drawn
-            // as nothing.
+            // `Some(None)` (an FBSE whose BLIP is unreadable or over the decode budget) took
+            // the arm above: a failed decode, dropped with its warning, never an empty shape.
+            // `None` is an absent picture (no FBSE in the container): a picture linked to a
+            // file ([MS-ODRAW] §2.3.23.3 `pibFlags` LinkToFile, or a file name) is kept at its
+            // size; so is a shape with no picture at all, drawn as nothing.
             None => {
                 let linked = props.pib_flags.is_some_and(|f| f & 0x8 != 0) || !props.pib_name.is_empty() || mm == MM_SHAPEFILE;
                 if !linked {
