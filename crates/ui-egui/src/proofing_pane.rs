@@ -22,6 +22,10 @@ pub struct SpellingForm {
     epoch: u64,
     #[serde(skip)]
     selection: Selection,
+    /// Readability Statistics, worked out once the check is complete with "Show readability
+    /// statistics" on.
+    #[serde(skip)]
+    readability: Option<Value>,
 }
 
 impl SpellingForm {
@@ -43,6 +47,7 @@ impl SpellingForm {
             document: app.session.document_id(),
             epoch: app.session.ime_body_epoch(),
             selection: app.session.sel.clone(),
+            readability: None,
         }
     }
 
@@ -134,11 +139,58 @@ fn context(ui: &mut Ui, app: &mut WordApp, form: &mut SpellingForm, spelling: bo
     });
 }
 
+/// Word's Readability Statistics box, read-only: counts, averages (one decimal) and the scores.
+fn readability(ui: &mut Ui, stats: &Value) {
+    let t = Tokens::get(ui.ctx());
+    let count = |k: &str| stats.get(k).and_then(Value::as_u64).unwrap_or(0).to_string();
+    let decimal = |k: &str| format!("{:.1}", stats.get(k).and_then(Value::as_f64).unwrap_or(0.0));
+    let groups = [
+        (
+            "Counts",
+            vec![
+                ("Words", count("words")),
+                ("Characters", count("characters")),
+                ("Paragraphs", count("paragraphs")),
+                ("Sentences", count("sentences")),
+            ],
+        ),
+        (
+            "Averages",
+            vec![
+                ("Sentences per Paragraph", decimal("sentencesPerParagraph")),
+                ("Words per Sentence", decimal("wordsPerSentence")),
+                ("Characters per Word", decimal("charactersPerWord")),
+            ],
+        ),
+        ("Readability", vec![("Flesch Reading Ease", decimal("fleschReadingEase")), ("Flesch-Kincaid Grade Level", decimal("fleschKincaidGrade"))]),
+    ];
+    ui.label(egui::RichText::new(tl!("Readability Statistics")).font(semibold(13.0)));
+    for (title, rows) in groups {
+        ui.label(egui::RichText::new(tl!(title)).font(regular(11.0)).color(t.text_dim));
+        egui::Grid::new(("readability", title)).num_columns(2).spacing(vec2(16.0, 2.0)).show(ui, |ui| {
+            for (label, value) in rows {
+                ui.label(tl!(label));
+                ui.label(value);
+                ui.end_row();
+            }
+        });
+    }
+}
+
 fn body(app: &mut WordApp, ui: &mut Ui, form: &mut SpellingForm) {
     let t = Tokens::get(ui.ctx());
     if form.done() {
         ui.label(tl!("The spelling and grammar check is complete."));
         ui.add_space(8.0);
+        if app.session.prefs.show_readability {
+            if form.readability.is_none() {
+                form.readability = app.session.run("review.readability", &json!({})).ok();
+            }
+            if let Some(stats) = &form.readability {
+                readability(ui, stats);
+                ui.add_space(8.0);
+            }
+        }
         if action_link(ui, "Check Again") {
             form.next(app, true);
         }

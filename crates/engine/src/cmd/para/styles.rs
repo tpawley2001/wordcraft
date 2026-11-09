@@ -26,6 +26,7 @@ pub(super) fn apply_style(s: &mut Session, v: &Value) -> CmdResult {
     let name = p::req_str(v, "style")?;
     let id = style_id(s, name)?;
     let kind = s.doc.styles.get(&id).map(|x| x.kind).unwrap_or_default();
+    s.applied_styles.insert(id.clone());
     if kind == StyleKind::Character {
         return crate::cmd::format::apply(s, &|c| c.style = Some(id.clone()));
     }

@@ -360,6 +360,10 @@ fn proofing(app: &mut WordApp, ui: &mut Ui) {
     let spelling = app.session.view.proofing;
     flag(app, ui, "Check spelling as you type", "checkSpelling", spelling);
     ui.add_enabled_ui(app.session.view.proofing, |ui| flag(app, ui, "Mark grammar errors as you type", "markGrammar", pr.mark_grammar));
+    let mut readability = pr.show_readability;
+    if ui.checkbox(&mut readability, tl!("Show readability statistics")).changed() {
+        let _ = app.run("review.showReadability", json!({"value": readability}));
+    }
     ui.add_space(8.0);
     section(ui, "Custom dictionary");
     custom_dictionary(app, ui);

@@ -249,6 +249,12 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
     if s.landscape {
         o.push_str("\\lndscpsxn");
     }
+    if let Some(n) = s.paper_src_first.filter(|&n| n != 0) {
+        o.push_str(&format!("\\binfsxn{n}"));
+    }
+    if let Some(n) = s.paper_src_other.filter(|&n| n != 0) {
+        o.push_str(&format!("\\binsxn{n}"));
+    }
     o.push_str(&format!(
         "\\marglsxn{}\\margrsxn{}\\margtsxn{}\\margbsxn{}\\headery{}\\footery{}",
         tw(s.margin_left),
