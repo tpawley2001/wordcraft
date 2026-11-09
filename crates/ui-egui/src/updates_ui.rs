@@ -22,6 +22,11 @@ impl WordApp {
     /// variables (#5653). This build has no self-update, so there is nothing to turn off.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn disable_self_update(&mut self) {}
+
+    /// Upstream starts a downloaded update's installer here as the app exits. This build never
+    /// downloads one, so there is nothing to start.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn start_pending_update(&mut self) {}
 }
 
 pub(crate) fn check(app: &mut WordApp) {

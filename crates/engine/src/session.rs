@@ -41,18 +41,6 @@ pub use snapshot_types::EditSnapshot;
 use snapshot_types::{LayoutSlots, RunSnapshot};
 pub use view::{StylesPaneDock, ViewState};
 
-/// Two open documents shown side by side (View › Window › View Side by Side).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SideBySide {
-    /// The document that was active when the pair was made: the left window.
-    pub left: u64,
-    /// The other document: the right window.
-    pub right: u64,
-    /// Synchronous Scrolling: scrolling one window scrolls the other by the same amount.
-    pub sync_scroll: bool,
-}
-
 /// An editing session: the app-wide state (clipboard, preferences, macros, the command registry…)
 /// and the open documents. The active document's state is in the session's own fields, which
 /// every command works on; the other open documents wait in [`DocState`] values and are swapped
@@ -212,9 +200,8 @@ pub struct Session {
     pub merge: crate::cmd::mailings::MergeState,
     /// Requests from commands to the UI (open a dialog, scroll…), drained by the front end.
     pub ui_requests: Vec<Value>,
-    /// View › Window › View Side by Side: the two open documents shown side by side and whether
-    /// they scroll together (app-wide, never saved). Closing either one ends it.
-    pub side_by_side: Option<SideBySide>,
+    /// View › Window: the other WordCraft windows and Side by Side (#322).
+    pub windows: crate::cmd::view::Windows,
     /// Read Aloud player (Review › Speech).
     pub read_aloud: crate::speech::ReadAloud,
     /// Preferences the front end saves between runs.

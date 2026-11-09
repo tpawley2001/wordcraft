@@ -172,13 +172,15 @@ fn eprint<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<Ve
     (v.len() as u64 <= cap && is_emf(&v)).then_some(v)
 }
 
-/// Repairs an EMF's `EMR_HEADER` counts in place ([MS-EMF] 2.3.4.2).
+/// Repairs an EMF's `EMR_HEADER` counts and NUL-terminates full 32-unit font face names
+/// ([MS-EMF] 2.3.4.2, 2.3.7.8, 2.2.13). Nothing changes unless the chain through EOF is valid.
 pub(crate) fn repair_emf_header(emf: &mut [u8]) {
     let u32_at = |bytes: &[u8], at: usize| bytes.get(at..at.checked_add(4)?).and_then(|s| s.try_into().ok()).map(u32::from_le_bytes);
     let Some(current_handles) = emf.get(56..58).and_then(|s| s.try_into().ok()).map(u16::from_le_bytes) else { return };
     let mut handles = u32::from(current_handles).max(1);
     let mut records = 0u32;
     let mut offset = 0usize;
+    let mut face_terminators = Vec::new();
     loop {
         let Some(tail) = emf.get(offset..) else { return };
         let (Some(typ), Some(size)) = (u32_at(tail, 0), u32_at(tail, 4)) else { return };
@@ -187,6 +189,17 @@ pub(crate) fn repair_emf_header(emf: &mut [u8]) {
         }
         let Ok(size) = usize::try_from(size) else { return };
         let Some(record) = tail.get(..size) else { return };
+        if typ == 82
+            && let Some(face) = record.get(40..104)
+            && !face.as_chunks::<2>().0.contains(&[0, 0])
+        {
+            // Word requires a NUL within FaceName's 32 UTF-16 units to open the picture.
+            let Some(end) = offset.checked_add(104) else { return };
+            if face_terminators.try_reserve(1).is_err() {
+                return;
+            }
+            face_terminators.push(end - 2..end);
+        }
         if matches!(typ, 37 | 38 | 39 | 40 | 49 | 82 | 93 | 94 | 95 | 99 | 122) {
             let Some(index) = u32_at(record, 8) else { return };
             // SELECTOBJECT and DELETEOBJECT can name stock objects, which need no handle slot.
@@ -209,6 +222,11 @@ pub(crate) fn repair_emf_header(emf: &mut [u8]) {
         let [lo, hi] = handles.to_le_bytes();
         for (field, value) in fields.as_chunks_mut::<4>().0.iter_mut().zip([bytes.to_le_bytes(), records.to_le_bytes(), [lo, hi, 0, 0]]) {
             field.copy_from_slice(&value);
+        }
+    }
+    for range in face_terminators {
+        if let Some(unit) = emf.get_mut(range) {
+            unit.fill(0);
         }
     }
 }

@@ -928,3 +928,42 @@ fn citation_refresh_source_lookup_work_scales_with_document_size() {
     let p = big.doc.para(StoryRef::Body, &Path::top(0)).unwrap();
     assert!(p.objects.iter().enumerate().all(|(i, o)| matches!(o, InlineObject::Field { result, .. } if result == &format!("[{}]", i + 1))));
 }
+
+/// A heading that starts with a page break and has a `_Ref` bookmark from before the break: the
+/// page cross-reference reuses it and reads the heading's page, and still does after Update Field.
+#[test]
+fn a_ref_bookmark_before_a_page_break_reads_the_heading_page() {
+    let mut s = Session::new(wordcraft_doc::Document::from_text("Front\nPreface"));
+    s.run("select.text", &json!({"text": "Preface"})).unwrap();
+    s.run("styles.apply", &json!({"style": "Heading 1"})).unwrap();
+    s.run("caret.home", &json!({})).unwrap();
+    s.run("layout.break", &json!({"kind": "page"})).unwrap();
+    let path =
+        s.doc.para_paths(StoryRef::Body).into_iter().find(|p| s.doc.para(StoryRef::Body, p).is_some_and(|p| p.text.contains("Preface"))).unwrap();
+    let len = s.doc.para(StoryRef::Body, &path).unwrap().len();
+    let props = CharProps::default();
+    s.doc
+        .insert_object(
+            &Pos { story: StoryRef::Body, path: path.clone(), off: len },
+            InlineObject::BookmarkEnd { name: "_Ref000000003".into() },
+            &props,
+        )
+        .unwrap();
+    s.doc.insert_object(&Pos { story: StoryRef::Body, path, off: 0 }, InlineObject::BookmarkStart { name: "_Ref000000003".into() }, &props).unwrap();
+    s.run("caret.docEnd", &json!({})).unwrap();
+    s.run("insert.crossReference", &json!({"to": "heading", "target": "Preface", "show": "page"})).unwrap();
+    let pageref = |s: &Session| {
+        s.doc
+            .para_paths(StoryRef::Body)
+            .into_iter()
+            .flat_map(|p| s.doc.para(StoryRef::Body, &p).map(|p| p.objects.clone()).unwrap_or_default())
+            .find_map(|o| match o {
+                InlineObject::Field { instr, result, .. } if instr.starts_with("PAGEREF") => Some((instr, result)),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(pageref(&s), ("PAGEREF _Ref000000003 \\h".to_string(), "2".to_string()));
+    crate::cmd::references::update_fields_in(&mut s, true).unwrap();
+    assert_eq!(pageref(&s).1, "2");
+}

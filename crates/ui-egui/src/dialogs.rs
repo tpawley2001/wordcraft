@@ -57,16 +57,16 @@ pub(crate) use page_setup::paper_entry;
 use paragraph::apply_paragraph;
 use paragraph::{para_fields, paragraph_dialog};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub enum LinkKind {
+    Web,
+    Place,
+    Email,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "dialog", rename_all = "camelCase")]
 pub enum Dialog {
-    /// View Side by Side with three or more documents: which one goes beside the active one.
-    CompareSideBySide {
-        /// The other open documents: id and title, in the order they were opened.
-        choices: Vec<(u64, String)>,
-        selected: usize,
-        message: String,
-    },
     RenameDocument {
         name: String,
         message: String,
@@ -206,9 +206,10 @@ pub enum Dialog {
         text: String,
         /// Focus and select the address when the dialog first opens.
         focus: bool,
-        /// "Place in This Document" instead of "Existing File or Web Page".
-        place: bool,
-        /// The document's places (`link.targets`), read when that tab is first shown.
+        kind: LinkKind,
+        email: String,
+        subject: String,
+        /// The document's places and e-mail links (`link.targets`), read on first use.
         targets: Option<Value>,
         /// The chosen place: the `insert.link` parameters, and the name it shows.
         pick: Option<(Value, String)>,
@@ -578,7 +579,6 @@ impl Dialog {
 
     pub fn name(&self) -> &'static str {
         match self {
-            Dialog::CompareSideBySide { .. } => "sideBySide",
             Dialog::RenameDocument { .. } => "renameDocument",
             Dialog::Font { .. } => "font",
             Dialog::Paragraph { .. } => "paragraph",
@@ -834,9 +834,16 @@ impl Dialog {
                     first_page: sp.title_page,
                 }
             }
-            "link" => {
-                Dialog::Link { url: "https://".into(), text: app.session.selected_text(), place: false, targets: None, pick: None, focus: true }
-            }
+            "link" => Dialog::Link {
+                url: "https://".into(),
+                text: app.session.selected_text(),
+                kind: LinkKind::Web,
+                email: String::new(),
+                subject: String::new(),
+                targets: None,
+                pick: None,
+                focus: true,
+            },
             "bookmark" => Dialog::Bookmark { name: bookmark_at_caret(&app.session), by_location: false, hidden: false, deleted: false },
             "wordCount" => Dialog::WordCount { stats: app.session.run("review.wordCount", &json!({})).unwrap_or_default() },
             "browseObject" => {
@@ -894,11 +901,6 @@ impl Dialog {
                 }
             }
             "pasteSpecial" => Dialog::paste_special(app, &json!({})),
-            "sideBySide" => {
-                let active = app.session.document_id();
-                let choices = app.session.documents().iter().filter(|d| d.id != active).map(|d| (d.id, crate::documents::display_title(d))).collect();
-                Dialog::CompareSideBySide { choices, selected: 0, message: String::new() }
-            }
             "renameDocument" => Dialog::RenameDocument { name: app.title_stem(), message: String::new(), focus: true },
             "about" => Dialog::About { tab: 0 },
             "contributors" => Dialog::About { tab: 1 },
