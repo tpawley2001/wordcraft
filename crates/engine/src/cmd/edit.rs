@@ -156,7 +156,7 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(r#"{"text": string, "with": string (^p ^t ^& ^c …; \\1 with wildcards; with regex also $1 ${n} ${name} $0 $$ \\1 \\n (paragraph mark) \\t), "format"?, "replaceFormat"?: {…} | null (Replace with's formatting; empty `with` keeps the text and only formats it), …options of edit.find}"#),
         CommandSpec::new("edit.goto", "Go To", "Home › Editing › Find", goto)
             .key("Mod+Alt+G / F5")
-            .params(r#"{"page"?: n, "pageBy"?: int (pages forward, negative back, from the caret's page), "bookmark"?: string (selects its text), "paragraph"?: n}; none opens Find and Replace on its Go To tab"#)
+            .params(r#"{"page"?: n, "pageBy"?: int (pages forward, negative back, from the caret's page), "bookmark"?: string (selects its text), "paragraph"?: n} | {"what": "page|section|bookmark|comment|footnote|endnote|field|table|graphic|equation|object|heading", "n"?: n (1-based, clamped), "by"?: int (+k after / -k before the selection; neither = Next), "name"?: string (bookmark; comment reviewer; field type such as PAGE)}; none opens Find and Replace on its Go To tab"#)
             .pure(),
         CommandSpec::new("edit.goBack", "Go Back", "Navigation", |s, _| {
             let p = s.go_back().ok_or_else(|| CmdError::Failed("no edits to go back to yet".into()))?;
@@ -915,6 +915,9 @@ fn replace_all(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 pub(super) fn goto(s: &mut Session, v: &Value) -> CmdResult {
+    if let Some(what) = p::str(v, "what") {
+        return goto_what(s, v, what);
+    }
     // Relative pages, Go To's "+2" / "-1": from the page the caret is on.
     let by = v.get("pageBy").and_then(Value::as_i64);
     let rel = by.map(|by| {
@@ -959,6 +962,77 @@ pub(super) fn goto(s: &mut Session, v: &Value) -> CmdResult {
     }
     s.push_ui_request(json!({"open": "goto"}));
     sel_result(s)
+}
+
+/// Go To's "Go to what": the `n`-th object of a kind (clamped to the document's), or `by` objects
+/// on from the selection; neither is Next. Pages and bookmarks go through the old parameters.
+fn goto_what(s: &mut Session, v: &Value, what: &str) -> CmdResult {
+    use super::browse::{BrowseObject, Target};
+    let n = p::u64(v, "n");
+    let by = v.get("by").and_then(Value::as_i64).or_else(|| n.is_none().then_some(1));
+    let name = p::str(v, "name").unwrap_or("").trim();
+    let target = match what {
+        "page" => {
+            let page = match n {
+                Some(n) => json!({"page": n.max(1)}),
+                None => json!({"pageBy": by.unwrap_or(1)}),
+            };
+            return goto(s, &page);
+        }
+        "bookmark" if name.is_empty() => return Err(CmdError::Params("`name` (the bookmark) is required".into())),
+        "bookmark" => return goto(s, &json!({"bookmark": name})),
+        "section" => Target::SectionStarts,
+        "comment" => Target::CommentBy(name),
+        "field" => Target::FieldType(name),
+        "equation" => Target::Equation,
+        "object" => Target::Object,
+        "footnote" => Target::Browse(BrowseObject::Footnote),
+        "endnote" => Target::Browse(BrowseObject::Endnote),
+        "table" => Target::Browse(BrowseObject::Table),
+        "graphic" => Target::Browse(BrowseObject::Graphic),
+        "heading" => Target::Browse(BrowseObject::Heading),
+        _ => return Err(CmdError::Params(format!("no Go To kind `{what}`"))),
+    };
+    let list = super::browse::goto_targets(s, &target);
+    if list.is_empty() {
+        return Err(CmdError::Failed(match target {
+            Target::CommentBy(who) if !who.is_empty() => format!("No comments by {who}."),
+            Target::FieldType(kind) if !kind.is_empty() => format!("No {kind} fields in this document."),
+            _ => format!("This document has no {what}s."),
+        }));
+    }
+    let count = list.len();
+    let idx = match (n, by) {
+        (Some(n), _) => Some(usize::try_from(n).unwrap_or(usize::MAX).clamp(1, count) - 1),
+        (None, Some(0)) => return Ok(json!({"found": false, "what": what, "count": count})),
+        (None, Some(k)) => {
+            let (from, to) = s.sel.ordered();
+            let steps = usize::try_from(k.unsigned_abs()).unwrap_or(usize::MAX);
+            if k > 0 {
+                let first = list.iter().position(|t| *t > to);
+                first.map(|i| i.saturating_add(steps - 1).min(count - 1))
+            } else {
+                let last = list.iter().rposition(|t| *t < from);
+                last.map(|i| i.saturating_sub(steps - 1))
+            }
+        }
+        (None, None) => None,
+    };
+    let Some((idx, at)) = idx.and_then(|i| list.get(i).map(|t| (i, t.clone()))) else {
+        s.status = format!("No further {what} in the document.");
+        return Ok(json!({"found": false, "what": what, "count": count}));
+    };
+    s.sel = Selection::caret(at);
+    s.goal_x = None;
+    s.push_ui_request(json!({"scrollTo": "caret"}));
+    let mut r = sel_result(s)?;
+    if let Some(o) = r.as_object_mut() {
+        o.insert("found".into(), json!(true));
+        o.insert("what".into(), json!(what));
+        o.insert("index".into(), json!(idx + 1));
+        o.insert("count".into(), json!(count));
+    }
+    Ok(r)
 }
 
 fn painter_pick(s: &mut Session) {

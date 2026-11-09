@@ -1764,8 +1764,10 @@ fn compound_borders_round_trip() {
 mod foreign_styles;
 mod legacy_pn;
 mod object_result;
+mod paper_source;
 mod section_revisions;
 mod shape_text;
 mod tabs_spacing;
 mod trailing_data;
+mod unicode_surrogates;
 mod widow_control;
