@@ -184,6 +184,10 @@ pub struct Session {
     /// Picture effects, styles and borders: drawn media key → what was drawn on which bitmap,
     /// so the next one replaces them instead of drawing over them (#2052).
     pub picture_looks: std::collections::HashMap<String, crate::cmd::objects::PictureLook>,
+    /// Ids of the paragraph and character styles applied while editing this document. As in
+    /// Word, a style once applied stays in use after the text using it changes style
+    /// (File › Print › Styles lists it).
+    pub applied_styles: std::collections::BTreeSet<String>,
     /// Last mutating command (Repeat).
     pub last_command: Option<(String, Value)>,
     /// Macro being recorded: (name, steps).

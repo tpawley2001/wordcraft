@@ -24,6 +24,9 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("list.get", "List Definition", "Home › Paragraph › Multilevel List", get)
             .params(r#"{"num"?: list id (default: the caret's list)} → {"num", "levels": [as list.define]}"#)
             .pure(),
+        CommandSpec::new("list.adjustIndents", "Adjust List Indents", "Home › Paragraph › Numbering", adjust_indents).params(
+            r#"{"numberPosition"?: pt, "textIndent"?: pt, "follow"?: "tab|space|nothing", "tabAt"?: pt | null} — changes the caret's level of the caret's list (fields left out keep the level's values; `tabAt: null` removes the tab stop) → {"num", "level"}"#,
+        ),
         CommandSpec::new("list.multilevelPreset", "Multilevel List Library", "Home › Paragraph › Multilevel List", preset).params(
             r#"{"preset": "headings" (1 / 1.1 / 1.1.1) | "article" (Article I. / Section 1.01 / (a)) | "outlineHeadings" (I. / A. / 1.) | "chapter" (Chapter 1, lower levels unnumbered)} — a new list whose nine levels are linked to Heading 1–9: every paragraph in those styles is numbered, selected paragraphs already in a Heading style keep it, and any other selected paragraph becomes Heading 1 (the first level)"#,
         ),
@@ -162,6 +165,64 @@ fn get(s: &mut Session, v: &Value) -> CmdResult {
         p::u64(v, "num").map(|n| n.min(u32::MAX as u64) as u32).or_else(|| caret_list(s)).ok_or_else(|| CmdError::Failed("not in a list".into()))?;
     let levels = levels_of(s, num).ok_or_else(|| CmdError::Params("no such list".into()))?;
     Ok(json!({"num": num, "levels": levels.iter().map(level_json).collect::<Vec<_>>()}))
+}
+
+/// Word's Adjust List Indents: the caret's level of the caret's list, changed in the list
+/// definition so every item of that list at that level follows. Paragraphs of that list at that
+/// level lose their own direct indents, so the level's show.
+fn adjust_indents(s: &mut Session, v: &Value) -> CmdResult {
+    let para = s.doc.para_at(&s.sel.focus).ok_or_else(|| CmdError::Failed("not in a list".into()))?;
+    let n = para.props.numbering.or_else(|| s.doc.styles.resolve_para(&para.props).numbering).filter(|n| n.num != 0);
+    let n = n.ok_or_else(|| CmdError::Failed("not in a list".into()))?;
+    let level = n.level.min((LEVELS - 1) as u8);
+    let current = s.doc.numbering.level(n.num, level).cloned().ok_or_else(|| CmdError::Failed("no such list".into()))?;
+    // The dialog's number position and text indent are the level's aligned-at and indent.
+    let mut fields = serde_json::Map::new();
+    if let Some(x) = p::f32(v, "numberPosition") {
+        fields.insert("alignedAt".into(), json!(x));
+    }
+    if let Some(x) = p::f32(v, "textIndent") {
+        fields.insert("indentAt".into(), json!(x));
+    }
+    for k in ["follow", "tabAt"] {
+        if let Some(x) = v.get(k) {
+            fields.insert(k.into(), x.clone());
+        }
+    }
+    let changed = level_from(current, usize::from(level), &Value::Object(fields));
+    // The definition is the list's, shared by every `num` that uses it: change it there, as Word
+    // does, rather than forking it. A level this `num` overrides itself changes in the override.
+    let numbering = Arc::make_mut(&mut s.doc.numbering);
+    let aid = numbering.num(n.num).map(|x| x.abstract_id).ok_or_else(|| CmdError::Failed("no such list".into()))?;
+    let overridden = numbering.num(n.num).is_some_and(|x| x.level_overrides.iter().any(|(i, _)| *i == level));
+    if overridden {
+        if let Some(x) = numbering.nums.iter_mut().find(|x| x.id == n.num)
+            && let Some((_, l)) = x.level_overrides.iter_mut().find(|(i, _)| *i == level)
+        {
+            *l = changed;
+        }
+    } else if let Some(a) = numbering.abstracts.iter_mut().find(|a| a.id == aid)
+        && let Some(l) = a.levels.get_mut(usize::from(level))
+    {
+        *l = changed;
+    }
+    // The paragraphs of that list at that level show the level's indents, not their own.
+    let story = s.sel.focus.story;
+    for path in s.doc.para_paths(story) {
+        let Some(p) = s.doc.para(story, &path) else { continue };
+        let own = p.props.numbering.or_else(|| s.doc.styles.resolve_para(&p.props).numbering);
+        if !own.is_some_and(|x| x.num == n.num && x.level == level) {
+            continue;
+        }
+        if let Ok(p) = s.doc.para_mut(story, &path) {
+            p.props.indent_left = None;
+            p.props.indent_first = None;
+            p.props.indent_left_chars = None;
+            p.props.indent_first_chars = None;
+            p.touch();
+        }
+    }
+    Ok(json!({"num": n.num, "level": level}))
 }
 
 fn define(s: &mut Session, v: &Value) -> CmdResult {
