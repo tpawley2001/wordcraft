@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-09 · **Change:** trivial (P0159: Review › Proofing › Readability Statistics (`review.readability`: counts, averages, Flesch Reading Ease, Flesch-Kincaid Grade Level; no passive sentences, #4152) and File › Options › Proofing › Show readability statistics, shown in the Proofing pane when the check is complete. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-09 · **Change:** trivial (P0150: View › Window › Reset Window Position puts the two windows viewed side by side back on equal halves of the screen, keeping Synchronous Scrolling; gap #27. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.)
@@ -634,3 +636,4 @@ Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text wi
 Four geometry-dependent regression controls request Source Sans 3 explicitly. Platform-installed substitutes otherwise change their expected line counts. Assertions remain unchanged; renderer font metrics and substitution gaps remain open.
 
 > 2026-10-29 · Port #2437 to split layout modules: finite border extents and terminal-break keep preflight. Recursive keep lookahead remains outside scope. Source port only; no test execution or new native measurements.
+| 2026-11-09 | trivial | P0159: Readability Statistics (`review.readability`: words, characters, paragraphs, sentences, averages, Flesch Reading Ease and Flesch-Kincaid Grade Level for the selection or the main text; passive sentences not yet, #4152) and Show readability statistics (`review.showReadability`, File › Options › Proofing, saved with the other preferences), shown in the Proofing pane after the check completes |

@@ -12,6 +12,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 mod changes;
 mod comments;
 mod proofing;
+mod readability;
 
 pub use changes::{
     DELETION_TEXT_CHARS, DeletionBalloon, deletion_balloons, format_changes, has_deletions, has_format_changes, move_changes, tracking_json,
@@ -22,6 +23,7 @@ use comments::{
 };
 pub use comments::{comment_list, comment_range_at_caret};
 use proofing::{all_issues, issue_at, next_issue, suggestions, thesaurus, word_count};
+use readability::readability;
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
@@ -81,6 +83,15 @@ pub fn specs() -> Vec<CommandSpec> {
             // ⌘⇧G is Find Previous on macOS.
             .key(super::non_mac("Mod+Shift+G"))
             .pure(),
+        CommandSpec::new("review.readability", "Readability Statistics", "Review › Proofing", readability)
+            .params(r#"{} → {"words", "characters", "paragraphs", "sentences", "syllables" (integers), "sentencesPerParagraph", "wordsPerSentence", "charactersPerWord", "fleschReadingEase", "fleschKincaidGrade" (unrounded): the selection, else the main text}"#)
+            .pure(),
+        CommandSpec::new("review.showReadability", "Show readability statistics", "File › Options › Proofing", |s, v| {
+            s.prefs.show_readability = p::bool(v, "value").unwrap_or(!s.prefs.show_readability);
+            Ok(json!({"value": s.prefs.show_readability}))
+        })
+        .params(r#"{"value"?: bool (omit to toggle)}"#)
+        .pure(),
         CommandSpec::new("review.changes", "Reviewing Pane", "Review › Tracking", list_changes).pure(),
         CommandSpec::new("review.spelling", "Spelling & Grammar", "Review › Proofing", next_issue)
             .key(super::mac_or("F7 / Alt+F7 / Mod+Alt+L", "F7 / Alt+F7"))
