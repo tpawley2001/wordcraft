@@ -62,6 +62,7 @@ mod reset_window_position;
 mod window_edge_keys;
 mod write_protection;
 mod style_keys;
+mod paper_source;
 
 /// True, after saying so on stderr, when this build lacks the Language data the proofing tests
 /// need (craft-proof built without `CRAFT_I18N_DIR`). The probes are craft-proof's public
