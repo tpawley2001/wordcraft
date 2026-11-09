@@ -161,7 +161,8 @@ fn sections_start_with_section_one_at_the_top() {
     let n = s.doc.para_paths(StoryRef::Body).len();
     caret_end_of(&mut s, n - 2);
     run(&mut s, "layout.break", json!({"kind": "continuous"}));
-    caret_end_of(&mut s, s.doc.para_paths(StoryRef::Body).len() - 1);
+    let last = s.doc.para_paths(StoryRef::Body).len() - 1;
+    caret_end_of(&mut s, last);
     run(&mut s, "edit.goto", json!({"what": "section", "n": 1}));
     assert_eq!(s.sel.focus, Pos::body(0, 0));
     let section_end = |s: &Session, i: usize| s.doc.para_at(&Pos::body(i, 0)).is_some_and(|p| p.section.is_some());
