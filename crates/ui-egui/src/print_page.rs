@@ -394,7 +394,7 @@ fn back_pass(app: &mut WordApp, ctx: &egui::Context) {
     }
     let ready = app.services.print_native.is_none() || app.printing.ready();
     let mut answer = None;
-    let modal = egui::Modal::new(egui::Id::new("wordcraft.manualDuplex")).show(ctx, |ui| {
+    let modal = egui::Modal::new(egui::Id::unique("wordcraft.manualDuplex")).show(ctx, |ui| {
         ui.set_max_width(380.0);
         ui.heading(tl!("Manually Print on Both Sides"));
         ui.label(tl!("When the first side has printed, turn the printed pages over and put them back in the paper tray, then select Continue."));
