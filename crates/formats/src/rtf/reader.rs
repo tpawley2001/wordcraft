@@ -551,6 +551,9 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "headery" => sec.page.header = Some(pv),
         "footery" => sec.page.footer = Some(pv),
         "lndscpsxn" => sec.page.landscape = on,
+        // Printer bin codes; 0 (the default) and values outside u16 leave the bin unset.
+        "binfsxn" => sec.bin_first = u16::try_from(pv).ok().filter(|&v| v != 0),
+        "binsxn" => sec.bin_other = u16::try_from(pv).ok().filter(|&v| v != 0),
         "sbknone" => sec.start = SectionStart::Continuous,
         "sbkcol" => sec.start = SectionStart::NextColumn,
         "sbkpage" => sec.start = SectionStart::NextPage,
