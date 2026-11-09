@@ -287,16 +287,7 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
                     merge_sides(&mut padding, &sides);
                 }
             }
-            T_CELL_PADDING => {
-                if let Some((a, b, sides)) = cssa(prl.operand) {
-                    for c in a..b.min(MAX_COLS as u8) {
-                        match r.cell_padding.iter_mut().find(|(k, _)| *k == c) {
-                            Some(slot) => merge_sides(&mut slot.1, &sides),
-                            None => r.cell_padding.push((c, sides)),
-                        }
-                    }
-                }
-            }
+            T_CELL_PADDING => set_cell_padding(&mut r.cell_padding, prl.operand),
             T_PC | T_DXA_ABS | T_DYA_ABS | T_DXA_FROM_TEXT | T_DYA_FROM_TEXT => {
                 let op = match prl.op {
                     T_PC => fmt::P_PC,
@@ -337,13 +328,30 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
         let gap = gap_half.unwrap_or(0) as f32 / 20.0;
         r.indent = Some(((l as f32 / 20.0) - gap).clamp(-1584.0, 1584.0));
     }
-    // The gap half is the left and right cell margin wherever the padding Prls leave them.
-    let gap = gap_half.map(dist_pt);
-    if padding.iter().any(Option::is_some) || gap.is_some() {
-        let [top, left, bottom, right] = padding;
-        r.cell_margins = Some([top.unwrap_or(0.0), left.or(gap).unwrap_or(0.0), bottom.unwrap_or(0.0), right.or(gap).unwrap_or(0.0)]);
-    }
+    r.cell_margins = cell_margins(padding, gap_half);
     r
+}
+
+/// The table's default cell margins: the padding sides set, with the gap half as the left and
+/// right margin wherever the padding Prls leave them. `None` when neither is given.
+fn cell_margins(padding: [Option<f32>; 4], gap_half: Option<i16>) -> Option<[f32; 4]> {
+    let gap = gap_half.map(dist_pt);
+    if padding.iter().all(Option::is_none) && gap.is_none() {
+        return None;
+    }
+    let [top, left, bottom, right] = padding;
+    Some([top.unwrap_or(0.0), left.or(gap).unwrap_or(0.0), bottom.unwrap_or(0.0), right.or(gap).unwrap_or(0.0)])
+}
+
+/// Apply a `sprmTCellPadding` operand to its cell range, one slot per cell.
+fn set_cell_padding(slots: &mut Vec<(u8, [Option<f32>; 4])>, operand: &[u8]) {
+    let Some((a, b, sides)) = cssa(operand) else { return };
+    for c in a..b.min(MAX_COLS as u8) {
+        match slots.iter_mut().find(|(k, _)| *k == c) {
+            Some(slot) => merge_sides(&mut slot.1, &sides),
+            None => slots.push((c, sides)),
+        }
+    }
 }
 
 /// A CSSA operand (after its cb byte): itcFirst, itcLim, grfbrc, ftsWidth, wWidth. Returns the
