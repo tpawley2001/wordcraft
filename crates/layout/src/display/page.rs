@@ -123,7 +123,8 @@ impl<'a> ItemDisplay<'a> {
     }
 
     /// The draw items of `it` alone, as [`page_display`] gives them for a page holding just it
-    /// (and, for a line in a clipped cell, the cell's clip).
+    /// (and, for a line in a clipped cell, the cell's clip). `it` is an item of the page this
+    /// display was made for, or a copy of one: a warped box's lines are matched by value.
     pub fn draws(&self, it: &Placed, opts: &DisplayOptions) -> Vec<Draw> {
         let mut out = Vec::new();
         let items = std::slice::from_ref(it);
@@ -131,7 +132,7 @@ impl<'a> ItemDisplay<'a> {
         if let Some(w) = self.warp_of(it) {
             // The box's text is drawn bent, once, where its first line is; its other lines draw nothing.
             let hidden = opts.hide_object.as_ref().is_some_and(|p| Hidden::new(self.doc, p).hides(it));
-            if !hidden && w.lines.first().is_some_and(|f| std::ptr::eq(*f, it)) {
+            if !hidden && w.lines.first().is_some_and(|f| same_line(f, it)) {
                 let input = WarpedText { doc: self.doc, lines: &w.lines, rect: w.rect, warp: &w.warp, opts, authors: &self.authors, alpha: ba };
                 warped_text(input, &mut out);
             }
@@ -155,7 +156,19 @@ impl<'a> ItemDisplay<'a> {
         if self.warps.is_empty() || cell_clip(&self.clips, StoryRef::Part(*id), &path.0).is_some() {
             return None;
         }
-        self.warps.iter().find(|w| w.id == *id && w.lines.iter().any(|l| std::ptr::eq(*l, it)))
+        self.warps.iter().find(|w| w.id == *id && w.lines.iter().any(|l| same_line(l, it)))
+    }
+}
+
+/// Whether `a` and `b` are the same line run of a text box story: the same story, paragraph path
+/// and lines, so a copy of a page item matches the page's own.
+fn same_line(a: &Placed, b: &Placed) -> bool {
+    match (a, b) {
+        (
+            Placed::Lines { story: StoryRef::Part(ia), path: pa, l0: a0, l1: a1, .. },
+            Placed::Lines { story: StoryRef::Part(ib), path: pb, l0: b0, l1: b1, .. },
+        ) => ia == ib && pa == pb && a0 == b0 && a1 == b1,
+        _ => false,
     }
 }
 

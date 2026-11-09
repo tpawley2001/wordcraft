@@ -98,15 +98,22 @@ pub(super) fn view(app: &mut WordApp, ui: &mut Ui) {
         } else {
             big(ui, app, "split", "Split", "view.split", json!({}), false);
         }
-        // View Side by Side and its two companions, stacked small as Word draws them; the
-        // toggles show their on state.
-        let pair = app.session.side_by_side;
+        // Across the app's windows (#322; `windows`).
+        let w = app.session.windows.clone();
         stack(ui, |ui| {
-            let action = |id, on| crate::widgets::ButtonAction::new(id, json!({}), on);
-            small(ui, app, "sideBySide", Some("View Side by Side"), "View Side by Side", action("view.sideBySide", pair.is_some()));
-            let sync = pair.is_some_and(|p| p.sync_scroll);
-            small(ui, app, "syncScroll", Some("Synchronous Scrolling"), "Synchronous Scrolling", action("view.syncScroll", sync));
-            small(ui, app, "resetWindowPosition", Some("Reset Window Position"), "Reset Window Position", action("view.resetWindowPosition", false));
+            if w.side_by_side.is_none() && w.others.len() > 1 {
+                menu_button(
+                    ui,
+                    app,
+                    crate::widgets::MenuButtonOptions::new("sideBySide", Some("View Side by Side"), "View Side by Side", false, "view.sideBySide"),
+                    |ui, app| window_list(ui, app, &w.others, "view.sideBySide"),
+                );
+            } else {
+                let action = crate::widgets::ButtonAction::new("view.sideBySide", json!({}), w.side_by_side.is_some());
+                small(ui, app, "sideBySide", Some("View Side by Side"), "View Side by Side", action);
+            }
+            let action = crate::widgets::ButtonAction::new("view.syncScroll", json!({}), w.sync_scroll);
+            small(ui, app, "syncScroll", Some("Synchronous Scrolling"), "Synchronous Scrolling", action);
         });
         menu_button(
             ui,
@@ -200,4 +207,17 @@ pub(super) fn outlining(app: &mut WordApp, ui: &mut Ui) {
     group(ui, "Close", None, app, |ui, app| {
         big(ui, app, "closeOutline", "Close Outline\nView", "outline.close", json!({}), false);
     });
+}
+
+/// The other WordCraft windows by title; picking one runs `id` with it.
+fn window_list(ui: &mut Ui, app: &mut WordApp, others: &[wordcraft_engine::cmd::view::OtherWindow], id: &str) {
+    if others.is_empty() {
+        ui.add_enabled(false, egui::Label::new(tl!("No other WordCraft windows are open.")));
+    }
+    for o in others {
+        if ui.add(egui::Button::new(o.title.as_str()).min_size(vec2(200.0, 0.0))).clicked() {
+            let _ = app.run(id, json!({"window": o.id}));
+            ui.close();
+        }
+    }
 }
