@@ -13088,3 +13088,4 @@ fn drop_cap_menu_availability_uses_the_resolved_cap() {
     run(&mut s, "edit.undo", json!({}));
     assert_eq!(s.why_disabled("insert.dropCap"), None);
 }
+mod readability;

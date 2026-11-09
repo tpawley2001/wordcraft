@@ -65,6 +65,8 @@ pub struct Prefs {
     /// Check spelling as you type (File › Options › Proofing). The live value is
     /// `ViewState::proofing`; this is the copy that is saved and restored (#1792).
     pub check_spelling: bool,
+    /// Show readability statistics after a spelling check (File › Options › Proofing).
+    pub show_readability: bool,
     /// Read Mode's Page Color. The live value is `ViewState::read_page_color`.
     #[serde(deserialize_with = "lenient_read_page_color")]
     pub read_page_color: crate::cmd::view::ReadPageColor,
@@ -121,6 +123,7 @@ impl Default for Prefs {
             marks: Default::default(),
             mark_grammar: true,
             check_spelling: true,
+            show_readability: false,
             read_page_color: Default::default(),
             ignore_uppercase: true,
             ignore_numbers: true,
