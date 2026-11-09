@@ -29,6 +29,7 @@ mod font_sizes;
 mod grid_settings;
 mod fonts;
 mod goto_what;
+mod goto_line;
 mod ime_noop;
 mod autoformat_now;
 mod extend_selection;
