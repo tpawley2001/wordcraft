@@ -354,8 +354,9 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 ## Revision history
 
-> 2026-11-09 · P0149: `.doc` tables take their cell margins from `sprmTCellPaddingDefault` (table), `sprmTCellPadding` (cell ranges) and `sprmTDxaGapHalf` (left and right where no padding is given), so rows are as tall as Word lays them out. Readiness estimates unchanged.
+> 2026-11-09 · `.doc`: character spacing (sprmCDxaSpace, expanded/condensed), character scale (sprmCCharScale, 1–600%) and kerning (sprmCHpsKern) are read from runs and styles, so condensed text lays out as narrow as in Word (`docbin::tests::char_spacing`). Readiness estimates unchanged.
 
+> 2026-11-09 · P0149: `.doc` tables take their cell margins from `sprmTCellPaddingDefault` (table), `sprmTCellPadding` (cell ranges) and `sprmTDxaGapHalf` (left and right where no padding is given), so rows are as tall as Word lays them out. Readiness estimates unchanged.
 > 2026-11-09 · P0146: `.doc` import reads automatic (HTML) space before/after (`sprmPFDyaBeforeAuto` 0x245B, `sprmPFDyaAfterAuto` 0x245C), so Normal (Web) paragraphs are spaced 14 pt apart as in Word. Readiness estimates unchanged.
 
 > 2026-11-08 · P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.

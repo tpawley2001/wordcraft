@@ -26,6 +26,9 @@ const C_FTC0: u16 = 0x4A4F; // font index (ASCII)
 const C_FTC1: u16 = 0x4A50; // East Asian font index (sprmCRgFtc1)
 const C_FTC_BI: u16 = 0x4A5E; // complex-script font index (sprmCFtcBi)
 const C_HIGHLIGHT: u16 = 0x2A0C;
+const C_DXA_SPACE: u16 = 0x8840; // sprmCDxaSpace: letter spacing in twips
+const C_CHAR_SCALE: u16 = 0x4852; // sprmCCharScale: horizontal scale in percent
+const C_HPS_KERN: u16 = 0x484B; // sprmCHpsKern: kern from this size up, half-points
 pub(crate) const C_ISTD: u16 = 0x4A30; // character style
 
 // Paragraph sprms ([MS-DOC] §2.6.2).
@@ -293,6 +296,21 @@ pub(crate) fn apply_char(p: &mut CharProps, prl: &Prl, base: &CharProps, fonts: 
             }
         }
         C_ISTD => {} // CHPX style references are resolved in char_props.
+        C_DXA_SPACE => {
+            if let Some(dxa) = s16_of(prl) {
+                p.spacing = Some((f32::from(dxa) / 20.0).clamp(-1584.0, 1584.0));
+            }
+        }
+        C_CHAR_SCALE => {
+            if let Some(pct) = u16_of(prl).filter(|v| (1..=600).contains(v)) {
+                p.scale = Some(f32::from(pct));
+            }
+        }
+        C_HPS_KERN => {
+            if let Some(hps) = u16_of(prl) {
+                p.kern = Some(f32::from(hps) / 2.0);
+            }
+        }
         _ => {}
     }
 }
