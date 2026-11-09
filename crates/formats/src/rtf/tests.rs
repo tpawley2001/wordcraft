@@ -1768,4 +1768,5 @@ mod section_revisions;
 mod shape_text;
 mod tabs_spacing;
 mod trailing_data;
+mod unicode_surrogates;
 mod widow_control;
