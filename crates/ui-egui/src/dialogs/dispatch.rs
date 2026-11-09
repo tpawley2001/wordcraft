@@ -798,7 +798,7 @@ fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                         out.state.cursor.set_char_range(Some(all));
                         out.state.store(ui.ctx(), out.response.id);
                     }
-                    out.response.labelled_by(label.id);
+                    out.response.response.labelled_by(label.id);
                 });
             });
         } else if *kind == super::LinkKind::Email {
