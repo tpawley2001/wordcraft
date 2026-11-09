@@ -223,7 +223,7 @@ pub fn specs() -> Vec<CommandSpec> {
             r#"{"delivery": string, "return"?: string, "omitReturn"?: bool, "deliveryLeft"?: pt, "deliveryTop"?: pt, "returnLeft"?: pt, "returnTop"?: pt, "deliveryFont"?: {"name"?: string, "size"?: pt}, "returnFont"?: {"name"?: string, "size"?: pt}, "size"?: "Envelope #10|#9|Monarch|DL|C4|C5|C6|B5", "width"?: pt, "height"?: pt, "add"?: bool (add to this document instead of a new one)}"#,
         ),
         CommandSpec::new("mailings.labels", "Labels", "Mailings › Create", labels).params(
-            r#"{"text"?: string, "product"?: "letter-3x10|letter-2x10|letter-2x7|letter-2x5|letter-4x20|a4-3x7|a4-2x7|a4-3x8|a4-2x4", "rows"?: n, "cols"?: n, "fromRecipients"?: bool (one label per selected recipient, continuing across sheets), "single"?: {"row": n, "col": n}}"#,
+            r#"{"text"?: string, "product"?: "letter-3x10|letter-2x10|letter-2x7|letter-2x5|letter-4x20|a4-3x7|a4-2x7|a4-3x8|a4-2x4", "custom"?: {"name"?: string, "top": pt, "side": pt, "width": pt, "height": pt, "hPitch"?: pt (default width), "vPitch"?: pt (default height), "cols": integer (1..10), "rows": integer (1..40), "pageWidth"?: pt (default 612), "pageHeight"?: pt (default 792)} (overrides product and top-level rows/cols; labels must fit the page; pitches must be at least label size), "rows"?: n, "cols"?: n, "fromRecipients"?: bool (one label per selected recipient, continuing across sheets), "single"?: {"row": n, "col": n}}"#,
         ),
     ]
 }

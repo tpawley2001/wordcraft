@@ -1,10 +1,10 @@
 # Where WordCraft falls short of Word
 
-
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-08 · **Change:** trivial (P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0123: #13 narrowed: Office 2016 box & whisker charts drawn from their data. Readiness estimates unchanged); previously trivial (P0121: #13 narrowed: Office 2016 waterfall charts drawn from their data. Readiness estimates unchanged); previously trivial (P0120: `.doc` field anchors keep the first nonempty cached result run’s formatting, including hidden, bold and size; empty results keep the begin character’s formatting. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0128: #13 narrowed: Office 2016 treemap charts drawn from their data. Readiness estimates unchanged); previously trivial (P0125: Office 2016 waterfall and box & whisker charts use regular 14 pt titles, a default light grey frame with explicit line overrides, and about ten value-axis intervals in 1/2/5 steps. Classic charts unchanged; readiness estimates unchanged.)
-
 
 > **Last updated:** 2026-11-07 · **Change:** trivial (P0117: In margin moves first-line and hanging indents to the cap frame and restores them on None or Dropped; DOCX preserves the separate frame indent (#4173). Layout unchanged; readiness estimates unchanged.)
 > **CLI path update:** 2026-11-04 · Options before a non-Unicode input filename no longer make the CLI reject that filename; text option values still require Unicode; `run --file` and `run --script` retain native paths. No ranked gap or readiness estimate changes.
@@ -272,6 +272,7 @@ Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text wi
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-08 | trivial | P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged. |
+| 2026-11-08 | trivial | P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged. |
 | 2026-11-07 | trivial | P0117: In margin moves first-line and hanging indents to the cap frame and restores them on None or Dropped; DOCX preserves the separate frame indent (#4173). Layout unchanged; readiness estimates unchanged. |
 | 2026-11-08 | trivial | #10 narrowed: a turned inline picture with no recorded effect extent keeps its line to its frame (exchanged near a quarter turn in Word 2013+ layout), cut at the line; gap stays open |
 | 2026-11-08 | trivial | #4 narrowed: a cell's last Normal paragraph drops its contextual space after, the end-of-cell mark counting as a Normal paragraph (#5450) |
