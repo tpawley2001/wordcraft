@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 pub struct Prefs {
     /// Word Count includes text boxes, footnotes and endnotes (Word's default).
     pub count_notes: bool,
+    /// On-screen paper for pages without a document background; excluded from saved documents.
+    #[serde(deserialize_with = "lenient_paper_color")]
+    pub paper_color: crate::cmd::view::PaperColor,
     /// Track Changes Options: what markup shows and how revisions are drawn (per user, as in
     /// Word).
     pub markup: wordcraft_layout::display::MarkupOptions,
@@ -21,6 +24,12 @@ pub struct Prefs {
     pub print_field_codes: bool,
     /// File › Options › Advanced › Print pages in reverse order (off).
     pub print_reverse: bool,
+    /// File › Options › Advanced › Print on front of the sheet for duplex printing (off): a manual
+    /// duplex job prints the fronts in reverse order.
+    pub print_duplex_front: bool,
+    /// File › Options › Advanced › Print on back of the sheet for duplex printing (off): a manual
+    /// duplex job prints the backs in reverse order.
+    pub print_duplex_back: bool,
     /// Language › Detect language automatically (per user, as in Word).
     pub detect_language: bool,
     /// Set Proofing Language › Set As Default: overrides the interface language for future
@@ -56,6 +65,8 @@ pub struct Prefs {
     /// Check spelling as you type (File › Options › Proofing). The live value is
     /// `ViewState::proofing`; this is the copy that is saved and restored (#1792).
     pub check_spelling: bool,
+    /// Show readability statistics after a spelling check (File › Options › Proofing).
+    pub show_readability: bool,
     /// Read Mode's Page Color. The live value is `ViewState::read_page_color`.
     #[serde(deserialize_with = "lenient_read_page_color")]
     pub read_page_color: crate::cmd::view::ReadPageColor,
@@ -93,12 +104,15 @@ impl Default for ClipboardPrefs {
 impl Default for Prefs {
     fn default() -> Self {
         Prefs {
+            paper_color: Default::default(),
             count_notes: true,
             markup: Default::default(),
             print_markup: false,
             print_hidden_text: false,
             print_field_codes: false,
             print_reverse: false,
+            print_duplex_front: false,
+            print_duplex_back: false,
             typing_replaces_selection: true,
             insert_key_overtype: false,
             overtype: false,
@@ -109,6 +123,7 @@ impl Default for Prefs {
             marks: Default::default(),
             mark_grammar: true,
             check_spelling: true,
+            show_readability: false,
             read_page_color: Default::default(),
             ignore_uppercase: true,
             ignore_numbers: true,
@@ -136,6 +151,11 @@ impl Prefs {
 fn lenient_default_language<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     let value = serde_json::Value::deserialize(d)?;
     Ok(value.as_str().and_then(wordcraft_proof::lang::normalize_tag))
+}
+
+fn lenient_paper_color<'de, D: serde::Deserializer<'de>>(d: D) -> Result<crate::cmd::view::PaperColor, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(value).unwrap_or_default())
 }
 
 /// Ignore an invalid saved Page Color without discarding other preferences.

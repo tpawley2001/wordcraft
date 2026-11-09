@@ -101,7 +101,18 @@ pub(super) fn index_ui(app: &mut WordApp, ui: &mut Ui, f: &mut IndexForm) -> Nex
         });
     });
     ui.add_space(4.0);
-    if ui.button(tl!("Mark Entry…")).clicked() {
+    let mut mark_entry = false;
+    ui.horizontal(|ui| {
+        mark_entry = ui.button(tl!("Mark Entry…")).clicked();
+        #[cfg(not(target_arch = "wasm32"))]
+        if ui.button(tl!("AutoMark…")).clicked()
+            && let super::Asked::Done(Err(e)) =
+                app.ask_file(super::FileDialogRequest::Open { purpose: "document".into() }, super::AfterPick::AutoMark)
+        {
+            app.status(e);
+        }
+    });
+    if mark_entry {
         return go(RefsDialog::MarkEntry(MarkForm::read(app)));
     }
     let (ok, cancel) = buttons(ui, tl!("OK"));

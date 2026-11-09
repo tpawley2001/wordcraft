@@ -97,14 +97,20 @@ impl CustomPropertiesForm {
         }
     }
 
-    /// The typed name with the stored kind and value, validated against the engine's own
-    /// limits and type rules (`file.properties`, which refuses them the same way).
-    fn form(&self) -> Result<(String, &'static str, String), String> {
+    /// Validate the name independently of the displayed value, which can omit stored data.
+    fn form_name(&self) -> Result<String, String> {
         let max_name = wordcraft_engine::cmd::file::MAX_CUSTOM_NAME;
         let name = self.name.trim();
         if name.is_empty() || name.chars().count() > max_name {
             return Err(crate::i18n::fmt(tl!("Property names are 1–{max} characters."), &[("max", &max_name.to_string())]));
         }
+        Ok(name.to_string())
+    }
+
+    /// The typed name with the stored kind and value, validated against the engine's own
+    /// limits and type rules (`file.properties`, which refuses them the same way).
+    fn form(&self) -> Result<(String, &'static str, String), String> {
+        let name = self.form_name()?;
         if self.value.len() > wordcraft_engine::cmd::file::MAX_CUSTOM_VALUE {
             let max = wordcraft_engine::cmd::file::MAX_CUSTOM_VALUE;
             return Err(crate::i18n::fmt(tl!("Property values are at most {max} bytes."), &[("max", &max.to_string())]));
@@ -113,7 +119,7 @@ impl CustomPropertiesForm {
         let (kind, value) = wordcraft_engine::cmd::file::parse_custom_value(self.kind, value).map_err(|()| {
             crate::i18n::fmt(tl!("The value entered does not match the {type} type."), &[("type", tl!(custom_type_label(self.kind)))])
         })?;
-        Ok((name.to_string(), kind, value))
+        Ok((name, kind, value))
     }
 
     /// Add: the typed property joins the list, replacing a property of the same name
@@ -156,7 +162,31 @@ impl CustomPropertiesForm {
             self.message = tl!("Properties of this type can't be changed.").to_string();
             return;
         }
-        let (name, kind, value) = match self.form() {
+        let unchanged = CustomType::of_kind(&old.kind) == Some(self.kind)
+            && if self.kind == CustomType::YesNo { self.yes == custom_bool(&old.value) } else { self.value == custom_shown_value(&old) };
+        let form = if unchanged {
+            self.form_name().and_then(|name| {
+                let mut value = old.value.clone();
+                if name != old.name {
+                    // Renames create a new property through the command parser. Refuse
+                    // values it would round or otherwise change; booleans may normalize.
+                    let stored =
+                        if self.kind == CustomType::YesNo { if custom_bool(&old.value) { "true" } else { "false" } } else { old.value.as_str() };
+                    match wordcraft_engine::cmd::file::parse_custom_value(self.kind, stored) {
+                        Ok((_, parsed))
+                            if parsed == old.value || (self.kind == CustomType::YesNo && custom_bool(&parsed) == custom_bool(&old.value)) =>
+                        {
+                            value = parsed;
+                        }
+                        _ => return Err(tl!("This property can't be renamed without changing its value.").to_string()),
+                    }
+                }
+                Ok((name, old.kind.clone(), value))
+            })
+        } else {
+            self.form().map(|(name, kind, value)| (name, kind.to_string(), value))
+        };
+        let (name, kind, value) = match form {
             Ok(f) => f,
             Err(m) => {
                 self.message = m;

@@ -72,6 +72,7 @@ pub struct DocState {
     pub(super) typing: Option<TypedWord>,
     pub(super) originals: std::collections::HashMap<String, String>,
     pub(super) picture_looks: std::collections::HashMap<String, crate::cmd::objects::PictureLook>,
+    pub(super) applied_styles: std::collections::BTreeSet<String>,
     pub(super) versions: Vec<(String, String, Document)>,
     pub(super) autosave: bool,
     pub(super) bib_style: String,
@@ -129,6 +130,7 @@ impl DocState {
             typing: None,
             originals: Default::default(),
             picture_looks: Default::default(),
+            applied_styles: Default::default(),
             versions: Vec::new(),
             autosave: true,
             bib_style,
@@ -235,6 +237,7 @@ impl Session {
             typing: _,
             originals: _,
             picture_looks: _,
+            applied_styles: _,
             versions: _,
             autosave: _,
             bib_style: _,
@@ -267,14 +270,14 @@ impl Session {
             initials: _,
             painter: _,
             pending_text_move: _,
+            // What the drawn window knows of the others: its front end sets it as it draws.
+            windows: _,
             status: _,
             last_command: _,
             recording: _,
             macros: _,
             building_blocks: _,
             ui_requests: _,
-            // Pairs two documents, so it belongs to neither.
-            side_by_side: _,
             read_aloud: _,
             prefs: _,
             system_region: _,
@@ -339,6 +342,7 @@ impl Session {
             typing,
             originals,
             picture_looks,
+            applied_styles,
             versions,
             autosave,
             bib_style,
@@ -390,6 +394,7 @@ impl Session {
         swap(&mut self.typing, typing);
         swap(&mut self.originals, originals);
         swap(&mut self.picture_looks, picture_looks);
+        swap(&mut self.applied_styles, applied_styles);
         swap(&mut self.versions, versions);
         swap(&mut self.autosave, autosave);
         swap(&mut self.bib_style, bib_style);
@@ -557,10 +562,6 @@ impl Session {
     /// active document; what a window does then is the front end's choice. An id that isn't
     /// open is an error.
     pub fn close_document(&mut self, id: u64) -> Result<(), CmdError> {
-        if self.side_by_side.is_some_and(|p| p.left == id || p.right == id) && self.is_open(id) {
-            self.side_by_side = None;
-            self.push_ui_request(serde_json::json!({"sideBySide": null}));
-        }
         if id != self.document_id {
             if !self.remove_parked(id) {
                 return Err(unknown(id));

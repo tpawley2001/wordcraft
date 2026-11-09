@@ -30,6 +30,7 @@ mod parse;
 mod plot;
 mod polar;
 mod stock;
+mod sunburst;
 mod three_d;
 
 #[cfg(test)]
@@ -206,11 +207,19 @@ struct Chart {
 }
 
 #[cfg(test)]
+mod chartex_box_tests;
+#[cfg(test)]
+mod chartex_polish_tests;
+#[cfg(test)]
 mod chartex_tests;
 #[cfg(test)]
 mod combo_tests;
+#[cfg(test)]
+mod sunburst_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 #[allow(clippy::manual_contains)]
 mod three_d_tests;
+#[cfg(test)]
+mod treemap_tests;

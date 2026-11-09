@@ -376,6 +376,12 @@ fn changes(s: &Session) -> Vec<Change> {
     out
 }
 
+/// The tracked changes in the body in document order, for File › Print › List of Markup:
+/// (start, end, kind as [`list_changes`] names it, revision index).
+pub fn tracked_changes(s: &Session) -> Vec<(Pos, Pos, &'static str, Option<u32>)> {
+    changes(s).into_iter().map(|c| (c.a, c.b, c.kind, c.rev)).collect()
+}
+
 /// The formatting changes in the body, for balloons: (position, author, properties set).
 pub fn format_changes(s: &Session) -> Vec<(Pos, String, Vec<Value>)> {
     changes(s)

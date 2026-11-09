@@ -38,6 +38,7 @@ mod positional_tabs;
 mod privacy;
 mod roundtrip;
 mod row_property_exceptions;
+mod run_content_in_text;
 mod run_props;
 mod section_form_protection;
 mod section_metadata_preservation;

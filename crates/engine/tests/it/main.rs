@@ -4,6 +4,7 @@ mod doc_ole_objects;
 mod doc_plain_text;
 mod drop_cap_indents;
 mod html_div_margins;
+mod index_automark;
 mod macro_packages;
 mod odt_charts;
 mod odt_fields;
@@ -21,4 +22,6 @@ mod rtf_sections;
 mod safe_save;
 mod three_column_headers;
 
+mod custom_labels;
+mod print_section_ranges;
 mod ref_paragraph_numbers;

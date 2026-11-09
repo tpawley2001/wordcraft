@@ -141,6 +141,55 @@ pub fn manage_list(s: &Session, alphabetical: bool) -> Value {
     )
 }
 
+/// A style's description from its [`manage_list`] entry, as the Styles dialog shows it: its type,
+/// the formatting it sets and what it is based on (File › Print › Styles prints it).
+pub fn style_description(st: &Value) -> String {
+    let f = st.get("format").cloned().unwrap_or_default();
+    let fs = |k: &str| f.get(k).and_then(Value::as_str);
+    let fnum = |k: &str| f.get(k).and_then(Value::as_f64);
+    let pt = |x: f64| format!("{}", (x * 10.0).round() / 10.0);
+    let mut parts: Vec<String> = vec![
+        match st.get("type").and_then(Value::as_str) {
+            Some("character") => "Character style",
+            Some("linked") => "Linked style (paragraph and character)",
+            Some("table") => "Table style",
+            _ => "Paragraph style",
+        }
+        .to_string(),
+    ];
+    if st.get("builtIn").and_then(Value::as_bool).unwrap_or(false) {
+        parts.push("Built-in style".into());
+    }
+    if let Some(x) = fs("font") {
+        parts.push(format!("Font: {x}"));
+    }
+    if let Some(x) = fnum("size") {
+        parts.push(format!("{} pt", pt(x)));
+    }
+    if f.get("bold").and_then(Value::as_bool) == Some(true) {
+        parts.push("Bold".into());
+    }
+    if f.get("italic").and_then(Value::as_bool) == Some(true) {
+        parts.push("Italic".into());
+    }
+    if let Some(x) = fs("color") {
+        parts.push(format!("Color: #{x}"));
+    }
+    if let Some(x) = fnum("indentLeft") {
+        parts.push(format!("Indent: Left {} pt", pt(x)));
+    }
+    if let Some(x) = fnum("spaceBefore") {
+        parts.push(format!("Space before: {} pt", pt(x)));
+    }
+    if let Some(x) = fnum("spaceAfter") {
+        parts.push(format!("Space after: {} pt", pt(x)));
+    }
+    if let Some(b) = st.get("basedOn").and_then(Value::as_str) {
+        parts.push(format!("Based on: {b}"));
+    }
+    parts.join(", ")
+}
+
 /// The formatting a style sets itself (not what it inherits), for its description.
 fn own_format(st: &Style) -> Value {
     let mut f = serde_json::Map::new();

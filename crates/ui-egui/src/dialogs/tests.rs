@@ -40,18 +40,35 @@ fn the_table_grid_previews_the_hovered_table_until_the_click() {
     assert_eq!(h.state().canvas.table_preview, None, "the inserted table isn't previewed again");
 }
 
-/// Go To's page box (#712): a number, +n / -n from the current page (a typographic minus
-/// too), empty for the next page; anything else is refused.
+/// Go To's number box (#712): a number, +n / -n from the selection (a typographic minus too),
+/// empty for the next one; anything else is refused. The same for every numbered kind.
 #[test]
 fn go_to_reads_its_page_box() {
-    assert_eq!(goto_page("7"), Some(json!({"page": 7})));
-    assert_eq!(goto_page(" +2 "), Some(json!({"pageBy": 2})));
-    assert_eq!(goto_page("-1"), Some(json!({"pageBy": -1})));
-    assert_eq!(goto_page("\u{2212}3"), Some(json!({"pageBy": -3})));
-    assert_eq!(goto_page(""), Some(json!({"pageBy": 1})));
+    let page = |t: &str| goto_number(GoToWhat::Page, t);
+    assert_eq!(page("7"), Some(json!({"what": "page", "n": 7})));
+    assert_eq!(page(" +2 "), Some(json!({"what": "page", "by": 2})));
+    assert_eq!(page("-1"), Some(json!({"what": "page", "by": -1})));
+    assert_eq!(page("\u{2212}3"), Some(json!({"what": "page", "by": -3})));
+    assert_eq!(page(""), Some(json!({"what": "page", "by": 1})));
     for junk in ["0", "abc", "+x", "1.5", "99999999999999999999999"] {
-        assert_eq!(goto_page(junk), None, "{junk}");
+        assert_eq!(page(junk), None, "{junk}");
     }
+}
+
+/// Go To's other numbered kinds read their box the same way and name their kind.
+#[test]
+fn go_to_reads_its_number_box_for_every_kind() {
+    let n = |t: &str| goto_number(GoToWhat::Footnote, t);
+    assert_eq!(n(""), Some(json!({"what": "footnote", "by": 1})));
+    assert_eq!(n("+2"), Some(json!({"what": "footnote", "by": 2})));
+    assert_eq!(n("-1"), Some(json!({"what": "footnote", "by": -1})));
+    assert_eq!(n("\u{2212}1"), Some(json!({"what": "footnote", "by": -1})));
+    assert_eq!(n("3"), Some(json!({"what": "footnote", "n": 3})));
+    for junk in ["x", "1.5", "+-1", "0"] {
+        assert_eq!(n(junk), None, "{junk}");
+    }
+    assert_eq!(goto_number(GoToWhat::Section, "2"), Some(json!({"what": "section", "n": 2})));
+    assert_eq!(goto_number(GoToWhat::Heading, "-2"), Some(json!({"what": "heading", "by": -2})));
 }
 
 /// Insert › Bookmark (#1236), as in Word: it opens on the bookmark around the caret, lists by
@@ -278,6 +295,28 @@ fn command_search_matches_every_word() {
     assert!(!command_matches(table, "insert chart"), "every word has to match");
     assert!(!command_matches(table, ""), "an empty box lists nothing");
     assert!(!command_matches(table, "   "));
+}
+
+/// #3398: the interactive command-search result opens the paper-colour selector. The engine
+/// command itself remains parameterised for scripts, agents and other programmatic callers.
+#[test]
+fn screen_paper_color_search_result_opens_general_options() {
+    use egui_kittest::kittest::Queryable;
+    use wordcraft_engine::cmd::view::PaperColor;
+
+    let mut app = app_with("Unchanged document");
+    app.dialog = Some(Dialog::Commands { query: "screen paper color".into(), swallow: false });
+    let mut h = app_harness(app);
+    h.run_steps(4);
+    h.query(egui_kittest::kittest::By::new().role(egui::accesskit::Role::Button).label_contains("Screen Paper Color"))
+        .expect("the paper-colour command is a search result")
+        .click();
+    h.run_steps(3);
+
+    assert!(h.state().ui.backstage);
+    assert_eq!(h.state().ui.backstage_page, "options");
+    assert_eq!(h.state().ui.options_pane, "general");
+    assert_eq!(h.state().session.prefs.paper_color, PaperColor::Document, "opening the selector does not choose a preset");
 }
 
 /// Ordinary Turkish queries must find dotted-I labels, while canonical English labels and
@@ -2336,4 +2375,81 @@ fn building_block_dialogs_open_and_save() {
     let mut h = app_harness(app);
     h.run_steps(4);
     assert!(matches!(&h.state().dialog, Some(Dialog::NewBuildingBlock { .. })), "Modify Building Block is shown");
+}
+
+/// PR #5541 review: imported properties whose stored form the Value box shows reduced (a date
+/// with a time, a 64-bit integer, a `1` boolean).
+fn imported_custom_props_form() -> CustomPropertiesForm {
+    let mut app = app_with("Report body");
+    for (name, kind, value) in [("Due", "filetime", "2026-11-30T14:05:00Z"), ("Big", "i8", "9007199254740993"), ("Flag", "bool", "1")] {
+        app.session.doc.custom_props.push(wordcraft_doc::CustomProp {
+            name: name.into(),
+            kind: kind.into(),
+            value: value.into(),
+            ..Default::default()
+        });
+    }
+    CustomPropertiesForm::read(&app)
+}
+
+fn custom_triples(f: &CustomPropertiesForm) -> Vec<(String, String, String)> {
+    f.props.iter().map(|p| (p.name.clone(), p.kind.clone(), p.value.clone())).collect()
+}
+
+/// Modify with nothing edited keeps each stored kind and value, so OK sends nothing.
+#[test]
+fn custom_property_modify_without_edits_keeps_stored_values() {
+    let mut f = imported_custom_props_form();
+    let before = custom_triples(&f);
+    for i in 0..3 {
+        f.select(i);
+        f.modify();
+        assert!(f.message.is_empty(), "row {i}: {}", f.message);
+    }
+    assert_eq!(custom_triples(&f), before);
+    assert_eq!(f.params(), json!({"custom": {}}));
+}
+
+/// A rename keeps the stored value when `file.properties` can store it again as it is, and is
+/// refused when it can't (an i8 above 2^53 would be rounded through f64).
+#[test]
+fn custom_property_rename_keeps_or_refuses_stored_values() {
+    let mut f = imported_custom_props_form();
+    f.select(0);
+    f.name = "Deadline".into();
+    f.modify();
+    assert!(f.message.is_empty(), "{}", f.message);
+    let p = f.props.iter().find(|p| p.name == "Deadline").expect("renamed");
+    assert_eq!((p.kind.as_str(), p.value.as_str()), ("filetime", "2026-11-30T14:05:00Z"));
+    assert_eq!(f.params(), json!({"custom": {"Due": null, "Deadline": {"value": "2026-11-30T14:05:00Z", "type": "date"}}}));
+
+    let mut f = imported_custom_props_form();
+    let before = custom_triples(&f);
+    f.select(1);
+    f.name = "Huge".into();
+    f.modify();
+    assert!(!f.message.is_empty(), "the rename is refused with a message");
+    assert_eq!(custom_triples(&f), before, "the list is unchanged");
+    assert_eq!(f.params(), json!({"custom": {}}));
+
+    let mut f = imported_custom_props_form();
+    f.select(2);
+    f.name = "Flag2".into();
+    f.modify();
+    assert!(f.message.is_empty(), "{}", f.message);
+    let p = f.props.iter().find(|p| p.name == "Flag2").expect("renamed");
+    assert_eq!(p.kind, "bool");
+    assert!(matches!(p.value.as_str(), "1" | "true"), "{}", p.value);
+}
+
+/// An edited value is still parsed for its type, as before.
+#[test]
+fn custom_property_modify_with_an_edit_still_retypes() {
+    let mut f = imported_custom_props_form();
+    f.select(0);
+    f.value = "2026-12-01".into();
+    f.modify();
+    assert!(f.message.is_empty(), "{}", f.message);
+    let p = f.props.iter().find(|p| p.name == "Due").unwrap();
+    assert_eq!((p.kind.as_str(), p.value.as_str()), ("filetime", "2026-12-01T00:00:00Z"));
 }

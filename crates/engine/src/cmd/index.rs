@@ -23,6 +23,8 @@ pub fn specs() -> Vec<CommandSpec> {
             r#"{"entry"?: string (the selection), "subentry"?: string, "crossReference"?: "See …", "bookmark"?: page-range bookmark, "bold"?: bool, "italic"?: bool, "all"?: bool (Mark All: every paragraph's first match of "text" or the selection)}"#,
         )
         .key(super::non_mac("Alt+Shift+X")),
+        CommandSpec::new("references.autoMark", "AutoMark…", "References › Index", auto_mark)
+            .params(r#"{"path"?: string, "entries"?: [[text, entry], ...]} (exactly one; first table of the concordance file)"#),
         CommandSpec::new("references.index", "Insert Index", "References › Index", insert_index).params(
             r#"{"type"?: "indented|runIn", "columns"?: 1-4, "rightAlign"?: bool, "tabLeader"?: "dot|hyphen|underscore|none", "headings"?: bool (letter headings)} (replaces an existing index's settings)"#,
         ),
@@ -81,13 +83,23 @@ fn mark_entry(s: &mut Session, v: &Value) -> CmdResult {
     if text.is_empty() {
         return Err(CmdError::Params("nothing to look for".into()));
     }
-    let mut marked = 0u32;
+    let marked = mark_all(s, &text, &instr)?;
+    s.clamp_selection();
+    Ok(json!({"entry": main, "marked": marked}))
+}
+
+/// First whole-word, same-case match per body paragraph, excluding generated or existing entries.
+fn mark_all(s: &mut Session, text: &str, instr: &str) -> Result<u64, CmdError> {
+    let hidden = CharProps { hidden: Some(true), ..Default::default() };
+    let field =
+        || InlineObject::Field { instr: instr.to_string(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
+    let mut marked = 0u64;
     for path in s.doc.para_paths(StoryRef::Body) {
         let Some(para) = s.doc.para(StoryRef::Body, &path) else { continue };
         if para.props.style.as_deref().is_some_and(|st| st == ENTRY_STYLE || st.starts_with("TOC")) {
             continue;
         }
-        if para.objects.iter().any(|o| matches!(o, InlineObject::Field { instr: i, .. } if *i == instr)) {
+        if para.objects.iter().any(|o| matches!(o, InlineObject::Field { instr: i, .. } if i == instr)) {
             continue;
         }
         let whole = |a: usize, b: usize| {
@@ -95,14 +107,68 @@ fn mark_entry(s: &mut Session, v: &Value) -> CmdResult {
             let after = para.text.get(b..).and_then(|t| t.chars().next()).is_none_or(|c| !c.is_alphanumeric());
             before && after
         };
-        let Some(end) = para.text.match_indices(&text).map(|(a, m)| (a, a + m.len())).find(|(a, b)| whole(*a, *b)).map(|(_, b)| b) else {
+        let Some(end) = para.text.match_indices(text).map(|(a, m)| (a, a + m.len())).find(|(a, b)| whole(*a, *b)).map(|(_, b)| b) else {
             continue;
         };
         s.doc.insert_object(&Pos { story: StoryRef::Body, path, off: end }, field(), &hidden)?;
         marked += 1;
     }
+    Ok(marked)
+}
+
+fn auto_mark(s: &mut Session, v: &Value) -> CmdResult {
+    let rows: Vec<(String, String)> = match (v.get("path"), v.get("entries")) {
+        (Some(path), None) => {
+            let path = path.as_str().ok_or_else(|| CmdError::Params("path must be a string".into()))?;
+            let doc = crate::io::open_path(std::path::Path::new(path)).map_err(CmdError::Failed)?;
+            let table = doc
+                .body
+                .iter()
+                .find_map(|b| match &**b {
+                    Block::Table(t) => Some(t),
+                    _ => None,
+                })
+                .ok_or_else(|| CmdError::Failed("the concordance file has no table".into()))?;
+            let cell_text = |cell: &wordcraft_doc::table::Cell| {
+                let mut doc = wordcraft_doc::Document::new();
+                doc.body = cell.blocks.clone();
+                doc.plain_text(StoryRef::Body)
+            };
+            table
+                .rows
+                .iter()
+                .map(|row| (row.cells.first().map(cell_text).unwrap_or_default(), row.cells.get(1).map(cell_text).unwrap_or_default()))
+                .collect()
+        }
+        (None, Some(entries)) => {
+            let entries = entries.as_array().ok_or_else(|| CmdError::Params("entries must be an array of text/entry pairs".into()))?;
+            entries
+                .iter()
+                .map(|row| {
+                    let pair = row.as_array().filter(|p| p.len() == 2);
+                    match pair.and_then(|p| p.first()).and_then(Value::as_str).zip(pair.and_then(|p| p.get(1)).and_then(Value::as_str)) {
+                        Some((text, entry)) => Ok((text.to_string(), entry.to_string())),
+                        None => Err(CmdError::Params("each entry must be [text, entry] strings".into())),
+                    }
+                })
+                .collect::<Result<_, _>>()?
+        }
+        _ => return Err(CmdError::Params("give exactly one of path or entries".into())),
+    };
+    let (mut marked, mut used) = (0u64, 0u64);
+    for (text, entry) in rows {
+        let text = text.trim();
+        if text.is_empty() {
+            continue;
+        }
+        let entry = clean(entry.trim(), 200);
+        let entry = if entry.is_empty() { clean(text, 200) } else { entry };
+        // Search again for each row: preceding XE objects shifted the paragraph's text.
+        marked = marked.saturating_add(mark_all(s, text, &format!("XE \"{entry}\""))?);
+        used += 1;
+    }
     s.clamp_selection();
-    Ok(json!({"entry": main, "marked": marked}))
+    Ok(json!({"marked": marked, "rows": used}))
 }
 
 /// The INDEX field for `references.index`'s parameters: `\h "A"` letter headings, `\c "n"`
@@ -483,5 +549,39 @@ mod tests {
         s.run("references.updateIndex", &json!({})).unwrap();
         let (i, _) = index_field(&s).unwrap();
         assert_eq!(s.doc.body[i + 2].as_para().unwrap().props.tabs.as_ref().unwrap()[0].leader, TabLeader::Hyphen);
+    }
+}
+
+#[cfg(test)]
+mod automark_tests {
+    use super::*;
+
+    #[test]
+    fn automark_validates_all_rows_before_editing() {
+        for params in [
+            json!({"path": "unused.html", "entries": []}),
+            json!({"entries": [["fox", "Pets"], ["dog", 1]]}),
+            json!({"entries": [["fox"]]}),
+            json!({"entries": null}),
+        ] {
+            let mut s = Session::new(wordcraft_doc::Document::from_text("fox dog"));
+            assert!(matches!(s.run("references.autoMark", &params), Err(CmdError::Params(_))));
+            assert_eq!(s.doc.plain_text(StoryRef::Body), "fox dog");
+        }
+    }
+
+    #[test]
+    fn automark_counts_trimmed_rows_and_skips_toc_entries() {
+        let mut s = Session::new(wordcraft_doc::Document::from_text("éclair dog\néclair dog"));
+        s.doc.para_mut(StoryRef::Body, &Path::top(1)).unwrap().props.style = Some("TOC1".into());
+        let r = s.run("references.autoMark", &json!({"entries": [["  ", "unused"], [" éclair ", "\"\n"], [" dog ", " Pets "]]})).unwrap();
+        assert_eq!(r, json!({"marked": 2, "rows": 2}));
+        let para = s.doc.para(StoryRef::Body, &Path::top(0)).unwrap();
+        assert!(para.objects.iter().any(|o| matches!(o, InlineObject::Field { instr, .. } if instr == "XE \"éclair\"")));
+        for (off, _) in para.objects_with_offsets() {
+            assert_eq!(para.props_of_char(off).hidden, Some(true), "the XE character is hidden");
+            assert_ne!(para.props_at(off).hidden, Some(true), "typing before the XE keeps the word visible");
+        }
+        assert!(s.doc.para(StoryRef::Body, &Path::top(1)).unwrap().objects.is_empty());
     }
 }

@@ -1,7 +1,6 @@
 use super::reader::Reader;
-use super::state::{Dest, HeaderFooter, HfPages, MAX_PICT, PageGeom};
-use super::{Cell, Document, FBlock, Flow, Para, model};
-use std::sync::Arc;
+use super::state::{CommentData, Dest, HeaderFooter, HfPages, MARK_CLOSE, MARK_OPEN, MAX_PICT, NoteData, PageGeom};
+use super::{Arc, Block, Blocks, Cell, Document, FBlock, Flow, HashMap, InlineObject, Para, Paragraph, model};
 
 /// Parse RTF bytes into the flow model.
 pub fn parse(bytes: &[u8]) -> Result<Flow, String> {
@@ -11,7 +10,7 @@ pub fn parse(bytes: &[u8]) -> Result<Flow, String> {
 /// The flow, the page, and the default font (`\deff`, font 0 when the file names none), which
 /// is the font of all text that doesn't select one.
 fn parse_with_page(bytes: &[u8]) -> Result<(Flow, PageGeom, Option<String>), String> {
-    parse_full(bytes).map(|r| (r.flow, r.page, r.default_font))
+    parse_full(bytes, false).map(|r| (r.flow, r.page, r.default_font))
 }
 
 /// Everything an import takes from an RTF file.
@@ -23,56 +22,85 @@ struct Parsed {
     default_font: Option<String>,
     /// Each section's headers and footers, in order, the last section's last.
     headers_footers: Vec<Vec<(HeaderFooter, Vec<FBlock>)>>,
+    /// Another program's heading, title and quote styles: the document style each stands for,
+    /// with the formatting its stylesheet entry gives it.
+    foreign_styles: Vec<(String, wordcraft_doc::props::ParaProps, wordcraft_doc::props::CharProps)>,
+    notes: Vec<NoteData>,
+    comments: Vec<CommentData>,
 }
 
-/// Where the document `{\rtf…}` starting at `start` ends: just past the last `}` that closes it
-/// (RTF spec, "RTF Syntax": the file is one group). Text, control words and raw bytes after that
-/// brace are not part of it, nor is another group starting `{\rtf` there. A stray `}` inside the
-/// document that closes the outer group early doesn't end it while more groups close after it.
+/// Where the document `{\rtf…}` starting at `start` ends: just past the `}` that first brings the
+/// depth back to 0, or the end of the bytes if the outer group never closes (RTF spec, "RTF
+/// Syntax": the file is one group). Anything after that brace is not part of the document: text,
+/// control words, raw bytes and groups, another `{\rtf` group included. A stray `}` inside the
+/// document closes the outer group there, so what follows it is ignored too. `\binN` data is
+/// skipped by the count the parser reads, so braces in it don't count.
 fn document_end(bytes: &[u8], start: usize) -> usize {
     let mut depth = 0usize;
-    let mut end = bytes.len();
-    let mut closed = false;
     let mut i = start;
     while let Some(&c) = bytes.get(i) {
         match c {
             b'{' => {
-                if closed && depth == 0 && bytes.get(i + 1..).is_some_and(|b| b.starts_with(b"\\rtf")) {
-                    break;
-                }
                 depth = depth.saturating_add(1);
                 i += 1;
             }
             b'}' => {
-                depth = depth.saturating_sub(1);
                 i += 1;
-                if depth == 0 {
-                    end = i;
-                    closed = true;
+                if depth <= 1 {
+                    return i;
                 }
+                depth -= 1;
             }
-            b'\\' if bytes.get(i + 1..).is_some_and(|b| b.starts_with(b"bin")) => {
-                // `\binN` and its N raw bytes, which may hold braces.
-                let mut k = i + 4;
-                let mut n = 0usize;
-                while let Some(d) = bytes.get(k).filter(|d| d.is_ascii_digit()) {
-                    n = n.saturating_mul(10).saturating_add(usize::from(d - b'0'));
-                    k += 1;
-                }
-                if bytes.get(k) == Some(&b' ') {
-                    k += 1;
-                }
-                i = k.saturating_add(n);
-            }
-            // An escaped brace or backslash is text.
-            b'\\' => i += 2,
+            b'\\' => i = past_control(bytes, i),
             _ => i += 1,
         }
     }
-    end
+    bytes.len()
 }
 
-fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
+/// Where the control symbol or word starting with the `\` at `i` ends, lexed as `parse_full`
+/// lexes it: up to 32 letters, an optional `-`, at most 10 digits (clamped to `i32`) and one
+/// optional space. After `\bin` that is past its data too. An escaped brace or backslash is text.
+fn past_control(bytes: &[u8], i: usize) -> usize {
+    if !bytes.get(i + 1).is_some_and(u8::is_ascii_alphabetic) {
+        return i.saturating_add(2);
+    }
+    let mut j = i + 1;
+    while bytes.get(j).is_some_and(u8::is_ascii_alphabetic) && j - i <= 32 {
+        j += 1;
+    }
+    let is_bin = bytes.get(i + 1..j) == Some(b"bin".as_slice());
+    let mut k = j;
+    let neg = bytes.get(k) == Some(&b'-');
+    if neg {
+        k += 1;
+    }
+    let d0 = k;
+    let mut v = 0i64;
+    while let Some(d) = bytes.get(k).filter(|d| d.is_ascii_digit()) {
+        if k - d0 >= 10 {
+            break;
+        }
+        v = v * 10 + i64::from(d - b'0');
+        k += 1;
+    }
+    if k == d0 && neg {
+        k -= 1;
+    }
+    if bytes.get(k) == Some(&b' ') {
+        k += 1;
+    }
+    if !is_bin {
+        return k;
+    }
+    let v = if neg { -v } else { v };
+    let n = usize::try_from(v.clamp(0, i64::from(i32::MAX))).unwrap_or(0);
+    k.saturating_add(n)
+}
+
+/// `marks`: also read footnotes, endnotes and comments (as place markers in the flow's text, for
+/// [`import`] to turn into objects); without it they are skipped.
+fn parse_full(bytes: &[u8], marks: bool) -> Result<Parsed, String> {
     let start = bytes.iter().position(|b| !b.is_ascii_whitespace()).unwrap_or(0);
     if !bytes.get(start..).is_some_and(|b| b.starts_with(b"{\\rtf")) {
         return Err("not an RTF document (it doesn't start with {\\rtf)".into());
@@ -80,6 +108,7 @@ fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
     // Whatever follows the document's closing brace isn't part of it, as in Word.
     let bytes = bytes.get(..document_end(bytes, start)).unwrap_or(bytes);
     let mut r = Reader::default();
+    r.marks_on = marks;
     let mut i = start;
     let mut first_in_group = false;
     let mut starred = false;
@@ -155,7 +184,10 @@ fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
                         continue;
                     }
                     if r.skip_chars > 0
-                        && matches!(r.st.dest, Dest::Body | Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::FontTbl | Dest::RevTbl)
+                        && matches!(
+                            r.st.dest,
+                            Dest::Body | Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::FontTbl | Dest::RevTbl | Dest::Atn(_)
+                        )
                     {
                         r.skip_chars -= 1;
                         first_in_group = false;
@@ -255,11 +287,14 @@ fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
 }
 
 fn finalize(mut r: Reader) -> Parsed {
-    // A header or footer left open by a truncated file ends here, and so does a multibyte run.
+    // A multibyte run ends here, and so does a note, comment, header or footer left open by a
+    // truncated file.
+    r.flush_high_surrogate();
     r.finish_multibyte();
     while r.depth() > 0 {
         r.close();
     }
+    r.end_sub();
     r.end_header_footer();
     if r.para_has || !r.para.inlines.is_empty() {
         r.end_para(false);
@@ -287,7 +322,17 @@ fn finalize(mut r: Reader) -> Parsed {
         blocks.push(FBlock::Para(Para::default()));
     }
     let default_font = r.fonts.get(&r.deff).filter(|n| !model::is_mono(n)).map(|n| n.to_string());
-    Parsed { flow: Flow { blocks, meta: r.meta }, page: r.page, last_section, default_font, headers_footers }
+    let foreign_styles = r.foreign_styles();
+    Parsed {
+        flow: Flow { blocks, meta: r.meta },
+        page: r.page,
+        last_section,
+        default_font,
+        headers_footers,
+        foreign_styles,
+        notes: r.notes,
+        comments: r.comments,
+    }
 }
 
 /// The column grid of a table from its rows' cell right edges: every distinct edge starts a grid
@@ -362,7 +407,7 @@ fn set_section_revisions(doc: &mut Document) {
 /// Parse RTF bytes into a document.
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
     model::begin_import();
-    let Parsed { flow, last_section, default_font, headers_footers, .. } = parse_full(bytes)?;
+    let Parsed { flow, last_section, default_font, headers_footers, foreign_styles, notes, comments, .. } = parse_full(bytes, true)?;
     let mut doc = model::to_doc_in(&flow, last_section);
     // Each section's own headers and footers; those it leaves out stay linked to the previous.
     let mut sets = Vec::with_capacity(headers_footers.len());
@@ -395,6 +440,7 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
         (doc.last_section.headers, doc.last_section.footers) = (h, f);
     }
     set_section_revisions(&mut doc);
+    place_notes_and_comments(&mut doc, notes, comments);
     // RTF's paragraph defaults are single spacing and no space around paragraphs; what a file
     // wants beyond that it states on each paragraph.
     let dp = &mut Arc::make_mut(&mut doc.styles).default_para;
@@ -404,5 +450,137 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     if default_font.is_some() {
         Arc::make_mut(&mut doc.styles).default_chr.font = default_font;
     }
+    // Another program's styles have what its stylesheet sets, not WordCraft's built-in
+    // formatting; the outline level a heading style gives stays.
+    for (id, para, chr) in foreign_styles {
+        if let Some(s) = Arc::make_mut(&mut doc.styles).get_mut(&id) {
+            s.para = wordcraft_doc::props::ParaProps { outline_level: s.para.outline_level, ..para };
+            s.chr = chr;
+        }
+    }
     Ok(doc)
+}
+
+/// Turn the place markers the reader left in the text into note references and comment ranges,
+/// and add the notes' and comments' stories to `doc`.
+fn place_notes_and_comments(doc: &mut Document, notes: Vec<NoteData>, comments: Vec<CommentData>) {
+    use wordcraft_doc::para::NoteKind;
+    use wordcraft_doc::{Comment, PartKind};
+    if notes.is_empty() && comments.is_empty() {
+        return;
+    }
+    // (kind, part id) per note, by index.
+    let mut note_parts: Vec<(NoteKind, u32)> = Vec::new();
+    for n in notes {
+        let (pk, nk, style) =
+            if n.endnote { (PartKind::Endnote, NoteKind::Endnote, "EndnoteText") } else { (PartKind::Footnote, NoteKind::Footnote, "FootnoteText") };
+        let mut blocks = model::part_blocks(doc, &n.blocks);
+        for b in &mut blocks {
+            if let Block::Para(p) = Arc::make_mut(b)
+                && p.props.style.is_none()
+            {
+                p.props.style = Some(style.to_string());
+            }
+        }
+        note_parts.push((nk, doc.add_part(pk, blocks)));
+    }
+    // RTF range id to the comment's id in the document.
+    let mut by_rtf: HashMap<i64, u32> = HashMap::new();
+    for (k, c) in comments.into_iter().enumerate() {
+        let id = k as u32;
+        let blocks = model::part_blocks(doc, &c.blocks);
+        let part = doc.add_part(PartKind::Comment, blocks);
+        doc.comments
+            .insert(id, Comment { author: c.author, initials: c.initials, date: c.date, parent: None, resolved: false, part, ..Default::default() });
+        by_rtf.insert(i64::from(c.rtf_id), id);
+    }
+    let ctx = Placer { note_parts, by_rtf };
+    let mut body = std::mem::take(&mut doc.body);
+    ctx.blocks(&mut body, None, 0);
+    doc.body = body;
+    let ids: Vec<u32> = doc.parts.keys().copied().collect();
+    for id in ids {
+        let Some(part) = doc.parts.get_mut(&id) else { continue };
+        let own = ctx.note_parts.iter().find(|(_, p)| *p == id).copied();
+        ctx.blocks(&mut part.blocks, own, 0);
+        // A note starts with its own number, as Word's do.
+        if let Some((kind, pid)) = own
+            && let Some(first) = part.blocks.first_mut()
+            && let Block::Para(p) = Arc::make_mut(first)
+            && !p.objects.iter().any(|o| matches!(o, InlineObject::NoteRef { id, .. } if *id == pid))
+        {
+            let props = Placer::ref_props(kind);
+            if p.insert_object(0, InlineObject::NoteRef { kind, id: pid, custom: String::new() }, &props).is_err() {
+                // The paragraph can't take it; the note simply has no number mark.
+            }
+        }
+    }
+}
+
+struct Placer {
+    note_parts: Vec<(wordcraft_doc::para::NoteKind, u32)>,
+    by_rtf: HashMap<i64, u32>,
+}
+
+impl Placer {
+    fn ref_props(kind: wordcraft_doc::para::NoteKind) -> wordcraft_doc::CharProps {
+        let style = if kind == wordcraft_doc::para::NoteKind::Endnote { "EndnoteReference" } else { "FootnoteReference" };
+        wordcraft_doc::CharProps { style: Some(style.into()), ..Default::default() }
+    }
+
+    fn blocks(&self, bl: &mut Blocks, own: Option<(wordcraft_doc::para::NoteKind, u32)>, depth: usize) {
+        for b in bl.iter_mut() {
+            let needs = match &**b {
+                Block::Para(p) => p.text.contains(MARK_OPEN),
+                Block::Table(_) => depth < 8,
+            };
+            if !needs {
+                continue;
+            }
+            match Arc::make_mut(b) {
+                Block::Para(p) => self.para(p, own),
+                Block::Table(t) => {
+                    for r in &mut t.rows {
+                        for c in &mut r.cells {
+                            self.blocks(&mut c.blocks, own, depth + 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn para(&self, p: &mut Paragraph, own: Option<(wordcraft_doc::para::NoteKind, u32)>) {
+        // Every pass removes one marker, so this ends; the bound is only a seat belt.
+        for _ in 0..100_000 {
+            let Some(a) = p.text.find(MARK_OPEN) else { return };
+            let Some(len) = p.text.get(a..).and_then(|t| t.find(MARK_CLOSE)) else { return };
+            let end = a + len + MARK_CLOSE.len_utf8();
+            let inner = p.text.get(a + MARK_OPEN.len_utf8()..a + len).unwrap_or("").to_string();
+            let mut chars = inner.chars();
+            let tag = chars.next().unwrap_or(' ');
+            let n = chars.as_str().parse::<i64>().unwrap_or(i64::MIN);
+            let (obj, props) = match tag {
+                'N' => match usize::try_from(n).ok().and_then(|i| self.note_parts.get(i)) {
+                    Some(&(kind, id)) => (Some(InlineObject::NoteRef { kind, id, custom: String::new() }), Self::ref_props(kind)),
+                    None => (None, Default::default()),
+                },
+                'S' => match own {
+                    Some((kind, id)) => (Some(InlineObject::NoteRef { kind, id, custom: String::new() }), Self::ref_props(kind)),
+                    None => (None, Default::default()),
+                },
+                'B' => (self.by_rtf.get(&n).map(|&id| InlineObject::CommentStart { id }), Default::default()),
+                'E' => (self.by_rtf.get(&n).map(|&id| InlineObject::CommentEnd { id }), Default::default()),
+                _ => (None, Default::default()),
+            };
+            if p.delete(a, end).is_err() {
+                return;
+            }
+            if let Some(o) = obj
+                && p.insert_object(a, o, &props).is_err()
+            {
+                return;
+            }
+        }
+    }
 }

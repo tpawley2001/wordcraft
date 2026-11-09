@@ -151,7 +151,6 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
     };
     let mut close = false;
     let title = match &d {
-        Dialog::CompareSideBySide { .. } => "Compare Side by Side",
         Dialog::RenameDocument { .. } => "Rename Document",
         Dialog::Font { .. } => "Font",
         Dialog::Paragraph { .. } => "Paragraph",

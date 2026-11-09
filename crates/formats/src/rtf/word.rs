@@ -20,37 +20,11 @@ impl Reader {
         if w == "shppict" || self.start_header_footer_word(w) {
             return;
         }
-        let dest = self.destination_for_word(w);
-        if let Some(d) = dest {
-            match d {
-                Dest::Bookmark => {
-                    self.bkmk = Some((self.depth(), String::new()));
-                }
-                Dest::Pict => {
-                    self.pict_depth = Some(self.depth());
-                    self.pict_hex.clear();
-                    self.pict_half = None;
-                    self.pict_kind = 0;
-                    self.pict_w = None;
-                    self.pict_h = None;
-                    self.pict_sx = 0.0;
-                    self.pict_sy = 0.0;
-                    self.pict_nat = (0, 0);
-                    self.pict_mm = 0;
-                }
-                Dest::FldInst if self.st.field.is_none() => self.start_field(),
-                // Old character formatting holds the properties that changed (Word) or, after a
-                // `\plain`, all of them; old paragraph formatting is complete from `\pard`.
-                Dest::OldProps(false) => {
-                    self.st.old_words.clear();
-                    self.st.old_rev = (None, None);
-                }
-                Dest::OldProps(true) => self.word("pard", None, false, false),
-                // Old section formatting is complete, from Word's defaults (as after `\sectd`).
-                Dest::OldSect => self.old_sec = SecFmt::default(),
-                _ => {}
-            }
-            self.st.dest = d;
+        if self.start_note_word(w) {
+            return;
+        }
+        if let Some(d) = self.destination_for_word(w) {
+            self.enter_destination(d);
             return;
         }
         if self.skip_ignorable_destination(w, starred, first_in_group) {
@@ -86,6 +60,8 @@ impl Reader {
             "u" => {
                 let u = (pv as i64).rem_euclid(65_536) as u16;
                 if (0xD800..0xDC00).contains(&u) {
+                    // An earlier high surrogate not followed by a low one stands alone.
+                    self.flush_high_surrogate();
                     self.pending_high = Some(u);
                 } else {
                     let c = match self.pending_high.take() {
@@ -309,11 +285,48 @@ impl Reader {
         }
     }
 
+    /// Enters destination `d`, setting up what it collects.
+    fn enter_destination(&mut self, d: Dest) {
+        match d {
+            Dest::Bookmark => {
+                self.bkmk = Some((self.depth(), String::new()));
+            }
+            Dest::Pict => {
+                self.pict_depth = Some(self.depth());
+                self.pict_hex.clear();
+                self.pict_half = None;
+                self.pict_kind = 0;
+                self.pict_w = None;
+                self.pict_h = None;
+                self.pict_sx = 0.0;
+                self.pict_sy = 0.0;
+                self.pict_nat = (0, 0);
+                self.pict_mm = 0;
+            }
+            Dest::FldInst if self.st.field.is_none() => self.start_field(),
+            // Old character formatting holds the properties that changed (Word) or, after a
+            // `\plain`, all of them; old paragraph formatting is complete from `\pard`.
+            Dest::OldProps(false) => {
+                self.st.old_words.clear();
+                self.st.old_rev = (None, None);
+            }
+            Dest::OldProps(true) => self.word("pard", None, false, false),
+            // Old section formatting is complete, from Word's defaults (as after `\sectd`).
+            Dest::OldSect => self.old_sec = SecFmt::default(),
+            _ => {}
+        }
+        self.st.dest = d;
+    }
+
     fn destination_for_word(&mut self, w: &str) -> Option<Dest> {
         match w {
             "fonttbl" => Some(Dest::FontTbl),
             "colortbl" => Some(Dest::ColorTbl),
             "stylesheet" => Some(Dest::StyleSheet),
+            "generator" => {
+                self.generator.get_or_insert_with(String::new);
+                Some(Dest::Generator)
+            }
             "info" => Some(Dest::Skip),
             "title" if self.st.dest == Dest::Skip && self.in_info() => Some(Dest::Info(1)),
             "author" if self.in_info() => Some(Dest::Info(2)),
@@ -334,12 +347,28 @@ impl Reader {
             "object" => Some(Dest::Object),
             "result" if self.st.dest == Dest::Object => Some(Dest::Body),
             "bkmkstart" => Some(Dest::Bookmark),
+            "atrfstart" | "atrfend" | "atnid" | "atnauthor" | "atndate" | "atntime" | "atnref"
+                if self.marks_on
+                    && self.hf.is_none()
+                    && self.st.dest == Dest::Body
+                    && self.sub.as_ref().is_none_or(|s| s.comment && !w.starts_with("atrf")) =>
+            {
+                self.atn_text.clear();
+                Some(Dest::Atn(match w {
+                    "atrfstart" => 1,
+                    "atrfend" => 2,
+                    "atnid" => 3,
+                    "atnauthor" => 4,
+                    "atndate" | "atntime" => 5,
+                    _ => 6,
+                }))
+            }
             "header" | "footer" | "headerl" | "headerr" | "headerf" | "footerl" | "footerr" | "footerf" | "footnote" | "annotation" | "pntext"
             | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "bkmkend" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
-            | "rsidtbl" | "generator" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb"
-            | "fontfile" | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl" => Some(Dest::Skip),
+            | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb" | "fontfile"
+            | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl" => Some(Dest::Skip),
             // Word 6.0/95 paragraph numbering: read, so the paragraph imports as a list.
             "pn" => {
                 self.pn_cur = Pn::default();
@@ -356,6 +385,32 @@ impl Reader {
             }
             _ => None,
         }
+    }
+
+    /// The words that open a note or comment story of their own (`\footnote`, `\annotation`) and
+    /// the two inside a note: `\ftnalt` (an endnote) and `\chftn` (the note's own number).
+    fn start_note_word(&mut self, word: &str) -> bool {
+        if self.st.dest == Dest::Body {
+            match word {
+                "ftnalt" => {
+                    if let Some(sub) = self.sub.as_mut() {
+                        sub.endnote = true;
+                    }
+                    return true;
+                }
+                "chftn" if self.sub.as_ref().is_some_and(|s| !s.comment) => {
+                    let f = self.st.fmt.clone();
+                    self.push_mark('S', 0, f);
+                    return true;
+                }
+                _ => {}
+            }
+        }
+        if !matches!(word, "footnote" | "annotation") || !self.marks_on || self.hf.is_some() || self.sub.is_some() || self.st.dest != Dest::Body {
+            return false;
+        }
+        self.start_sub(word == "annotation");
+        true
     }
 
     fn start_header_footer_word(&mut self, word: &str) -> bool {
@@ -421,6 +476,21 @@ impl Reader {
                     "i" => def.italic = Some(on),
                     "fs" => def.size = (value > 0).then(|| (value as f32 / 2.0).clamp(1.0, 1638.0)),
                     "f" => def.font = Some(value),
+                    "cf" => def.color = Some(value),
+                    "sb" => def.sb = Some(value),
+                    "sa" => def.sa = Some(value),
+                    "sl" => def.sl = Some(value),
+                    "slmult" => def.slmult = Some(on),
+                    "li" | "lin" => def.li = Some(value),
+                    "ri" | "rin" => def.ri = Some(value),
+                    "fi" => def.fi = Some(value),
+                    "keepn" => def.keep_next = Some(on),
+                    "keep" => def.keep_lines = Some(on),
+                    "ql" => def.align = Some(Align::Left),
+                    "qc" => def.align = Some(Align::Center),
+                    "qr" => def.align = Some(Align::Right),
+                    "qj" => def.align = Some(Align::Justify),
+                    "qd" => def.align = Some(Align::Distribute),
                     _ => {}
                 }
                 true
@@ -453,8 +523,14 @@ impl Reader {
                 self.picture_word(word, value);
                 true
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark if !matches!(word, "u" | "uc") => true,
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark => false,
+            Dest::Atn(kind) => {
+                if kind == 5 {
+                    self.record_atn_part(word, value);
+                }
+                !matches!(word, "u" | "uc")
+            }
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator if !matches!(word, "u" | "uc") => true,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator => false,
             Dest::OldProps(false) if matches!(word, "crauth" | "crdate") => {
                 if word == "crauth" {
                     self.st.old_rev.0 = Some(value);
@@ -477,6 +553,19 @@ impl Reader {
                 false
             }
             Dest::OldProps(true) | Dest::Body => false,
+        }
+    }
+
+    fn record_atn_part(&mut self, word: &str, value: i32) {
+        let v = value.clamp(0, 9999) as u32;
+        let c = self.atn_parts.get_or_insert((0, 1, 1, 0, 0));
+        match word {
+            "yr" => c.0 = v,
+            "mo" => c.1 = v,
+            "dy" => c.2 = v,
+            "hr" => c.3 = v,
+            "min" => c.4 = v,
+            _ => {}
         }
     }
 

@@ -15,7 +15,8 @@ use crate::{WordApp, icons};
 /// The Print page's settings. Not saved with the document or the UI state.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PrintSettings {
-    /// `all`, `current`, `selection` or `custom`.
+    /// `all`, `current`, `selection` or `custom`, or a Document Info report (`properties`,
+    /// `markup`, `styles`, `autotext`) printed instead of the document.
     pub range: String,
     /// The custom range text, like `1-3, 5`.
     pub pages: String,
@@ -34,6 +35,11 @@ pub struct PrintSettings {
     pub paper: String,
     /// Physical grid size or booklet binding, independent of document page setup.
     pub pages_per_sheet: String,
+    /// `one` (Print One Sided) or `manual` (Manually Print on Both Sides: the fronts, then the
+    /// backs once the user has turned the stack over).
+    pub sides: String,
+    /// The back pass of a manual duplex job, waiting for the user to turn the printed pages over.
+    pub back_pass: Option<Value>,
 }
 
 impl Default for PrintSettings {
@@ -50,6 +56,8 @@ impl Default for PrintSettings {
             orientation: "auto".into(),
             paper: NO_SCALING.into(),
             pages_per_sheet: "1".into(),
+            sides: "one".into(),
+            back_pass: None,
         }
     }
 }
@@ -58,7 +66,7 @@ impl PrintSettings {
     /// The params of `ui.print` and `file.printPdf` for these settings.
     pub fn params(&self) -> Value {
         let mut v = json!({
-            "range": self.range,
+            "range": if self.what().is_some() { "all" } else { self.range.as_str() },
             "parity": self.parity,
             "copies": self.copies,
             "collate": self.collate,
@@ -71,6 +79,23 @@ impl PrintSettings {
         if self.paper != NO_SCALING {
             v["paper"] = json!(self.paper);
         }
+        if let Some(what) = self.what() {
+            v["what"] = json!(what);
+        }
+        v
+    }
+
+    /// The Document Info report chosen instead of the document, if any.
+    pub fn what(&self) -> Option<&str> {
+        DOCUMENT_INFO.iter().any(|(id, _)| *id == self.range).then_some(self.range.as_str())
+    }
+
+    /// The params of the first job Print submits: with manual duplex, the fronts of the sheets.
+    pub fn first_job(&self) -> Value {
+        let mut v = self.params();
+        if self.sides == MANUAL_DUPLEX {
+            v["duplexPass"] = json!("front");
+        }
         v
     }
 
@@ -81,9 +106,16 @@ impl PrintSettings {
 }
 
 const RANGES: [(&str, &str); 4] = [("all", "All pages"), ("current", "Current page"), ("selection", "Selected pages"), ("custom", "Custom range")];
+/// File › Print › Document Info: reports printed instead of the document, listed after the
+/// page ranges as in Word.
+const DOCUMENT_INFO: [(&str, &str); 4] =
+    [("properties", "Document Properties"), ("markup", "List of Markup"), ("styles", "Styles"), ("autotext", "AutoText Entries")];
 const PARITIES: [(&str, &str); 3] = [("all", "All pages in the range"), ("odd", "Odd pages only"), ("even", "Even pages only")];
 /// The Scale to paper size choice that keeps each page's own size.
 const NO_SCALING: &str = "none";
+const SIDES: [(&str, &str); 2] = [("one", "Print One Sided"), (MANUAL_DUPLEX, "Manually Print on Both Sides")];
+/// The sides choice that prints the fronts, then the backs.
+const MANUAL_DUPLEX: &str = "manual";
 const ORIENTATIONS: [(&str, &str); 3] = [("auto", "Auto orientation"), ("portrait", "Portrait"), ("landscape", "Landscape")];
 
 /// A choice list over `(id, label)` pairs; true when the choice changed.
@@ -92,6 +124,26 @@ fn choice(ui: &mut Ui, salt: &str, current: &mut String, items: &[(&str, &str)],
     let mut changed = false;
     let combo = craft_ui::ComboBox::from_id_salt(salt).width(260.0).selected_text(tl!(shown)).show_ui(ui, |ui| {
         for (id, item) in items {
+            if ui.selectable_label(current == id, tl!(item)).clicked() && current != id {
+                *current = (*id).to_string();
+                changed = true;
+            }
+        }
+    });
+    combo.response.labelled_by(label.id);
+    changed
+}
+
+/// The Pages choice: the page ranges, then the Document Info reports under their heading.
+fn range_choice(ui: &mut Ui, current: &mut String, label: &egui::Response) -> bool {
+    let shown = RANGES.iter().chain(DOCUMENT_INFO.iter()).find(|(id, _)| *id == current.as_str()).map_or("", |(_, l)| *l);
+    let mut changed = false;
+    let combo = craft_ui::ComboBox::from_id_salt("print_range").width(260.0).selected_text(tl!(shown)).show_ui(ui, |ui| {
+        for (i, (id, item)) in RANGES.iter().chain(DOCUMENT_INFO.iter()).enumerate() {
+            if i == RANGES.len() {
+                ui.separator();
+                ui.label(egui::RichText::new(tl!("Document Info")).strong());
+            }
             if ui.selectable_label(current == id, tl!(item)).clicked() && current != id {
                 *current = (*id).to_string();
                 changed = true;
@@ -118,27 +170,49 @@ fn choice_named(ui: &mut Ui, salt: &str, current: &mut String, items: &[(&str, &
     changed
 }
 
-/// The output layout, kept while the document and Print Markup setting are unchanged.
-fn layout_of(app: &WordApp, ctx: &egui::Context) -> Arc<DocLayout> {
+/// What the preview shows: the output layout, or a Document Info report (its own document and
+/// layout, or why there is nothing to print).
+#[derive(Clone)]
+struct Previewed {
+    lay: Arc<DocLayout>,
+    /// The report printed instead of the document; `None` for the document itself.
+    report: Option<Arc<wordcraft_doc::Document>>,
+    error: Option<String>,
+}
+
+/// The output layout, kept while the document, Print Markup setting and Document Info choice
+/// are unchanged.
+fn layout_of(app: &WordApp, ctx: &egui::Context) -> Previewed {
     let id = egui::Id::unique("print_page_layout");
     let rev = app.session.rev();
     let markup = app.session.prefs.print_markup;
-    if let Some((r, m, l)) = ctx.data(|d| d.get_temp::<(u64, bool, Arc<DocLayout>)>(id))
+    let what = app.ui.print.what().map(str::to_string);
+    if let Some((r, m, w, l)) = ctx.data(|d| d.get_temp::<(u64, bool, Option<String>, Previewed)>(id))
         && r == rev
         && m == markup
+        && w == what
     {
         return l;
     }
-    let l = app.session.export_layout_with(markup);
-    ctx.data_mut(|d| d.insert_temp(id, (rev, markup, l.clone())));
+    let l = match what.as_deref() {
+        None => Previewed { lay: app.session.export_layout_with(markup), report: None, error: None },
+        Some(w) => match app.session.print_report(&json!({"what": w})) {
+            Ok(Some((doc, lay))) => Previewed { lay, report: Some(Arc::new(doc)), error: None },
+            Ok(None) => Previewed { lay: app.session.export_layout_with(markup), report: None, error: None },
+            Err(e) => Previewed { lay: app.session.export_layout_with(markup), report: None, error: Some(e.to_string()) },
+        },
+    };
+    ctx.data_mut(|d| d.insert_temp(id, (rev, markup, what, l.clone())));
     l
 }
 
 /// A bounded per-cell texture cache, refreshed when the page, scale or Print Markup changes.
-fn page_texture(app: &WordApp, ctx: &egui::Context, lay: &DocLayout, page: usize, cache_slot: usize, width: f32) -> Option<TextureHandle> {
+fn page_texture(app: &WordApp, ctx: &egui::Context, shown: &Previewed, page: usize, cache_slot: usize, width: f32) -> Option<TextureHandle> {
+    let lay = &shown.lay;
     let id = egui::Id::unique(("print_page_texture", cache_slot));
-    let key = (app.session.rev(), app.session.prefs.print_markup, page, width as u32, (ctx.pixels_per_point() * 100.0) as u32);
-    if let Some((k, t)) = ctx.data(|d| d.get_temp::<((u64, bool, usize, u32, u32), TextureHandle)>(id))
+    let what = app.ui.print.what().map(str::to_string);
+    let key = (app.session.rev(), app.session.prefs.print_markup, what, page, width as u32, (ctx.pixels_per_point() * 100.0) as u32);
+    if let Some((k, t)) = ctx.data(|d| d.get_temp::<((u64, bool, Option<String>, usize, u32, u32), TextureHandle)>(id))
         && k == key
     {
         return Some(t);
@@ -147,7 +221,8 @@ fn page_texture(app: &WordApp, ctx: &egui::Context, lay: &DocLayout, page: usize
     // Zoomed in, the texture stays within what the GPU takes and is stretched beyond that.
     let max_side = ctx.input(|i| i.max_texture_side) as f32 / pg.w.max(pg.h).max(1.0);
     let scale = (width / pg.w.max(1.0) * ctx.pixels_per_point()).clamp(0.05, 4.0).min(max_side);
-    let img = wordcraft_render::render_page(&app.session.doc, pg, scale, &Default::default());
+    let doc = shown.report.as_deref().unwrap_or(&app.session.doc);
+    let img = wordcraft_render::render_page(doc, pg, scale, &Default::default());
     let color = egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &img.to_straight());
     let tex = ctx.load_texture("print_page_preview", color, egui::TextureOptions::LINEAR);
     ctx.data_mut(|d| d.insert_temp(id, (key, tex.clone())));
@@ -174,11 +249,15 @@ fn return_prints(ctx: &egui::Context) -> bool {
 pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let ctx = ui.ctx().clone();
-    let lay = layout_of(app, &ctx);
+    let shown = layout_of(app, &ctx);
+    let lay = shown.lay.clone();
     let total = lay.pages.len();
-    let current = app.session.current_pages(&lay);
+    // A report prints from its own first page.
+    let current = if shown.report.is_some() { (0, 0) } else { app.session.current_pages(&lay) };
+    let ids = wordcraft_engine::print::page_ids(&lay);
     app.ui.print.preview = app.ui.print.preview.min(total.saturating_sub(1));
 
+    back_pass(app, &ctx);
     let settings = |app: &mut WordApp, ui: &mut Ui| {
         {
             ui.set_width(SETTINGS_WIDTH);
@@ -201,8 +280,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     && (ui.add_enabled(ready, crate::widgets::primary_button(ui, tl!("Print")).min_size(vec2(320.0, 34.0))).clicked()
                         || (ready && app.dialog.is_none() && !app.file_dialog_open() && return_prints(ui.ctx())))
                 {
-                    let params = app.ui.print.params();
-                    let _ = app.run("ui.print", params);
+                    print(app);
                 }
                 if native {
                     if let Some(discover) = &app.services.printers {
@@ -243,7 +321,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 }
 
                 let pages_label = ui.label(egui::RichText::new(tl!("Pages")).font(medium(13.0)));
-                if choice(ui, "print_range", &mut app.ui.print.range, &RANGES, &pages_label) {
+                if range_choice(ui, &mut app.ui.print.range, &pages_label) {
                     // Show the first page that will print.
                     app.ui.print.preview = 0;
                 }
@@ -251,7 +329,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     && ui
                         .add(
                             egui::TextEdit::singleline(&mut app.ui.print.pages)
-                                .hint_text(tl!("Pages like 1-3, 5"))
+                                .hint_text(tl!("Pages like 1-3, 5 or p1s2-p3s2"))
                                 .desired_width(260.0)
                                 .char_limit(wordcraft_engine::print::MAX_SPEC_CHARS),
                         )
@@ -263,6 +341,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 if choice_named(ui, "print_parity", &mut app.ui.print.parity, &PARITIES, tl!("Pages in the range")) {
                     app.ui.print.preview = 0;
                 }
+                let sides_label = ui.label(egui::RichText::new(tl!("Sides")).font(medium(13.0)));
+                choice(ui, "print_sides", &mut app.ui.print.sides, &SIDES, &sides_label);
                 let orientation_label = ui.label(egui::RichText::new(tl!("Orientation")).font(medium(13.0)));
                 if app.ui.print.pages_per_sheet == "2" || app.ui.print.pages_per_sheet.starts_with("booklet") {
                     ui.label(tl!("Landscape"));
@@ -295,7 +375,12 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     std::iter::once((NO_SCALING, "No Scaling")).chain(wordcraft_geom::PAPER_SIZES.iter().map(|(n, _, _)| (*n, *n))).collect();
                 choice(ui, "print_paper", &mut app.ui.print.paper, &papers, &paper_label);
 
-                match wordcraft_engine::print::plan(&app.ui.print.params(), total, current) {
+                // Manual duplex refuses copies and N-up the engine can't split into sides: say so here.
+                match shown
+                    .error
+                    .clone()
+                    .map_or_else(|| wordcraft_engine::print::plan_in(&app.ui.print.first_job(), &ids, current).map_err(|e| e.to_string()), Err)
+                {
                     Ok(plan) => {
                         let msg = crate::i18n::fmt(
                             tl!("{count} of {total} pages will print"),
@@ -328,7 +413,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         ui.scope_builder(egui::UiBuilder::new().max_rect(settings_rect).layout(layout), |ui| settings(app, ui));
         // A window too narrow for a usable preview shows the settings alone.
         if preview_rect.width() >= MIN_PREVIEW_WIDTH {
-            ui.scope_builder(egui::UiBuilder::new().max_rect(preview_rect).layout(layout), |ui| preview(app, ui, &lay));
+            ui.scope_builder(egui::UiBuilder::new().max_rect(preview_rect).layout(layout), |ui| preview(app, ui, &shown));
         }
         ui.allocate_rect(room, Sense::hover());
         return;
@@ -336,8 +421,61 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     crate::rtl::horizontal_top(ui, |ui| {
         crate::rtl::vertical(ui, |ui| settings(app, ui));
         ui.add_space(SETTINGS_GAP);
-        crate::rtl::vertical(ui, |ui| preview(app, ui, &lay));
+        crate::rtl::vertical(ui, |ui| preview(app, ui, &shown));
     });
+}
+
+/// Print: submit the job. With Manually Print on Both Sides that is the fronts of the sheets,
+/// and when the chosen pages fill a back, the backs wait for the turn-over message's Continue.
+pub fn print(app: &mut WordApp) {
+    let params = app.ui.print.first_job();
+    let manual = params.get("duplexPass").is_some();
+    match app.run("ui.print", params.clone()) {
+        Ok(r) if manual && r.get("chosen").and_then(Value::as_u64).is_some_and(|n| n >= 2) => {
+            let mut back = params;
+            back["duplexPass"] = json!("back");
+            app.ui.print.back_pass = Some(back);
+        }
+        _ => {}
+    }
+}
+
+/// Continue (true) prints the waiting back pass of a manual duplex job; Cancel (false) drops it.
+pub fn finish_back_pass(app: &mut WordApp, go: bool) {
+    let Some(back) = app.ui.print.back_pass.take() else { return };
+    if go {
+        let _ = app.run("ui.print", back);
+    }
+}
+
+/// Manual duplex's message between the passes: turn the printed pages over and put them back.
+/// Continue waits for a native printer to take the front pass first.
+fn back_pass(app: &mut WordApp, ctx: &egui::Context) {
+    if app.ui.print.back_pass.is_none() {
+        return;
+    }
+    let ready = app.services.print_native.is_none() || app.printing.ready();
+    let mut answer = None;
+    let modal = egui::Modal::new(egui::Id::unique("wordcraft.manualDuplex")).show(ctx, |ui| {
+        ui.set_max_width(380.0);
+        ui.heading(tl!("Manually Print on Both Sides"));
+        ui.label(tl!("When the first side has printed, turn the printed pages over and put them back in the paper tray, then select Continue."));
+        ui.add_space(8.0);
+        ui.with_layout(crate::rtl::row_layout(ui, egui::Align::Center), |ui| {
+            if ui.add_enabled(ready, crate::widgets::primary_button(ui, tl!("Continue"))).clicked() {
+                answer = Some(true);
+            }
+            if ui.button(tl!("Cancel")).clicked() {
+                answer = Some(false);
+            }
+        });
+    });
+    if modal.should_close() {
+        answer = answer.or(Some(false));
+    }
+    if let Some(go) = answer {
+        finish_back_pass(app, go);
+    }
 }
 
 /// The settings column's width, and the space between it and the preview.
@@ -359,10 +497,19 @@ fn zoom_step(z: f32, up: bool) -> f32 {
 
 /// The preview (#1156): the page fills the pane, a bar below pages through the document and
 /// zooms; zoomed in, the page scrolls both ways.
-fn preview(app: &mut WordApp, ui: &mut Ui, lay: &DocLayout) {
+fn preview(app: &mut WordApp, ui: &mut Ui, shown: &Previewed) {
+    if let Some(error) = &shown.error {
+        ui.label(error.as_str());
+        return;
+    }
+    let lay = &*shown.lay;
     let t = Tokens::get(ui.ctx());
     let ctx = ui.ctx().clone();
-    let sheets = match wordcraft_engine::print::sheets(&app.ui.print.params(), lay, app.session.current_pages(lay)) {
+    let sheets = match wordcraft_engine::print::sheets(
+        &app.ui.print.params(),
+        lay,
+        if shown.report.is_some() { (0, 0) } else { app.session.current_pages(lay) },
+    ) {
         Ok(sheets) => sheets,
         Err(error) => {
             ui.label(error.to_string());
@@ -394,7 +541,7 @@ fn preview(app: &mut WordApp, ui: &mut Ui, lay: &DocLayout) {
             let k = (slot.width / pg.w).min(slot.height / pg.h);
             let offset = vec2(slot.x + (slot.width - pg.w * k) / 2.0, slot.y + (slot.height - pg.h * k) / 2.0);
             let on_sheet = Rect::from_min_size(r.min + offset * scale, vec2(pg.w, pg.h) * k * scale);
-            if let Some(tex) = page_texture(app, &ctx, lay, slot.page, cache_slot, on_sheet.width()) {
+            if let Some(tex) = page_texture(app, &ctx, shown, slot.page, cache_slot, on_sheet.width()) {
                 ui.painter().image(tex.id(), on_sheet, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), egui::Color32::WHITE);
             }
         }
@@ -484,6 +631,30 @@ mod tests {
     use crate::Services;
     use wordcraft_engine::Session;
 
+    /// A Document Info choice prints its report: the job says `what`, the preview lays out the
+    /// report, and an empty report says why instead of showing pages.
+    #[test]
+    fn document_info_choices_send_what_and_preview_the_report() {
+        let mut settings = PrintSettings::default();
+        assert!(settings.params().get("what").is_none(), "the document prints by default");
+        for (id, _) in DOCUMENT_INFO {
+            settings.range = id.into();
+            let v = settings.params();
+            assert_eq!((v["what"].as_str(), v["range"].as_str()), (Some(id), Some("all")));
+        }
+        let mut app = WordApp::new(Session::new(wordcraft_doc::Document::from_text("Synthetic report text")), Services::default());
+        let ctx = egui::Context::default();
+        app.ui.print.range = "properties".into();
+        let shown = layout_of(&app, &ctx);
+        assert!(shown.report.is_some() && shown.error.is_none() && !shown.lay.pages.is_empty());
+        assert!(page_texture(&app, &ctx, &shown, 0, 0, 200.0).is_some());
+        app.ui.print.range = "markup".into();
+        let shown = layout_of(&app, &ctx);
+        assert!(shown.report.is_none() && shown.error.as_deref().is_some_and(|e| e.contains("nothing to print")));
+        app.ui.print.range = "all".into();
+        assert!(layout_of(&app, &ctx).report.is_none());
+    }
+
     /// Print Markup changes layout and pixels without changing the document revision.
     #[test]
     fn preview_refreshes_layout_and_texture_when_print_markup_toggles() {
@@ -498,12 +669,13 @@ mod tests {
         let mut previous = None;
         for markup in [false, true, false] {
             app.session.run("file.printMarkup", &json!({"value": markup})).unwrap();
-            let layout = layout_of(&app, &ctx);
+            let shown = layout_of(&app, &ctx);
+            let layout = shown.lay.clone();
             assert_eq!(layout.pages[0].markup > 0.0, markup);
-            assert!(Arc::ptr_eq(&layout, &layout_of(&app, &ctx)), "unchanged layout is reused");
+            assert!(Arc::ptr_eq(&layout, &layout_of(&app, &ctx).lay), "unchanged layout is reused");
             // Keep width fixed: an accidental scale change must not mask a stale texture.
-            let texture = page_texture(&app, &ctx, &layout, 0, 0, 300.0).unwrap();
-            assert_eq!(texture.id(), page_texture(&app, &ctx, &layout, 0, 0, 300.0).unwrap().id());
+            let texture = page_texture(&app, &ctx, &shown, 0, 0, 300.0).unwrap();
+            assert_eq!(texture.id(), page_texture(&app, &ctx, &shown, 0, 0, 300.0).unwrap().id());
             if let Some((old_layout, old_texture)) = previous.take() {
                 assert!(!Arc::ptr_eq(&layout, &old_layout));
                 assert_ne!(texture.id(), old_texture);
