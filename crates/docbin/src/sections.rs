@@ -190,6 +190,43 @@ pub(crate) fn parse_plc(plc: &[u8], word: &[u8], mut apply: impl FnMut(&mut Sect
     out
 }
 
+/// Collect a line-numbering sprm; the numbering is resolved once the whole Sepx is read.
+fn apply_line_numbering(pgn: &mut PageNumbering, prl: &Prl) {
+    let s16 = match prl.operand {
+        [b0, b1, ..] => Some(i16::from_le_bytes([*b0, *b1])),
+        _ => None,
+    };
+    match prl.op {
+        S_LNC => pgn.lnc = prl.operand.first().copied().or(pgn.lnc),
+        S_NLNN_MOD => pgn.lnn_mod = s16.map_or(pgn.lnn_mod, |v| v as u16),
+        S_DXA_LNN => pgn.dxa_lnn = s16.or(pgn.dxa_lnn),
+        S_LNN_MIN => pgn.lnn_min = s16.or(pgn.lnn_min),
+        _ => {}
+    }
+}
+
+/// Apply a document-grid sprm: any of them turns the grid on; the rest keep `DocGrid`'s defaults.
+fn apply_doc_grid(s: &mut SectionProps, prl: &Prl) {
+    match (prl.op, prl.operand) {
+        (S_CLM, [b0, b1, ..]) => {
+            s.doc_grid.get_or_insert_with(DocGrid::default).kind = match u16::from_le_bytes([*b0, *b1]) {
+                1 => DocGridType::LinesAndChars,
+                2 => DocGridType::Lines,
+                3 => DocGridType::SnapToChars,
+                _ => DocGridType::Default,
+            };
+        }
+        (S_DYA_LINE_PITCH, [b0, b1, ..]) => {
+            s.doc_grid.get_or_insert_with(DocGrid::default).line_pitch = f32::from(i16::from_le_bytes([*b0, *b1])) / 20.0;
+        }
+        (S_DXT_CHAR_SPACE, [b0, b1, b2, b3, ..]) => {
+            s.doc_grid.get_or_insert_with(DocGrid::default).char_space =
+                i32::from_le_bytes([*b0, *b1, *b2, *b3]).clamp(-MAX_CHAR_SPACE, MAX_CHAR_SPACE);
+        }
+        _ => {}
+    }
+}
+
 /// Apply a section sprm to the model's section properties. All the measurement sprms here
 /// carry 16-bit twip operands ([MS-DOC] §2.6.4). The page-number restart flag and start value
 /// go to `pgn`, as they only count together.
@@ -268,48 +305,8 @@ pub(crate) fn apply_section(s: &mut SectionProps, pgn: &mut PageNumbering, prl: 
                 _ => NumFormat::Decimal,
             };
         }
-        S_LNC => {
-            if let Some(&v) = prl.operand.first() {
-                pgn.lnc = Some(v);
-            }
-        }
-        S_NLNN_MOD => {
-            if let [b0, b1, ..] = prl.operand {
-                pgn.lnn_mod = u16::from_le_bytes([*b0, *b1]);
-            }
-        }
-        S_DXA_LNN => {
-            if let Some(v) = s16(prl) {
-                pgn.dxa_lnn = Some(v);
-            }
-        }
-        S_LNN_MIN => {
-            if let Some(v) = s16(prl) {
-                pgn.lnn_min = Some(v);
-            }
-        }
-        // Document grid: any of its sprms turns it on; the rest keep DocGrid's defaults.
-        S_CLM => {
-            if let [b0, b1, ..] = prl.operand {
-                s.doc_grid.get_or_insert_with(DocGrid::default).kind = match u16::from_le_bytes([*b0, *b1]) {
-                    1 => DocGridType::LinesAndChars,
-                    2 => DocGridType::Lines,
-                    3 => DocGridType::SnapToChars,
-                    _ => DocGridType::Default,
-                };
-            }
-        }
-        S_DYA_LINE_PITCH => {
-            if let Some(v) = s16(prl) {
-                s.doc_grid.get_or_insert_with(DocGrid::default).line_pitch = f32::from(v) / 20.0;
-            }
-        }
-        S_DXT_CHAR_SPACE => {
-            if let [b0, b1, b2, b3, ..] = prl.operand {
-                s.doc_grid.get_or_insert_with(DocGrid::default).char_space =
-                    i32::from_le_bytes([*b0, *b1, *b2, *b3]).clamp(-MAX_CHAR_SPACE, MAX_CHAR_SPACE);
-            }
-        }
+        S_LNC | S_NLNN_MOD | S_DXA_LNN | S_LNN_MIN => apply_line_numbering(pgn, prl),
+        S_CLM | S_DYA_LINE_PITCH | S_DXT_CHAR_SPACE => apply_doc_grid(s, prl),
         S_PGN_RESTART => pgn.restart = prl.operand.first().is_some_and(|&v| v != 0),
         S_PGN_START => {
             if let [b0, b1, ..] = prl.operand {
