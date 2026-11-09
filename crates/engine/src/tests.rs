@@ -42,6 +42,7 @@ mod reveal_formatting_pane;
 mod revision_checks;
 mod selection_pane;
 mod table_insert_delete_cells;
+mod text_from_file_range;
 mod table_row_column_ends;
 mod table_sort_keys;
 mod symbol_field_update;
