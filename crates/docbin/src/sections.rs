@@ -2,7 +2,7 @@
 //! the `Plcfhdd` stories of the header subdocument ([MS-DOC] §2.8.25, §2.9.244).
 
 use wordcraft_doc::section::NumFormat;
-use wordcraft_doc::section::{PageVAlign, SectionProps, SectionStart};
+use wordcraft_doc::section::{DocGrid, DocGridType, LineNumberRestart, LineNumbering, MAX_CHAR_SPACE, PageVAlign, SectionProps, SectionStart};
 
 use crate::fib::{Fib, pair};
 use crate::sprm::{self, Prl};
@@ -35,6 +35,13 @@ const S_DYA_BOTTOM: u16 = 0x9024;
 const S_DXA_GUTTER: u16 = 0xB025;
 const S_DXA_COL_WIDTH: u16 = 0xF203; // sprmSDxaColWidth
 const S_DXA_COL_SPACING: u16 = 0xF204; // sprmSDxaColSpacing
+const S_LNC: u16 = 0x3013; // sprmSLnc
+const S_NLNN_MOD: u16 = 0x5015; // sprmSNLnnMod
+const S_DXA_LNN: u16 = 0x9016; // sprmSDxaLnn
+const S_LNN_MIN: u16 = 0x501B; // sprmSLnnMin
+const S_CLM: u16 = 0x5032; // sprmSClm
+const S_DYA_LINE_PITCH: u16 = 0x9031; // sprmSDyaLinePitch
+const S_DXT_CHAR_SPACE: u16 = 0x7030; // sprmSDxtCharSpace
 
 /// Most columns a section has ([MS-DOC] §2.6.4: iCol < 44).
 const MAX_COLUMNS: usize = 44;
@@ -73,11 +80,26 @@ pub(crate) struct PageNumbering {
     /// sprmSDxaColWidth / sprmSDxaColSpacing per column, twips.
     col_widths: [Option<u16>; MAX_COLUMNS],
     col_spacing: [u16; MAX_COLUMNS],
+    /// Line numbering: sprmSNLnnMod (0 = off), sprmSLnc, sprmSDxaLnn, sprmSLnnMin.
+    lnn_mod: u16,
+    lnc: Option<u8>,
+    dxa_lnn: Option<i16>,
+    lnn_min: Option<i16>,
 }
 
 impl Default for PageNumbering {
     fn default() -> Self {
-        PageNumbering { restart: false, start: None, uneven: false, col_widths: [None; MAX_COLUMNS], col_spacing: [0; MAX_COLUMNS] }
+        PageNumbering {
+            restart: false,
+            start: None,
+            uneven: false,
+            col_widths: [None; MAX_COLUMNS],
+            col_spacing: [0; MAX_COLUMNS],
+            lnn_mod: 0,
+            lnc: None,
+            dxa_lnn: None,
+            lnn_min: None,
+        }
     }
 }
 
@@ -96,6 +118,26 @@ impl PageNumbering {
             out.push((f32::from(w) / 20.0, f32::from(space) / 20.0));
         }
         out
+    }
+
+    /// The section's line numbering: on only when the count-by is non-zero, with the same clamps
+    /// as DOCX `w:lnNumType` (lnnMin is the start minus one, like `w:start`).
+    fn line_numbers(&self) -> Option<LineNumbering> {
+        if self.lnn_mod == 0 {
+            return None;
+        }
+        let d = LineNumbering::default();
+        Some(LineNumbering {
+            count_by: u32::from(self.lnn_mod).clamp(1, 100),
+            start: self.lnn_min.map_or(d.start, |v| (v.max(0) as u32).saturating_add(1)),
+            distance: self.dxa_lnn.map_or(d.distance, |v| f32::from(v.max(0)) / 20.0),
+            restart: match self.lnc {
+                Some(1) => LineNumberRestart::Section,
+                Some(2) => LineNumberRestart::Continuous,
+                Some(_) => LineNumberRestart::Page,
+                None => d.restart,
+            },
+        })
     }
 }
 
@@ -134,6 +176,7 @@ pub(crate) fn parse_plc(plc: &[u8], word: &[u8], mut apply: impl FnMut(&mut Sect
             props.page_num_start = pgn.start;
         }
         props.columns.widths = pgn.column_widths(props.columns.count);
+        props.line_numbers = pgn.line_numbers();
         // Without an explicit orientation sprm, infer it from the page shape.
         if !explicit_orient {
             if props.page_w < props.page_h {
@@ -224,6 +267,48 @@ pub(crate) fn apply_section(s: &mut SectionProps, pgn: &mut PageNumbering, prl: 
                 Some(4) => NumFormat::LowerLetter,
                 _ => NumFormat::Decimal,
             };
+        }
+        S_LNC => {
+            if let Some(&v) = prl.operand.first() {
+                pgn.lnc = Some(v);
+            }
+        }
+        S_NLNN_MOD => {
+            if let [b0, b1, ..] = prl.operand {
+                pgn.lnn_mod = u16::from_le_bytes([*b0, *b1]);
+            }
+        }
+        S_DXA_LNN => {
+            if let Some(v) = s16(prl) {
+                pgn.dxa_lnn = Some(v);
+            }
+        }
+        S_LNN_MIN => {
+            if let Some(v) = s16(prl) {
+                pgn.lnn_min = Some(v);
+            }
+        }
+        // Document grid: any of its sprms turns it on; the rest keep DocGrid's defaults.
+        S_CLM => {
+            if let [b0, b1, ..] = prl.operand {
+                s.doc_grid.get_or_insert_with(DocGrid::default).kind = match u16::from_le_bytes([*b0, *b1]) {
+                    1 => DocGridType::LinesAndChars,
+                    2 => DocGridType::Lines,
+                    3 => DocGridType::SnapToChars,
+                    _ => DocGridType::Default,
+                };
+            }
+        }
+        S_DYA_LINE_PITCH => {
+            if let Some(v) = s16(prl) {
+                s.doc_grid.get_or_insert_with(DocGrid::default).line_pitch = f32::from(v) / 20.0;
+            }
+        }
+        S_DXT_CHAR_SPACE => {
+            if let [b0, b1, b2, b3, ..] = prl.operand {
+                s.doc_grid.get_or_insert_with(DocGrid::default).char_space =
+                    i32::from_le_bytes([*b0, *b1, *b2, *b3]).clamp(-MAX_CHAR_SPACE, MAX_CHAR_SPACE);
+            }
         }
         S_PGN_RESTART => pgn.restart = prl.operand.first().is_some_and(|&v| v != 0),
         S_PGN_START => {
