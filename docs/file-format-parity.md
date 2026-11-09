@@ -1,8 +1,7 @@
 # File-format parity with Microsoft Word
 
-> **Last updated:** 2026-11-08 · **Change:** trivial (P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-08 · **Change:** trivial (P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.)
 
-> **Last updated:** 2026-11-08 · **Change:** trivial (P0123: Office 2016 box & whisker charts (`cx:chart`) drawn from their data instead of the fallback picture); previously trivial (P0121: Office 2016 waterfall charts (`cx:chart`) drawn from their data instead of the fallback picture); previously trivial (P0120: `.doc` field anchors keep the first nonempty cached result run’s formatting, including hidden, bold and size; empty results keep the begin character’s formatting. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (.doc header and footer stories drop the trailing guard paragraph mark ([MS-DOC] §2.8.25 Plcfhdd), so headers are no taller than in Word); previously trivial (P0123: Office 2016 box & whisker charts (`cx:chart`) drawn from their data instead of the fallback picture); previously trivial (P0121: Office 2016 waterfall charts (`cx:chart`) drawn from their data instead of the fallback picture); previously trivial (P0120: `.doc` field anchors keep the first nonempty cached result run’s formatting, including hidden, bold and size; empty results keep the begin character’s formatting. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0128: Office 2016 treemap charts (`cx:chart`) drawn from their data instead of the fallback picture); previously trivial (P0125: Office 2016 waterfall and box & whisker charts use regular 14 pt titles, a default light grey frame with explicit line overrides, and about ten value-axis intervals in 1/2/5 steps. Classic charts unchanged; readiness estimates unchanged.)
 
@@ -357,6 +356,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 ## Revision history
 
+> 2026-11-08 · P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.
 > 2026-11-08 · P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.
 > 2026-11-08 · RTF import stops at the brace that closes the document's outer group; anything after it, groups included, is ignored. `\bin` data before it is skipped by the count the parser reads (at most 10 digits), so braces in it don't end the document (PR #5658 review)
 

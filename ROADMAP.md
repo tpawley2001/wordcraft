@@ -1,7 +1,6 @@
 # WordCraft roadmap
 
-> **Last updated:** 2026-11-08 · **Change:** trivial (P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.)
-
+> **Last updated:** 2026-11-08 · **Change:** trivial (P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged.)
@@ -168,6 +167,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-08: P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.
 - 2026-11-08 · P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.
 - 2026-11-08: P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.
 
@@ -963,6 +963,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 ## Revision history
 
+> 2026-11-08 · P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.
 > 2026-11-08 · P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.
 > 2026-11-08 · trivial · P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.
 
