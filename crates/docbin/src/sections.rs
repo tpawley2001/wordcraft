@@ -22,6 +22,8 @@ const S_PGN_START: u16 = 0x501C; // sprmSPgnStart97
 const S_L_BETWEEN: u16 = 0x3019; // sprmSLBetween
 const S_VJC: u16 = 0x301A; // sprmSVjc
 pub(crate) const S_ORIENTATION: u16 = 0x301D; // sprmSBOrientation
+const S_DM_BIN_FIRST: u16 = 0x5007; // sprmSDmBinFirst
+const S_DM_BIN_OTHER: u16 = 0x5008; // sprmSDmBinOther
 const S_HDR_TOP: u16 = 0xB017;
 const S_HDR_BOTTOM: u16 = 0xB018;
 const S_XA_PAGE: u16 = 0xB01F;
@@ -227,6 +229,17 @@ pub(crate) fn apply_section(s: &mut SectionProps, pgn: &mut PageNumbering, prl: 
         S_PGN_START => {
             if let [b0, b1, ..] = prl.operand {
                 pgn.start = Some(u32::from(u16::from_le_bytes([*b0, *b1])));
+            }
+        }
+        // Printer paper source (the DMBIN code, as DOCX `w:paperSrc`); 0 is the SEP default.
+        S_DM_BIN_FIRST | S_DM_BIN_OTHER => {
+            if let [b0, b1, ..] = prl.operand {
+                let bin = Some(u16::from_le_bytes([*b0, *b1])).filter(|&v| v != 0);
+                if prl.op == S_DM_BIN_FIRST {
+                    s.paper_src_first = bin;
+                } else {
+                    s.paper_src_other = bin;
+                }
             }
         }
         // SBOrientationOperand ([MS-DOC] §2.9.236): 1 portrait, 2 landscape.

@@ -28,6 +28,8 @@ mod find_format;
 mod font_sizes;
 mod grid_settings;
 mod fonts;
+mod includetext;
+mod goto_what;
 mod ime_noop;
 mod autoformat_now;
 mod extend_selection;
@@ -62,6 +64,7 @@ mod reset_window_position;
 mod window_edge_keys;
 mod write_protection;
 mod style_keys;
+mod print_document_info;
 
 /// True, after saying so on stderr, when this build lacks the Language data the proofing tests
 /// need (craft-proof built without `CRAFT_I18N_DIR`). The probes are craft-proof's public
@@ -13085,3 +13088,4 @@ fn drop_cap_menu_availability_uses_the_resolved_cap() {
     run(&mut s, "edit.undo", json!({}));
     assert_eq!(s.why_disabled("insert.dropCap"), None);
 }
+mod readability;

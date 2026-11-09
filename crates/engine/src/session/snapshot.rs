@@ -125,6 +125,7 @@ impl Session {
             typing: _,
             originals: _,
             picture_looks: _,
+            applied_styles: _,
             last_command: _,
             recording: _,
             macros: _,
