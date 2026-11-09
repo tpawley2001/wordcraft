@@ -7,7 +7,10 @@ use proptest::prelude::*;
 
 use super::read;
 
+mod auto_spacing;
+mod cell_padding;
 mod cfb_tolerance;
+mod char_spacing;
 mod char_styles;
 mod compat_mode;
 mod dop_options;
@@ -29,6 +32,7 @@ mod ole_embed_forms;
 mod ole_embed_keep;
 mod ole_print;
 mod ole_result_objects;
+mod paper_source;
 mod section_page_numbers;
 mod style_name_case;
 mod table_float;

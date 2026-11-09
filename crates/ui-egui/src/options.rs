@@ -645,6 +645,8 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     ui.add_space(8.0);
     section(ui, "Print");
     flag(app, ui, "Print pages in reverse order", "printReverse", pr.print_reverse);
+    flag(app, ui, "Print on front of the sheet for duplex printing", "printDuplexFront", pr.print_duplex_front);
+    flag(app, ui, "Print on back of the sheet for duplex printing", "printDuplexBack", pr.print_duplex_back);
     flag(app, ui, "Print field codes instead of their values", "printFieldCodes", pr.print_field_codes);
     ui.add_space(8.0);
     section(ui, "Display");

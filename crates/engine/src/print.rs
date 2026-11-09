@@ -333,7 +333,12 @@ pub fn report_document(doc: &wordcraft_doc::Document, lines: &[String]) -> wordc
 /// `range` (`all` | `current` | `selection` | `custom`; `custom` is implied by `pages`),
 /// `pages` (text like `1-3,5`), `parity` (`all` | `odd` | `even`), `copies` (1–999),
 /// `collate` (default true: 1,2,3 1,2,3; false: 1,1,2,2,3,3),
-/// `reverse` (default false: reverse chosen pages before copies; ignored for N-up/booklet).
+/// `reverse` (default false: reverse chosen pages before copies; ignored for N-up/booklet),
+/// `duplexPass` (absent, `front` or `back`: Manually Print on Both Sides). In a duplex pass the
+/// chosen pages are laid on sheets in job order, sheet k holding the (2k+1)th chosen page on its
+/// front and the (2k+2)th on its back, and the pass keeps one side of each sheet. `frontReverse` /
+/// `backReverse` (default false) print that pass in reverse order; they replace `reverse`, which a
+/// duplex pass ignores. A duplex pass prints one copy, one page per sheet, with `parity` `all`.
 pub fn plan(v: &Value, total: usize, current: (usize, usize)) -> Result<PrintPlan, CmdError> {
     plan_in(v, &unsectioned(total), current)
 }
@@ -363,11 +368,22 @@ pub fn plan_in(v: &Value, ids: &[(usize, u32)], current: (usize, usize)) -> Resu
     if pages.is_empty() {
         return Err(bad("no pages to print with these settings".into()));
     }
+    let chosen = pages.len();
+    if let Some(back) = duplex_pass(v)? {
+        let (side, reverse_key) = if back { (1, "backReverse") } else { (0, "frontReverse") };
+        pages = pages.into_iter().skip(side).step_by(2).collect();
+        if pages.is_empty() {
+            return Err(bad("no pages to print with these settings".into()));
+        }
+        if p::bool(v, reverse_key).unwrap_or(false) {
+            pages.reverse();
+        }
+        return Ok(PrintPlan { pages, chosen, copies: 1 });
+    }
     if p::bool(v, "reverse").unwrap_or(false) && imposition(v)? == Imposition::Single {
         pages.reverse();
     }
     let copies = p::u64(v, "copies").unwrap_or(1).clamp(1, u64::from(MAX_COPIES)) as u32;
-    let chosen = pages.len();
     let total_out = chosen.checked_mul(copies as usize).filter(|n| *n <= MAX_PRINT_PAGES);
     let Some(total_out) = total_out else {
         return Err(bad(format!("{chosen} pages × {copies} copies is more than the {MAX_PRINT_PAGES} pages one print job can hold")));
@@ -383,6 +399,32 @@ pub fn plan_in(v: &Value, ids: &[(usize, u32)], current: (usize, usize)) -> Resu
         }
     }
     Ok(PrintPlan { pages: out, chosen, copies })
+}
+
+/// The `duplexPass` param of a print job: `None` for an ordinary job, `Some(false)` for the
+/// fronts of the sheets, `Some(true)` for the backs. Manual duplex chooses the sides itself and
+/// prints one copy of one page per sheet, so `parity`, `copies` and `pagesPerSheet` that ask for
+/// anything else are errors.
+fn duplex_pass(v: &Value) -> Result<Option<bool>, CmdError> {
+    let back = match v.get("duplexPass") {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::String(s)) if s == "front" => false,
+        Some(Value::String(s)) if s == "back" => true,
+        Some(other) => {
+            let shown: String = other.to_string().chars().take(40).collect();
+            return Err(CmdError::Params(format!("unknown duplexPass {shown}; use front or back")));
+        }
+    };
+    if p::str(v, "parity").is_some_and(|s| s != "all") {
+        return Err(CmdError::Params("manual duplex chooses the sides itself: use parity all with duplexPass".into()));
+    }
+    if p::u64(v, "copies").is_some_and(|n| n > 1) {
+        return Err(CmdError::Params("manual duplex prints one copy per job: use copies 1 with duplexPass".into()));
+    }
+    if imposition(v)? != Imposition::Single {
+        return Err(CmdError::Params("manual duplex prints one page per sheet: use pagesPerSheet 1 with duplexPass".into()));
+    }
+    Ok(Some(back))
 }
 
 /// The `paper` param of a print job: the standard paper (see [`wordcraft_geom::PAPER_SIZES`]) to
@@ -525,6 +567,8 @@ impl Session {
         };
         let mut settings = v.clone();
         settings["reverse"] = json!(p::bool(v, "reverse").unwrap_or(self.prefs.print_reverse));
+        settings["frontReverse"] = json!(p::bool(v, "frontReverse").unwrap_or(self.prefs.print_duplex_front));
+        settings["backReverse"] = json!(p::bool(v, "backReverse").unwrap_or(self.prefs.print_duplex_back));
         let ids = page_ids(&lay);
         let plan = plan_in(&settings, &ids, current)?;
         let mut single = settings;

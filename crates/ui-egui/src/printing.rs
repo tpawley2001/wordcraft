@@ -9,7 +9,7 @@ pub type Submit = Box<dyn Fn(Vec<u8>, Settings, bool, Vec<(String, String)>) -> 
 pub fn commands(app: &crate::WordApp) -> Vec<serde_json::Value> {
     use serde_json::json;
     let enabled = if app.services.print_native.is_some() { app.printing.ready() } else { app.services.print.is_some() };
-    let submit_params = "pagesPerSheet?: 1|2|4|6|9|16|booklet|bookletReverse; range?: all|current|selection|custom; pages?: string (1-3,5); what?: document|properties|markup|styles|autotext (File › Print › Document Info: print that report instead of the document; range, pages, parity and copies apply to its pages); parity?: all|odd|even; copies?: integer 1..999; collate?: bool; orientation?: auto|portrait|landscape; paper?: none|Letter|Legal|A4|… (Layout › Size names: Scale to paper size, every page scaled onto that paper and centred; the document is unchanged). Native uses the selected printer, duplex and grayscale from ui.printSettings; omitted copies/collation use current settings. Browser printing opens its dialog. Submits only when explicitly executed.";
+    let submit_params = "pagesPerSheet?: 1|2|4|6|9|16|booklet|bookletReverse; range?: all|current|selection|custom; pages?: string (1-3,5); what?: document|properties|markup|styles|autotext (File › Print › Document Info: print that report instead of the document; range, pages, parity and copies apply to its pages); parity?: all|odd|even; copies?: integer 1..999; collate?: bool; orientation?: auto|portrait|landscape; paper?: none|Letter|Legal|A4|… (Layout › Size names: Scale to paper size, every page scaled onto that paper and centred; the document is unchanged); duplexPass?: front|back (Manually Print on Both Sides: the fronts or the backs of the sheets, one copy, one page per sheet; returns chosen, the pages before the split, so a back pass exists when it is 2 or more). Native uses the selected printer, duplex and grayscale from ui.printSettings; omitted copies/collation use current settings. Browser printing opens its dialog. Submits only when explicitly executed.";
     vec![
         json!({"id":"ui.printSettings", "label":"Print settings", "location":"File › Print", "shortcut":null,
             "params":"printer?: discovered name; copies?: integer 1..999; duplex?: printerDefault|off|longEdge|shortEdge|null; grayscale?: bool; refresh?: bool. Empty params inspect printer/copies/duplex/grayscale, printers, busy/discovering/ready and status/detail. Updates are atomic; refresh discovers only on native hosts. Never submits or opens a dialog.",
@@ -189,6 +189,10 @@ pub fn submit(app: &mut crate::WordApp, params: &serde_json::Value) -> Result<se
         if let Some(copies) = object.get("copies") {
             settings.copies = copies.as_u64().filter(|copies| (1..=999).contains(copies)).ok_or("copies must be an integer from 1 to 999")? as u32;
         }
+        // Manual duplex prints one copy per pass: the engine refuses more, the spooler must too.
+        if params.get("duplexPass").is_some_and(|pass| !pass.is_null()) && settings.copies > 1 {
+            return Err("manual duplex prints one copy per job: use copies 1".into());
+        }
         // Copies/collation belong to the spooler. Baking them into the PDF would multiply
         // the copies twice, and duplex could put the end of one copy behind the next.
         object.insert("copies".into(), json!(1));
@@ -248,12 +252,12 @@ pub fn submit(app: &mut crate::WordApp, params: &serde_json::Value) -> Result<se
             app.session.doc.core.last_printed = wordcraft_engine::cmd::now_iso();
             app.session.dirty = true;
         }
-        Ok(len)
+        Ok((len, plan.chosen))
     });
     match result {
-        Ok(len) => {
+        Ok((len, chosen)) => {
             app.status(if native { tl!("Submitting print job…") } else { tl!("Opening print dialog…") });
-            Ok(json!({"printing": true, "bytes": len, "pending": native}))
+            Ok(json!({"printing": true, "bytes": len, "pending": native, "chosen": chosen}))
         }
         Err(error) => {
             log::error!("print failed: {error}");

@@ -35,6 +35,11 @@ pub struct PrintSettings {
     pub paper: String,
     /// Physical grid size or booklet binding, independent of document page setup.
     pub pages_per_sheet: String,
+    /// `one` (Print One Sided) or `manual` (Manually Print on Both Sides: the fronts, then the
+    /// backs once the user has turned the stack over).
+    pub sides: String,
+    /// The back pass of a manual duplex job, waiting for the user to turn the printed pages over.
+    pub back_pass: Option<Value>,
 }
 
 impl Default for PrintSettings {
@@ -51,6 +56,8 @@ impl Default for PrintSettings {
             orientation: "auto".into(),
             paper: NO_SCALING.into(),
             pages_per_sheet: "1".into(),
+            sides: "one".into(),
+            back_pass: None,
         }
     }
 }
@@ -83,6 +90,15 @@ impl PrintSettings {
         DOCUMENT_INFO.iter().any(|(id, _)| *id == self.range).then_some(self.range.as_str())
     }
 
+    /// The params of the first job Print submits: with manual duplex, the fronts of the sheets.
+    pub fn first_job(&self) -> Value {
+        let mut v = self.params();
+        if self.sides == MANUAL_DUPLEX {
+            v["duplexPass"] = json!("front");
+        }
+        v
+    }
+
     /// The paper pages are scaled to, as (width, height) in points, or `None` for their own size.
     pub fn paper_size(&self) -> Option<(f32, f32)> {
         wordcraft_geom::paper_by_name(&self.paper).map(|(_, w, h)| (w, h))
@@ -97,6 +113,9 @@ const DOCUMENT_INFO: [(&str, &str); 4] =
 const PARITIES: [(&str, &str); 3] = [("all", "All pages in the range"), ("odd", "Odd pages only"), ("even", "Even pages only")];
 /// The Scale to paper size choice that keeps each page's own size.
 const NO_SCALING: &str = "none";
+const SIDES: [(&str, &str); 2] = [("one", "Print One Sided"), (MANUAL_DUPLEX, "Manually Print on Both Sides")];
+/// The sides choice that prints the fronts, then the backs.
+const MANUAL_DUPLEX: &str = "manual";
 const ORIENTATIONS: [(&str, &str); 3] = [("auto", "Auto orientation"), ("portrait", "Portrait"), ("landscape", "Landscape")];
 
 /// A choice list over `(id, label)` pairs; true when the choice changed.
@@ -238,6 +257,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let ids = wordcraft_engine::print::page_ids(&lay);
     app.ui.print.preview = app.ui.print.preview.min(total.saturating_sub(1));
 
+    back_pass(app, &ctx);
     let settings = |app: &mut WordApp, ui: &mut Ui| {
         {
             ui.set_width(SETTINGS_WIDTH);
@@ -260,8 +280,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     && (ui.add_enabled(ready, crate::widgets::primary_button(ui, tl!("Print")).min_size(vec2(320.0, 34.0))).clicked()
                         || (ready && app.dialog.is_none() && !app.file_dialog_open() && return_prints(ui.ctx())))
                 {
-                    let params = app.ui.print.params();
-                    let _ = app.run("ui.print", params);
+                    print(app);
                 }
                 if native {
                     if let Some(discover) = &app.services.printers {
@@ -322,6 +341,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 if choice_named(ui, "print_parity", &mut app.ui.print.parity, &PARITIES, tl!("Pages in the range")) {
                     app.ui.print.preview = 0;
                 }
+                let sides_label = ui.label(egui::RichText::new(tl!("Sides")).font(medium(13.0)));
+                choice(ui, "print_sides", &mut app.ui.print.sides, &SIDES, &sides_label);
                 let orientation_label = ui.label(egui::RichText::new(tl!("Orientation")).font(medium(13.0)));
                 if app.ui.print.pages_per_sheet == "2" || app.ui.print.pages_per_sheet.starts_with("booklet") {
                     ui.label(tl!("Landscape"));
@@ -354,10 +375,11 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     std::iter::once((NO_SCALING, "No Scaling")).chain(wordcraft_geom::PAPER_SIZES.iter().map(|(n, _, _)| (*n, *n))).collect();
                 choice(ui, "print_paper", &mut app.ui.print.paper, &papers, &paper_label);
 
+                // Manual duplex refuses copies and N-up the engine can't split into sides: say so here.
                 match shown
                     .error
                     .clone()
-                    .map_or_else(|| wordcraft_engine::print::plan_in(&app.ui.print.params(), &ids, current).map_err(|e| e.to_string()), Err)
+                    .map_or_else(|| wordcraft_engine::print::plan_in(&app.ui.print.first_job(), &ids, current).map_err(|e| e.to_string()), Err)
                 {
                     Ok(plan) => {
                         let msg = crate::i18n::fmt(
@@ -401,6 +423,59 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         ui.add_space(SETTINGS_GAP);
         crate::rtl::vertical(ui, |ui| preview(app, ui, &shown));
     });
+}
+
+/// Print: submit the job. With Manually Print on Both Sides that is the fronts of the sheets,
+/// and when the chosen pages fill a back, the backs wait for the turn-over message's Continue.
+pub fn print(app: &mut WordApp) {
+    let params = app.ui.print.first_job();
+    let manual = params.get("duplexPass").is_some();
+    match app.run("ui.print", params.clone()) {
+        Ok(r) if manual && r.get("chosen").and_then(Value::as_u64).is_some_and(|n| n >= 2) => {
+            let mut back = params;
+            back["duplexPass"] = json!("back");
+            app.ui.print.back_pass = Some(back);
+        }
+        _ => {}
+    }
+}
+
+/// Continue (true) prints the waiting back pass of a manual duplex job; Cancel (false) drops it.
+pub fn finish_back_pass(app: &mut WordApp, go: bool) {
+    let Some(back) = app.ui.print.back_pass.take() else { return };
+    if go {
+        let _ = app.run("ui.print", back);
+    }
+}
+
+/// Manual duplex's message between the passes: turn the printed pages over and put them back.
+/// Continue waits for a native printer to take the front pass first.
+fn back_pass(app: &mut WordApp, ctx: &egui::Context) {
+    if app.ui.print.back_pass.is_none() {
+        return;
+    }
+    let ready = app.services.print_native.is_none() || app.printing.ready();
+    let mut answer = None;
+    let modal = egui::Modal::new(egui::Id::unique("wordcraft.manualDuplex")).show(ctx, |ui| {
+        ui.set_max_width(380.0);
+        ui.heading(tl!("Manually Print on Both Sides"));
+        ui.label(tl!("When the first side has printed, turn the printed pages over and put them back in the paper tray, then select Continue."));
+        ui.add_space(8.0);
+        ui.with_layout(crate::rtl::row_layout(ui, egui::Align::Center), |ui| {
+            if ui.add_enabled(ready, crate::widgets::primary_button(ui, tl!("Continue"))).clicked() {
+                answer = Some(true);
+            }
+            if ui.button(tl!("Cancel")).clicked() {
+                answer = Some(false);
+            }
+        });
+    });
+    if modal.should_close() {
+        answer = answer.or(Some(false));
+    }
+    if let Some(go) = answer {
+        finish_back_pass(app, go);
+    }
 }
 
 /// The settings column's width, and the space between it and the preview.

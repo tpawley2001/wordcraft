@@ -26,6 +26,9 @@ const C_FTC0: u16 = 0x4A4F; // font index (ASCII)
 const C_FTC1: u16 = 0x4A50; // East Asian font index (sprmCRgFtc1)
 const C_FTC_BI: u16 = 0x4A5E; // complex-script font index (sprmCFtcBi)
 const C_HIGHLIGHT: u16 = 0x2A0C;
+const C_DXA_SPACE: u16 = 0x8840; // sprmCDxaSpace: letter spacing in twips
+const C_CHAR_SCALE: u16 = 0x4852; // sprmCCharScale: horizontal scale in percent
+const C_HPS_KERN: u16 = 0x484B; // sprmCHpsKern: kern from this size up, half-points
 pub(crate) const C_ISTD: u16 = 0x4A30; // character style
 
 // Paragraph sprms ([MS-DOC] §2.6.2).
@@ -52,6 +55,9 @@ const P_DXC_LEFT: u16 = 0x4456;
 const P_DXC_FIRST: u16 = 0x4457;
 const P_DYA_BEFORE: u16 = 0xA413;
 const P_DYA_AFTER: u16 = 0xA414;
+// Automatic (HTML) space before/after, Bool8 (sprmPFDyaBeforeAuto, sprmPFDyaAfterAuto).
+const P_F_DYA_BEFORE_AUTO: u16 = 0x245B;
+const P_F_DYA_AFTER_AUTO: u16 = 0x245C;
 const P_DYA_LINE: u16 = 0x6412;
 const P_KEEP: u16 = 0x2405; // keep lines together
 const P_KEEP_FOLLOW: u16 = 0x2406; // keep with next
@@ -290,6 +296,21 @@ pub(crate) fn apply_char(p: &mut CharProps, prl: &Prl, base: &CharProps, fonts: 
             }
         }
         C_ISTD => {} // CHPX style references are resolved in char_props.
+        C_DXA_SPACE => {
+            if let Some(dxa) = s16_of(prl) {
+                p.spacing = Some((f32::from(dxa) / 20.0).clamp(-1584.0, 1584.0));
+            }
+        }
+        C_CHAR_SCALE => {
+            if let Some(pct) = u16_of(prl).filter(|v| (1..=600).contains(v)) {
+                p.scale = Some(f32::from(pct));
+            }
+        }
+        C_HPS_KERN => {
+            if let Some(hps) = u16_of(prl) {
+                p.kern = Some(f32::from(hps) / 2.0);
+            }
+        }
         _ => {}
     }
 }
@@ -498,6 +519,17 @@ pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
         P_DYA_AFTER => {
             if let Some(v) = s16(prl) {
                 p.space_after = Some((v as f32 / 20.0).clamp(0.0, 3168.0));
+            }
+        }
+        // The stored dyaBefore/dyaAfter stay: the resolver lets the flag win, and a later 0
+        // (direct formatting turning a style's Auto off) brings them back.
+        P_F_DYA_BEFORE_AUTO | P_F_DYA_AFTER_AUTO => {
+            if let Some(&b) = prl.operand.first() {
+                if prl.op == P_F_DYA_BEFORE_AUTO {
+                    p.space_before_auto = Some(b != 0);
+                } else {
+                    p.space_after_auto = Some(b != 0);
+                }
             }
         }
         // LSPD ([MS-DOC] §2.9.150): a signed dyaLine, then fMultLinespace. In lines (240ths) when
