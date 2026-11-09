@@ -1,7 +1,7 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-08 · **Change:** trivial (P0129: Office 2016 sunburst charts drawn from their data: rings per category level, siblings largest first, branches in their top-level accent colour. Readiness estimates unchanged.); previously trivial (P0123: #13 narrowed: Office 2016 box & whisker charts drawn from their data. Readiness estimates unchanged); previously trivial (P0121: #13 narrowed: Office 2016 waterfall charts drawn from their data. Readiness estimates unchanged); previously trivial (P0120: `.doc` field anchors keep the first nonempty cached result run’s formatting, including hidden, bold and size; empty results keep the begin character’s formatting. Readiness estimates unchanged.)
-> **Last updated:** 2026-11-08 · **Change:** trivial (P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-09 · **Change:** trivial (P0129: Office 2016 sunburst charts drawn from their data: rings per category level, siblings largest first, branches in their top-level accent colour); previously trivial (P0150: View › Window › Reset Window Position puts the two windows viewed side by side back on equal halves of the screen, keeping Synchronous Scrolling; gap #27. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged.)
