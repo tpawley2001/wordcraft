@@ -52,7 +52,7 @@ pub fn specs() -> Vec<CommandSpec> {
                     .then_some("text boxes can't go inside a text box")
             }),
         CommandSpec::new("insert.link", "Link", "Insert › Links", link).key("Mod+K").params(
-            r#"{"url": string} | {"bookmark": name} | {"heading": block (see link.targets)} | {"top": true}, "text"?: string (Place in This Document: a bookmark, a heading or the top of the document)"#,
+            r#"{"url": string} | {"email": string, "subject"?: string} | {"bookmark": name} | {"heading": block (see link.targets)} | {"top": true}, "text"?: string (Place in This Document: a bookmark, a heading or the top of the document)"#,
         ),
         CommandSpec::new("link.targets", "Link", "Insert › Links", link_targets).pure(),
         CommandSpec::new("insert.removeLink", "Remove Hyperlink", "Insert › Links", |s, _| super::format::apply(s, &|c| {
