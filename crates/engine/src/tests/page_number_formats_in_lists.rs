@@ -124,3 +124,137 @@ fn update_fields_still_agree() {
     crate::cmd::references::update_fields_in(&mut s, true).unwrap();
     assert_eq!(field_results(&s, "PAGEREF"), inserted);
 }
+
+// PR #5971 review: a decimal-only guard, `1, 1` across two sections, index page ranges and
+// `_Ref` bookmark reuse.
+
+/// "Front" / page break / "Preface" (Heading 1) / page break / "Chapter one" (Heading 1), one
+/// decimal section: pages 1, 2, 3.
+fn decimal_only() -> Session {
+    let mut s = Session::new(wordcraft_doc::Document::from_text("Front\nPreface\nChapter one"));
+    for h in ["Preface", "Chapter one"] {
+        run(&mut s, "select.text", json!({"text": h}));
+        run(&mut s, "styles.apply", json!({"style": "Heading 1"}));
+        run(&mut s, "caret.home", json!({}));
+        run(&mut s, "layout.break", json!({"kind": "page"}));
+    }
+    s
+}
+
+/// The last line of the body's text that starts with `name` (the index is at the end).
+fn index_line(s: &Session, name: &str) -> String {
+    let text = s.doc.plain_text(StoryRef::Body);
+    text.lines().rfind(|l| l.starts_with(name)).unwrap_or_default().to_string()
+}
+
+/// The body paragraph whose text contains `text`, and the byte offset where `text` starts in it.
+fn find(s: &Session, text: &str) -> (wordcraft_doc::Path, usize) {
+    s.doc
+        .para_paths(StoryRef::Body)
+        .into_iter()
+        .find_map(|path| s.doc.para(StoryRef::Body, &path).and_then(|p| p.text.find(text)).map(|o| (path, o)))
+        .unwrap_or_else(|| panic!("no paragraph with {text:?}"))
+}
+
+fn add_mark(s: &mut Session, path: &wordcraft_doc::Path, off: usize, obj: InlineObject) {
+    let at = wordcraft_doc::Pos { story: StoryRef::Body, path: path.clone(), off };
+    s.doc.insert_object(&at, obj, &wordcraft_doc::CharProps::default()).unwrap();
+}
+
+#[test]
+fn decimal_only_documents_keep_plain_page_numbers() {
+    let mut s = decimal_only();
+    run(&mut s, "caret.docStart", json!({}));
+    run(&mut s, "references.toc", json!({"levels": 1, "hyperlinks": false, "rightAlign": false}));
+    assert_eq!(styled(&s, "TOC1"), ["Preface 2", "Chapter one 3"]);
+
+    let mut s = decimal_only();
+    run(&mut s, "caret.docStart", json!({}));
+    run(&mut s, "references.toc", json!({"levels": 1, "hyperlinks": true, "rightAlign": false}));
+    assert_eq!(field_results(&s, "PAGEREF"), ["2", "3"]);
+
+    let mut s = decimal_only();
+    run(&mut s, "caret.docEnd", json!({}));
+    run(&mut s, "insert.crossReference", json!({"to": "heading", "target": "Preface", "show": "page"}));
+    assert_eq!(field_results(&s, "PAGEREF"), ["2"]);
+
+    let mut s = decimal_only();
+    run(&mut s, "select.text", json!({"text": "Preface"}));
+    run(&mut s, "references.markEntry", json!({"entry": "Preface"}));
+    run(&mut s, "select.text", json!({"text": "Chapter one"}));
+    run(&mut s, "references.markEntry", json!({"entry": "Chapter"}));
+    run(&mut s, "caret.docEnd", json!({}));
+    run(&mut s, "references.index", json!({"columns": 1, "rightAlign": false}));
+    let (preface, chapter) = (index_line(&s, "Preface"), index_line(&s, "Chapter"));
+    assert!(preface.ends_with('2') && !preface.ends_with("12"), "{preface:?}");
+    assert!(chapter.ends_with('3') && chapter != "Chapter one", "{chapter:?}");
+}
+
+/// The same entry on page 1 of two sections lists both pages: the index merges pages by layout
+/// page, not by the number shown.
+#[test]
+fn the_same_label_on_two_pages_is_listed_twice() {
+    let mut s = two_sections();
+    run(&mut s, "caret.docStart", json!({}));
+    run(&mut s, "layout.pageNumberFormat", json!({"format": "decimal", "start": 1}));
+    for t in ["Front", "Chapter one"] {
+        run(&mut s, "select.text", json!({"text": t}));
+        run(&mut s, "references.markEntry", json!({"entry": "Topic"}));
+    }
+    run(&mut s, "caret.docEnd", json!({}));
+    run(&mut s, "references.index", json!({"columns": 1, "rightAlign": false}));
+    let line = index_line(&s, "Topic");
+    assert!(line.ends_with("1, 1"), "{line:?}");
+}
+
+/// An index entry for bookmark `Span` (`XE \r`), the bookmark from "Preface" (page ii) to `end`.
+fn range_entry(end: Option<(&str, bool)>) -> String {
+    let mut s = two_sections();
+    let (path, off) = find(&s, "Preface");
+    // The end first, so the start's offset stays put when both are in one paragraph.
+    if let Some((text, at_end_of_para)) = end {
+        let (epath, eoff) = find(&s, text);
+        let eoff = if at_end_of_para { s.doc.para(StoryRef::Body, &epath).unwrap().len() } else { eoff + text.len() };
+        add_mark(&mut s, &epath, eoff, InlineObject::BookmarkEnd { name: "Span".into() });
+    }
+    add_mark(&mut s, &path, off, InlineObject::BookmarkStart { name: "Span".into() });
+    run(&mut s, "select.text", json!({"text": "Front"}));
+    run(&mut s, "references.markEntry", json!({"entry": "Span", "bookmark": "Span"}));
+    run(&mut s, "caret.docEnd", json!({}));
+    run(&mut s, "references.index", json!({"columns": 1, "rightAlign": false}));
+    index_line(&s, "Span")
+}
+
+#[test]
+fn an_index_range_across_sections_uses_each_ends_format() {
+    let line = range_entry(Some(("Chapter one", true)));
+    assert!(line.ends_with("ii\u{2013}1"), "{line:?}");
+}
+
+#[test]
+fn an_index_range_on_one_page_is_one_page() {
+    let line = range_entry(Some(("Preface", false)));
+    assert!(line.ends_with("ii") && !line.contains('\u{2013}'), "{line:?}");
+}
+
+#[test]
+fn an_index_range_without_its_end_is_the_start_page() {
+    let line = range_entry(None);
+    assert!(line.ends_with("ii") && !line.contains('\u{2013}'), "{line:?}");
+}
+
+/// A heading that starts with a page break and already has a `_Ref` bookmark around it from
+/// offset 0: a page cross-reference reuses it and reads the heading's page.
+#[test]
+fn a_ref_bookmark_before_the_page_break_is_reused() {
+    let mut s = two_sections();
+    let (path, _) = find(&s, "Preface");
+    let len = s.doc.para(StoryRef::Body, &path).unwrap().len();
+    add_mark(&mut s, &path, len, InlineObject::BookmarkEnd { name: "_Ref000000007".into() });
+    add_mark(&mut s, &path, 0, InlineObject::BookmarkStart { name: "_Ref000000007".into() });
+    run(&mut s, "caret.docEnd", json!({}));
+    run(&mut s, "insert.crossReference", json!({"to": "heading", "target": "Preface", "show": "page"}));
+    let refs: Vec<String> = s.doc.bookmarks().into_iter().map(|b| b.0).filter(|n| n.starts_with("_Ref")).collect();
+    assert_eq!(refs, ["_Ref000000007"], "no second _Ref bookmark");
+    assert_eq!(field_results(&s, "PAGEREF"), ["ii"]);
+}

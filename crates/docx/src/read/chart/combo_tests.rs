@@ -370,3 +370,148 @@ fn a_combo_skips_an_unsupported_group_and_caps_series_over_all_groups() {
     assert_eq!(chart.groups.iter().map(|g| g.series.len()).sum::<usize>(), MAX_SERIES);
     assert_eq!(chart.groups.len(), 2);
 }
+
+// ---- PR #5972 review ----
+
+/// Text items with their rects (x, y, w, h).
+fn text_rects(items: &[GraphicItem]) -> Vec<(String, [f32; 4])> {
+    items
+        .iter()
+        .filter_map(|it| match it {
+            GraphicItem::Text { text, rect, .. } => Some((text.clone(), *rect)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn gridlines(items: &[GraphicItem]) -> usize {
+    strokes(items).iter().filter(|s| s.0 == GRID).count()
+}
+
+#[test]
+fn hostile_axis_ids_do_not_hang() {
+    // Each chart type names 200,000 axis ids that match nothing, and 100,000 value axes come
+    // before the real one: a nested scan is ~10^10 comparisons per group.
+    let junk_ids: String = (0..200_000).map(|i| format!(r#"<c:axId val="{}"/>"#, 1_000_000 + i)).collect();
+    let junk_axes: String = (0..100_000).map(|i| format!(r#"<c:valAx><c:axId val="{}"/></c:valAx>"#, 5_000_000 + i)).collect();
+    let bar = format!(
+        r#"<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>{}{junk_ids}</c:barChart>"#,
+        ser(0, "Sales", &CATS, &[10.0, 20.0, 30.0], &solid(BAR))
+    );
+    let line = format!(
+        r#"<c:lineChart><c:grouping val="standard"/>{}{junk_ids}</c:lineChart>"#,
+        ser(1, "Average", &CATS, &[15.0, 25.0, 5.0], &format!("<a:ln>{}</a:ln>", solid(LINE)))
+    );
+    let plot = format!("{bar}{line}{}{junk_axes}{}", cat_ax(1, 2), val_ax(2, 1, false, None));
+    let start = std::time::Instant::now();
+    let items = draw(&plot, false);
+    let took = start.elapsed();
+    assert!(took < std::time::Duration::from_secs(5), "took {took:?}");
+    assert_eq!(fills(&items).iter().filter(|f| f.0 == Rgb(0x44, 0x72, 0xC4)).count(), 3, "three columns");
+    assert!(strokes(&items).iter().any(|s| s.0 == Rgb(0xED, 0x7D, 0x31) && s.1.len() == 3), "the line is drawn");
+}
+
+#[test]
+fn dangling_axis_ids_fall_back_to_the_primary_axis() {
+    let plot = format!(
+        "{}{}{}{}",
+        bar_group(&ser(0, "Units", &CATS, &[100.0, 200.0, 300.0], &solid(BAR)), (1, 2)),
+        line_group(&ser(1, "Margin", &CATS, &[100.0, 200.0, 300.0], &format!("<a:ln>{}</a:ln>", solid(LINE))), (7, 8)),
+        cat_ax(1, 2),
+        val_ax(2, 1, false, Some(400.0))
+    );
+    let items = draw(&plot, false);
+    let bars: Vec<_> = fills(&items).into_iter().filter(|f| f.0 == Rgb(0x44, 0x72, 0xC4)).collect();
+    let line = strokes(&items).into_iter().find(|s| s.0 == Rgb(0xED, 0x7D, 0x31)).expect("line drawn").1;
+    for (i, (p, b)) in line.iter().zip(&bars).enumerate() {
+        assert!(near(p.1, b.2), "point {i} on the primary scale: {} vs column top {}", p.1, b.2);
+    }
+    let right_edge = bars.iter().map(|b| b.3).fold(0.0f32, f32::max);
+    assert!(!texts(&items).iter().any(|(_, x)| *x > right_edge), "no right-hand labels");
+}
+
+#[test]
+fn duplicate_axis_ids_draw_the_series_once() {
+    let line = format!(
+        r#"<c:lineChart><c:grouping val="standard"/>{}<c:axId val="3"/><c:axId val="3"/><c:axId val="4"/><c:axId val="4"/></c:lineChart>"#,
+        ser(1, "Margin", &CATS, &[0.1, 0.2, 0.3], &format!("<a:ln>{}</a:ln>", solid(LINE)))
+    );
+    let plot = format!(
+        "{}{line}{}{}{}",
+        bar_group(&ser(0, "Units", &CATS, &[100.0, 200.0, 300.0], &solid(BAR)), (1, 2)),
+        cat_ax(1, 2),
+        val_ax(2, 1, false, Some(400.0)),
+        val_ax(4, 3, true, Some(0.4))
+    );
+    let items = draw(&plot, false);
+    assert_eq!(strokes(&items).iter().filter(|s| s.0 == Rgb(0xED, 0x7D, 0x31) && s.1.len() == 3).count(), 1);
+}
+
+#[test]
+fn horizontal_bar_combo_labels_its_secondary_axis_along_the_top() {
+    let across = |series: &str, ax: (u32, u32)| {
+        format!(
+            r#"<c:barChart><c:barDir val="bar"/><c:grouping val="clustered"/>{series}<c:gapWidth val="150"/><c:axId val="{}"/><c:axId val="{}"/></c:barChart>"#,
+            ax.0, ax.1
+        )
+    };
+    let val = |id: u32, cross: u32, pos: &str, max: f64, crosses: &str| {
+        format!(
+            r#"<c:valAx><c:axId val="{id}"/><c:scaling><c:orientation val="minMax"/><c:max val="{max}"/><c:min val="0"/></c:scaling><c:delete val="0"/><c:axPos val="{pos}"/><c:numFmt formatCode="General" sourceLinked="1"/><c:crossAx val="{cross}"/><c:crosses val="{crosses}"/><c:crossBetween val="between"/></c:valAx>"#
+        )
+    };
+    let cat = |id: u32, cross: u32, deleted: u8| {
+        format!(
+            r#"<c:catAx><c:axId val="{id}"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="{deleted}"/><c:axPos val="l"/><c:crossAx val="{cross}"/></c:catAx>"#
+        )
+    };
+    let plot = format!(
+        "{}{}{}{}{}{}",
+        across(&ser(0, "Units", &CATS, &[100.0, 200.0, 300.0], &solid(BAR)), (1, 2)),
+        across(&ser(1, "Margin", &CATS, &[0.1, 0.2, 0.3], &solid(LINE)), (3, 4)),
+        cat(1, 2, 0),
+        val(2, 1, "b", 400.0, "autoZero"),
+        cat(3, 4, 1),
+        val(4, 3, "t", 0.4, "max")
+    );
+    let items = draw(&plot, false);
+    let bars: Vec<_> = fills(&items).into_iter().filter(|f| f.0 == Rgb(0x44, 0x72, 0xC4) || f.0 == Rgb(0xED, 0x7D, 0x31)).collect();
+    assert_eq!(bars.len(), 6, "both groups' bars");
+    let top = bars.iter().map(|b| b.2).fold(f32::INFINITY, f32::min);
+    let bottom = bars.iter().map(|b| b.4).fold(f32::NEG_INFINITY, f32::max);
+    let t = text_rects(&items);
+    let sec = t.iter().find(|(s, _)| s == "0.4").unwrap_or_else(|| panic!("secondary labels drawn: {t:?}")).1;
+    let pri = t.iter().find(|(s, _)| s == "400").unwrap_or_else(|| panic!("primary labels drawn: {t:?}")).1;
+    assert!(sec[1] + sec[3] <= top + 0.05, "0.4 above the bars: {sec:?} vs top {top}");
+    assert!(pri[1] >= bottom - 0.05, "400 below the bars: {pri:?} vs bottom {bottom}");
+    // Both maxima sit at the plot's right end.
+    let (sc, pc) = (sec[0] + sec[2] / 2.0, pri[0] + pri[2] / 2.0);
+    assert!((sc - pc).abs() <= 1.0, "0.4 centred on the right end like 400: {sc} vs {pc}");
+}
+
+#[test]
+fn secondary_axis_draws_no_gridlines() {
+    let bar = bar_group(&ser(0, "Units", &CATS, &[100.0, 200.0, 300.0], &solid(BAR)), (1, 2));
+    let with = format!(
+        "{bar}{}{}{}{}{}",
+        line_group(&ser(1, "Margin", &CATS, &[0.1, 0.2, 0.3], &format!("<a:ln>{}</a:ln>", solid(LINE))), (3, 4)),
+        cat_ax(1, 2),
+        val_ax(2, 1, false, Some(400.0)),
+        r#"<c:catAx><c:axId val="3"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="1"/><c:axPos val="b"/><c:crossAx val="4"/></c:catAx>"#,
+        val_ax(4, 3, true, Some(0.4))
+    );
+    let without = format!("{bar}{}{}", cat_ax(1, 2), val_ax(2, 1, false, Some(400.0)));
+    let (a, b) = (gridlines(&draw(&with, false)), gridlines(&draw(&without, false)));
+    assert!(b > 0, "the primary axis draws gridlines");
+    assert_eq!(a, b, "the secondary axis adds none");
+}
+
+#[test]
+fn combo_legend_follows_c_order_across_groups() {
+    let sales = ser(0, "Sales", &CATS, &[10.0, 20.0, 30.0], "").replace(r#"<c:order val="0"/>"#, r#"<c:order val="1"/>"#);
+    let average = ser(1, "Average", &CATS, &[15.0, 25.0, 5.0], "").replace(r#"<c:order val="1"/>"#, r#"<c:order val="0"/>"#);
+    let plot = format!("{}{}{}{}", bar_group(&sales, (1, 2)), line_group(&average, (1, 2)), cat_ax(1, 2), val_ax(2, 1, false, None));
+    let t = texts(&draw(&plot, true));
+    let x = |name: &str| t.iter().find(|(s, _)| s == name).map(|(_, x)| *x).unwrap_or_else(|| panic!("{name} in the legend: {t:?}"));
+    assert!(x("Average") < x("Sales"), "order 0 first: {t:?}");
+}

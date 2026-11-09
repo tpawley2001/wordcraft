@@ -1,9 +1,20 @@
+use std::collections::HashMap;
+
 use super::format::{date_text, excel_stamp, format_value, is_date_code};
 use super::model::{Axis, Depth, Group, Grouping, Kind, Pos, Series, Stock};
 use super::of_pie::OfPie;
 use super::plot::label;
 use super::three_d::View3d;
 use super::{Chart, El, FONT, LINE_W, MAX_CELLS, MAX_POINTS, MAX_RADAR_SERIES, MAX_SERIES, MAX_SPOKES, Rgb, fill_colour, int, measure, slot};
+
+/// The most chart-type groups read from one plot area. A plot area holds each chart type at most
+/// once per axis group; this is far above any real file and bounds the work hostile ones cause.
+const MAX_CHART_GROUPS: usize = 16;
+/// The most `c:axId`s read from a chart-type element: 2 for 2-D types, 3 for the 3-D ones with a
+/// series axis (ECMA-376 Part 1 §21.2.2).
+const MAX_AX_IDS: usize = 3;
+/// The most `c:valAx` elements of a plot area considered when matching chart types to axes.
+const MAX_VAL_AXES: usize = 16;
 
 impl Chart {
     pub(super) fn parse(space: &El, theme: &[Rgb]) -> Option<Chart> {
@@ -28,6 +39,7 @@ impl Chart {
                     Kind::Line | Kind::Area | Kind::Stock => !scatter && !horizontal,
                     Kind::Pie | Kind::Doughnut | Kind::Radar => false,
                 })
+                .take(MAX_CHART_GROUPS)
                 .collect()
         };
         let (cat, val, sec, axes) = chart_axes(plot, scatter, &tys);
@@ -250,7 +262,7 @@ fn to_percent(series: &mut [Series], n: usize) {
 /// area, the secondary value axis (that of the first chart type not on the primary one) and for
 /// each chart type whether it is on it.
 fn chart_axes(plot: &El, scatter: bool, tys: &[(&El, Kind)]) -> (Axis, Axis, Option<Axis>, Vec<bool>) {
-    let vals_ax: Vec<&El> = plot.children("c:valAx").collect();
+    let vals_ax: Vec<&El> = plot.children("c:valAx").take(MAX_VAL_AXES).collect();
     let horiz_pos = |a: &&El| matches!(a.child("c:axPos").and_then(|p| p.attr("val")), Some("b" | "t"));
     let cat_el = plot.els().find(|e| matches!(e.name.as_str(), "c:catAx" | "c:dateAx"));
     if scatter {
@@ -258,7 +270,14 @@ fn chart_axes(plot: &El, scatter: bool, tys: &[(&El, Kind)]) -> (Axis, Axis, Opt
         let y = vals_ax.iter().copied().find(|a| !horiz_pos(a)).or_else(|| vals_ax.iter().copied().find(|a| Some(*a) != x));
         return (axis(x), axis(y), None, vec![false; tys.len()]);
     }
-    let refs: Vec<Option<&El>> = tys.iter().map(|(ty, _)| value_axis_of(&vals_ax, ty)).collect();
+    // One id -> axis map (the first axis with an id wins), so matching stays linear in the axes.
+    let mut by_id: HashMap<&str, &El> = HashMap::new();
+    for a in &vals_ax {
+        if let Some(id) = a.child("c:axId").and_then(|i| i.attr("val")) {
+            by_id.entry(id).or_insert(*a);
+        }
+    }
+    let refs: Vec<Option<&El>> = tys.iter().map(|(ty, _)| value_axis_of(&by_id, ty)).collect();
     // One chart type keeps the first value axis; with several, the primary one is the first of
     // theirs not on the right.
     let primary = if tys.len() > 1 {
@@ -272,10 +291,10 @@ fn chart_axes(plot: &El, scatter: bool, tys: &[(&El, Kind)]) -> (Axis, Axis, Opt
     (axis(cat_el), axis(primary), sec, secondary)
 }
 
-/// The value axis a chart type element names by its `c:axId`s.
-fn value_axis_of<'a>(vals_ax: &[&'a El], ty: &El) -> Option<&'a El> {
-    let ids: Vec<&str> = ty.children("c:axId").filter_map(|a| a.attr("val")).collect();
-    vals_ax.iter().copied().find(|a| a.child("c:axId").and_then(|i| i.attr("val")).is_some_and(|v| ids.contains(&v)))
+/// The value axis a chart type element names by its `c:axId`s: the first of its first
+/// [`MAX_AX_IDS`] ids found among the plot area's value axes.
+fn value_axis_of<'a>(by_id: &HashMap<&str, &'a El>, ty: &El) -> Option<&'a El> {
+    ty.children("c:axId").take(MAX_AX_IDS).filter_map(|a| a.attr("val")).find_map(|id| by_id.get(id).copied())
 }
 
 /// The chart's title. An empty `c:title` shows the series name (Word's automatic title of a

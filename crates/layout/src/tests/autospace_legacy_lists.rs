@@ -23,8 +23,8 @@ fn plain() -> ParaProps {
 }
 
 /// `items` as (list 1 or 2, or 0 for none; level; automatic spacing), between two plain
-/// paragraphs, in compatibility mode `mode`: the extra gap above paragraphs 1.. (beyond the line
-/// pitch), rounded to 0.1 pt.
+/// paragraphs, in compatibility mode `mode`: the extra gap above paragraphs 1.. (beyond the same
+/// paragraphs without automatic spacing), rounded to 0.1 pt.
 fn gaps(mode: u32, items: &[(u32, u8, bool)]) -> Vec<f32> {
     let build = |items: &[(u32, u8, bool)]| {
         let mut d = Document::new();
@@ -53,10 +53,11 @@ fn gaps(mode: u32, items: &[(u32, u8, bool)]) -> Vec<f32> {
         let l = lay(&d);
         (0..d.body.len()).map(|i| l.caret(&Pos::body(i, 0)).unwrap().top).collect::<Vec<f32>>()
     };
-    let base = build(&vec![(0, 0, false); items.len()]);
-    let line = base[1] - base[0];
+    // The same paragraphs and lists without automatic spacing: a list item's line can be taller
+    // than a plain one (its label's font), which is not the spacing measured here.
+    let base = build(&items.iter().map(|&(list, level, _)| (list, level, false)).collect::<Vec<_>>());
     let tops = build(items);
-    (1..tops.len()).map(|i| ((tops[i] - tops[i - 1] - line) * 10.0).round() / 10.0).collect()
+    (1..tops.len()).map(|i| ((tops[i] - tops[i - 1] - (base[i] - base[i - 1])) * 10.0).round() / 10.0).collect()
 }
 
 #[test]

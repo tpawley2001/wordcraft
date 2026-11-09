@@ -94,3 +94,21 @@ fn a_typed_set_is_one_undo_step() {
     assert_eq!(prop(&s, "Reviewed"), Some(("lpwstr".into(), "pending".into())));
     assert_eq!(prop(&s, "Due"), None);
 }
+
+/// PR #5541 review: date values are real calendar dates in exact `YYYY-MM-DD` form.
+#[test]
+fn custom_dates_are_real_calendar_dates() {
+    use crate::cmd::file::{CustomType, parse_custom_value};
+    for (date, ok) in [
+        ("2024-02-29", true),
+        ("2000-02-29", true),
+        ("2023-02-29", false),
+        ("1900-02-29", false),
+        ("2026-04-31", false),
+        ("2026-13-01", false),
+        ("2026-1-01", false),
+        ("2026-01-01", true),
+    ] {
+        assert_eq!(parse_custom_value(CustomType::Date, date).is_ok(), ok, "{date}");
+    }
+}
