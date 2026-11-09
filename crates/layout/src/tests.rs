@@ -33,6 +33,7 @@ mod nbsp;
 mod nested_cant_split;
 mod numeral;
 mod pages;
+mod picture_glue;
 mod styleref;
 mod symbol_field;
 mod symbol_font_lines;
