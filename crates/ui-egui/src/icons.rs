@@ -1151,6 +1151,13 @@ fn paint_view_and_tables(pen: &Pen, name: &str) -> bool {
             pen.rect(2.0, 4.0, 9.5, 16.0, c);
             pen.rect(10.5, 4.0, 18.0, 16.0, a);
         }
+        "resetWindowPosition" => {
+            // Two windows side by side, with a turning arrow back to where they were.
+            pen.rect(2.0, 4.0, 9.5, 16.0, c);
+            pen.rect(10.5, 4.0, 18.0, 16.0, c);
+            pen.line_c(&[(13.0, 13.0), (14.25, 8.0), (16.0, 13.0)], a);
+            pen.fill(&[(11.5, 12.0), (14.5, 12.0), (13.0, 14.5)], a);
+        }
         "syncScroll" => {
             // Two windows side by side, both scrolling down.
             pen.rect(2.0, 3.0, 9.5, 17.0, c);

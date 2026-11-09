@@ -1,5 +1,5 @@
-//! View › Window across the app's windows (#322): Arrange All, View Side by Side and Synchronous
-//! Scrolling. The engine's `view.*` window commands decide and record what to do
+//! View › Window across the app's windows (#322): Arrange All, View Side by Side, Synchronous
+//! Scrolling and Reset Window Position. The engine's `view.*` window commands decide and record what to do
 //! (`Session::windows`, as the drawn window sees it) and push a request; [`request`] carries it
 //! out by placing the windows' viewports, and the pairing lives here. Without native windows (the
 //! web app, embedded viewports) the commands are disabled.
@@ -109,11 +109,14 @@ pub(crate) fn request(app: &mut WordApp, req: &Value) {
                 st.waiting.clear();
                 st.pair = Some((key, with));
                 st.sync = true;
-                if let Some(area) = monitor_of(app, key) {
-                    let [left, right] = halves(area);
-                    place(app, key, left);
-                    place(app, with, right);
-                }
+                place_pair(app, key, with);
+            }
+        }
+        "resetPosition" => {
+            // Reset Window Position: the pair back on equal halves; pairing and scrolling stay.
+            let partner = app.windows.arranged.partner(key);
+            if let Some(with) = id("with").filter(|w| partner == Some(*w) && app.windows.get(*w).is_some()) {
+                place_pair(app, key, with);
             }
         }
         "syncScroll" => {
@@ -133,6 +136,15 @@ pub(crate) fn request(app: &mut WordApp, req: &Value) {
     }
     if let Some(ctx) = app.ctx.as_ref() {
         ctx.request_repaint();
+    }
+}
+
+/// View Side by Side: window `key` on the left half of its monitor, `with` on the right.
+fn place_pair(app: &WordApp, key: u64, with: u64) {
+    if let Some(area) = monitor_of(app, key) {
+        let [left, right] = halves(area);
+        place(app, key, left);
+        place(app, with, right);
     }
 }
 
@@ -298,6 +310,23 @@ mod tests {
         app.canvas.sync_out = 1.0e30;
         forward_scroll(&mut app, &ctx);
         assert_eq!(app.windows.arranged.waiting.get(&other), Some(&MAX_SCROLL));
+        // Reset Window Position names the partner; any other window, or none, changes nothing,
+        // and the pairing and Synchronous Scrolling stay as they were either way.
+        let third = other.wrapping_add(1000);
+        for req in [
+            json!({"windows": "resetPosition", "with": third}),
+            json!({"windows": "resetPosition", "with": shown}),
+            json!({"windows": "resetPosition"}),
+        ] {
+            request(&mut app, &req);
+            assert_eq!((app.windows.arranged.pair, app.windows.arranged.sync), (Some((shown, other)), true), "{req}");
+        }
+        for sync in [true, false] {
+            app.windows.arranged.sync = sync;
+            request(&mut app, &json!({"windows": "resetPosition", "with": other}));
+            assert_eq!((app.windows.arranged.pair, app.windows.arranged.sync), (Some((shown, other)), sync));
+        }
+        app.windows.arranged.sync = true;
         // The partner closing ends the pairing.
         app.windows.open.retain(|w| w.key == shown);
         app.canvas.sync_in = 3.0;

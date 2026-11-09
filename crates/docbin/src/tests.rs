@@ -7,7 +7,10 @@ use proptest::prelude::*;
 
 use super::read;
 
+mod auto_spacing;
+mod cell_padding;
 mod cfb_tolerance;
+mod char_spacing;
 mod char_styles;
 mod compat_mode;
 mod dop_options;
@@ -20,6 +23,7 @@ mod field_result_props;
 mod frames;
 mod header_guard;
 mod horizontal_rules;
+mod hps_pos;
 mod linked_pictures;
 mod metadata;
 mod nested_table;
