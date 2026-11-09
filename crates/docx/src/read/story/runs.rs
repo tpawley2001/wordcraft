@@ -2,6 +2,10 @@ use super::{
     CharProps, El, InlineObject, Item, MAX_FORM, MAX_INSTR, NoteKind, PB, PTabAlign, PTabBase, Phase, Reader, Rels, RevisionKind, RunCtx, StoryCtx,
     TextColor, children_of_choice, clean_text, int, measure, on_off_attr, placeholder_of, sink,
 };
+use crate::xml::Node;
+
+/// XML white space (XML 1.0 §2.3).
+const XML_WS: [char; 4] = ['\u{20}', '\t', '\n', '\r'];
 
 impl Reader<'_> {
     pub(super) fn read_inline_children(&mut self, sc: &mut StoryCtx, pb: &mut PB, e: &El, rels: &Rels, ctx: &RunCtx, depth: usize) {
@@ -141,6 +145,41 @@ impl Reader<'_> {
         }
     }
 
+    /// A text element that holds run content (`<w:t>a<w:br/>b</w:t>`, which some producers
+    /// write): Word reads the misplaced elements as if they stood in the run, in document order.
+    /// Without `preserve`, only the first text's leading and the last text's trailing white
+    /// space are dropped (XML 1.0 §2.10).
+    #[allow(clippy::too_many_arguments)]
+    fn read_text_kids(
+        &mut self,
+        sc: &mut StoryCtx,
+        pb: &mut PB,
+        k: &El,
+        ctx: (&CharProps, &Rels),
+        note: &mut Option<(NoteKind, u32, Option<String>)>,
+        depth: usize,
+        preserve: bool,
+    ) {
+        let first = k.kids.iter().position(|n| matches!(n, Node::Text(_)));
+        let last = k.kids.iter().rposition(|n| matches!(n, Node::Text(_)));
+        for (i, n) in k.kids.iter().enumerate() {
+            match n {
+                Node::Text(s) => {
+                    let mut raw = s.as_str();
+                    if !preserve && Some(i) == first {
+                        raw = raw.trim_start_matches(XML_WS);
+                    }
+                    if !preserve && Some(i) == last {
+                        raw = raw.trim_end_matches(XML_WS);
+                    }
+                    let t = clean_text(raw);
+                    self.emit_text(sc, pb, &t, ctx.0);
+                }
+                Node::El(e) => self.read_run_child(sc, pb, e, ctx, note, depth.saturating_add(1)),
+            }
+        }
+    }
+
     fn read_run_child(
         &mut self,
         sc: &mut StoryCtx,
@@ -170,10 +209,19 @@ impl Reader<'_> {
                 // Without xml:space="preserve" the white space at either end of a text element
                 // is not significant (XML 1.0 §2.10, ECMA-376 Part 1 §17.3.3.31): Word and
                 // LibreOffice drop it, so `<w:t> deleted</w:t>` reads as "deleted".
+                let preserve = k.attr("xml:space") == Some("preserve");
+                if k.els().next().is_some() {
+                    self.read_text_kids(sc, pb, k, (props, rels), note, depth, preserve);
+                    return;
+                }
                 let raw = k.text();
-                let raw = if k.attr("xml:space") == Some("preserve") { raw.as_str() } else { raw.trim_matches(['\u{20}', '\t', '\n', '\r']) };
+                let raw = if preserve { raw.as_str() } else { raw.trim_matches(XML_WS) };
                 let t = clean_text(raw);
                 self.emit_text(sc, pb, &t, props);
+            }
+            // Outside any field Word shows instruction text as ordinary text, white space kept.
+            "w:instrText" | "w:delInstrText" if !sc.fields.iter().any(|f| f.phase == Phase::Instr) => {
+                self.read_text_kids(sc, pb, k, (props, rels), note, depth, true);
             }
             "w:instrText" | "w:delInstrText" => {
                 if let Some(f) = sc.fields.last_mut()
