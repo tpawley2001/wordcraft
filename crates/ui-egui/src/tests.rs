@@ -3694,6 +3694,39 @@ fn ui_print_honours_the_print_settings() {
     assert_eq!(sizes.borrow().len(), 1);
 }
 
+/// File › Print › Manually Print on Both Sides: Print sends the fronts, Continue the backs, Cancel
+/// nothing more; a single page has no back to wait for.
+#[test]
+fn manual_duplex_prints_the_fronts_then_the_backs() {
+    for (pages, go, jobs) in [(3, true, 2), (3, false, 1), (1, true, 1)] {
+        let mut a = typed();
+        for _ in 1..pages {
+            a.run("insert.pageBreak", json!({})).unwrap();
+            a.run("text.insert", json!({"text": "More"})).unwrap();
+        }
+        let sent = std::rc::Rc::new(std::cell::Cell::new(0));
+        let seen = sent.clone();
+        a.services.print = Some(Box::new(move |_| {
+            seen.set(seen.get() + 1);
+            Ok(())
+        }));
+        a.ui.print.sides = "manual".into();
+        crate::print_page::print(&mut a);
+        assert_eq!(sent.get(), 1, "{pages} pages: the fronts print first");
+        assert_eq!(a.ui.print.back_pass.is_some(), pages >= 2, "{pages} pages: the backs wait for the turn-over");
+        assert_eq!(a.ui.print.back_pass.as_ref().and_then(|v| v["duplexPass"].as_str()), (pages >= 2).then_some("back"));
+        crate::print_page::finish_back_pass(&mut a, go);
+        assert_eq!(sent.get(), jobs, "{pages} pages, continue {go}");
+        assert!(a.ui.print.back_pass.is_none());
+    }
+    // Copies the engine can't split into sides are refused, not printed twice.
+    let mut a = typed();
+    a.services.print = Some(Box::new(|_| Ok(())));
+    a.ui.print.sides = "manual".into();
+    a.ui.print.copies = 2;
+    assert!(a.run("ui.print", a.ui.print.first_job()).is_err());
+}
+
 /// The Print page shows the Print button only when the host can print, and the button
 /// prints through `ui.print`.
 #[test]
