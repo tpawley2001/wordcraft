@@ -733,26 +733,28 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 }
 
 fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::Link { url, text, place, targets, pick, focus } = d else {
+    let Dialog::Link { url, text, kind, email, subject, targets, pick, focus } = d else {
         return false;
     };
-    // Word's "Link to:" choices; the places are read once, when that tab is first shown.
+    // Read document targets once, when a choice first needs them.
     ui.horizontal(|ui| {
         ui.label(tl!("Link to:"));
-        ui.selectable_value(place, false, tl!("Existing File or Web Page"));
-        if ui.selectable_value(place, true, tl!("Place in This Document")).clicked() && targets.is_none() {
-            *targets = app.run("link.targets", json!({})).ok();
-        }
+        ui.selectable_value(kind, super::LinkKind::Web, tl!("Existing File or Web Page"));
+        ui.selectable_value(kind, super::LinkKind::Place, tl!("Place in This Document"));
+        ui.selectable_value(kind, super::LinkKind::Email, tl!("E-mail Address"));
     });
+    if *kind != super::LinkKind::Web && targets.is_none() {
+        *targets = app.run("link.targets", json!({})).ok();
+    }
     ui.add_space(4.0);
     crate::rtl::Table::new("lnk").columns(2).show(ui, |t| {
         t.row(|r| {
-            r.cell(|ui| ui.label(tl!("Text to display:")));
-            r.cell(|ui| ui.text_edit_singleline(text));
+            let label = r.cell(|ui| ui.label(tl!("Text to display:")));
+            r.cell(|ui| ui.text_edit_singleline(text).labelled_by(label.id));
         });
-        if !*place {
+        if *kind == super::LinkKind::Web {
             t.row(|r| {
-                r.cell(|ui| ui.label(tl!("Address:")));
+                let label = r.cell(|ui| ui.label(tl!("Address:")));
                 r.cell(|ui| {
                     let mut out = egui::TextEdit::singleline(url).id(egui::Id::unique("link_address")).show(ui);
                     if std::mem::take(focus) {
@@ -761,11 +763,38 @@ fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                         out.state.cursor.set_char_range(Some(all));
                         out.state.store(ui.ctx(), out.response.id);
                     }
+                    out.response.response.labelled_by(label.id);
                 });
+            });
+        } else if *kind == super::LinkKind::Email {
+            t.row(|r| {
+                let label = r.cell(|ui| ui.label(tl!("E-mail address:")));
+                r.cell(|ui| ui.text_edit_singleline(email).labelled_by(label.id));
+            });
+            t.row(|r| {
+                let label = r.cell(|ui| ui.label(tl!("Subject:")));
+                r.cell(|ui| ui.text_edit_singleline(subject).labelled_by(label.id));
             });
         }
     });
-    if *place {
+    if *kind == super::LinkKind::Email {
+        ui.label(tl!("Recently used e-mail addresses:"));
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            egui::ScrollArea::vertical().max_height(220.0).min_scrolled_height(160.0).auto_shrink([false, true]).show(ui, |ui| {
+                if let Some(emails) = targets.as_ref().and_then(|t| t.get("emails")).and_then(Value::as_array) {
+                    for entry in emails {
+                        let address = entry.get("address").and_then(Value::as_str).unwrap_or_default();
+                        let saved_subject = entry.get("subject").and_then(Value::as_str).unwrap_or_default();
+                        if ui.selectable_label(email.as_str() == address && subject.as_str() == saved_subject, address).clicked() {
+                            *email = address.to_string();
+                            *subject = saved_subject.to_string();
+                        }
+                    }
+                }
+            });
+        });
+    }
+    if *kind == super::LinkKind::Place {
         ui.add_space(4.0);
         ui.label(tl!("Select a place in this document:"));
         let mut chosen: Option<(Value, String)> = None;
@@ -812,10 +841,20 @@ fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             *pick = Some(c);
         }
     }
-    let (ok, cancel) = buttons(ui, tl!("OK"));
+    let (ok, cancel) = if *kind == super::LinkKind::Email {
+        super::dialogs_insert::buttons(ui, "OK", "Cancel", !email.trim().is_empty())
+    } else {
+        buttons(ui, tl!("OK"))
+    };
     if ok {
-        if *place {
+        if *kind == super::LinkKind::Place {
             let Some((mut params, _)) = pick.clone() else { return false };
+            if !text.is_empty() {
+                params["text"] = json!(text);
+            }
+            let _ = app.run("insert.link", params);
+        } else if *kind == super::LinkKind::Email {
+            let mut params = json!({"email": email, "subject": subject});
             if !text.is_empty() {
                 params["text"] = json!(text);
             }
@@ -1902,5 +1941,52 @@ fn browse_object_text(name: &str) -> &'static str {
         "comment" => "Comment",
         "section" => "Section",
         _ => "Page",
+    }
+}
+
+#[cfg(test)]
+mod email_link_tests {
+    use super::*;
+    use egui_kittest::kittest::{NodeT, Queryable};
+
+    #[test]
+    fn email_choice_requires_an_address_and_reuses_subject() {
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        app.run("ui.language", json!({"value": "en"})).unwrap();
+        app.run("insert.link", json!({"email": "ann@example.com", "subject": "Café & plans", "text": "Ann"})).unwrap();
+        app.run("ui.dialog", json!({"name": "link"})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                app.logic(&ui.ctx().clone());
+                app.ui(ui);
+            },
+            app,
+        );
+        h.run_steps(3);
+        h.get_by_label("E-mail Address").click();
+        h.run_steps(3);
+        assert!(h.get_by_label("OK").accesskit_node().is_disabled());
+        h.key_press(egui::Key::Enter);
+        h.run_steps(3);
+        assert!(h.state().dialog.is_some());
+        h.get_by_label("ann@example.com").click();
+        h.run_steps(3);
+        let Some(Dialog::Link { email, subject, .. }) = &h.state().dialog else { panic!("no link dialog") };
+        assert_eq!(email, "ann@example.com");
+        assert_eq!(subject, "Café & plans");
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert!(h.state().dialog.is_none());
+        let links = h.state_mut().run("link.targets", json!({})).unwrap();
+        assert_eq!(links["emails"], json!([{"address": "ann@example.com", "subject": "Café & plans"}]));
+        assert!(
+            h.state()
+                .session
+                .doc
+                .body
+                .iter()
+                .filter_map(|b| b.as_para())
+                .any(|p| p.text.contains("mailto:ann@example.com?subject=Caf%C3%A9%20%26%20plans"))
+        );
     }
 }
