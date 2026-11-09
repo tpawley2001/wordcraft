@@ -357,6 +357,9 @@ pub(super) struct SecFmt {
     pub(super) pgn_start: Option<i32>,
     pub(super) pgn_fmt: wordcraft_doc::section::NumFormat,
     pub(super) title_page: bool,
+    /// `\binfsxn` / `\binsxn`: printer bins for the first page and the other pages.
+    pub(super) bin_first: Option<u16>,
+    pub(super) bin_other: Option<u16>,
 }
 
 impl SecFmt {
@@ -390,6 +393,8 @@ impl SecFmt {
         }
         s.page_num_format = self.pgn_fmt;
         s.title_page = self.title_page;
+        s.paper_src_first = self.bin_first;
+        s.paper_src_other = self.bin_other;
         s
     }
 }
