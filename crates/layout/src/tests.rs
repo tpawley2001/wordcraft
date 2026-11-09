@@ -21,6 +21,7 @@ mod float_top;
 mod grid;
 mod header_extent;
 mod header_extent_fixtures;
+mod item_display_clip;
 mod item_display_warp;
 mod keep_next_long_chain;
 mod ligature;
