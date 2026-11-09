@@ -2343,7 +2343,12 @@ fn building_block_dialogs_open_and_save() {
 fn imported_custom_props_form() -> CustomPropertiesForm {
     let mut app = app_with("Report body");
     for (name, kind, value) in [("Due", "filetime", "2026-11-30T14:05:00Z"), ("Big", "i8", "9007199254740993"), ("Flag", "bool", "1")] {
-        app.session.doc.custom_props.push(wordcraft_doc::CustomProp { name: name.into(), kind: kind.into(), value: value.into(), ..Default::default() });
+        app.session.doc.custom_props.push(wordcraft_doc::CustomProp {
+            name: name.into(),
+            kind: kind.into(),
+            value: value.into(),
+            ..Default::default()
+        });
     }
     CustomPropertiesForm::read(&app)
 }
