@@ -818,6 +818,12 @@ fn inline_picture(
 ) -> bool {
     let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
     let chpx = ctx.chpx_bins.chpx(ctx.word, fc);
+    // The anchor takes its run's formatting as a text character there would: Word draws an
+    // inline picture at its run's size and raised or lowered position (sprmCHpsPos). Only the
+    // sprms that make it a picture anchor (sprmCFSpec, sprmCPicLocation) have no visible property.
+    let base = pb.props.style.as_deref().and_then(|id| ctx.sheet.get(id)).map(|style| style.chr.clone()).unwrap_or_default();
+    let mut props = char_props(chpx, ctx.fonts, &base, ctx.raw_styles, ctx.style_ids);
+    apply_prm(&mut props, ctx.pieces.piece_prm(cp), ctx.fonts, &base, ctx.work);
     let mut object = None;
     match open {
         Some(false) => {
@@ -841,7 +847,7 @@ fn inline_picture(
     match pic {
         // Empty shapes keep their space; horizontal rules fill their line via the rule metadata.
         Some(p) if p.empty || p.rule.is_some() => {
-            pb.push('\u{FFFC}', CharProps::default());
+            pb.push('\u{FFFC}', props);
             pb.objects.push(InlineObject::Shape {
                 kind: wordcraft_doc::para::ShapeKind::Rectangle,
                 w: p.w,
@@ -867,7 +873,7 @@ fn inline_picture(
                 _ => None,
             };
             let object = ole.is_some();
-            pb.push('\u{FFFC}', CharProps::default());
+            pb.push('\u{FFFC}', props);
             pb.objects.push(InlineObject::Image {
                 media: p.key,
                 w: p.w,
