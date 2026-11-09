@@ -6862,6 +6862,7 @@ name = "wordcraft-layout"
 version = "0.15.1"
 dependencies = [
  "craft-proof",
+ "encoding_rs",
  "image",
  "js-sys",
  "kurbo",
