@@ -114,6 +114,8 @@ pub(super) fn view(app: &mut WordApp, ui: &mut Ui) {
             }
             let action = crate::widgets::ButtonAction::new("view.syncScroll", json!({}), w.sync_scroll);
             small(ui, app, "syncScroll", Some("Synchronous Scrolling"), "Synchronous Scrolling", action);
+            let action = crate::widgets::ButtonAction::new("view.resetWindowPosition", json!({}), false);
+            small(ui, app, "resetWindowPosition", Some("Reset Window Position"), "Reset Window Position", action);
         });
         menu_button(
             ui,
