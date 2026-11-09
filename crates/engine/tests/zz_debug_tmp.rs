@@ -15,6 +15,10 @@ fn debug_fixture() {
     let num = s.doc.para(StoryRef::Body, &Path::top(0)).unwrap().props.numbering.unwrap().num;
     s.doc.para_mut(StoryRef::Body, &Path::top(1)).unwrap().props.numbering = Some(NumRef { num, level: 1 });
     s.sel = Selection::caret(Pos::body(0, 0));
+    for i in 0..5 {
+        let p = s.doc.para(StoryRef::Body, &Path::top(i)).unwrap();
+        eprintln!("before {i}: {:?}", p.props.numbering);
+    }
     for i in 0..3 {
         let p = s.doc.para_mut(StoryRef::Body, &Path::top(i)).unwrap();
         p.props.indent_left = Some(100.0);
