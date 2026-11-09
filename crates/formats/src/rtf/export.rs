@@ -235,7 +235,7 @@ fn sect_words(s: &wordcraft_doc::SectionProps) -> String {
 
 /// `\sectd` and a section's own formatting words.
 fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
-    use wordcraft_doc::section::{NumFormat, SectionStart};
+    use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NumFormat, SectionStart};
     let tw = |v: f32| if v.is_finite() { ((v * 20.0).round() as i64).max(0) } else { 0 };
     let mut o = String::from("\\sectd");
     o.push_str(match s.start {
@@ -282,6 +282,29 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
     }
     if s.title_page {
         o.push_str("\\titlepg");
+    }
+    if let Some(l) = &s.line_numbers {
+        o.push_str(&format!("\\linemod{}\\linex{}\\linestarts{}", l.count_by.clamp(1, 100), tw(l.distance), l.start.clamp(1, 32_768)));
+        o.push_str(match l.restart {
+            LineNumberRestart::Page => "\\lineppage",
+            LineNumberRestart::Section => "\\linerestart",
+            LineNumberRestart::Continuous => "\\linecont",
+        });
+    }
+    if s.rtl {
+        o.push_str("\\rtlsect");
+    }
+    if let Some(n) = s.chapter_style {
+        o.push_str(&format!("\\pgnhn{n}"));
+    }
+    if let Some(sep) = s.chapter_sep {
+        o.push_str(match sep {
+            ChapterSep::Hyphen => "\\pgnhnsh",
+            ChapterSep::Period => "\\pgnhnsp",
+            ChapterSep::Colon => "\\pgnhnsc",
+            ChapterSep::EmDash => "\\pgnhnsm",
+            ChapterSep::EnDash => "\\pgnhnsn",
+        });
     }
     o
 }

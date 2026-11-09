@@ -357,6 +357,17 @@ pub(super) struct SecFmt {
     pub(super) pgn_start: Option<i32>,
     pub(super) pgn_fmt: wordcraft_doc::section::NumFormat,
     pub(super) title_page: bool,
+    /// `\linemodN`: line numbering on (N >= 1), every Nth line; `\linex`, `\linestarts` and the
+    /// restart word only count with it.
+    pub(super) line_mod: Option<i32>,
+    pub(super) line_x: Option<i32>,
+    pub(super) line_starts: Option<i32>,
+    pub(super) line_restart: Option<wordcraft_doc::section::LineNumberRestart>,
+    /// `\rtlsect` / `\ltrsect`.
+    pub(super) rtl: bool,
+    /// `\pgnhnN` (heading level 1..=9) and its separator `\pgnhns…`.
+    pub(super) chapter_style: Option<u8>,
+    pub(super) chapter_sep: Option<wordcraft_doc::section::ChapterSep>,
     /// `\binfsxn` / `\binsxn`: printer bins for the first page and the other pages.
     pub(super) bin_first: Option<u16>,
     pub(super) bin_other: Option<u16>,
@@ -393,6 +404,17 @@ impl SecFmt {
         }
         s.page_num_format = self.pgn_fmt;
         s.title_page = self.title_page;
+        if let Some(n) = self.line_mod.filter(|&n| n >= 1) {
+            s.line_numbers = Some(wordcraft_doc::section::LineNumbering {
+                count_by: n.clamp(1, 100) as u32,
+                start: self.line_starts.unwrap_or(1).clamp(1, 32_768) as u32,
+                distance: self.line_x.unwrap_or(0).max(0) as f32 / 20.0,
+                restart: self.line_restart.unwrap_or_default(),
+            });
+        }
+        s.rtl = self.rtl;
+        s.chapter_style = self.chapter_style;
+        s.chapter_sep = self.chapter_sep;
         s.paper_src_first = self.bin_first;
         s.paper_src_other = self.bin_other;
         s

@@ -267,6 +267,10 @@ fn count_seq(doc: &wordcraft_doc::Document, story: StoryRef, path: &Path, p: &Pa
             continue;
         }
         if f.name == "LISTNUM" {
+            // A LISTNUM in a tracked deletion keeps its result and doesn't count, as SEQ does.
+            if in_deletion {
+                continue;
+            }
             let result = count.listnum.result(&f, heading_style_level(p));
             count.out.push((story, path.clone(), k, result));
             continue;
@@ -817,5 +821,23 @@ mod listnum_tests {
         assert_eq!(count.result(&FieldCode::parse(r"LISTNUM \l 99999999999999999999"), None), "i.");
         assert_eq!(count.result(&FieldCode::parse(r"LISTNUM \l 0 \s 4294967295"), None), NumFormat::LowerRoman.format(u32::MAX) + ".");
         assert_eq!(count.result(&FieldCode::parse("LISTNUM"), None), NumFormat::LowerRoman.format(u32::MAX) + ".");
+    }
+
+    /// PR #5881 review: switch values out of range or not numbers fall back, each on a fresh
+    /// counter set: a bad `\l` takes level 1 (no heading before it), `\s 0` starts at 0, and a
+    /// `\s` that isn't a number is ignored.
+    #[test]
+    fn listnum_switch_fallbacks() {
+        for (instr, want) in [
+            (r"LISTNUM \l 10", "1)"),
+            (r"LISTNUM \l 0", "1)"),
+            (r"LISTNUM \l -1", "1)"),
+            (r"LISTNUM \l x", "1)"),
+            (r"LISTNUM \s 0", "0)"),
+            (r"LISTNUM \s -3", "1)"),
+        ] {
+            let mut count = ListNumCount::default();
+            assert_eq!(count.result(&FieldCode::parse(instr), None), want, "{instr}");
+        }
     }
 }
