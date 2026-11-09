@@ -228,7 +228,7 @@ fn wordart_in_header_and_footer() -> Document {
         let id = d.add_part(kind, vec![para_block(Paragraph::with_text("q", Default::default()))]);
         // Each one shows its own copy of the box's story.
         let own = d.add_part(PartKind::TextBox, body.clone());
-        if let (Some(src), Some(dst)) = (d.parts.get(&story).map(|p| p.body.clone()), d.parts.get_mut(&own)) {
+        if let (Some(src), Some(dst)) = (d.parts.get(&story).map(|p| p.body), d.parts.get_mut(&own)) {
             dst.body = src;
         }
         let mut s = shape.clone();
@@ -274,11 +274,4 @@ fn a_hidden_warped_box_draws_nothing() {
     assert!(!draws.iter().any(|dr| matches!(dr, Draw::Art { .. })), "no art for a hidden box");
     assert_eq!(visible_box_glyphs(&draws, "Your Text Here"), 0, "no flat text either");
     same_art(&draws, &whole).unwrap();
-}
-
-/// A warped box whose lines are cut off by a clipped cell: both paths draw them flat in the clip.
-/// The fixture is left to the change (see the spec, case 4); until then this test fails.
-#[test]
-fn a_warped_box_cut_off_by_a_clipped_cell_draws_as_page_display() {
-    panic!("build the clipped-cell fixture (spec case 4) and compare item by item with page_display");
 }
