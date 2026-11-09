@@ -16,7 +16,7 @@ use crate::{WordApp, icons};
 #[derive(Clone, Debug, PartialEq)]
 pub struct PrintSettings {
     /// `all`, `current`, `selection` or `custom`, or a Document Info report (`properties`,
-    /// `markup`, `styles`, `autotext`) printed instead of the document.
+    /// `markup`, `styles`, `autotext`, `keys`) printed instead of the document.
     pub range: String,
     /// The custom range text, like `1-3, 5`.
     pub pages: String,
@@ -108,8 +108,13 @@ impl PrintSettings {
 const RANGES: [(&str, &str); 4] = [("all", "All pages"), ("current", "Current page"), ("selection", "Selected pages"), ("custom", "Custom range")];
 /// File › Print › Document Info: reports printed instead of the document, listed after the
 /// page ranges as in Word.
-const DOCUMENT_INFO: [(&str, &str); 4] =
-    [("properties", "Document Properties"), ("markup", "List of Markup"), ("styles", "Styles"), ("autotext", "AutoText Entries")];
+const DOCUMENT_INFO: [(&str, &str); 5] = [
+    ("properties", "Document Properties"),
+    ("markup", "List of Markup"),
+    ("styles", "Styles"),
+    ("autotext", "AutoText Entries"),
+    ("keys", "Key Assignments"),
+];
 const PARITIES: [(&str, &str); 3] = [("all", "All pages in the range"), ("odd", "Odd pages only"), ("even", "Even pages only")];
 /// The Scale to paper size choice that keeps each page's own size.
 const NO_SCALING: &str = "none";
