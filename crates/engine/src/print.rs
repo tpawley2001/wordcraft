@@ -150,10 +150,182 @@ pub struct PrintPlan {
     pub copies: u32,
 }
 
+/// The Document Info reports File › Print offers besides the document (`what` of a print job).
+pub const DOCUMENT_INFO: [&str; 4] = ["properties", "markup", "styles", "autotext"];
+
 /// File › Print › Document Info: the paragraphs of the report Word prints for `what`
-/// (`properties` | `markup` | `styles` | `autotext`). Stub: see the task spec.
-pub fn document_info(_s: &Session, what: &str) -> Result<Vec<String>, CmdError> {
-    Err(CmdError::Params(format!("document info {what} is not implemented yet")))
+/// (`properties` | `markup` | `styles` | `autotext`), one string per paragraph, in order.
+pub fn document_info(s: &Session, what: &str) -> Result<Vec<String>, CmdError> {
+    match what {
+        "properties" => Ok(properties_report(s)),
+        "markup" => Ok(markup_report(s)),
+        "styles" => Ok(styles_report(s)),
+        "autotext" => Ok(autotext_report(s)),
+        other => {
+            Err(CmdError::Params(format!("unknown document info `{}`; use {}", other.chars().take(40).collect::<String>(), DOCUMENT_INFO.join(", "))))
+        }
+    }
+}
+
+/// A stored W3CDTF date as local date and time, or empty when there is none or it doesn't parse.
+fn local_date(value: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(value.trim())
+        .ok()
+        .and_then(|d| u64::try_from(d.timestamp()).ok())
+        .map(|unix| crate::cmd::insert::format_date_at("M/d/yyyy h:mm:ss am/pm", unix, crate::cmd::local_offset_secs(unix)))
+        .unwrap_or_default()
+}
+
+/// Document Properties: Word's summary labels, a tab, then the value.
+fn properties_report(s: &Session) -> Vec<String> {
+    let c = &s.doc.core;
+    let (file, dir) = s.path.as_deref().map_or_else(Default::default, |path| {
+        (
+            path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            path.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default(),
+        )
+    });
+    let template = s.doc.settings.attached_template.as_deref().map(|t| t.rsplit(['/', '\\']).next().unwrap_or(t).to_string()).unwrap_or_default();
+    let words: usize = s.counted_stories().iter().map(|st| s.doc.story_word_count(*st)).sum();
+    let chars = wordcraft_doc::count_chars_no_spaces(&s.counted_text());
+    let pages = s.export_layout().pages.len();
+    let revision = if c.revision == 0 { String::new() } else { c.revision.to_string() };
+    let line = |label: &str, value: &str| format!("{label}\t{value}");
+    vec![
+        line("Filename:", &file),
+        line("Directory:", &dir),
+        line("Template:", &template),
+        line("Title:", &c.title),
+        line("Subject:", &c.subject),
+        line("Author:", &c.creator),
+        line("Keywords:", &c.keywords),
+        line("Comments:", &c.description),
+        line("Creation Date:", &local_date(&c.created)),
+        line("Change Number:", &revision),
+        line("Last Saved On:", &local_date(&c.modified)),
+        line("Last Saved By:", &c.last_modified_by),
+        // The editing time isn't kept.
+        line("Total Editing Time:", ""),
+        line("Last Printed On:", &local_date(&c.last_printed)),
+        "As of Last Complete Printing".to_string(),
+        line("Number of Pages:", &pages.to_string()),
+        line("Number of Words:", &words.to_string()),
+        line("Number of Characters:", &chars.to_string()),
+    ]
+}
+
+/// List of Markup: the tracked changes and comments in document order, each a heading line
+/// (`Page N: [k] Kind`, author, date) and its text.
+fn markup_report(s: &Session) -> Vec<String> {
+    use wordcraft_doc::{Pos, StoryRef};
+    // (reading-order key, heading kind, revision author and date, text)
+    let rank: std::collections::BTreeMap<StoryRef, usize> = s.doc.shown_stories().into_iter().enumerate().map(|(i, st)| (st, i)).collect();
+    let mut items: Vec<(Option<(usize, Pos)>, Pos, &str, String, String, String)> = Vec::new();
+    for (a, b, kind, rev) in crate::cmd::review::tracked_changes(s) {
+        let label = match kind {
+            "insert" => "Inserted",
+            "delete" => "Deleted",
+            "format" => "Formatted",
+            "moveFrom" => "Moved (from)",
+            "moveTo" => "Moved (to)",
+            _ => continue,
+        };
+        let r = rev.and_then(|r| s.doc.revisions.get(r as usize));
+        let text = s.doc.copy_range(&a, &b).plain_text();
+        let key = rank.get(&a.story).map(|i| (*i, a.clone()));
+        items.push((key, a, label, r.map(|r| r.author.clone()).unwrap_or_default(), r.map(|r| r.date.clone()).unwrap_or_default(), text));
+    }
+    for (id, pos) in crate::cmd::review::comment_list(s) {
+        let Some(c) = s.doc.comments.get(&id) else { continue };
+        let text = s.doc.plain_text(StoryRef::Part(c.part));
+        let at = pos.clone().unwrap_or_else(|| s.doc.end_of(StoryRef::Body));
+        let key = pos.and_then(|p| rank.get(&p.story).map(|i| (*i, p)));
+        items.push((key, at, "Comment", c.author.clone(), c.date.clone(), text));
+    }
+    if items.is_empty() {
+        return Vec::new();
+    }
+    // Stable: changes and comments at one place keep their order; unanchored ones go last.
+    items.sort_by(|x, y| match (&x.0, &y.0) {
+        (Some(a), Some(b)) => a.cmp(b),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    });
+    let lay = s.export_layout();
+    let mut out = Vec::with_capacity(items.len() * 2);
+    for (k, (_, at, label, author, date, text)) in items.into_iter().enumerate() {
+        let page = lay.caret_on(&at, 0).map_or(1, |c| c.page.saturating_add(1));
+        out.push(format!("Page {page}: [{}] {label}\t{author}\t{}", k + 1, local_date(&date)));
+        out.push(text);
+    }
+    out
+}
+
+/// Styles: the paragraph and character styles in use (applied to text in any story, or applied
+/// while editing: Word keeps those in use) plus the document's own styles, by name, each
+/// followed by its description.
+fn styles_report(s: &Session) -> Vec<String> {
+    use wordcraft_doc::{StoryRef, StyleKind};
+    let sheet = &s.doc.styles;
+    let mut used = s.applied_styles.clone();
+    let stories = std::iter::once(StoryRef::Body).chain(s.doc.parts.keys().map(|id| StoryRef::Part(*id)));
+    for story in stories {
+        for path in s.doc.para_paths(story) {
+            let Some(p) = s.doc.para(story, &path) else { continue };
+            used.insert(p.props.style.clone().unwrap_or_else(|| "Normal".into()));
+            used.extend(p.runs.iter().filter_map(|r| r.props.style.clone()));
+        }
+    }
+    // A linked style's character half is listed as its paragraph style.
+    let used: std::collections::BTreeSet<String> = used
+        .into_iter()
+        .filter_map(|id| sheet.find(&id))
+        .map(|st| match st.linked.as_deref().and_then(|l| sheet.get(l)) {
+            Some(para) if st.kind == StyleKind::Character && para.kind == StyleKind::Paragraph => para.id.clone(),
+            _ => st.id.clone(),
+        })
+        .collect();
+    let list = crate::cmd::para::manage_list(s, true);
+    let mut out = Vec::new();
+    for st in list.as_array().into_iter().flatten() {
+        let id = st.get("id").and_then(Value::as_str).unwrap_or("");
+        let kind = st.get("type").and_then(Value::as_str).unwrap_or("");
+        let custom = !st.get("builtIn").and_then(Value::as_bool).unwrap_or(true);
+        if kind == "table" || !(used.contains(id) || custom) {
+            continue;
+        }
+        out.push(st.get("name").and_then(Value::as_str).unwrap_or(id).to_string());
+        out.push(crate::cmd::para::style_description(st));
+    }
+    out
+}
+
+/// AutoText Entries: the document's AutoText entries by name, each followed by its text.
+fn autotext_report(s: &Session) -> Vec<String> {
+    let mut list: Vec<&wordcraft_doc::BuildingBlock> = s.doc.glossary.iter().filter(|e| e.gallery == wordcraft_doc::AUTO_TEXT_GALLERY).collect();
+    list.sort_by_cached_key(|e| e.name.to_lowercase());
+    list.into_iter()
+        .flat_map(|e| {
+            let frag = wordcraft_doc::edit::Fragment { blocks: e.blocks.iter().map(|b| (**b).clone()).collect(), parts: Default::default() };
+            [e.name.clone(), frag.plain_text()]
+        })
+        .collect()
+}
+
+/// The report `lines` as a plain document: one Normal paragraph each, on the page size and
+/// margins of `doc`'s first section, without its headers and footers.
+pub fn report_document(doc: &wordcraft_doc::Document, lines: &[String]) -> wordcraft_doc::Document {
+    let mut out = wordcraft_doc::Document::new();
+    out.body = lines.iter().map(|l| wordcraft_doc::para_block(wordcraft_doc::Paragraph::with_text(l, Default::default()))).collect();
+    out.ensure_nonempty();
+    let first = doc.sections().first().map(|(_, sec)| *sec).unwrap_or(&doc.last_section);
+    let sec = &mut out.last_section;
+    (sec.page_w, sec.page_h, sec.landscape) = (first.page_w, first.page_h, first.landscape);
+    (sec.margin_top, sec.margin_bottom, sec.margin_left, sec.margin_right) =
+        (first.margin_top, first.margin_bottom, first.margin_left, first.margin_right);
+    (sec.top_fixed, sec.bottom_fixed, sec.header, sec.footer) = (first.top_fixed, first.bottom_fixed, first.header, first.footer);
+    out
 }
 
 /// Works out the print plan for `v` against a layout of `total` pages whose caret and selection
@@ -304,23 +476,60 @@ impl Session {
         self.print_pdf_with(v, false)
     }
 
+    /// The Document Info report a print job's `what` asks for (see [`document_info`]) as the
+    /// document that prints instead ([`report_document`]) with its print layout; `None` for
+    /// `document` (the default). An empty report is an error: there is nothing to print.
+    pub fn print_report(&self, v: &Value) -> Result<Option<(wordcraft_doc::Document, std::sync::Arc<DocLayout>)>, CmdError> {
+        let what = match v.get("what") {
+            None | Some(Value::Null) => return Ok(None),
+            Some(Value::String(w)) if w == "document" => return Ok(None),
+            Some(Value::String(w)) => w.as_str(),
+            Some(_) => return Err(CmdError::Params(format!("what must be document, {}", DOCUMENT_INFO.join(", ")))),
+        };
+        let lines = document_info(self, what)?;
+        if lines.is_empty() {
+            return Err(CmdError::Params(format!(
+                "nothing to print: the document has no {}",
+                match what {
+                    "markup" => "tracked changes or comments",
+                    "autotext" => "AutoText entries",
+                    "styles" => "styles in use",
+                    _ => "properties",
+                }
+            )));
+        }
+        let doc = report_document(&self.doc, &lines);
+        let lay = self.output_layout_of(&doc, false, false, false);
+        Ok(Some((doc, lay)))
+    }
+
     /// Render a shared sheet plan for a saved PDF or an annotation-free printer job.
     fn print_pdf_with(&self, v: &Value, links: bool) -> Result<(Vec<u8>, PrintPlan), CmdError> {
         if !v.is_object() {
             return Err(CmdError::Params("print settings must be an object".into()));
         }
         // Print Markup (File › Print) decides whether tracked changes and comments print.
-        let markup = crate::cmd::file::export_options(self, v);
+        let mut markup = crate::cmd::file::export_options(self, v);
         let out = crate::cmd::references::output_fields(&self.doc);
-        let doc = out.as_ref().unwrap_or(&self.doc);
-        let lay = self.print_layout(v);
+        let report = self.print_report(v)?;
+        let (doc, lay, current) = match &report {
+            Some((report, lay)) => {
+                markup.markup = false;
+                (report, lay.clone(), (0, 0))
+            }
+            None => {
+                let lay = self.print_layout(v);
+                let current = self.current_pages(&lay);
+                (out.as_ref().unwrap_or(&self.doc), lay, current)
+            }
+        };
         let mut settings = v.clone();
         settings["reverse"] = json!(p::bool(v, "reverse").unwrap_or(self.prefs.print_reverse));
         let ids = page_ids(&lay);
-        let plan = plan_in(&settings, &ids, self.current_pages(&lay))?;
+        let plan = plan_in(&settings, &ids, current)?;
         let mut single = settings;
         single["copies"] = json!(1);
-        let single_plan = plan_in(&single, &ids, self.current_pages(&lay))?;
+        let single_plan = plan_in(&single, &ids, current)?;
         let paper = imposed_paper(v, &lay, &single_plan.pages)?;
         let opts = wordcraft_pdf::PdfOptions {
             pages: Some(single_plan.pages),
@@ -464,6 +673,28 @@ mod tests {
             let _ = std::fs::remove_file(&path);
             assert!(links(&saved), "Save these pages as PDF keeps the link");
         }
+    }
+
+    /// Document Info: comments are listed with their own text, a hostile `what` is refused, and
+    /// a report prints on the document's paper without touching it.
+    #[test]
+    fn document_info_lists_comments_and_refuses_hostile_what() {
+        let mut s = Session::new(wordcraft_doc::Document::from_text("Synthetic note here"));
+        s.run("select.text", &json!({"text": "note"})).unwrap();
+        s.run("review.newComment", &json!({"text": "Check this"})).unwrap();
+        let lines = document_info(&s, "markup").unwrap();
+        assert!(lines.first().is_some_and(|l| l.starts_with("Page 1: [1] Comment\t")), "{lines:?}");
+        assert_eq!(lines.get(1).map(String::as_str), Some("Check this"));
+        let e = document_info(&s, &"x".repeat(10_000)).unwrap_err().to_string();
+        assert!(e.contains("properties, markup, styles, autotext") && e.len() < 200, "{e}");
+        for bad in [json!(5), json!(["markup"]), json!({}), json!("Markup")] {
+            assert!(s.print_pdf(&json!({"what": bad})).is_err(), "{bad}");
+        }
+        let rev = s.rev();
+        let (_, plan) = s.print_job_pdf(&json!({"what": "markup", "copies": 2, "pagesPerSheet": 2})).unwrap();
+        assert_eq!((plan.chosen, plan.copies), (1, 2));
+        assert!(s.print_pdf(&json!({"what": "autotext"})).is_err(), "no AutoText entries: nothing to print");
+        assert_eq!(s.rev(), rev);
     }
 
     /// Scale to paper size (#2108): the PDF goes on the chosen paper; the document keeps its size.
