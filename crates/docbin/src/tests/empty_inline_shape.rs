@@ -115,3 +115,125 @@ fn a_truncated_empty_inline_shape_is_skipped_without_panic() {
     let doc = doc_with(data);
     assert!(doc.body.first().and_then(|b| b.as_para()).is_some_and(|p| p.text.contains("After")));
 }
+
+// PR #5301 review: an FBSE whose picture can't be read stays a dropped picture, linked
+// pictures stay pictures, and the controls the review asked for.
+
+const MM_SHAPEFILE: u16 = 0x0066;
+
+/// A picture frame whose FOPT has `simple` and `complex` properties, then `extra` records.
+fn frame_with(simple: &[(u16, u32)], complex: &[(u16, Vec<u8>)], extra: Vec<Vec<u8>>) -> Vec<u8> {
+    let mut kids = vec![fsp(75, 1025, 0xA00), fopt(simple, complex)];
+    kids.extend(extra);
+    kids.push(client_anchor());
+    sp(&kids)
+}
+
+fn first_para(doc: &wordcraft_doc::Document) -> &wordcraft_doc::para::Paragraph {
+    doc.body.first().and_then(|b| b.as_para()).expect("para")
+}
+
+fn shapes(doc: &wordcraft_doc::Document) -> usize {
+    first_para(doc).objects.iter().filter(|o| matches!(o, wordcraft_doc::para::InlineObject::Shape { .. })).count()
+}
+
+fn images(doc: &wordcraft_doc::Document) -> usize {
+    first_para(doc).objects.iter().filter(|o| matches!(o, wordcraft_doc::para::InlineObject::Image { .. })).count()
+}
+
+fn has_after(doc: &wordcraft_doc::Document) -> bool {
+    doc.body.iter().filter_map(|b| b.as_para()).any(|p| p.text.contains("After"))
+}
+
+#[test]
+fn an_fbse_whose_picture_cannot_be_read_is_still_dropped() {
+    // The FBSE is there (a picture was meant) but its PNG BLIP has no bytes: a failed decode,
+    // not an absent picture, so no invisible shape takes its place.
+    let rest = [empty_frame(vec![]), super::drawing::fbse_png(&[])].concat();
+    let doc = doc_with(picf(MM_SHAPE, (1440, 720), (1000, 1000), &rest));
+    assert_eq!(shapes(&doc), 0, "{:?}", first_para(&doc).objects);
+    assert_eq!(images(&doc), 0, "{:?}", first_para(&doc).objects);
+    assert!(doc.media.is_empty());
+    assert!(has_after(&doc));
+}
+
+#[test]
+fn a_shape_naming_a_file_is_a_linked_picture_not_an_empty_shape() {
+    let path = r"C:\pics\a.png";
+    let frame = frame_with(&[(0x01FF, 0x0008_0000)], &[(0x0105, super::drawing::wz(path))], vec![]);
+    let doc = doc_with(picf(MM_SHAPE, (1440, 720), (1000, 1000), &frame));
+    assert_eq!((shapes(&doc), images(&doc)), (0, 1), "{:?}", first_para(&doc).objects);
+    assert!(doc.linked_media.values().any(|p| p == path), "{:?}", doc.linked_media);
+}
+
+#[test]
+fn a_shape_linked_to_a_file_by_its_flags_is_a_linked_picture_not_an_empty_shape() {
+    // pibFlags = LinkToFile (0x8), no pibName, no FBSE.
+    let frame = frame_with(&[(0x0106, 0x8), (0x01FF, 0x0008_0000)], &[], vec![]);
+    let doc = doc_with(picf(MM_SHAPE, (1440, 720), (1000, 1000), &frame));
+    assert_eq!((shapes(&doc), images(&doc)), (0, 1), "{:?}", first_para(&doc).objects);
+}
+
+#[test]
+fn an_mm_shapefile_picture_is_a_linked_picture_not_an_empty_shape() {
+    let mut rest = vec![5u8];
+    rest.extend_from_slice(b"a.png");
+    rest.extend(empty_frame(vec![]));
+    let doc = doc_with(picf(MM_SHAPEFILE, (1440, 720), (1000, 1000), &rest));
+    assert_eq!((shapes(&doc), images(&doc)), (0, 1), "{:?}", first_para(&doc).objects);
+    assert!(doc.linked_media.values().any(|p| p == "a.png"), "{:?}", doc.linked_media);
+}
+
+#[test]
+fn the_rule_records_with_the_horizontal_rule_flag_off_keep_an_empty_shape() {
+    // The rule test's tertiary FOPT with fUsefHorizRule set and fHorizRule off: an empty shape
+    // of goal x scale, 1000/20 x 9.072 = 453.6 by 500/20 x 0.06 = 1.5 pt, drawn as nothing.
+    let tertiary = {
+        let mut b = Vec::new();
+        for (pid, op) in [(0x0394u16, 1u32), (0x0395, 30), (0x03BF, 0x0800_0000)] {
+            b.extend_from_slice(&pid.to_le_bytes());
+            b.extend_from_slice(&op.to_le_bytes());
+        }
+        rec(3, 3, 0xF122, &b)
+    };
+    let doc = doc_with(picf(MM_SHAPE, (1000, 500), (9072, 60), &empty_frame(vec![tertiary])));
+    let got = inline_sizes(&doc);
+    assert!(close(&got, (453.6, 1.5)), "{got:?}");
+    let p = first_para(&doc);
+    let Some(wordcraft_doc::para::InlineObject::Shape { fill, stroke, extra, .. }) = p.objects.first() else {
+        panic!("an empty shape: {:?}", p.objects);
+    };
+    assert!(fill.is_none() && stroke.is_none() && extra.hr.is_none());
+}
+
+#[test]
+fn a_truncated_empty_inline_shape_leaves_no_object() {
+    let mut data = picf(MM_SHAPE, (9071, 3040), (1000, 1000), &empty_frame(vec![]));
+    data[0..4].copy_from_slice(&((0x44 + 6) as u32).to_le_bytes());
+    let doc = doc_with(data);
+    assert!(inline_sizes(&doc).is_empty(), "{:?}", first_para(&doc).objects);
+    assert!(first_para(&doc).objects.is_empty(), "{:?}", first_para(&doc).objects);
+    assert!(has_after(&doc));
+}
+
+#[test]
+fn an_empty_shape_in_a_shape_field_result_keeps_its_size_and_the_field() {
+    // "a", { SHAPE | picture }, line break, "After": the picture is at CP 9.
+    let text = "a\u{13} SHAPE \u{14}\u{1}\u{15}\u{b}After\r";
+    let ccp = text.chars().count() as u32;
+    let spec = StructSpec {
+        text,
+        data_stream: picf(MM_SHAPE, (9071, 3040), (1000, 1000), &empty_frame(vec![])),
+        chpx_runs: vec![(0, grpprl(&[(PIC_LOCATION, &0u32.to_le_bytes()), (F_SPEC, &[1])]))],
+        ..structured_spec(text, ccp)
+    };
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    let got = inline_sizes(&doc);
+    assert!(close(&got, (453.55, 152.0)), "{got:?} {:?}", first_para(&doc).objects);
+    let fields: Vec<&str> = first_para(&doc)
+        .objects
+        .iter()
+        .filter_map(|o| if let wordcraft_doc::para::InlineObject::Field { instr, .. } = o { Some(instr.as_str()) } else { None })
+        .collect();
+    assert_eq!(fields, ["SHAPE"], "{:?}", first_para(&doc).objects);
+}

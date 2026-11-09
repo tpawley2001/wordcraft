@@ -36,6 +36,7 @@ fn pitches(d: &Document) -> Vec<f32> {
 }
 
 fn missing(family: &str) -> bool {
+    crate::test_fonts();
     wordcraft_fonts::word::resolve(family, false, false).substituted
 }
 
@@ -71,12 +72,13 @@ fn a_line_mixing_symbol_fonts_is_as_tall_as_its_tallest_font() {
     if ["Webdings", "Wingdings", "Wingdings 2", "Symbol"].iter().any(|f| !missing(f)) {
         return;
     }
-    let row = "0034\u{F022}\u{F022}\u{F022}\u{F022}";
+    // Word's row also starts with Arial Narrow digits; they are left out here because the layout
+    // tests' pinned fonts stand a taller face in for Arial Narrow, which is not what is measured.
+    let row = "\u{F022}\u{F022}\u{F022}\u{F022}";
     let mut d = three(row);
     let sym = "\u{F022}".len();
     for i in 0..3 {
-        let fonts = [(0, 4, "Arial Narrow"), (4, 4 + sym, "Webdings"), (4 + sym, 4 + 2 * sym, "Wingdings")];
-        let fonts = fonts.into_iter().chain([(4 + 2 * sym, 4 + 3 * sym, "Wingdings 2"), (4 + 3 * sym, 4 + 4 * sym, "Symbol")]);
+        let fonts = [(0, sym, "Webdings"), (sym, 2 * sym, "Wingdings"), (2 * sym, 3 * sym, "Wingdings 2"), (3 * sym, 4 * sym, "Symbol")];
         for (a, b, family) in fonts {
             d.format_range(&Pos::body(i, a), &Pos::body(i, b), &|c| {
                 c.font = Some(family.into());
