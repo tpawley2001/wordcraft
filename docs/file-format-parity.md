@@ -1,9 +1,6 @@
 # File-format parity with Microsoft Word
 
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0129: Office 2016 sunburst charts drawn from their data: rings per category level, siblings largest first, branches in their top-level accent colour. Readiness estimates unchanged.)
-> **Last updated:** 2026-11-08 · **Change:** trivial (P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.)
-
-> **Last updated:** 2026-11-08 · **Change:** trivial (.doc header and footer stories drop the trailing guard paragraph mark ([MS-DOC] §2.8.25 Plcfhdd), so headers are no taller than in Word); previously trivial (P0123: Office 2016 box & whisker charts (`cx:chart`) drawn from their data instead of the fallback picture); previously trivial (P0121: Office 2016 waterfall charts (`cx:chart`) drawn from their data instead of the fallback picture); previously trivial (P0120: `.doc` field anchors keep the first nonempty cached result run’s formatting, including hidden, bold and size; empty results keep the begin character’s formatting. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0128: Office 2016 treemap charts (`cx:chart`) drawn from their data instead of the fallback picture); previously trivial (P0125: Office 2016 waterfall and box & whisker charts use regular 14 pt titles, a default light grey frame with explicit line overrides, and about ten value-axis intervals in 1/2/5 steps. Classic charts unchanged; readiness estimates unchanged.)
 
 > **2026-11-05:** A Word template opened from the file manager starts a new document based on it, and is never saved over (#3433).
