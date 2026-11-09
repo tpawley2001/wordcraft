@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-09 · **Change:** trivial (P0158: Page Setup › Paper › Paper source sets the section's first-page and other-pages printer trays (`layout.paperSource`); printing still doesn't pick trays, gap #6. Readiness estimates unchanged.)
+>
 > **Last updated:** 2026-11-09 · **Change:** trivial (P0150: View › Window › Reset Window Position puts the two windows viewed side by side back on equal halves of the screen, keeping Synchronous Scrolling; gap #27. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.)
@@ -628,6 +630,7 @@ Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text wi
 | 2026-10-27 | trivial | 2026-10-27 · #4533 review: numeric REF updates lazily index body bookmarks once per update, retaining the first body bookmark for duplicate names. Unsupported switches and ordinary REF/PAGEREF behavior are unchanged; a synthetic 64-reference regression covers repeated updates and duplicate names. Estimates unchanged. |
 | 2026-10-27 | trivial | 2026-10-27 · #4533: numeric REF fields use paragraph list numbers for no/full/relative context, reusing bounded numbering. Shared context already embedded in a level label is removed; merged-away cells do not count. Unsupported separator/text/position switches and ambiguous contexts or delimiter-free joins retain cached results. Synthetic OOXML regressions; no native Word or real-document validation, estimates unchanged. |
 | 2026-11-09 | trivial | P0150: #27: View › Window › Reset Window Position puts the side-by-side pair back on equal halves of the screen |
+| 2026-11-09 | trivial | P0158: Page Setup › Paper › Paper source stores and shows the section's first-page and other-pages printer trays (`layout.paperSource`); driver tray selection when printing remains gap #6 |
 
 ## Layout validation fonts
 
