@@ -7,6 +7,7 @@ use proptest::prelude::*;
 
 use super::read;
 
+mod auto_spacing;
 mod cfb_tolerance;
 mod char_styles;
 mod compat_mode;
