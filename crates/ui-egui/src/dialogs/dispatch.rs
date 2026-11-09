@@ -784,12 +784,12 @@ fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.add_space(4.0);
     crate::rtl::Table::new("lnk").columns(2).show(ui, |t| {
         t.row(|r| {
-            r.cell(|ui| ui.label(tl!("Text to display:")));
-            r.cell(|ui| ui.text_edit_singleline(text));
+            let label = r.cell(|ui| ui.label(tl!("Text to display:")));
+            r.cell(|ui| ui.text_edit_singleline(text).labelled_by(label.id));
         });
         if *kind == super::LinkKind::Web {
             t.row(|r| {
-                r.cell(|ui| ui.label(tl!("Address:")));
+                let label = r.cell(|ui| ui.label(tl!("Address:")));
                 r.cell(|ui| {
                     let mut out = egui::TextEdit::singleline(url).id(egui::Id::unique("link_address")).show(ui);
                     if std::mem::take(focus) {
@@ -798,16 +798,17 @@ fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                         out.state.cursor.set_char_range(Some(all));
                         out.state.store(ui.ctx(), out.response.id);
                     }
+                    out.response.labelled_by(label.id);
                 });
             });
         } else if *kind == super::LinkKind::Email {
             t.row(|r| {
-                r.cell(|ui| ui.label(tl!("E-mail address:")));
-                r.cell(|ui| ui.text_edit_singleline(email));
+                let label = r.cell(|ui| ui.label(tl!("E-mail address:")));
+                r.cell(|ui| ui.text_edit_singleline(email).labelled_by(label.id));
             });
             t.row(|r| {
-                r.cell(|ui| ui.label(tl!("Subject:")));
-                r.cell(|ui| ui.text_edit_singleline(subject));
+                let label = r.cell(|ui| ui.label(tl!("Subject:")));
+                r.cell(|ui| ui.text_edit_singleline(subject).labelled_by(label.id));
             });
         }
     });
@@ -1974,7 +1975,7 @@ fn browse_object_text(name: &str) -> &'static str {
 #[cfg(test)]
 mod email_link_tests {
     use super::*;
-    use egui_kittest::kittest::Queryable;
+    use egui_kittest::kittest::{NodeT, Queryable};
 
     #[test]
     fn email_choice_requires_an_address_and_reuses_subject() {
