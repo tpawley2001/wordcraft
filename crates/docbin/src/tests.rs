@@ -8,6 +8,7 @@ use proptest::prelude::*;
 use super::read;
 
 mod cfb_tolerance;
+mod char_spacing;
 mod char_styles;
 mod compat_mode;
 mod dop_options;
