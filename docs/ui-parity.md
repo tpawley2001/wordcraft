@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-08 · **Change:** trivial (P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged.)
 
@@ -128,6 +130,8 @@ Page Setup's margin, paper-size and document-grid number boxes scroll long text 
 
 References › Index › AutoMark… selects a concordance document and inserts hidden XE fields from its first table, using Mark All’s matching rules with one undo step.
 
+Insert Hyperlink › E-mail Address accepts an address and subject and lists recently used addresses from the document.
+
 ## Revision history
 
 > 2026-11-08 · P0118: Drop Cap None overrides an inherited style cap; Dropped and In margin with `keep` preserve resolved lines, distance and font (#4144). Readiness estimates unchanged.
@@ -135,6 +139,7 @@ References › Index › AutoMark… selects a concordance document and inserts 
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-08 | trivial | P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged. |
 | 2026-11-08 | trivial | P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged. |
 | 2026-11-08 | trivial | P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged. |
 | 2026-11-07 | trivial | Page Setup also bounds the unfocused margin display after a long numeric paste; the accepted value is retained (#5650). |

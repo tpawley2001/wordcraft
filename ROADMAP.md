@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-08 · **Change:** trivial (P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged.)
 
@@ -162,6 +164,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-08: P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged.
 
 - 2026-11-08: P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged.
 - 2026-11-08 · P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged.
@@ -990,6 +994,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-08 | trivial | P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged. |
 | 2026-11-08 | trivial | P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged. |
 | 2026-11-08 | trivial | P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged. |
 | 2026-11-07 | trivial | P0117: In margin moves first-line and hanging indents to the cap frame and restores them on None or Dropped; DOCX preserves the separate frame indent (#4173). Layout unchanged; readiness estimates unchanged. |
