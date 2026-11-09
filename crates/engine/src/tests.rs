@@ -20,6 +20,7 @@ mod building_blocks;
 mod clipboard_options;
 mod custom_prop_types;
 mod documents;
+mod email_links;
 mod document_dates;
 mod envelope_options;
 mod find_apostrophes;
