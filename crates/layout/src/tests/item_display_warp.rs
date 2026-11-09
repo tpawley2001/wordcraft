@@ -4,7 +4,7 @@
 use crate::display::{Draw, ItemDisplay, page_display};
 use crate::*;
 use wordcraft_doc::props::VAlign;
-use wordcraft_doc::{PartKind, Pos, TextBody, para_block};
+use wordcraft_doc::{PartKind, Path, Pos, StoryRef, TextBody, para_block};
 
 fn lay(doc: &Document) -> DocLayout {
     let mut c = LayoutCache::new();
@@ -120,4 +120,165 @@ fn a_warped_box_with_two_paragraphs_is_drawn_once() {
     assert!(!whole.is_empty());
     assert_eq!(items.len(), whole.len(), "each line's letters once: {items:?} vs {whole:?}");
     assert!(same_boxes(&items, &whole));
+}
+
+// ---- PR #5302 review ----
+
+/// The points of each path element, in order.
+fn path_points(path: &kurbo::BezPath) -> Vec<Vec<kurbo::Point>> {
+    use kurbo::PathEl;
+    path.elements()
+        .iter()
+        .map(|el| match *el {
+            PathEl::MoveTo(p) | PathEl::LineTo(p) => vec![p],
+            PathEl::QuadTo(a, b) => vec![a, b],
+            PathEl::CurveTo(a, b, c) => vec![a, b, c],
+            PathEl::ClosePath => Vec::new(),
+        })
+        .collect()
+}
+
+/// Every `Draw::Art` of `a` and `b`, in order: same count, colour, alpha and path points (0.01 pt).
+fn same_art(a: &[Draw], b: &[Draw]) -> Result<(), String> {
+    let arts = |d: &[Draw]| -> Vec<(Vec<Vec<kurbo::Point>>, wordcraft_doc::Rgb, f32)> {
+        d.iter()
+            .filter_map(|dr| match dr {
+                Draw::Art { path, color, alpha, .. } => Some((path_points(path), *color, *alpha)),
+                _ => None,
+            })
+            .collect()
+    };
+    let (x, y) = (arts(a), arts(b));
+    if x.len() != y.len() {
+        return Err(format!("{} art items vs {}", x.len(), y.len()));
+    }
+    for (k, (p, q)) in x.iter().zip(&y).enumerate() {
+        if p.1 != q.1 || (p.2 - q.2).abs() > 1e-6 {
+            return Err(format!("art {k}: colour/alpha {:?}/{} vs {:?}/{}", p.1, p.2, q.1, q.2));
+        }
+        if p.0.len() != q.0.len() {
+            return Err(format!("art {k}: {} path elements vs {}", p.0.len(), q.0.len()));
+        }
+        for (e, (u, v)) in p.0.iter().zip(&q.0).enumerate() {
+            let close = u.len() == v.len() && u.iter().zip(v).all(|(s, t)| (s.x - t.x).abs() <= 0.01 && (s.y - t.y).abs() <= 0.01);
+            if !close {
+                return Err(format!("art {k} element {e}: {u:?} vs {v:?}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Visible glyph runs of any text.
+fn visible_runs(draws: &[Draw]) -> usize {
+    draws.iter().filter(|dr| matches!(dr, Draw::Glyphs { alpha, text, .. } if *alpha > 0.0 && !text.trim().is_empty())).count()
+}
+
+#[test]
+fn art_paths_match_page_display_exactly() {
+    for (warp, fit) in [("textArchUp", false), ("textPlain", true), ("textWave1", false)] {
+        let (d, _) = wordart(warp, fit, &["Your Text Here"]);
+        let l = lay(&d);
+        let page = &l.pages[0];
+        let whole = page_display(&d, page, &Default::default());
+        if let Err(e) = same_art(&one_by_one(&d, page), &whole) {
+            panic!("{warp}: {e}");
+        }
+    }
+}
+
+#[test]
+fn a_warped_box_with_two_paragraphs_draws_no_flat_text() {
+    let (d, _) = wordart("textArchUp", false, &["Your Text", "Here"]);
+    let l = lay(&d);
+    let page = &l.pages[0];
+    let whole = page_display(&d, page, &Default::default());
+    let draws = one_by_one(&d, page);
+    same_art(&draws, &whole).unwrap();
+    assert_eq!(visible_box_glyphs(&draws, "Your Text Here"), 0, "the bent text isn't also drawn flat");
+    assert_eq!(visible_runs(&draws), visible_runs(&whole), "the same visible glyph runs as the page");
+}
+
+#[test]
+fn cloned_items_draw_the_same_bent_text() {
+    let (d, _) = wordart("textArchUp", false, &["Your Text", "Here"]);
+    let l = lay(&d);
+    let page = &l.pages[0];
+    let whole = page_display(&d, page, &Default::default());
+    let shown = ItemDisplay::new(&d, page);
+    let opts = Default::default();
+    let cloned: Vec<Placed> = page.header.iter().chain(&page.footer).chain(&page.items).cloned().collect();
+    let draws: Vec<Draw> = cloned.iter().flat_map(|it| shown.draws(it, &opts)).collect();
+    assert_eq!(visible_box_glyphs(&draws, "Your Text Here"), 0, "a cloned line isn't drawn flat");
+    same_art(&draws, &whole).unwrap();
+}
+
+/// The arch WordArt box of [`wordart`] anchored in the default header and the default footer.
+fn wordart_in_header_and_footer() -> Document {
+    let (mut d, _) = wordart("textArchUp", false, &["Your Text Here"]);
+    let (shape, story) = {
+        let p = d.para_mut(StoryRef::Body, &Path::top(0)).unwrap();
+        let shape = p.objects.first().cloned().expect("the WordArt shape");
+        let InlineObject::Shape { story, .. } = &shape else { panic!("a shape") };
+        (shape.clone(), story.expect("a story"))
+    };
+    let body = d.parts.get(&story).map(|p| p.blocks.clone()).unwrap();
+    let mut sect = wordcraft_doc::section::SectionProps::default();
+    for kind in [PartKind::Header, PartKind::Footer] {
+        let id = d.add_part(kind, vec![para_block(Paragraph::with_text("q", Default::default()))]);
+        // Each one shows its own copy of the box's story.
+        let own = d.add_part(PartKind::TextBox, body.clone());
+        if let (Some(src), Some(dst)) = (d.parts.get(&story).map(|p| p.body.clone()), d.parts.get_mut(&own)) {
+            dst.body = src;
+        }
+        let mut s = shape.clone();
+        if let InlineObject::Shape { story, .. } = &mut s {
+            *story = Some(own);
+        }
+        d.insert_object(&Pos::new(StoryRef::Part(id), Path::top(0), 1), s, &Default::default()).unwrap();
+        match kind {
+            PartKind::Header => sect.headers.default = Some(id),
+            _ => sect.footers.default = Some(id),
+        }
+    }
+    d.para_mut(StoryRef::Body, &Path::top(0)).unwrap().section = Some(Box::new(sect));
+    d
+}
+
+#[test]
+fn warped_boxes_in_header_and_footer_match_page_display() {
+    let d = wordart_in_header_and_footer();
+    let l = lay(&d);
+    let page = &l.pages[0];
+    assert!(!page.header.is_empty() && !page.footer.is_empty(), "header and footer laid out");
+    // As the PDF export draws them: headers and footers at full strength.
+    let opts = crate::display::DisplayOptions { dim_header: false, ..Default::default() };
+    let whole = page_display(&d, page, &opts);
+    let arts = whole.iter().filter(|dr| matches!(dr, Draw::Art { .. })).count();
+    assert!(arts >= 3, "body, header and footer arches drawn as art by the page ({arts})");
+    let shown = ItemDisplay::new(&d, page);
+    let draws: Vec<Draw> = page.header.iter().chain(&page.footer).chain(&page.items).flat_map(|it| shown.draws(it, &opts)).collect();
+    same_art(&draws, &whole).unwrap();
+    assert_eq!(visible_box_glyphs(&draws, "Your Text Here"), 0);
+}
+
+#[test]
+fn a_hidden_warped_box_draws_nothing() {
+    let (d, _) = wordart("textArchUp", false, &["Your Text Here"]);
+    let l = lay(&d);
+    let page = &l.pages[0];
+    let opts = crate::display::DisplayOptions { hide_object: Some(Pos::body(0, 1)), ..Default::default() };
+    let shown = ItemDisplay::new(&d, page);
+    let draws: Vec<Draw> = page.header.iter().chain(&page.footer).chain(&page.items).flat_map(|it| shown.draws(it, &opts)).collect();
+    let whole = page_display(&d, page, &opts);
+    assert!(!draws.iter().any(|dr| matches!(dr, Draw::Art { .. })), "no art for a hidden box");
+    assert_eq!(visible_box_glyphs(&draws, "Your Text Here"), 0, "no flat text either");
+    same_art(&draws, &whole).unwrap();
+}
+
+/// A warped box whose lines are cut off by a clipped cell: both paths draw them flat in the clip.
+/// The fixture is left to the change (see the spec, case 4); until then this test fails.
+#[test]
+fn a_warped_box_cut_off_by_a_clipped_cell_draws_as_page_display() {
+    panic!("build the clipped-cell fixture (spec case 4) and compare item by item with page_display");
 }
