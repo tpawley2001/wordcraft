@@ -161,9 +161,21 @@ pub fn ref_targets(s: &Session, to: &str) -> Vec<(String, Pos)> {
     targets
 }
 
-/// The page breaks at the start of the paragraph at `pos` (as bytes): its text starts after them.
-fn leading_breaks(doc: &Document, pos: &Pos) -> usize {
-    doc.para(pos.story, &pos.path).map_or(0, |p| p.text.bytes().take_while(|b| *b == 0x0C).count())
+/// The offset just past the page breaks at the start of the paragraph at `pos`, skipping bookmark
+/// marks among them (a `_Ref` bookmark may start before the breaks): its text starts there.
+pub(crate) fn leading_breaks(doc: &Document, pos: &Pos) -> usize {
+    let Some(p) = doc.para(pos.story, &pos.path) else { return 0 };
+    let mut after = 0;
+    for (i, c) in p.text.char_indices() {
+        if c == '\u{0C}' {
+            after = i.saturating_add(c.len_utf8());
+        } else if c != wordcraft_doc::para::OBJ
+            || !matches!(p.object_at(i), Some(InlineObject::BookmarkStart { .. } | InlineObject::BookmarkEnd { .. }))
+        {
+            break;
+        }
+    }
+    after
 }
 
 /// The hidden `_Ref` bookmark around the target paragraph at `pos` (its label and number only
@@ -175,16 +187,20 @@ fn ref_bookmark(s: &mut Session, pos: &Pos, number_only: bool, mut at: Pos) -> R
     let end = if number_only { para.text.find(':').unwrap_or(para.len()) } else { para.len() };
     // The bookmark starts after the leading page breaks, so `PAGEREF` reads the page the text is on.
     let start = leading_breaks(&s.doc, pos).min(end);
-    if let Some(InlineObject::BookmarkStart { name }) = para.object_at(start)
-        && name.starts_with("_Ref")
-    {
-        // Reuse it when it covers the same extent: up to the colon, or the whole paragraph.
-        let same = para.object_offsets().into_iter().any(|o| {
-            matches!(para.object_at(o), Some(InlineObject::BookmarkEnd { name: n }) if n == name)
-                && para.text.get(o.saturating_add(MARK)..).is_some_and(|rest| if number_only { rest.starts_with(':') } else { rest.is_empty() })
-        });
-        if same {
-            return Ok((name.clone(), at));
+    // Reuse one that starts there or at the paragraph's start (before the breaks): the field's
+    // result still reads the page the text is on.
+    for from in [start, 0] {
+        if let Some(InlineObject::BookmarkStart { name }) = para.object_at(from)
+            && name.starts_with("_Ref")
+        {
+            // Reuse it when it covers the same extent: up to the colon, or the whole paragraph.
+            let same = para.object_offsets().into_iter().any(|o| {
+                matches!(para.object_at(o), Some(InlineObject::BookmarkEnd { name: n }) if n == name)
+                    && para.text.get(o.saturating_add(MARK)..).is_some_and(|rest| if number_only { rest.starts_with(':') } else { rest.is_empty() })
+            });
+            if same {
+                return Ok((name.clone(), at));
+            }
         }
     }
     let next =
