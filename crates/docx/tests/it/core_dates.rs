@@ -11,17 +11,26 @@ const CORE_NS: &str = concat!(
     r#"xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance""#
 );
 
-/// Values Word and W3CDTF accept: kept.
-const VALID: &[&str] = &[
-    "2026-01-01T00:00:00Z",
-    "2014-10-28T11:34:00Z",
-    "2014-10-28T11:34Z",
-    "2014-10-28T11:34:00.5+01:00",
-    "2014-10-28T11:34:00-08:00",
-    "2014-10-28T11:34:00",
-    "2014-10-28",
-    "2014-10",
-    "2014",
+/// Values Word and W3CDTF accept: kept on reading, and written as the second string (a minute-only
+/// time gets `:00` seconds, as `xs:dateTime` requires).
+const VALID: &[(&str, &str)] = &[
+    ("2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"),
+    ("2014-10-28T11:34:00Z", "2014-10-28T11:34:00Z"),
+    ("2014-10-28T11:34Z", "2014-10-28T11:34:00Z"),
+    ("2014-10-28T11:34", "2014-10-28T11:34:00"),
+    ("2014-10-28T11:34+01:00", "2014-10-28T11:34:00+01:00"),
+    ("2014-10-28T11:34-08:00", "2014-10-28T11:34:00-08:00"),
+    ("2014-10-28T11:34:00.5+01:00", "2014-10-28T11:34:00.5+01:00"),
+    ("2014-10-28T11:34:00-08:00", "2014-10-28T11:34:00-08:00"),
+    ("2014-10-28T11:34:00", "2014-10-28T11:34:00"),
+    ("2014-10-28T11:34:00+14:00", "2014-10-28T11:34:00+14:00"),
+    ("2014-10-28T11:34:00-14:00", "2014-10-28T11:34:00-14:00"),
+    ("2016-02-29", "2016-02-29"),
+    ("2000-02-29T12:00:00Z", "2000-02-29T12:00:00Z"),
+    ("2014-12-31T23:59:59Z", "2014-12-31T23:59:59Z"),
+    ("2014-10-28", "2014-10-28"),
+    ("2014-10", "2014-10"),
+    ("2014", "2014"),
 ];
 
 /// Values that aren't dates: dropped.
@@ -34,6 +43,16 @@ const INVALID: &[&str] = &[
     "2014-10-28T24:00:00Z",
     "2014-10-28T11:60:00Z",
     "2014-10-28T11:34:00+25:00",
+    "2014-10-28T11:34:00+14:30",
+    "2014-10-28T11:34:00-15:00",
+    "2014-10-28T11:34:00+23:59",
+    "2014-02-29",
+    "1900-02-29T00:00:00Z",
+    "2014-02-30",
+    "2014-04-31T00:00:00Z",
+    "2014-06-31",
+    "2014-09-31",
+    "2014-11-31",
     "2014-10-28 11:34:00Z",
     "14-10-28",
     "yesterday",
@@ -71,10 +90,10 @@ fn core_xml_of(created: &str, modified: &str) -> String {
 
 #[test]
 fn the_writer_keeps_w3cdtf_dates() {
-    for v in VALID {
+    for (v, written) in VALID {
         let xml = core_xml_of(v, v);
-        assert!(xml.contains(&format!(r#"<dcterms:created xsi:type="dcterms:W3CDTF">{v}</dcterms:created>"#)), "{v}: {xml}");
-        assert!(xml.contains(&format!(r#"<dcterms:modified xsi:type="dcterms:W3CDTF">{v}</dcterms:modified>"#)), "{v}: {xml}");
+        assert!(xml.contains(&format!(r#"<dcterms:created xsi:type="dcterms:W3CDTF">{written}</dcterms:created>"#)), "{v}: {xml}");
+        assert!(xml.contains(&format!(r#"<dcterms:modified xsi:type="dcterms:W3CDTF">{written}</dcterms:modified>"#)), "{v}: {xml}");
     }
 }
 
@@ -114,7 +133,7 @@ fn reading_drops_dates_that_are_not_w3cdtf() {
         );
         let file = replace_part(&base, "docProps/core.xml", &core);
         let d = wordcraft_docx::read(&file).unwrap();
-        let ok = |v: &str| VALID.contains(&v);
+        let ok = |v: &str| VALID.iter().any(|(stored, _)| *stored == v);
         assert_eq!(d.core.created, if ok(created) { created } else { "" }, "{created}");
         assert_eq!(d.core.modified, if ok(modified) { modified } else { "" }, "{modified}");
         assert_eq!(d.core.creator, "Someone");
@@ -169,4 +188,26 @@ fn a_last_printed_date_that_is_not_w3cdtf_is_dropped() {
     d.core.last_printed = "yesterday".into();
     let xml = part(&wordcraft_docx::write(&d).unwrap(), "docProps/core.xml").unwrap();
     assert!(!xml.contains("lastPrinted"), "{xml}");
+}
+
+/// `cp:lastPrinted` is an `xs:dateTime`: a minute-only time is written with `:00` seconds; the
+/// reader keeps the stored text.
+#[test]
+fn the_writer_adds_seconds_to_last_printed() {
+    let mut d = Document::new();
+    d.core.last_printed = "2026-11-02T09:30Z".into();
+    let xml = part(&wordcraft_docx::write(&d).unwrap(), "docProps/core.xml").unwrap();
+    assert!(xml.contains("<cp:lastPrinted>2026-11-02T09:30:00Z</cp:lastPrinted>"), "{xml}");
+    let base = wordcraft_docx::write(&Document::new()).unwrap();
+    let core = format!(
+        concat!(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties {ns}>"#,
+            "<dc:creator>Someone</dc:creator><cp:lastPrinted>2026-11-02T09:30Z</cp:lastPrinted>",
+            r#"<dcterms:created xsi:type="dcterms:W3CDTF">2014-10-28T11:34Z</dcterms:created></cp:coreProperties>"#
+        ),
+        ns = CORE_NS
+    );
+    let d = wordcraft_docx::read(&replace_part(&base, "docProps/core.xml", &core)).unwrap();
+    assert_eq!(d.core.last_printed, "2026-11-02T09:30Z");
+    assert_eq!(d.core.created, "2014-10-28T11:34Z");
 }

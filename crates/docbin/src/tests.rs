@@ -7,11 +7,13 @@ use proptest::prelude::*;
 
 use super::read;
 
+mod auto_spacing;
 mod cfb_tolerance;
 mod char_styles;
 mod compat_mode;
 mod dop_options;
 mod drawing;
+mod emf_font_faces;
 mod emf_header_repair;
 mod empty_inline_shape;
 mod encrypted;
@@ -19,6 +21,7 @@ mod field_result_props;
 mod frames;
 mod header_guard;
 mod horizontal_rules;
+mod hps_pos;
 mod linked_pictures;
 mod metadata;
 mod nested_table;

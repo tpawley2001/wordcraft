@@ -398,14 +398,14 @@ pub(super) fn core_xml(doc: &Document) -> Vec<u8> {
     if c.revision > 0 {
         w.leaf("cp:revision", &[], &c.revision.to_string());
     }
-    // `cp:lastPrinted` is a plain W3CDTF date, without `xsi:type`.
+    // `cp:lastPrinted` is an `xs:dateTime`, without `xsi:type`.
     if !c.last_printed.is_empty() && crate::w3cdtf::is_w3cdtf(&c.last_printed) {
-        w.leaf("cp:lastPrinted", &[], &c.last_printed);
+        w.leaf("cp:lastPrinted", &[], &crate::w3cdtf::normalize(&c.last_printed));
     }
     for (tag, v) in [("dcterms:created", &c.created), ("dcterms:modified", &c.modified)] {
         // Word repairs a file whose W3CDTF-typed date isn't one; leave such a value out.
         if !v.is_empty() && crate::w3cdtf::is_w3cdtf(v) {
-            w.leaf(tag, &[("xsi:type", "dcterms:W3CDTF")], v);
+            w.leaf(tag, &[("xsi:type", "dcterms:W3CDTF")], &crate::w3cdtf::normalize(v));
         }
     }
     for (tag, v) in [
