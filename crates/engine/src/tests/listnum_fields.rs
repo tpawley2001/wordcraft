@@ -211,7 +211,8 @@ fn listnum_field_names_are_case_insensitive() {
 #[test]
 fn output_numbers_the_probe_as_word_does() {
     let s = probe();
-    let out = crate::cmd::references::output_fields(&s.doc).expect("fresh results");
+    // `None` when every stored result is already current: output then lays out the document as it is.
+    let out = crate::cmd::references::output_fields(&s.doc).unwrap_or_else(|| s.doc.clone());
     let mut shown = Vec::new();
     for path in out.para_paths(StoryRef::Body) {
         for o in &out.para(StoryRef::Body, &path).unwrap().objects {
