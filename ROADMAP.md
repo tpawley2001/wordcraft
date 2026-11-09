@@ -339,7 +339,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 - 2026-11-01: P0010: `.doc` runs retain character-style references without copying style formatting into direct properties; readiness unchanged.
 
 - 2026-11-01: Word 2007 WordArt (VML `v:textpath`) draws like Word: white letters with a thin black outline by default, its own fill, stroke and offset shadow, and with `fitpath` stretched so the letters fill the shape's box. Readiness unchanged.
-- 2026-10-31: P0004: `.doc` header/footer imports omit one trailing guard paragraph while preserving intentional empty paragraphs and single-mark stories. Readiness unchanged.
+- 2026-10-31: P0004: `.doc` header/footer imports omit one trailing guard paragraph while preserving intentional empty paragraphs and single-mark stories. Readiness unchanged. ([MS-DOC] §2.8.25 Plcfhdd)
 
 - 2026-11-01: DOCX tables keep rows and cells wrapped in `mc:AlternateContent`, selecting one supported Choice or Fallback with the existing reader policy (#5219). Original synthetic checks cover namespace aliases, unsupported requirements, nested row/cell content controls and two save/reopen cycles; broader corpus and native Word qualification remain open.
 - 2026-11-01: Shapes: a line's arrowheads are as long and as wide as Word draws them: 2, 3 or 5 times the line's width for small, medium and large (a line under 2 points as a 2-point one). Their kind, width and length are read from DOCX (DrawingML and VML) and saved back; before, every arrowhead was one size and saved as a medium triangle.
@@ -1084,7 +1084,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 | 2026-11-01 | trivial | P0010: `.doc` runs retain character-style references without copying style formatting into direct properties; readiness unchanged |
 | 2026-10-31 | trivial | P0001: legacy DOC imports repair stale FAT end markers beyond EOF and garbage in unused directory entries; other compound-file refusals and readiness estimates unchanged. |
 | 2026-11-01 | trivial | References › Table of Contents › Mark Table of Contents Entry (`references.markTocEntry`, Alt+Shift+O on Linux/Windows) inserts a hidden TC field at the end of the selection; `references.toc` with `tcFields` lists it (gap #24) |
-| 2026-10-31 | trivial | P0004: `.doc` header/footer imports omit one trailing guard paragraph while preserving intentional empty paragraphs and single-mark stories; readiness unchanged |
+| 2026-10-31 | trivial | P0004: `.doc` header/footer imports omit one trailing guard paragraph while preserving intentional empty paragraphs and single-mark stories; readiness unchanged ([MS-DOC] §2.8.25 Plcfhdd) |
 | 2026-11-01 | trivial | Progress log: arrowheads keep their kind, width and length and are drawn at Word's sizes |
 | 2026-11-01 | trivial | Progress log: columns for selected text draw their line between (#5178) |
 | 2026-10-31 | trivial | Progress log: a Word 365 .doc in Aptos opens in Aptos (#5066); readiness unchanged |
