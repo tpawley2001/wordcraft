@@ -1,5 +1,6 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-09 · **Change:** trivial (P0144: Insert › Text from File takes a Range bookmark and inserts only that bookmark's text. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged.)
 
@@ -135,6 +136,7 @@ References › Index › AutoMark… selects a concordance document and inserts 
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-09 | trivial | P0144: Insert › Text from File takes a Range bookmark and inserts only that bookmark's text, as Word's Insert File dialog does; an unknown bookmark is an error and changes nothing. Readiness estimates unchanged. |
 | 2026-11-08 | trivial | P0126: Index AutoMark reads a concordance document’s first body table and marks the first whole-word, same-case match per body paragraph in one undo step; the Index dialog offers AutoMark…. Readiness estimates unchanged. |
 | 2026-11-08 | trivial | P0127: Labels › New Label… accepts custom sheet margins, pitch, label size, counts and Letter/A4 page size; invalid sheets stay in the dialog. Readiness estimates unchanged. |
 | 2026-11-07 | trivial | Page Setup also bounds the unfocused margin display after a long numeric paste; the accepted value is retained (#5650). |

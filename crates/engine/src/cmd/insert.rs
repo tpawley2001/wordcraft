@@ -1,5 +1,7 @@
 //! Insert tab: pages, tables, pictures, shapes, links, bookmarks, headers/footers, text, symbols.
 
+use std::sync::Arc;
+
 use serde_json::{Value, json};
 use wordcraft_doc::para::{Float, InlineObject, ShapeKind, Wrap};
 use wordcraft_doc::props::{Align, Border, Borders, CharProps, Rgb, TabAlign, TabStop, TextColor};
@@ -137,7 +139,20 @@ pub fn specs() -> Vec<CommandSpec> {
         }),
         CommandSpec::new("insert.textFromFile", "Text from File", "Insert › Text › Object", |s, v| {
             let path = p::req_str(v, "path")?;
-            let doc = crate::io::open_path(std::path::Path::new(path)).map_err(CmdError::Failed)?;
+            let mut doc = crate::io::open_path(std::path::Path::new(path)).map_err(CmdError::Failed)?;
+            // A Range inserts only the text its bookmark marks in that file, as Word does. The
+            // bookmark is looked up before the selection goes, so a bad name changes nothing.
+            if let Some(range) = p::str(v, "range") {
+                let name = range.trim();
+                let found = doc.bookmarks().into_iter().find(|(n, _)| !name.is_empty() && n.eq_ignore_ascii_case(name));
+                let Some((found, start)) = found else {
+                    return Err(CmdError::Params(format!("no bookmark named `{name}` in the file")));
+                };
+                let (from, to) = bookmark_span(&doc, &found, &start);
+                let piece = doc.copy_range(&from, &to);
+                // The rest of the file stays as the source of styles, lists, pictures and notes.
+                doc.body = piece.blocks.into_iter().map(Arc::new).collect();
+            }
             // The file's pictures, lists and styles come along (its own keys and ids mean nothing here).
             let mut frag = s.doc.adopt(doc);
             super::paste::unlink_sections(&mut frag.blocks);
@@ -146,7 +161,7 @@ pub fn specs() -> Vec<CommandSpec> {
             s.sel = Selection::caret(end);
             sel_result(s)
         })
-        .params(r#"{"path": string}"#),
+        .params(r#"{"path": string, "range"?: bookmark name (insert only that bookmark's text)}"#),
     ]
 }
 
