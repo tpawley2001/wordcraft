@@ -15,7 +15,8 @@ fn run(s: &mut Session, id: &str, params: Value) -> Value {
 /// Three numbered paragraphs of one list; the second is at level 2 (index 1).
 fn fixture() -> (Session, u32) {
     let mut s = Session::new(Document::from_text("One\nTwo\nThree\nPlain\n"));
-    s.sel = Selection { anchor: Pos::body(0, 0), focus: Pos::body(2, 0) };
+    // Into "Three": a selection that only touches a paragraph's start leaves that paragraph out.
+    s.sel = Selection { anchor: Pos::body(0, 0), focus: Pos::body(2, 5) };
     run(&mut s, "para.numbering", json!({}));
     let num = s.doc.para(StoryRef::Body, &Path::top(0)).unwrap().props.numbering.unwrap().num;
     assert_ne!(num, 0);
