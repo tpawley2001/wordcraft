@@ -39,6 +39,7 @@ pub enum GoToWhat {
     #[default]
     Page,
     Section,
+    Line,
     Bookmark,
     Comment,
     Footnote,
@@ -52,10 +53,11 @@ pub enum GoToWhat {
 }
 
 impl GoToWhat {
-    /// "Go to what", in Word's order (no Line yet).
-    pub const ALL: [GoToWhat; 12] = [
+    /// "Go to what", in Word's order.
+    pub const ALL: [GoToWhat; 13] = [
         GoToWhat::Page,
         GoToWhat::Section,
+        GoToWhat::Line,
         GoToWhat::Bookmark,
         GoToWhat::Comment,
         GoToWhat::Footnote,
@@ -73,6 +75,7 @@ impl GoToWhat {
         match self {
             GoToWhat::Page => "page",
             GoToWhat::Section => "section",
+            GoToWhat::Line => "line",
             GoToWhat::Bookmark => "bookmark",
             GoToWhat::Comment => "comment",
             GoToWhat::Footnote => "footnote",
@@ -90,6 +93,7 @@ impl GoToWhat {
         match self {
             GoToWhat::Page => tl!("Page"),
             GoToWhat::Section => tl!("Section"),
+            GoToWhat::Line => tl!("Line"),
             GoToWhat::Bookmark => tl!("Bookmark"),
             GoToWhat::Comment => tl!("Comment"),
             GoToWhat::Footnote => tl!("Footnote"),
@@ -108,6 +112,7 @@ impl GoToWhat {
         match self {
             GoToWhat::Page => tl!("Enter page number:"),
             GoToWhat::Section => tl!("Enter section number:"),
+            GoToWhat::Line => tl!("Enter line number:"),
             GoToWhat::Bookmark => tl!("Enter bookmark name:"),
             GoToWhat::Comment => tl!("Enter reviewer's name:"),
             GoToWhat::Footnote => tl!("Enter footnote number:"),
@@ -126,6 +131,7 @@ impl GoToWhat {
         match self {
             GoToWhat::Page => tl!("Type a page number, or +2 / -1."),
             GoToWhat::Section => tl!("Type a section number, or +2 / -1."),
+            GoToWhat::Line => tl!("Type a line number, or +2 / -1."),
             GoToWhat::Footnote => tl!("Type a footnote number, or +2 / -1."),
             GoToWhat::Endnote => tl!("Type an endnote number, or +2 / -1."),
             GoToWhat::Table => tl!("Type a table number, or +2 / -1."),
