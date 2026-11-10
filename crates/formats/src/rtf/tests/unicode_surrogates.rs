@@ -47,8 +47,17 @@ fn a_high_surrogate_before_another_pair_is_its_own_replacement_character() {
 fn a_high_surrogate_at_the_end_of_a_paragraph_is_kept_as_a_replacement_character() {
     let rtf = "{\\rtf1\\ansi{\\fonttbl\\f0 Arial;}\\pard\\f0\\uc1 end\\u-10240?\\par\\pard next\\u-9216?\\par\n}";
     let d = import(rtf.as_bytes()).unwrap();
-    let text = d.plain_text(StoryRef::Body);
-    assert!(text.contains(&format!("end{R}")), "{text:?}");
-    assert!(text.contains(&format!("next{R}")), "{text:?}");
-    assert!(!text.contains('\u{10000}'), "{text:?}");
+    assert_eq!(d.plain_text(StoryRef::Body), format!("end{R}\nnext{R}"));
+}
+
+#[test]
+fn multibyte_text_and_a_held_surrogate_keep_their_reading_order() {
+    let (a, _, _) = encoding_rs::SHIFT_JIS.decode(&[0x82, 0xa0]);
+    let read = |body: &str| {
+        let rtf = format!("{{\\rtf1\\ansi{{\\fonttbl\\f0\\fcharset128 MS Mincho;}}\\pard\\f0\\uc0 {body}\\par\n}}");
+        import(rtf.as_bytes()).unwrap().plain_text(StoryRef::Body)
+    };
+    // The space ends `\u-10179`: it is not text.
+    assert_eq!(read("A\\'82\\'a0\\u-10179 B").trim_end(), format!("A{a}{R}B"));
+    assert_eq!(read("A\\u-10179\\'82\\'a0B").trim_end(), format!("A{R}{a}B"));
 }
