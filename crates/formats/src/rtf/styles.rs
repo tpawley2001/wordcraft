@@ -170,6 +170,13 @@ impl Reader {
         if st.widow.is_some() {
             p.extra.get_or_insert_with(Default::default).widow_control = st.widow;
         }
+        if st.culi.is_some() || st.curi.is_some() || st.cufi.is_some() {
+            let chars = |v: Option<i32>| v.map(|v| v as f32 / 100.0);
+            let extra = p.extra.get_or_insert_with(Default::default);
+            extra.indent_left_chars = chars(st.culi);
+            extra.indent_right_chars = chars(st.curi);
+            extra.indent_first_chars = chars(st.cufi);
+        }
         p.spacing = spacing(st);
         p.borders = st.borders.any_visible().then_some(st.borders);
         if !st.tabs.is_empty() {
@@ -384,6 +391,9 @@ pub(super) fn is_format_word(w: &str) -> bool {
             | "ri"
             | "rin"
             | "fi"
+            | "culi"
+            | "curi"
+            | "cufi"
             | "brdrw"
             | "brdrcf"
             | "box"

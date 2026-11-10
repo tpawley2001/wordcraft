@@ -243,6 +243,10 @@ pub(super) struct St {
     pub(super) li: Option<i32>,
     pub(super) ri: Option<i32>,
     pub(super) fi: Option<i32>,
+    /// The same indents in hundredths of a character (`\culi`, `\curi`, `\cufi`).
+    pub(super) culi: Option<i32>,
+    pub(super) curi: Option<i32>,
+    pub(super) cufi: Option<i32>,
     /// The paragraph's tab stops (`\tx`, `\tb`), and the alignment (`\tq*`) and leader (`\tl*`)
     /// words read for the next one.
     pub(super) tabs: Vec<TabStop>,
@@ -293,6 +297,9 @@ impl Default for St {
             li: None,
             ri: None,
             fi: None,
+            culi: None,
+            curi: None,
+            cufi: None,
             tabs: Vec::new(),
             tab_align: TabAlign::Left,
             tab_leader: TabLeader::None,
