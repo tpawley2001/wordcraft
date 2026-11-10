@@ -1013,6 +1013,12 @@ impl Writer {
             if x.snap_to_grid == Some(false) {
                 out.push_str("\\nosnaplinegrid");
             }
+            // Indents in hundredths of a character, beside the twips ones.
+            for (word, v) in [("\\culi", x.indent_left_chars), ("\\curi", x.indent_right_chars), ("\\cufi", x.indent_first_chars)] {
+                if let Some(v) = v {
+                    out.push_str(&format!("{word}{}", (v.clamp(-1584.0, 1584.0) * 100.0).round() as i64));
+                }
+            }
         }
         match p.kind {
             Kind::Quote => out.push_str("\\li720\\ri720\\i"),

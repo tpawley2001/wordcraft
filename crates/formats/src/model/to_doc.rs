@@ -202,6 +202,11 @@ fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
         out.snap_to_grid = x.snap_to_grid.or(out.snap_to_grid);
         // An outline level apart from its heading style's.
         out.outline_level = x.outline_level.map(|l| l.min(8)).or(out.outline_level);
+        // Indents in characters, beside the twips ones.
+        let chars = |v: Option<f32>| v.filter(|v| v.is_finite()).map(|v| v.clamp(-1584.0, 1584.0));
+        out.indent_left_chars = chars(x.indent_left_chars);
+        out.indent_right_chars = chars(x.indent_right_chars);
+        out.indent_first_chars = chars(x.indent_first_chars);
     }
     // Tab stops a format gives the paragraph itself: finite, on the page, at most 64.
     if let Some(tabs) = p.extra.as_ref().and_then(|x| x.tabs.as_ref()) {

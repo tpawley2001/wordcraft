@@ -195,6 +195,10 @@ impl Reader {
             "li" | "lin" => self.st.li = Some(pv),
             "ri" | "rin" => self.st.ri = Some(pv),
             "fi" => self.st.fi = Some(pv),
+            // Indents in hundredths of a character, beside the twips ones.
+            "culi" => self.st.culi = Some(pv.clamp(-158400, 158400)),
+            "curi" => self.st.curi = Some(pv.clamp(-158400, 158400)),
+            "cufi" => self.st.cufi = Some(pv.clamp(-158400, 158400)),
             "tqr" => self.st.tab_align = TabAlign::Right,
             "tqc" => self.st.tab_align = TabAlign::Center,
             "tqdec" => self.st.tab_align = TabAlign::Decimal,

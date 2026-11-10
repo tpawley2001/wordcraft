@@ -489,15 +489,18 @@ pub struct FlowOpts {
     pub para_flags: bool,
     /// The paragraph's own shading in [`Para::extra`], also without `paras`.
     pub shading: bool,
+    /// The paragraph's own indents in characters (`indent_left_chars`, `indent_right_chars`,
+    /// `indent_first_chars`) in [`Para::extra`], also without `paras`.
+    pub indent_chars: bool,
 }
 
 impl FlowOpts {
     /// What RTF keeps: tracked changes, the paragraph's own tab stops and character spacing
     /// ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]), shading
-    /// ([`FlowOpts::shading`]) and the other paragraph flags ([`FlowOpts::para_flags`]), fields and
-    /// text boxes.
+    /// ([`FlowOpts::shading`]), indents in characters ([`FlowOpts::indent_chars`]) and the other
+    /// paragraph flags ([`FlowOpts::para_flags`]), fields and text boxes.
     pub fn tracked() -> Self {
-        FlowOpts { tracked: true, tabs_spacing: true, widow: true, shading: true, para_flags: true, fields: true, boxes: true, ..Default::default() }
+        FlowOpts { tracked: true, tabs_spacing: true, widow: true, shading: true, indent_chars: true, para_flags: true, fields: true, boxes: true, ..Default::default() }
     }
 }
 
