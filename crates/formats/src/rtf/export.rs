@@ -336,6 +336,17 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
             LineNumberRestart::Continuous => "\\linecont",
         });
     }
+    if let Some(g) = s.doc_grid {
+        let word = match g.kind {
+            wordcraft_doc::section::DocGridType::Lines => "\\sectspecifyl",
+            wordcraft_doc::section::DocGridType::LinesAndChars | wordcraft_doc::section::DocGridType::SnapToChars => "\\sectspecifycl",
+            wordcraft_doc::section::DocGridType::Default => "",
+        };
+        if !word.is_empty() {
+            let pitch = if g.line_pitch.is_finite() { (g.line_pitch * 20.0).round() as i64 } else { 0 };
+            o.push_str(&format!("{word}\\sectlinegrid{}", pitch.clamp(1, 31_680)));
+        }
+    }
     if s.rtl {
         o.push_str("\\rtlsect");
     }
