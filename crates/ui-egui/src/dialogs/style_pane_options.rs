@@ -33,7 +33,7 @@ impl StylePaneForm {
 fn combo(ui: &mut Ui, id: &str, label: &str, value: &mut String, options: &[(&str, &str)]) {
     let label = ui.label(label);
     let shown = options.iter().find(|(v, _)| v == value).map(|(_, l)| tl!(l)).unwrap_or_default();
-    egui::ComboBox::from_id_salt(id)
+    craft_ui::ComboBox::from_id_salt(id)
         .selected_text(shown)
         .width(220.0)
         .show_ui(ui, |ui| {

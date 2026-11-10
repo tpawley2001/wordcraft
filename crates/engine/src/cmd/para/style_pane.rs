@@ -61,7 +61,7 @@ pub(super) fn pane_options(s: &mut Session, v: &Value) -> CmdResult {
     if show.is_none() && sort.is_none() {
         return Ok(state(s));
     }
-    let pane = s.doc.settings.style_pane.get_or_insert_with(|| StylePaneOptions { filter: 0, filter_attrs: true, sort: None });
+    let pane = s.doc.settings.style_pane.get_or_insert(StylePaneOptions { filter: 0, filter_attrs: true, sort: None });
     match show {
         Some(true) => pane.filter = (pane.filter | PANE_IN_USE) & !PANE_ALL_STYLES,
         Some(false) => pane.filter = (pane.filter | PANE_ALL_STYLES) & !PANE_IN_USE,
