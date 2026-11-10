@@ -705,7 +705,7 @@ fn reveal_formatting_compare_check_box_lists_differences() {
     let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("One\nTwo")), crate::Services::default());
     app.run("select.range", serde_json::json!({"anchor": {"block": 0, "off": 0}, "focus": {"block": 0, "off": 3}})).unwrap();
     app.run("format.bold", serde_json::json!({"value": true})).unwrap();
-    app.run("caret.set", serde_json::json!({"pos": {"block": 1, "off": 1}})).unwrap();
+    app.run("caret.set", serde_json::json!({"pos": {"block": 0, "off": 1}})).unwrap();
     app.run("view.revealFormattingPane", serde_json::json!({"value": true})).unwrap();
     let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
         |ui, app: &mut crate::WordApp| {
@@ -720,6 +720,8 @@ fn reveal_formatting_compare_check_box_lists_differences() {
     h.get_by_label("Compare to another selection").click();
     h.run_steps(4);
     assert!(h.state().session.view.reveal_compare.is_some(), "the check box turns compare on");
+    h.state_mut().run("caret.set", serde_json::json!({"pos": {"block": 1, "off": 1}})).unwrap();
+    h.run_steps(4);
     h.get_by_label("Formatting differences").accesskit_node();
     h.get_by_label("Bold -> Not Bold").accesskit_node();
     h.get_by_label("Compare to another selection").click();
