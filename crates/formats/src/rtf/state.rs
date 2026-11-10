@@ -371,6 +371,9 @@ pub(super) struct SecFmt {
     /// `\binfsxn` / `\binsxn`: printer bins for the first page and the other pages.
     pub(super) bin_first: Option<u16>,
     pub(super) bin_other: Option<u16>,
+    /// The section's own footnote and endnote options (`\sftn…`, `\saftn…`).
+    pub(super) footnote_pr: wordcraft_doc::section::NoteProps,
+    pub(super) endnote_pr: wordcraft_doc::section::NoteProps,
 }
 
 impl SecFmt {
@@ -417,6 +420,66 @@ impl SecFmt {
         s.chapter_sep = self.chapter_sep;
         s.paper_src_first = self.bin_first;
         s.paper_src_other = self.bin_other;
+        s.footnote_pr = self.footnote_pr;
+        s.endnote_pr = self.endnote_pr;
         s
     }
+}
+
+/// The note number formats RTF names (`\ftnn…`, `\aftnn…`, `\sftnn…`, `\saftnn…`), by the
+/// word's ending.
+const NOTE_FORMATS: [(&str, wordcraft_doc::section::NumFormat); 6] = {
+    use wordcraft_doc::section::NumFormat;
+    [
+        ("ar", NumFormat::Decimal),
+        ("alc", NumFormat::LowerLetter),
+        ("auc", NumFormat::UpperLetter),
+        ("rlc", NumFormat::LowerRoman),
+        ("ruc", NumFormat::UpperRoman),
+        ("chi", NumFormat::Chicago),
+    ]
+};
+
+/// The ending of the note number format word for `f`; none for the formats RTF has no word for.
+pub(super) fn note_format_word(f: wordcraft_doc::section::NumFormat) -> Option<&'static str> {
+    NOTE_FORMATS.iter().find(|(_, g)| *g == f).map(|(w, _)| *w)
+}
+
+/// Applies footnote (`ftn…`) or endnote (`aftn…`) option word `w` (parameter `p`), without a
+/// section word's leading `s`: placement (footnotes), start, restart and number format. A start
+/// outside 1..=32767 and the number formats WordCraft has no RTF word for are ignored. False
+/// when `w` isn't one of these words.
+pub(super) fn apply_note_word(
+    w: &str,
+    p: Option<i32>,
+    foot: &mut wordcraft_doc::section::NoteProps,
+    end: &mut wordcraft_doc::section::NoteProps,
+) -> bool {
+    use wordcraft_doc::section::{NotePos, NoteRestart};
+    let (props, rest, endnote) = match (w.strip_prefix("aftn"), w.strip_prefix("ftn")) {
+        (Some(rest), _) => (end, rest, true),
+        (None, Some(rest)) => (foot, rest, false),
+        (None, None) => return false,
+    };
+    match rest {
+        "bj" if !endnote => props.pos = Some(NotePos::PageBottom),
+        "tj" if !endnote => props.pos = Some(NotePos::BeneathText),
+        "start" => {
+            if let Some(n) = p.filter(|n| (1..=32_767).contains(n)).and_then(|n| u32::try_from(n).ok()) {
+                props.num_start = Some(n);
+            }
+        }
+        "rstpg" if !endnote => props.num_restart = Some(NoteRestart::EachPage),
+        "restart" => props.num_restart = Some(NoteRestart::EachSect),
+        "rstcont" => props.num_restart = Some(NoteRestart::Continuous),
+        _ => {
+            let Some(fmt) = rest.strip_prefix('n') else {
+                return false;
+            };
+            if let Some((_, f)) = NOTE_FORMATS.iter().find(|(w, _)| *w == fmt) {
+                props.num_fmt = Some(*f);
+            }
+        }
+    }
+    true
 }

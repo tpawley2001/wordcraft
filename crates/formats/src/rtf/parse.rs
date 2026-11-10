@@ -27,6 +27,8 @@ struct Parsed {
     foreign_styles: Vec<(String, wordcraft_doc::props::ParaProps, wordcraft_doc::props::CharProps)>,
     notes: Vec<NoteData>,
     comments: Vec<CommentData>,
+    /// The document's footnote and endnote options; `num_fmt` is the number format.
+    doc_notes: (wordcraft_doc::section::NoteProps, wordcraft_doc::section::NoteProps),
 }
 
 /// Where the document `{\rtf…}` starting at `start` ends: just past the `}` that first brings the
@@ -332,6 +334,7 @@ fn finalize(mut r: Reader) -> Parsed {
         foreign_styles,
         notes: r.notes,
         comments: r.comments,
+        doc_notes: r.doc_notes,
     }
 }
 
@@ -407,8 +410,16 @@ fn set_section_revisions(doc: &mut Document) {
 /// Parse RTF bytes into a document.
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
     model::begin_import();
-    let Parsed { flow, last_section, default_font, headers_footers, foreign_styles, notes, comments, .. } = parse_full(bytes, true)?;
+    let Parsed { flow, last_section, default_font, headers_footers, foreign_styles, notes, comments, doc_notes, .. } = parse_full(bytes, true)?;
     let mut doc = model::to_doc_in(&flow, last_section);
+    let (mut foot, mut end) = doc_notes;
+    if let Some(f) = foot.num_fmt.take() {
+        doc.settings.footnote_format = f;
+    }
+    if let Some(f) = end.num_fmt.take() {
+        doc.settings.endnote_format = f;
+    }
+    (doc.settings.footnote_pr, doc.settings.endnote_pr) = (foot, end);
     // Each section's own headers and footers; those it leaves out stay linked to the previous.
     let mut sets = Vec::with_capacity(headers_footers.len());
     for parts in &headers_footers {
