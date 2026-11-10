@@ -32,6 +32,10 @@ pub struct ViewState {
     /// Reveal Formatting pane (Home › Styles, Shift+F1).
     #[serde(default)]
     pub reveal_formatting_pane: bool,
+    /// Reveal Formatting › Compare to another selection: the first selection whose formatting the
+    /// pane compares the current one with. On screen only, not saved and not undone.
+    #[serde(default, skip)]
+    pub reveal_compare: Option<crate::doc_state::Selection>,
     /// Selection Pane (Layout › Arrange, Alt+F10): the body's drawings, front-most first.
     #[serde(default)]
     pub selection_pane: bool,
@@ -207,6 +211,7 @@ impl Default for ViewState {
             styles_pane_dock: StylesPaneDock::Right,
             style_inspector: false,
             reveal_formatting_pane: false,
+            reveal_compare: None,
             selection_pane: false,
             split: None,
             comments_pane: false,

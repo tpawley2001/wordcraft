@@ -46,6 +46,7 @@ mod print_document_properties;
 mod print_forms_data;
 mod print_options;
 mod reveal_formatting;
+mod reveal_compare;
 mod reveal_formatting_pane;
 mod para_tools;
 mod revision_checks;

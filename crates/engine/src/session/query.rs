@@ -245,10 +245,14 @@ impl Session {
 
     /// The caret's formatting, as Reveal Formatting shows it.
     pub fn caret_props(&self) -> CharProps {
-        if let Some(p) = &self.pending {
+        self.caret_props_at(&self.sel.focus)
+    }
+
+    /// The character props text typed at `f` would take.
+    pub fn caret_props_at(&self, f: &Pos) -> CharProps {
+        if let Some(p) = self.pending.as_ref().filter(|_| *f == self.sel.focus) {
             return p.clone();
         }
-        let f = &self.sel.focus;
         let Some(p) = self.doc.para_at(f) else { return CharProps::default() };
         let props = p.props_at(f.off);
         // As in Word, text typed at either end of a hyperlink isn't part of it; only typing
