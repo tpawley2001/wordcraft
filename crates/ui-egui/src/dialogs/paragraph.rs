@@ -20,6 +20,8 @@ pub(super) fn paragraph_dialog(rp: &wordcraft_doc::resolve::ResolvedPara, tab: u
         page_break: rp.page_break_before,
         widow: rp.widow_control,
         tab,
+        outline: 9,
+        outline_fixed: false,
         asian: [rp.kinsoku, rp.word_wrap, rp.overflow_punct, rp.top_line_punct, rp.auto_space_de, rp.auto_space_dn],
         opts: [rp.mirror_indents, rp.contextual_spacing, rp.suppress_line_numbers, rp.suppress_hyphens],
         start: serde_json::Map::new(),
