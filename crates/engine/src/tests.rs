@@ -50,6 +50,7 @@ mod reveal_formatting_pane;
 mod para_tools;
 mod revision_checks;
 mod selection_pane;
+mod shape_format_painter;
 mod table_insert_delete_cells;
 mod text_from_file_range;
 mod table_row_column_ends;

@@ -116,6 +116,7 @@ impl Session {
             author: crate::brand::DEFAULT_AUTHOR.into(),
             initials: String::new(),
             painter: None,
+            shape_painter: None,
             pending_text_move: None,
             status: String::new(),
             new_header_parts,
