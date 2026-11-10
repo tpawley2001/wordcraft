@@ -31,9 +31,14 @@ fn space(twips: Option<i32>) -> f32 {
 }
 
 impl FrameSt {
-    fn new() -> Self {
-        let frame = TextFrame { h_anchor: "text".into(), v_anchor: "margin".into(), wrap: "auto".into(), ..Default::default() };
-        FrameSt { frame, ..Default::default() }
+    /// Fills the anchors and wrap no word set with RTF's defaults.
+    fn fill_defaults(&mut self) {
+        let f = &mut self.frame;
+        for (s, d) in [(&mut f.h_anchor, "text"), (&mut f.v_anchor, "margin"), (&mut f.wrap, "auto")] {
+            if s.is_empty() {
+                *s = d.into();
+            }
+        }
     }
 
     /// Applies the frame or drop cap word `w` with parameter `pv`; false when `w` is neither.
@@ -102,10 +107,12 @@ impl Reader {
     /// Reads a frame or drop cap paragraph word; false when `w` is neither.
     pub(super) fn frame_word(&mut self, w: &str, pv: i32) -> bool {
         if self.st.frame.is_none() {
-            let mut f = FrameSt::new();
+            // Most words reach here and aren't frame words: try them without allocating.
+            let mut f = FrameSt::default();
             if !f.word(w, pv) {
                 return false;
             }
+            f.fill_defaults();
             self.st.frame = Some(Box::new(f));
             return true;
         }
