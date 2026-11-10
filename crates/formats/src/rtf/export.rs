@@ -254,17 +254,17 @@ fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
 
 /// `\sectd` and a section's formatting, in the words the reader reads back, then its formatting
 /// before a tracked change (`{\*\oldsprops …}`) when it has one.
-fn sect_words(s: &wordcraft_doc::SectionProps) -> String {
-    let mut o = sect_props_words(s);
+fn sect_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
+    let mut o = sect_props_words(s, t);
     if let Some(c) = &s.fmt_change {
-        o.push_str(&format!("{{\\*\\oldsprops {}}}", sect_props_words(&c.old)));
+        o.push_str(&format!("{{\\*\\oldsprops {}}}", sect_props_words(&c.old, t)));
     }
     o.push('\n');
     o
 }
 
-/// `\sectd` and a section's own formatting words.
-fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
+/// `\sectd` and a section's own formatting words; page border colours go into `t`.
+fn sect_props_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
     use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NotePos, NumFormat, PageVAlign, SectionStart};
     let tw = |v: f32| if v.is_finite() { ((v * 20.0).round() as i64).max(0) } else { 0 };
     let mut o = String::from("\\sectd");
@@ -290,6 +290,13 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
     }
     if let Some(n) = s.paper_src_other.filter(|&n| n != 0) {
         o.push_str(&format!("\\binsxn{n}"));
+    }
+    if let Some(b) = &s.page_borders {
+        for (side, opt) in [('t', b.top), ('l', b.left), ('b', b.bottom), ('r', b.right)] {
+            if let Some(border) = opt {
+                border_words("pgbrdr", side, border, true, t, &mut o);
+            }
+        }
     }
     o.push_str(&format!(
         "\\marglsxn{}\\margrsxn{}\\margtsxn{}\\margbsxn{}\\headery{}\\footery{}",
@@ -511,22 +518,28 @@ fn rtf_border_style(s: wordcraft_doc::props::BorderStyle) -> &'static str {
     }
 }
 
+/// One border side: `\{prefix}{side}`, its style, width, space (`\brsp`, when `space` and
+/// non-zero) and colour, which goes into `t`.
+fn border_words(prefix: &str, side: char, b: wordcraft_doc::props::Border, space: bool, t: &mut Tables, out: &mut String) {
+    out.push_str(&format!("\\{prefix}{side}"));
+    out.push_str(rtf_border_style(b.style));
+    let w = ((b.width * 20.0).round() as i64).clamp(1, 150);
+    out.push_str(&format!("\\brdrw{w}"));
+    if space {
+        let sp = (b.space * 20.0).round() as i64;
+        if sp > 0 {
+            out.push_str(&format!("\\brsp{sp}"));
+        }
+    }
+    if let Some(c) = b.color {
+        let i = t.color(c);
+        out.push_str(&format!("\\brdrcf{i}"));
+    }
+}
+
 impl Writer {
     fn write_border(&mut self, prefix: &str, side: char, b: wordcraft_doc::props::Border, out: &mut String) {
-        out.push_str(&format!("\\{prefix}{side}"));
-        out.push_str(rtf_border_style(b.style));
-        let w = ((b.width * 20.0).round() as i64).clamp(1, 150);
-        out.push_str(&format!("\\brdrw{w}"));
-        if prefix == "brdr" {
-            let sp = (b.space * 20.0).round() as i64;
-            if sp > 0 {
-                out.push_str(&format!("\\brsp{sp}"));
-            }
-        }
-        if let Some(c) = b.color {
-            let i = self.t.color(c);
-            out.push_str(&format!("\\brdrcf{i}"));
-        }
+        border_words(prefix, side, b, prefix == "brdr", &mut self.t, out);
     }
 
     fn cell_borders(&mut self, borders: Option<&wordcraft_doc::props::Borders>, borderless: bool, out: &mut String) {
@@ -1002,7 +1015,7 @@ impl Writer {
                     // A paragraph that ends a section ends it with `\sect`; the next one begins.
                     if p.section.is_some() && !intbl && depth == 0 && self.sect_i + 1 < self.sections.len() {
                         self.sect_i += 1;
-                        end = format!("\\sect\n{}", self.sections.get(self.sect_i).map(sect_words).unwrap_or_default());
+                        end = format!("\\sect\n{}", self.sections.get(self.sect_i).map(|s| sect_words(s, &mut self.t)).unwrap_or_default());
                         // A body that ends on the break keeps its last section: an empty paragraph holds it.
                         if i + 1 == n {
                             end.push_str("\\pard\\plain \\par");
@@ -1201,7 +1214,7 @@ pub fn export(doc: &Document) -> String {
     // Every section starts with its own `\sectd`; `\sect` breaks only where there are several.
     let secs: Vec<wordcraft_doc::SectionProps> = doc.sections().into_iter().map(|(_, s)| s.clone()).collect();
     if let Some(first) = secs.first() {
-        body.push_str(&sect_words(first));
+        body.push_str(&sect_words(first, &mut w.t));
         for (set, prefix) in [(&first.headers, "header"), (&first.footers, "footer")] {
             for (id, suffix) in [(set.default, ""), (set.first, "f"), (set.even, "l")] {
                 if let Some(part) = id.and_then(|id| doc.parts.get(&id)) {

@@ -462,6 +462,8 @@ pub(super) struct SecFmt {
     /// twips. A pitch alone turns no grid on, so the kind decides whether there is one.
     pub(super) grid_kind: Option<wordcraft_doc::section::DocGridType>,
     pub(super) line_grid: Option<i32>,
+    /// `\pgbrdrt` … `\pgbrdrr` with their border words: the page borders.
+    pub(super) page_borders: wordcraft_doc::props::Borders,
 }
 
 impl SecFmt {
@@ -529,6 +531,10 @@ impl SecFmt {
                 None => wordcraft_doc::section::DocGrid::default().line_pitch,
             };
             s.doc_grid = Some(wordcraft_doc::section::DocGrid { kind, line_pitch, char_space: 0 });
+        }
+        let b = &self.page_borders;
+        if [b.top, b.left, b.bottom, b.right].iter().any(Option::is_some) {
+            s.page_borders = Some(*b);
         }
         s
     }
