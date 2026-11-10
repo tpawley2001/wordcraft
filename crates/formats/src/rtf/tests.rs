@@ -1830,6 +1830,7 @@ fn compound_borders_round_trip() {
     assert_eq!(tops(&back), want);
 }
 
+mod char_unit_indents;
 mod column_widths;
 mod doc_grid;
 mod doc_page_options;
