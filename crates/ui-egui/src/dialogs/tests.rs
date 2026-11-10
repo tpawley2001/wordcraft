@@ -712,8 +712,8 @@ fn paragraph_dialog_keeps_fixed_line_spacing() {
     let mut app = app_with("Example");
     let _ = app.run("para.lineSpacing", json!({"exactly": 24}));
     ok_edit(&mut app, |d| {
-        if let Dialog::Paragraph { line, .. } = d {
-            *line = 1.5;
+        if let Dialog::Paragraph { line_rule, line_at, .. } = d {
+            (*line_rule, *line_at) = (paragraph::LINE_MULTIPLE, 1.5);
         }
     });
     assert_eq!(props(&app).line_spacing, Some(LineSpacing::Multiple(1.5)));
@@ -2495,4 +2495,23 @@ fn custom_property_modify_with_an_edit_still_retypes() {
     assert!(f.message.is_empty(), "{}", f.message);
     let p = f.props.iter().find(|p| p.name == "Due").unwrap();
     assert_eq!((p.kind.as_str(), p.value.as_str()), ("filetime", "2026-12-01T00:00:00Z"));
+}
+
+#[test]
+fn paragraph_line_spacing_box_switches_and_clamps() {
+    use paragraph::{LINE_AT_LEAST, LINE_EXACTLY, LINE_MULTIPLE, line_spacing, pick_line_rule};
+    // Word's starting values: 12 pt after a lines rule, 3 lines after any other rule.
+    let (mut rule, mut at) = (0, 1.0);
+    pick_line_rule(&mut rule, &mut at, LINE_EXACTLY, true);
+    assert_eq!((rule, at), (LINE_EXACTLY, 12.0));
+    at = 20.0;
+    pick_line_rule(&mut rule, &mut at, LINE_AT_LEAST, true);
+    assert_eq!((rule, at), (LINE_AT_LEAST, 20.0), "points to points keeps At");
+    pick_line_rule(&mut rule, &mut at, LINE_MULTIPLE, true);
+    assert_eq!((rule, at), (LINE_MULTIPLE, 3.0));
+    // Hostile values stay inside Word's ranges.
+    assert_eq!(line_spacing(LINE_EXACTLY, 0.0), json!({"rule": "exactly", "value": 0.7f32 as f64}));
+    assert_eq!(line_spacing(LINE_AT_LEAST, 1e9), json!({"rule": "atLeast", "value": 1584.0}));
+    assert_eq!(line_spacing(LINE_MULTIPLE, -4.0), json!({"rule": "multiple", "value": 0.06f32 as f64}));
+    assert_eq!(line_spacing(200, 2.5), json!({"rule": "multiple", "value": 2.5}));
 }
