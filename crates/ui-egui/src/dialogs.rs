@@ -29,6 +29,7 @@ mod forms;
 mod mailings;
 mod page_setup;
 mod paragraph;
+pub mod style_pane_options;
 mod styles;
 
 use bookmarks::bookmark_at_caret;
@@ -550,6 +551,10 @@ pub enum Dialog {
     Templates {
         form: Box<crate::dialogs_templates::TemplatesForm>,
     },
+    /// Styles pane › Options…: which styles the pane shows and how it sorts them.
+    StylePaneOptions {
+        form: Box<style_pane_options::StylePaneForm>,
+    },
     /// Templates and Add-ins › Organizer: copy, delete and rename styles (#377).
     Organizer {
         form: Box<crate::dialogs_templates::OrganizerForm>,
@@ -654,6 +659,7 @@ impl Dialog {
             Dialog::NoteOptions { .. } => "noteOptions",
             Dialog::Templates { .. } => "templates",
             Dialog::Organizer { .. } => "organizer",
+            Dialog::StylePaneOptions { .. } => "stylePaneOptions",
             Dialog::CustomProperties(..) => "customProperties",
             Dialog::ConvertDocument => "convertDocument",
             Dialog::MarkAsFinal => "markAsFinal",
@@ -998,6 +1004,7 @@ impl Dialog {
             }
             "noteOptions" => Dialog::NoteOptions { form: Box::new(crate::dialogs_notes::NoteForm::read(app)) },
             "templates" => Dialog::Templates { form: Box::new(crate::dialogs_templates::TemplatesForm::read(app)) },
+            "stylePaneOptions" => Dialog::StylePaneOptions { form: Box::new(style_pane_options::StylePaneForm::read(app)) },
             "organizer" => Dialog::Organizer { form: Box::new(crate::dialogs_templates::OrganizerForm::read(app, None)) },
             "customProperties" => Dialog::CustomProperties(Box::new(CustomPropertiesForm::read(app))),
             "convertDocument" => Dialog::ConvertDocument,

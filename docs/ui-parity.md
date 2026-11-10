@@ -1,6 +1,6 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-09 · **Change:** trivial (P0158: Page Setup › Paper › Paper source: the First page: and Other pages: lists choose the section's printer trays (`layout.paperSource`); readiness estimates unchanged.); previously trivial (P0162: Find and Replace › Go To lists Line, going to the n-th layout line of the main text or +n/-n lines from the caret. Readiness estimates unchanged.); previously trivial (P0124: Adjust List Indents dialog from a list item's context menu. Readiness estimates unchanged); previously trivial (P0159: Review › Proofing › Readability Statistics (`review.readability`: counts, averages, Flesch Reading Ease, Flesch-Kincaid Grade Level; no passive sentences, #4152) and File › Options › Proofing › Show readability statistics, shown in the Proofing pane when the check is complete. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-10 · **Change:** trivial (P0205: Styles pane › Options… (Style Pane Options) shows In use or All styles, sorted Alphabetical, As Recommended, Font, Based on or By type (`styles.paneOptions`, `styles.paneList`), kept in the file as `w:stylePaneFormatFilter`/`w:stylePaneSortMethod`. Readiness estimates unchanged.); previously trivial (P0158: Page Setup › Paper › Paper source: the First page: and Other pages: lists choose the section's printer trays (`layout.paperSource`); readiness estimates unchanged.); previously trivial (P0162: Find and Replace › Go To lists Line, going to the n-th layout line of the main text or +n/-n lines from the caret. Readiness estimates unchanged.); previously trivial (P0124: Adjust List Indents dialog from a list item's context menu. Readiness estimates unchanged); previously trivial (P0159: Review › Proofing › Readability Statistics (`review.readability`: counts, averages, Flesch Reading Ease, Flesch-Kincaid Grade Level; no passive sentences, #4152) and File › Options › Proofing › Show readability statistics, shown in the Proofing pane when the check is complete. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-09 · **Change:** trivial (P0150: View › Window › Reset Window Position puts the two windows viewed side by side back on equal halves of the screen, keeping Synchronous Scrolling; gap #27. Readiness estimates unchanged.)
 
@@ -155,6 +155,8 @@ References › Index › AutoMark… selects a concordance document and inserts 
 Insert Hyperlink › E-mail Address accepts an address and subject and lists recently used addresses from the document.
 
 ## Revision history
+
+> 2026-11-10 · trivial · P0205: Styles pane › Options… chooses In use or All styles and the sort order (Alphabetical, As Recommended, Font, Based on, By type); the pane lists `styles.paneList`, linked pairs once. Recommended, In current document and the other Style Pane Options settings remain future work. Readiness estimates unchanged.
 
 > 2026-11-08 · trivial · P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.
 

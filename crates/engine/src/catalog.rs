@@ -134,6 +134,7 @@ Home|Styles|Delete Style|styles.delete
 Home|Styles|Styles Pane|styles.pane
 Home|Styles|Style Inspector|styles.inspector
 Home|Styles|Manage Styles|styles.manage
+Home|Styles|Style Pane Options|styles.paneOptions
 Home|Styles|Apply Styles|styles.apply
 Home|Styles|Character Style|format.charStyle
 Home|Editing|Find|edit.find
