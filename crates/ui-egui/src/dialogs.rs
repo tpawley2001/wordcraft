@@ -196,6 +196,10 @@ pub enum Dialog {
         message: String,
         /// Vertical alignment (`layout.verticalAlign`, applied only if changed).
         valign: wordcraft_doc::section::PageVAlign,
+        /// Paper source: the printer tray for the first page and for the other pages
+        /// (`layout.paperSource`, applied only if changed); `paper_src_was` as opened.
+        paper_src: (Option<u16>, Option<u16>),
+        paper_src_was: (Option<u16>, Option<u16>),
         /// Headers and footers: different odd and even pages (the document's) and a different
         /// first page (the section's), applied only if changed (#1230).
         odd_even: bool,
@@ -835,6 +839,8 @@ impl Dialog {
                     grid_was: grid,
                     rtl: sp.rtl,
                     valign: sp.valign,
+                    paper_src: (sp.paper_src_first, sp.paper_src_other),
+                    paper_src_was: (sp.paper_src_first, sp.paper_src_other),
                     odd_even: app.session.doc.settings.even_odd_headers,
                     first_page: sp.title_page,
                 }

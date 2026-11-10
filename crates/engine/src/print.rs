@@ -151,16 +151,17 @@ pub struct PrintPlan {
 }
 
 /// The Document Info reports File › Print offers besides the document (`what` of a print job).
-pub const DOCUMENT_INFO: [&str; 4] = ["properties", "markup", "styles", "autotext"];
+pub const DOCUMENT_INFO: [&str; 5] = ["properties", "markup", "styles", "autotext", "keys"];
 
 /// File › Print › Document Info: the paragraphs of the report Word prints for `what`
-/// (`properties` | `markup` | `styles` | `autotext`), one string per paragraph, in order.
+/// (`properties` | `markup` | `styles` | `autotext` | `keys`), one string per paragraph, in order.
 pub fn document_info(s: &Session, what: &str) -> Result<Vec<String>, CmdError> {
     match what {
         "properties" => Ok(properties_report(s)),
         "markup" => Ok(markup_report(s)),
         "styles" => Ok(styles_report(s)),
         "autotext" => Ok(autotext_report(s)),
+        "keys" => Ok(keys_report(s)),
         other => {
             Err(CmdError::Params(format!("unknown document info `{}`; use {}", other.chars().take(40).collect::<String>(), DOCUMENT_INFO.join(", "))))
         }
@@ -311,6 +312,26 @@ fn autotext_report(s: &Session) -> Vec<String> {
             [e.name.clone(), frag.plain_text()]
         })
         .collect()
+}
+
+/// Key Assignments: the keyboard customizations (Customize Keyboard), one `name<Tab>key` line
+/// each, by name then key. Built-in shortcuts and removed built-in keys aren't listed.
+fn keys_report(s: &Session) -> Vec<String> {
+    let commands = s.keymap.assigned.iter().filter(|(key, _)| !s.keymap.styles.contains_key(*key));
+    let commands = commands.filter_map(|(key, id)| s.registry.get(id).map(|spec| (spec.label.to_string(), key)));
+    let styles = s.keymap.styles.iter().map(|(key, style)| (s.doc.styles.get(style).map_or_else(|| style.clone(), |st| st.name.clone()), key));
+    let mut list: Vec<(String, &String)> = commands.chain(styles).collect();
+    list.sort_by_cached_key(|(name, key)| (name.to_lowercase(), (*key).clone()));
+    list.into_iter().map(|(name, key)| format!("{name}\t{}", shown_key(key))).collect()
+}
+
+/// A canonical key as the Customize Keyboard dialog shows it: `Mod+` is Ctrl, or Cmd on macOS.
+fn shown_key(key: &str) -> String {
+    match key.strip_prefix("Mod+") {
+        Some(rest) if cfg!(target_os = "macos") => format!("Cmd+{rest}"),
+        Some(rest) => format!("Ctrl+{rest}"),
+        None => key.to_string(),
+    }
 }
 
 /// The report `lines` as a plain document: one Normal paragraph each, on the page size and
@@ -536,6 +557,7 @@ impl Session {
                     "markup" => "tracked changes or comments",
                     "autotext" => "AutoText entries",
                     "styles" => "styles in use",
+                    "keys" => "key assignments",
                     _ => "properties",
                 }
             )));

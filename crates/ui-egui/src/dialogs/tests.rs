@@ -69,6 +69,8 @@ fn go_to_reads_its_number_box_for_every_kind() {
     }
     assert_eq!(goto_number(GoToWhat::Section, "2"), Some(json!({"what": "section", "n": 2})));
     assert_eq!(goto_number(GoToWhat::Heading, "-2"), Some(json!({"what": "heading", "by": -2})));
+    assert_eq!(goto_number(GoToWhat::Line, "12"), Some(json!({"what": "line", "n": 12})));
+    assert_eq!(goto_number(GoToWhat::Line, "+3"), Some(json!({"what": "line", "by": 3})));
 }
 
 /// Insert › Bookmark (#1236), as in Word: it opens on the bookmark around the caret, lists by
@@ -1322,6 +1324,47 @@ fn page_setup_paper_widgets_work_together() {
     h.run_steps(3);
     assert_eq!(state(&h), (841.89, 595.28, true));
     assert_eq!(combo(&h).as_deref(), Some("Custom size"));
+}
+
+/// Page Setup › Paper › Paper source: the First page and Other pages lists show the section's
+/// trays and OK applies a change (`layout.paperSource`); a tray the list doesn't know shows as
+/// "Tray N" and OK without touching it changes nothing.
+#[test]
+fn page_setup_paper_source_lists_choose_the_trays() {
+    use egui::accesskit::Role;
+    use egui_kittest::kittest::Queryable;
+    let mut h = app_harness(app_with("Page"));
+    let trays = |h: &egui_kittest::Harness<'_, WordApp>| {
+        let sect = wordcraft_engine::cmd::page::sect(&h.state().session);
+        (sect.paper_src_first, sect.paper_src_other)
+    };
+    h.state_mut().run("ui.dialog", json!({"name": "pageSetup"})).unwrap();
+    h.run_steps(3);
+    let combo = |h: &egui_kittest::Harness<'_, WordApp>, label: &str| h.get_by_role_and_label(Role::ComboBox, label).value();
+    assert_eq!(combo(&h, "First page:").as_deref(), Some("Default tray"));
+    assert_eq!(combo(&h, "Other pages:").as_deref(), Some("Default tray"));
+    h.get_by_role_and_label(Role::ComboBox, "First page:").click();
+    h.run_steps(3);
+    h.get_by_label("Manual feed").click();
+    h.run_steps(3);
+    assert_eq!(combo(&h, "First page:").as_deref(), Some("Manual feed"));
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    assert_eq!(trays(&h), (Some(4), None));
+
+    // A tray from the file that the list doesn't know stays chosen, and OK keeps it.
+    h.state_mut().run("layout.paperSource", json!({"other": 260})).unwrap();
+    h.state_mut().run("ui.dialog", json!({"name": "pageSetup"})).unwrap();
+    h.run_steps(3);
+    assert_eq!(combo(&h, "First page:").as_deref(), Some("Manual feed"));
+    assert_eq!(combo(&h, "Other pages:").as_deref(), Some("Tray 260"));
+    let undo = h.state().session.undo_depth();
+    let steps = h.state().session.undo_labels();
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    assert_eq!(trays(&h), (Some(4), Some(260)));
+    assert_eq!(h.state().session.undo_depth(), undo, "OK without a change adds no undo step");
+    assert_eq!(h.state().session.undo_labels(), steps, "no layout.paperSource for that OK");
 }
 
 /// #1433: Page Setup checks the new size and margins together: a page its margins don't fit

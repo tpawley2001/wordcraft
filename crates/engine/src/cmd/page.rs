@@ -54,6 +54,9 @@ pub fn specs() -> Vec<CommandSpec> {
             with_sect(s, |x| x.valign = va)
         })
         .params(r#"{"value": "top|center|justify|bottom"} (also both|justified; anything else is top). Justified shares each page's spare room between its paragraphs and tables"#),
+        CommandSpec::new("layout.paperSource", "Paper Source", "Layout › Page Setup › Paper", paper_source).params(
+            r#"{"first"?: 1-65535 | null, "other"?: 1-65535 | null} (the printer tray for the section's first page and its other pages, as DOCX `w:paperSrc` stores them; null or 0 is the default tray; a tray left out stays as it is) → {"first", "other"} after the call"#,
+        ),
         CommandSpec::new("layout.sectionRtl", "Right-to-Left Section", "Layout › Page Setup", |s, v| {
             let on = p::bool(v, "value").unwrap_or(!sect(s).rtl);
             with_sect(s, |x| x.rtl = on)
@@ -107,6 +110,36 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .pure(),
     ]
+}
+
+/// Paper source: the printer tray for the section's first page and for its other pages
+/// (`w:paperSrc`, ECMA-376 Part 1 §17.6.9). A tray left out stays as it is; null or 0 is the
+/// default tray. Every call returns the section's trays.
+fn paper_source(s: &mut Session, v: &Value) -> CmdResult {
+    let tray = |k: &str| -> Result<Option<Option<u16>>, CmdError> {
+        match v.get(k) {
+            None => Ok(None),
+            Some(Value::Null) => Ok(Some(None)),
+            Some(value) => match value.as_u64() {
+                Some(0) => Ok(Some(None)),
+                Some(n) if n <= u16::MAX as u64 => Ok(Some(Some(n as u16))),
+                _ => Err(CmdError::Params(format!("`{k}` must be a tray number from 1 to 65535, or null for the default tray"))),
+            },
+        }
+    };
+    let (first, other) = (tray("first")?, tray("other")?);
+    if first.is_some() || other.is_some() {
+        with_sect(s, |x| {
+            if let Some(t) = first {
+                x.paper_src_first = t;
+            }
+            if let Some(t) = other {
+                x.paper_src_other = t;
+            }
+        })?;
+    }
+    let cur = sect(s);
+    Ok(json!({"first": cur.paper_src_first, "other": cur.paper_src_other}))
 }
 
 /// Line Numbers: on with a restart mode (`value`), or off (`none`). `start`, `countBy` and
