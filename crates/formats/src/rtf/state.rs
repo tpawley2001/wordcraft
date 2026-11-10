@@ -458,6 +458,10 @@ pub(super) struct SecFmt {
     pub(super) endnote_pr: wordcraft_doc::section::NoteProps,
     /// `\vertalt|c|j|b`: where the text sits between the top and bottom margins.
     pub(super) valign: wordcraft_doc::section::PageVAlign,
+    /// `\sectspecifyl` / `\sectspecifycl`: the document grid kind; `\sectlinegridN` its pitch in
+    /// twips. A pitch alone turns no grid on, so the kind decides whether there is one.
+    pub(super) grid_kind: Option<wordcraft_doc::section::DocGridType>,
+    pub(super) line_grid: Option<i32>,
 }
 
 impl SecFmt {
@@ -519,6 +523,13 @@ impl SecFmt {
         s.footnote_pr = self.footnote_pr;
         s.endnote_pr = self.endnote_pr;
         s.valign = self.valign;
+        if let Some(kind) = self.grid_kind {
+            let line_pitch = match self.line_grid.filter(|&n| n > 0) {
+                Some(n) => n as f32 / 20.0,
+                None => wordcraft_doc::section::DocGrid::default().line_pitch,
+            };
+            s.doc_grid = Some(wordcraft_doc::section::DocGrid { kind, line_pitch, char_space: 0 });
+        }
         s
     }
 }

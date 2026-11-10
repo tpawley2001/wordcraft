@@ -633,6 +633,11 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "lineppage" => sec.line_restart = Some(LineNumberRestart::Page),
         "linerestart" => sec.line_restart = Some(LineNumberRestart::Section),
         "linecont" => sec.line_restart = Some(LineNumberRestart::Continuous),
+        "sectspecifyl" => sec.grid_kind = Some(wordcraft_doc::section::DocGridType::Lines),
+        "sectspecifycl" => sec.grid_kind = Some(wordcraft_doc::section::DocGridType::LinesAndChars),
+        "sectlinegrid" => sec.line_grid = Some(pv),
+        // Read and ignored: their meaning is not confirmed, so they set no grid and no char space.
+        "sectspecifygen" | "sectexpand" => {}
         "rtlsect" => sec.rtl = true,
         "ltrsect" => sec.rtl = false,
         // Word draws 1, 3 and 5 top to bottom (5 stacking from the left, which the model has no
