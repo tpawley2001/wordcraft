@@ -503,7 +503,18 @@ impl FlowOpts {
     /// paragraph flags ([`FlowOpts::para_flags`]), table row heights and keeps
     /// ([`FlowOpts::rows`]), fields and text boxes.
     pub fn tracked() -> Self {
-        FlowOpts { tracked: true, tabs_spacing: true, widow: true, shading: true, indent_chars: true, para_flags: true, rows: true, fields: true, boxes: true, ..Default::default() }
+        FlowOpts {
+            tracked: true,
+            tabs_spacing: true,
+            widow: true,
+            shading: true,
+            indent_chars: true,
+            para_flags: true,
+            rows: true,
+            fields: true,
+            boxes: true,
+            ..Default::default()
+        }
     }
 }
 
