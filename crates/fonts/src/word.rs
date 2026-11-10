@@ -246,6 +246,13 @@ pub fn missing_font_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)
 /// Tahoma: `/Ascent` 1000, `/Descent` -207; 12 pt lines 14.43 pt apart (1.207 em).
 /// Lucida Bright: `/Ascent` 967, `/Descent` -205; 18 pt lines 21.12 pt apart (1.172 em).
 /// Aptos and Aptos Display: `/Ascent` 939, `/Descent` -282; 11 pt at 1.1 lines is 14.76 pt apart.
+/// Verdana: `/Ascent` 1005, the descent the rest of the line; 10 pt lines 12.12 and 12.24 pt apart (1.215 em).
+/// Georgia: `/Ascent` 917, the descent the rest of the line; 11 pt lines 12.48 pt apart (1.136 em).
+/// Trebuchet MS: `/Ascent` 939, the descent the rest of the line; 24 pt lines 27.84 pt apart (1.161 em).
+/// Century Gothic: `/Ascent` 1006, the descent the rest of the line; 10 pt lines 12.24 and 12.36 pt apart (1.226 em).
+/// Consolas: `/Ascent` 743, the descent the rest of the line; 8 pt lines 9.36 pt apart (1.172 em).
+/// Garamond: `/Ascent` 862, the descent the rest of the line; 20 pt lines 22.44 to 22.58 pt apart (1.125 em).
+/// Comic Sans MS: `/Ascent` 1102, the descent the rest of the line; 11 pt lines 15.36 and 15.24 pt apart (1.394 em).
 fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
     match family.trim().to_ascii_lowercase().as_str() {
         "lucida console" => Some((0.789, 0.211)),
@@ -254,6 +261,13 @@ fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
         "tahoma" => Some((1.0, 0.207)),
         "lucida bright" => Some((0.967, 0.205)),
         "aptos" | "aptos display" => Some((0.939, 0.282)),
+        "verdana" => Some((1.005, 0.210)),
+        "georgia" => Some((0.917, 0.219)),
+        "trebuchet ms" => Some((0.939, 0.222)),
+        "century gothic" => Some((1.006, 0.220)),
+        "consolas" => Some((0.743, 0.429)),
+        "garamond" => Some((0.862, 0.263)),
+        "comic sans ms" => Some((1.102, 0.292)),
         _ => None,
     }
 }

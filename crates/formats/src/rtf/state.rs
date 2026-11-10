@@ -1,4 +1,4 @@
-use super::{Align, Cell, FBlock, Fmt, Para, Rgb, VAlign};
+use super::{Align, Arc, Cell, FBlock, Fmt, Para, Rgb, VAlign};
 use wordcraft_doc::props::{TabAlign, TabLeader, TabStop};
 
 /// Deepest group nesting we track; deeper groups share the innermost state.
@@ -182,14 +182,39 @@ pub(super) struct Output {
     pub(super) defs: Vec<CellDef>,
     pub(super) def_cur: CellDef,
     pub(super) row_header: bool,
+    pub(super) row_height: Option<(f32, bool)>,
+    pub(super) row_keep: bool,
     pub(super) rule_pending: bool,
     pub(super) table_rights: Vec<Vec<i32>>,
+    pub(super) table_heights: Vec<Option<(f32, bool)>>,
+    pub(super) table_keeps: Vec<bool>,
+    pub(super) nest: Vec<TableLevel>,
+}
+
+/// The state of one open table that encloses the one being read (RTF nested tables, `\itapN`):
+/// its rows so far, the row and cell being read, and the row's definitions.
+#[derive(Default)]
+pub(super) struct TableLevel {
+    pub(super) table: Vec<Vec<Cell>>,
+    pub(super) row: Vec<Cell>,
+    pub(super) cell: Vec<FBlock>,
+    pub(super) defs: Vec<CellDef>,
+    pub(super) def_cur: CellDef,
+    pub(super) row_header: bool,
+    pub(super) row_height: Option<(f32, bool)>,
+    pub(super) row_keep: bool,
+    pub(super) table_rights: Vec<Vec<i32>>,
+    pub(super) table_heights: Vec<Option<(f32, bool)>>,
+    pub(super) table_keeps: Vec<bool>,
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct St {
     pub(super) dest: Dest,
     pub(super) fmt: Fmt,
+    /// The name of the monospaced font `\f` selected, which [`Fmt::code`] stands for in the
+    /// text: a paragraph mark keeps it by name.
+    pub(super) mono: Option<Arc<str>>,
     pub(super) rev: RevSt,
     /// Tracked change of the character formatting (reset by `\plain`). Its old formatting is
     /// the `\oldcprops` words, applied on top of the run's formatting when text is read: Word
@@ -207,12 +232,24 @@ pub(super) struct St {
     pub(super) align: Option<Align>,
     pub(super) style: i32,
     pub(super) intbl: bool,
+    /// The paragraph's table depth (`\itapN`): 0 the body, 1 a table, 2 a table in its cell…
+    /// `None` until the paragraph says, when `\intbl` means 1.
+    pub(super) itap: Option<u8>,
     pub(super) ls: Option<i32>,
     pub(super) ilvl: u8,
     pub(super) outline: Option<u8>,
     pub(super) pagebb: bool,
     /// Widow/orphan control (`\widctlpar`, `\nowidctlpar`); `None` until the paragraph says.
     pub(super) widow: Option<bool>,
+    /// Contextual spacing (`\contextualspace`), mirror indents (`\mirrorindents`), automatic
+    /// space before/after (`\sbautoN`, `\saautoN`), hyphenation suppressed (`\hyphpar0`) and
+    /// line grid snapping (`\nosnaplinegrid`); `None` until the paragraph says.
+    pub(super) contextual: Option<bool>,
+    pub(super) mirror: Option<bool>,
+    pub(super) sb_auto: Option<bool>,
+    pub(super) sa_auto: Option<bool>,
+    pub(super) no_hyph: Option<bool>,
+    pub(super) snap_grid: Option<bool>,
     pub(super) field: Option<usize>,
     /// The code page of the current font's charset (`\fcharset`), when it names one.
     pub(super) cp: Option<u16>,
@@ -222,6 +259,11 @@ pub(super) struct St {
     /// described.
     pub(super) borders: wordcraft_doc::props::Borders,
     pub(super) border_side: Option<char>,
+    /// Paragraph shading: the background (`\cbpat`) and pattern (`\cfpat`) colour table
+    /// indexes and the pattern percentage in hundredths (`\shading`).
+    pub(super) cbpat: Option<i32>,
+    pub(super) cfpat: Option<i32>,
+    pub(super) shading: i32,
     pub(super) sb: Option<i32>,
     pub(super) sa: Option<i32>,
     pub(super) sl: i32,
@@ -229,6 +271,10 @@ pub(super) struct St {
     pub(super) li: Option<i32>,
     pub(super) ri: Option<i32>,
     pub(super) fi: Option<i32>,
+    /// The same indents in hundredths of a character (`\culi`, `\curi`, `\cufi`).
+    pub(super) culi: Option<i32>,
+    pub(super) curi: Option<i32>,
+    pub(super) cufi: Option<i32>,
     /// The paragraph's tab stops (`\tx`, `\tb`), and the alignment (`\tq*`) and leader (`\tl*`)
     /// words read for the next one.
     pub(super) tabs: Vec<TabStop>,
@@ -237,6 +283,8 @@ pub(super) struct St {
     /// Word 6.0/95 paragraph numbering (`{\*\pn …}`), which the group's end keeps here; `\pard`
     /// clears it. A paragraph with `\lsN` (Word 97+) ignores it.
     pub(super) pn: Option<Box<Pn>>,
+    /// The paragraph's frame and drop cap words (`\absw`, `\posx`, `\dropcapli`…).
+    pub(super) frame: Option<Box<super::frames::FrameSt>>,
 }
 
 impl Default for St {
@@ -244,6 +292,7 @@ impl Default for St {
         St {
             dest: Dest::Body,
             fmt: Fmt::default(),
+            mono: None,
             rev: RevSt::default(),
             chg_c: FmtRevSt::default(),
             chg_p: FmtRevSt::default(),
@@ -254,15 +303,25 @@ impl Default for St {
             align: None,
             style: 0,
             intbl: false,
+            itap: None,
             ls: None,
             ilvl: 0,
             outline: None,
             pagebb: false,
             widow: None,
+            contextual: None,
+            mirror: None,
+            sb_auto: None,
+            sa_auto: None,
+            no_hyph: None,
+            snap_grid: None,
             field: None,
             cp: None,
             borders: Default::default(),
             border_side: None,
+            cbpat: None,
+            cfpat: None,
+            shading: 0,
             sb: None,
             sa: None,
             sl: 0,
@@ -270,10 +329,14 @@ impl Default for St {
             li: None,
             ri: None,
             fi: None,
+            culi: None,
+            curi: None,
+            cufi: None,
             tabs: Vec::new(),
             tab_align: TabAlign::Left,
             tab_leader: TabLeader::None,
             pn: None,
+            frame: None,
         }
     }
 }
@@ -288,6 +351,8 @@ pub(super) struct CellDef {
     /// width and `\brdrcf` colour).
     pub(super) borders: wordcraft_doc::props::Borders,
     pub(super) valign: Option<VAlign>,
+    /// Turned text (`\cltxtbrl`, `\cltxbtlr`…).
+    pub(super) direction: wordcraft_doc::props::TextDirection,
 }
 
 /// Page size and margins in twips (`\paperw`, `\margl`… and their `…sxn` section forms).

@@ -1830,24 +1830,34 @@ fn compound_borders_round_trip() {
     assert_eq!(tops(&back), want);
 }
 
+mod char_effects;
+mod char_unit_indents;
 mod column_widths;
 mod doc_grid;
 mod doc_page_options;
 mod doc_settings;
 mod doc_widow_control;
 mod foreign_styles;
+mod frames;
 mod justification_flag;
 mod legacy_pn;
+mod mark_and_default_font;
+mod nested_tables;
 mod note_options;
 mod object_result;
+mod own_styles;
 mod page_borders;
 mod paper_source;
+mod para_extras;
+mod para_shading;
 mod section_extras;
 mod section_revisions;
 mod section_text_flow;
 mod shape_text;
 mod surrogate_boundaries;
+mod table_rows;
 mod tabs_spacing;
 mod trailing_data;
+mod underline_styles;
 mod unicode_surrogates;
 mod widow_control;

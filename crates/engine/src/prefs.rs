@@ -24,6 +24,9 @@ pub struct Prefs {
     pub print_field_codes: bool,
     /// File › Options › Advanced › Print pages in reverse order (off).
     pub print_reverse: bool,
+    /// File › Options › Display › Print document properties (off): a print of the document is
+    /// followed by the Document Properties report on its own page.
+    pub print_properties: bool,
     /// File › Options › Advanced › Print on front of the sheet for duplex printing (off): a manual
     /// duplex job prints the fronts in reverse order.
     pub print_duplex_front: bool,
@@ -111,6 +114,7 @@ impl Default for Prefs {
             print_hidden_text: false,
             print_field_codes: false,
             print_reverse: false,
+            print_properties: false,
             print_duplex_front: false,
             print_duplex_back: false,
             typing_replaces_selection: true,

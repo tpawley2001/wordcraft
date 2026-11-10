@@ -50,6 +50,10 @@ pub struct PdfOptions {
     /// How [`export`] shows digits (the Numeral setting; callers resolve `System`, see
     /// [`NumeralMode::resolve`]). [`export_layout`] keeps the layout it is given.
     pub numeral: NumeralMode,
+    /// Draw only what was filled into the legacy form fields, where the full page has it (Print
+    /// only the data from a form, `w:printFormsData`): no other text, page colour, watermark,
+    /// borders, shading or pictures. Print jobs only.
+    pub forms_data_only: bool,
 }
 
 /// How many characters of the watermark text the PDF draws.
@@ -66,6 +70,7 @@ impl PdfOptions {
             dim_body: false,
             markup: self.include_markup,
             placeholders: false,
+            forms_data_only: self.forms_data_only,
             ..Default::default()
         }
     }
@@ -98,6 +103,7 @@ impl Default for PdfOptions {
             links: true,
             paper: None,
             numeral: NumeralMode::Arabic,
+            forms_data_only: false,
         }
     }
 }

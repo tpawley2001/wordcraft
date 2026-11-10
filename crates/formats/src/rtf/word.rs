@@ -1,8 +1,8 @@
 use super::reader::apply_section_word;
 use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pn, PnKind, RevSt, SecFmt, St};
-use super::styles::{StyleDef, is_char_format_word, is_format_word};
+use super::styles::{StyleDef, StyleEntry, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
-use wordcraft_doc::props::{TabAlign, TabLeader, TabStop};
+use wordcraft_doc::props::{CharProps, TabAlign, TabLeader, TabStop, Underline};
 
 impl Reader {
     pub(super) fn word(&mut self, w: &str, p: Option<i32>, starred: bool, first_in_group: bool) {
@@ -27,18 +27,27 @@ impl Reader {
             self.enter_destination(d);
             return;
         }
+        // A nested row's properties (`{\*\nesttableprops \trowd … \nestrow}`) are read: they
+        // describe the innermost table's row.
+        if w == "nesttableprops" {
+            return;
+        }
         if self.skip_ignorable_destination(w, starred, first_in_group) {
             return;
         }
         if self.destination_word(w, p, on, pv) || self.page_border_word(w, pv) {
             return;
         }
+        if self.underline_word(w, on, pv) || self.char_effect_word(w, on, pv) {
+            return;
+        }
         match w {
             "par" => self.end_para_mark(),
             "sect" => self.end_section(),
             "cell" => self.end_cell(),
-            "nestcell" => self.end_para(true),
-            "row" => self.end_row(),
+            "nestcell" => self.end_nest_cell(),
+            "row" => self.end_outer_row(),
+            "nestrow" => self.end_nest_row(),
             "line" | "softline" => self.ch('\n'),
             "tab" => self.ch('\t'),
             "page" | "softpage" => self.ch('\u{000C}'),
@@ -82,6 +91,7 @@ impl Reader {
             "uc" => self.st.uc = pv.max(0) as usize,
             "plain" => {
                 self.st.fmt = Fmt { link: self.st.fmt.link.clone(), ..Default::default() };
+                self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
                 self.st.hidden = false;
@@ -91,7 +101,8 @@ impl Reader {
                 // Revision marks are character formatting, which `\pard` leaves alone.
                 let (dest, fmt, rev, uc, hidden) = (self.st.dest, self.st.fmt.clone(), self.st.rev, self.st.uc, self.st.hidden);
                 let chg_c = std::mem::take(&mut self.st.chg_c);
-                self.st = St { dest, fmt, rev, chg_c, uc, hidden, field, ..Default::default() };
+                let mono = self.st.mono.take();
+                self.st = St { dest, fmt, mono, rev, chg_c, uc, hidden, field, ..Default::default() };
                 self.page_side = None;
             }
             "revised" => self.st.rev.ins = on,
@@ -107,11 +118,7 @@ impl Reader {
             "prdate" => self.st.chg_p.date = pv as u32,
             "b" => self.st.fmt.bold = on,
             "i" => self.st.fmt.italic = on,
-            "ul" | "uld" | "uldash" | "uldashd" | "uldashdd" | "uldb" | "ulth" | "ulw" | "ulwave" | "ulhwave" | "ulldash" | "ulthd" => {
-                self.st.fmt.underline = on
-            }
-            "ulnone" => self.st.fmt.underline = false,
-            "strike" | "striked" => self.st.fmt.strike = on,
+            "strike" => self.st.fmt.strike = on,
             "super" | "up" => {
                 self.st.fmt.sup = on;
                 self.st.fmt.sub = false;
@@ -140,13 +147,22 @@ impl Reader {
                 self.st.cp = self.font_cps.get(&pv).copied();
                 let name = self.fonts.get(&pv).cloned();
                 match name {
+                    // The default font (`\deff`), monospaced or not, is the document's: text in
+                    // it is plain text, as after `\plain`.
+                    Some(n) if model::is_mono(&n) && pv == self.deff => {
+                        self.st.fmt.code = false;
+                        self.st.fmt.font = None;
+                        self.st.mono = None;
+                    }
                     Some(n) if model::is_mono(&n) => {
                         self.st.fmt.code = true;
                         self.st.fmt.font = None;
+                        self.st.mono = Some(n);
                     }
                     Some(n) => {
                         self.st.fmt.code = false;
                         self.st.fmt.font = Some(n);
+                        self.st.mono = None;
                     }
                     None => {}
                 }
@@ -160,26 +176,40 @@ impl Reader {
             "qj" => self.st.align = Some(Align::Justify),
             "qd" => self.st.align = Some(Align::Distribute),
             "s" => self.st.style = pv,
+            // A character style: the document style its stylesheet entry became, if one did.
+            "cs" => self.char_style(pv),
             "outlinelevel" => self.st.outline = Some(pv.clamp(0, 9) as u8),
             "pagebb" => self.st.pagebb = on,
             "widctlpar" => self.st.widow = Some(true),
             "nowidctlpar" => self.st.widow = Some(false),
+            "contextualspace" => self.st.contextual = Some(true),
+            "mirrorindents" => self.st.mirror = Some(true),
+            "sbauto" => self.st.sb_auto = Some(on),
+            "saauto" => self.st.sa_auto = Some(on),
+            "hyphpar" => self.st.no_hyph = Some(!on),
+            "nosnaplinegrid" => self.st.snap_grid = Some(false),
             "intbl" => self.st.intbl = true,
+            "itap" => {
+                let n = pv.clamp(0, model::MAX_DEPTH as i32) as u8;
+                self.st.itap = Some(n);
+                self.st.intbl = n > 0;
+            }
             "ls" => self.st.ls = Some(pv),
             "ilvl" => self.st.ilvl = pv.clamp(0, 8) as u8,
-            "brdrb" | "brdrt" | "brdrl" | "brdrr" if self.cell_side.is_none() => {
-                self.page_side = None;
-                if w == "brdrb" && self.st.dest == Dest::Body {
-                    self.rule_pending = true;
-                }
-                self.st.border_side = w.chars().last();
-            }
+            _ if self.cell_side.is_none() && self.para_border_word(w, pv) => {}
             "trowd" => {
                 self.defs.clear();
                 self.def_cur = CellDef::default();
                 self.row_header = false;
+                self.row_height = None;
+                self.row_keep = false;
             }
             "trhdr" => self.row_header = true,
+            // Twips: positive at least, negative exactly, 0 auto; beyond 22 inches ignored.
+            "trrh" => {
+                self.row_height = (pv != 0 && pv.unsigned_abs() <= 31680).then(|| (pv.unsigned_abs() as f32 / 20.0, pv < 0));
+            }
+            "trkeep" => self.row_keep = on,
             "clvmgf" => self.def_cur.vmerge = 1,
             "clvmrg" => self.def_cur.vmerge = 2,
             "clmgf" => self.def_cur.hmerge = 1,
@@ -187,6 +217,9 @@ impl Reader {
             "clvertalt" => self.def_cur.valign = Some(VAlign::Top),
             "clvertalc" => self.def_cur.valign = Some(VAlign::Center),
             "clvertalb" => self.def_cur.valign = Some(VAlign::Bottom),
+            "cltxlrtb" | "cltxlrtbv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Horizontal,
+            "cltxtbrl" | "cltxtbrlv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Down,
+            "cltxbtlr" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Up,
             "clcbpat" => self.def_cur.shading = self.colors.get(pv.max(0) as usize).copied().flatten(),
             "sb" => self.st.sb = Some(pv),
             "sa" => self.st.sa = Some(pv),
@@ -195,6 +228,10 @@ impl Reader {
             "li" | "lin" => self.st.li = Some(pv),
             "ri" | "rin" => self.st.ri = Some(pv),
             "fi" => self.st.fi = Some(pv),
+            // Indents in hundredths of a character, beside the twips ones.
+            "culi" => self.st.culi = Some(pv.clamp(-158400, 158400)),
+            "curi" => self.st.curi = Some(pv.clamp(-158400, 158400)),
+            "cufi" => self.st.cufi = Some(pv.clamp(-158400, 158400)),
             "tqr" => self.st.tab_align = TabAlign::Right,
             "tqc" => self.st.tab_align = TabAlign::Center,
             "tqdec" => self.st.tab_align = TabAlign::Decimal,
@@ -239,21 +276,23 @@ impl Reader {
                     _ => BorderStyle::Single,
                 };
                 let b = (style != BorderStyle::None).then_some(Border { style, ..Border::single(0.5) });
-                if let Some(slot) = self.cell_border_slot() {
-                    *slot = b;
-                }
+                self.each_border_slot(|slot| *slot = b);
             }
             "brdrw" if self.border_open() => {
                 let width = (pv as f32 / 20.0).clamp(0.25, 6.0);
-                if let Some(Some(b)) = self.cell_border_slot() {
-                    b.width = width;
-                }
+                self.each_border_slot(|slot| {
+                    if let Some(b) = slot {
+                        b.width = width;
+                    }
+                });
             }
             "brdrcf" if self.border_open() => {
                 let color = self.colors.get(pv.max(0) as usize).copied().flatten();
-                if let Some(Some(b)) = self.cell_border_slot() {
-                    b.color = color;
-                }
+                self.each_border_slot(|slot| {
+                    if let Some(b) = slot {
+                        b.color = color;
+                    }
+                });
             }
             "paperw" => self.page.w = Some(pv),
             "paperh" => self.page.h = Some(pv),
@@ -262,7 +301,7 @@ impl Reader {
             "margt" => self.page.top = Some(pv),
             "margb" => self.page.bottom = Some(pv),
             "landscape" => self.page.landscape = on,
-            _ if self.doc_note_word(w, p) || self.doc_opts.word(w, p) || self.doc_setting_word(w, p) => {}
+            _ if self.doc_note_word(w, p) || self.doc_opts.word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
             _ if self.section_word(w, p) => {}
             "cellx" => {
                 self.cell_side = None;
@@ -378,7 +417,9 @@ impl Reader {
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
             | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb" | "fontfile"
-            | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl" => Some(Dest::Skip),
+            | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl"
+            // The flat copy of nested tables, for readers without them.
+            | "nonesttables" => Some(Dest::Skip),
             // Word 6.0/95 paragraph numbering: read, so the paragraph imports as a list.
             "pn" => {
                 self.pn_cur = Pn::default();
@@ -442,7 +483,9 @@ impl Reader {
     }
 
     fn skip_ignorable_destination(&mut self, word: &str, starred: bool, first_in_group: bool) -> bool {
-        if !starred || !first_in_group || matches!(word, "fldinst" | "bkmkstart") {
+        // A character style's stylesheet entry is `{\*\csN …}`.
+        let char_style = word == "cs" && self.st.dest == Dest::StyleSheet;
+        if !starred || !first_in_group || char_style || matches!(word, "fldinst" | "bkmkstart") {
             return false;
         }
         self.st.dest = Dest::Skip;
@@ -480,9 +523,20 @@ impl Reader {
                     "s" | "cs" | "ds" | "ts" => {
                         self.style_cur = if word == "s" { value } else { -1 - value.saturating_abs() };
                         self.style_name.clear();
-                        *def = StyleDef::default();
+                        let entry = match word {
+                            "s" => StyleEntry::Para,
+                            "cs" => StyleEntry::Char,
+                            _ => StyleEntry::Other,
+                        };
+                        *def = StyleDef { entry, ..Default::default() };
                     }
                     "sbasedon" => def.based_on = Some(value),
+                    "snext" => def.next = Some(value),
+                    "slink" => def.link = Some(value),
+                    "sqformat" => def.quick = on,
+                    "spriority" => def.priority = u32::try_from(value).ok(),
+                    "ssemihidden" | "shidden" => def.hidden |= on,
+                    "slocked" => def.locked = on,
                     "b" => def.bold = Some(on),
                     "i" => def.italic = Some(on),
                     "fs" => def.size = (value > 0).then(|| (value as f32 / 2.0).clamp(1.0, 1638.0)),
@@ -715,11 +769,64 @@ impl Reader {
         }
     }
 
+    /// A character effect word (Font › Effects, Scale, Kerning) into the run's own properties.
+    fn char_effect_word(&mut self, w: &str, on: bool, pv: i32) -> bool {
+        match w {
+            // `\striked1` is double strikethrough; single strikethrough is `\strike`.
+            "striked" => self.set_extra(|x| x.double_strike = on.then_some(true)),
+            "caps" => self.set_extra(|x| x.caps = on.then_some(true)),
+            "scaps" => self.set_extra(|x| x.small_caps = on.then_some(true)),
+            "outl" => self.set_extra(|x| x.outline = on.then_some(true)),
+            "shad" => self.set_extra(|x| x.shadow = on.then_some(true)),
+            "embo" => self.set_extra(|x| x.emboss = on.then_some(true)),
+            "impr" => self.set_extra(|x| x.engrave = on.then_some(true)),
+            // Horizontal scale, percent (100 = normal); kerning from a size in half-points (0 = off).
+            "charscalex" if (1..=600).contains(&pv) => self.set_extra(|x| x.scale = (pv != 100).then_some(pv as f32)),
+            "kerning" if (0..=3276).contains(&pv) => self.set_extra(|x| x.kern = (pv != 0).then_some(pv as f32 / 2.0)),
+            _ => return false,
+        }
+        true
+    }
+
+    /// `\csN`: the text's character style, when entry `n` became one of the document's own.
+    fn char_style(&mut self, n: i32) {
+        let id = self.own_char_style(n);
+        self.set_extra(|x| x.style = id);
+    }
+
     /// The run's character spacing, points (0 = normal).
     fn char_spacing(&mut self, pt: f32) {
+        self.set_extra(|x| x.spacing = (pt != 0.0).then_some(pt));
+    }
+
+    /// An underline word: a style (`\ul`, `\uldb`…), `\ulnone`, or the colour `\ulcN`.
+    fn underline_word(&mut self, w: &str, on: bool, pv: i32) -> bool {
+        match w {
+            "ulnone" => self.underline(Underline::None, false),
+            "ulc" => {
+                // Entry 0 is the auto colour: no underline colour of its own.
+                let c = if pv > 0 { self.colors.get(pv as usize).copied().flatten() } else { None };
+                self.set_extra(|x| x.underline_color = c);
+            }
+            _ => match underline_style(w) {
+                Some(style) => self.underline(style, on),
+                None => return false,
+            },
+        }
+        true
+    }
+
+    /// The run's underline turned on in `style`, or off (any underline word with parameter 0).
+    fn underline(&mut self, style: Underline, on: bool) {
+        self.st.fmt.underline = on;
+        self.set_extra(|x| x.underline = on.then_some(style));
+    }
+
+    /// Changes the run's character properties beyond the [`Fmt`] fields; none left is `None`.
+    fn set_extra(&mut self, f: impl FnOnce(&mut CharProps)) {
         let x = self.st.fmt.extra.get_or_insert_with(Default::default);
-        x.spacing = (pt != 0.0).then_some(pt);
-        if **x == wordcraft_doc::props::CharProps::default() {
+        f(x);
+        if **x == CharProps::default() {
             self.st.fmt.extra = None;
         }
     }
@@ -727,6 +834,24 @@ impl Reader {
     fn in_info(&self) -> bool {
         self.info_depth.is_some_and(|d| self.depth() > d)
     }
+}
+
+/// The underline an underline control word turns on (RTF 1.9.1); the heavy and long forms
+/// are the style they are drawn as, as `Underline::from_ooxml` reads their OOXML names.
+fn underline_style(w: &str) -> Option<Underline> {
+    Some(match w {
+        "ul" => Underline::Single,
+        "ulw" => Underline::Words,
+        "uldb" => Underline::Double,
+        "ulth" => Underline::Thick,
+        "uld" | "ulthd" => Underline::Dotted,
+        "uldash" | "ulldash" | "ulthdash" | "ulthldash" => Underline::Dash,
+        "uldashd" | "ulthdashd" => Underline::DotDash,
+        "uldashdd" | "ulthdashdd" => Underline::DotDotDash,
+        "ulwave" | "ulhwave" => Underline::Wave,
+        "ululdbwave" => Underline::DoubleWave,
+        _ => return None,
+    })
 }
 
 /// The target of a `HYPERLINK` field instruction; `%22` is a quote, as the writer stores one.

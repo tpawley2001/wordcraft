@@ -2,7 +2,7 @@ use super::date::{dttm_to_iso, iso_date};
 use super::parse::column_grid;
 use super::state::{
     CellDef, CommentData, Dest, DocOpts, HeaderFooter, MARK_CLOSE, MARK_OPEN, MAX_GROUPS, MAX_NOTE_BLOCKS, MAX_NOTES, MAX_REV_AUTHORS, MAX_SECTIONS,
-    NoteData, Output, PageGeom, Pn, SecFmt, St, Sub, apply_note_word,
+    NoteData, Output, PageGeom, Pn, SecFmt, St, Sub, TableLevel, apply_note_word,
 };
 use super::styles::{StyleDef, drop_style_formatting, style_fmt};
 use super::{Arc, Cell, FBlock, FTable, Fmt, HashMap, HashSet, Inline, Kind, Meta, Para, Rgb, model};
@@ -54,6 +54,9 @@ pub(super) struct Reader {
     pub(super) page_side: Option<char>,
     /// Each table row's cell right edges (`\cellx`, twips), for the table's column grid.
     table_rights: Vec<Vec<i32>>,
+    /// Each table row's height (points, exact) and whether it keeps from breaking across pages.
+    table_heights: Vec<Option<(f32, bool)>>,
+    table_keeps: Vec<bool>,
     pub(super) colors: Vec<Option<Rgb>>,
     pub(super) color_cur: (u8, u8, u8, bool),
     pub(super) styles: HashMap<i32, String>,
@@ -62,6 +65,11 @@ pub(super) struct Reader {
     pub(super) style_cur: i32,
     pub(super) style_name: String,
     pub(super) style_def_cur: StyleDef,
+    /// The stylesheet's entries in the order the file gives them.
+    pub(super) style_order: Vec<i32>,
+    /// The document style id each paragraph and character entry stands for, made when first
+    /// needed (a new entry clears it).
+    pub(super) style_ids: std::cell::OnceCell<super::styles::StyleIds>,
     /// The text of `{\*\generator …}`, when the file names the program that wrote it.
     pub(super) generator: Option<String>,
     pub(super) meta: Meta,
@@ -115,6 +123,12 @@ pub(super) struct Reader {
     pub(super) defs: Vec<CellDef>,
     pub(super) def_cur: CellDef,
     pub(super) row_header: bool,
+    /// The row's height (`\trrh`: points, exact) and `\trkeep`, reset by `\trowd`.
+    pub(super) row_height: Option<(f32, bool)>,
+    pub(super) row_keep: bool,
+    /// The tables enclosing the one being read, outermost first (nested tables: the current
+    /// table's fields above are the innermost open table's).
+    nest: Vec<TableLevel>,
     pub(super) created: Option<(u32, u32, u32, u32, u32)>,
     pub(super) in_creatim: bool,
     pub(super) rule_pending: bool,
@@ -156,7 +170,61 @@ impl Reader {
         std::mem::swap(&mut o.row_header, &mut self.row_header);
         std::mem::swap(&mut o.rule_pending, &mut self.rule_pending);
         std::mem::swap(&mut o.table_rights, &mut self.table_rights);
+        std::mem::swap(&mut o.row_height, &mut self.row_height);
+        std::mem::swap(&mut o.row_keep, &mut self.row_keep);
+        std::mem::swap(&mut o.table_heights, &mut self.table_heights);
+        std::mem::swap(&mut o.table_keeps, &mut self.table_keeps);
+        std::mem::swap(&mut o.nest, &mut self.nest);
         o
+    }
+
+    /// Swaps the current table's state with `l`'s.
+    fn swap_level(&mut self, l: &mut TableLevel) {
+        std::mem::swap(&mut l.table, &mut self.table);
+        std::mem::swap(&mut l.row, &mut self.row);
+        std::mem::swap(&mut l.cell, &mut self.cell);
+        std::mem::swap(&mut l.defs, &mut self.defs);
+        std::mem::swap(&mut l.def_cur, &mut self.def_cur);
+        std::mem::swap(&mut l.row_header, &mut self.row_header);
+        std::mem::swap(&mut l.row_height, &mut self.row_height);
+        std::mem::swap(&mut l.row_keep, &mut self.row_keep);
+        std::mem::swap(&mut l.table_rights, &mut self.table_rights);
+        std::mem::swap(&mut l.table_heights, &mut self.table_heights);
+        std::mem::swap(&mut l.table_keeps, &mut self.table_keeps);
+    }
+
+    /// The table depth of the table being read: 1 the outermost, 2 a table in its cell…
+    pub(super) fn table_level(&self) -> usize {
+        1 + self.nest.len()
+    }
+
+    /// The current paragraph's table depth (`\itapN`, else 1 for `\intbl`), at most
+    /// [`model::MAX_DEPTH`]: deeper paragraphs go into the deepest table kept.
+    pub(super) fn para_depth(&self) -> usize {
+        let d = match self.st.itap {
+            Some(n) => usize::from(n),
+            None => usize::from(self.st.intbl),
+        };
+        d.min(model::MAX_DEPTH)
+    }
+
+    /// Makes the table at depth `d` (>= 1) the current one: deeper tables end and go into the
+    /// cell of the one enclosing them, after its paragraphs so far; missing levels open.
+    fn enter_depth(&mut self, d: usize) {
+        let d = d.clamp(1, model::MAX_DEPTH);
+        while self.table_level() > d {
+            let t = self.take_table();
+            let Some(mut parent) = self.nest.pop() else { break };
+            self.swap_level(&mut parent);
+            if let Some(t) = t {
+                self.cell.push(FBlock::Table(t));
+            }
+        }
+        while self.table_level() < d {
+            let mut l = TableLevel::default();
+            self.swap_level(&mut l);
+            self.nest.push(l);
+        }
     }
 
     /// Whether a page, cell or paragraph border side is being described.
@@ -175,31 +243,43 @@ impl Reader {
             }
             "brsp" if self.page_side.is_some() => {
                 let space = (pv as f32 / 20.0).clamp(0.0, 31.0);
-                if let Some(Some(b)) = self.cell_border_slot() {
-                    b.space = space;
-                }
+                self.each_border_slot(|slot| {
+                    if let Some(b) = slot {
+                        b.space = space;
+                    }
+                });
             }
             _ => return false,
         }
         true
     }
 
-    /// The border of the page side being described, else of the cell side, else of the
-    /// paragraph side.
-    pub(super) fn cell_border_slot(&mut self) -> Option<&mut Option<wordcraft_doc::props::Border>> {
+    /// Applies `f` to the border of the page side being described, else of the cell side, else
+    /// of the paragraph side: `h` is the border between paragraphs (`\brdrbtw`), `x` all four
+    /// sides (`\box`).
+    pub(super) fn each_border_slot(&mut self, mut f: impl FnMut(&mut Option<wordcraft_doc::props::Border>)) {
         let (b, side) = match (self.page_side, self.cell_side) {
             // A header or footer doesn't set the body's section.
-            (Some(_), _) if self.hf.is_some() || self.sub.is_some() => return None,
+            (Some(_), _) if self.hf.is_some() || self.sub.is_some() => return,
             (Some(c), _) => (&mut self.sec.page_borders, c),
             (None, Some(c)) => (&mut self.def_cur.borders, c),
-            (None, None) => (&mut self.st.borders, self.st.border_side?),
+            (None, None) => match self.st.border_side {
+                Some(s) => (&mut self.st.borders, s),
+                None => return,
+            },
         };
         match side {
-            't' => Some(&mut b.top),
-            'l' => Some(&mut b.left),
-            'b' => Some(&mut b.bottom),
-            'r' => Some(&mut b.right),
-            _ => None,
+            't' => f(&mut b.top),
+            'l' => f(&mut b.left),
+            'b' => f(&mut b.bottom),
+            'r' => f(&mut b.right),
+            'h' => f(&mut b.between),
+            'x' => {
+                for slot in [&mut b.top, &mut b.left, &mut b.bottom, &mut b.right] {
+                    f(slot);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -362,6 +442,34 @@ impl Reader {
             self.page_side = None;
         }
         apply_section_word(&mut self.sec, w, p)
+    }
+
+    /// Applies paragraph word `w` when it names a border side (`\brdrt`, `\brdrl`, `\brdrb`,
+    /// `\brdrr`, the between border `\brdrbtw`, all four sides `\box`) or the shading (`\cbpat`,
+    /// `\cfpat`, `\shading`). False when it isn't one.
+    pub(super) fn para_border_word(&mut self, w: &str, pv: i32) -> bool {
+        match w {
+            "brdrbtw" => {
+                self.page_side = None;
+                self.st.border_side = Some('h');
+            }
+            "box" => {
+                self.page_side = None;
+                self.st.border_side = Some('x');
+            }
+            "cbpat" => self.st.cbpat = Some(pv),
+            "cfpat" => self.st.cfpat = Some(pv),
+            "shading" => self.st.shading = pv,
+            "brdrb" | "brdrt" | "brdrl" | "brdrr" => {
+                self.page_side = None;
+                if w == "brdrb" && self.st.dest == Dest::Body {
+                    self.rule_pending = true;
+                }
+                self.st.border_side = w.chars().last();
+            }
+            _ => return false,
+        }
+        true
     }
 
     /// Applies document formatting word `w` when it is a footnote or endnote option. False when
@@ -541,6 +649,7 @@ impl Reader {
         let read = std::mem::take(&mut self.para);
         let props = self.para_props(&self.st);
         let mut p = Para { inlines: read.inlines, mark_ins: read.mark_ins, mark_del: read.mark_del, ..props };
+        p.mark = self.empty_mark(&p);
         if p.kind == Kind::Normal && p.inlines.is_empty() && self.rule_pending {
             p.kind = Kind::Rule;
         }
@@ -562,23 +671,88 @@ impl Reader {
             }
         }
         self.para_has = false;
-        if self.st.intbl || in_cell {
-            self.cell.push(FBlock::Para(p));
-        } else {
+        let d = self.para_depth();
+        let d = if in_cell { d.max(1) } else { d };
+        self.place_para(p, d);
+    }
+
+    /// Puts paragraph `p` at table depth `d`: the body (0) or the cell being read of the table
+    /// at that depth.
+    fn place_para(&mut self, p: Para, d: usize) {
+        if d == 0 {
             self.close_table();
             self.body.push(FBlock::Para(p));
+        } else {
+            self.enter_depth(d);
+            self.cell.push(FBlock::Para(p));
         }
     }
 
+    /// The paragraph mark's formatting of `p` when it holds no text: the character formatting in
+    /// effect at its end (RTF 1.9.1, Paragraph Text), which sets an empty line's height. A
+    /// monospaced font keeps its name.
+    fn empty_mark(&self, p: &Para) -> Option<Box<wordcraft_doc::props::CharProps>> {
+        if !p.textless() {
+            return None;
+        }
+        let f = &self.st.fmt;
+        let plain = Fmt { link: None, ins: None, del: None, fmt_change: None, ..f.clone() };
+        let mut m = model::char_props(&plain);
+        if f.code
+            && let Some(n) = &self.st.mono
+        {
+            m.font = Some(n.to_string());
+        }
+        (!m.is_empty()).then(|| Box::new(m))
+    }
+
+    /// `\cell`: the end of a cell of the outermost table.
     pub(super) fn end_cell(&mut self) {
+        self.end_cell_at(1);
+    }
+
+    /// `\nestcell`: the end of a cell of the table at the paragraph's depth; outside a nested
+    /// table, the end of the paragraph.
+    pub(super) fn end_nest_cell(&mut self) {
+        let d = self.para_depth();
+        if d >= 2 {
+            self.end_cell_at(d);
+        } else {
+            self.end_para(false);
+        }
+    }
+
+    /// The end of the cell of the table at depth `d`, with the paragraph being read.
+    fn end_cell_at(&mut self, d: usize) {
+        // The cell ends at its own depth, whatever the paragraph's words say.
+        let saved = self.st.itap;
+        self.st.itap = u8::try_from(d.clamp(1, model::MAX_DEPTH)).ok();
         self.end_para(true);
+        self.st.itap = saved;
         let blocks = std::mem::take(&mut self.cell);
         if self.row.len() < 63 {
             self.row.push(Cell { blocks, ..Default::default() });
         }
     }
 
-    pub(super) fn end_row(&mut self) {
+    /// `\row`: the end of a row of the outermost table; tables nested in it end first.
+    pub(super) fn end_outer_row(&mut self) {
+        if self.para_has {
+            self.end_cell_at(1);
+        }
+        self.enter_depth(1);
+        self.end_row();
+    }
+
+    /// `\nestrow`: the end of a row of the innermost nested table; nothing outside one.
+    pub(super) fn end_nest_row(&mut self) {
+        if !self.nest.is_empty() {
+            self.end_row();
+        }
+    }
+
+    /// The end of a row of the current table.
+    fn end_row(&mut self) {
         if self.para_has || !self.para.inlines.is_empty() {
             self.flush_high_surrogate();
         } else {
@@ -587,7 +761,7 @@ impl Reader {
             self.pending_high = None;
         }
         if self.para_has {
-            self.end_cell();
+            self.end_cell_at(self.table_level());
         }
         let mut cells = std::mem::take(&mut self.row);
         let defs = self.defs.clone();
@@ -607,6 +781,7 @@ impl Reader {
             c.borders = d.borders.any_visible().then_some(d.borders);
             c.header = self.row_header;
             c.valign = d.valign;
+            c.direction = d.direction;
             match d.vmerge {
                 1 => c.rowspan = 2,
                 2 => c.covered = true,
@@ -624,10 +799,21 @@ impl Reader {
             rights.truncate(out.len());
             self.table.push(out);
             self.table_rights.push(rights);
+            self.table_heights.push(self.row_height);
+            self.table_keeps.push(self.row_keep);
         }
     }
 
+    /// Ends every open table; the outermost goes into the body.
     pub(super) fn close_table(&mut self) {
+        self.enter_depth(1);
+        if let Some(t) = self.take_table() {
+            self.body.push(FBlock::Table(t));
+        }
+    }
+
+    /// Ends the current table, with its row and cell being read.
+    fn take_table(&mut self) -> Option<FTable> {
         if !self.row.is_empty() || !self.cell.is_empty() {
             if !self.cell.is_empty() {
                 let blocks = std::mem::take(&mut self.cell);
@@ -635,13 +821,19 @@ impl Reader {
             }
             self.end_row();
         }
-        if !self.table.is_empty() {
-            let mut rows = std::mem::take(&mut self.table);
-            let rights = std::mem::take(&mut self.table_rights);
-            let widths = column_grid(&mut rows, &rights);
-            // Word draws only the borders the cells name: no grid style, each cell its own.
-            self.body.push(FBlock::Table(FTable { rows, widths, borderless: true, extra: None, kept: None, wrap: None }));
+        if self.table.is_empty() {
+            return None;
         }
+        let mut rows = std::mem::take(&mut self.table);
+        let rights = std::mem::take(&mut self.table_rights);
+        let widths = column_grid(&mut rows, &rights);
+        let heights = std::mem::take(&mut self.table_heights);
+        let keep_rows = std::mem::take(&mut self.table_keeps);
+        // Only a table whose rows give a height or keep gets them, so others stay as before.
+        let extra = (heights.iter().any(Option::is_some) || keep_rows.contains(&true))
+            .then(|| Box::new(model::TableExtra { heights, keep_rows, ..Default::default() }));
+        // Word draws only the borders the cells name: no grid style, each cell its own.
+        Some(FTable { rows, widths, borderless: true, extra, kept: None, wrap: None })
     }
 }
 

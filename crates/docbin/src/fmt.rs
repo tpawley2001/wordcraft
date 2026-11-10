@@ -126,6 +126,11 @@ pub(crate) fn ico(i: u8) -> Option<Rgb> {
     ICO.get(i as usize).copied()
 }
 
+/// Whether `i` is an `Ico` palette index (0 = automatic included).
+pub(crate) fn is_ico(i: u8) -> bool {
+    usize::from(i) < ICO.len()
+}
+
 /// The model border style a `brcType` stands for ([MS-DOC] §2.9.22 BrcType; 0x02, thick, is in
 /// the BRC of Microsoft's Word 97-2007 specification). Types the model doesn't carry (the gap
 /// variants, 3-D, inset/outset) draw as single lines, as the DOCX reader maps them.
@@ -160,7 +165,7 @@ pub(crate) fn brc80(op: &[u8]) -> Option<Border> {
 }
 
 /// One border from a `BrcOperand` ([MS-DOC] §2.9.21): cb(1, MUST be 8) + Brc(8).
-fn brc(op: &[u8]) -> Option<Border> {
+pub(crate) fn brc(op: &[u8]) -> Option<Border> {
     if op.first() != Some(&8) {
         return None;
     }

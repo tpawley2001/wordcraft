@@ -75,6 +75,7 @@ impl Reader<'_> {
                 }
                 "m:mathPr" => s.math = Some(math::read_math_pr(k)),
                 "w:mirrorMargins" => s.mirror_margins = on_off(k),
+                "w:printFormsData" => s.print_forms_data = on_off(k),
                 "w:autoHyphenation" => s.auto_hyphenation = on_off(k),
                 "w:doNotHyphenateCaps" => s.hyphenate_caps = !on_off(k),
                 "w:hyphenationZone" => {

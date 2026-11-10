@@ -49,6 +49,10 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
     if s.page_color.is_some() || s.page_picture.is_some() {
         w.empty("w:displayBackgroundShape", &[]);
     }
+    // §17.15.1.67, after `w:printFractionalCharacterWidth` and before `w:embedTrueTypeFonts`.
+    if s.print_forms_data {
+        w.empty("w:printFormsData", &[]);
+    }
     if s.mirror_margins {
         w.empty("w:mirrorMargins", &[]);
     }

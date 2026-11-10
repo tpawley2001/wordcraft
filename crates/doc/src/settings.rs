@@ -155,6 +155,10 @@ pub struct Settings {
     pub default_tab: f32,
     pub even_odd_headers: bool,
     pub mirror_margins: bool,
+    /// Print only the data from a form (`w:printFormsData`, File › Options › Advanced): printing
+    /// puts only what was filled into the legacy form fields on the paper, where the full page
+    /// has it (for pre-printed forms). PDF export is unaffected.
+    pub print_forms_data: bool,
     pub auto_hyphenation: bool,
     /// Hyphenation zone (`w:hyphenationZone`), points: a line is hyphenated only when breaking
     /// it at a word boundary would leave more than this empty at its end.
@@ -546,6 +550,7 @@ impl Default for Settings {
             default_tab: 36.0,
             even_odd_headers: false,
             mirror_margins: false,
+            print_forms_data: false,
             auto_hyphenation: false,
             hyphenation_zone: DEFAULT_HYPHENATION_ZONE,
             hyphenate_caps: true,

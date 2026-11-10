@@ -6,6 +6,16 @@ pub const MONO_FONT: &str = "Courier New";
 /// Style id of code-block paragraphs.
 pub const CODE_STYLE: &str = "Code";
 
+/// Longest style id [`style_id`] makes, in characters.
+pub const MAX_STYLE_ID: usize = 64;
+
+/// The document style id for a style a file names `name`: its letters and digits ("Body Text 2"
+/// is `BodyText2`), at most [`MAX_STYLE_ID`] of them, `Custom` when it has none.
+pub fn style_id(name: &str) -> String {
+    let id: String = name.chars().filter(|c| c.is_alphanumeric()).take(MAX_STYLE_ID).collect();
+    if id.is_empty() { "Custom".into() } else { id }
+}
+
 /// Nesting limit for tables in tables (hostile input).
 pub const MAX_DEPTH: usize = 8;
 
@@ -479,19 +489,53 @@ pub struct FlowOpts {
     /// consecutive items form one list in the default look of its kind).
     pub lists: bool,
     /// Without [`FlowOpts::chars`] and [`FlowOpts::paras`]: just the paragraph's own tab stops
-    /// ([`Para::extra`]) and character spacing ([`Fmt::extra`]), for formats that write those
-    /// alone (RTF).
+    /// ([`Para::extra`]) and character spacing, underline style and colour, scale, kerning and
+    /// effects ([`Fmt::extra`]), for formats that write those alone (RTF).
     pub tabs_spacing: bool,
     /// The paragraph's own widow/orphan control in [`Para::extra`], also without `paras`.
     pub widow: bool,
+    /// The paragraph's own contextual spacing, mirror indents, automatic space before/after,
+    /// hyphenation and line-grid snapping in [`Para::extra`], also without `paras`.
+    pub para_flags: bool,
+    /// The paragraph's own shading in [`Para::extra`], also without `paras`.
+    pub shading: bool,
+    /// The paragraph's own indents in characters (`indent_left_chars`, `indent_right_chars`,
+    /// `indent_first_chars`) in [`Para::extra`], also without `paras`.
+    pub indent_chars: bool,
+    /// Table row heights and rows kept from breaking ([`FTable::extra`]), also without `paras`.
+    pub rows: bool,
+    /// The mark formatting of a paragraph without text ([`Para::mark`]), also without `paras`.
+    pub marks: bool,
+    /// The paragraph's own text frame and drop cap in [`Para::extra`], also without `paras`.
+    pub frames: bool,
+    /// Without [`FlowOpts::chars`] and [`FlowOpts::paras`]: the document's own paragraph style
+    /// in [`Para::extra`] and character style in [`Fmt::extra`] ([`super::is_custom_style`],
+    /// [`super::is_custom_char_style`]), for formats that write their style sheet (RTF).
+    pub styles: bool,
 }
 
 impl FlowOpts {
     /// What RTF keeps: tracked changes, the paragraph's own tab stops and character spacing
-    /// ([`FlowOpts::tabs_spacing`]) and widow/orphan control ([`FlowOpts::widow`]), fields and
-    /// text boxes.
+    /// ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]), shading
+    /// ([`FlowOpts::shading`]), indents in characters ([`FlowOpts::indent_chars`]), the other
+    /// paragraph flags ([`FlowOpts::para_flags`]), table row heights and keeps
+    /// ([`FlowOpts::rows`]), text frames and drop caps ([`FlowOpts::frames`]), the document's
+    /// own styles ([`FlowOpts::styles`]), fields and text boxes.
     pub fn tracked() -> Self {
-        FlowOpts { tracked: true, tabs_spacing: true, widow: true, fields: true, boxes: true, ..Default::default() }
+        FlowOpts {
+            tracked: true,
+            tabs_spacing: true,
+            widow: true,
+            shading: true,
+            indent_chars: true,
+            para_flags: true,
+            rows: true,
+            frames: true,
+            styles: true,
+            fields: true,
+            boxes: true,
+            ..Default::default()
+        }
     }
 }
 

@@ -35,7 +35,9 @@ use bookmarks::bookmark_at_caret;
 #[cfg(test)]
 use bookmarks::bookmark_names;
 pub use chrome::show;
-pub(crate) use chrome::{block_behind, buttons, cancel_key_pressed, color_menu, forget_nudge, ok_cancel_responses, release_keyboard};
+pub(crate) use chrome::{
+    block_behind, buttons, cancel_key_pressed, color_menu, drag_by_title_bar, forget_nudge, ok_cancel_responses, release_keyboard,
+};
 pub(crate) use dispatch::search_results;
 pub(crate) use find::swallow_shortcut_text;
 pub use find::{FindExtra, FindTab, GoToWhat};
@@ -85,8 +87,13 @@ pub enum Dialog {
         size: String,
         bold: bool,
         italic: bool,
-        underline: bool,
+        /// Underline style: the `w:u` name ("none", "words", "double"…), or "" while the
+        /// selected text mixes styles.
+        underline: String,
+        /// Underline color: "auto" or RRGGBB, or "" while the selected text differs.
+        underline_color: String,
         strike: bool,
+        double_strike: bool,
         sup: bool,
         sub: bool,
         small_caps: bool,
@@ -115,9 +122,11 @@ pub enum Dialog {
         first: f32,
         before: f32,
         after: f32,
-        /// Line spacing as a multiple; Exactly and At Least show as 1.0, and OK keeps them
-        /// unless this changes (#467).
-        line: f32,
+        /// The Line spacing box's entry (`LINE_RULES`: Single, 1.5 lines, Double,
+        /// At least, Exactly, Multiple) and the At box's value, in points for At least and
+        /// Exactly and in lines for Multiple.
+        line_rule: u8,
+        line_at: f32,
         keep_next: bool,
         keep_lines: bool,
         page_break: bool,
@@ -726,8 +735,10 @@ impl Dialog {
                     size: st.get("size").and_then(Value::as_f64).map(|v| v.to_string()).unwrap_or_default(),
                     bold: b("bold"),
                     italic: b("italic"),
-                    underline: b("underline"),
+                    underline: s("underlineStyle"),
+                    underline_color: s("underlineColor"),
                     strike: b("strike"),
+                    double_strike: b("doubleStrike"),
                     sup: b("superscript"),
                     sub: b("subscript"),
                     small_caps: b("smallCaps"),
@@ -1079,3 +1090,7 @@ pub mod dialogs_table_style;
 pub mod dialogs_templates;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_font_underline;
+#[cfg(test)]
+mod tests_para_line;
