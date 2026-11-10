@@ -2,7 +2,7 @@ use super::reader::apply_section_word;
 use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pn, PnKind, RevSt, SecFmt, St};
 use super::styles::{StyleDef, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
-use wordcraft_doc::props::{TabAlign, TabLeader, TabStop};
+use wordcraft_doc::props::{CharProps, TabAlign, TabLeader, TabStop, Underline};
 
 impl Reader {
     pub(super) fn word(&mut self, w: &str, p: Option<i32>, starred: bool, first_in_group: bool) {
@@ -106,10 +106,13 @@ impl Reader {
             "prdate" => self.st.chg_p.date = pv as u32,
             "b" => self.st.fmt.bold = on,
             "i" => self.st.fmt.italic = on,
-            "ul" | "uld" | "uldash" | "uldashd" | "uldashdd" | "uldb" | "ulth" | "ulw" | "ulwave" | "ulhwave" | "ulldash" | "ulthd" => {
-                self.st.fmt.underline = on
+            "ulnone" => self.underline(Underline::None, false),
+            "ulc" => {
+                // Entry 0 is the auto colour: no underline colour of its own.
+                let c = if pv > 0 { self.colors.get(pv as usize).copied().flatten() } else { None };
+                self.set_extra(|x| x.underline_color = c);
             }
-            "ulnone" => self.st.fmt.underline = false,
+            _ if underline_style(w).is_some() => self.underline(underline_style(w).unwrap_or(Underline::Single), on),
             "strike" | "striked" => self.st.fmt.strike = on,
             "super" | "up" => {
                 self.st.fmt.sup = on;
@@ -715,9 +718,20 @@ impl Reader {
 
     /// The run's character spacing, points (0 = normal).
     fn char_spacing(&mut self, pt: f32) {
+        self.set_extra(|x| x.spacing = (pt != 0.0).then_some(pt));
+    }
+
+    /// The run's underline turned on in `style`, or off (any underline word with parameter 0).
+    fn underline(&mut self, style: Underline, on: bool) {
+        self.st.fmt.underline = on;
+        self.set_extra(|x| x.underline = on.then_some(style));
+    }
+
+    /// Changes the run's character properties beyond the [`Fmt`] fields; none left is `None`.
+    fn set_extra(&mut self, f: impl FnOnce(&mut CharProps)) {
         let x = self.st.fmt.extra.get_or_insert_with(Default::default);
-        x.spacing = (pt != 0.0).then_some(pt);
-        if **x == wordcraft_doc::props::CharProps::default() {
+        f(x);
+        if **x == CharProps::default() {
             self.st.fmt.extra = None;
         }
     }
@@ -725,6 +739,24 @@ impl Reader {
     fn in_info(&self) -> bool {
         self.info_depth.is_some_and(|d| self.depth() > d)
     }
+}
+
+/// The underline an underline control word turns on (RTF 1.9.1); the heavy and long forms
+/// are the style they are drawn as, as `Underline::from_ooxml` reads their OOXML names.
+fn underline_style(w: &str) -> Option<Underline> {
+    Some(match w {
+        "ul" => Underline::Single,
+        "ulw" => Underline::Words,
+        "uldb" => Underline::Double,
+        "ulth" => Underline::Thick,
+        "uld" | "ulthd" => Underline::Dotted,
+        "uldash" | "ulldash" | "ulthdash" | "ulthldash" => Underline::Dash,
+        "uldashd" | "ulthdashd" => Underline::DotDash,
+        "uldashdd" | "ulthdashdd" => Underline::DotDotDash,
+        "ulwave" | "ulhwave" => Underline::Wave,
+        "ululdbwave" => Underline::DoubleWave,
+        _ => return None,
+    })
 }
 
 /// The target of a `HYPERLINK` field instruction; `%22` is a quote, as the writer stores one.

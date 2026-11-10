@@ -48,7 +48,8 @@ impl WithExtra for CharProps {
         {
             self.underline = Some(u);
         }
-        if f.underline {
+        // A colour without an underline stays with the text (RTF `\ulc`), for one turned on later.
+        if f.underline || x.underline_color.is_some() {
             self.underline_color = x.underline_color;
         }
         // Turned off on the text, over what the style of its paragraph or span turns on.
