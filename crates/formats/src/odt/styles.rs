@@ -224,6 +224,45 @@ fn extra_text_properties(a: &Attrs, d: &mut FmtDelta) {
     if let Some(l) = language(a) {
         x.lang = Some(l);
     }
+    // No linguistic content (ISO 639 `zxx`): Word's Do not check spelling or grammar.
+    if get(a, "fo:language").is_some_and(|l| l.trim() == "zxx") {
+        x.no_proof = Some(true);
+    }
+    if let Some(e) = east_asian_layout(a) {
+        x.east_asian_layout = Some(e);
+    }
+}
+
+/// Word's Asian Layout the attributes state: two lines in one (§20.364 `style:text-combine`
+/// `lines`, its brackets §20.365/§20.366) and horizontal in vertical (§20.370
+/// `style:text-rotation-angle` a quarter turn, §20.371 `style:text-rotation-scale`); `None` for
+/// neither.
+fn east_asian_layout(a: &Attrs) -> Option<wordcraft_doc::props::EastAsianLayout> {
+    use wordcraft_doc::props::{CombineBrackets as B, EastAsianLayout};
+    let mut e = EastAsianLayout::default();
+    if get(a, "style:text-combine").is_some_and(|v| v.trim() == "lines") {
+        e.combine = Some(true);
+        let ch = |k| get(a, k).map(str::trim).unwrap_or("");
+        e.combine_brackets = match (ch("style:text-combine-start-char"), ch("style:text-combine-end-char")) {
+            ("(", ")") => Some(B::Round),
+            ("[", "]") => Some(B::Square),
+            ("<", ">") => Some(B::Angle),
+            ("{", "}") => Some(B::Curly),
+            _ => None,
+        };
+    }
+    let angle = get(a, "style:text-rotation-angle")
+        .map(|v| v.trim().trim_end_matches("deg").trim())
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| v.is_finite())
+        .map(|v| v.rem_euclid(360.0));
+    if angle.is_some_and(|v| v == 90.0 || v == 270.0) {
+        e.vert = Some(true);
+        if get(a, "style:text-rotation-scale").is_some_and(|v| v.trim() == "line-height") {
+            e.vert_compress = Some(true);
+        }
+    }
+    (e != EastAsianLayout::default()).then_some(e)
 }
 
 /// The language `fo:language`, `fo:script` and `fo:country` state: see [`language_tag`].

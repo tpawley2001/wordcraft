@@ -96,6 +96,8 @@ impl WithExtra for CharProps {
         self.italic_cs = x.italic_cs;
         self.lang_bidi = name(&x.lang_bidi, 64);
         self.lang_ea = name(&x.lang_ea, 64);
+        self.no_proof = x.no_proof.filter(|b| *b);
+        self.east_asian_layout = x.east_asian_layout.clone().filter(|l| *l != Default::default());
         self
     }
 }

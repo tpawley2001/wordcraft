@@ -179,6 +179,8 @@ fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
         italic_cs: e.italic_cs,
         lang_bidi: e.lang_bidi.clone().filter(|l| !l.is_empty()),
         lang_ea: e.lang_ea.clone().filter(|l| !l.is_empty()),
+        no_proof: set(e.no_proof),
+        east_asian_layout: e.east_asian_layout.clone().filter(|l| *l != Default::default()),
         ..Default::default()
     };
     (x != CharProps::default()).then(|| Box::new(x))
