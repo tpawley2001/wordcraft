@@ -1094,3 +1094,5 @@ mod tests;
 mod tests_font_underline;
 #[cfg(test)]
 mod tests_para_line;
+#[cfg(test)]
+mod tests_zoom;
