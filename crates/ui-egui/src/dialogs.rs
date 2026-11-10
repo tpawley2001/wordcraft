@@ -241,6 +241,8 @@ pub enum Dialog {
     },
     Zoom {
         percent: f32,
+        /// The fit choice (`view.zoom` value: pageWidth, textWidth, onePage, multiplePages); "" = Percent.
+        fit: String,
     },
     /// Select Browse Object (Alt+Ctrl+Home): what Ctrl+PageDown / Ctrl+PageUp move by.
     BrowseObject {
@@ -877,7 +879,13 @@ impl Dialog {
                     .unwrap_or_default();
                 Dialog::BrowseObject { objects, current: st.get("current").and_then(Value::as_str).unwrap_or("find").into(), focus: true }
             }
-            "zoom" => Dialog::Zoom { percent: (app.session.view.zoom * 100.0).round() },
+            "zoom" => Dialog::Zoom {
+                percent: (app.session.view.zoom * 100.0).round(),
+                fit: match app.session.view.fit.as_str() {
+                    f @ ("pageWidth" | "textWidth" | "onePage" | "multiplePages") => f.to_string(),
+                    _ => String::new(),
+                },
+            },
             "watermark" => Dialog::Watermark { text: "CONFIDENTIAL".into(), diagonal: true },
             "phonetic" => {
                 let v = wordcraft_engine::cmd::phonetic::state(&app.session);
