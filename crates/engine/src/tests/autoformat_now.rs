@@ -105,7 +105,7 @@ fn tracked_autoformat_now_rejects_back_to_the_original_text() {
 #[test]
 fn tracked_changes_protection_records_the_rewrite() {
     let mut s = Session::new(wordcraft_doc::Document::from_text("say \"hi\""));
-    run(&mut s, "review.lockTracking", json!({"password": "pw"}));
+    run(&mut s, "review.restrict", json!({"mode": "trackedChanges", "password": "pw"}));
     s.doc.settings.track_changes = false;
     run(&mut s, "caret.docStart", json!({}));
     run(&mut s, "format.autoFormatNow", json!({}));
