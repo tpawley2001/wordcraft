@@ -4,7 +4,7 @@ use super::find::{FindTab, SEARCH_SUGGESTIONS, command_matches, find_in_navigati
 use super::font::{apply_font, font_box, font_sample_box, font_sample_props, sample_paper};
 use super::forms::{cell_margins_dialog, custom_properties, table_properties};
 use super::mailings::{ADDRESS_PARTS, recipient_list, rule_params};
-use super::page_setup::{page_layout_commands, page_paper_group, page_valign_combo, page_valign_value, run_as_one_step};
+use super::page_setup::{page_layout_commands, page_paper_group, page_paper_source_group, page_valign_combo, page_valign_value, run_as_one_step};
 use super::paragraph::{ParaNumber, apply_paragraph, para_check, para_number};
 use super::styles::manage_styles;
 use super::{Dialog, MeasureExt, Tokens, Ui, Value, WordApp, json, semibold, vec2};
@@ -633,6 +633,8 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         paper_custom,
         message,
         valign,
+        paper_src,
+        paper_src_was,
         odd_even,
         first_page,
     } = d
@@ -662,6 +664,7 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     ui.label(egui::RichText::new(tl!("Pages")).font(semibold(12.5)));
     ui.checkbox(mirror, tl!("Mirror margins"));
     page_paper_group(ui, paper, landscape, paper_custom);
+    page_paper_source_group(ui, &mut paper_src.0, &mut paper_src.1);
     ui.label(egui::RichText::new(tl!("Document Grid")).font(semibold(12.5)));
     ui.horizontal_wrapped(|ui| {
         ui.radio_value(&mut grid.0, 0, tl!("No grid"));
@@ -716,6 +719,10 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
                 if *valign != wordcraft_engine::cmd::page::sect(&app.session).valign {
                     commands.push(("layout.verticalAlign", json!({"value": page_valign_value(*valign)})));
+                }
+                if paper_src != paper_src_was {
+                    let (first, other) = *paper_src;
+                    commands.push(("layout.paperSource", json!({"first": first, "other": other})));
                 }
                 if *odd_even != app.session.doc.settings.even_odd_headers {
                     commands.push(("layout.differentOddEven", json!({"value": *odd_even})));

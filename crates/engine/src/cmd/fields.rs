@@ -1,6 +1,7 @@
 //! Working with fields like Word's field keys: show codes instead of results (Alt+F9, Shift+F9),
 //! edit a field's code, unlink a field to plain text (Ctrl+Shift+F9), lock and unlock it against
-//! updates (Ctrl+F11, Ctrl+Shift+F11) and move from field to field (Alt+F1, Shift+F11 / Alt+Shift+F1; F11 is full screen, #980).
+//! updates (Ctrl+F11, Ctrl+Shift+F11) and move from field to field (Alt+F1, Shift+F11 / Alt+Shift+F1; F11 is full screen, #980); Update Source
+//! (Ctrl+Shift+F7) writes an edited INCLUDETEXT result back to its file.
 //!
 //! Two kinds of field are handled: a simple field ([`InlineObject::Field`], one object whose result
 //! is cached text) and a range field ([`InlineObject::FieldStart`] … [`InlineObject::FieldEnd`],
@@ -30,6 +31,9 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("fields.toggleCode", "Toggle Field Codes", "Insert › Text › Quick Parts", toggle_code).key("Shift+F9"),
         CommandSpec::new("fields.setCode", "Edit Field Code", "Insert › Text › Quick Parts", set_code).params(r#"{"code": string}"#),
         CommandSpec::new("fields.unlink", "Unlink Fields", "Insert › Text › Quick Parts", unlink).key("Mod+Shift+F9"),
+        CommandSpec::new("fields.updateSource", "Update Source", "Insert › Text › Quick Parts", super::references::update_source)
+            .key("Mod+Shift+F7")
+            .pure(),
         CommandSpec::new("fields.lock", "Lock Fields", "Insert › Text › Quick Parts", |s, _| set_locked(s, true)).key("Mod+F11"),
         CommandSpec::new("fields.unlock", "Unlock Fields", "Insert › Text › Quick Parts", |s, _| set_locked(s, false)).key("Mod+Shift+F11"),
         CommandSpec::new("fields.next", "Next Field", "Insert › Text › Quick Parts", |s, _| go(s, true)).key("Alt+F1").pure(),

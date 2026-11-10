@@ -144,6 +144,52 @@ pub(super) fn page_valign_combo(ui: &mut egui::Ui, valign: &mut wordcraft_doc::s
     });
 }
 
+/// The printer trays Page Setup's Paper source lists offer, by the DEVMODE `dmDefaultSource`
+/// code DOCX `w:paperSrc` stores (ECMA-376 Part 1 §17.6.9). None is the default tray.
+const PAPER_TRAYS: [(Option<u16>, &str); 12] = [
+    (None, "Default tray"),
+    (Some(1), "Upper tray"),
+    (Some(2), "Lower tray"),
+    (Some(3), "Middle tray"),
+    (Some(4), "Manual feed"),
+    (Some(5), "Envelope"),
+    (Some(6), "Envelope manual feed"),
+    (Some(7), "Automatically select"),
+    (Some(8), "Tractor feed"),
+    (Some(11), "Large capacity"),
+    (Some(14), "Cassette"),
+    (Some(15), "Form source"),
+];
+
+/// The name a Paper source list shows for `tray`: its entry, or "Tray N" for a code the list
+/// doesn't know (the document keeps it).
+fn paper_tray_name(tray: Option<u16>) -> String {
+    match PAPER_TRAYS.iter().find(|(code, _)| *code == tray) {
+        Some((_, name)) => tl!(name).to_string(),
+        None => format!("{} {}", tl!("Tray"), tray.unwrap_or_default()),
+    }
+}
+
+/// Page Setup's Paper source group: the tray for the section's first page and for its other
+/// pages (`layout.paperSource`).
+pub(super) fn page_paper_source_group(ui: &mut Ui, first: &mut Option<u16>, other: &mut Option<u16>) {
+    ui.label(egui::RichText::new(tl!("Paper source")).font(semibold(12.5)));
+    for (id, label, tray) in [("ps_tray_first", "First page:", first), ("ps_tray_other", "Other pages:", other)] {
+        ui.horizontal(|ui| {
+            let label = ui.label(tl!(label));
+            let shown = paper_tray_name(*tray);
+            let combo = craft_ui::ComboBox::from_id_salt(id).width(180.0).height(400.0).selected_text(shown).show_ui(ui, |ui| {
+                for (code, name) in PAPER_TRAYS {
+                    if ui.selectable_label(*tray == code, tl!(name)).clicked() {
+                        *tray = code;
+                    }
+                }
+            });
+            combo.response.labelled_by(label.id);
+        });
+    }
+}
+
 /// `layout.verticalAlign`'s name for a value.
 pub(super) fn page_valign_value(v: wordcraft_doc::section::PageVAlign) -> &'static str {
     use wordcraft_doc::section::PageVAlign;
