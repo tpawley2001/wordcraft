@@ -27,6 +27,11 @@ impl Reader {
             self.enter_destination(d);
             return;
         }
+        // A nested row's properties (`{\*\nesttableprops \trowd … \nestrow}`) are read: they
+        // describe the innermost table's row.
+        if w == "nesttableprops" {
+            return;
+        }
         if self.skip_ignorable_destination(w, starred, first_in_group) {
             return;
         }
@@ -40,8 +45,9 @@ impl Reader {
             "par" => self.end_para_mark(),
             "sect" => self.end_section(),
             "cell" => self.end_cell(),
-            "nestcell" => self.end_para(true),
-            "row" => self.end_row(),
+            "nestcell" => self.end_nest_cell(),
+            "row" => self.end_outer_row(),
+            "nestrow" => self.end_nest_row(),
             "line" | "softline" => self.ch('\n'),
             "tab" => self.ch('\t'),
             "page" | "softpage" => self.ch('\u{000C}'),
@@ -170,6 +176,11 @@ impl Reader {
             "hyphpar" => self.st.no_hyph = Some(!on),
             "nosnaplinegrid" => self.st.snap_grid = Some(false),
             "intbl" => self.st.intbl = true,
+            "itap" => {
+                let n = pv.clamp(0, model::MAX_DEPTH as i32) as u8;
+                self.st.itap = Some(n);
+                self.st.intbl = n > 0;
+            }
             "ls" => self.st.ls = Some(pv),
             "ilvl" => self.st.ilvl = pv.clamp(0, 8) as u8,
             _ if self.cell_side.is_none() && self.para_border_word(w, pv) => {}
@@ -393,7 +404,9 @@ impl Reader {
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
             | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb" | "fontfile"
-            | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl" => Some(Dest::Skip),
+            | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl"
+            // The flat copy of nested tables, for readers without them.
+            | "nonesttables" => Some(Dest::Skip),
             // Word 6.0/95 paragraph numbering: read, so the paragraph imports as a list.
             "pn" => {
                 self.pn_cur = Pn::default();
