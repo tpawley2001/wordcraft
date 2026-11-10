@@ -181,7 +181,11 @@ impl Reader {
                 self.row_header = false;
                 self.row_height = None;
                 self.row_keep = false;
+                self.row_style = Default::default();
             }
+            // The row's table style: the document style its stylesheet entry became, if one did.
+            "ts" => self.row_style.style = self.table_style_id(pv),
+            "tbllkhdrrows" | "tbllklastrow" | "tbllkhdrcols" | "tbllklastcol" | "tbllknorowband" | "tbllknocolband" => self.look_word(w, on),
             "trhdr" => self.row_header = true,
             // Twips: positive at least, negative exactly, 0 auto; beyond 22 inches ignored.
             "trrh" => {
@@ -233,26 +237,7 @@ impl Reader {
                 if self.border_open() =>
             {
                 use wordcraft_doc::props::{Border, BorderStyle};
-                let style = match w {
-                    "brdrnone" | "brdrnil" | "brdrtbl" => BorderStyle::None,
-                    "brdrth" => BorderStyle::Thick,
-                    "brdrdb" | "brdrwavydb" => BorderStyle::Double,
-                    "brdrtnthsg" => BorderStyle::ThinThickSmallGap,
-                    "brdrthtnsg" => BorderStyle::ThickThinSmallGap,
-                    "brdrtnthtnsg" => BorderStyle::ThinThickThinSmallGap,
-                    "brdrtnthmg" => BorderStyle::ThinThickMediumGap,
-                    "brdrthtnmg" => BorderStyle::ThickThinMediumGap,
-                    "brdrtnthtnmg" => BorderStyle::ThinThickThinMediumGap,
-                    "brdrtnthlg" => BorderStyle::ThinThickLargeGap,
-                    "brdrthtnlg" => BorderStyle::ThickThinLargeGap,
-                    "brdrtnthtnlg" => BorderStyle::ThinThickThinLargeGap,
-                    "brdrdot" => BorderStyle::Dotted,
-                    "brdrdash" | "brdrdashsm" => BorderStyle::Dashed,
-                    "brdrdashd" | "brdrdashdd" => BorderStyle::DotDash,
-                    "brdrtriple" => BorderStyle::Triple,
-                    "brdrwavy" => BorderStyle::Wave,
-                    _ => BorderStyle::Single,
-                };
+                let style = border_style(w).unwrap_or(BorderStyle::Single);
                 let b = (style != BorderStyle::None).then_some(Border { style, ..Border::single(0.5) });
                 self.each_border_slot(|slot| *slot = b);
             }
@@ -459,8 +444,8 @@ impl Reader {
     }
 
     fn skip_ignorable_destination(&mut self, word: &str, starred: bool, first_in_group: bool) -> bool {
-        // A character style's stylesheet entry is `{\*\csN …}`.
-        let char_style = word == "cs" && self.st.dest == Dest::StyleSheet;
+        // A character style's stylesheet entry is `{\*\csN …}`, a table style's `{\*\tsN …}`.
+        let char_style = matches!(word, "cs" | "ts") && self.st.dest == Dest::StyleSheet;
         if !starred || !first_in_group || char_style || matches!(word, "fldinst" | "bkmkstart") {
             return false;
         }
@@ -494,6 +479,9 @@ impl Reader {
             }
             // Style names take Unicode escapes (with fallback skipping) like the body.
             Dest::StyleSheet if !matches!(word, "u" | "uc") => {
+                if self.style_def_cur.entry == StyleEntry::Table && self.table_style_word(word, value) {
+                    return true;
+                }
                 let def = &mut self.style_def_cur;
                 match word {
                     "s" | "cs" | "ds" | "ts" => {
@@ -502,6 +490,7 @@ impl Reader {
                         let entry = match word {
                             "s" => StyleEntry::Para,
                             "cs" => StyleEntry::Char,
+                            "ts" => StyleEntry::Table,
                             _ => StyleEntry::Other,
                         };
                         *def = StyleDef { entry, ..Default::default() };
@@ -814,6 +803,32 @@ impl Reader {
 
 /// The underline an underline control word turns on (RTF 1.9.1); the heavy and long forms
 /// are the style they are drawn as, as `Underline::from_ooxml` reads their OOXML names.
+/// The border style border word `w` (`\brdrs`, `\brdrdb`…) names; `None` when `w` isn't one.
+pub(super) fn border_style(w: &str) -> Option<wordcraft_doc::props::BorderStyle> {
+    use wordcraft_doc::props::BorderStyle;
+    Some(match w {
+        "brdrnone" | "brdrnil" | "brdrtbl" => BorderStyle::None,
+        "brdrs" | "brdrsh" | "brdrhair" => BorderStyle::Single,
+        "brdrth" => BorderStyle::Thick,
+        "brdrdb" | "brdrwavydb" => BorderStyle::Double,
+        "brdrtnthsg" => BorderStyle::ThinThickSmallGap,
+        "brdrthtnsg" => BorderStyle::ThickThinSmallGap,
+        "brdrtnthtnsg" => BorderStyle::ThinThickThinSmallGap,
+        "brdrtnthmg" => BorderStyle::ThinThickMediumGap,
+        "brdrthtnmg" => BorderStyle::ThickThinMediumGap,
+        "brdrtnthtnmg" => BorderStyle::ThinThickThinMediumGap,
+        "brdrtnthlg" => BorderStyle::ThinThickLargeGap,
+        "brdrthtnlg" => BorderStyle::ThickThinLargeGap,
+        "brdrtnthtnlg" => BorderStyle::ThinThickThinLargeGap,
+        "brdrdot" => BorderStyle::Dotted,
+        "brdrdash" | "brdrdashsm" => BorderStyle::Dashed,
+        "brdrdashd" | "brdrdashdd" => BorderStyle::DotDash,
+        "brdrtriple" => BorderStyle::Triple,
+        "brdrwavy" => BorderStyle::Wave,
+        _ => return None,
+    })
+}
+
 fn underline_style(w: &str) -> Option<Underline> {
     Some(match w {
         "ul" => Underline::Single,

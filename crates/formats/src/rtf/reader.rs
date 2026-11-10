@@ -126,6 +126,9 @@ pub(super) struct Reader {
     /// The row's height (`\trrh`: points, exact) and `\trkeep`, reset by `\trowd`.
     pub(super) row_height: Option<(f32, bool)>,
     pub(super) row_keep: bool,
+    pub(super) row_style: super::state::RowStyle,
+    /// The table's style and look: its first row's.
+    table_style: super::state::RowStyle,
     pub(super) created: Option<(u32, u32, u32, u32, u32)>,
     pub(super) in_creatim: bool,
     pub(super) rule_pending: bool,
@@ -171,6 +174,8 @@ impl Reader {
         std::mem::swap(&mut o.row_keep, &mut self.row_keep);
         std::mem::swap(&mut o.table_heights, &mut self.table_heights);
         std::mem::swap(&mut o.table_keeps, &mut self.table_keeps);
+        std::mem::swap(&mut o.row_style, &mut self.row_style);
+        std::mem::swap(&mut o.table_style, &mut self.table_style);
         o
     }
 
@@ -678,6 +683,9 @@ impl Reader {
         }
         if !out.is_empty() && self.table.len() < wordcraft_doc::table::MAX_ROWS {
             rights.truncate(out.len());
+            if self.table.is_empty() {
+                self.table_style = self.row_style.clone();
+            }
             self.table.push(out);
             self.table_rights.push(rights);
             self.table_heights.push(self.row_height);
@@ -700,8 +708,14 @@ impl Reader {
             let heights = std::mem::take(&mut self.table_heights);
             let keep_rows = std::mem::take(&mut self.table_keeps);
             // Only a table whose rows give a height or keep gets them, so others stay as before.
-            let extra = (heights.iter().any(Option::is_some) || keep_rows.contains(&true))
+            let mut extra = (heights.iter().any(Option::is_some) || keep_rows.contains(&true))
                 .then(|| Box::new(model::TableExtra { heights, keep_rows, ..Default::default() }));
+            // Its first row's table style and look.
+            let ts = std::mem::take(&mut self.table_style);
+            if ts.style.is_some() || ts.look.is_some() {
+                let x = extra.get_or_insert_with(Default::default);
+                (x.style, x.look) = (ts.style, ts.look);
+            }
             // Word draws only the borders the cells name: no grid style, each cell its own.
             self.body.push(FBlock::Table(FTable { rows, widths, borderless: true, extra, kept: None, wrap: None }));
         }

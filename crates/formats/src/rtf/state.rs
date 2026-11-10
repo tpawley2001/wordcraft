@@ -188,6 +188,16 @@ pub(super) struct Output {
     pub(super) table_rights: Vec<Vec<i32>>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
+    pub(super) row_style: RowStyle,
+    pub(super) table_style: RowStyle,
+}
+
+/// A row's table style (`\tsN`, as its document style id) and look (`\tbllk*`), reset by
+/// `\trowd`; a table's are its first row's.
+#[derive(Clone, Debug, Default)]
+pub(super) struct RowStyle {
+    pub(super) style: Option<String>,
+    pub(super) look: Option<wordcraft_doc::props::TableLook>,
 }
 
 #[derive(Clone, Debug)]
