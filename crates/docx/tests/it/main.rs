@@ -52,6 +52,7 @@ mod strict_drawings;
 mod strict_graphics;
 mod strict_save;
 mod strict_shapes;
+mod style_ui_flags;
 mod styles_without_id;
 mod text_alignment;
 mod text_boxes;
