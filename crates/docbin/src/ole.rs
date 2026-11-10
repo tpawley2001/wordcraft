@@ -313,7 +313,7 @@ fn pic_extents(pic: Pic) -> Option<(f32, f32)> {
 
 /// Does the object's storage hold a non-empty `\x03PICT` (a QuickDraw picture, not read)?
 fn has_pict<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> bool {
-    comp.open_stream(format!("/ObjectPool/_{id}/\u{3}PICT")).is_ok_and(|s| s.len() > 0)
+    comp.open_stream(format!("/ObjectPool/_{id}/\u{3}PICT")).is_ok_and(|s| !s.is_empty())
 }
 
 /// A PICT-only object's picture, a plain WMF ([MS-WMF]) of the box's aspect: a white box, then a
