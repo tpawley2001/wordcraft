@@ -1,4 +1,6 @@
 use super::{Serialize, Ui, Value, WordApp, json};
+use wordcraft_doc::StoryRef;
+use wordcraft_doc::para::InlineObject;
 use wordcraft_engine::FindFormat;
 
 /// The Find and Replace dialog's search options beyond the first row (#543).
@@ -36,7 +38,115 @@ pub enum FindTab {
 pub enum GoToWhat {
     #[default]
     Page,
+    Section,
+    Line,
     Bookmark,
+    Comment,
+    Footnote,
+    Endnote,
+    Field,
+    Table,
+    Graphic,
+    Equation,
+    Object,
+    Heading,
+}
+
+impl GoToWhat {
+    /// "Go to what", in Word's order.
+    pub const ALL: [GoToWhat; 13] = [
+        GoToWhat::Page,
+        GoToWhat::Section,
+        GoToWhat::Line,
+        GoToWhat::Bookmark,
+        GoToWhat::Comment,
+        GoToWhat::Footnote,
+        GoToWhat::Endnote,
+        GoToWhat::Field,
+        GoToWhat::Table,
+        GoToWhat::Graphic,
+        GoToWhat::Equation,
+        GoToWhat::Object,
+        GoToWhat::Heading,
+    ];
+
+    /// `edit.goto`'s `what`.
+    pub fn name(self) -> &'static str {
+        match self {
+            GoToWhat::Page => "page",
+            GoToWhat::Section => "section",
+            GoToWhat::Line => "line",
+            GoToWhat::Bookmark => "bookmark",
+            GoToWhat::Comment => "comment",
+            GoToWhat::Footnote => "footnote",
+            GoToWhat::Endnote => "endnote",
+            GoToWhat::Field => "field",
+            GoToWhat::Table => "table",
+            GoToWhat::Graphic => "graphic",
+            GoToWhat::Equation => "equation",
+            GoToWhat::Object => "object",
+            GoToWhat::Heading => "heading",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            GoToWhat::Page => tl!("Page"),
+            GoToWhat::Section => tl!("Section"),
+            GoToWhat::Line => tl!("Line"),
+            GoToWhat::Bookmark => tl!("Bookmark"),
+            GoToWhat::Comment => tl!("Comment"),
+            GoToWhat::Footnote => tl!("Footnote"),
+            GoToWhat::Endnote => tl!("Endnote"),
+            GoToWhat::Field => tl!("Field"),
+            GoToWhat::Table => tl!("Table"),
+            GoToWhat::Graphic => tl!("Graphic"),
+            GoToWhat::Equation => tl!("Equation"),
+            GoToWhat::Object => tl!("Object"),
+            GoToWhat::Heading => tl!("Heading"),
+        }
+    }
+
+    /// The number box's label.
+    fn prompt(self) -> &'static str {
+        match self {
+            GoToWhat::Page => tl!("Enter page number:"),
+            GoToWhat::Section => tl!("Enter section number:"),
+            GoToWhat::Line => tl!("Enter line number:"),
+            GoToWhat::Bookmark => tl!("Enter bookmark name:"),
+            GoToWhat::Comment => tl!("Enter reviewer's name:"),
+            GoToWhat::Footnote => tl!("Enter footnote number:"),
+            GoToWhat::Endnote => tl!("Enter endnote number:"),
+            GoToWhat::Field => tl!("Enter field name:"),
+            GoToWhat::Table => tl!("Enter table number:"),
+            GoToWhat::Graphic => tl!("Enter graphic number:"),
+            GoToWhat::Equation => tl!("Enter equation number:"),
+            GoToWhat::Object => tl!("Enter object number:"),
+            GoToWhat::Heading => tl!("Enter heading number:"),
+        }
+    }
+
+    /// What a bad number box says.
+    fn bad_number(self) -> &'static str {
+        match self {
+            GoToWhat::Page => tl!("Type a page number, or +2 / -1."),
+            GoToWhat::Section => tl!("Type a section number, or +2 / -1."),
+            GoToWhat::Line => tl!("Type a line number, or +2 / -1."),
+            GoToWhat::Footnote => tl!("Type a footnote number, or +2 / -1."),
+            GoToWhat::Endnote => tl!("Type an endnote number, or +2 / -1."),
+            GoToWhat::Table => tl!("Type a table number, or +2 / -1."),
+            GoToWhat::Graphic => tl!("Type a graphic number, or +2 / -1."),
+            GoToWhat::Equation => tl!("Type an equation number, or +2 / -1."),
+            GoToWhat::Object => tl!("Type an object number, or +2 / -1."),
+            GoToWhat::Heading => tl!("Type a heading number, or +2 / -1."),
+            GoToWhat::Bookmark | GoToWhat::Comment | GoToWhat::Field => "",
+        }
+    }
+
+    /// Picked from a list (a name), not typed as a number.
+    fn named(self) -> bool {
+        matches!(self, GoToWhat::Bookmark | GoToWhat::Comment | GoToWhat::Field)
+    }
 }
 
 /// The Special ▾ menu: (name, code) for Find what, without and with wildcards.
@@ -288,20 +398,28 @@ pub(super) fn command_matches(c: &wordcraft_engine::CommandSpec, query: &str) ->
     query.split_whitespace().all(|w| hay.contains(&w.to_lowercase()) || hay.contains(&crate::i18n::lowercase(w)))
 }
 
-/// The Find and Replace dialog's Go To tab (#712): a page (a number, or `+2` / `-1` from the
-/// current page; empty, Next and Previous step a page) or a bookmark. Returns true to close.
+/// The Find and Replace dialog's Go To tab (#712): Word's "Go to what" kinds. A number (or `+2` /
+/// `-1` from the selection; empty, Next and Previous step one), a bookmark, or a comment's
+/// reviewer or a field's type to step through. Returns true to close.
 pub(super) fn goto_body(app: &mut WordApp, ui: &mut Ui, what: &mut GoToWhat, target: &mut String, message: &mut String) -> bool {
-    // The document's bookmarks, only while they are listed (finding them walks the document).
-    let bookmarks: Vec<String> = if *what == GoToWhat::Bookmark {
-        app.session.doc.bookmarks().into_iter().map(|(n, _)| n).filter(|n| !n.starts_with('_')).collect()
-    } else {
-        Vec::new()
+    // The names to pick from, only while they are listed (finding them walks the document).
+    let names: Vec<String> = match what {
+        GoToWhat::Bookmark => app.session.doc.bookmarks().into_iter().map(|(n, _)| n).filter(|n| !n.starts_with('_')).collect(),
+        GoToWhat::Comment => goto_names(&app.session.doc, |o, doc| match o {
+            InlineObject::CommentStart { id } => doc.comments.get(id).map(|c| c.author.clone()),
+            _ => None,
+        }),
+        GoToWhat::Field => goto_names(&app.session.doc, |o, _| match o {
+            InlineObject::Field { instr, .. } | InlineObject::FieldStart { instr, .. } => instr.split_whitespace().next().map(str::to_uppercase),
+            _ => None,
+        }),
+        _ => Vec::new(),
     };
     crate::rtl::horizontal_top(ui, |ui| {
         crate::rtl::vertical(ui, |ui| {
             ui.label(tl!("Go to what:"));
-            for (w, label) in [(GoToWhat::Page, "Page"), (GoToWhat::Bookmark, "Bookmark")] {
-                if ui.selectable_label(*what == w, tl!(label)).clicked() && *what != w {
+            for w in GoToWhat::ALL {
+                if ui.selectable_label(*what == w, w.label()).clicked() && *what != w {
                     *what = w;
                     target.clear();
                     message.clear();
@@ -309,30 +427,47 @@ pub(super) fn goto_body(app: &mut WordApp, ui: &mut Ui, what: &mut GoToWhat, tar
             }
         });
         ui.add_space(16.0);
-        crate::rtl::vertical(ui, |ui| match what {
-            GoToWhat::Page => {
-                let label = ui.label(tl!("Enter page number:"));
+        crate::rtl::vertical(ui, |ui| {
+            let label = ui.label(what.prompt());
+            if !what.named() {
                 let r = ui.add(egui::TextEdit::singleline(target).desired_width(220.0)).labelled_by(label.id);
                 if !r.has_focus() {
                     r.request_focus();
                 }
-                ui.label(egui::RichText::new(tl!("Type +2 or -1 to move from the page you are on.")).weak());
+                let hint = if *what == GoToWhat::Page {
+                    tl!("Type +2 or -1 to move from the page you are on.")
+                } else {
+                    tl!("Type +2 or -1 to move from where you are.")
+                };
+                ui.label(egui::RichText::new(hint).weak());
+                return;
             }
-            GoToWhat::Bookmark => {
-                let label = ui.label(tl!("Enter bookmark name:"));
-                craft_ui::ComboBox::from_id_salt("goto_bookmark")
-                    .width(220.0)
-                    .selected_text(target.as_str())
-                    .show_ui(ui, |ui| {
-                        for b in &bookmarks {
-                            ui.selectable_value(target, b.clone(), b.as_str());
-                        }
-                    })
-                    .response
-                    .labelled_by(label.id);
-                if bookmarks.is_empty() {
-                    ui.label(egui::RichText::new(tl!("This document has no bookmarks.")).weak());
-                }
+            let any = match what {
+                GoToWhat::Comment => Some(tl!("Any reviewer")),
+                GoToWhat::Field => Some(tl!("Any field")),
+                _ => None,
+            };
+            let shown = if target.is_empty() { any.unwrap_or("") } else { target.as_str() };
+            craft_ui::ComboBox::from_id_salt("goto_bookmark")
+                .width(220.0)
+                .selected_text(shown.to_string())
+                .show_ui(ui, |ui| {
+                    if let Some(any) = any {
+                        ui.selectable_value(target, String::new(), any);
+                    }
+                    for b in &names {
+                        ui.selectable_value(target, b.clone(), b.as_str());
+                    }
+                })
+                .response
+                .labelled_by(label.id);
+            if names.is_empty() {
+                let none = match what {
+                    GoToWhat::Comment => tl!("This document has no comments."),
+                    GoToWhat::Field => tl!("This document has no fields."),
+                    _ => tl!("This document has no bookmarks."),
+                };
+                ui.label(egui::RichText::new(none).weak());
             }
         });
     });
@@ -344,22 +479,25 @@ pub(super) fn goto_body(app: &mut WordApp, ui: &mut Ui, what: &mut GoToWhat, tar
     let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
     ui.add_space(8.0);
     ui.horizontal(|ui| {
-        let page_step = *what == GoToWhat::Page && target.trim().is_empty();
-        if page_step && ui.button(tl!("Previous")).clicked() {
-            go = Some(json!({"pageBy": -1}));
+        // Comments and fields step through Next / Previous; numbers do while their box is empty.
+        let step = matches!(what, GoToWhat::Comment | GoToWhat::Field) || (!what.named() && target.trim().is_empty());
+        let named_step = |by: i64| json!({"what": what.name(), "by": by, "name": target.clone()});
+        if step && ui.button(tl!("Previous")).clicked() {
+            go = Some(if what.named() { named_step(-1) } else { json!({"what": what.name(), "by": -1}) });
         }
-        let label = if page_step { tl!("Next") } else { tl!("Go To") };
+        let label = if step { tl!("Next") } else { tl!("Go To") };
         if ui.button(label).clicked() || enter {
-            go = match what {
-                GoToWhat::Page => match goto_page(target) {
+            go = match *what {
+                GoToWhat::Bookmark if !target.is_empty() => Some(json!({"bookmark": target.clone()})),
+                GoToWhat::Bookmark => None,
+                GoToWhat::Comment | GoToWhat::Field => Some(named_step(1)),
+                w => match goto_number(w, target) {
                     Some(p) => Some(p),
                     None => {
-                        *message = tl!("Type a page number, or +2 / -1.").to_string();
+                        *message = w.bad_number().to_string();
                         None
                     }
                 },
-                GoToWhat::Bookmark if !target.is_empty() => Some(json!({"bookmark": target.clone()})),
-                GoToWhat::Bookmark => None,
             };
         }
         if ui.button(tl!("Close")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -375,18 +513,33 @@ pub(super) fn goto_body(app: &mut WordApp, ui: &mut Ui, what: &mut GoToWhat, tar
     close
 }
 
-/// Go To's page box as `edit.goto` params: empty steps one page on, `+n` / `-n` move from the
-/// current page, a number is that page. `None` for anything else.
-pub(super) fn goto_page(text: &str) -> Option<Value> {
+/// The distinct names `name_of` gives the body's inline objects, in document order.
+fn goto_names(doc: &wordcraft_doc::Document, name_of: impl Fn(&InlineObject, &wordcraft_doc::Document) -> Option<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for path in doc.para_paths(StoryRef::Body) {
+        let Some(para) = doc.para(StoryRef::Body, &path) else { continue };
+        for name in para.objects.iter().filter_map(|o| name_of(o, doc)) {
+            if !name.is_empty() && !out.contains(&name) {
+                out.push(name);
+            }
+        }
+    }
+    out
+}
+
+/// Go To's number box as `edit.goto` params for `what`: empty steps one on, `+n` / `-n` move from
+/// the selection, a number is that one. `None` for anything else.
+pub(super) fn goto_number(what: GoToWhat, text: &str) -> Option<Value> {
+    let w = what.name();
     let t = text.trim().replace('\u{2212}', "-");
     if t.is_empty() {
-        return Some(json!({"pageBy": 1}));
+        return Some(json!({"what": w, "by": 1}));
     }
     if let Some(rest) = t.strip_prefix('+') {
-        return rest.parse::<i64>().ok().filter(|n| *n >= 0).map(|n| json!({"pageBy": n}));
+        return rest.parse::<i64>().ok().filter(|n| *n >= 0).map(|n| json!({"what": w, "by": n}));
     }
     if t.starts_with('-') {
-        return t.parse::<i64>().ok().map(|n| json!({"pageBy": n}));
+        return t.parse::<i64>().ok().map(|n| json!({"what": w, "by": n}));
     }
-    t.parse::<u64>().ok().filter(|n| *n >= 1).map(|n| json!({"page": n}))
+    t.parse::<u64>().ok().filter(|n| *n >= 1).map(|n| json!({"what": w, "n": n}))
 }

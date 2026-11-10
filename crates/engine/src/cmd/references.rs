@@ -12,6 +12,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
 mod captions;
 mod fields;
+mod includetext;
 mod notes;
 mod numbers;
 mod properties;
@@ -25,6 +26,7 @@ pub use fields::{
     CHAPTER_SEPARATORS, REFERENCE_NOT_FOUND, output_fields, refresh_date_fields, seq_format, update_fields, update_fields_in, update_seq,
 };
 pub(crate) use fields::{page_at, page_formats, page_label, page_text};
+pub(crate) use includetext::update_source;
 pub(super) use notes::note_options;
 use notes::{note, note_refs};
 pub use properties::{bookmark_text, date_picture};

@@ -134,14 +134,43 @@ fn browse(s: &mut Session, forward: bool) -> CmdResult {
     Ok(json!({"found": true, "object": o.name(), "focus": pos_json(&s.sel.focus)}))
 }
 
-/// Where each object of kind `o` starts in the body, in document order.
+/// What Go To (`edit.goto {"what"}`) and Next / Previous by browse object look for.
+pub(super) enum Target<'a> {
+    Browse(BrowseObject),
+    /// Every section's start, section 1 (the top of the body) included.
+    SectionStarts,
+    Equation,
+    /// Embedded or linked OLE objects.
+    Object,
+    /// Comments by a reviewer (ASCII case ignored); empty = any reviewer.
+    CommentBy(&'a str),
+    /// Fields of a type, the first word of the field code (case ignored); empty = any field.
+    FieldType(&'a str),
+}
+
 fn targets(s: &Session, o: BrowseObject) -> Vec<Pos> {
+    goto_targets(s, &Target::Browse(o))
+}
+
+/// Where each object `t` names starts in the body, in document order.
+pub(super) fn goto_targets(s: &Session, t: &Target) -> Vec<Pos> {
     let paths = s.doc.para_paths(StoryRef::Body);
     let mut out = Vec::new();
+    if let (Target::SectionStarts, Some(first)) = (t, paths.first()) {
+        out.push(Pos { story: StoryRef::Body, path: first.clone(), off: 0 });
+    }
     let mut after_break = false;
     for path in &paths {
         let Some(para) = s.doc.para(StoryRef::Body, path) else { continue };
         let at = |off: usize| Pos { story: StoryRef::Body, path: path.clone(), off };
+        let o = match t {
+            Target::Browse(o) => *o,
+            Target::SectionStarts => BrowseObject::Section,
+            _ => {
+                out.extend(objects(para).filter(|(_, ob)| goto_matches(s, t, ob)).map(|(off, _)| at(off)));
+                continue;
+            }
+        };
         match o {
             BrowseObject::Heading => {
                 if s.doc.styles.resolve_para(&para.props).outline_level.is_some_and(|l| l < 9) {
@@ -189,6 +218,25 @@ fn matches(o: BrowseObject, ob: &InlineObject) -> bool {
         BrowseObject::Endnote => matches!(ob, InlineObject::NoteRef { kind: NoteKind::Endnote, .. }),
         _ => false,
     }
+}
+
+fn goto_matches(s: &Session, t: &Target, ob: &InlineObject) -> bool {
+    match (t, ob) {
+        (Target::Equation, InlineObject::Equation { .. }) => true,
+        (Target::Object, InlineObject::Image { ole, .. }) => ole.is_some(),
+        (Target::CommentBy(who), InlineObject::CommentStart { id }) => {
+            who.is_empty() || s.doc.comments.get(id).is_some_and(|c| c.author.eq_ignore_ascii_case(who))
+        }
+        (Target::FieldType(kind), InlineObject::Field { instr, .. } | InlineObject::FieldStart { instr, .. }) => {
+            kind.is_empty() || field_type(instr).eq_ignore_ascii_case(kind)
+        }
+        _ => false,
+    }
+}
+
+/// A field's type: the first word of its code (`PAGE` in ` PAGE \* roman`).
+fn field_type(instr: &str) -> &str {
+    instr.split_whitespace().next().unwrap_or("")
 }
 
 /// The first tracked change in a paragraph: an insertion, deletion or formatting change in its

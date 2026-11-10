@@ -434,6 +434,7 @@ impl Reader {
 
     /// End the current paragraph (`\par`, `\cell`).
     pub(super) fn end_para(&mut self, in_cell: bool) {
+        self.flush_high_surrogate();
         let read = std::mem::take(&mut self.para);
         let props = self.para_props(&self.st);
         let mut p = Para { inlines: read.inlines, mark_ins: read.mark_ins, mark_del: read.mark_del, ..props };
@@ -475,6 +476,7 @@ impl Reader {
     }
 
     pub(super) fn end_row(&mut self) {
+        self.flush_high_surrogate();
         if self.para_has {
             self.end_cell();
         }
@@ -536,7 +538,7 @@ impl Reader {
 
 /// Applies section formatting word `w` (parameter `p`) to `sec`. False when `w` isn't one.
 pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> bool {
-    use wordcraft_doc::section::{NumFormat, SectionStart};
+    use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NumFormat, SectionStart};
     let on = p != Some(0);
     let pv = p.unwrap_or(0);
     match w {
@@ -551,6 +553,9 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "headery" => sec.page.header = Some(pv),
         "footery" => sec.page.footer = Some(pv),
         "lndscpsxn" => sec.page.landscape = on,
+        // Printer bin codes; 0 (the default) and values outside u16 leave the bin unset.
+        "binfsxn" => sec.bin_first = u16::try_from(pv).ok().filter(|&v| v != 0),
+        "binsxn" => sec.bin_other = u16::try_from(pv).ok().filter(|&v| v != 0),
         "sbknone" => sec.start = SectionStart::Continuous,
         "sbkcol" => sec.start = SectionStart::NextColumn,
         "sbkpage" => sec.start = SectionStart::NextPage,
@@ -567,6 +572,24 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "pgnlcrm" => sec.pgn_fmt = NumFormat::LowerRoman,
         "pgnucltr" => sec.pgn_fmt = NumFormat::UpperLetter,
         "pgnlcltr" => sec.pgn_fmt = NumFormat::LowerLetter,
+        "linemod" => sec.line_mod = Some(pv),
+        "linex" => sec.line_x = Some(pv),
+        "linestarts" => sec.line_starts = Some(pv),
+        "lineppage" => sec.line_restart = Some(LineNumberRestart::Page),
+        "linerestart" => sec.line_restart = Some(LineNumberRestart::Section),
+        "linecont" => sec.line_restart = Some(LineNumberRestart::Continuous),
+        "rtlsect" => sec.rtl = true,
+        "ltrsect" => sec.rtl = false,
+        "pgnhn" => {
+            if let Ok(n @ 1..=9) = u8::try_from(pv) {
+                sec.chapter_style = Some(n);
+            }
+        }
+        "pgnhnsh" => sec.chapter_sep = Some(ChapterSep::Hyphen),
+        "pgnhnsp" => sec.chapter_sep = Some(ChapterSep::Period),
+        "pgnhnsc" => sec.chapter_sep = Some(ChapterSep::Colon),
+        "pgnhnsm" => sec.chapter_sep = Some(ChapterSep::EmDash),
+        "pgnhnsn" => sec.chapter_sep = Some(ChapterSep::EnDash),
         _ => return false,
     }
     true
