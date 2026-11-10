@@ -1857,6 +1857,7 @@ mod shape_text;
 mod surrogate_boundaries;
 mod table_rows;
 mod tabs_spacing;
+mod track_and_print_data;
 mod trailing_data;
 mod underline_styles;
 mod unicode_surrogates;
