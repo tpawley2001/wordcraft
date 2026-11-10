@@ -35,6 +35,7 @@ mod ole_result_objects;
 mod paper_source;
 mod section_columns;
 mod section_line_numbers_grid;
+mod section_page_borders;
 mod section_page_numbers;
 mod style_name_case;
 mod table_float;
