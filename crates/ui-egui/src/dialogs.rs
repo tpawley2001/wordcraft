@@ -1079,3 +1079,5 @@ pub mod dialogs_table_style;
 pub mod dialogs_templates;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_page_layout;
