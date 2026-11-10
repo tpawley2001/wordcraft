@@ -376,6 +376,34 @@ impl Reader {
         apply_section_word(&mut self.sec, w, p)
     }
 
+    /// Applies paragraph word `w` when it names a border side (`\brdrt`, `\brdrl`, `\brdrb`,
+    /// `\brdrr`, the between border `\brdrbtw`, all four sides `\box`) or the shading (`\cbpat`,
+    /// `\cfpat`, `\shading`). False when it isn't one.
+    pub(super) fn para_border_word(&mut self, w: &str, pv: i32) -> bool {
+        match w {
+            "brdrbtw" => {
+                self.page_side = None;
+                self.st.border_side = Some('h');
+            }
+            "box" => {
+                self.page_side = None;
+                self.st.border_side = Some('x');
+            }
+            "cbpat" => self.st.cbpat = Some(pv),
+            "cfpat" => self.st.cfpat = Some(pv),
+            "shading" => self.st.shading = pv,
+            "brdrb" | "brdrt" | "brdrl" | "brdrr" => {
+                self.page_side = None;
+                if w == "brdrb" && self.st.dest == Dest::Body {
+                    self.rule_pending = true;
+                }
+                self.st.border_side = w.chars().last();
+            }
+            _ => return false,
+        }
+        true
+    }
+
     /// Applies document formatting word `w` when it is a footnote or endnote option. False when
     /// it isn't one.
     pub(super) fn doc_note_word(&mut self, w: &str, p: Option<i32>) -> bool {

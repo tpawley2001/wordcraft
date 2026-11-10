@@ -173,19 +173,7 @@ impl Reader {
             "intbl" => self.st.intbl = true,
             "ls" => self.st.ls = Some(pv),
             "ilvl" => self.st.ilvl = pv.clamp(0, 8) as u8,
-            // The border between paragraphs with the same borders, and all four sides at once.
-            "brdrbtw" if self.cell_side.is_none() => self.st.border_side = Some('h'),
-            "box" if self.cell_side.is_none() => self.st.border_side = Some('x'),
-            "cbpat" if self.cell_side.is_none() => self.st.cbpat = Some(pv),
-            "cfpat" if self.cell_side.is_none() => self.st.cfpat = Some(pv),
-            "shading" if self.cell_side.is_none() => self.st.shading = pv,
-            "brdrb" | "brdrt" | "brdrl" | "brdrr" if self.cell_side.is_none() => {
-                self.page_side = None;
-                if w == "brdrb" && self.st.dest == Dest::Body {
-                    self.rule_pending = true;
-                }
-                self.st.border_side = w.chars().last();
-            }
+            _ if self.cell_side.is_none() && self.para_border_word(w, pv) => {}
             "trowd" => {
                 self.defs.clear();
                 self.def_cur = CellDef::default();
