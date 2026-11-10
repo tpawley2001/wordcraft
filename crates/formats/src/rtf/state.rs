@@ -429,6 +429,10 @@ pub(super) struct SecFmt {
     pub(super) cols: Option<i32>,
     pub(super) colsx: Option<i32>,
     pub(super) linebetcol: bool,
+    /// `\colnoN` (1..=45) selects the column that `\colwN` / `\colsrN` describe; `col_dims`
+    /// holds (width, space right) in twips per column, index 0 = column 1.
+    pub(super) col_sel: Option<usize>,
+    pub(super) col_dims: Vec<(Option<i32>, Option<i32>)>,
     pub(super) pgn_restart: bool,
     pub(super) pgn_start: Option<i32>,
     pub(super) pgn_fmt: wordcraft_doc::section::NumFormat,
@@ -482,6 +486,17 @@ impl SecFmt {
             s.columns.space = (x as f32 / 20.0).clamp(0.0, 1584.0);
         }
         s.columns.separator = self.linebetcol;
+        let count = s.columns.count as usize;
+        if count > 1 {
+            let widths: Option<Vec<(f32, f32)>> = (0..count)
+                .map(|i| {
+                    let (w, sr) = self.col_dims.get(i).copied().unwrap_or_default();
+                    let pt = |t: i32| t.min(31_680) as f32 / 20.0;
+                    w.map(|w| (pt(w), sr.map_or(0.0, pt)))
+                })
+                .collect();
+            s.columns.widths = widths.unwrap_or_default();
+        }
         if self.pgn_restart {
             s.page_num_start = Some(self.pgn_start.unwrap_or(1).clamp(0, 32_767) as u32);
         }
