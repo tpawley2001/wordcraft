@@ -1842,6 +1842,7 @@ mod justification_flag;
 mod legacy_pn;
 mod note_options;
 mod object_result;
+mod own_styles;
 mod page_borders;
 mod paper_source;
 mod para_extras;
