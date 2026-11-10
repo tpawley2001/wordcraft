@@ -604,6 +604,21 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "cols" => sec.cols = Some(pv),
         "colsx" => sec.colsx = Some(pv),
         "linebetcol" => sec.linebetcol = on,
+        "colno" => sec.col_sel = usize::try_from(pv).ok().filter(|n| (1..=45).contains(n)).map(|n| n - 1),
+        "colw" | "colsr" => {
+            if let (Some(i), true) = (sec.col_sel, pv >= 0) {
+                if sec.col_dims.len() <= i {
+                    sec.col_dims.resize(i + 1, (None, None));
+                }
+                if let Some(d) = sec.col_dims.get_mut(i) {
+                    if w == "colw" {
+                        d.0 = Some(pv);
+                    } else {
+                        d.1 = Some(pv);
+                    }
+                }
+            }
+        }
         "pgnrestart" => sec.pgn_restart = true,
         "pgncont" => sec.pgn_restart = false,
         "pgnstarts" => sec.pgn_start = Some(pv),

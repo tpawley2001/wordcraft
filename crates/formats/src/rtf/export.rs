@@ -305,6 +305,15 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
         if s.columns.separator {
             o.push_str("\\linebetcol");
         }
+        if s.columns.widths.len() == s.columns.count as usize {
+            for (i, &(w, sr)) in s.columns.widths.iter().enumerate() {
+                o.push_str(&format!("\\colno{}", i + 1));
+                if tw(sr) > 0 {
+                    o.push_str(&format!("\\colsr{}", tw(sr)));
+                }
+                o.push_str(&format!("\\colw{}", tw(w)));
+            }
+        }
     }
     if let Some(n) = s.page_num_start {
         o.push_str(&format!("\\pgnrestart\\pgnstarts{n}"));
