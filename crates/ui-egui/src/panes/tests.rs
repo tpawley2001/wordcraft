@@ -715,9 +715,9 @@ fn the_styles_pane_disables_linked_styles() {
         app,
     );
     h.run_steps(4);
-    assert!(!h.get_by_label("Disable Linked Styles").accesskit_node().is_toggled());
+    assert_eq!(h.get_by_label("Disable Linked Styles").accesskit_node().toggled(), Some(egui::accesskit::Toggled::False));
     h.get_by_label("Disable Linked Styles").click();
     h.run_steps(3);
     assert!(h.state().session.view.disable_linked_styles);
-    assert!(h.get_by_label("Disable Linked Styles").accesskit_node().is_toggled());
+    assert_eq!(h.get_by_label("Disable Linked Styles").accesskit_node().toggled(), Some(egui::accesskit::Toggled::True));
 }
