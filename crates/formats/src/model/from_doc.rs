@@ -83,13 +83,28 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
     let mut f = fmt_of(doc, props, in_code);
     if !opts.chars {
         if opts.tabs_spacing {
+            // Character spacing, underline style and colour, and the character effects RTF writes; double strikethrough is
+            // its own word there, not single strikethrough.
             let e = effective(doc, props);
+            let set = |v: Option<bool>| v.filter(|b| *b);
             let x = CharProps {
                 spacing: e.spacing.filter(|v| *v != 0.0 && v.is_finite()),
+                caps: set(e.caps),
+                small_caps: set(e.small_caps),
+                outline: set(e.outline),
+                shadow: set(e.shadow),
+                emboss: set(e.emboss),
+                engrave: set(e.engrave),
+                double_strike: set(e.double_strike),
+                scale: e.scale.filter(|v| *v != 100.0 && v.is_finite()),
+                kern: e.kern.filter(|v| *v > 0.0 && v.is_finite()),
                 underline: e.underline.filter(|u| f.underline && *u != Underline::Single),
                 underline_color: e.underline_color,
                 ..Default::default()
             };
+            if x.double_strike.is_some() {
+                f.strike = e.strike.unwrap_or(false);
+            }
             f.extra = (x != CharProps::default()).then(|| Box::new(x));
         }
         return f;

@@ -33,7 +33,7 @@ impl Reader {
         if self.destination_word(w, p, on, pv) || self.page_border_word(w, pv) {
             return;
         }
-        if self.underline_word(w, on, pv) {
+        if self.underline_word(w, on, pv) || self.char_effect_word(w, on, pv) {
             return;
         }
         match w {
@@ -110,7 +110,7 @@ impl Reader {
             "prdate" => self.st.chg_p.date = pv as u32,
             "b" => self.st.fmt.bold = on,
             "i" => self.st.fmt.italic = on,
-            "strike" | "striked" => self.st.fmt.strike = on,
+            "strike" => self.st.fmt.strike = on,
             "super" | "up" => {
                 self.st.fmt.sup = on;
                 self.st.fmt.sub = false;
@@ -728,6 +728,25 @@ impl Reader {
         } else if self.st.tabs.len() < MAX_TABS {
             self.st.tabs.push(stop);
         }
+    }
+
+    /// A character effect word (Font › Effects, Scale, Kerning) into the run's own properties.
+    fn char_effect_word(&mut self, w: &str, on: bool, pv: i32) -> bool {
+        match w {
+            // `\striked1` is double strikethrough; single strikethrough is `\strike`.
+            "striked" => self.set_extra(|x| x.double_strike = on.then_some(true)),
+            "caps" => self.set_extra(|x| x.caps = on.then_some(true)),
+            "scaps" => self.set_extra(|x| x.small_caps = on.then_some(true)),
+            "outl" => self.set_extra(|x| x.outline = on.then_some(true)),
+            "shad" => self.set_extra(|x| x.shadow = on.then_some(true)),
+            "embo" => self.set_extra(|x| x.emboss = on.then_some(true)),
+            "impr" => self.set_extra(|x| x.engrave = on.then_some(true)),
+            // Horizontal scale, percent (100 = normal); kerning from a size in half-points (0 = off).
+            "charscalex" if (1..=600).contains(&pv) => self.set_extra(|x| x.scale = (pv != 100).then_some(pv as f32)),
+            "kerning" if (0..=3276).contains(&pv) => self.set_extra(|x| x.kern = (pv != 0).then_some(pv as f32 / 2.0)),
+            _ => return false,
+        }
+        true
     }
 
     /// The run's character spacing, points (0 = normal).
