@@ -43,6 +43,7 @@ mod negative_margins;
 mod para_sort_keys;
 mod manual_duplex;
 mod print_document_properties;
+mod print_forms_data;
 mod print_options;
 mod reveal_formatting;
 mod reveal_formatting_pane;

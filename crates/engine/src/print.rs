@@ -608,6 +608,9 @@ impl Session {
             comments: markup.comments,
             paper,
             links,
+            // Print only the data from a form (File › Options › Advanced): the document's own
+            // setting; a Document Info report prints in full.
+            forms_data_only: report.is_none() && self.doc.settings.print_forms_data,
             ..Default::default()
         };
         let bytes = match self.properties_appendix(v, report.is_some())? {
