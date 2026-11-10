@@ -1,8 +1,8 @@
 use super::date::{dttm_to_iso, iso_date};
 use super::parse::column_grid;
 use super::state::{
-    CellDef, CommentData, Dest, HeaderFooter, MARK_CLOSE, MARK_OPEN, MAX_GROUPS, MAX_NOTE_BLOCKS, MAX_NOTES, MAX_REV_AUTHORS, MAX_SECTIONS, NoteData,
-    Output, PageGeom, Pn, SecFmt, St, Sub, apply_note_word,
+    CellDef, CommentData, Dest, DocOpts, HeaderFooter, MARK_CLOSE, MARK_OPEN, MAX_GROUPS, MAX_NOTE_BLOCKS, MAX_NOTES, MAX_REV_AUTHORS, MAX_SECTIONS,
+    NoteData, Output, PageGeom, Pn, SecFmt, St, Sub, apply_note_word,
 };
 use super::styles::{StyleDef, drop_style_formatting, style_fmt};
 use super::{Arc, Cell, FBlock, FTable, Fmt, HashMap, HashSet, Inline, Kind, Meta, Para, Rgb, model};
@@ -25,6 +25,8 @@ pub(super) struct Reader {
     pub(super) deff: i32,
     /// The document's page (`\paperw`, `\margl`…) and the current section's formatting.
     pub(super) page: PageGeom,
+    /// The document formatting words that go into the document's settings (`\deftab`, `\facingp`…).
+    pub(super) doc_opts: DocOpts,
     pub(super) sec: SecFmt,
     /// The document's footnote and endnote options (`\ftnbj`, `\aftnstart`…); their `num_fmt`
     /// is the document's note number format.
@@ -571,7 +573,7 @@ impl Reader {
 
 /// Applies section formatting word `w` (parameter `p`) to `sec`. False when `w` isn't one.
 pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> bool {
-    use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NumFormat, SectionStart};
+    use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NumFormat, PageVAlign, SectionStart};
     let on = p != Some(0);
     let pv = p.unwrap_or(0);
     match w {
@@ -590,6 +592,10 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         // Printer bin codes; 0 (the default) and values outside u16 leave the bin unset.
         "binfsxn" => sec.bin_first = u16::try_from(pv).ok().filter(|&v| v != 0),
         "binsxn" => sec.bin_other = u16::try_from(pv).ok().filter(|&v| v != 0),
+        "vertalt" => sec.valign = PageVAlign::Top,
+        "vertalc" => sec.valign = PageVAlign::Center,
+        "vertalj" => sec.valign = PageVAlign::Justify,
+        "vertalb" => sec.valign = PageVAlign::Bottom,
         "sbknone" => sec.start = SectionStart::Continuous,
         "sbkcol" => sec.start = SectionStart::NextColumn,
         "sbkpage" => sec.start = SectionStart::NextPage,

@@ -1,5 +1,5 @@
 use super::reader::Reader;
-use super::state::{CommentData, Dest, HeaderFooter, HfPages, MARK_CLOSE, MARK_OPEN, MAX_PICT, NoteData, PageGeom};
+use super::state::{CommentData, Dest, DocOpts, HeaderFooter, HfPages, MARK_CLOSE, MARK_OPEN, MAX_PICT, NoteData, PageGeom};
 use super::{Arc, Block, Blocks, Cell, Document, FBlock, Flow, HashMap, InlineObject, Para, Paragraph, model};
 
 /// Parse RTF bytes into the flow model.
@@ -17,6 +17,8 @@ fn parse_with_page(bytes: &[u8]) -> Result<(Flow, PageGeom, Option<String>), Str
 struct Parsed {
     flow: Flow,
     page: PageGeom,
+    /// The document formatting words that go into the document's settings.
+    doc_opts: DocOpts,
     /// The last section's properties (the others are on the paragraphs that end them).
     last_section: wordcraft_doc::SectionProps,
     default_font: Option<String>,
@@ -344,6 +346,7 @@ fn finalize(mut r: Reader) -> Parsed {
     Parsed {
         flow: Flow { blocks, meta: r.meta },
         page: r.page,
+        doc_opts: r.doc_opts,
         last_section,
         default_font,
         headers_footers,
@@ -426,8 +429,10 @@ fn set_section_revisions(doc: &mut Document) {
 /// Parse RTF bytes into a document.
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
     model::begin_import();
-    let Parsed { flow, last_section, default_font, headers_footers, foreign_styles, notes, comments, doc_notes, .. } = parse_full(bytes, true)?;
+    let Parsed { flow, last_section, default_font, headers_footers, foreign_styles, notes, comments, doc_notes, doc_opts, .. } =
+        parse_full(bytes, true)?;
     let mut doc = model::to_doc_in(&flow, last_section);
+    doc_opts.apply(&mut doc.settings);
     let (mut foot, mut end) = doc_notes;
     if let Some(f) = foot.num_fmt.take() {
         doc.settings.footnote_format = f;

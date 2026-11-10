@@ -222,6 +222,36 @@ impl Marker<'_> {
     }
 }
 
+/// The document formatting words for the settings that differ from the defaults: default tab
+/// stop, facing pages, mirror margins and the automatic hyphenation options.
+fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
+    let d = wordcraft_doc::Settings::default();
+    let tw = |v: f32| if v.is_finite() { (v * 20.0).round().clamp(0.0, 31_680.0) as i64 } else { 0 };
+    let mut o = String::new();
+    if s.default_tab != d.default_tab && tw(s.default_tab) >= 1 {
+        o.push_str(&format!("\\deftab{}", tw(s.default_tab)));
+    }
+    if s.even_odd_headers {
+        o.push_str("\\facingp");
+    }
+    if s.mirror_margins {
+        o.push_str("\\margmirror");
+    }
+    if s.auto_hyphenation {
+        o.push_str("\\hyphauto");
+    }
+    if s.hyphenation_zone != d.hyphenation_zone {
+        o.push_str(&format!("\\hyphhotz{}", tw(s.hyphenation_zone)));
+    }
+    if !s.hyphenate_caps {
+        o.push_str("\\hyphcaps0");
+    }
+    if s.consecutive_hyphen_limit != d.consecutive_hyphen_limit {
+        o.push_str(&format!("\\hyphconsec{}", s.consecutive_hyphen_limit.min(i32::MAX as u32)));
+    }
+    o
+}
+
 /// `\sectd` and a section's formatting, in the words the reader reads back, then its formatting
 /// before a tracked change (`{\*\oldsprops …}`) when it has one.
 fn sect_words(s: &wordcraft_doc::SectionProps) -> String {
@@ -235,7 +265,7 @@ fn sect_words(s: &wordcraft_doc::SectionProps) -> String {
 
 /// `\sectd` and a section's own formatting words.
 fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
-    use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NotePos, NumFormat, SectionStart};
+    use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NotePos, NumFormat, PageVAlign, SectionStart};
     let tw = |v: f32| if v.is_finite() { ((v * 20.0).round() as i64).max(0) } else { 0 };
     let mut o = String::from("\\sectd");
     o.push_str(match s.start {
@@ -249,6 +279,12 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
     if s.landscape {
         o.push_str("\\lndscpsxn");
     }
+    o.push_str(match s.valign {
+        PageVAlign::Top => "",
+        PageVAlign::Center => "\\vertalc",
+        PageVAlign::Justify => "\\vertalj",
+        PageVAlign::Bottom => "\\vertalb",
+    });
     if let Some(n) = s.paper_src_first.filter(|&n| n != 0) {
         o.push_str(&format!("\\binfsxn{n}"));
     }
@@ -1111,10 +1147,10 @@ pub fn export(doc: &Document) -> String {
         w.sections = secs;
     }
     w.blocks(&flow.blocks, false, "\\par", &mut body, 0);
-    export_with(&flow.meta, &w, &body, &doc.last_section, &doc_note_words(&doc.settings))
+    export_with(&flow.meta, &w, &body, &doc.last_section, &doc.settings)
 }
 
-fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionProps, notes: &str) -> String {
+fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionProps, settings: &wordcraft_doc::Settings) -> String {
     let mut out = String::from("{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\\uc1\n{\\fonttbl");
     for (i, f) in w.t.fonts.iter().enumerate() {
         let fam = if model::is_mono(f) { "\\fmodern" } else { "\\fswiss" };
@@ -1167,8 +1203,10 @@ fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionPro
     out.push_str("}\n");
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
+    let notes = doc_note_words(settings);
+    let opts = doc_opts_words(settings);
     out.push_str(&format!(
-        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{landscape}{notes}\\viewkind4\n",
+        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{landscape}{notes}{opts}\\viewkind4\n",
         tw(sec.page_w),
         tw(sec.page_h),
         tw(sec.margin_left),
