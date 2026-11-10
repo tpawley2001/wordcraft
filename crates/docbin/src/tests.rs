@@ -36,7 +36,6 @@ mod paper_source;
 mod section_columns;
 mod section_line_numbers_grid;
 mod section_page_borders;
-mod zz_dbg;
 mod section_page_numbers;
 mod style_name_case;
 mod table_float;

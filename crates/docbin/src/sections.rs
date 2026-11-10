@@ -189,7 +189,8 @@ pub(crate) fn parse_plc(plc: &[u8], word: &[u8], mut apply: impl FnMut(&mut Sect
         }
         props.columns.widths = pgn.column_widths(props.columns.count);
         props.line_numbers = pgn.line_numbers();
-        // A section whose borders are all "no border" has none, as a document without them.
+        // A section whose borders are all "no border" has none, so a document without page
+        // borders keeps the field off and saves as it did.
         props.page_borders = props.page_borders.filter(Borders::any_visible);
         // Without an explicit orientation sprm, infer it from the page shape.
         if !explicit_orient {
@@ -342,7 +343,6 @@ pub(crate) fn apply_section(s: &mut SectionProps, pgn: &mut PageNumbering, prl: 
             }
         }
         S_BRC_TOP | S_BRC_LEFT | S_BRC_BOTTOM | S_BRC_RIGHT => {
-            eprintln!("DBG {:?} {:?}", prl.operand, fmt::brc(prl.operand));
             if let Some(b) = fmt::brc(prl.operand) {
                 set_page_border(s, prl.op, b);
             }
