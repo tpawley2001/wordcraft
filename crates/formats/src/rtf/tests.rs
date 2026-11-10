@@ -1840,6 +1840,7 @@ mod legacy_pn;
 mod note_options;
 mod object_result;
 mod page_borders;
+mod para_extras;
 mod paper_source;
 mod section_extras;
 mod section_revisions;
