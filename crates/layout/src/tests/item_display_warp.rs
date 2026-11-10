@@ -1,6 +1,6 @@
 //! The PDF export draws a page one placed item at a time ([`ItemDisplay`]); warped text boxes
-//! (Text Effects › Transform) and legacy WordArt stretched to its box must come out as
-//! [`page_display`] draws them, not flat.
+//! (Text Effects › Transform) must come out as [`page_display`] draws them, not flat.
+//! Legacy WordArt stretched to its box (fit_box) is checked the same way.
 use crate::display::{Draw, ItemDisplay, page_display};
 use crate::*;
 use wordcraft_doc::props::VAlign;
@@ -12,8 +12,8 @@ fn lay(doc: &Document) -> DocLayout {
 }
 
 /// A body paragraph holding a 242.25 x 41.25 pt WordArt box with `paras` paragraphs of text,
-/// bent by `warp` and with `fit_box` stretched to the box; the document and the box's story.
-fn wordart(warp: &str, fit_box: bool, paras: &[&str]) -> (Document, u32) {
+/// bent by `warp`; the document and the box's story.
+fn wordart(warp: &str, paras: &[&str]) -> (Document, u32) {
     // The anchor text must not be part of "Your Text Here": it is drawn visibly.
     let mut d = Document::from_text("q");
     let props = CharProps {
@@ -43,7 +43,7 @@ fn wordart(warp: &str, fit_box: bool, paras: &[&str]) -> (Document, u32) {
         story: Some(id),
         effects: Default::default(),
         freeform: None,
-        extra: wordcraft_doc::connector::ShapeExtra { warp: wordcraft_doc::wordart::TextWarp::new(warp), fit_box, ..Default::default() },
+        extra: wordcraft_doc::connector::ShapeExtra { warp: wordcraft_doc::wordart::TextWarp::new(warp), ..Default::default() },
     };
     d.insert_object(&Pos::body(0, 1), shape, &Default::default()).unwrap();
     (d, id)
@@ -83,9 +83,23 @@ fn visible_box_glyphs(draws: &[Draw], words: &str) -> usize {
         .count()
 }
 
+/// [`wordart`] with the box's text stretched to fill it (legacy WordArt).
+fn fit_wordart(warp: &str, paras: &[&str]) -> (Document, u32) {
+    let (mut d, id) = wordart(warp, paras);
+    let p = d.para_mut(StoryRef::Body, &Path::top(0)).unwrap();
+    for o in &mut p.objects {
+        if let InlineObject::Shape { story: Some(s), extra, .. } = o
+            && *s == id
+        {
+            extra.fit_box = true;
+        }
+    }
+    (d, id)
+}
+
 #[test]
 fn fit_box_wordart_fills_its_box_when_drawn_item_by_item() {
-    let (d, id) = wordart("textPlain", true, &["Your Text Here"]);
+    let (d, id) = fit_wordart("textPlain", &["Your Text Here"]);
     let l = lay(&d);
     let page = &l.pages[0];
     let frame = l.find_object(0, |o| o.text_box == Some(id)).unwrap().rect;
@@ -95,11 +109,12 @@ fn fit_box_wordart_fills_its_box_when_drawn_item_by_item() {
     let near = |a: f64, e: f32| (a - f64::from(e)).abs() <= 2.0;
     assert!(near(b.x0, frame.x) && near(b.x1, frame.right()) && near(b.y0, frame.y) && near(b.y1, frame.bottom()), "ink {b:?} fills box {frame:?}");
     assert!(same_boxes(&items, &whole), "item by item {items:?} vs page {whole:?}");
+    assert_eq!(same_art(&one_by_one(&d, page), &page_display(&d, page, &Default::default())), Ok(()));
 }
 
 #[test]
 fn bent_wordart_is_bent_when_drawn_item_by_item() {
-    let (d, _) = wordart("textArchUp", false, &["Your Text Here"]);
+    let (d, _) = wordart("textArchUp", &["Your Text Here"]);
     let l = lay(&d);
     let page = &l.pages[0];
     let whole = art_boxes(&page_display(&d, page, &Default::default()));
@@ -112,7 +127,7 @@ fn bent_wordart_is_bent_when_drawn_item_by_item() {
 
 #[test]
 fn a_warped_box_with_two_paragraphs_is_drawn_once() {
-    let (d, _) = wordart("textArchUp", false, &["Your Text", "Here"]);
+    let (d, _) = wordart("textArchUp", &["Your Text", "Here"]);
     let l = lay(&d);
     let page = &l.pages[0];
     let whole = art_boxes(&page_display(&d, page, &Default::default()));
@@ -176,8 +191,8 @@ fn visible_runs(draws: &[Draw]) -> usize {
 
 #[test]
 fn art_paths_match_page_display_exactly() {
-    for (warp, fit) in [("textArchUp", false), ("textPlain", true), ("textWave1", false)] {
-        let (d, _) = wordart(warp, fit, &["Your Text Here"]);
+    for warp in ["textArchUp", "textPlain", "textWave1"] {
+        let (d, _) = wordart(warp, &["Your Text Here"]);
         let l = lay(&d);
         let page = &l.pages[0];
         let whole = page_display(&d, page, &Default::default());
@@ -189,7 +204,7 @@ fn art_paths_match_page_display_exactly() {
 
 #[test]
 fn a_warped_box_with_two_paragraphs_draws_no_flat_text() {
-    let (d, _) = wordart("textArchUp", false, &["Your Text", "Here"]);
+    let (d, _) = wordart("textArchUp", &["Your Text", "Here"]);
     let l = lay(&d);
     let page = &l.pages[0];
     let whole = page_display(&d, page, &Default::default());
@@ -201,7 +216,7 @@ fn a_warped_box_with_two_paragraphs_draws_no_flat_text() {
 
 #[test]
 fn cloned_items_draw_the_same_bent_text() {
-    let (d, _) = wordart("textArchUp", false, &["Your Text", "Here"]);
+    let (d, _) = wordart("textArchUp", &["Your Text", "Here"]);
     let l = lay(&d);
     let page = &l.pages[0];
     let whole = page_display(&d, page, &Default::default());
@@ -215,7 +230,7 @@ fn cloned_items_draw_the_same_bent_text() {
 
 /// The arch WordArt box of [`wordart`] anchored in the default header and the default footer.
 fn wordart_in_header_and_footer() -> Document {
-    let (mut d, _) = wordart("textArchUp", false, &["Your Text Here"]);
+    let (mut d, _) = wordart("textArchUp", &["Your Text Here"]);
     let (shape, story) = {
         let p = d.para_mut(StoryRef::Body, &Path::top(0)).unwrap();
         let shape = p.objects.first().cloned().expect("the WordArt shape");
@@ -264,7 +279,7 @@ fn warped_boxes_in_header_and_footer_match_page_display() {
 
 #[test]
 fn a_hidden_warped_box_draws_nothing() {
-    let (d, _) = wordart("textArchUp", false, &["Your Text Here"]);
+    let (d, _) = wordart("textArchUp", &["Your Text Here"]);
     let l = lay(&d);
     let page = &l.pages[0];
     let opts = crate::display::DisplayOptions { hide_object: Some(Pos::body(0, 1)), ..Default::default() };
