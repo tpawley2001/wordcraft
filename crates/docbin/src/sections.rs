@@ -333,12 +333,16 @@ pub(crate) fn apply_section(s: &mut SectionProps, pgn: &mut PageNumbering, prl: 
         }
         S_LNC | S_NLNN_MOD | S_DXA_LNN | S_LNN_MIN => apply_line_numbering(pgn, prl),
         S_CLM | S_DYA_LINE_PITCH | S_DXT_CHAR_SPACE => apply_doc_grid(s, prl),
+        // Page borders: Word writes both forms for a side, so the last one in the grpprl wins.
+        // A side that decodes to "no border" is stored as such; the whole set is dropped after
+        // the Sepx if no side is visible.
         S_BRC_TOP80 | S_BRC_LEFT80 | S_BRC_BOTTOM80 | S_BRC_RIGHT80 => {
             if let Some(b) = fmt::brc80(prl.operand) {
                 set_page_border(s, prl.op, b);
             }
         }
         S_BRC_TOP | S_BRC_LEFT | S_BRC_BOTTOM | S_BRC_RIGHT => {
+            eprintln!("DBG {:?} {:?}", prl.operand, fmt::brc(prl.operand));
             if let Some(b) = fmt::brc(prl.operand) {
                 set_page_border(s, prl.op, b);
             }
