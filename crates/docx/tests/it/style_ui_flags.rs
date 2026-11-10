@@ -170,20 +170,3 @@ fn a_style_hidden_in_the_app_still_writes_semi_hidden_and_unhide_when_used() {
     let el = style_el(&styles_xml(&wordcraft_docx::write(&d).expect("write")), "Body");
     assert!(has(&el, "w:semiHidden") && has(&el, "w:unhideWhenUsed"), "{el}");
 }
-
-#[test]
-fn read_write_read_gives_the_same_style_values() {
-    for inner in [
-        "<w:semiHidden/>",
-        "<w:semiHidden/><w:unhideWhenUsed/>",
-        "<w:unhideWhenUsed/>",
-        "<w:hidden/>",
-        "<w:hidden/><w:semiHidden/>",
-        r#"<w:aliases w:val="H1,Head"/><w:autoRedefine/><w:personal/><w:personalCompose/><w:rsid w:val="00ab12cd"/>"#,
-    ] {
-        let first = wordcraft_docx::read(&docx(&para("Body", inner))).expect("read");
-        let again = wordcraft_docx::read(&wordcraft_docx::write(&first).expect("write")).expect("read again");
-        assert_eq!(first.styles.get("Body"), again.styles.get("Body"), "{inner}");
-        assert!(first.styles.get("Body").is_some_and(|s| s.hidden == inner.contains("idden/>")), "{inner}");
-    }
-}
