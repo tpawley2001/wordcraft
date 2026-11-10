@@ -215,4 +215,7 @@ pub mod p {
 
 #[cfg(test)]
 #[rustfmt::skip]
+// `tests/shape_format_painter.rs` binds Shape A's outline width (`aw`) without reading it; without
+// this, clippy's `-D warnings` over the test targets fails on it.
+#[allow(unused_variables)]
 mod tests;

@@ -2,7 +2,7 @@
 
 use serde_json::{Value, json};
 use wordcraft_doc::edit::Fragment;
-use wordcraft_doc::{Path, Pos, StoryRef};
+use wordcraft_doc::{InlineObject, Path, Pos, StoryRef};
 
 use super::{delete_selection, find_pattern, pos_json, sel_result};
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
@@ -1087,7 +1087,80 @@ fn goto_line(s: &mut Session, n: Option<u64>, by: Option<i64>) -> CmdResult {
     Ok(r)
 }
 
+/// What the Format Painter copies from a shape or text box: its fill, outline and effects. Its
+/// kind, size, position, wrapping, name, text and arrowheads stay with each shape.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShapeFormat {
+    fill: Option<wordcraft_doc::fill::Fill>,
+    stroke: Option<wordcraft_doc::props::Rgb>,
+    stroke_width: f32,
+    effects: wordcraft_doc::effects::ShapeEffects,
+    outline_fill: Option<wordcraft_doc::fill::Fill>,
+    dash: wordcraft_doc::line_dash::LineDash,
+    cap: wordcraft_doc::connector::LineCap,
+}
+
+impl ShapeFormat {
+    fn of(o: &InlineObject) -> Option<Self> {
+        let InlineObject::Shape { fill, stroke, stroke_width, effects, extra, .. } = o else { return None };
+        Some(Self {
+            fill: fill.clone(),
+            stroke: *stroke,
+            stroke_width: *stroke_width,
+            effects: effects.clone(),
+            outline_fill: extra.outline_fill.clone(),
+            dash: extra.dash.clone(),
+            cap: extra.cap,
+        })
+    }
+
+    fn apply(&self, o: &mut InlineObject) {
+        if let InlineObject::Shape { fill, stroke, stroke_width, effects, extra, .. } = o {
+            fill.clone_from(&self.fill);
+            *stroke = self.stroke;
+            *stroke_width = self.stroke_width;
+            effects.clone_from(&self.effects);
+            extra.outline_fill.clone_from(&self.outline_fill);
+            extra.dash.clone_from(&self.dash);
+            extra.cap = self.cap;
+        }
+    }
+}
+
+impl Session {
+    /// Whether the Format Painter holds formatting (text or a shape's) to paste.
+    pub fn painter_armed(&self) -> bool {
+        self.painter.is_some() || self.shape_painter.is_some()
+    }
+
+    /// Whether the Format Painter stays on after a paste (a double-click on its button).
+    pub fn painter_sticky(&self) -> bool {
+        matches!(self.painter, Some((_, _, true))) || matches!(self.shape_painter, Some((_, true)))
+    }
+
+    /// Turn the Format Painter off (Esc).
+    pub fn clear_painter(&mut self) {
+        self.painter = None;
+        self.shape_painter = None;
+    }
+}
+
+/// The selected shape or text box the painter works on: not a picture, and not a member of a
+/// drawing canvas.
+fn painter_shape(s: &Session) -> Option<(Pos, InlineObject)> {
+    if crate::cmd::canvas::selected_member(s).is_some() {
+        return None;
+    }
+    crate::cmd::objects::selected(s).filter(|(_, o)| matches!(o, InlineObject::Shape { .. }))
+}
+
 fn painter_pick(s: &mut Session) {
+    if let Some(format) = painter_shape(s).and_then(|(_, o)| ShapeFormat::of(&o)) {
+        s.painter = None;
+        s.shape_painter = Some((format, false));
+        return;
+    }
+    s.shape_painter = None;
     let f = s.sel.ordered().0;
     // A symbol's own font isn't formatting to paint onto text.
     let chr = s.doc.para_at(&f).map(|p| p.props_of_char(f.off).clone().without_symbol()).unwrap_or_default();
@@ -1096,19 +1169,31 @@ fn painter_pick(s: &mut Session) {
 }
 
 fn painter(s: &mut Session, v: &Value) -> CmdResult {
-    if s.painter.is_some() {
-        s.painter = None;
+    if s.painter_armed() {
+        s.clear_painter();
         return Ok(json!({"active": false}));
     }
     painter_pick(s);
-    if let Some((_, _, sticky)) = s.painter.as_mut() {
-        *sticky = p::bool(v, "sticky").unwrap_or(false);
+    let sticky = p::bool(v, "sticky").unwrap_or(false);
+    if let Some((_, _, on)) = s.painter.as_mut() {
+        *on = sticky;
+    }
+    if let Some((_, on)) = s.shape_painter.as_mut() {
+        *on = sticky;
     }
     Ok(json!({"active": true}))
 }
 
 /// Apply the format painter's formatting to the selection.
 fn paste_format(s: &mut Session, _: &Value) -> CmdResult {
+    if let Some((format, sticky)) = s.shape_painter.clone() {
+        let (pos, _) = painter_shape(s).ok_or_else(|| CmdError::Failed("select a shape to paste its formatting".into()))?;
+        crate::cmd::objects::edit_obj(s, &pos, |o| format.apply(o))?;
+        if !sticky {
+            s.shape_painter = None;
+        }
+        return sel_result(s);
+    }
     let Some((chr, para, sticky)) = s.painter.clone() else { return Err(CmdError::Failed("no formatting copied".into())) };
     let (a, b) = s.sel.ordered();
     if a == b {
