@@ -272,6 +272,14 @@ fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
     }
 }
 
+/// The advance, in em, Word gives `ch` in `family` when that font is missing (its substitute's
+/// advance differs); `None` when there is no table for the family or the character.
+pub fn missing_font_advance(family: &str, bold: bool, ch: char) -> Option<f64> {
+    // Stub for the acceptance tests: the tables come with the implementation.
+    let _ = (family, bold, ch);
+    None
+}
+
 /// Is a line's (ascent, descent) one `upem` em tall?
 fn one_em((ascent, descent): (f64, f64), upem: f64) -> bool {
     upem > 0.0 && ((ascent + descent) / upem - 1.0).abs() < 0.005
