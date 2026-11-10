@@ -1084,14 +1084,13 @@ pub(super) struct HyphenOptions {
 
 impl HyphenOptions {
     /// Read the options of `a`, the attributes of a `style:paragraph-properties` or
-    /// `style:text-properties` (`element`). Always false.
-    fn read(&mut self, element: &str, a: &Attrs) -> bool {
+    /// `style:text-properties` (`element`).
+    fn read(&mut self, element: &str, a: &Attrs) {
         if element == "paragraph-properties" {
             self.read_para(a);
         } else {
             self.read_text(a);
         }
-        false
     }
 
     fn read_para(&mut self, a: &Attrs) {
@@ -1113,11 +1112,6 @@ impl HyphenOptions {
             self.no_caps = Some(v.trim() == "true");
         }
     }
-}
-
-/// Whether the style being read is the document's own Standard (not an automatic style).
-fn is_standard(cur: &Option<(String, StyleInfo)>) -> bool {
-    cur.as_ref().is_some_and(|(n, s)| n == "Standard" && !s.auto)
 }
 
 fn widows(a: &Attrs) -> Option<bool> {
@@ -1224,17 +1218,7 @@ impl Styles {
                 }
                 "graphic-properties" if in_graphic_default && cur.is_none() => self.default_graphic = super::frames::Graphic::read(&a),
                 props if in_table_default == Some(props) && cur.is_none() => self.read_table_default(props, &a),
-                "text-properties" if in_default && cur.is_none() => {
-                    self.default_font = default_font(&a, &self.faces);
-                    if let Some(sz) = get(&a, "fo:font-size").and_then(length).filter(|v| v.is_finite() && *v >= 1.0) {
-                        self.default_size = Some(sz.min(1638.0));
-                    }
-                    self.default_kern = get(&a, "style:letter-kerning").is_some_and(|k| k.trim() == "true");
-                    self.default_color = get(&a, "fo:color").and_then(model::parse_color);
-                    script_properties(&a, &mut self.default_scripts, &self.faces);
-                    self.default_lang = language(&a);
-                    self.default_hyphens.read_text(&a);
-                }
+                "text-properties" if in_default && cur.is_none() => self.read_default_text(&a),
                 "paragraph-properties" if in_default && cur.is_none() => {
                     paragraph_spacing(&a, &mut self.default_spacing);
                     self.default_widows = widows(&a);
@@ -1245,7 +1229,7 @@ impl Styles {
                 }
                 // Standard's hyphenation options, for what the default style leaves unsaid; its
                 // properties are then read as any style's (the guard is never true).
-                "paragraph-properties" | "text-properties" if is_standard(&cur) && self.standard_hyphens.read(local(&q), &a) => {}
+                name if self.read_standard_hyphens(&cur, name, &a) => {}
                 "text-properties" => {
                     if let Some((_, s)) = &mut cur {
                         text_properties(&a, s, &self.faces);
@@ -1653,6 +1637,28 @@ impl Styles {
     /// else in Standard; `None` when neither says.
     pub(super) fn stated_widows(&self) -> Option<bool> {
         self.default_widows.or_else(|| self.map.get("Standard").filter(|s| !s.auto).and_then(|s| s.widow_control))
+    }
+
+    /// The text properties of `style:default-style` for paragraphs.
+    fn read_default_text(&mut self, a: &Attrs) {
+        self.default_font = default_font(a, &self.faces);
+        if let Some(sz) = get(a, "fo:font-size").and_then(length).filter(|v| v.is_finite() && *v >= 1.0) {
+            self.default_size = Some(sz.min(1638.0));
+        }
+        self.default_kern = get(a, "style:letter-kerning").is_some_and(|k| k.trim() == "true");
+        self.default_color = get(a, "fo:color").and_then(model::parse_color);
+        script_properties(a, &mut self.default_scripts, &self.faces);
+        self.default_lang = language(a);
+        self.default_hyphens.read_text(a);
+    }
+
+    /// When `cur`, the style being read, is the document's own Standard (not an automatic style)
+    /// and `element` its paragraph or text properties, read its hyphenation options. Always false.
+    fn read_standard_hyphens(&mut self, cur: &Option<(String, StyleInfo)>, element: &str, a: &Attrs) -> bool {
+        if matches!(element, "paragraph-properties" | "text-properties") && cur.as_ref().is_some_and(|(n, s)| n == "Standard" && !s.auto) {
+            self.standard_hyphens.read(element, a);
+        }
+        false
     }
 
     /// The document's hyphenation options as its default paragraph style states them, else as
