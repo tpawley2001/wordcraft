@@ -345,7 +345,8 @@ impl PageGeom {
 }
 
 /// Document formatting words that go into the document's settings, as read: `None` where the
-/// file doesn't give one (the setting keeps its default).
+/// file doesn't give one (the setting keeps its default). `\widowctrl` is the document's widow
+/// control default for paragraphs that don't set their own.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct DocOpts {
     /// `\deftabN`, twips (1..=31680).
@@ -362,6 +363,9 @@ pub(super) struct DocOpts {
     pub(super) hyphenate_caps: Option<bool>,
     /// `\hyphconsecN` (>= 0; 0 is no limit).
     pub(super) consecutive_hyphen_limit: Option<i32>,
+    /// `\widowctrl`: widow and orphan control on for the paragraphs that don't say
+    /// (`\widctlpar`/`\nowidctlpar`). Without it Word has it off for them.
+    pub(super) widow_control: bool,
 }
 
 impl DocOpts {
@@ -389,6 +393,7 @@ impl DocOpts {
                     self.consecutive_hyphen_limit = Some(pv);
                 }
             }
+            "widowctrl" => self.widow_control = true,
             _ => return false,
         }
         true

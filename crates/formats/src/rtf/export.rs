@@ -1287,7 +1287,9 @@ fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionPro
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
     let notes = doc_note_words(settings);
-    let opts = doc_opts_words(settings) + &doc_setting_words(settings);
+    // Word writes `\widowctrl` in every document, so a paragraph that doesn't say has widow
+    // control on, as `None` means here.
+    let opts = "\\widowctrl".to_string() + &doc_opts_words(settings) + &doc_setting_words(settings);
     out.push_str(&format!(
         "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{landscape}{notes}{opts}\\viewkind4\n",
         tw(sec.page_w),
