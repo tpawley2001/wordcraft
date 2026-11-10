@@ -1,9 +1,26 @@
 use super::{Ui, Value, WordApp};
+use serde_json::json;
 
 /// Formatting resolved at the current caret, refreshed on every frame.
 pub(super) fn reveal(app: &mut WordApp, ui: &mut Ui) {
     let formatting = wordcraft_engine::cmd::reveal::reveal(&app.session);
     egui::ScrollArea::vertical().show(ui, |ui| {
+        let mut compare = app.session.view.reveal_compare.is_some();
+        if ui.checkbox(&mut compare, tl!("Compare to another selection")).changed() {
+            let _ = app.run("view.revealCompare", json!({"value": compare}));
+        }
+        if let Some(differences) = formatting.get("differences").and_then(Value::as_array) {
+            ui.label(egui::RichText::new(tl!("Formatting differences")).strong());
+            ui.indent("revealDifferences", |ui| {
+                for difference in differences.iter().take(256) {
+                    let first = side(difference.get("first"), difference.get("second"));
+                    let second = side(difference.get("second"), difference.get("first"));
+                    let line = crate::i18n::fmt(tl!("{first} -> {second}"), &[("first", &first), ("second", &second)]);
+                    ui.add(egui::Label::new(line).wrap());
+                }
+            });
+            ui.separator();
+        }
         let Some(groups) = formatting.get("groups").and_then(Value::as_array) else { return };
         for group in groups {
             let name = group.get("name").and_then(Value::as_str).unwrap_or_default();
@@ -56,6 +73,16 @@ fn describe(entry: &Value) -> String {
         Some(label) => format!("{}: {value}", tl!(label)),
         None => value,
     }
+}
+
+/// One side of a difference: a missing FONT effect reads `Not Bold`, any other missing side is empty.
+fn side(entry: Option<&Value>, other: Option<&Value>) -> String {
+    let Some(entry) = entry.filter(|e| !e.is_null()) else {
+        let effect =
+            other.and_then(|e| e.get("text")).and_then(Value::as_str).filter(|_| other.is_some_and(|e| e.get("label").is_some_and(Value::is_null)));
+        return effect.map(|text| format!("{} {text}", tl!("Not"))).unwrap_or_default();
+    };
+    describe(entry)
 }
 
 fn trim_num(x: f64) -> String {
