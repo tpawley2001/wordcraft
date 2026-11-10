@@ -160,7 +160,7 @@ pub(crate) fn brc80(op: &[u8]) -> Option<Border> {
 }
 
 /// One border from a `BrcOperand` ([MS-DOC] §2.9.21): cb(1, MUST be 8) + Brc(8).
-fn brc(op: &[u8]) -> Option<Border> {
+pub(crate) fn brc(op: &[u8]) -> Option<Border> {
     if op.first() != Some(&8) {
         return None;
     }
