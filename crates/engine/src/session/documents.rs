@@ -269,6 +269,7 @@ impl Session {
             author: _,
             initials: _,
             painter: _,
+            shape_painter: _,
             pending_text_move: _,
             // What the drawn window knows of the others: its front end sets it as it draws.
             windows: _,

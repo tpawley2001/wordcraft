@@ -913,6 +913,13 @@ impl Body<'_> {
         if let Some(c) = look.contextual {
             p.extra.get_or_insert_with(Default::default).contextual_spacing = Some(c);
         }
+        let asian = look.asian;
+        if asian != Default::default() {
+            let x = p.extra.get_or_insert_with(Default::default);
+            (x.kinsoku, x.overflow_punct, x.snap_to_grid, x.text_alignment) =
+                (asian.kinsoku, asian.overflow_punct, asian.snap_to_grid, asian.text_alignment);
+            (x.auto_space_de, x.auto_space_dn) = (asian.auto_space, asian.auto_space);
+        }
         if look.rtl == Some(true) {
             p.extra.get_or_insert_with(Default::default).bidi = Some(true);
         }

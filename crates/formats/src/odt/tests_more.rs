@@ -1,5 +1,6 @@
 //! Tests for the ODT features added after the first reader and writer: one module per feature.
 
+mod asian_typography;
 mod bookmarks;
 mod cell_formulas;
 mod char_styles;
@@ -10,6 +11,7 @@ mod connectors;
 mod custom_geometry;
 mod doc_options;
 mod drop_caps;
+mod east_asian_layout;
 mod encryption;
 mod equations;
 mod fields;

@@ -345,7 +345,7 @@ fn finalize(mut r: Reader) -> Parsed {
     if blocks.is_empty() {
         blocks.push(FBlock::Para(Para::default()));
     }
-    let default_font = r.fonts.get(&r.deff).filter(|n| !model::is_mono(n)).map(|n| n.to_string());
+    let default_font = r.fonts.get(&r.deff).map(|n| n.to_string());
     let foreign_styles = r.foreign_styles();
     let own_styles = r.own_styles();
     Parsed {
@@ -506,7 +506,30 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     for style in own_styles {
         Arc::make_mut(&mut doc.styles).upsert(style);
     }
+    // Without `\widowctrl` Word has widow control off for every paragraph that doesn't say.
+    if !doc_opts.widow_control {
+        set_widow_control_off(&mut doc);
+    }
     Ok(doc)
+}
+
+/// Turns widow control off for every paragraph that doesn't set it, in every story: the body,
+/// table cells (nested too), headers and footers, notes, comments and text boxes.
+fn set_widow_control_off(doc: &mut Document) {
+    use wordcraft_doc::StoryRef;
+    let stories: Vec<StoryRef> = std::iter::once(StoryRef::Body).chain(doc.parts.keys().map(|&id| StoryRef::Part(id))).collect();
+    for story in stories {
+        for path in doc.para_paths(story) {
+            let unset = doc.para(story, &path).is_some_and(|p| p.props.widow_control.is_none());
+            if !unset {
+                continue;
+            }
+            if let Ok(p) = doc.para_mut(story, &path) {
+                p.props.widow_control = Some(false);
+                p.touch();
+            }
+        }
+    }
 }
 
 /// Turn the place markers the reader left in the text into note references and comment ranges,

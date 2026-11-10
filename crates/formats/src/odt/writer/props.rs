@@ -56,9 +56,41 @@ pub(in crate::odt) fn extra_props(x: &wordcraft_doc::props::CharProps, size: Opt
     } else if on(x.engrave) {
         p.push_str(" style:font-relief=\"engraved\"");
     }
+    if let Some(e) = &x.east_asian_layout {
+        p.push_str(&east_asian_layout_attrs(e));
+    }
     p.push_str(&script_attrs(x));
-    if let Some(l) = x.lang.as_deref() {
+    // Word keeps the language under Do not check spelling or grammar; ODF says one or the other,
+    // and no linguistic content (`zxx`) is what keeps the text unchecked.
+    if on(x.no_proof) {
+        p.push_str(" fo:language=\"zxx\" fo:country=\"none\"");
+    } else if let Some(l) = x.lang.as_deref() {
         p.push_str(&lang_attrs(l, ""));
+    }
+    p
+}
+
+/// Two lines in one (ODF 1.3 §20.364–366) and horizontal in vertical (§20.370, §20.371) for
+/// Word's Asian Layout `e`.
+fn east_asian_layout_attrs(e: &wordcraft_doc::props::EastAsianLayout) -> String {
+    use wordcraft_doc::props::CombineBrackets as B;
+    let mut p = String::new();
+    if e.combine == Some(true) {
+        p.push_str(" style:text-combine=\"lines\"");
+        let pair = match e.combine_brackets {
+            Some(B::Round) => Some(("(", ")")),
+            Some(B::Square) => Some(("[", "]")),
+            Some(B::Angle) => Some(("&lt;", "&gt;")),
+            Some(B::Curly) => Some(("{", "}")),
+            Some(B::None) | None => None,
+        };
+        if let Some((start, end)) = pair {
+            p.push_str(&format!(" style:text-combine-start-char=\"{start}\" style:text-combine-end-char=\"{end}\""));
+        }
+    }
+    if e.vert == Some(true) {
+        let scale = if e.vert_compress == Some(true) { "line-height" } else { "fixed" };
+        p.push_str(&format!(" style:text-rotation-angle=\"90\" style:text-rotation-scale=\"{scale}\""));
     }
     p
 }

@@ -201,7 +201,11 @@ fn dimming(opts: &DisplayOptions) -> (f32, f32) {
 }
 
 fn body_change_bars(doc: &Document, page: &Page, items: &[Placed], opts: &DisplayOptions, alpha: f32, out: &mut Vec<Draw>) {
-    if opts.markup && (opts.revisions.insertions_deletions || opts.revisions.formatting) && opts.revisions.changed_lines != ChangeBar::None {
+    if !opts.forms_data_only
+        && opts.markup
+        && (opts.revisions.insertions_deletions || opts.revisions.formatting)
+        && opts.revisions.changed_lines != ChangeBar::None
+    {
         change_bars(doc, page, items, &opts.revisions, alpha, out);
     }
 }
@@ -581,6 +585,11 @@ fn item(doc: &Document, it: &Placed, opts: &DisplayOptions, authors: &Authors, a
 /// [`item`] drawn inside the turn `outer` (a turned Drawing Canvas's members): a shape's
 /// effects follow all the turns it is drawn inside.
 fn item_in(doc: &Document, it: &Placed, opts: &DisplayOptions, authors: &Authors, alpha: f32, outer: Spin, out: &mut Vec<Draw>) {
+    // Print only the data from a form: no fills, borders, pictures or shapes, only the form
+    // fields' data in the lines of text.
+    if opts.forms_data_only && !matches!(it, Placed::Lines { .. } | Placed::Clip { .. }) {
+        return;
+    }
     match it {
         Placed::Fill { rect, color } => out.push(Draw::Fill { rect: *rect, color: *color, alpha, text_bg: false }),
         Placed::Rule { x0, y0, x1, y1, border } => out.push(rule(*x0, *y0, *x1, *y1, border, alpha)),

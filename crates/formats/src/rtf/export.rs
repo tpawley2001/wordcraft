@@ -224,11 +224,13 @@ impl Marker<'_> {
 }
 
 /// The document formatting words for the settings that differ from the defaults: default tab
-/// stop, facing pages, mirror margins and the automatic hyphenation options.
+/// stop, facing pages, mirror margins and the automatic hyphenation options. Word writes
+/// `\widowctrl` in every document, so a paragraph that doesn't say has widow control on, as
+/// `None` means here.
 fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
     let d = wordcraft_doc::Settings::default();
     let tw = |v: f32| if v.is_finite() { (v * 20.0).round().clamp(0.0, 31_680.0) as i64 } else { 0 };
-    let mut o = String::new();
+    let mut o = String::from("\\widowctrl");
     if s.default_tab != d.default_tab && tw(s.default_tab) >= 1 {
         o.push_str(&format!("\\deftab{}", tw(s.default_tab)));
     }
@@ -776,7 +778,7 @@ impl Writer {
                     out.push_str("\\ftnalt");
                 }
                 out.push(' ');
-                self.blocks(&blocks, false, "\\par", out, 0);
+                self.blocks(&blocks, 0, "\\par", out, 0);
                 out.push('}');
             }
             Mark::RangeStart(id) => out.push_str(&format!("{{\\*\\atrfstart {id}}}")),
@@ -792,7 +794,7 @@ impl Writer {
                         out.push_str(&format!("{{\\*\\atndate {d}}}"));
                     }
                     out.push('\n');
-                    self.blocks(&a.blocks, false, "\\par", out, 0);
+                    self.blocks(&a.blocks, 0, "\\par", out, 0);
                     out.push('}');
                 }
             }
@@ -1060,7 +1062,7 @@ impl Writer {
                     }
                     out.push_str("{\\shptxt ");
                     let base = self.base.clone();
-                    self.blocks(blocks, false, "\\par", out, 1);
+                    self.blocks(blocks, 0, "\\par", out, 1);
                     self.base = base;
                     out.push_str("}}}");
                 }
@@ -1092,12 +1094,13 @@ impl Writer {
         }
     }
 
-    pub(super) fn para(&mut self, p: &Para, intbl: bool, ls: Option<(usize, String)>, end: &str, out: &mut String) {
-        let ctl = self.para_ctl(p, intbl);
+    pub(super) fn para(&mut self, p: &Para, itap: impl Into<usize>, ls: Option<(usize, String)>, end: &str, out: &mut String) {
+        let itap = itap.into();
+        let ctl = self.para_ctl(p, itap);
         out.push_str(&ctl);
         if let Some(c) = &p.fmt_change {
             // RTF 1.9.1: the paragraph formatting before the change, then who changed it and when.
-            let old = self.para_ctl(&c.old, intbl);
+            let old = self.para_ctl(&c.old, itap);
             // The old list is the same list instance (only its level may differ).
             let list = match (c.old.list, &ls) {
                 (Some(li), Some((n, _))) => format!("\\ls{n}\\ilvl{}", li.level.min(8)),
@@ -1136,21 +1139,27 @@ impl Writer {
         self.inlines(&p.inlines, out);
         self.base = Fmt::default();
         // A tracked paragraph mark is the `\par` inside the revision's group.
-        let marks = self.rev_ctl(p.mark_ins.as_deref(), p.mark_del.as_deref());
+        let mut marks = self.rev_ctl(p.mark_ins.as_deref(), p.mark_del.as_deref());
+        // An empty paragraph's mark formatting: the character formatting at its `\par`.
+        if let Some(m) = p.mark.as_deref().filter(|_| p.textless()) {
+            let f = mark_fmt(m);
+            marks.push_str(&self.char_ctl(&f));
+        }
         if end == "\\par" && !marks.is_empty() {
             out.push_str(&format!("{{{marks} {end}}}"));
+        } else if !marks.is_empty() {
+            out.push_str(&format!("{marks} {end}"));
         } else {
             out.push_str(end);
         }
         out.push('\n');
     }
 
-    /// The paragraph formatting control words of `p`, from `\pard\plain` (its list left out).
-    fn para_ctl(&mut self, p: &Para, intbl: bool) -> String {
+    /// The paragraph formatting control words of `p`, from `\pard\plain` (its list left out),
+    /// at table depth `itap` (0 the body).
+    fn para_ctl(&mut self, p: &Para, itap: usize) -> String {
         let mut out = String::from("\\pard\\plain");
-        if intbl {
-            out.push_str("\\intbl");
-        }
+        out.push_str(&in_table(itap));
         if let Some(s) = p.extra.as_ref().and_then(|x| x.style.as_deref()).and_then(own_style_num).or_else(|| style_num(p.kind)) {
             out.push_str(&format!("\\s{s}"));
         }
@@ -1219,7 +1228,9 @@ impl Writer {
         out
     }
 
-    fn blocks(&mut self, blocks: &[FBlock], intbl: bool, last_end: &str, out: &mut String, depth: usize) {
+    /// Writes `blocks` at table depth `itap` (0 the body, 1 a table's cells, 2 a nested table's…);
+    /// `depth` counts the stories and tables they sit in.
+    fn blocks(&mut self, blocks: &[FBlock], itap: usize, last_end: &str, out: &mut String, depth: usize) {
         let mut counter = model::ListCounter::default();
         let mut cur_list: Option<usize> = None;
         let mut top_ordered = false;
@@ -1229,7 +1240,7 @@ impl Writer {
             match b {
                 FBlock::Para(p) => {
                     // A paragraph that ends a section ends it with `\sect`; the next one begins.
-                    if p.section.is_some() && !intbl && depth == 0 && self.sect_i + 1 < self.sections.len() {
+                    if p.section.is_some() && itap == 0 && depth == 0 && self.sect_i + 1 < self.sections.len() {
                         self.sect_i += 1;
                         end = format!("\\sect\n{}", self.sections.get(self.sect_i).map(|s| sect_words(s, &mut self.t)).unwrap_or_default());
                         // A body that ends on the break keeps its last section: an empty paragraph holds it.
@@ -1279,28 +1290,96 @@ impl Writer {
                             None
                         }
                     };
-                    self.para(p, intbl, ls, &end, out);
+                    self.para(p, itap, ls, &end, out);
                 }
                 FBlock::Table(t) => {
                     cur_list = None;
-                    if intbl || depth > 0 {
-                        // Nested table: its cells' paragraphs flow into this cell.
+                    if itap > 0 && itap < model::MAX_DEPTH {
+                        // A table in a cell: Word's nested table, one level deeper. The cell's
+                        // end mark follows in a paragraph of its own.
+                        self.table(t, out, itap + 1, depth + 1);
+                        if i + 1 == n && !last_end.is_empty() {
+                            out.push_str(&format!("\\pard\\plain{} {last_end}\n", in_table(itap)));
+                        }
+                    } else if itap > 0 || depth > 0 {
+                        // Too deep, or in a story with no tables: its cells' paragraphs flow
+                        // into this cell.
                         let inner: Vec<FBlock> = t.rows.iter().flatten().flat_map(|c| c.blocks.clone()).collect();
                         if depth < model::MAX_DEPTH {
-                            self.blocks(&inner, intbl, &end, out, depth + 1);
+                            self.blocks(&inner, itap, &end, out, depth + 1);
                         }
                     } else {
-                        self.table(t, out, depth);
+                        self.table(t, out, 1, depth);
                     }
                 }
             }
         }
         if blocks.is_empty() && !last_end.is_empty() {
-            out.push_str(&format!("\\pard\\plain{} {last_end}\n", if intbl { "\\intbl" } else { "" }));
+            out.push_str(&format!("\\pard\\plain{} {last_end}\n", in_table(itap)));
         }
     }
 
-    fn table(&mut self, t: &FTable, out: &mut String, depth: usize) {
+    /// The row definition of row `ri` of `t` (`\trowd` … each cell's `\cellxN`), with the
+    /// table's column `widths` in twips.
+    fn row_props(&mut self, t: &FTable, ri: usize, row: &[model::Cell], widths: &[f32]) -> String {
+        let mut props = String::new();
+        let out = &mut props;
+        out.push_str("\\trowd\\trgaph108\\trleft0");
+        if !row.is_empty() && row.iter().all(|c| c.header) {
+            out.push_str("\\trhdr");
+        }
+        let extra = t.extra.as_deref();
+        // Row height in twips: negative for exactly, positive for at least.
+        if let Some(&Some((h, exact))) = extra.and_then(|x| x.heights.get(ri))
+            && h.is_finite()
+            && h > 0.0
+        {
+            let tw = (h.min(1584.0) * 20.0).round() as i64;
+            out.push_str(&format!("\\trrh{}", if exact { -tw } else { tw }));
+        }
+        if extra.is_some_and(|x| x.keep_rows.get(ri) == Some(&true)) {
+            out.push_str("\\trkeep");
+        }
+        let mut g = 0usize;
+        let mut x = 0.0f32;
+        for c in row {
+            let span = c.colspan.clamp(1, 63) as usize;
+            for k in g..(g + span).min(widths.len()) {
+                x += widths.get(k).copied().unwrap_or(0.0);
+            }
+            g += span;
+            if c.covered {
+                out.push_str("\\clvmrg");
+            } else if c.rowspan > 1 {
+                out.push_str("\\clvmgf");
+            }
+            match c.valign {
+                Some(VAlign::Top) => out.push_str("\\clvertalt"),
+                Some(VAlign::Center) => out.push_str("\\clvertalc"),
+                Some(VAlign::Bottom) => out.push_str("\\clvertalb"),
+                None => {}
+            }
+            match c.direction {
+                wordcraft_doc::props::TextDirection::Down => out.push_str("\\cltxtbrl"),
+                wordcraft_doc::props::TextDirection::Up => out.push_str("\\cltxbtlr"),
+                _ => {}
+            }
+            self.cell_borders(c.borders.as_ref(), t.borderless, out);
+            if let Some(s) = c.shading {
+                let i = self.t.color(s);
+                out.push_str(&format!("\\clcbpat{i}"));
+            }
+            out.push_str(&format!("\\cellx{}", x.round() as i64));
+        }
+        props
+    }
+
+    /// Writes table `t` at table depth `itap` (1 a top-level table; 2 and deeper a table in a
+    /// cell, whose cells end with `\nestcell` and whose row properties follow each row in
+    /// `{\*\nesttableprops … \nestrow}`, then an empty `{\nonesttables …}` copy).
+    fn table(&mut self, t: &FTable, out: &mut String, itap: usize, depth: usize) {
+        let nested = itap > 1;
+        let cell_end = if nested { "\\nestcell" } else { "\\cell" };
         let cols = t.cols().max(1);
         let total = 9360.0f32; // 6.5" in twips
         let widths: Vec<f32> = if t.widths.len() == cols && t.widths.iter().all(|w| w.is_finite() && *w > 0.0) {
@@ -1309,57 +1388,14 @@ impl Writer {
             vec![total / cols as f32; cols]
         };
         for (ri, row) in t.rows.iter().enumerate() {
-            out.push_str("\\trowd\\trgaph108\\trleft0");
-            if !row.is_empty() && row.iter().all(|c| c.header) {
-                out.push_str("\\trhdr");
+            let props = self.row_props(t, ri, row, &widths);
+            if !nested {
+                out.push_str(&props);
+                out.push('\n');
             }
-            let extra = t.extra.as_deref();
-            // Row height in twips: negative for exactly, positive for at least.
-            if let Some(&Some((h, exact))) = extra.and_then(|x| x.heights.get(ri))
-                && h.is_finite()
-                && h > 0.0
-            {
-                let tw = (h.min(1584.0) * 20.0).round() as i64;
-                out.push_str(&format!("\\trrh{}", if exact { -tw } else { tw }));
-            }
-            if extra.is_some_and(|x| x.keep_rows.get(ri) == Some(&true)) {
-                out.push_str("\\trkeep");
-            }
-            let mut g = 0usize;
-            let mut x = 0.0f32;
-            for c in row {
-                let span = c.colspan.clamp(1, 63) as usize;
-                for k in g..(g + span).min(widths.len()) {
-                    x += widths.get(k).copied().unwrap_or(0.0);
-                }
-                g += span;
-                if c.covered {
-                    out.push_str("\\clvmrg");
-                } else if c.rowspan > 1 {
-                    out.push_str("\\clvmgf");
-                }
-                match c.valign {
-                    Some(VAlign::Top) => out.push_str("\\clvertalt"),
-                    Some(VAlign::Center) => out.push_str("\\clvertalc"),
-                    Some(VAlign::Bottom) => out.push_str("\\clvertalb"),
-                    None => {}
-                }
-                match c.direction {
-                    wordcraft_doc::props::TextDirection::Down => out.push_str("\\cltxtbrl"),
-                    wordcraft_doc::props::TextDirection::Up => out.push_str("\\cltxbtlr"),
-                    _ => {}
-                }
-                self.cell_borders(c.borders.as_ref(), t.borderless, out);
-                if let Some(s) = c.shading {
-                    let i = self.t.color(s);
-                    out.push_str(&format!("\\clcbpat{i}"));
-                }
-                out.push_str(&format!("\\cellx{}", x.round() as i64));
-            }
-            out.push('\n');
             for c in row {
                 if c.covered {
-                    out.push_str("\\pard\\plain\\intbl \\cell\n");
+                    out.push_str(&format!("\\pard\\plain{} {cell_end}\n", in_table(itap)));
                 } else {
                     let blocks: Vec<FBlock> = c
                         .blocks
@@ -1377,11 +1413,25 @@ impl Writer {
                             other => other,
                         })
                         .collect();
-                    self.blocks(&blocks, true, "\\cell", out, depth);
+                    self.blocks(&blocks, itap, cell_end, out, depth);
                 }
             }
-            out.push_str("\\row\n");
+            if nested {
+                out.push_str(&format!("{{\\*\\nesttableprops{props}\\nestrow}}{{\\nonesttables\\par}}\n"));
+            } else {
+                out.push_str("\\row\n");
+            }
         }
+    }
+}
+
+/// The table words of a paragraph at table depth `itap`: `\intbl`, with `\itapN` in a nested
+/// table.
+fn in_table(itap: usize) -> String {
+    match itap {
+        0 => String::new(),
+        1 => "\\intbl".to_string(),
+        n => format!("\\intbl\\itap{n}"),
     }
 }
 
@@ -1424,6 +1474,26 @@ fn tab_words(t: &wordcraft_doc::props::TabStop) -> String {
     format!("{align}{leader}\\tx{at}")
 }
 
+/// The character formatting RTF writes for a paragraph mark `m` (its font by name, monospaced
+/// or not).
+fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
+    Fmt {
+        bold: m.bold == Some(true),
+        italic: m.italic == Some(true),
+        underline: m.underline.is_some_and(|u| u != wordcraft_doc::props::Underline::None),
+        strike: m.strike == Some(true),
+        sup: m.vert_align == Some(wordcraft_doc::props::VertAlign::Superscript),
+        sub: m.vert_align == Some(wordcraft_doc::props::VertAlign::Subscript),
+        color: match m.color {
+            Some(wordcraft_doc::props::TextColor::Rgb(c)) => Some(c),
+            _ => None,
+        },
+        size: m.size,
+        font: m.font.as_deref().map(Arc::from),
+        ..Fmt::default()
+    }
+}
+
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
     let (marked, marks) = match mark_doc(doc) {
@@ -1442,7 +1512,8 @@ pub fn export(doc: &Document) -> String {
         .map(|(s, n)| (s.id.clone(), n))
         .collect();
     let before = set_own_styles(own);
-    let opts = model::FlowOpts::tracked();
+    // An empty paragraph's mark formatting sets its height.
+    let opts = model::FlowOpts { marks: true, ..model::FlowOpts::tracked() };
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
@@ -1464,7 +1535,7 @@ pub fn export(doc: &Document) -> String {
                 if let Some(part) = id.and_then(|id| doc.parts.get(&id)) {
                     body.push_str(&format!("{{\\{prefix}{suffix} "));
                     let blocks = model::part_flow(doc, &part.blocks, opts);
-                    w.blocks(&blocks, false, "\\par", &mut body, 1);
+                    w.blocks(&blocks, 0, "\\par", &mut body, 1);
                     body.push('}');
                 }
             }
@@ -1473,7 +1544,7 @@ pub fn export(doc: &Document) -> String {
     if secs.len() > 1 {
         w.sections = secs;
     }
-    w.blocks(&flow.blocks, false, "\\par", &mut body, 0);
+    w.blocks(&flow.blocks, 0, "\\par", &mut body, 0);
     let own_entries = own_style_entries(doc, &mut w.t);
     set_own_styles(before);
     export_with(&flow.meta, &w, &own_entries, &body, &doc.last_section, &doc.settings)

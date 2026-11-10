@@ -542,9 +542,7 @@ fn tblpr_inner(w: &mut W, t: &TableProps) {
     if t.fixed {
         w.empty("w:tblLayout", &[("w:type", "fixed")]);
     }
-    if let Some(m) = &t.cell_margins {
-        margins(w, "w:tblCellMar", m);
-    }
+    table_margins(w, t);
     let look = look_attrs(&t.look);
     let refs: Vec<(&str, &str)> = look.iter().map(|(k, v)| (*k, v.as_str())).collect();
     w.empty("w:tblLook", &refs);
@@ -574,7 +572,27 @@ pub fn trpr(w: &mut W, r: &RowProps, change: Option<&ChangeAttrs>) {
     w.close("w:trPr");
 }
 
-/// `w:tblPrEx`: only the properties the row overrides (it takes no style, float or look).
+/// A table's or row exception's `w:tblCellMar`: only the sides the file set (all four for a
+/// table made in the app).
+fn table_margins(w: &mut W, t: &TableProps) {
+    if let Some(m) = &t.cell_margins {
+        match t.cell_margin_sides {
+            Some(set) => {
+                let mut sides = [None; 4];
+                for ((out, v), on) in sides.iter_mut().zip(m.iter()).zip(set.iter()) {
+                    if *on {
+                        *out = Some(*v);
+                    }
+                }
+                margin_sides(w, "w:tblCellMar", &sides);
+            }
+            None => margins(w, "w:tblCellMar", m),
+        }
+    }
+}
+
+/// `w:tblPrEx`: only the properties the row overrides (it takes no style or float), with its
+/// look only when the file stated one.
 fn tblprex(w: &mut W, t: &TableProps) {
     w.open("w:tblPrEx", &[]);
     if let Some(p) = t.width_pct {
@@ -597,8 +615,11 @@ fn tblprex(w: &mut W, t: &TableProps) {
     if t.fixed {
         w.empty("w:tblLayout", &[("w:type", "fixed")]);
     }
-    if let Some(m) = &t.cell_margins {
-        margins(w, "w:tblCellMar", m);
+    table_margins(w, t);
+    if t.look_set {
+        let look = look_attrs(&t.look);
+        let refs: Vec<(&str, &str)> = look.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        w.empty("w:tblLook", &refs);
     }
     w.close("w:tblPrEx");
 }

@@ -339,6 +339,7 @@ fn display(app: &mut WordApp, ui: &mut Ui) {
     status_count_picker(app, ui);
     ui.add_space(8.0);
     section(ui, "Printing");
+    flag(app, ui, "Print document properties", "printProperties", app.session.prefs.print_properties);
     flag(app, ui, "Print hidden text", "printHiddenText", app.session.prefs.print_hidden_text);
     ui.checkbox(&mut app.ui.print_backgrounds, tl!("Print the page color"));
     ui.checkbox(&mut app.ui.update_fields_before_print, tl!("Update fields before printing"));
@@ -652,6 +653,8 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     flag(app, ui, "Print on front of the sheet for duplex printing", "printDuplexFront", pr.print_duplex_front);
     flag(app, ui, "Print on back of the sheet for duplex printing", "printDuplexBack", pr.print_duplex_back);
     flag(app, ui, "Print field codes instead of their values", "printFieldCodes", pr.print_field_codes);
+    let forms_data = app.session.doc.settings.print_forms_data;
+    flag(app, ui, "Print only the data from a form", "printFormsData", forms_data);
     ui.add_space(8.0);
     section(ui, "Display");
     crate::rtl::Table::new("options_display").columns(2).spacing(vec2(8.0, 6.0)).show(ui, |t| {

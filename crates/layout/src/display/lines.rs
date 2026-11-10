@@ -46,6 +46,9 @@ struct LineContext<'a, 'authors, 'author_doc> {
     alpha: f32,
     down: bool,
     auto: Option<Rgb>,
+    /// With [`DisplayOptions::forms_data_only`], the offsets (ascending) of the paragraph's legacy
+    /// form fields that show their data as text (text inputs and drop-downs).
+    forms: &'a [usize],
 }
 
 impl LineContext<'_, '_, '_> {
@@ -67,12 +70,26 @@ pub(super) fn lines(input: LineRender<'_, '_, '_>, out: &mut Vec<Draw>) {
         StoryRef::Part(id) => doc.parts.get(&id).and_then(|p| p.body.auto_color),
         StoryRef::Body => None,
     };
+    let forms: Vec<usize> = match para {
+        Some(p) if opts.forms_data_only => p
+            .objects_with_offsets()
+            .filter(|(_, o)| o.legacy_form().is_some_and(|f| !matches!(f, wordcraft_doc::legacy_form::LegacyForm::CheckBox { .. })))
+            .map(|(off, _)| off)
+            .collect(),
+        _ => Vec::new(),
+    };
     for li in l0..l1 {
         let Some(line) = pl.lines.get(li) else { continue };
         let top = y + (line.top - first.top);
         let base = top + (line.baseline - line.top);
         let bottom = top + line.height;
-        let ctx = LineContext { doc, story, path, pl, para, line, li, x, top, base, bottom, opts, authors, alpha, down, auto };
+        let ctx = LineContext { doc, story, path, pl, para, line, li, x, top, base, bottom, opts, authors, alpha, down, auto, forms: &forms };
+        if opts.forms_data_only {
+            // Print only the data from a form: the form fields' data where it sits, nothing else.
+            draw_glyph_runs(&ctx, out);
+            inline_objects(&ctx, out);
+            continue;
+        }
         comment_backgrounds(&ctx, out);
         character_backgrounds(&ctx, out);
         draw_label_and_hyphen(&ctx, out);
@@ -91,12 +108,14 @@ fn collect_glyph_run(
     start: usize,
     style_index: u32,
     style: &crate::para::StyleRun,
+    stop: usize,
 ) -> (usize, Vec<(u32, f32, f32)>, String, Vec<std::ops::Range<usize>>) {
     let (pl, para, line, x, base) = (ctx.pl, ctx.para, ctx.line, ctx.x, ctx.base);
     let si = style_index;
     let st = style;
     let mut k = start;
-    let run = pl.clusters.get(start..line.c1.min(pl.clusters.len())).unwrap_or_default();
+    let stop = stop.min(line.c1);
+    let run = pl.clusters.get(start..stop.min(pl.clusters.len()).max(start)).unwrap_or_default();
     let (n_glyphs, n_bytes) = run
         .iter()
         .take_while(|cluster| cluster.style == si)
@@ -108,7 +127,7 @@ fn collect_glyph_run(
     let mut text = String::with_capacity(n_bytes);
     let mut ranges: Vec<std::ops::Range<usize>> = Vec::with_capacity(n_glyphs);
     let symbol_font = wordcraft_doc::symbol_fonts::is_symbol_font(&st.rc.font);
-    while k < line.c1 {
+    while k < stop {
         let Some(c) = pl.clusters.get(k) else { break };
         if c.style != si {
             break;
@@ -187,6 +206,16 @@ fn collect_glyph_run(
     (k, glyphs, text, ranges)
 }
 
+/// Where a glyph run starting at cluster `k` (at paragraph offset `at`) must end: the line's end,
+/// or with [`DisplayOptions::forms_data_only`] the cluster itself, which is drawn only when it
+/// shows a form field's data (`None` otherwise).
+fn run_stop(ctx: &LineContext<'_, '_, '_>, k: usize, at: usize) -> Option<usize> {
+    if !ctx.opts.forms_data_only {
+        return Some(ctx.line.c1);
+    }
+    ctx.forms.binary_search(&at).ok().map(|_| k + 1)
+}
+
 fn draw_glyph_runs(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
     let (doc, pl, line, x, base, opts, authors, alpha, down) =
         (ctx.doc, ctx.pl, ctx.line, ctx.x, ctx.base, ctx.opts, ctx.authors, ctx.alpha, ctx.down);
@@ -198,8 +227,13 @@ fn draw_glyph_runs(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
             k += 1;
             continue;
         };
+        let data_only = opts.forms_data_only;
+        let Some(stop) = run_stop(ctx, k, c.start) else {
+            k += 1;
+            continue;
+        };
         let run_start = k;
-        let (run_end, mut glyphs, text, ranges) = collect_glyph_run(ctx, run_start, si, st);
+        let (run_end, mut glyphs, text, ranges) = collect_glyph_run(ctx, run_start, si, st, stop);
         k = run_end;
         let rc = &st.rc;
         let m = &opts.revisions;
@@ -232,7 +266,7 @@ fn draw_glyph_runs(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
         let del_mark = del.map(|_| if moved_from { m.move_from_mark } else { m.delete_mark });
         if del_mark == Some(DeleteMark::Caret) {
             // A caret where the text was, instead of the text.
-            if let Some(cx) = line.cl_left(run_start).map(|c| x + c) {
+            if !data_only && let Some(cx) = line.cl_left(run_start).map(|c| x + c) {
                 let h = st.size * 0.3;
                 let w = (st.size / 18.0).max(0.6);
                 out.push(Draw::Line {
@@ -303,62 +337,82 @@ fn draw_glyph_runs(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
                 x_scale: rc.scale / 100.0,
             });
         }
-        // Decorations across the run (underline skips trailing spaces of the line). Right-to-left
-        // text inside a run can split it into several visual spans.
-        let mut end_k = run_end;
-        while end_k > run_start
-            && pl.clusters.get(end_k - 1).is_some_and(|c| matches!(c.kind, ClKind::Space | ClKind::Marker | ClKind::LineBreak))
-            && end_k == line.c1
-        {
-            end_k -= 1;
+        if data_only {
+            continue;
         }
-        let thick = (st.size / 18.0).max(0.5);
-        let underline = match (ins_mark, del_mark) {
-            (Some(InsertMark::Underline), _) | (_, Some(DeleteMark::Underline)) => Underline::Single,
-            (Some(InsertMark::DoubleUnderline), _) | (_, Some(DeleteMark::DoubleUnderline)) => Underline::Double,
-            _ => rc.underline,
-        };
-        let double = rc.double_strike || del_mark == Some(DeleteMark::DoubleStrikethrough);
-        let struck = rc.strike || double || ins_mark == Some(InsertMark::Strikethrough) || del_mark == Some(DeleteMark::Strikethrough);
-        let spans = if underline != Underline::None || struck { line.spans(run_start, end_k) } else { Vec::new() };
-        for (x0, x1) in spans.into_iter().map(|(a, b)| (x + a, x + b)).filter(|(a, b)| b > a) {
-            if underline != Underline::None {
-                let uy = base - st.shift + st.size * 0.12;
-                let ucolor = rc.underline_color.unwrap_or(color);
-                if underline == Underline::Words {
-                    for kk in run_start..end_k {
-                        let Some(c) = pl.clusters.get(kk) else { continue };
-                        if c.kind != ClKind::Text {
-                            continue;
-                        }
-                        let a = x + line.cl_left(kk).unwrap_or(0.0);
-                        let b = x + line.cl_right(kk).unwrap_or(a - x);
-                        if a < x0 - 0.01 || b > x1 + 0.01 {
-                            continue; // drawn with its own span
-                        }
-                        out.push(Draw::Line { x0: a, y0: uy, x1: b, y1: uy, width: thick, color: ucolor, stroke: Stroke::Solid, alpha, text_bg });
+        let marks = (ins_mark, del_mark);
+        run_decorations(ctx, (run_start, run_end), st, color, marks, text_bg, out);
+    }
+}
+
+/// The underline, strikethrough and emphasis marks across the glyph run `run_start..run_end`
+/// drawn in `color`, with the revision marks `(ins_mark, del_mark)`.
+fn run_decorations(
+    ctx: &LineContext<'_, '_, '_>,
+    (run_start, run_end): (usize, usize),
+    st: &crate::para::StyleRun,
+    color: Rgb,
+    (ins_mark, del_mark): (Option<InsertMark>, Option<DeleteMark>),
+    text_bg: Option<Rgb>,
+    out: &mut Vec<Draw>,
+) {
+    let (pl, line, x, base, alpha) = (ctx.pl, ctx.line, ctx.x, ctx.base, ctx.alpha);
+    let rc = &st.rc;
+    // Decorations across the run (underline skips trailing spaces of the line). Right-to-left
+    // text inside a run can split it into several visual spans.
+    let mut end_k = run_end;
+    while end_k > run_start
+        && pl.clusters.get(end_k - 1).is_some_and(|c| matches!(c.kind, ClKind::Space | ClKind::Marker | ClKind::LineBreak))
+        && end_k == line.c1
+    {
+        end_k -= 1;
+    }
+    let thick = (st.size / 18.0).max(0.5);
+    let underline = match (ins_mark, del_mark) {
+        (Some(InsertMark::Underline), _) | (_, Some(DeleteMark::Underline)) => Underline::Single,
+        (Some(InsertMark::DoubleUnderline), _) | (_, Some(DeleteMark::DoubleUnderline)) => Underline::Double,
+        _ => rc.underline,
+    };
+    let double = rc.double_strike || del_mark == Some(DeleteMark::DoubleStrikethrough);
+    let struck = rc.strike || double || ins_mark == Some(InsertMark::Strikethrough) || del_mark == Some(DeleteMark::Strikethrough);
+    let spans = if underline != Underline::None || struck { line.spans(run_start, end_k) } else { Vec::new() };
+    for (x0, x1) in spans.into_iter().map(|(a, b)| (x + a, x + b)).filter(|(a, b)| b > a) {
+        if underline != Underline::None {
+            let uy = base - st.shift + st.size * 0.12;
+            let ucolor = rc.underline_color.unwrap_or(color);
+            if underline == Underline::Words {
+                for kk in run_start..end_k {
+                    let Some(c) = pl.clusters.get(kk) else { continue };
+                    if c.kind != ClKind::Text {
+                        continue;
                     }
-                } else {
-                    let w = if underline == Underline::Thick { thick * 2.0 } else { thick };
-                    out.push(Draw::Line { x0, y0: uy, x1, y1: uy, width: w, color: ucolor, stroke: stroke_of(underline), alpha, text_bg });
+                    let a = x + line.cl_left(kk).unwrap_or(0.0);
+                    let b = x + line.cl_right(kk).unwrap_or(a - x);
+                    if a < x0 - 0.01 || b > x1 + 0.01 {
+                        continue; // drawn with its own span
+                    }
+                    out.push(Draw::Line { x0: a, y0: uy, x1: b, y1: uy, width: thick, color: ucolor, stroke: Stroke::Solid, alpha, text_bg });
                 }
-            }
-            if struck {
-                let sy = base - st.shift - st.size * 0.28;
-                let stroke = if double { Stroke::Double } else { Stroke::Solid };
-                out.push(Draw::Line { x0, y0: sy, x1, y1: sy, width: thick, color, stroke, alpha, text_bg });
+            } else {
+                let w = if underline == Underline::Thick { thick * 2.0 } else { thick };
+                out.push(Draw::Line { x0, y0: uy, x1, y1: uy, width: w, color: ucolor, stroke: stroke_of(underline), alpha, text_bg });
             }
         }
-        // Emphasis marks (Font › Emphasis mark): one over (or under) each character.
-        if rc.emphasis != wordcraft_doc::props::EmphasisMark::None {
-            for kk in run_start..end_k {
-                if pl.clusters.get(kk).is_none_or(|c| c.kind != ClKind::Text) {
-                    continue;
-                }
-                let a = x + line.cl_left(kk).unwrap_or(0.0);
-                let b = x + line.cl_right(kk).unwrap_or(a - x);
-                out.push(emphasis_mark(rc.emphasis, (a + b) / 2.0, base - st.shift, st.size, color));
+        if struck {
+            let sy = base - st.shift - st.size * 0.28;
+            let stroke = if double { Stroke::Double } else { Stroke::Solid };
+            out.push(Draw::Line { x0, y0: sy, x1, y1: sy, width: thick, color, stroke, alpha, text_bg });
+        }
+    }
+    // Emphasis marks (Font › Emphasis mark): one over (or under) each character.
+    if rc.emphasis != wordcraft_doc::props::EmphasisMark::None {
+        for kk in run_start..end_k {
+            if pl.clusters.get(kk).is_none_or(|c| c.kind != ClKind::Text) {
+                continue;
             }
+            let a = x + line.cl_left(kk).unwrap_or(0.0);
+            let b = x + line.cl_right(kk).unwrap_or(a - x);
+            out.push(emphasis_mark(rc.emphasis, (a + b) / 2.0, base - st.shift, st.size, color));
         }
     }
 }
@@ -637,6 +691,10 @@ fn inline_objects(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
         }
         let cx = x + line.cl_left(k).unwrap_or(0.0);
         let obj = para.and_then(|p| p.objects.get(oi));
+        // Only form data: of the objects, just the legacy check boxes.
+        if opts.forms_data_only && !obj.is_some_and(|o| matches!(o, InlineObject::Field { .. })) {
+            continue;
+        }
         let modern = doc.settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT;
         let rect = inline_rect(obj, cx, base, c.adv, (c.obj_h, c.obj_d), pl.rule_room(line, k), modern);
         let spin = obj.and_then(InlineObject::frame).map(|(_, _, f)| f.spin()).unwrap_or_default();

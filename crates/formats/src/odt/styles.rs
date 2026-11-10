@@ -1,7 +1,7 @@
 use super::xml::{Attrs, Ev, events, get, length, local};
 use super::{Align, Arc, Columns, Fmt, HashMap, Kind, Rgb, VAlign, model};
 use crate::model::Spacing;
-use wordcraft_doc::props::{Border, BorderStyle, Borders, LineSpacing, TabAlign, TabLeader, TabStop, Underline};
+use wordcraft_doc::props::{Border, BorderStyle, Borders, LineSpacing, TabAlign, TabLeader, TabStop, TextAlignment, Underline};
 use wordcraft_doc::section::NumFormat;
 
 // ---------------------------------------------------------------------------------------------
@@ -224,6 +224,45 @@ fn extra_text_properties(a: &Attrs, d: &mut FmtDelta) {
     if let Some(l) = language(a) {
         x.lang = Some(l);
     }
+    // No linguistic content (ISO 639 `zxx`): Word's Do not check spelling or grammar.
+    if get(a, "fo:language").is_some_and(|l| l.trim() == "zxx") {
+        x.no_proof = Some(true);
+    }
+    if let Some(e) = east_asian_layout(a) {
+        x.east_asian_layout = Some(e);
+    }
+}
+
+/// Word's Asian Layout the attributes state: two lines in one (§20.364 `style:text-combine`
+/// `lines`, its brackets §20.365/§20.366) and horizontal in vertical (§20.370
+/// `style:text-rotation-angle` a quarter turn, §20.371 `style:text-rotation-scale`); `None` for
+/// neither.
+fn east_asian_layout(a: &Attrs) -> Option<wordcraft_doc::props::EastAsianLayout> {
+    use wordcraft_doc::props::{CombineBrackets as B, EastAsianLayout};
+    let mut e = EastAsianLayout::default();
+    if get(a, "style:text-combine").is_some_and(|v| v.trim() == "lines") {
+        e.combine = Some(true);
+        let ch = |k| get(a, k).map(str::trim).unwrap_or("");
+        e.combine_brackets = match (ch("style:text-combine-start-char"), ch("style:text-combine-end-char")) {
+            ("(", ")") => Some(B::Round),
+            ("[", "]") => Some(B::Square),
+            ("<", ">") => Some(B::Angle),
+            ("{", "}") => Some(B::Curly),
+            _ => None,
+        };
+    }
+    let angle = get(a, "style:text-rotation-angle")
+        .map(|v| v.trim().trim_end_matches("deg").trim())
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| v.is_finite())
+        .map(|v| v.rem_euclid(360.0));
+    if angle.is_some_and(|v| v == 90.0 || v == 270.0) {
+        e.vert = Some(true);
+        if get(a, "style:text-rotation-scale").is_some_and(|v| v.trim() == "line-height") {
+            e.vert_compress = Some(true);
+        }
+    }
+    (e != EastAsianLayout::default()).then_some(e)
 }
 
 /// The language `fo:language`, `fo:script` and `fo:country` state: see [`language_tag`].
@@ -308,6 +347,8 @@ struct StyleInfo {
     declared_auto: bool,
     /// `style:contextual-spacing` of a paragraph style.
     contextual: Option<bool>,
+    /// East Asian typography of a paragraph style: see [`ParaLook::asian`].
+    asian: Asian,
     /// `style:writing-mode` of a paragraph style: right to left or not.
     rtl: Option<bool>,
     /// A drop cap (§17.9 `style:drop-cap`): lines it spans and its distance from the text.
@@ -448,6 +489,9 @@ pub(super) struct ParaLook {
     pub(super) tabs: Option<Vec<TabStop>>,
     /// No spacing between paragraphs of one style (`style:contextual-spacing`).
     pub(super) contextual: Option<bool>,
+    /// East Asian line breaking, hanging punctuation, automatic spacing, layout grid snapping
+    /// and font alignment.
+    pub(super) asian: Asian,
     /// Right to left (`style:writing-mode`).
     pub(super) rtl: Option<bool>,
     /// A drop cap: lines it spans (2–10) and its distance from the text, points.
@@ -914,6 +958,69 @@ fn text_properties(a: &Attrs, style: &mut StyleInfo, faces: &HashMap<String, Str
     script_properties(a, &mut style.fmt.extra, faces);
 }
 
+/// East Asian typography of `style:paragraph-properties` (ODF 1.3 §20.305, §20.318, §20.358,
+/// §20.324, §20.386), each `None` when not stated (or not understood).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct Asian {
+    /// `style:line-break`: `strict` line breaking rules (Word's kinsoku).
+    pub(super) kinsoku: Option<bool>,
+    /// `style:punctuation-wrap`: `hanging` punctuation.
+    pub(super) overflow_punct: Option<bool>,
+    /// `style:text-autospace`: `ideograph-alpha` space between Asian and Latin text and digits.
+    pub(super) auto_space: Option<bool>,
+    /// `style:snap-to-layout-grid`.
+    pub(super) snap_to_grid: Option<bool>,
+    /// `style:vertical-align`: the font alignment.
+    pub(super) text_alignment: Option<TextAlignment>,
+}
+
+impl Asian {
+    /// Takes what `other` states.
+    fn overlay(&mut self, other: &Asian) {
+        self.kinsoku = other.kinsoku.or(self.kinsoku);
+        self.overflow_punct = other.overflow_punct.or(self.overflow_punct);
+        self.auto_space = other.auto_space.or(self.auto_space);
+        self.snap_to_grid = other.snap_to_grid.or(self.snap_to_grid);
+        self.text_alignment = other.text_alignment.or(self.text_alignment);
+    }
+
+    /// Takes what `other` states and `self` doesn't (`other` is further up the style chain).
+    fn inherit(&mut self, other: &Asian) {
+        self.kinsoku = self.kinsoku.or(other.kinsoku);
+        self.overflow_punct = self.overflow_punct.or(other.overflow_punct);
+        self.auto_space = self.auto_space.or(other.auto_space);
+        self.snap_to_grid = self.snap_to_grid.or(other.snap_to_grid);
+        self.text_alignment = self.text_alignment.or(other.text_alignment);
+    }
+}
+
+/// The East Asian typography `a` states.
+fn asian(a: &Attrs) -> Asian {
+    let value = |name: &str| get(a, name).map(|v| v.trim().to_ascii_lowercase());
+    let flag = |name: &str, on: &str, off: &str| {
+        value(name).and_then(|v| match v {
+            v if v == on => Some(true),
+            v if v == off => Some(false),
+            _ => None,
+        })
+    };
+    let text_alignment = value("style:vertical-align").and_then(|v| match v.as_str() {
+        "top" => Some(TextAlignment::Top),
+        "middle" => Some(TextAlignment::Center),
+        "bottom" => Some(TextAlignment::Bottom),
+        "baseline" => Some(TextAlignment::Baseline),
+        "auto" => Some(TextAlignment::Auto),
+        _ => None,
+    });
+    Asian {
+        kinsoku: flag("style:line-break", "strict", "normal"),
+        overflow_punct: flag("style:punctuation-wrap", "hanging", "simple"),
+        auto_space: flag("style:text-autospace", "ideograph-alpha", "none"),
+        snap_to_grid: flag("style:snap-to-layout-grid", "true", "false"),
+        text_alignment,
+    }
+}
+
 /// A paragraph style's `style:paragraph-properties` (ODF 1.3 §17.6) into `s`.
 fn paragraph_properties(a: &Attrs, s: &mut StyleInfo) {
     s.align = match get(a, "fo:text-align").map(|v| v.trim().to_ascii_lowercase()).as_deref() {
@@ -958,6 +1065,7 @@ fn paragraph_properties(a: &Attrs, s: &mut StyleInfo) {
     if let Some(c) = get(a, "style:contextual-spacing") {
         s.contextual = Some(c.trim() == "true");
     }
+    s.asian.overlay(&asian(a));
     // `page` (the page's direction) is left to the section.
     match get(a, "style:writing-mode").map(str::trim) {
         Some("rl-tb" | "rl" | "tb-rl") => s.rtl = Some(true),
@@ -1779,6 +1887,12 @@ impl Styles {
         let borders = own().find_map(|(_, s)| s.para_borders).filter(|b| b.takes_room());
         let shading = own().find_map(|(_, s)| s.para_shading).flatten();
         let contextual = own().find_map(|(_, s)| s.contextual);
+        // East Asian typography: the nearest statement in the whole chain (a custom style's
+        // too), Standard aside, so that the paragraph keeps it as its own.
+        let asian = chain.iter().filter(|(n, s)| s.auto || *n != "Standard").fold(Asian::default(), |mut acc, (_, s)| {
+            acc.inherit(&s.asian);
+            acc
+        });
         let rtl = own().find_map(|(_, s)| s.rtl);
         let drop_cap = own().find_map(|(_, s)| s.drop_cap);
         let keep_lines = own().find_map(|(_, s)| s.keep_lines);
@@ -1803,6 +1917,7 @@ impl Styles {
             shading,
             named,
             contextual,
+            asian,
             rtl,
             tab_origin,
             drop_cap,
