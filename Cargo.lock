@@ -6748,6 +6748,7 @@ dependencies = [
  "thiserror 2.0.21",
  "wordcraft-doc",
  "wordcraft-geom",
+ "wordcraft-metafile",
 ]
 
 [[package]]
