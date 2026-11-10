@@ -1853,6 +1853,7 @@ mod section_extras;
 mod section_revisions;
 mod section_text_flow;
 mod shape_text;
+mod style_entry_extras;
 mod surrogate_boundaries;
 mod table_rows;
 mod tabs_spacing;
