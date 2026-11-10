@@ -223,11 +223,13 @@ impl Marker<'_> {
 }
 
 /// The document formatting words for the settings that differ from the defaults: default tab
-/// stop, facing pages, mirror margins and the automatic hyphenation options.
+/// stop, facing pages, mirror margins and the automatic hyphenation options. Word writes
+/// `\widowctrl` in every document, so a paragraph that doesn't say has widow control on, as
+/// `None` means here.
 fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
     let d = wordcraft_doc::Settings::default();
     let tw = |v: f32| if v.is_finite() { (v * 20.0).round().clamp(0.0, 31_680.0) as i64 } else { 0 };
-    let mut o = String::new();
+    let mut o = String::from("\\widowctrl");
     if s.default_tab != d.default_tab && tw(s.default_tab) >= 1 {
         o.push_str(&format!("\\deftab{}", tw(s.default_tab)));
     }
@@ -1287,9 +1289,7 @@ fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionPro
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
     let notes = doc_note_words(settings);
-    // Word writes `\widowctrl` in every document, so a paragraph that doesn't say has widow
-    // control on, as `None` means here.
-    let opts = "\\widowctrl".to_string() + &doc_opts_words(settings) + &doc_setting_words(settings);
+    let opts = doc_opts_words(settings) + &doc_setting_words(settings);
     out.push_str(&format!(
         "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{landscape}{notes}{opts}\\viewkind4\n",
         tw(sec.page_w),
