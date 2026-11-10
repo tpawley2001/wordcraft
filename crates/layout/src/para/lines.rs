@@ -1,6 +1,6 @@
 use super::bidi::{even_row, reorder_line};
 use super::grid::{Exclusion, Grid};
-use super::justify::{HYPHENATION_ZONE, hyphen_glyph, shrink_line_spaces, space_room};
+use super::justify::{HYPHENATION_ZONE, MAX_SPACE_SHRINK, RTF_MAX_SPACE_SHRINK, hyphen_glyph, rtf_space_room, shrink_line_spaces, space_room};
 use super::model::{ClKind, Cluster, Line, LineEnd, ParaEnv};
 use super::paragraph::word_widths;
 use super::tabs::{next_set_tab, next_tab, pl_text_at, ptab_stop, resolve_tab};
@@ -27,6 +27,9 @@ struct Breaker<'e> {
     /// Word 2013+ (compatibility mode 15) fits more text on a justified line by shrinking its
     /// spaces (`space_room`); never on lines with tabs.
     shrink_spaces: bool,
+    /// A justified paragraph of a document opened from RTF fits the word that overruns the line
+    /// by shrinking its spaces by up to half (`rtf_space_room`) instead; never on lines with tabs.
+    rtf_squeeze: bool,
     /// Word stretches a justified line ending in a manual line break unless the document says not to.
     expand_break: bool,
     /// Hyphenation Options: the zone, and how many lines in a row may end with a hyphen.
@@ -96,6 +99,10 @@ struct Scan {
     decimal: Option<DecimalScan>,
     /// The width of the spaces so far on this line.
     space_w: f32,
+    /// The width of the spaces before the line's first character.
+    lead_space_w: f32,
+    /// Whether anything but spaces and markers is on the line yet.
+    text_seen: bool,
     has_tab: bool,
     /// The first word doesn't fit a span narrowed by a floating object: it moves on whole.
     skip: bool,
@@ -199,7 +206,8 @@ impl<'e> Breaker<'e> {
             default_tab: settings.default_tab,
             hanging_at: if rp.indent_first < 0.0 { Some(rp.indent_left) } else { None },
             tab_origin: if settings.odf.is_some_and(|o| o.tabs_from_indent) { rp.indent_left } else { 0.0 },
-            shrink_spaces: rp.align == Align::Justify && settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT,
+            shrink_spaces: rp.align == Align::Justify && settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT && !settings.rtf_justification,
+            rtf_squeeze: rp.align == Align::Justify && settings.rtf_justification,
             expand_break: !settings.do_not_expand_shift_return,
             zone: Some(settings.hyphenation_zone).filter(|z| z.is_finite() && *z >= 0.0).unwrap_or(HYPHENATION_ZONE).min(1584.0),
             hyph_limit: settings.consecutive_hyphen_limit as usize,
@@ -291,6 +299,8 @@ impl<'e> Breaker<'e> {
             pending_tab: None,
             decimal: None,
             space_w: 0.0,
+            lead_space_w: 0.0,
+            text_seen: false,
             has_tab: false,
             skip: false,
         }
@@ -587,9 +597,10 @@ impl<'e> Breaker<'e> {
         let stretch_end = sc.end == LineEnd::Wrap || (sc.end == LineEnd::LineBreak && self.expand_break);
         let justify = display.is_none() && ((rp.align == Align::Justify && stretch_end) || rp.align == Align::Distribute);
         // A line that only fits with shrunk spaces is shrunk, the last line of the paragraph too.
-        let shrink = display.is_none() && self.shrink_spaces && slack < 0.0 && last_tab.is_none();
+        let shrink = display.is_none() && (self.shrink_spaces || self.rtf_squeeze) && slack < 0.0 && last_tab.is_none();
         if shrink {
-            shrink_line_spaces(pl, &mut sc.xs, c0, c1, content_end, slack);
+            let cap = if self.rtf_squeeze { RTF_MAX_SPACE_SHRINK } else { MAX_SPACE_SHRINK };
+            shrink_line_spaces(pl, &mut sc.xs, (c0, c1), (content_end, slack), cap, self.rtf_squeeze);
         } else if justify && slack > 0.0 {
             justify_line(pl, &mut sc.xs, (c0, c1, align_from), (content_end, slack), rp.align == Align::Distribute);
         }
@@ -914,7 +925,11 @@ impl Scan {
         // each segment's font, glyphs and position for painting.
         let advance = pl.atomic_advance(j);
         let absorbs = self.absorbs(pl, advance);
-        let shrink = if bk.shrink_spaces && !self.has_tab {
+        let shrink = if bk.rtf_squeeze && !self.has_tab {
+            // The whole word decides, from the character that first crosses the edge on.
+            let word_end = self.x + bk.widths.get(j).copied().unwrap_or(advance) - pl.auto_space_after(j);
+            rtf_space_room(self.space_w - self.lead_space_w, word_end - self.right_edge, self.word_from, self.right_edge)
+        } else if bk.shrink_spaces && !self.has_tab {
             space_room(self.space_w, self.x + advance - pl.auto_space_after(j) - self.word_from)
         } else {
             0.0
@@ -930,7 +945,12 @@ impl Scan {
         self.xs.push(self.x);
         self.x += c.adv;
         if c.kind == ClKind::Space {
+            if !self.text_seen {
+                self.lead_space_w += c.adv;
+            }
             self.space_w += c.adv;
+        } else if c.kind != ClKind::Marker {
+            self.text_seen = true;
         }
         self.shift_pending_tab(pl);
         if is_display {

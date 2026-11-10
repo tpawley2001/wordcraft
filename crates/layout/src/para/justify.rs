@@ -7,7 +7,11 @@ pub(super) const HYPHENATION_ZONE: f32 = wordcraft_doc::DEFAULT_HYPHENATION_ZONE
 
 /// How much of their width the spaces of a justified line may give up to fit more text (Word
 /// 2013+, compatibility mode 15).
-const MAX_SPACE_SHRINK: f32 = 0.25;
+pub(super) const MAX_SPACE_SHRINK: f32 = 0.25;
+
+/// How much of their width the spaces of a justified line may give up in a document opened from
+/// RTF: just under half (Word keeps the word at 49.2% and wraps it at 50%).
+pub(super) const RTF_MAX_SPACE_SHRINK: f32 = 0.5;
 
 /// How far a word (with the space before it) may overrun a justified line and still be fitted
 /// onto it by shrinking the line's spaces, as a share of its own width.
@@ -22,10 +26,34 @@ pub(super) fn space_room(spaces: f32, word: f32) -> f32 {
     (spaces * MAX_SPACE_SHRINK).min(word.max(0.0) * MAX_WORD_OVERRUN)
 }
 
+/// How far a justified line of a document opened from RTF may run past its right edge, its
+/// inner spaces (`spaces` wide in all, up to and including the one before the word) shrinking to
+/// make room, when the word ending the line ends `overrun` past the edge and the space before it
+/// starts at `space_from`. Measured in Word (synthetic RTF files, Courier New 8 to 20 pt): the
+/// word stays when the space before it starts inside the line and the spaces keep more than half
+/// their width; the word's own width doesn't limit it. Otherwise nothing (the word wraps).
+pub(super) fn rtf_space_room(spaces: f32, overrun: f32, space_from: f32, right_edge: f32) -> f32 {
+    if space_from < right_edge && overrun > 0.0 && overrun < spaces * RTF_MAX_SPACE_SHRINK { overrun } else { 0.0 }
+}
+
 /// Take `-slack` (an overflow) out of the line's inner spaces, in proportion to their widths and
-/// never more than [`MAX_SPACE_SHRINK`] of them. Trailing spaces hang and are left alone.
-pub(super) fn shrink_line_spaces(pl: &ParaLayout, xs: &mut [f32], c0: usize, c1: usize, content_end: f32, slack: f32) {
-    let spaces: Vec<(usize, f32)> = (c0..c1)
+/// never more than `cap` of them ([`MAX_SPACE_SHRINK`], or [`RTF_MAX_SPACE_SHRINK`]). Trailing
+/// spaces hang and are left alone; with `skip_leading`, so are the spaces before the line's
+/// first character.
+pub(super) fn shrink_line_spaces(
+    pl: &ParaLayout,
+    xs: &mut [f32],
+    (c0, c1): (usize, usize),
+    (content_end, slack): (f32, f32),
+    cap: f32,
+    skip_leading: bool,
+) {
+    let first = if skip_leading {
+        (c0..c1).find(|k| pl.clusters.get(*k).is_some_and(|c| c.kind != ClKind::Space && c.kind != ClKind::Marker)).unwrap_or(c1)
+    } else {
+        c0
+    };
+    let spaces: Vec<(usize, f32)> = (first..c1)
         .filter_map(|k| {
             let c = pl.clusters.get(k).filter(|c| c.kind == ClKind::Space)?;
             (xs.get(k - c0).copied().unwrap_or(f32::MAX) < content_end - 0.01).then_some((k, c.adv))
@@ -35,7 +63,7 @@ pub(super) fn shrink_line_spaces(pl: &ParaLayout, xs: &mut [f32], c0: usize, c1:
     if total <= 0.0 || !slack.is_finite() {
         return;
     }
-    let ratio = (-slack / total).clamp(0.0, MAX_SPACE_SHRINK);
+    let ratio = (-slack / total).clamp(0.0, cap);
     let mut take = 0.0;
     let mut next = spaces.iter().peekable();
     for k in c0..c1 {
