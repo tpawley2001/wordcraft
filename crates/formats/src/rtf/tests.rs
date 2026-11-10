@@ -1832,6 +1832,7 @@ fn compound_borders_round_trip() {
 
 mod doc_page_options;
 mod foreign_styles;
+mod justification_flag;
 mod legacy_pn;
 mod note_options;
 mod object_result;
