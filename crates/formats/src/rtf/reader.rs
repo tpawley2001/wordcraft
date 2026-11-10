@@ -175,31 +175,43 @@ impl Reader {
             }
             "brsp" if self.page_side.is_some() => {
                 let space = (pv as f32 / 20.0).clamp(0.0, 31.0);
-                if let Some(Some(b)) = self.cell_border_slot() {
-                    b.space = space;
-                }
+                self.each_border_slot(|slot| {
+                    if let Some(b) = slot {
+                        b.space = space;
+                    }
+                });
             }
             _ => return false,
         }
         true
     }
 
-    /// The border of the page side being described, else of the cell side, else of the
-    /// paragraph side.
-    pub(super) fn cell_border_slot(&mut self) -> Option<&mut Option<wordcraft_doc::props::Border>> {
+    /// Applies `f` to the border of the page side being described, else of the cell side, else
+    /// of the paragraph side: `h` is the border between paragraphs (`\brdrbtw`), `x` all four
+    /// sides (`\box`).
+    pub(super) fn each_border_slot(&mut self, mut f: impl FnMut(&mut Option<wordcraft_doc::props::Border>)) {
         let (b, side) = match (self.page_side, self.cell_side) {
             // A header or footer doesn't set the body's section.
-            (Some(_), _) if self.hf.is_some() || self.sub.is_some() => return None,
+            (Some(_), _) if self.hf.is_some() || self.sub.is_some() => return,
             (Some(c), _) => (&mut self.sec.page_borders, c),
             (None, Some(c)) => (&mut self.def_cur.borders, c),
-            (None, None) => (&mut self.st.borders, self.st.border_side?),
+            (None, None) => match self.st.border_side {
+                Some(s) => (&mut self.st.borders, s),
+                None => return,
+            },
         };
         match side {
-            't' => Some(&mut b.top),
-            'l' => Some(&mut b.left),
-            'b' => Some(&mut b.bottom),
-            'r' => Some(&mut b.right),
-            _ => None,
+            't' => f(&mut b.top),
+            'l' => f(&mut b.left),
+            'b' => f(&mut b.bottom),
+            'r' => f(&mut b.right),
+            'h' => f(&mut b.between),
+            'x' => {
+                for slot in [&mut b.top, &mut b.left, &mut b.bottom, &mut b.right] {
+                    f(slot);
+                }
+            }
+            _ => {}
         }
     }
 

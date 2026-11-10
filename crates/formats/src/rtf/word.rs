@@ -173,6 +173,12 @@ impl Reader {
             "intbl" => self.st.intbl = true,
             "ls" => self.st.ls = Some(pv),
             "ilvl" => self.st.ilvl = pv.clamp(0, 8) as u8,
+            // The border between paragraphs with the same borders, and all four sides at once.
+            "brdrbtw" if self.cell_side.is_none() => self.st.border_side = Some('h'),
+            "box" if self.cell_side.is_none() => self.st.border_side = Some('x'),
+            "cbpat" if self.cell_side.is_none() => self.st.cbpat = Some(pv),
+            "cfpat" if self.cell_side.is_none() => self.st.cfpat = Some(pv),
+            "shading" if self.cell_side.is_none() => self.st.shading = pv,
             "brdrb" | "brdrt" | "brdrl" | "brdrr" if self.cell_side.is_none() => {
                 self.page_side = None;
                 if w == "brdrb" && self.st.dest == Dest::Body {
@@ -245,21 +251,23 @@ impl Reader {
                     _ => BorderStyle::Single,
                 };
                 let b = (style != BorderStyle::None).then_some(Border { style, ..Border::single(0.5) });
-                if let Some(slot) = self.cell_border_slot() {
-                    *slot = b;
-                }
+                self.each_border_slot(|slot| *slot = b);
             }
             "brdrw" if self.border_open() => {
                 let width = (pv as f32 / 20.0).clamp(0.25, 6.0);
-                if let Some(Some(b)) = self.cell_border_slot() {
-                    b.width = width;
-                }
+                self.each_border_slot(|slot| {
+                    if let Some(b) = slot {
+                        b.width = width;
+                    }
+                });
             }
             "brdrcf" if self.border_open() => {
                 let color = self.colors.get(pv.max(0) as usize).copied().flatten();
-                if let Some(Some(b)) = self.cell_border_slot() {
-                    b.color = color;
-                }
+                self.each_border_slot(|slot| {
+                    if let Some(b) = slot {
+                        b.color = color;
+                    }
+                });
             }
             "paperw" => self.page.w = Some(pv),
             "paperh" => self.page.h = Some(pv),

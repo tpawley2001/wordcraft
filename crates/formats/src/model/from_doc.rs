@@ -190,8 +190,8 @@ pub fn tabs_from_indent(doc: &Document) -> bool {
 }
 
 /// [`Para::extra`] as `opts` asks for it: all of it ([`FlowOpts::paras`]), the paragraph's own
-/// tab stops ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]) and other
-/// flags ([`FlowOpts::para_flags`]) alone, or nothing.
+/// tab stops ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]), shading
+/// ([`FlowOpts::shading`]) and other flags ([`FlowOpts::para_flags`]) alone, or nothing.
 fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: FlowOpts) -> Option<Box<wordcraft_doc::props::ParaProps>> {
     if opts.paras {
         return para_extra(doc, p);
@@ -207,6 +207,7 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         x.suppress_hyphens = p.suppress_hyphens;
         x.snap_to_grid = p.snap_to_grid;
     }
+    x.shading = p.shading.filter(|_| opts.shading);
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
 

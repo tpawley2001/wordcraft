@@ -539,7 +539,7 @@ fn border_words(prefix: &str, side: char, b: wordcraft_doc::props::Border, space
 
 impl Writer {
     fn write_border(&mut self, prefix: &str, side: char, b: wordcraft_doc::props::Border, out: &mut String) {
-        border_words(prefix, side, b, prefix == "brdr", &mut self.t, out);
+        border_words(prefix, side, b, prefix.starts_with("brdr"), &mut self.t, out);
     }
 
     fn cell_borders(&mut self, borders: Option<&wordcraft_doc::props::Borders>, borderless: bool, out: &mut String) {
@@ -934,6 +934,14 @@ impl Writer {
                     self.write_border("brdr", side, border, out);
                 }
             }
+            if let Some(border) = b.between.filter(|x| x.is_visible()) {
+                // `\brdrbtw`: the border between paragraphs with the same borders.
+                self.write_border("brdrbt", 'w', border, out);
+            }
+        }
+        if let Some(c) = p.extra.as_ref().and_then(|x| x.shading) {
+            let i = self.t.color(c);
+            out.push_str(&format!("\\cbpat{i}"));
         }
         if let (Some(li), Some((n, label))) = (p.list, &ls) {
             let lv = li.level.min(8);
