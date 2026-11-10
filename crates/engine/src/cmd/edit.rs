@@ -1107,7 +1107,7 @@ impl ShapeFormat {
             fill: fill.clone(),
             stroke: *stroke,
             stroke_width: *stroke_width,
-            effects: effects.clone(),
+            effects: *effects,
             outline_fill: extra.outline_fill.clone(),
             dash: extra.dash.clone(),
             cap: extra.cap,
@@ -1119,7 +1119,7 @@ impl ShapeFormat {
             fill.clone_from(&self.fill);
             *stroke = self.stroke;
             *stroke_width = self.stroke_width;
-            effects.clone_from(&self.effects);
+            *effects = self.effects;
             extra.outline_fill.clone_from(&self.outline_fill);
             extra.dash.clone_from(&self.dash);
             extra.cap = self.cap;
