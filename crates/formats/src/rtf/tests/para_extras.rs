@@ -28,9 +28,7 @@ const UNSET: Row = (None, None, None, None, None, None);
 
 #[test]
 fn each_word_is_read() {
-    let d = open(&format!(
-        r"{ALL}all\par\pard\contextualspace a\par\pard\mirrorindents b\par\pard\sbauto1 c\par\pard\saauto1 d\par\pard\hyphpar0 e\par\pard\nosnaplinegrid f\par\pard unset\par"
-    ));
+    let d = open(&format!(r"{ALL}all\par\pard\contextualspace a\par\pard\mirrorindents b\par\pard\sbauto1 c\par\pard\saauto1 d\par\pard\hyphpar0 e\par\pard\nosnaplinegrid f\par\pard unset\par"));
     let p = paras(&d);
     assert_eq!(row(&p[0]), ALL_ROW);
     assert_eq!(row(&p[1]), (Some(true), None, None, None, None, None));
