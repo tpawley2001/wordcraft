@@ -1069,8 +1069,6 @@ fn list_level(local: &str, a: &Attrs) -> ListLevel {
     }
 }
 
-/// Widow and orphan control as `fo:widows`/`fo:orphans` state it (on with either above 0, off
-/// with both 0); `None` when neither is stated.
 /// Hyphenation options a paragraph style states for the whole document, each `None` when unsaid.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct HyphenOptions {
@@ -1114,6 +1112,8 @@ impl HyphenOptions {
     }
 }
 
+/// Widow and orphan control as `fo:widows`/`fo:orphans` state it (on with either above 0, off
+/// with both 0); `None` when neither is stated.
 fn widows(a: &Attrs) -> Option<bool> {
     let lines = |k: &str| get(a, k).and_then(|v| v.trim().parse::<u32>().ok());
     let (w, o) = (lines("fo:widows"), lines("fo:orphans"));
