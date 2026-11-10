@@ -48,6 +48,10 @@ pub(super) struct Reader {
     /// The cell border side being described (`\clbrdrt`, `l`, `b`, `r`): its line style, width
     /// and colour follow.
     pub(super) cell_side: Option<char>,
+    /// The page border side being described (`\pgbrdrt`, `l`, `b`, `r`), a section property:
+    /// the border words that follow describe it until a paragraph or cell border side,
+    /// `\pard`, `\sectd` or `\sect`.
+    pub(super) page_side: Option<char>,
     /// Each table row's cell right edges (`\cellx`, twips), for the table's column grid.
     table_rights: Vec<Vec<i32>>,
     pub(super) colors: Vec<Option<Rgb>>,
@@ -155,11 +159,15 @@ impl Reader {
         o
     }
 
-    /// The border of the cell side being described, else of the paragraph side.
+    /// The border of the page side being described, else of the cell side, else of the
+    /// paragraph side.
     pub(super) fn cell_border_slot(&mut self) -> Option<&mut Option<wordcraft_doc::props::Border>> {
-        let (b, side) = match self.cell_side {
-            Some(c) => (&mut self.def_cur.borders, c),
-            None => (&mut self.st.borders, self.st.border_side?),
+        let (b, side) = match (self.page_side, self.cell_side) {
+            // A header or footer doesn't set the body's section.
+            (Some(_), _) if self.hf.is_some() || self.sub.is_some() => return None,
+            (Some(c), _) => (&mut self.sec.page_borders, c),
+            (None, Some(c)) => (&mut self.def_cur.borders, c),
+            (None, None) => (&mut self.st.borders, self.st.border_side?),
         };
         match side {
             't' => Some(&mut b.top),
@@ -297,6 +305,7 @@ impl Reader {
     /// headers and footers read since the last break. Inside a header, footer or table, and past
     /// [`MAX_SECTIONS`], it only ends the paragraph.
     pub(super) fn end_section(&mut self) {
+        self.page_side = None;
         self.end_para_mark();
         if self.hf.is_some() || self.sub.is_some() || self.st.intbl || self.section_parts.len() + 1 >= MAX_SECTIONS {
             return;
@@ -325,6 +334,7 @@ impl Reader {
         }
         if w == "sectd" {
             self.sec_old = None;
+            self.page_side = None;
         }
         apply_section_word(&mut self.sec, w, p)
     }

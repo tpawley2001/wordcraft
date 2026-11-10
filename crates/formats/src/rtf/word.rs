@@ -92,6 +92,7 @@ impl Reader {
                 let (dest, fmt, rev, uc, hidden) = (self.st.dest, self.st.fmt.clone(), self.st.rev, self.st.uc, self.st.hidden);
                 let chg_c = std::mem::take(&mut self.st.chg_c);
                 self.st = St { dest, fmt, rev, chg_c, uc, hidden, field, ..Default::default() };
+                self.page_side = None;
             }
             "revised" => self.st.rev.ins = on,
             "deleted" => self.st.rev.del = on,
@@ -167,6 +168,7 @@ impl Reader {
             "ls" => self.st.ls = Some(pv),
             "ilvl" => self.st.ilvl = pv.clamp(0, 8) as u8,
             "brdrb" | "brdrt" | "brdrl" | "brdrr" if self.cell_side.is_none() => {
+                self.page_side = None;
                 if w == "brdrb" && self.st.dest == Dest::Body {
                     self.rule_pending = true;
                 }
@@ -206,14 +208,26 @@ impl Reader {
             // Character spacing: `\expnd` in quarter points, `\expndtw` in twips; the later wins.
             "expnd" => self.char_spacing(pv as f32 / 4.0),
             "expndtw" => self.char_spacing(pv as f32 / 20.0),
-            "clbrdrt" => self.cell_side = Some('t'),
-            "clbrdrl" => self.cell_side = Some('l'),
-            "clbrdrb" => self.cell_side = Some('b'),
-            "clbrdrr" => self.cell_side = Some('r'),
+            "clbrdrt" | "clbrdrl" | "clbrdrb" | "clbrdrr" => {
+                self.page_side = None;
+                self.cell_side = w.chars().last();
+            }
+            // Page borders (section formatting); `\pgbrdropt`, `\pgbrdrhead`, `\pgbrdrfoot`,
+            // `\pgbrdrsnap` and `\brdrart` have no model value and are skipped.
+            "pgbrdrt" | "pgbrdrl" | "pgbrdrb" | "pgbrdrr" => {
+                self.st.border_side = None;
+                self.page_side = w.chars().last();
+            }
+            "brsp" if self.page_side.is_some() => {
+                let space = (pv as f32 / 20.0).clamp(0.0, 31.0);
+                if let Some(Some(b)) = self.cell_border_slot() {
+                    b.space = space;
+                }
+            }
             "brdrs" | "brdrth" | "brdrsh" | "brdrdb" | "brdrdot" | "brdrdash" | "brdrdashsm" | "brdrdashd" | "brdrdashdd" | "brdrhair"
             | "brdrtriple" | "brdrthtnsg" | "brdrtnthsg" | "brdrtnthtnsg" | "brdrthtnmg" | "brdrtnthmg" | "brdrtnthtnmg" | "brdrthtnlg"
             | "brdrtnthlg" | "brdrtnthtnlg" | "brdrwavy" | "brdrwavydb" | "brdrnone" | "brdrnil" | "brdrtbl"
-                if self.cell_side.is_some() || self.st.border_side.is_some() =>
+                if self.page_side.is_some() || self.cell_side.is_some() || self.st.border_side.is_some() =>
             {
                 use wordcraft_doc::props::{Border, BorderStyle};
                 let style = match w {
@@ -241,13 +255,13 @@ impl Reader {
                     *slot = b;
                 }
             }
-            "brdrw" if self.cell_side.is_some() || self.st.border_side.is_some() => {
+            "brdrw" if self.page_side.is_some() || self.cell_side.is_some() || self.st.border_side.is_some() => {
                 let width = (pv as f32 / 20.0).clamp(0.25, 6.0);
                 if let Some(Some(b)) = self.cell_border_slot() {
                     b.width = width;
                 }
             }
-            "brdrcf" if self.cell_side.is_some() || self.st.border_side.is_some() => {
+            "brdrcf" if self.page_side.is_some() || self.cell_side.is_some() || self.st.border_side.is_some() => {
                 let color = self.colors.get(pv.max(0) as usize).copied().flatten();
                 if let Some(Some(b)) = self.cell_border_slot() {
                     b.color = color;

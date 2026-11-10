@@ -16,8 +16,7 @@ fn border(style: BorderStyle, width: f32, color: Option<Rgb>, space: f32) -> Bor
 
 #[test]
 fn top_and_bottom_page_borders_are_read() {
-    let b = page_borders(r"{\rtf1\ansi\sectd\pgbrdrt\brdrs\brdrw20\brsp480\pgbrdrb\brdrdb\brdrw10\brsp480 a\par}")
-        .expect("page borders");
+    let b = page_borders(r"{\rtf1\ansi\sectd\pgbrdrt\brdrs\brdrw20\brsp480\pgbrdrb\brdrdb\brdrw10\brsp480 a\par}").expect("page borders");
     assert_eq!(b.top, Some(border(BorderStyle::Single, 1.0, None, 24.0)));
     assert_eq!(b.bottom, Some(border(BorderStyle::Double, 0.5, None, 24.0)));
     assert_eq!((b.left, b.right), (None, None));
@@ -25,16 +24,14 @@ fn top_and_bottom_page_borders_are_read() {
 
 #[test]
 fn a_page_border_colour_comes_from_the_colour_table() {
-    let b = page_borders(r"{\rtf1\ansi{\colortbl;\red255\green0\blue0;}\sectd\pgbrdrl\brdrs\brdrw15\brdrcf1 a\par}")
-        .expect("page borders");
+    let b = page_borders(r"{\rtf1\ansi{\colortbl;\red255\green0\blue0;}\sectd\pgbrdrl\brdrs\brdrw15\brdrcf1 a\par}").expect("page borders");
     assert_eq!(b.left, Some(border(BorderStyle::Single, 0.75, Some(Rgb(255, 0, 0)), 0.0)));
     assert_eq!((b.top, b.bottom, b.right), (None, None, None));
 }
 
 #[test]
 fn page_border_options_do_not_disturb_the_sides() {
-    let b = page_borders(r"{\rtf1\ansi\sectd\pgbrdropt32\pgbrdrhead\pgbrdrfoot\pgbrdrr\brdrth\brdrw30\brsp80 a\par}")
-        .expect("page borders");
+    let b = page_borders(r"{\rtf1\ansi\sectd\pgbrdropt32\pgbrdrhead\pgbrdrfoot\pgbrdrr\brdrth\brdrw30\brsp80 a\par}").expect("page borders");
     assert_eq!(b.right, Some(border(BorderStyle::Thick, 1.5, None, 4.0)));
 }
 
