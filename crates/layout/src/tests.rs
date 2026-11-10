@@ -36,6 +36,7 @@ mod numeral;
 mod pages;
 mod picture_glue;
 mod picture_glue_touching;
+mod rtf_justify_squeeze;
 mod styleref;
 mod symbol_field;
 mod symbol_font_lines;

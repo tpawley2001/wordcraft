@@ -1,5 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
+> **Last updated:** 2026-11-09 · **Change:** trivial (P0172: justified lines of a document opened from RTF squeeze their spaces by up to half to keep the overrunning word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-09 · **Change:** trivial (P0170: touching inline pictures before a word go to the next line together with it, as in Word 16. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-09 · **Change:** trivial (P0151: an inline picture and the word right after it, with no space between, stay on one line. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0119: `.doc` Dop95/Dop97 sums paragraph spacing; Dop2000 and later use the stored HTML auto-spacing flag. Readiness estimates unchanged.)
@@ -39,6 +40,7 @@ Exact line spacing keeps the run font baseline around tall equations; automatic 
 | A break before a slash that starts a word (" /word" wraps whole; not after a no-break space) | 🟡 | `layout::tests::a_word_after_a_slash_wraps_whole`, `layout::tests::a_no_break_space_before_a_slash_still_holds`; behaviour from the #2963 report, not compared with Word yet | — |
 | Narrow table cells | ✅ | `layout::tests::narrow_cells_keep_their_width`: usable widths below 12 pt wrap without expansion; oversized glyphs still make progress | 0 |
 | Justification, Word 2013+ space shrinking (compat mode 15) | ✅ | #109; spaces before a line's first character (paragraph indented with spaces, after a line break or a tab, a bookmark, hidden text or a floating object's anchor before them) keep their width in justified and distributed lines, `layout::tests::leading_spaces_keep_their_width_in_justified_lines` | — |
+| Justification of documents opened from RTF | ✅ | P0172: when a justified line's last word overruns the right edge, Word keeps it if the space before it starts inside the line and the line's spaces keep more than half their width; the spaces then shrink alike so the line ends at the edge (`Settings::rtf_justification`, set by the RTF reader only; no 0.355-of-the-word limit). Measured in Microsoft 365 Word with synthetic RTF files, Courier New 8-20 pt; the same paragraphs as DOCX keep the mode-15 rule. Court transcripts (Courier 12 pt, justified RTF) no longer run 4-5% longer than in Word. |
 | Spaces at the end of a line hang past the right margin instead of wrapping; the caret after them stays at the margin, in the body and in headers and footers | ✅ | `layout::tests::caret_after_hanging_spaces_stays_at_the_margin` (#2146): a letter typed after them wraps to the next line | — |
 | Complex scripts (Myanmar, Khmer, Indic): shaped per script run with OpenType fallback fonts, one cluster per syllable, Myanmar wraps between syllables | 🟡 | `layout::tests::complex` (#604). Khmer, Thai and Lao still wrap only at spaces (need a dictionary) | 4–8 |
 | Cursive joining (Arabic, Syriac, Mongolian, N'Ko…) across runs: a letter takes its form from the text shown beside it, across a change of formatting, past a vowel sign in a run of its own and past hidden or tracked-deleted text left out of the view; a tab, break, object or drop cap still stops the join | ✅ | `layout::tests::bidi::letters_join_across_a_change_of_formatting`, `letters_join_past_text_left_out_of_the_layout`, `letters_join_past_a_mark_in_a_run_of_its_own`, `letters_stay_apart_where_nothing_joins_them` (#4093); not compared with Word on this machine | 0 |
@@ -296,6 +298,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 
 ## Revision history
 
+> 2026-11-09 · P0172: justified lines of a document opened from RTF fit their last word by squeezing their spaces by up to half, as Word does. Readiness estimates unchanged.
 > 2026-11-09 · P0170: inline pictures touching each other (markers between them allowed) right before a word move to the next line with it as one unit, checked in Word 16; a space or a zero-size object still ends the unit. Readiness estimates unchanged.
 
 > 2026-11-09 · P0151: an inline picture that takes room on the line has no break after it when text follows directly; the picture moves to the next line with its word, and an over-long word starting with a picture still breaks where it must. Readiness estimates unchanged.
