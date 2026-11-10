@@ -146,7 +146,8 @@ pub struct TableProps {
     /// Table style options ("look"): header row, total row, banded rows, first column, last
     /// column, banded columns.
     pub look: TableLook,
-    /// Whether the file stated `look` (`w:tblLook`); a row's exceptions write it back only then.
+    /// For a row's exceptions (`w:tblPrEx`): whether the file stated `look` (`w:tblLook`), which
+    /// is written back only then. A table always writes its look.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub look_set: bool,
     pub shading: Option<Rgb>,

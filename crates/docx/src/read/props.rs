@@ -584,10 +584,7 @@ impl PropCtx {
                     t.cell_margins = Some(sides.map(|side| side.unwrap_or(0.0)));
                     t.cell_margin_sides = sides.iter().any(Option::is_none).then(|| sides.map(|side| side.is_some()));
                 }
-                "w:tblLook" => {
-                    t.look = look(k);
-                    t.look_set = true;
-                }
+                "w:tblLook" => t.look = look(k),
                 "w:tblpPr" => t.float = Some(table_float(k)),
                 "w:tblOverlap" => {
                     if let Some(f) = t.float.as_mut() {
