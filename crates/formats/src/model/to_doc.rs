@@ -893,6 +893,12 @@ impl<'a> Builder<'a> {
             tb.props.fixed |= x.fixed;
             let space = |v: Option<f32>| v.filter(|v| v.is_finite() && *v > 0.0).map(|v| v.min(1584.0));
             (tb.props.space_before, tb.props.space_after) = (space(x.space[0]), space(x.space[1]));
+            if let Some(id) = &x.style {
+                tb.props.style = Some(id.clone());
+            }
+            if let Some(look) = x.look {
+                tb.props.look = look;
+            }
         }
         for (ri, r) in rows {
             let mut row = wordcraft_doc::Row { props: RowProps::default(), cells: Vec::new(), controls: Default::default() };
