@@ -18,6 +18,7 @@ const OWNED: &[&str] = &[
     "w:removePersonalInformation",
     "w:removeDateAndTime",
     "w:displayBackgroundShape",
+    "w:printFormsData",
     "w:mirrorMargins",
     "w:attachedTemplate",
     "w:linkStyles",

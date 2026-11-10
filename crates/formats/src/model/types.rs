@@ -504,6 +504,8 @@ pub struct FlowOpts {
     pub indent_chars: bool,
     /// Table row heights and rows kept from breaking ([`FTable::extra`]), also without `paras`.
     pub rows: bool,
+    /// The mark formatting of a paragraph without text ([`Para::mark`]), also without `paras`.
+    pub marks: bool,
     /// The paragraph's own text frame and drop cap in [`Para::extra`], also without `paras`.
     pub frames: bool,
     /// Without [`FlowOpts::chars`] and [`FlowOpts::paras`]: the document's own paragraph style

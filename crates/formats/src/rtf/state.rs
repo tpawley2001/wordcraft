@@ -1,4 +1,4 @@
-use super::{Align, Cell, FBlock, Fmt, Para, Rgb, VAlign};
+use super::{Align, Arc, Cell, FBlock, Fmt, Para, Rgb, VAlign};
 use wordcraft_doc::props::{TabAlign, TabLeader, TabStop};
 
 /// Deepest group nesting we track; deeper groups share the innermost state.
@@ -190,6 +190,26 @@ pub(super) struct Output {
     pub(super) table_keeps: Vec<bool>,
     pub(super) row_style: RowStyle,
     pub(super) table_style: RowStyle,
+    pub(super) nest: Vec<TableLevel>,
+}
+
+/// The state of one open table that encloses the one being read (RTF nested tables, `\itapN`):
+/// its rows so far, the row and cell being read, and the row's definitions.
+#[derive(Default)]
+pub(super) struct TableLevel {
+    pub(super) table: Vec<Vec<Cell>>,
+    pub(super) row: Vec<Cell>,
+    pub(super) cell: Vec<FBlock>,
+    pub(super) defs: Vec<CellDef>,
+    pub(super) def_cur: CellDef,
+    pub(super) row_header: bool,
+    pub(super) row_height: Option<(f32, bool)>,
+    pub(super) row_keep: bool,
+    pub(super) table_rights: Vec<Vec<i32>>,
+    pub(super) table_heights: Vec<Option<(f32, bool)>>,
+    pub(super) table_keeps: Vec<bool>,
+    pub(super) row_style: RowStyle,
+    pub(super) table_style: RowStyle,
 }
 
 /// A row's table style (`\tsN`, as its document style id) and look (`\tbllk*`), reset by
@@ -204,6 +224,9 @@ pub(super) struct RowStyle {
 pub(super) struct St {
     pub(super) dest: Dest,
     pub(super) fmt: Fmt,
+    /// The name of the monospaced font `\f` selected, which [`Fmt::code`] stands for in the
+    /// text: a paragraph mark keeps it by name.
+    pub(super) mono: Option<Arc<str>>,
     pub(super) rev: RevSt,
     /// Tracked change of the character formatting (reset by `\plain`). Its old formatting is
     /// the `\oldcprops` words, applied on top of the run's formatting when text is read: Word
@@ -221,6 +244,9 @@ pub(super) struct St {
     pub(super) align: Option<Align>,
     pub(super) style: i32,
     pub(super) intbl: bool,
+    /// The paragraph's table depth (`\itapN`): 0 the body, 1 a table, 2 a table in its cell…
+    /// `None` until the paragraph says, when `\intbl` means 1.
+    pub(super) itap: Option<u8>,
     pub(super) ls: Option<i32>,
     pub(super) ilvl: u8,
     pub(super) outline: Option<u8>,
@@ -278,6 +304,7 @@ impl Default for St {
         St {
             dest: Dest::Body,
             fmt: Fmt::default(),
+            mono: None,
             rev: RevSt::default(),
             chg_c: FmtRevSt::default(),
             chg_p: FmtRevSt::default(),
@@ -288,6 +315,7 @@ impl Default for St {
             align: None,
             style: 0,
             intbl: false,
+            itap: None,
             ls: None,
             ilvl: 0,
             outline: None,
@@ -394,7 +422,8 @@ impl PageGeom {
 }
 
 /// Document formatting words that go into the document's settings, as read: `None` where the
-/// file doesn't give one (the setting keeps its default).
+/// file doesn't give one (the setting keeps its default). `\widowctrl` is the document's widow
+/// control default for paragraphs that don't set their own.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct DocOpts {
     /// `\deftabN`, twips (1..=31680).
@@ -411,6 +440,9 @@ pub(super) struct DocOpts {
     pub(super) hyphenate_caps: Option<bool>,
     /// `\hyphconsecN` (>= 0; 0 is no limit).
     pub(super) consecutive_hyphen_limit: Option<i32>,
+    /// `\widowctrl`: widow and orphan control on for the paragraphs that don't say
+    /// (`\widctlpar`/`\nowidctlpar`). Without it Word has it off for them.
+    pub(super) widow_control: bool,
 }
 
 impl DocOpts {
@@ -438,6 +470,7 @@ impl DocOpts {
                     self.consecutive_hyphen_limit = Some(pv);
                 }
             }
+            "widowctrl" => self.widow_control = true,
             _ => return false,
         }
         true

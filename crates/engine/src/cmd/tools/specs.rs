@@ -290,7 +290,10 @@ pub fn specs() -> Vec<CommandSpec> {
                 p::f32(v, "right").unwrap_or(current[3]),
             ]
             .map(|x| x.clamp(0.0, 144.0));
-            s.doc.table_mut(story, &tp)?.props.cell_margins = Some(m);
+            let props = &mut s.doc.table_mut(story, &tp)?.props;
+            props.cell_margins = Some(m);
+            // All four sides are now set, including any the file left out.
+            props.cell_margin_sides = None;
             for path in s.doc.para_paths(story).into_iter().filter(|p| p.0.starts_with(&tp.0) && p.0.len() > tp.0.len()) {
                 s.doc.para_mut(story, &path)?.touch();
             }

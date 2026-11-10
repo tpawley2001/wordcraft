@@ -13,19 +13,33 @@ use super::{
 pub fn export(doc: &Document, opts: &PdfOptions) -> Result<Vec<u8>, PdfError> {
     write::guard(|| {
         let lay = layout(doc, &mut LayoutCache::new(), &opts.layout_options());
-        export_layout_inner(doc, &lay, opts)
+        export_layout_inner(doc, &lay, None, opts)
     })
 }
 
 /// Write an existing layout of `doc` as PDF.
 pub fn export_layout(doc: &Document, lay: &DocLayout, opts: &PdfOptions) -> Result<Vec<u8>, PdfError> {
-    write::guard(|| export_layout_inner(doc, lay, opts))
+    write::guard(|| export_layout_inner(doc, lay, None, opts))
+}
+
+/// [`export_layout`] followed by every page of a second document's layout, one page per sheet
+/// (File › Options › Print document properties: the properties report after each copy of the
+/// document, or after all of its pages when copies aren't collated). The appendix pages take
+/// the paper of [`PdfOptions::paper`]; the PDF has no structure tree, since its two documents
+/// would share one.
+pub fn export_layout_with_appendix(
+    doc: &Document,
+    lay: &DocLayout,
+    appendix: (&Document, &DocLayout),
+    opts: &PdfOptions,
+) -> Result<Vec<u8>, PdfError> {
+    write::guard(|| export_layout_inner(doc, lay, Some(appendix), opts))
 }
 
 /// Validate selected pages and retry embedding failures with outlined fonts.
-fn export_layout_inner(doc: &Document, lay: &DocLayout, opts: &PdfOptions) -> Result<Vec<u8>, PdfError> {
+fn export_layout_inner(doc: &Document, lay: &DocLayout, appendix: Option<(&Document, &DocLayout)>, opts: &PdfOptions) -> Result<Vec<u8>, PdfError> {
     let mut adjusted = opts.clone();
-    adjusted.tagged &= adjusted.sheet_copies <= 1;
+    adjusted.tagged &= adjusted.sheet_copies <= 1 && appendix.is_none();
     let opts = &adjusted;
     let pages: Vec<usize> = match &opts.pages {
         Some(v) => {
@@ -43,7 +57,7 @@ fn export_layout_inner(doc: &Document, lay: &DocLayout, opts: &PdfOptions) -> Re
     // the whole export. Draw that font's glyphs as outlines instead and write the document again.
     let mut outlined = HashSet::new();
     loop {
-        match write_attempt(doc, lay, opts, &pages, &outlined)? {
+        match write_attempt(doc, lay, appendix, opts, &pages, &outlined)? {
             Attempt::Done(bytes) => return Ok(bytes),
             Attempt::BadFont(id, msg) if outlined.len() < MAX_OUTLINED_FONTS && outlined.insert(id) => {
                 log::warn!("PDF: {msg}; its text is drawn as outlines");
@@ -64,27 +78,50 @@ enum Attempt {
 }
 
 /// Serialize physical sheet sides while mapping link and outline destinations onto their cells.
-fn write_attempt(doc: &Document, lay: &DocLayout, opts: &PdfOptions, pages: &[usize], outlined: &HashSet<u32>) -> Result<Attempt, PdfError> {
+fn write_attempt<'a>(
+    doc: &'a Document,
+    lay: &'a DocLayout,
+    appendix: Option<(&'a Document, &'a DocLayout)>,
+    opts: &'a PdfOptions,
+    pages: &[usize],
+    outlined: &'a HashSet<u32>,
+) -> Result<Attempt, PdfError> {
     let one_copy = opts.imposition.sheets(lay, pages, opts.paper)?;
+    let extra = match appendix {
+        Some((_, alay)) if !alay.pages.is_empty() => {
+            let all: Vec<usize> = (0..alay.pages.len()).collect();
+            imposition::Imposition::Single.sheets(alay, &all, opts.paper)?
+        }
+        _ => Vec::new(),
+    };
     let copies = opts.sheet_copies.clamp(1, 999) as usize;
-    if (opts.imposition != imposition::Imposition::Single || copies > 1) && one_copy.len().checked_mul(copies).is_none_or(|n| n > 5000) {
+    let per_copy = one_copy.len().saturating_add(extra.len());
+    if (opts.imposition != imposition::Imposition::Single || copies > 1 || !extra.is_empty()) && per_copy.checked_mul(copies).is_none_or(|n| n > 5000)
+    {
         return Err(PdfError::Write("the print job exceeds 5000 sheet sides".into()));
     }
-    let sheets: Vec<_> = if opts.sheet_collate {
-        (0..copies).flat_map(|_| one_copy.iter()).collect()
-    } else if matches!(opts.imposition, imposition::Imposition::Booklet { .. }) {
-        // A booklet's front/back pair must remain one physical sheet even without collation.
-        one_copy.chunks(2).flat_map(|pair| (0..copies).flat_map(move |_| pair.iter())).collect()
+    // Each sheet side with whether it shows the appendix.
+    let sheets: Vec<(bool, &imposition::Sheet)> = if opts.sheet_collate {
+        (0..copies).flat_map(|_| one_copy.iter().map(|s| (false, s)).chain(extra.iter().map(|s| (true, s)))).collect()
     } else {
-        one_copy.iter().flat_map(|s| std::iter::repeat_n(s, copies)).collect()
+        let booklet = matches!(opts.imposition, imposition::Imposition::Booklet { .. });
+        let main = repeat(&one_copy, copies, booklet).into_iter().map(|s| (false, s));
+        main.chain(repeat(&extra, copies, false).into_iter().map(|s| (true, s))).collect()
     };
-    let mut destinations = HashMap::new();
-    for (output, sheet) in sheets.iter().enumerate() {
+    let mut destinations = [HashMap::new(), HashMap::new()];
+    for (output, (in_appendix, sheet)) in sheets.iter().enumerate() {
+        let (part, part_lay) = match appendix {
+            Some((_, alay)) if *in_appendix => (1, alay),
+            _ => (0, lay),
+        };
         for slot in &sheet.slots {
-            let page = lay.pages.get(slot.page).ok_or(PdfError::BadPage(slot.page.saturating_add(1)))?;
-            destinations.entry(slot.page).or_insert((output, Fit::in_slot(page, *slot)));
+            let page = part_lay.pages.get(slot.page).ok_or(PdfError::BadPage(slot.page.saturating_add(1)))?;
+            if let Some(map) = destinations.get_mut(part) {
+                map.entry(slot.page).or_insert((output, Fit::in_slot(page, *slot)));
+            }
         }
     }
+    let [destinations, mut appendix_destinations] = destinations;
     let settings = krilla::SerializeSettings { compress_content_streams: opts.compress, enable_tagging: opts.tagged, ..Default::default() };
     let language = doc.styles.default_chr.lang.clone().filter(|l| !l.is_empty() && l.is_ascii());
     let mut writer = Writer::new_with_language(settings, metadata(doc, opts), language);
@@ -109,13 +146,24 @@ fn write_attempt(doc: &Document, lay: &DocLayout, opts: &PdfOptions, pages: &[us
     if let Some(o) = ex.outline(pages) {
         pdf.set_outline(o);
     }
-    for sheet in sheets {
+    let mut showing_appendix = false;
+    for (in_appendix, sheet) in sheets {
+        if let Some((adoc, alay)) = appendix
+            && in_appendix != showing_appendix
+        {
+            // Switch documents: links and bookmarks resolve within the document drawn.
+            showing_appendix = in_appendix;
+            (ex.doc, ex.lay) = if in_appendix { (adoc, alay) } else { (doc, lay) };
+            std::mem::swap(&mut ex.out_index, &mut appendix_destinations);
+            ex.bookmarks = std::cell::OnceCell::new();
+        }
+        let page_lay = ex.lay;
         let size = Size::from_wh(clamp_side(sheet.width), clamp_side(sheet.height)).ok_or(PdfError::NoPages)?;
         let mut kp = pdf.start_page_with(PageSettings::new(size));
         let mut annotations = Vec::new();
         let mut surface = kp.surface();
         for slot in &sheet.slots {
-            let page = lay.pages.get(slot.page).ok_or(PdfError::BadPage(slot.page.saturating_add(1)))?;
+            let page = page_lay.pages.get(slot.page).ok_or(PdfError::BadPage(slot.page.saturating_add(1)))?;
             let fit = Fit::in_slot(page, *slot);
             ex.links.clear();
             let clip = rect_path(&Rect::new(slot.x, slot.y, slot.width, slot.height));
@@ -157,6 +205,16 @@ fn write_attempt(doc: &Document, lay: &DocLayout, opts: &PdfOptions, pages: &[us
             error => Err(PdfError::Write(format!("{error:?}"))),
         },
         Err(error) => Err(error.into()),
+    }
+}
+
+/// Uncollated copies: each sheet side `copies` times in a row; a booklet's front/back pair must
+/// remain one physical sheet, so it repeats as a pair.
+fn repeat(one_copy: &[imposition::Sheet], copies: usize, booklet: bool) -> Vec<&imposition::Sheet> {
+    if booklet {
+        one_copy.chunks(2).flat_map(|pair| (0..copies).flat_map(move |_| pair.iter())).collect()
+    } else {
+        one_copy.iter().flat_map(|s| std::iter::repeat_n(s, copies)).collect()
     }
 }
 

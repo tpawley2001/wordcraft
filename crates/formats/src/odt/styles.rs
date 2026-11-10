@@ -1,7 +1,7 @@
 use super::xml::{Attrs, Ev, events, get, length, local};
 use super::{Align, Arc, Columns, Fmt, HashMap, Kind, Rgb, VAlign, model};
 use crate::model::Spacing;
-use wordcraft_doc::props::{Border, BorderStyle, Borders, LineSpacing, TabAlign, TabLeader, TabStop, Underline};
+use wordcraft_doc::props::{Border, BorderStyle, Borders, LineSpacing, TabAlign, TabLeader, TabStop, TextAlignment, Underline};
 use wordcraft_doc::section::NumFormat;
 
 // ---------------------------------------------------------------------------------------------
@@ -224,6 +224,45 @@ fn extra_text_properties(a: &Attrs, d: &mut FmtDelta) {
     if let Some(l) = language(a) {
         x.lang = Some(l);
     }
+    // No linguistic content (ISO 639 `zxx`): Word's Do not check spelling or grammar.
+    if get(a, "fo:language").is_some_and(|l| l.trim() == "zxx") {
+        x.no_proof = Some(true);
+    }
+    if let Some(e) = east_asian_layout(a) {
+        x.east_asian_layout = Some(e);
+    }
+}
+
+/// Word's Asian Layout the attributes state: two lines in one (§20.364 `style:text-combine`
+/// `lines`, its brackets §20.365/§20.366) and horizontal in vertical (§20.370
+/// `style:text-rotation-angle` a quarter turn, §20.371 `style:text-rotation-scale`); `None` for
+/// neither.
+fn east_asian_layout(a: &Attrs) -> Option<wordcraft_doc::props::EastAsianLayout> {
+    use wordcraft_doc::props::{CombineBrackets as B, EastAsianLayout};
+    let mut e = EastAsianLayout::default();
+    if get(a, "style:text-combine").is_some_and(|v| v.trim() == "lines") {
+        e.combine = Some(true);
+        let ch = |k| get(a, k).map(str::trim).unwrap_or("");
+        e.combine_brackets = match (ch("style:text-combine-start-char"), ch("style:text-combine-end-char")) {
+            ("(", ")") => Some(B::Round),
+            ("[", "]") => Some(B::Square),
+            ("<", ">") => Some(B::Angle),
+            ("{", "}") => Some(B::Curly),
+            _ => None,
+        };
+    }
+    let angle = get(a, "style:text-rotation-angle")
+        .map(|v| v.trim().trim_end_matches("deg").trim())
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| v.is_finite())
+        .map(|v| v.rem_euclid(360.0));
+    if angle.is_some_and(|v| v == 90.0 || v == 270.0) {
+        e.vert = Some(true);
+        if get(a, "style:text-rotation-scale").is_some_and(|v| v.trim() == "line-height") {
+            e.vert_compress = Some(true);
+        }
+    }
+    (e != EastAsianLayout::default()).then_some(e)
 }
 
 /// The language `fo:language`, `fo:script` and `fo:country` state: see [`language_tag`].
@@ -308,6 +347,8 @@ struct StyleInfo {
     declared_auto: bool,
     /// `style:contextual-spacing` of a paragraph style.
     contextual: Option<bool>,
+    /// East Asian typography of a paragraph style: see [`ParaLook::asian`].
+    asian: Asian,
     /// `style:writing-mode` of a paragraph style: right to left or not.
     rtl: Option<bool>,
     /// A drop cap (§17.9 `style:drop-cap`): lines it spans and its distance from the text.
@@ -448,6 +489,9 @@ pub(super) struct ParaLook {
     pub(super) tabs: Option<Vec<TabStop>>,
     /// No spacing between paragraphs of one style (`style:contextual-spacing`).
     pub(super) contextual: Option<bool>,
+    /// East Asian line breaking, hanging punctuation, automatic spacing, layout grid snapping
+    /// and font alignment.
+    pub(super) asian: Asian,
     /// Right to left (`style:writing-mode`).
     pub(super) rtl: Option<bool>,
     /// A drop cap: lines it spans (2–10) and its distance from the text, points.
@@ -914,6 +958,69 @@ fn text_properties(a: &Attrs, style: &mut StyleInfo, faces: &HashMap<String, Str
     script_properties(a, &mut style.fmt.extra, faces);
 }
 
+/// East Asian typography of `style:paragraph-properties` (ODF 1.3 §20.305, §20.318, §20.358,
+/// §20.324, §20.386), each `None` when not stated (or not understood).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct Asian {
+    /// `style:line-break`: `strict` line breaking rules (Word's kinsoku).
+    pub(super) kinsoku: Option<bool>,
+    /// `style:punctuation-wrap`: `hanging` punctuation.
+    pub(super) overflow_punct: Option<bool>,
+    /// `style:text-autospace`: `ideograph-alpha` space between Asian and Latin text and digits.
+    pub(super) auto_space: Option<bool>,
+    /// `style:snap-to-layout-grid`.
+    pub(super) snap_to_grid: Option<bool>,
+    /// `style:vertical-align`: the font alignment.
+    pub(super) text_alignment: Option<TextAlignment>,
+}
+
+impl Asian {
+    /// Takes what `other` states.
+    fn overlay(&mut self, other: &Asian) {
+        self.kinsoku = other.kinsoku.or(self.kinsoku);
+        self.overflow_punct = other.overflow_punct.or(self.overflow_punct);
+        self.auto_space = other.auto_space.or(self.auto_space);
+        self.snap_to_grid = other.snap_to_grid.or(self.snap_to_grid);
+        self.text_alignment = other.text_alignment.or(self.text_alignment);
+    }
+
+    /// Takes what `other` states and `self` doesn't (`other` is further up the style chain).
+    fn inherit(&mut self, other: &Asian) {
+        self.kinsoku = self.kinsoku.or(other.kinsoku);
+        self.overflow_punct = self.overflow_punct.or(other.overflow_punct);
+        self.auto_space = self.auto_space.or(other.auto_space);
+        self.snap_to_grid = self.snap_to_grid.or(other.snap_to_grid);
+        self.text_alignment = self.text_alignment.or(other.text_alignment);
+    }
+}
+
+/// The East Asian typography `a` states.
+fn asian(a: &Attrs) -> Asian {
+    let value = |name: &str| get(a, name).map(|v| v.trim().to_ascii_lowercase());
+    let flag = |name: &str, on: &str, off: &str| {
+        value(name).and_then(|v| match v {
+            v if v == on => Some(true),
+            v if v == off => Some(false),
+            _ => None,
+        })
+    };
+    let text_alignment = value("style:vertical-align").and_then(|v| match v.as_str() {
+        "top" => Some(TextAlignment::Top),
+        "middle" => Some(TextAlignment::Center),
+        "bottom" => Some(TextAlignment::Bottom),
+        "baseline" => Some(TextAlignment::Baseline),
+        "auto" => Some(TextAlignment::Auto),
+        _ => None,
+    });
+    Asian {
+        kinsoku: flag("style:line-break", "strict", "normal"),
+        overflow_punct: flag("style:punctuation-wrap", "hanging", "simple"),
+        auto_space: flag("style:text-autospace", "ideograph-alpha", "none"),
+        snap_to_grid: flag("style:snap-to-layout-grid", "true", "false"),
+        text_alignment,
+    }
+}
+
 /// A paragraph style's `style:paragraph-properties` (ODF 1.3 §17.6) into `s`.
 fn paragraph_properties(a: &Attrs, s: &mut StyleInfo) {
     s.align = match get(a, "fo:text-align").map(|v| v.trim().to_ascii_lowercase()).as_deref() {
@@ -958,6 +1065,7 @@ fn paragraph_properties(a: &Attrs, s: &mut StyleInfo) {
     if let Some(c) = get(a, "style:contextual-spacing") {
         s.contextual = Some(c.trim() == "true");
     }
+    s.asian.overlay(&asian(a));
     // `page` (the page's direction) is left to the section.
     match get(a, "style:writing-mode").map(str::trim) {
         Some("rl-tb" | "rl" | "tb-rl") => s.rtl = Some(true),
@@ -1069,6 +1177,49 @@ fn list_level(local: &str, a: &Attrs) -> ListLevel {
     }
 }
 
+/// Hyphenation options a paragraph style states for the whole document, each `None` when unsaid.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct HyphenOptions {
+    /// The most consecutive hyphenated lines (§20.200 `fo:hyphenation-ladder-count`), 0 for no limit.
+    pub(super) ladder: Option<u32>,
+    /// The hyphenation zone, points (LibreOffice's `loext:hyphenation-zone`).
+    pub(super) zone: Option<f32>,
+    /// Words in capitals are left unhyphenated (LibreOffice's `loext:hyphenation-no-caps`).
+    pub(super) no_caps: Option<bool>,
+}
+
+impl HyphenOptions {
+    /// Read the options of `a`, the attributes of a `style:paragraph-properties` or
+    /// `style:text-properties` (`element`).
+    fn read(&mut self, element: &str, a: &Attrs) {
+        if element == "paragraph-properties" {
+            self.read_para(a);
+        } else {
+            self.read_text(a);
+        }
+    }
+
+    fn read_para(&mut self, a: &Attrs) {
+        if let Some(v) = get(a, "fo:hyphenation-ladder-count").map(str::trim) {
+            self.ladder = match v {
+                "no-limit" => Some(0),
+                // A number too large for `u32` is still a (very high) limit.
+                n if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => Some(n.parse::<u32>().unwrap_or(u32::MAX).min(32767)),
+                _ => None,
+            };
+        }
+        if let Some(z) = get(a, "loext:hyphenation-zone").and_then(length).filter(|z| z.is_finite()) {
+            self.zone = Some(z.clamp(0.0, MAX_LEN));
+        }
+    }
+
+    fn read_text(&mut self, a: &Attrs) {
+        if let Some(v) = get(a, "loext:hyphenation-no-caps") {
+            self.no_caps = Some(v.trim() == "true");
+        }
+    }
+}
+
 /// Widow and orphan control as `fo:widows`/`fo:orphans` state it (on with either above 0, off
 /// with both 0); `None` when neither is stated.
 fn widows(a: &Attrs) -> Option<bool> {
@@ -1108,6 +1259,9 @@ pub(super) struct Styles {
     pub(super) default_kern: bool,
     /// Widow and orphan control `style:default-style` for paragraphs states, if it does.
     default_widows: Option<bool>,
+    /// The hyphenation options `style:default-style` for paragraphs states, and Standard's.
+    default_hyphens: HyphenOptions,
+    standard_hyphens: HyphenOptions,
     /// The text colour of `style:default-style` for paragraphs (`fo:color`), if it gives one.
     default_color: Option<wordcraft_doc::props::Rgb>,
     /// `style:default-style` for graphics: what every drawing shape's style falls back on.
@@ -1172,23 +1326,18 @@ impl Styles {
                 }
                 "graphic-properties" if in_graphic_default && cur.is_none() => self.default_graphic = super::frames::Graphic::read(&a),
                 props if in_table_default == Some(props) && cur.is_none() => self.read_table_default(props, &a),
-                "text-properties" if in_default && cur.is_none() => {
-                    self.default_font = default_font(&a, &self.faces);
-                    if let Some(sz) = get(&a, "fo:font-size").and_then(length).filter(|v| v.is_finite() && *v >= 1.0) {
-                        self.default_size = Some(sz.min(1638.0));
-                    }
-                    self.default_kern = get(&a, "style:letter-kerning").is_some_and(|k| k.trim() == "true");
-                    self.default_color = get(&a, "fo:color").and_then(model::parse_color);
-                    script_properties(&a, &mut self.default_scripts, &self.faces);
-                    self.default_lang = language(&a);
-                }
+                "text-properties" if in_default && cur.is_none() => self.read_default_text(&a),
                 "paragraph-properties" if in_default && cur.is_none() => {
                     paragraph_spacing(&a, &mut self.default_spacing);
                     self.default_widows = widows(&a);
+                    self.default_hyphens.read_para(&a);
                     if let Some(d) = get(&a, "style:tab-stop-distance").and_then(length).filter(|d| d.is_finite() && *d > 0.0) {
                         self.default_tab = Some(d.clamp(1.0, MAX_LEN));
                     }
                 }
+                // Standard's hyphenation options, for what the default style leaves unsaid; its
+                // properties are then read as any style's (the guard is never true).
+                name if self.read_standard_hyphens(&cur, name, &a) => {}
                 "text-properties" => {
                     if let Some((_, s)) = &mut cur {
                         text_properties(&a, s, &self.faces);
@@ -1598,6 +1747,35 @@ impl Styles {
         self.default_widows.or_else(|| self.map.get("Standard").filter(|s| !s.auto).and_then(|s| s.widow_control))
     }
 
+    /// The text properties of `style:default-style` for paragraphs.
+    fn read_default_text(&mut self, a: &Attrs) {
+        self.default_font = default_font(a, &self.faces);
+        if let Some(sz) = get(a, "fo:font-size").and_then(length).filter(|v| v.is_finite() && *v >= 1.0) {
+            self.default_size = Some(sz.min(1638.0));
+        }
+        self.default_kern = get(a, "style:letter-kerning").is_some_and(|k| k.trim() == "true");
+        self.default_color = get(a, "fo:color").and_then(model::parse_color);
+        script_properties(a, &mut self.default_scripts, &self.faces);
+        self.default_lang = language(a);
+        self.default_hyphens.read_text(a);
+    }
+
+    /// When `cur`, the style being read, is the document's own Standard (not an automatic style)
+    /// and `element` its paragraph or text properties, read its hyphenation options. Always false.
+    fn read_standard_hyphens(&mut self, cur: &Option<(String, StyleInfo)>, element: &str, a: &Attrs) -> bool {
+        if matches!(element, "paragraph-properties" | "text-properties") && cur.as_ref().is_some_and(|(n, s)| n == "Standard" && !s.auto) {
+            self.standard_hyphens.read(element, a);
+        }
+        false
+    }
+
+    /// The document's hyphenation options as its default paragraph style states them, else as
+    /// Standard does.
+    pub(super) fn hyphen_options(&self) -> HyphenOptions {
+        let (d, s) = (self.default_hyphens, self.standard_hyphens);
+        HyphenOptions { ladder: d.ladder.or(s.ladder), zone: d.zone.or(s.zone), no_caps: d.no_caps.or(s.no_caps) }
+    }
+
     pub(super) fn named_style(&self, odt: &str) -> Option<NamedStyle> {
         if !self.is_named(odt) {
             return None;
@@ -1709,6 +1887,12 @@ impl Styles {
         let borders = own().find_map(|(_, s)| s.para_borders).filter(|b| b.takes_room());
         let shading = own().find_map(|(_, s)| s.para_shading).flatten();
         let contextual = own().find_map(|(_, s)| s.contextual);
+        // East Asian typography: the nearest statement in the whole chain (a custom style's
+        // too), Standard aside, so that the paragraph keeps it as its own.
+        let asian = chain.iter().filter(|(n, s)| s.auto || *n != "Standard").fold(Asian::default(), |mut acc, (_, s)| {
+            acc.inherit(&s.asian);
+            acc
+        });
         let rtl = own().find_map(|(_, s)| s.rtl);
         let drop_cap = own().find_map(|(_, s)| s.drop_cap);
         let keep_lines = own().find_map(|(_, s)| s.keep_lines);
@@ -1733,6 +1917,7 @@ impl Styles {
             shading,
             named,
             contextual,
+            asian,
             rtl,
             tab_origin,
             drop_cap,

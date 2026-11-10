@@ -96,6 +96,8 @@ impl WithExtra for CharProps {
         self.italic_cs = x.italic_cs;
         self.lang_bidi = name(&x.lang_bidi, 64);
         self.lang_ea = name(&x.lang_ea, 64);
+        self.no_proof = x.no_proof.filter(|b| *b);
+        self.east_asian_layout = x.east_asian_layout.clone().filter(|l| *l != Default::default());
         self
     }
 }
@@ -204,6 +206,11 @@ fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
         out.space_before_auto = x.space_before_auto.or(out.space_before_auto);
         out.space_after_auto = x.space_after_auto.or(out.space_after_auto);
         out.snap_to_grid = x.snap_to_grid.or(out.snap_to_grid);
+        out.kinsoku = x.kinsoku.or(out.kinsoku);
+        out.overflow_punct = x.overflow_punct.or(out.overflow_punct);
+        out.auto_space_de = x.auto_space_de.or(out.auto_space_de);
+        out.auto_space_dn = x.auto_space_dn.or(out.auto_space_dn);
+        out.text_alignment = x.text_alignment.or(out.text_alignment);
         // An outline level apart from its heading style's.
         out.outline_level = x.outline_level.map(|l| l.min(8)).or(out.outline_level);
         // Indents in characters, beside the twips ones.

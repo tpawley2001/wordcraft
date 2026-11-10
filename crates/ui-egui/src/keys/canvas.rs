@@ -415,8 +415,8 @@ fn ime_commit(app: &mut WordApp, text: String) {
 
 /// A key press the canvas handles (shortcut, ink, objects, clipboard keys).
 fn key_press(app: &mut WordApp, ctx: &egui::Context, key: Key, modifiers: Modifiers) {
-    if key == Key::Escape && app.session.painter.is_some() {
-        app.session.painter = None;
+    if key == Key::Escape && app.session.painter_armed() {
+        app.session.clear_painter();
         return;
     }
     // The lasso selection and Ink Replay take Delete and Escape first.

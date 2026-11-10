@@ -52,6 +52,10 @@ pub struct DisplayOptions {
     /// File › Options › Advanced › Show picture placeholders: every picture is drawn as an empty
     /// outlined rectangle of its size and place. Screen only; exports leave it off.
     pub picture_placeholders: bool,
+    /// Draw only legacy form fields' data (Print only the data from a form): a text field's
+    /// result, a drop-down's selected entry and check boxes, each where the full page has it;
+    /// nothing else (other text, fills, lines, pictures, shapes, marks). The layout is unchanged.
+    pub forms_data_only: bool,
 }
 
 impl Default for DisplayOptions {
@@ -67,6 +71,7 @@ impl Default for DisplayOptions {
             revisions: MarkupOptions::default(),
             hide_object: None,
             picture_placeholders: false,
+            forms_data_only: false,
         }
     }
 }

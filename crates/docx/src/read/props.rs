@@ -579,7 +579,11 @@ impl PropCtx {
                 "w:shd" => t.shading = self.shd_fill(k),
                 "w:tblLayout" => t.fixed = k.attr("w:type") == Some("fixed"),
                 "w:bidiVisual" => t.bidi_visual = on_off(k),
-                "w:tblCellMar" => t.cell_margins = Some(margins(k)),
+                "w:tblCellMar" => {
+                    let sides = margin_sides(k);
+                    t.cell_margins = Some(sides.map(|side| side.unwrap_or(0.0)));
+                    t.cell_margin_sides = sides.iter().any(Option::is_none).then(|| sides.map(|side| side.is_some()));
+                }
                 "w:tblLook" => t.look = look(k),
                 "w:tblpPr" => t.float = Some(table_float(k)),
                 "w:tblOverlap" => {
