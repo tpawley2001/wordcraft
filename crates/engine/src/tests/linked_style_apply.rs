@@ -95,10 +95,7 @@ fn a_linked_style_on_part_of_a_paragraph_formats_only_the_selection() {
     run(&mut s, "para.style", json!({"style": "Quote"}));
     assert_eq!(
         paras(&s),
-        [
-            (None, vec![("Alpha ".into(), None), ("beta".into(), Some("QuoteChar".into())), (" gamma".into(), None)]),
-            (None, plain("Delta epsilon")),
-        ]
+        [(None, vec![("Alpha ".into(), None), ("beta".into(), Some("QuoteChar".into())), (" gamma".into(), None)]), (None, plain("Delta epsilon")),]
     );
     // One undo step puts it back.
     run(&mut s, "edit.undo", json!({}));
