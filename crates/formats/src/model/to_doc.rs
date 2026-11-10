@@ -186,9 +186,12 @@ fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
     if p.extra.as_ref().and_then(|x| x.bidi) == Some(true) {
         out.bidi = Some(true);
     }
-    if let Some(x) = p.extra.as_ref().filter(|x| x.drop_cap.is_some_and(|l| l > 1)) {
+    if let Some(x) = p.extra.as_ref().filter(|x| x.drop_cap.is_some_and(|l| l > 0)) {
         (out.drop_cap, out.drop_cap_distance) =
             (x.drop_cap.map(|l| l.min(10)), x.drop_cap_distance.filter(|d| d.is_finite()).map(|d| d.clamp(0.0, 1584.0)));
+        out.drop_cap_margin = x.drop_cap_margin.filter(|m| *m);
+    } else if let Some(f) = p.extra.as_ref().and_then(|x| x.frame.clone()) {
+        out.frame = Some(f);
     }
     if let Some(bg) = p.extra.as_ref().and_then(|x| x.shading) {
         out.shading = Some(bg);
