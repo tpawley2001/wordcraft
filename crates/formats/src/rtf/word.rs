@@ -801,8 +801,6 @@ impl Reader {
     }
 }
 
-/// The underline an underline control word turns on (RTF 1.9.1); the heavy and long forms
-/// are the style they are drawn as, as `Underline::from_ooxml` reads their OOXML names.
 /// The border style border word `w` (`\brdrs`, `\brdrdb`…) names; `None` when `w` isn't one.
 pub(super) fn border_style(w: &str) -> Option<wordcraft_doc::props::BorderStyle> {
     use wordcraft_doc::props::BorderStyle;
@@ -829,6 +827,8 @@ pub(super) fn border_style(w: &str) -> Option<wordcraft_doc::props::BorderStyle>
     })
 }
 
+/// The underline an underline control word turns on (RTF 1.9.1); the heavy and long forms
+/// are the style they are drawn as, as `Underline::from_ooxml` reads their OOXML names.
 fn underline_style(w: &str) -> Option<Underline> {
     Some(match w {
         "ul" => Underline::Single,
