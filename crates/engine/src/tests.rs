@@ -44,6 +44,7 @@ mod para_sort_keys;
 mod manual_duplex;
 mod print_options;
 mod reveal_formatting;
+mod reveal_compare;
 mod reveal_formatting_pane;
 mod para_tools;
 mod revision_checks;
