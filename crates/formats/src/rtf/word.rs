@@ -33,6 +33,9 @@ impl Reader {
         if self.destination_word(w, p, on, pv) {
             return;
         }
+        if self.underline_word(w, on, pv) {
+            return;
+        }
         match w {
             "par" => self.end_para_mark(),
             "sect" => self.end_section(),
@@ -106,13 +109,6 @@ impl Reader {
             "prdate" => self.st.chg_p.date = pv as u32,
             "b" => self.st.fmt.bold = on,
             "i" => self.st.fmt.italic = on,
-            "ulnone" => self.underline(Underline::None, false),
-            "ulc" => {
-                // Entry 0 is the auto colour: no underline colour of its own.
-                let c = if pv > 0 { self.colors.get(pv as usize).copied().flatten() } else { None };
-                self.set_extra(|x| x.underline_color = c);
-            }
-            _ if underline_style(w).is_some() => self.underline(underline_style(w).unwrap_or(Underline::Single), on),
             "strike" | "striked" => self.st.fmt.strike = on,
             "super" | "up" => {
                 self.st.fmt.sup = on;
@@ -719,6 +715,23 @@ impl Reader {
     /// The run's character spacing, points (0 = normal).
     fn char_spacing(&mut self, pt: f32) {
         self.set_extra(|x| x.spacing = (pt != 0.0).then_some(pt));
+    }
+
+    /// An underline word: a style (`\ul`, `\uldb`…), `\ulnone`, or the colour `\ulcN`.
+    fn underline_word(&mut self, w: &str, on: bool, pv: i32) -> bool {
+        match w {
+            "ulnone" => self.underline(Underline::None, false),
+            "ulc" => {
+                // Entry 0 is the auto colour: no underline colour of its own.
+                let c = if pv > 0 { self.colors.get(pv as usize).copied().flatten() } else { None };
+                self.set_extra(|x| x.underline_color = c);
+            }
+            _ => match underline_style(w) {
+                Some(style) => self.underline(style, on),
+                None => return false,
+            },
+        }
+        true
     }
 
     /// The run's underline turned on in `style`, or off (any underline word with parameter 0).
