@@ -90,6 +90,9 @@ fn style_xml(w: &mut W, st: &Style, flagged: &[StyleKind]) {
     }
     w.open("w:style", &a);
     w.val("w:name", &file_style_name(if st.name.is_empty() { &st.id } else { &st.name }));
+    if let Some(a) = st.aliases.as_deref().filter(|a| !a.trim().is_empty()) {
+        w.val("w:aliases", a);
+    }
     if let Some(b) = &st.based_on {
         w.val("w:basedOn", b);
     }
@@ -99,11 +102,25 @@ fn style_xml(w: &mut W, st: &Style, flagged: &[StyleKind]) {
     if let Some(b) = &st.linked {
         w.val("w:link", b);
     }
+    if st.auto_redefine {
+        w.empty("w:autoRedefine", &[]);
+    }
+    // Visibility as read (ECMA-376 §17.7.4.4, .16, .20). A style hidden in the app, with no
+    // visibility flag of its own, is hidden until used.
+    let from_file = st.semi_hidden || st.unhide_when_used || st.hidden_everywhere;
+    let hidden = st.hidden && st.hidden_everywhere;
+    let semi_hidden = st.hidden && (st.semi_hidden || !st.hidden_everywhere);
+    let unhide_when_used = st.unhide_when_used || (st.hidden && !from_file);
+    if hidden {
+        w.empty("w:hidden", &[]);
+    }
     if let Some(p) = st.priority {
         w.val("w:uiPriority", &p.to_string());
     }
-    if st.hidden {
+    if semi_hidden {
         w.empty("w:semiHidden", &[]);
+    }
+    if unhide_when_used {
         w.empty("w:unhideWhenUsed", &[]);
     }
     if st.quick {
@@ -111,6 +128,14 @@ fn style_xml(w: &mut W, st: &Style, flagged: &[StyleKind]) {
     }
     if st.locked {
         w.empty("w:locked", &[]);
+    }
+    for (on, tag) in [(st.personal, "w:personal"), (st.personal_compose, "w:personalCompose"), (st.personal_reply, "w:personalReply")] {
+        if on {
+            w.empty(tag, &[]);
+        }
+    }
+    if let Some(r) = st.rsid.as_deref().filter(|r| r.len() == 8 && r.chars().all(|c| c.is_ascii_hexdigit())) {
+        w.val("w:rsid", &r.to_ascii_uppercase());
     }
     if !st.para.is_empty() && st.kind != StyleKind::Character {
         w.open("w:pPr", &[]);
