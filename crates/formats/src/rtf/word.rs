@@ -764,17 +764,13 @@ impl Reader {
         true
     }
 
-    /// The run's character spacing, points (0 = normal).
     /// `\csN`: the text's character style, when entry `n` became one of the document's own.
     fn char_style(&mut self, n: i32) {
         let id = self.own_char_style(n);
-        let x = self.st.fmt.extra.get_or_insert_with(Default::default);
-        x.style = id;
-        if **x == wordcraft_doc::props::CharProps::default() {
-            self.st.fmt.extra = None;
-        }
+        self.set_extra(|x| x.style = id);
     }
 
+    /// The run's character spacing, points (0 = normal).
     fn char_spacing(&mut self, pt: f32) {
         self.set_extra(|x| x.spacing = (pt != 0.0).then_some(pt));
     }
