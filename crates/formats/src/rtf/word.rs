@@ -261,6 +261,7 @@ impl Reader {
             "margb" => self.page.bottom = Some(pv),
             "landscape" => self.page.landscape = on,
             _ if self.doc_note_word(w, p) => {}
+            _ if self.doc_opts.word(w, p) => {}
             _ if self.section_word(w, p) => {}
             "cellx" => {
                 self.cell_side = None;

@@ -344,6 +344,82 @@ impl PageGeom {
     }
 }
 
+/// Document formatting words that go into the document's settings, as read: `None` where the
+/// file doesn't give one (the setting keeps its default).
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct DocOpts {
+    /// `\deftabN`, twips (1..=31680).
+    pub(super) default_tab: Option<i32>,
+    /// `\facingp`.
+    pub(super) facing_pages: Option<bool>,
+    /// `\margmirror`.
+    pub(super) mirror_margins: Option<bool>,
+    /// `\hyphauto`.
+    pub(super) auto_hyphenation: Option<bool>,
+    /// `\hyphhotzN`, twips (>= 0).
+    pub(super) hyphenation_zone: Option<i32>,
+    /// `\hyphcaps`.
+    pub(super) hyphenate_caps: Option<bool>,
+    /// `\hyphconsecN` (>= 0; 0 is no limit).
+    pub(super) consecutive_hyphen_limit: Option<i32>,
+}
+
+impl DocOpts {
+    /// Reads document formatting word `w` (parameter `p`). False when `w` isn't one.
+    pub(super) fn word(&mut self, w: &str, p: Option<i32>) -> bool {
+        let on = p != Some(0);
+        let pv = p.unwrap_or(0);
+        match w {
+            "deftab" => {
+                if (1..=31_680).contains(&pv) {
+                    self.default_tab = Some(pv);
+                }
+            }
+            "facingp" => self.facing_pages = Some(on),
+            "margmirror" => self.mirror_margins = Some(on),
+            "hyphauto" => self.auto_hyphenation = Some(on),
+            "hyphhotz" => {
+                if pv >= 0 {
+                    self.hyphenation_zone = Some(pv);
+                }
+            }
+            "hyphcaps" => self.hyphenate_caps = Some(on),
+            "hyphconsec" => {
+                if pv >= 0 {
+                    self.consecutive_hyphen_limit = Some(pv);
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// Puts what the file gave into the document's settings.
+    pub(super) fn apply(&self, s: &mut wordcraft_doc::Settings) {
+        if let Some(v) = self.default_tab {
+            s.default_tab = v as f32 / 20.0;
+        }
+        if let Some(v) = self.facing_pages {
+            s.even_odd_headers = v;
+        }
+        if let Some(v) = self.mirror_margins {
+            s.mirror_margins = v;
+        }
+        if let Some(v) = self.auto_hyphenation {
+            s.auto_hyphenation = v;
+        }
+        if let Some(v) = self.hyphenation_zone {
+            s.hyphenation_zone = v as f32 / 20.0;
+        }
+        if let Some(v) = self.hyphenate_caps {
+            s.hyphenate_caps = v;
+        }
+        if let Some(v) = self.consecutive_hyphen_limit {
+            s.consecutive_hyphen_limit = u32::try_from(v).unwrap_or(0);
+        }
+    }
+}
+
 /// Section formatting (`\sectd` resets it): the section's page words (`\pgwsxn`…, over the
 /// document's `\paperw`…), its break, columns, page numbering and title page.
 #[derive(Clone, Debug, Default)]
@@ -376,6 +452,8 @@ pub(super) struct SecFmt {
     /// The section's own footnote and endnote options (`\sftn…`, `\saftn…`).
     pub(super) footnote_pr: wordcraft_doc::section::NoteProps,
     pub(super) endnote_pr: wordcraft_doc::section::NoteProps,
+    /// `\vertalt|c|j|b`: where the text sits between the top and bottom margins.
+    pub(super) valign: wordcraft_doc::section::PageVAlign,
 }
 
 impl SecFmt {
@@ -425,6 +503,7 @@ impl SecFmt {
         s.paper_src_other = self.bin_other;
         s.footnote_pr = self.footnote_pr;
         s.endnote_pr = self.endnote_pr;
+        s.valign = self.valign;
         s
     }
 }
