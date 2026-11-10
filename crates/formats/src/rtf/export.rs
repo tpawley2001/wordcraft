@@ -1159,10 +1159,22 @@ impl Writer {
         } else {
             vec![total / cols as f32; cols]
         };
-        for row in &t.rows {
+        for (ri, row) in t.rows.iter().enumerate() {
             out.push_str("\\trowd\\trgaph108\\trleft0");
             if !row.is_empty() && row.iter().all(|c| c.header) {
                 out.push_str("\\trhdr");
+            }
+            let extra = t.extra.as_deref();
+            // Row height in twips: negative for exactly, positive for at least.
+            if let Some(&Some((h, exact))) = extra.and_then(|x| x.heights.get(ri))
+                && h.is_finite()
+                && h > 0.0
+            {
+                let tw = (h.min(1584.0) * 20.0).round() as i64;
+                out.push_str(&format!("\\trrh{}", if exact { -tw } else { tw }));
+            }
+            if extra.is_some_and(|x| x.keep_rows.get(ri) == Some(&true)) {
+                out.push_str("\\trkeep");
             }
             let mut g = 0usize;
             let mut x = 0.0f32;
@@ -1182,6 +1194,11 @@ impl Writer {
                     Some(VAlign::Center) => out.push_str("\\clvertalc"),
                     Some(VAlign::Bottom) => out.push_str("\\clvertalb"),
                     None => {}
+                }
+                match c.direction {
+                    wordcraft_doc::props::TextDirection::Down => out.push_str("\\cltxtbrl"),
+                    wordcraft_doc::props::TextDirection::Up => out.push_str("\\cltxbtlr"),
+                    _ => {}
                 }
                 self.cell_borders(c.borders.as_ref(), t.borderless, out);
                 if let Some(s) = c.shading {

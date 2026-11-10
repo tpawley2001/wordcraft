@@ -1172,30 +1172,38 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     let borderless =
         t.props.style.is_none() && !visible(&t.props.borders) && t.rows.iter().flat_map(|r| &r.cells).all(|c| !visible(&c.props.borders));
     // Formats that keep them get the table's alignment, width and row heights.
-    let extra = tracked.paras.then(|| {
-        use wordcraft_doc::props::HeightRule;
-        let heights = t
-            .rows
+    use wordcraft_doc::props::HeightRule;
+    let heights = || {
+        t.rows
             .iter()
             .map(|r| match (r.props.height, r.props.height_rule) {
                 (Some(h), HeightRule::Exact) => Some((h, true)),
                 (Some(h), HeightRule::AtLeast) => Some((h, false)),
                 _ => None,
             })
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+    };
+    let keep_rows = || t.rows.iter().map(|r| r.props.cant_split).collect::<Vec<_>>();
+    // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one.
+    let rows_only = (!tracked.paras && tracked.rows)
+        .then(|| (heights(), keep_rows()))
+        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true))
+        .map(|(heights, keep_rows)| super::types::TableExtra { heights, keep_rows, ..Default::default() });
+    let extra = tracked.paras.then(|| {
+        let heights = heights();
         super::types::TableExtra {
             align: t.props.align,
             width: t.props.width,
             width_pct: t.props.width_pct,
             heights,
-            keep_rows: t.rows.iter().map(|r| r.props.cant_split).collect(),
+            keep_rows: keep_rows(),
             fixed: t.props.fixed,
             space: [t.props.space_before, t.props.space_after],
             header_rows: t.rows.iter().take_while(|r| r.props.header).count(),
         }
     });
     // Kept whole for formats that ask for it: its header rows count even without the rest.
-    let extra = extra.map(Box::new);
+    let extra = extra.or(rows_only).map(Box::new);
     let kept = (tracked.paras && depth == 0).then(|| doc.kept.of("odt").and_then(|k| k.table(t)).cloned()).flatten();
     let wrap = (tracked.paras && depth == 0).then(|| doc.kept.of("odt").and_then(|k| k.table_wrap(t)).cloned().map(Box::new)).flatten();
     FTable { rows, widths: t.grid.clone(), borderless, extra, kept, wrap }

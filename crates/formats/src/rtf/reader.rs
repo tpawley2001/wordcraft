@@ -54,6 +54,9 @@ pub(super) struct Reader {
     pub(super) page_side: Option<char>,
     /// Each table row's cell right edges (`\cellx`, twips), for the table's column grid.
     table_rights: Vec<Vec<i32>>,
+    /// Each table row's height (points, exact) and whether it keeps from breaking across pages.
+    table_heights: Vec<Option<(f32, bool)>>,
+    table_keeps: Vec<bool>,
     pub(super) colors: Vec<Option<Rgb>>,
     pub(super) color_cur: (u8, u8, u8, bool),
     pub(super) styles: HashMap<i32, String>,
@@ -115,6 +118,9 @@ pub(super) struct Reader {
     pub(super) defs: Vec<CellDef>,
     pub(super) def_cur: CellDef,
     pub(super) row_header: bool,
+    /// The row's height (`\trrh`: points, exact) and `\trkeep`, reset by `\trowd`.
+    pub(super) row_height: Option<(f32, bool)>,
+    pub(super) row_keep: bool,
     pub(super) created: Option<(u32, u32, u32, u32, u32)>,
     pub(super) in_creatim: bool,
     pub(super) rule_pending: bool,
@@ -156,6 +162,10 @@ impl Reader {
         std::mem::swap(&mut o.row_header, &mut self.row_header);
         std::mem::swap(&mut o.rule_pending, &mut self.rule_pending);
         std::mem::swap(&mut o.table_rights, &mut self.table_rights);
+        std::mem::swap(&mut o.row_height, &mut self.row_height);
+        std::mem::swap(&mut o.row_keep, &mut self.row_keep);
+        std::mem::swap(&mut o.table_heights, &mut self.table_heights);
+        std::mem::swap(&mut o.table_keeps, &mut self.table_keeps);
         o
     }
 
@@ -647,6 +657,7 @@ impl Reader {
             c.borders = d.borders.any_visible().then_some(d.borders);
             c.header = self.row_header;
             c.valign = d.valign;
+            c.direction = d.direction;
             match d.vmerge {
                 1 => c.rowspan = 2,
                 2 => c.covered = true,
@@ -664,6 +675,8 @@ impl Reader {
             rights.truncate(out.len());
             self.table.push(out);
             self.table_rights.push(rights);
+            self.table_heights.push(self.row_height);
+            self.table_keeps.push(self.row_keep);
         }
     }
 
@@ -679,8 +692,13 @@ impl Reader {
             let mut rows = std::mem::take(&mut self.table);
             let rights = std::mem::take(&mut self.table_rights);
             let widths = column_grid(&mut rows, &rights);
+            let heights = std::mem::take(&mut self.table_heights);
+            let keep_rows = std::mem::take(&mut self.table_keeps);
+            // Only a table whose rows give a height or keep gets them, so others stay as before.
+            let extra = (heights.iter().any(Option::is_some) || keep_rows.contains(&true))
+                .then(|| Box::new(model::TableExtra { heights, keep_rows, ..Default::default() }));
             // Word draws only the borders the cells name: no grid style, each cell its own.
-            self.body.push(FBlock::Table(FTable { rows, widths, borderless: true, extra: None, kept: None, wrap: None }));
+            self.body.push(FBlock::Table(FTable { rows, widths, borderless: true, extra, kept: None, wrap: None }));
         }
     }
 }
