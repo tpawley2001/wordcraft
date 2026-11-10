@@ -30,7 +30,7 @@ impl Reader {
         if self.skip_ignorable_destination(w, starred, first_in_group) {
             return;
         }
-        if self.destination_word(w, p, on, pv) {
+        if self.destination_word(w, p, on, pv) || self.page_border_word(w, pv) {
             return;
         }
         match w {
@@ -212,7 +212,6 @@ impl Reader {
                 self.page_side = None;
                 self.cell_side = w.chars().last();
             }
-            _ if self.page_border_word(w, pv) => {}
             "brdrs" | "brdrth" | "brdrsh" | "brdrdb" | "brdrdot" | "brdrdash" | "brdrdashsm" | "brdrdashd" | "brdrdashdd" | "brdrhair"
             | "brdrtriple" | "brdrthtnsg" | "brdrtnthsg" | "brdrtnthtnsg" | "brdrthtnmg" | "brdrtnthmg" | "brdrtnthtnmg" | "brdrthtnlg"
             | "brdrtnthlg" | "brdrtnthtnlg" | "brdrwavy" | "brdrwavydb" | "brdrnone" | "brdrnil" | "brdrtbl"
