@@ -365,6 +365,8 @@ pub(super) struct SecFmt {
     pub(super) line_restart: Option<wordcraft_doc::section::LineNumberRestart>,
     /// `\rtlsect` / `\ltrsect`.
     pub(super) rtl: bool,
+    /// `\stextflowN`: which way the section's text runs, as Word draws it.
+    pub(super) text_flow: wordcraft_doc::props::TextDirection,
     /// `\pgnhnN` (heading level 1..=9) and its separator `\pgnhns…`.
     pub(super) chapter_style: Option<u8>,
     pub(super) chapter_sep: Option<wordcraft_doc::section::ChapterSep>,
@@ -416,6 +418,7 @@ impl SecFmt {
             });
         }
         s.rtl = self.rtl;
+        s.text_direction = self.text_flow;
         s.chapter_style = self.chapter_style;
         s.chapter_sep = self.chapter_sep;
         s.paper_src_first = self.bin_first;
