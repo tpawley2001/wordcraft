@@ -1848,5 +1848,6 @@ mod shape_text;
 mod surrogate_boundaries;
 mod tabs_spacing;
 mod trailing_data;
+mod underline_styles;
 mod unicode_surrogates;
 mod widow_control;

@@ -82,10 +82,15 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
 fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code: bool, opts: FlowOpts) -> Fmt {
     let mut f = fmt_of(doc, props, in_code);
     if !opts.chars {
-        if opts.tabs_spacing
-            && let Some(sp) = effective(doc, props).spacing.filter(|v| *v != 0.0 && v.is_finite())
-        {
-            f.extra = Some(Box::new(CharProps { spacing: Some(sp), ..Default::default() }));
+        if opts.tabs_spacing {
+            let e = effective(doc, props);
+            let x = CharProps {
+                spacing: e.spacing.filter(|v| *v != 0.0 && v.is_finite()),
+                underline: e.underline.filter(|u| f.underline && *u != Underline::Single),
+                underline_color: e.underline_color,
+                ..Default::default()
+            };
+            f.extra = (x != CharProps::default()).then(|| Box::new(x));
         }
         return f;
     }

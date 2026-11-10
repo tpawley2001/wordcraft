@@ -487,6 +487,32 @@ fn style_num(k: Kind) -> Option<u32> {
     }
 }
 
+/// The control word for the underline of `f` (RTF 1.9.1), `None` when it has none; a link's
+/// text is underlined.
+fn underline_word(f: &Fmt) -> Option<&'static str> {
+    use wordcraft_doc::props::Underline;
+    if !f.underline {
+        return f.link.is_some().then_some("\\ul");
+    }
+    Some(match f.extra.as_ref().and_then(|x| x.underline) {
+        Some(Underline::Words) => "\\ulw",
+        Some(Underline::Double) => "\\uldb",
+        Some(Underline::Thick) => "\\ulth",
+        Some(Underline::Dotted) => "\\uld",
+        Some(Underline::Dash) => "\\uldash",
+        Some(Underline::DotDash) => "\\uldashd",
+        Some(Underline::DotDotDash) => "\\uldashdd",
+        Some(Underline::Wave) => "\\ulwave",
+        Some(Underline::DoubleWave) => "\\ululdbwave",
+        Some(Underline::None | Underline::Single) | None => "\\ul",
+    })
+}
+
+/// The underline colour of `f` (`\ulc`).
+fn underline_color(f: &Fmt) -> Option<Rgb> {
+    f.extra.as_ref().and_then(|x| x.underline_color)
+}
+
 fn rtf_border_style(s: wordcraft_doc::props::BorderStyle) -> &'static str {
     use wordcraft_doc::props::BorderStyle;
     match s {
@@ -686,17 +712,20 @@ impl Writer {
         let old = &styled(&self.base, &Fmt { link: cur.link.clone(), ..old.clone() });
         let cur = &styled(&self.base, cur);
         let mut ctl = String::new();
-        let underline = |f: &Fmt| f.underline || f.link.is_some();
-        let flags = [
-            (old.bold, cur.bold, "\\b", "\\b0"),
-            (old.italic, cur.italic, "\\i", "\\i0"),
-            (underline(old), underline(cur), "\\ul", "\\ulnone"),
-            (old.strike, cur.strike, "\\strike", "\\strike0"),
-        ];
+        let flags = [(old.bold, cur.bold, "\\b", "\\b0"), (old.italic, cur.italic, "\\i", "\\i0"), (old.strike, cur.strike, "\\strike", "\\strike0")];
         for (o, c, on, off) in flags {
             if o != c {
                 ctl.push_str(if o { on } else { off });
             }
+        }
+        let old_ul = underline_word(old);
+        if old_ul != underline_word(cur) {
+            ctl.push_str(old_ul.unwrap_or("\\ulnone"));
+        }
+        let old_ulc = underline_color(old);
+        if old_ulc != underline_color(cur) {
+            let i = old_ulc.map_or(0, |c| self.t.color(c));
+            ctl.push_str(&format!("\\ulc{i}"));
         }
         if (old.sup, old.sub) != (cur.sup, cur.sub) {
             ctl.push_str(if old.sup {
@@ -744,8 +773,12 @@ impl Writer {
         if f.italic {
             ctl.push_str("\\i");
         }
-        if f.underline || f.link.is_some() {
-            ctl.push_str("\\ul");
+        if let Some(w) = underline_word(f) {
+            ctl.push_str(w);
+        }
+        if let Some(c) = underline_color(f) {
+            let i = self.t.color(c);
+            ctl.push_str(&format!("\\ulc{i}"));
         }
         if f.strike {
             ctl.push_str("\\strike");
