@@ -118,6 +118,8 @@ pub struct ColumnsForm {
     pub sections: bool,
     /// Text is selected that can take columns of its own (offer "Selected text", #2024).
     pub selection: bool,
+    /// Start new column (only with This point forward): a New column section break.
+    pub new_column: bool,
 }
 
 impl ColumnsForm {
@@ -146,6 +148,7 @@ impl ColumnsForm {
             text_width: sp.text_width() / k,
             sections,
             selection,
+            new_column: false,
         };
         if c.widths.len() == count as usize && count > 1 {
             f.equal = false;
@@ -155,6 +158,11 @@ impl ColumnsForm {
             f.even_out();
         }
         f
+    }
+
+    /// Start new column is available only with This point forward, as in Word.
+    pub fn new_column_enabled(&self) -> bool {
+        false
     }
 
     fn min_w() -> f32 {

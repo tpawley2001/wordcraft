@@ -812,3 +812,5 @@ fn shifted_by_split(p: &Pos, at: &Pos, new: &Pos) -> Pos {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_new_column;
