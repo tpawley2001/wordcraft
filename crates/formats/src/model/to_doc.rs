@@ -196,6 +196,10 @@ fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
         out.keep_lines = x.keep_lines.or(out.keep_lines);
         out.widow_control = x.widow_control.or(out.widow_control);
         out.suppress_hyphens = x.suppress_hyphens.or(out.suppress_hyphens);
+        out.mirror_indents = x.mirror_indents.or(out.mirror_indents);
+        out.space_before_auto = x.space_before_auto.or(out.space_before_auto);
+        out.space_after_auto = x.space_after_auto.or(out.space_after_auto);
+        out.snap_to_grid = x.snap_to_grid.or(out.snap_to_grid);
         // An outline level apart from its heading style's.
         out.outline_level = x.outline_level.map(|l| l.min(8)).or(out.outline_level);
     }

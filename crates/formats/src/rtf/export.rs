@@ -986,6 +986,26 @@ impl Writer {
             Some(false) => out.push_str("\\nowidctlpar"),
             None => {}
         }
+        if let Some(x) = p.extra.as_deref() {
+            if x.contextual_spacing == Some(true) {
+                out.push_str("\\contextualspace");
+            }
+            if x.mirror_indents == Some(true) {
+                out.push_str("\\mirrorindents");
+            }
+            if let Some(v) = x.space_before_auto {
+                out.push_str(if v { "\\sbauto1" } else { "\\sbauto0" });
+            }
+            if let Some(v) = x.space_after_auto {
+                out.push_str(if v { "\\saauto1" } else { "\\saauto0" });
+            }
+            if let Some(v) = x.suppress_hyphens {
+                out.push_str(if v { "\\hyphpar0" } else { "\\hyphpar1" });
+            }
+            if x.snap_to_grid == Some(false) {
+                out.push_str("\\nosnaplinegrid");
+            }
+        }
         match p.kind {
             Kind::Quote => out.push_str("\\li720\\ri720\\i"),
             Kind::Code => {
