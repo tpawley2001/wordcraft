@@ -1,10 +1,12 @@
 //! Sections and headers/footers: `PlcfSed` → `Sed` → `Sepx` (grpprls of section sprms) and
 //! the `Plcfhdd` stories of the header subdocument ([MS-DOC] §2.8.25, §2.9.244).
 
+use wordcraft_doc::props::{Border, Borders};
 use wordcraft_doc::section::NumFormat;
 use wordcraft_doc::section::{DocGrid, DocGridType, LineNumberRestart, LineNumbering, MAX_CHAR_SPACE, PageVAlign, SectionProps, SectionStart};
 
 use crate::fib::{Fib, pair};
+use crate::fmt;
 use crate::sprm::{self, Prl};
 
 /// Most sections we read.
@@ -42,6 +44,16 @@ const S_LNN_MIN: u16 = 0x501B; // sprmSLnnMin
 const S_CLM: u16 = 0x5032; // sprmSClm
 const S_DYA_LINE_PITCH: u16 = 0x9031; // sprmSDyaLinePitch
 const S_DXT_CHAR_SPACE: u16 = 0x7030; // sprmSDxtCharSpace
+// Page borders ([MS-DOC] §2.6.4). The 80 forms carry a Brc80 (palette colour), the newer ones a
+// BrcOperand: cb(1) + Brc(8, with a full COLORREF).
+const S_BRC_TOP80: u16 = 0x702B; // sprmSBrcTop80
+const S_BRC_LEFT80: u16 = 0x702C; // sprmSBrcLeft80
+const S_BRC_BOTTOM80: u16 = 0x702D; // sprmSBrcBottom80
+const S_BRC_RIGHT80: u16 = 0x702E; // sprmSBrcRight80
+const S_BRC_TOP: u16 = 0xD234; // sprmSBrcTop
+const S_BRC_LEFT: u16 = 0xD235; // sprmSBrcLeft
+const S_BRC_BOTTOM: u16 = 0xD236; // sprmSBrcBottom
+const S_BRC_RIGHT: u16 = 0xD237; // sprmSBrcRight
 
 /// Most columns a section has ([MS-DOC] §2.6.4: iCol < 44).
 const MAX_COLUMNS: usize = 44;
@@ -177,6 +189,9 @@ pub(crate) fn parse_plc(plc: &[u8], word: &[u8], mut apply: impl FnMut(&mut Sect
         }
         props.columns.widths = pgn.column_widths(props.columns.count);
         props.line_numbers = pgn.line_numbers();
+        // A section whose borders are all "no border" has none, so a document without page
+        // borders keeps the field off and saves as it did.
+        props.page_borders = props.page_borders.filter(Borders::any_visible);
         // Without an explicit orientation sprm, infer it from the page shape.
         if !explicit_orient {
             if props.page_w < props.page_h {
@@ -225,6 +240,18 @@ fn apply_doc_grid(s: &mut SectionProps, prl: &Prl) {
         }
         _ => {}
     }
+}
+
+/// Put a decoded page border on the side its sprm names; the last sprm for a side wins.
+fn set_page_border(s: &mut SectionProps, op: u16, b: Border) {
+    let borders = s.page_borders.get_or_insert_with(Borders::default);
+    let slot = match op {
+        S_BRC_TOP80 | S_BRC_TOP => &mut borders.top,
+        S_BRC_LEFT80 | S_BRC_LEFT => &mut borders.left,
+        S_BRC_BOTTOM80 | S_BRC_BOTTOM => &mut borders.bottom,
+        _ => &mut borders.right,
+    };
+    *slot = Some(b);
 }
 
 /// Apply a section sprm to the model's section properties. All the measurement sprms here
@@ -307,6 +334,21 @@ pub(crate) fn apply_section(s: &mut SectionProps, pgn: &mut PageNumbering, prl: 
         }
         S_LNC | S_NLNN_MOD | S_DXA_LNN | S_LNN_MIN => apply_line_numbering(pgn, prl),
         S_CLM | S_DYA_LINE_PITCH | S_DXT_CHAR_SPACE => apply_doc_grid(s, prl),
+        // Page borders: Word writes both forms for a side, so the last one in the grpprl wins.
+        // A side that decodes to "no border" is stored as such; the whole set is dropped after
+        // the Sepx if no side is visible.
+        // An `ico` that names no palette colour means the operand is not a Brc80 (a truncated
+        // one reads the next record's bytes there): that side is skipped.
+        S_BRC_TOP80 | S_BRC_LEFT80 | S_BRC_BOTTOM80 | S_BRC_RIGHT80 => {
+            if let Some(b) = prl.operand.get(2).filter(|&&i| fmt::is_ico(i)).and_then(|_| fmt::brc80(prl.operand)) {
+                set_page_border(s, prl.op, b);
+            }
+        }
+        S_BRC_TOP | S_BRC_LEFT | S_BRC_BOTTOM | S_BRC_RIGHT => {
+            if let Some(b) = fmt::brc(prl.operand) {
+                set_page_border(s, prl.op, b);
+            }
+        }
         S_PGN_RESTART => pgn.restart = prl.operand.first().is_some_and(|&v| v != 0),
         S_PGN_START => {
             if let [b0, b1, ..] = prl.operand {
