@@ -1842,6 +1842,7 @@ mod object_result;
 mod page_borders;
 mod paper_source;
 mod para_extras;
+mod para_shading;
 mod section_extras;
 mod section_revisions;
 mod section_text_flow;

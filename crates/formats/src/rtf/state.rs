@@ -231,6 +231,11 @@ pub(super) struct St {
     /// described.
     pub(super) borders: wordcraft_doc::props::Borders,
     pub(super) border_side: Option<char>,
+    /// Paragraph shading: the background (`\cbpat`) and pattern (`\cfpat`) colour table
+    /// indexes and the pattern percentage in hundredths (`\shading`).
+    pub(super) cbpat: Option<i32>,
+    pub(super) cfpat: Option<i32>,
+    pub(super) shading: i32,
     pub(super) sb: Option<i32>,
     pub(super) sa: Option<i32>,
     pub(super) sl: i32,
@@ -278,6 +283,9 @@ impl Default for St {
             cp: None,
             borders: Default::default(),
             border_side: None,
+            cbpat: None,
+            cfpat: None,
+            shading: 0,
             sb: None,
             sa: None,
             sl: 0,

@@ -172,13 +172,7 @@ impl Reader {
             "intbl" => self.st.intbl = true,
             "ls" => self.st.ls = Some(pv),
             "ilvl" => self.st.ilvl = pv.clamp(0, 8) as u8,
-            "brdrb" | "brdrt" | "brdrl" | "brdrr" if self.cell_side.is_none() => {
-                self.page_side = None;
-                if w == "brdrb" && self.st.dest == Dest::Body {
-                    self.rule_pending = true;
-                }
-                self.st.border_side = w.chars().last();
-            }
+            _ if self.cell_side.is_none() && self.para_border_word(w, pv) => {}
             "trowd" => {
                 self.defs.clear();
                 self.def_cur = CellDef::default();
@@ -244,21 +238,23 @@ impl Reader {
                     _ => BorderStyle::Single,
                 };
                 let b = (style != BorderStyle::None).then_some(Border { style, ..Border::single(0.5) });
-                if let Some(slot) = self.cell_border_slot() {
-                    *slot = b;
-                }
+                self.each_border_slot(|slot| *slot = b);
             }
             "brdrw" if self.border_open() => {
                 let width = (pv as f32 / 20.0).clamp(0.25, 6.0);
-                if let Some(Some(b)) = self.cell_border_slot() {
-                    b.width = width;
-                }
+                self.each_border_slot(|slot| {
+                    if let Some(b) = slot {
+                        b.width = width;
+                    }
+                });
             }
             "brdrcf" if self.border_open() => {
                 let color = self.colors.get(pv.max(0) as usize).copied().flatten();
-                if let Some(Some(b)) = self.cell_border_slot() {
-                    b.color = color;
-                }
+                self.each_border_slot(|slot| {
+                    if let Some(b) = slot {
+                        b.color = color;
+                    }
+                });
             }
             "paperw" => self.page.w = Some(pv),
             "paperh" => self.page.h = Some(pv),

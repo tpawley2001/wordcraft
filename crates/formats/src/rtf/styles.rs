@@ -193,7 +193,22 @@ impl Reader {
         } else if let Some(pn) = st.pn.as_deref() {
             p.list = self.pn_list(pn);
         }
+        if let Some(c) = self.para_shading(st) {
+            p.extra.get_or_insert_with(Default::default).shading = Some(c);
+        }
         p
+    }
+
+    /// The paragraph's shading colour (`\cbpat`, `\cfpat`, `\shading`): the background colour,
+    /// or the pattern colour when the pattern is solid (100%); `None` for auto or an unknown entry.
+    fn para_shading(&self, st: &St) -> Option<wordcraft_doc::props::Rgb> {
+        let color = |i: Option<i32>| i.and_then(|i| usize::try_from(i).ok()).and_then(|i| self.colors.get(i).copied().flatten());
+        if st.shading >= 10000
+            && let Some(c) = color(st.cfpat)
+        {
+            return Some(c);
+        }
+        color(st.cbpat)
     }
 
     /// A Word 6.0/95 `{\*\pn …}` group as the paragraph's list level. A continuation has the
@@ -371,6 +386,10 @@ pub(super) fn is_format_word(w: &str) -> bool {
             | "fi"
             | "brdrw"
             | "brdrcf"
+            | "box"
+            | "cbpat"
+            | "cfpat"
+            | "shading"
     ) || (w.starts_with("ul") && w.len() <= 8)
         || w.starts_with("brdr")
 }

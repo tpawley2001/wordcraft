@@ -487,14 +487,17 @@ pub struct FlowOpts {
     /// The paragraph's own contextual spacing, mirror indents, automatic space before/after,
     /// hyphenation and line-grid snapping in [`Para::extra`], also without `paras`.
     pub para_flags: bool,
+    /// The paragraph's own shading in [`Para::extra`], also without `paras`.
+    pub shading: bool,
 }
 
 impl FlowOpts {
     /// What RTF keeps: tracked changes, the paragraph's own tab stops and character spacing
-    /// ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]) and the other
-    /// paragraph flags ([`FlowOpts::para_flags`]), fields and text boxes.
+    /// ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]), shading
+    /// ([`FlowOpts::shading`]) and the other paragraph flags ([`FlowOpts::para_flags`]), fields and
+    /// text boxes.
     pub fn tracked() -> Self {
-        FlowOpts { tracked: true, tabs_spacing: true, widow: true, para_flags: true, fields: true, boxes: true, ..Default::default() }
+        FlowOpts { tracked: true, tabs_spacing: true, widow: true, shading: true, para_flags: true, fields: true, boxes: true, ..Default::default() }
     }
 }
 
