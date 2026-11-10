@@ -1093,4 +1093,6 @@ mod tests;
 #[cfg(test)]
 mod tests_font_underline;
 #[cfg(test)]
+mod tests_insert_table;
+#[cfg(test)]
 mod tests_para_line;
