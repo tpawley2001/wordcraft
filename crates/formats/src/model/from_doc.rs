@@ -195,15 +195,24 @@ pub fn tabs_from_indent(doc: &Document) -> bool {
 }
 
 /// [`Para::extra`] as `opts` asks for it: all of it ([`FlowOpts::paras`]), the paragraph's own
-/// tab stops ([`FlowOpts::tabs_spacing`]) and widow/orphan control ([`FlowOpts::widow`]) alone, or
-/// nothing.
+/// tab stops ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]) and other
+/// flags ([`FlowOpts::para_flags`]) alone, or nothing.
 fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: FlowOpts) -> Option<Box<wordcraft_doc::props::ParaProps>> {
     if opts.paras {
         return para_extra(doc, p);
     }
     let tabs = p.tabs.clone().filter(|t| opts.tabs_spacing && !t.is_empty());
     let widow_control = p.widow_control.filter(|_| opts.widow);
-    (tabs.is_some() || widow_control.is_some()).then(|| Box::new(wordcraft_doc::props::ParaProps { tabs, widow_control, ..Default::default() }))
+    let mut x = wordcraft_doc::props::ParaProps { tabs, widow_control, ..Default::default() };
+    if opts.para_flags {
+        x.contextual_spacing = p.contextual_spacing;
+        x.mirror_indents = p.mirror_indents;
+        x.space_before_auto = p.space_before_auto;
+        x.space_after_auto = p.space_after_auto;
+        x.suppress_hyphens = p.suppress_hyphens;
+        x.snap_to_grid = p.snap_to_grid;
+    }
+    (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
 
 /// The paragraph formatting only [`Para::extra`] holds that `p` sets itself; `None` when none.

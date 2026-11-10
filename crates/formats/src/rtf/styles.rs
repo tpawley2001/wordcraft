@@ -175,6 +175,16 @@ impl Reader {
         if !st.tabs.is_empty() {
             p.extra = Some(Box::new(wordcraft_doc::props::ParaProps { tabs: Some(st.tabs.clone()), ..Default::default() }));
         }
+        let flags = [st.contextual, st.mirror, st.sb_auto, st.sa_auto, st.no_hyph, st.snap_grid];
+        if flags.iter().any(Option::is_some) {
+            let x = p.extra.get_or_insert_with(Default::default);
+            x.contextual_spacing = st.contextual;
+            x.mirror_indents = st.mirror;
+            x.space_before_auto = st.sb_auto;
+            x.space_after_auto = st.sa_auto;
+            x.suppress_hyphens = st.no_hyph;
+            x.snap_to_grid = st.snap_grid;
+        }
         if let Some(ls) = st.ls {
             let list = self.overrides.get(&ls).and_then(|id| self.lists.get(id));
             let lv = st.ilvl.min(8);

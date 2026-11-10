@@ -213,6 +213,15 @@ pub(super) struct St {
     pub(super) pagebb: bool,
     /// Widow/orphan control (`\widctlpar`, `\nowidctlpar`); `None` until the paragraph says.
     pub(super) widow: Option<bool>,
+    /// Contextual spacing (`\contextualspace`), mirror indents (`\mirrorindents`), automatic
+    /// space before/after (`\sbautoN`, `\saautoN`), hyphenation suppressed (`\hyphpar0`) and
+    /// line grid snapping (`\nosnaplinegrid`); `None` until the paragraph says.
+    pub(super) contextual: Option<bool>,
+    pub(super) mirror: Option<bool>,
+    pub(super) sb_auto: Option<bool>,
+    pub(super) sa_auto: Option<bool>,
+    pub(super) no_hyph: Option<bool>,
+    pub(super) snap_grid: Option<bool>,
     pub(super) field: Option<usize>,
     /// The code page of the current font's charset (`\fcharset`), when it names one.
     pub(super) cp: Option<u16>,
@@ -259,6 +268,12 @@ impl Default for St {
             outline: None,
             pagebb: false,
             widow: None,
+            contextual: None,
+            mirror: None,
+            sb_auto: None,
+            sa_auto: None,
+            no_hyph: None,
+            snap_grid: None,
             field: None,
             cp: None,
             borders: Default::default(),
