@@ -66,6 +66,7 @@ mod reset_window_position;
 mod window_edge_keys;
 mod write_protection;
 mod style_keys;
+mod paper_source;
 mod print_document_info;
 mod print_key_assignments;
 
