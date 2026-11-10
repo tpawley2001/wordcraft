@@ -812,6 +812,29 @@ impl Writer {
             let pt = pt.clamp(-1584.0, 1584.0);
             ctl.push_str(&format!("\\expnd{}\\expndtw{}", (pt * 4.0).round() as i32, (pt * 20.0).round() as i32));
         }
+        if let Some(x) = f.extra.as_deref() {
+            let effects = [
+                (x.caps, "\\caps"),
+                (x.small_caps, "\\scaps"),
+                (x.outline, "\\outl"),
+                (x.shadow, "\\shad"),
+                (x.emboss, "\\embo"),
+                (x.engrave, "\\impr"),
+                (x.double_strike, "\\striked1"),
+            ];
+            for (v, w) in effects {
+                if v == Some(true) {
+                    ctl.push_str(w);
+                }
+            }
+            // Horizontal scale in percent, 1-600; kerning from a size in half-points.
+            if let Some(s) = x.scale.filter(|v| v.is_finite()).map(|v| v.round().clamp(1.0, 600.0) as i32).filter(|v| *v != 100) {
+                ctl.push_str(&format!("\\charscalex{s}"));
+            }
+            if let Some(k) = x.kern.filter(|v| v.is_finite() && *v > 0.0).map(|v| (v * 2.0).round().clamp(1.0, 3276.0) as i32) {
+                ctl.push_str(&format!("\\kerning{k}"));
+            }
+        }
         ctl
     }
 
