@@ -1,5 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
+> **Last updated:** 2026-11-09 · **Change:** trivial (P0170: touching inline pictures before a word go to the next line together with it, as in Word 16. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-09 · **Change:** trivial (P0151: an inline picture and the word right after it, with no space between, stay on one line. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0119: `.doc` Dop95/Dop97 sums paragraph spacing; Dop2000 and later use the stored HTML auto-spacing flag. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-07 · **Change:** trivial (P0117: In margin moves first-line and hanging indents to the cap frame and restores them on None or Dropped; DOCX preserves the separate frame indent (#4173). Layout unchanged; readiness estimates unchanged.)
@@ -294,6 +295,8 @@ MATH glyphs that reference the same construction now share its immutable variant
 The front-of-text opt-out is retained from the earlier implementation; this patch does not establish native Word equivalence between front-of-text and behind-text pictures. Synthetic placement tests cover the two paths, while a new native comparison of those wrap modes remains open. Turned-cell layouts disable horizontal cell confinement because their frame x axis becomes page y.
 
 ## Revision history
+
+> 2026-11-09 · P0170: inline pictures touching each other (markers between them allowed) right before a word move to the next line with it as one unit, checked in Word 16; a space or a zero-size object still ends the unit. Readiness estimates unchanged.
 
 > 2026-11-09 · P0151: an inline picture that takes room on the line has no break after it when text follows directly; the picture moves to the next line with its word, and an over-long word starting with a picture still breaks where it must. Readiness estimates unchanged.
 
