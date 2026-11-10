@@ -178,8 +178,15 @@ impl Reader {
                 self.defs.clear();
                 self.def_cur = CellDef::default();
                 self.row_header = false;
+                self.row_height = None;
+                self.row_keep = false;
             }
             "trhdr" => self.row_header = true,
+            // Twips: positive at least, negative exactly, 0 auto; beyond 22 inches ignored.
+            "trrh" => {
+                self.row_height = (pv != 0 && pv.unsigned_abs() <= 31680).then(|| (pv.unsigned_abs() as f32 / 20.0, pv < 0));
+            }
+            "trkeep" => self.row_keep = on,
             "clvmgf" => self.def_cur.vmerge = 1,
             "clvmrg" => self.def_cur.vmerge = 2,
             "clmgf" => self.def_cur.hmerge = 1,
@@ -187,6 +194,9 @@ impl Reader {
             "clvertalt" => self.def_cur.valign = Some(VAlign::Top),
             "clvertalc" => self.def_cur.valign = Some(VAlign::Center),
             "clvertalb" => self.def_cur.valign = Some(VAlign::Bottom),
+            "cltxlrtb" | "cltxlrtbv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Horizontal,
+            "cltxtbrl" | "cltxtbrlv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Down,
+            "cltxbtlr" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Up,
             "clcbpat" => self.def_cur.shading = self.colors.get(pv.max(0) as usize).copied().flatten(),
             "sb" => self.st.sb = Some(pv),
             "sa" => self.st.sa = Some(pv),

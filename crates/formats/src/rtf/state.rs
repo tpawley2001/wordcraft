@@ -182,8 +182,12 @@ pub(super) struct Output {
     pub(super) defs: Vec<CellDef>,
     pub(super) def_cur: CellDef,
     pub(super) row_header: bool,
+    pub(super) row_height: Option<(f32, bool)>,
+    pub(super) row_keep: bool,
     pub(super) rule_pending: bool,
     pub(super) table_rights: Vec<Vec<i32>>,
+    pub(super) table_heights: Vec<Option<(f32, bool)>>,
+    pub(super) table_keeps: Vec<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -318,6 +322,8 @@ pub(super) struct CellDef {
     /// width and `\brdrcf` colour).
     pub(super) borders: wordcraft_doc::props::Borders,
     pub(super) valign: Option<VAlign>,
+    /// Turned text (`\cltxtbrl`, `\cltxbtlr`…).
+    pub(super) direction: wordcraft_doc::props::TextDirection,
 }
 
 /// Page size and margins in twips (`\paperw`, `\margl`… and their `…sxn` section forms).
