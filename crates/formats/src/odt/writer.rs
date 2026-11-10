@@ -1,6 +1,6 @@
 use super::{Align, FBlock, FTable, Fmt, HashMap, Inline, Kind, Para, RevMark, Rgb, VAlign, mime_of, model};
 use wordcraft_doc::control::ControlKind;
-use wordcraft_doc::props::{Border, BorderStyle, Borders, LineSpacing};
+use wordcraft_doc::props::{Border, BorderStyle, Borders, LineSpacing, TextAlignment};
 
 mod charts;
 mod drawing;
@@ -374,6 +374,36 @@ impl Writer {
         }
         if let Some(c) = p.extra.as_ref().and_then(|x| x.contextual_spacing) {
             props.push_str(&format!(" style:contextual-spacing=\"{c}\""));
+        }
+        // East Asian typography and font alignment (§20.305, §20.318, §20.358, §20.324, §20.386).
+        if let Some(x) = p.extra.as_ref() {
+            if let Some(k) = x.kinsoku {
+                props.push_str(if k { " style:line-break=\"strict\"" } else { " style:line-break=\"normal\"" });
+            }
+            if let Some(h) = x.overflow_punct {
+                props.push_str(if h { " style:punctuation-wrap=\"hanging\"" } else { " style:punctuation-wrap=\"simple\"" });
+            }
+            let auto_space = match (x.auto_space_de, x.auto_space_dn) {
+                (Some(true), _) | (_, Some(true)) => Some("ideograph-alpha"),
+                (Some(false), _) | (_, Some(false)) => Some("none"),
+                (None, None) => None,
+            };
+            if let Some(v) = auto_space {
+                props.push_str(&format!(" style:text-autospace=\"{v}\""));
+            }
+            if let Some(g) = x.snap_to_grid {
+                props.push_str(&format!(" style:snap-to-layout-grid=\"{g}\""));
+            }
+            if let Some(t) = x.text_alignment {
+                let v = match t {
+                    TextAlignment::Top => "top",
+                    TextAlignment::Center => "middle",
+                    TextAlignment::Bottom => "bottom",
+                    TextAlignment::Baseline => "baseline",
+                    TextAlignment::Auto => "auto",
+                };
+                props.push_str(&format!(" style:vertical-align=\"{v}\""));
+            }
         }
         if p.extra.as_ref().and_then(|x| x.bidi) == Some(true) {
             props.push_str(" style:writing-mode=\"rl-tb\"");
