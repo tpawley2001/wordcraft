@@ -953,18 +953,18 @@ fn zoom_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         for row in 0..fits.len() {
             t.row(|r| {
                 r.cell(|ui| {
-                    if let Some((p, label)) = percents.get(row) {
-                        if ui.radio(fit.is_empty() && *percent == *p, label.clone()).clicked() {
-                            *percent = *p;
-                            fit.clear();
-                        }
+                    if let Some((p, label)) = percents.get(row)
+                        && ui.radio(fit.is_empty() && *percent == *p, *label).clicked()
+                    {
+                        *percent = *p;
+                        fit.clear();
                     }
                 });
                 r.cell(|ui| {
-                    if let Some((f, label)) = fits.get(row) {
-                        if ui.radio(fit.as_str() == *f, label.clone()).clicked() {
-                            *fit = (*f).to_string();
-                        }
+                    if let Some((f, label)) = fits.get(row)
+                        && ui.radio(fit.as_str() == *f, *label).clicked()
+                    {
+                        *fit = (*f).to_string();
                     }
                 });
             });
