@@ -294,6 +294,11 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
     if s.rtl {
         o.push_str("\\rtlsect");
     }
+    match s.text_direction {
+        wordcraft_doc::props::TextDirection::Down => o.push_str("\\stextflow1"),
+        wordcraft_doc::props::TextDirection::Up => o.push_str("\\stextflow2"),
+        wordcraft_doc::props::TextDirection::Horizontal => {}
+    }
     if let Some(n) = s.chapter_style {
         o.push_str(&format!("\\pgnhn{n}"));
     }

@@ -1837,6 +1837,7 @@ mod object_result;
 mod paper_source;
 mod section_extras;
 mod section_revisions;
+mod section_text_flow;
 mod shape_text;
 mod surrogate_boundaries;
 mod tabs_spacing;

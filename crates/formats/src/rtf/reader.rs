@@ -614,6 +614,15 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "linecont" => sec.line_restart = Some(LineNumberRestart::Continuous),
         "rtlsect" => sec.rtl = true,
         "ltrsect" => sec.rtl = false,
+        // Word draws 1, 3 and 5 top to bottom (5 stacking from the left, which the model has no
+        // direction for; `Down` is nearest) and 2 bottom to top; anything else is horizontal.
+        "stextflow" => {
+            sec.text_flow = match pv {
+                1 | 3 | 5 => wordcraft_doc::props::TextDirection::Down,
+                2 => wordcraft_doc::props::TextDirection::Up,
+                _ => wordcraft_doc::props::TextDirection::Horizontal,
+            }
+        }
         "pgnhn" => {
             if let Ok(n @ 1..=9) = u8::try_from(pv) {
                 sec.chapter_style = Some(n);
