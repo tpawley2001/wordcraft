@@ -1075,6 +1075,7 @@ impl Writer {
                     out.push_str(&format!("{word}{}", (v.clamp(-1584.0, 1584.0) * 100.0).round() as i64));
                 }
             }
+            out.push_str(&super::frames::frame_words(x));
         }
         match p.kind {
             Kind::Quote => out.push_str("\\li720\\ri720\\i"),

@@ -259,6 +259,8 @@ pub(super) struct St {
     /// Word 6.0/95 paragraph numbering (`{\*\pn …}`), which the group's end keeps here; `\pard`
     /// clears it. A paragraph with `\lsN` (Word 97+) ignores it.
     pub(super) pn: Option<Box<Pn>>,
+    /// The paragraph's frame and drop cap words (`\absw`, `\posx`, `\dropcapli`…).
+    pub(super) frame: Option<Box<super::frames::FrameSt>>,
 }
 
 impl Default for St {
@@ -308,6 +310,7 @@ impl Default for St {
             tab_align: TabAlign::Left,
             tab_leader: TabLeader::None,
             pn: None,
+            frame: None,
         }
     }
 }
