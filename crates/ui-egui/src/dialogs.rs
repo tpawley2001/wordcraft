@@ -87,8 +87,13 @@ pub enum Dialog {
         size: String,
         bold: bool,
         italic: bool,
-        underline: bool,
+        /// Underline style: the `w:u` name ("none", "words", "double"…), or "" while the
+        /// selected text mixes styles.
+        underline: String,
+        /// Underline color: "auto" or RRGGBB, or "" while the selected text differs.
+        underline_color: String,
         strike: bool,
+        double_strike: bool,
         sup: bool,
         sub: bool,
         small_caps: bool,
@@ -730,8 +735,10 @@ impl Dialog {
                     size: st.get("size").and_then(Value::as_f64).map(|v| v.to_string()).unwrap_or_default(),
                     bold: b("bold"),
                     italic: b("italic"),
-                    underline: b("underline"),
+                    underline: s("underlineStyle"),
+                    underline_color: s("underlineColor"),
                     strike: b("strike"),
+                    double_strike: b("doubleStrike"),
                     sup: b("superscript"),
                     sub: b("subscript"),
                     small_caps: b("smallCaps"),
@@ -1083,5 +1090,7 @@ pub mod dialogs_table_style;
 pub mod dialogs_templates;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_font_underline;
 #[cfg(test)]
 mod tests_para_line;
