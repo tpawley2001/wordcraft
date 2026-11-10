@@ -7,7 +7,9 @@
 //! Word 97-2003 also writes objects (Equation Editor equations) whose reference is the `\x01` in
 //! the field's result, with no picture in the Data stream. Word draws those from the storage: its
 //! `\x03EPRINT` when there is one, else the Windows Metafile in `\x03META` (after an 8-byte
-//! METAFILEPICT16 header), at the goal size in `\x03PIC`.
+//! METAFILEPICT16 header), at the goal size in `\x03PIC`. An object whose only presentation is
+//! a QuickDraw `\x03PICT` (Mac Word) is not drawn from it: Word shows a white box framed by a
+//! 0.72 pt black line inside its edges, at the METAFILEPICT extents in `\x03PIC` ([`placeholder`]).
 //!
 //! Each object storage is also kept whole: a copy of it as a standalone compound file, written
 //! back by a .docx save as `word/embeddings/oleObjectN.bin` behind a `w:object` (ECMA-376
@@ -35,6 +37,15 @@ const ENHMETA_SIGNATURE: u32 = 0x464D_4520;
 const MIN_HEADER: u32 = 88;
 /// `\x03META`: the METAFILEPICT16 header (mm, xExt, yExt, hMF) before the metafile.
 const META_PICT_HEADER: usize = 8;
+/// `\x03PIC`: the METAFILEPICT mapping mode and extents (HIMETRIC for MM_ISOTROPIC and
+/// MM_ANISOTROPIC).
+const PIC_MM: usize = 10;
+const PIC_X_EXT: usize = 12;
+const PIC_Y_EXT: usize = 16;
+const MM_ISOTROPIC: u16 = 7;
+const MM_ANISOTROPIC: u16 = 8;
+/// A PICT-only object's placeholder frame thickness, in points (inside the box edges).
+const PLACEHOLDER_FRAME_PT: f64 = 0.72;
 /// `\x03PIC`: dxaGoal, dyaGoal (twips) and mx, my (per mille) offsets, and the bytes needed.
 const PIC_DXA_GOAL: usize = 20;
 const PIC_DYA_GOAL: usize = 24;
@@ -65,7 +76,7 @@ pub(crate) struct Prints {
     by_id: HashMap<u32, Vec<u8>>,
     /// Storage id → (WMF bytes from `\x03META`, for objects without an EPRINT).
     metas: HashMap<u32, Vec<u8>>,
-    /// Storage id → goal size in points from `\x03PIC`.
+    /// Storage id → goal size in points from `\x03PIC` (for a PICT placeholder, its box size).
     goals: HashMap<u32, (f32, f32)>,
     /// Storage id → the storage kept whole, for objects within the caps.
     stored: HashMap<u32, Stored>,
@@ -102,20 +113,31 @@ impl Prints {
         let mut kept = 0u64;
         for id in ids {
             let pic = pic_stream(comp, id);
-            if let Some(goal) = pic.and_then(pic_goal) {
+            let goal = pic.map(|p| p.goal).and_then(pic_goal);
+            if let Some(goal) = goal {
                 prints.goals.insert(id, goal);
             }
             let room = (media::MAX_MEDIA_BYTES as u64).saturating_sub(kept);
             if let Some(bin) = copy_storage(comp, id, room) {
                 kept = kept.saturating_add(bin.len() as u64);
-                let goal_twips = pic.map(|[dxa, dya, ..]| (dxa, dya)).filter(|&(x, y)| x > 0 && y > 0 && x <= MAX_GOAL_TWIPS && y <= MAX_GOAL_TWIPS);
+                let goal_twips = pic.map(|p| (p.goal[0], p.goal[1])).filter(|&(x, y)| x > 0 && y > 0 && x <= MAX_GOAL_TWIPS && y <= MAX_GOAL_TWIPS);
                 prints.stored.insert(id, Stored { bin: Arc::new(bin), prog_id: comp_obj_prog_id(comp, id), goal_twips });
             }
             let (bytes, is_meta) = match eprint(comp, id) {
                 Some(b) => (b, false),
                 None => match meta(comp, id) {
                     Some(b) => (b, true),
-                    None => continue,
+                    None => {
+                        // Only a QuickDraw PICT: Word's framed box, at the extents (else the goal).
+                        let size = pic.and_then(pic_extents).or(goal);
+                        match size.filter(|_| has_pict(comp, id)) {
+                            Some(size) => {
+                                prints.goals.insert(id, size);
+                                (placeholder(size), true)
+                            }
+                            None => continue,
+                        }
+                    }
                 },
             };
             let Some(t) = total.checked_add(bytes.len()).filter(|&t| t <= media::MAX_MEDIA_BYTES) else { break };
@@ -130,7 +152,8 @@ impl Prints {
     }
 
     /// The picture of object `id` referenced from a field result: its EPRINT (else its META
-    /// metafile) at its PIC goal size. `None` without a usable picture or size.
+    /// metafile, else a PICT-only object's placeholder at its extents) at its PIC goal size. `None`
+    /// without a usable picture or size.
     pub(crate) fn result_object(&self, id: u32) -> Option<ResultObject<'_>> {
         let &(w, h) = self.goals.get(&id)?;
         let (bytes, ext) = match self.by_id.get(&id) {
@@ -248,14 +271,100 @@ fn meta<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<Vec<
     is_wmf(wmf).then(|| wmf.to_vec())
 }
 
-/// The object's `\x03PIC` dxaGoal, dyaGoal (twips) and mx, my (per mille). `None` when the
-/// stream is missing or short.
-fn pic_stream<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<[u32; 4]> {
+/// The fields of an object's `\x03PIC` stream that size its picture.
+#[derive(Clone, Copy)]
+struct Pic {
+    /// dxaGoal, dyaGoal (twips) and mx, my (per mille).
+    goal: [u32; 4],
+    /// The METAFILEPICT mapping mode and xExt, yExt.
+    mm: u16,
+    ext: [i32; 2],
+}
+
+/// The object's `\x03PIC` fields. `None` when the stream is missing or short.
+fn pic_stream<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> Option<Pic> {
     let s = comp.open_stream(format!("/ObjectPool/_{id}/\u{3}PIC")).ok()?;
     let mut v = Vec::new();
     s.take(PIC_MIN_LEN as u64).read_to_end(&mut v).ok()?;
-    let u32_at = |at: usize| v.get(at..at + 4).and_then(|s| s.try_into().ok()).map(u32::from_le_bytes);
-    Some([u32_at(PIC_DXA_GOAL)?, u32_at(PIC_DYA_GOAL)?, u32_at(PIC_MX)?, u32_at(PIC_MY)?])
+    let bytes4 = |at: usize| v.get(at..at + 4).and_then(|s| s.try_into().ok());
+    let u32_at = |at: usize| bytes4(at).map(u32::from_le_bytes);
+    let i32_at = |at: usize| bytes4(at).map(i32::from_le_bytes);
+    let mm = v.get(PIC_MM..PIC_MM + 2).and_then(|s| s.try_into().ok()).map(u16::from_le_bytes)?;
+    Some(Pic {
+        goal: [u32_at(PIC_DXA_GOAL)?, u32_at(PIC_DYA_GOAL)?, u32_at(PIC_MX)?, u32_at(PIC_MY)?],
+        mm,
+        ext: [i32_at(PIC_X_EXT)?, i32_at(PIC_Y_EXT)?],
+    })
+}
+
+/// The object's METAFILEPICT extents in points: xExt x yExt HIMETRIC when the mapping mode is
+/// MM_ISOTROPIC or MM_ANISOTROPIC. mx/my are not applied. `None` when a size is 0, negative or
+/// out of range.
+fn pic_extents(pic: Pic) -> Option<(f32, f32)> {
+    if !matches!(pic.mm, MM_ISOTROPIC | MM_ANISOTROPIC) {
+        return None;
+    }
+    let pt = |v: i32| f64::from(v) * 72.0 / 2540.0;
+    let (w, h) = (pt(pic.ext[0]), pt(pic.ext[1]));
+    // The same hostile-size cap as the goal size.
+    let ok = |x: f64| x > 0.0 && x <= 15_840.0;
+    (ok(w) && ok(h)).then_some((w as f32, h as f32))
+}
+
+/// Does the object's storage hold a non-empty `\x03PICT` (a QuickDraw picture, not read)?
+fn has_pict<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, id: u32) -> bool {
+    comp.open_stream(format!("/ObjectPool/_{id}/\u{3}PICT")).is_ok_and(|s| s.len() > 0)
+}
+
+/// A PICT-only object's picture, a plain WMF ([MS-WMF]) of the box's aspect: a white box, then a
+/// black frame [`PLACEHOLDER_FRAME_PT`] thick inside its edges as four filled bands. The longer
+/// side is 32,000 logical units, so `w` x `h` points map onto the window.
+fn placeholder((w, h): (f32, f32)) -> Vec<u8> {
+    const SIDE: f64 = 32_000.0;
+    let (w, h) = (f64::from(w).max(f64::MIN_POSITIVE), f64::from(h).max(f64::MIN_POSITIVE));
+    let k = SIDE / w.max(h);
+    let units = |v: f64| (v * k).round().clamp(1.0, SIDE) as i16;
+    let (x, y) = (units(w), units(h));
+    let band = units(PLACEHOLDER_FRAME_PT).min(x / 2).min(y / 2).max(1);
+    // Records: (function, parameters as 16-bit words).
+    let rect = |l: i16, t: i16, r: i16, b: i16| (0x041Bu16, vec![b, r, t, l]);
+    let records: [(u16, Vec<i16>); 11] = [
+        (0x0103, vec![MM_ANISOTROPIC as i16]),
+        (0x020B, vec![0, 0]),
+        (0x020C, vec![y, x]),
+        // NULL_PEN, WHITE_BRUSH (stock objects).
+        (0x012D, vec![0x8008u16 as i16]),
+        (0x012D, vec![0x8000u16 as i16]),
+        rect(0, 0, x, y),
+        // BLACK_BRUSH.
+        (0x012D, vec![0x8004u16 as i16]),
+        rect(0, 0, x, band),
+        rect(0, y - band, x, y),
+        rect(0, band, band, y - band),
+        rect(x - band, band, x, y - band),
+    ];
+    let mut body = Vec::new();
+    let mut max_record = 3u32;
+    for (func, params) in records.iter().chain([(0u16, Vec::new())].iter()) {
+        let words = 3 + params.len() as u32;
+        max_record = max_record.max(words);
+        body.extend_from_slice(&words.to_le_bytes());
+        body.extend_from_slice(&func.to_le_bytes());
+        for p in params {
+            body.extend_from_slice(&p.to_le_bytes());
+        }
+    }
+    let total_words = (18 + body.len() as u32) / 2;
+    let mut v = Vec::with_capacity(18 + body.len());
+    v.extend_from_slice(&1u16.to_le_bytes());
+    v.extend_from_slice(&9u16.to_le_bytes());
+    v.extend_from_slice(&0x0300u16.to_le_bytes());
+    v.extend_from_slice(&total_words.to_le_bytes());
+    v.extend_from_slice(&0u16.to_le_bytes());
+    v.extend_from_slice(&max_record.to_le_bytes());
+    v.extend_from_slice(&0u16.to_le_bytes());
+    v.extend_from_slice(&body);
+    v
 }
 
 /// The object's goal size in points from its `\x03PIC` fields: dxaGoal x dyaGoal twips scaled
@@ -504,6 +613,15 @@ mod tests {
         assert_eq!(storage_id("_99999999999"), None);
         assert_eq!(storage_id("1"), None);
         assert_eq!(storage_id("_１"), None);
+    }
+
+    #[test]
+    fn placeholders_of_any_size_are_wmf() {
+        for size in [(429.0, 106.0), (0.01, 15_840.0), (15_840.0, 15_840.0), (0.0, 0.0), (f32::NAN, 1.0)] {
+            let wmf = placeholder(size);
+            assert!(is_wmf(&wmf), "{size:?}");
+            assert!(wordcraft_metafile::is_metafile(&wmf), "{size:?}");
+        }
     }
 
     #[test]
