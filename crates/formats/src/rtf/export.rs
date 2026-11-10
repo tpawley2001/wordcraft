@@ -235,7 +235,7 @@ fn sect_words(s: &wordcraft_doc::SectionProps) -> String {
 
 /// `\sectd` and a section's own formatting words.
 fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
-    use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NumFormat, SectionStart};
+    use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NotePos, NumFormat, SectionStart};
     let tw = |v: f32| if v.is_finite() { ((v * 20.0).round() as i64).max(0) } else { 0 };
     let mut o = String::from("\\sectd");
     o.push_str(match s.start {
@@ -306,6 +306,54 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps) -> String {
             ChapterSep::EnDash => "\\pgnhnsn",
         });
     }
+    o.push_str(match s.footnote_pr.pos {
+        Some(NotePos::PageBottom) => "\\sftnbj",
+        Some(NotePos::BeneathText) => "\\sftntj",
+        _ => "",
+    });
+    o.push_str(&note_words("\\sftn", &s.footnote_pr, s.footnote_pr.num_fmt));
+    o.push_str(&note_words("\\saftn", &s.endnote_pr, s.endnote_pr.num_fmt));
+    o
+}
+
+/// The start, restart and number format words of footnote or endnote options `n` (`prefix`:
+/// `\ftn`, `\aftn`, `\sftn` or `\saftn`), each only when set; endnotes have no per-page restart.
+fn note_words(prefix: &str, n: &wordcraft_doc::section::NoteProps, fmt: Option<wordcraft_doc::section::NumFormat>) -> String {
+    use wordcraft_doc::section::NoteRestart;
+    let mut o = String::new();
+    if let Some(v) = n.num_start {
+        o.push_str(&format!("{prefix}start{}", v.clamp(1, 32_767)));
+    }
+    let endnote = prefix.ends_with("aftn");
+    match n.num_restart {
+        Some(NoteRestart::EachPage) if !endnote => o.push_str(&format!("{prefix}rstpg")),
+        Some(NoteRestart::EachSect) => o.push_str(&format!("{prefix}restart")),
+        Some(NoteRestart::Continuous) => o.push_str(&format!("{prefix}rstcont")),
+        _ => {}
+    }
+    if let Some(w) = fmt.and_then(super::state::note_format_word) {
+        o.push_str(&format!("{prefix}n{w}"));
+    }
+    o
+}
+
+/// The document's footnote and endnote options: each word only when the option is set, the
+/// number formats only when they aren't the defaults (decimal footnotes, lower Roman endnotes).
+fn doc_note_words(set: &wordcraft_doc::Settings) -> String {
+    use wordcraft_doc::section::{NotePos, NumFormat};
+    let mut o = String::new();
+    o.push_str(match set.footnote_pr.pos {
+        Some(NotePos::PageBottom) => "\\ftnbj",
+        Some(NotePos::BeneathText) => "\\ftntj",
+        _ => "",
+    });
+    o.push_str(match set.endnote_pr.pos {
+        Some(NotePos::SectEnd) => "\\aendnotes",
+        Some(NotePos::DocEnd) => "\\aenddoc",
+        _ => "",
+    });
+    o.push_str(&note_words("\\ftn", &set.footnote_pr, Some(set.footnote_format).filter(|&f| f != NumFormat::Decimal)));
+    o.push_str(&note_words("\\aftn", &set.endnote_pr, Some(set.endnote_format).filter(|&f| f != NumFormat::LowerRoman)));
     o
 }
 
@@ -1058,10 +1106,10 @@ pub fn export(doc: &Document) -> String {
         w.sections = secs;
     }
     w.blocks(&flow.blocks, false, "\\par", &mut body, 0);
-    export_with(&flow.meta, &w, &body, &doc.last_section)
+    export_with(&flow.meta, &w, &body, &doc.last_section, &doc_note_words(&doc.settings))
 }
 
-fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionProps) -> String {
+fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionProps, notes: &str) -> String {
     let mut out = String::from("{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\\uc1\n{\\fonttbl");
     for (i, f) in w.t.fonts.iter().enumerate() {
         let fam = if model::is_mono(f) { "\\fmodern" } else { "\\fswiss" };
@@ -1115,7 +1163,7 @@ fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionPro
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
     out.push_str(&format!(
-        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{landscape}\\viewkind4\n",
+        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{landscape}{notes}\\viewkind4\n",
         tw(sec.page_w),
         tw(sec.page_h),
         tw(sec.margin_left),

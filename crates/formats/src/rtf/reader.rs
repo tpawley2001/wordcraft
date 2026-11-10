@@ -2,7 +2,7 @@ use super::date::{dttm_to_iso, iso_date};
 use super::parse::column_grid;
 use super::state::{
     CellDef, CommentData, Dest, HeaderFooter, MARK_CLOSE, MARK_OPEN, MAX_GROUPS, MAX_NOTE_BLOCKS, MAX_NOTES, MAX_REV_AUTHORS, MAX_SECTIONS, NoteData,
-    Output, PageGeom, Pn, SecFmt, St, Sub,
+    Output, PageGeom, Pn, SecFmt, St, Sub, apply_note_word,
 };
 use super::styles::{StyleDef, drop_style_formatting, style_fmt};
 use super::{Arc, Cell, FBlock, FTable, Fmt, HashMap, HashSet, Inline, Kind, Meta, Para, Rgb, model};
@@ -26,6 +26,9 @@ pub(super) struct Reader {
     /// The document's page (`\paperw`, `\margl`…) and the current section's formatting.
     pub(super) page: PageGeom,
     pub(super) sec: SecFmt,
+    /// The document's footnote and endnote options (`\ftnbj`, `\aftnstart`…); their `num_fmt`
+    /// is the document's note number format.
+    pub(super) doc_notes: (wordcraft_doc::section::NoteProps, wordcraft_doc::section::NoteProps),
     /// The current section's formatting before a tracked change (`\oldsprops`), and the one
     /// an `\oldsprops` group being read builds.
     pub(super) sec_old: Option<SecFmt>,
@@ -322,6 +325,19 @@ impl Reader {
         apply_section_word(&mut self.sec, w, p)
     }
 
+    /// Applies document formatting word `w` when it is a footnote or endnote option. False when
+    /// it isn't one.
+    pub(super) fn doc_note_word(&mut self, w: &str, p: Option<i32>) -> bool {
+        use wordcraft_doc::section::NotePos;
+        let (foot, end) = &mut self.doc_notes;
+        match w {
+            "aendnotes" => end.pos = Some(NotePos::SectEnd),
+            "aenddoc" => end.pos = Some(NotePos::DocEnd),
+            _ => return apply_note_word(w, p, foot, end),
+        }
+        true
+    }
+
     pub(super) fn open(&mut self) {
         self.skip_chars = 0;
         if self.stack.len() >= MAX_GROUPS {
@@ -570,6 +586,7 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "headery" => sec.page.header = Some(pv),
         "footery" => sec.page.footer = Some(pv),
         "lndscpsxn" => sec.page.landscape = on,
+        _ if w.strip_prefix('s').is_some_and(|w| apply_note_word(w, p, &mut sec.footnote_pr, &mut sec.endnote_pr)) => {}
         // Printer bin codes; 0 (the default) and values outside u16 leave the bin unset.
         "binfsxn" => sec.bin_first = u16::try_from(pv).ok().filter(|&v| v != 0),
         "binsxn" => sec.bin_other = u16::try_from(pv).ok().filter(|&v| v != 0),
