@@ -38,6 +38,7 @@ mod picture_links;
 mod positional_tabs;
 mod privacy;
 mod roundtrip;
+mod row_exception_sides;
 mod row_property_exceptions;
 mod run_content_in_text;
 mod run_props;

@@ -221,7 +221,9 @@ impl Exporter<'_> {
     }
 
     pub(crate) fn page(&mut self, s: &mut Surface, page: &Page, w: f32, h: f32) {
-        if let Some(c) = self.doc.settings.page_color
+        // Only the form data: the page's background and watermark aren't drawn either.
+        let data_only = self.opts.forms_data_only;
+        if let Some(c) = self.doc.settings.page_color.filter(|_| !data_only)
             && let Some(p) = rect_path(&Rect::new(0.0, 0.0, w, h))
         {
             self.tagged(s, Role::Artifact(ArtifactType::Other), None, |_, s| {
@@ -231,10 +233,11 @@ impl Exporter<'_> {
                 s.set_fill(None);
             });
         }
-        if let Some(pic) = self.doc.settings.page_picture.clone() {
+        if let Some(pic) = self.doc.settings.page_picture.clone().filter(|_| !data_only) {
             self.tagged(s, Role::Artifact(ArtifactType::Other), None, |me, s| me.page_picture(s, &pic, w, h));
         }
         if let Some(wm) = self.doc.settings.watermark.clone()
+            && !data_only
             && !wm.text.trim().is_empty()
         {
             let area = page.body;

@@ -105,6 +105,9 @@ pub struct Session {
     pub pending_text_move: Option<crate::cmd::move_text::PendingMove>,
     /// Format painter: copied formatting waiting to be applied (and whether it stays on).
     pub painter: Option<(CharProps, wordcraft_doc::props::ParaProps, bool)>,
+    /// Format painter holding a shape's fill, outline and effects instead (and whether it stays
+    /// on). Picking either kind clears the other.
+    pub shape_painter: Option<(crate::cmd::edit::ShapeFormat, bool)>,
     /// Last message for the status bar / agents.
     pub status: String,
     /// Headers/footers `insert.createHeader`/`insert.createFooter` made for a page that had none

@@ -1,6 +1,6 @@
 use super::reader::apply_section_word;
 use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pn, PnKind, RevSt, SecFmt, St};
-use super::styles::{StyleDef, is_char_format_word, is_format_word};
+use super::styles::{StyleDef, StyleEntry, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
 use wordcraft_doc::props::{CharProps, TabAlign, TabLeader, TabStop, Underline};
 
@@ -27,6 +27,11 @@ impl Reader {
             self.enter_destination(d);
             return;
         }
+        // A nested row's properties (`{\*\nesttableprops \trowd … \nestrow}`) are read: they
+        // describe the innermost table's row.
+        if w == "nesttableprops" {
+            return;
+        }
         if self.skip_ignorable_destination(w, starred, first_in_group) {
             return;
         }
@@ -40,8 +45,9 @@ impl Reader {
             "par" => self.end_para_mark(),
             "sect" => self.end_section(),
             "cell" => self.end_cell(),
-            "nestcell" => self.end_para(true),
-            "row" => self.end_row(),
+            "nestcell" => self.end_nest_cell(),
+            "row" => self.end_outer_row(),
+            "nestrow" => self.end_nest_row(),
             "line" | "softline" => self.ch('\n'),
             "tab" => self.ch('\t'),
             "page" | "softpage" => self.ch('\u{000C}'),
@@ -85,6 +91,7 @@ impl Reader {
             "uc" => self.st.uc = pv.max(0) as usize,
             "plain" => {
                 self.st.fmt = Fmt { link: self.st.fmt.link.clone(), ..Default::default() };
+                self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
                 self.st.hidden = false;
@@ -94,7 +101,8 @@ impl Reader {
                 // Revision marks are character formatting, which `\pard` leaves alone.
                 let (dest, fmt, rev, uc, hidden) = (self.st.dest, self.st.fmt.clone(), self.st.rev, self.st.uc, self.st.hidden);
                 let chg_c = std::mem::take(&mut self.st.chg_c);
-                self.st = St { dest, fmt, rev, chg_c, uc, hidden, field, ..Default::default() };
+                let mono = self.st.mono.take();
+                self.st = St { dest, fmt, mono, rev, chg_c, uc, hidden, field, ..Default::default() };
                 self.page_side = None;
             }
             "revised" => self.st.rev.ins = on,
@@ -139,13 +147,22 @@ impl Reader {
                 self.st.cp = self.font_cps.get(&pv).copied();
                 let name = self.fonts.get(&pv).cloned();
                 match name {
+                    // The default font (`\deff`), monospaced or not, is the document's: text in
+                    // it is plain text, as after `\plain`.
+                    Some(n) if model::is_mono(&n) && pv == self.deff => {
+                        self.st.fmt.code = false;
+                        self.st.fmt.font = None;
+                        self.st.mono = None;
+                    }
                     Some(n) if model::is_mono(&n) => {
                         self.st.fmt.code = true;
                         self.st.fmt.font = None;
+                        self.st.mono = Some(n);
                     }
                     Some(n) => {
                         self.st.fmt.code = false;
                         self.st.fmt.font = Some(n);
+                        self.st.mono = None;
                     }
                     None => {}
                 }
@@ -159,6 +176,8 @@ impl Reader {
             "qj" => self.st.align = Some(Align::Justify),
             "qd" => self.st.align = Some(Align::Distribute),
             "s" => self.st.style = pv,
+            // A character style: the document style its stylesheet entry became, if one did.
+            "cs" => self.char_style(pv),
             "outlinelevel" => self.st.outline = Some(pv.clamp(0, 9) as u8),
             "pagebb" => self.st.pagebb = on,
             "widctlpar" => self.st.widow = Some(true),
@@ -170,6 +189,11 @@ impl Reader {
             "hyphpar" => self.st.no_hyph = Some(!on),
             "nosnaplinegrid" => self.st.snap_grid = Some(false),
             "intbl" => self.st.intbl = true,
+            "itap" => {
+                let n = pv.clamp(0, model::MAX_DEPTH as i32) as u8;
+                self.st.itap = Some(n);
+                self.st.intbl = n > 0;
+            }
             "ls" => self.st.ls = Some(pv),
             "ilvl" => self.st.ilvl = pv.clamp(0, 8) as u8,
             _ if self.cell_side.is_none() && self.para_border_word(w, pv) => {}
@@ -393,7 +417,9 @@ impl Reader {
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
             | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb" | "fontfile"
-            | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl" => Some(Dest::Skip),
+            | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl"
+            // The flat copy of nested tables, for readers without them.
+            | "nonesttables" => Some(Dest::Skip),
             // Word 6.0/95 paragraph numbering: read, so the paragraph imports as a list.
             "pn" => {
                 self.pn_cur = Pn::default();
@@ -457,7 +483,9 @@ impl Reader {
     }
 
     fn skip_ignorable_destination(&mut self, word: &str, starred: bool, first_in_group: bool) -> bool {
-        if !starred || !first_in_group || matches!(word, "fldinst" | "bkmkstart") {
+        // A character style's stylesheet entry is `{\*\csN …}`.
+        let char_style = word == "cs" && self.st.dest == Dest::StyleSheet;
+        if !starred || !first_in_group || char_style || matches!(word, "fldinst" | "bkmkstart") {
             return false;
         }
         self.st.dest = Dest::Skip;
@@ -495,9 +523,20 @@ impl Reader {
                     "s" | "cs" | "ds" | "ts" => {
                         self.style_cur = if word == "s" { value } else { -1 - value.saturating_abs() };
                         self.style_name.clear();
-                        *def = StyleDef::default();
+                        let entry = match word {
+                            "s" => StyleEntry::Para,
+                            "cs" => StyleEntry::Char,
+                            _ => StyleEntry::Other,
+                        };
+                        *def = StyleDef { entry, ..Default::default() };
                     }
                     "sbasedon" => def.based_on = Some(value),
+                    "snext" => def.next = Some(value),
+                    "slink" => def.link = Some(value),
+                    "sqformat" => def.quick = on,
+                    "spriority" => def.priority = u32::try_from(value).ok(),
+                    "ssemihidden" | "shidden" => def.hidden |= on,
+                    "slocked" => def.locked = on,
                     "b" => def.bold = Some(on),
                     "i" => def.italic = Some(on),
                     "fs" => def.size = (value > 0).then(|| (value as f32 / 2.0).clamp(1.0, 1638.0)),
@@ -747,6 +786,12 @@ impl Reader {
             _ => return false,
         }
         true
+    }
+
+    /// `\csN`: the text's character style, when entry `n` became one of the document's own.
+    fn char_style(&mut self, n: i32) {
+        let id = self.own_char_style(n);
+        self.set_extra(|x| x.style = id);
     }
 
     /// The run's character spacing, points (0 = normal).

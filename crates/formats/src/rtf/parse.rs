@@ -27,6 +27,8 @@ struct Parsed {
     /// Another program's heading, title and quote styles: the document style each stands for,
     /// with the formatting its stylesheet entry gives it.
     foreign_styles: Vec<(String, wordcraft_doc::props::ParaProps, wordcraft_doc::props::CharProps)>,
+    /// The document's own paragraph and character styles the stylesheet defines.
+    own_styles: Vec<wordcraft_doc::styles::Style>,
     notes: Vec<NoteData>,
     comments: Vec<CommentData>,
     /// The document's footnote and endnote options; `num_fmt` is the number format.
@@ -343,8 +345,9 @@ fn finalize(mut r: Reader) -> Parsed {
     if blocks.is_empty() {
         blocks.push(FBlock::Para(Para::default()));
     }
-    let default_font = r.fonts.get(&r.deff).filter(|n| !model::is_mono(n)).map(|n| n.to_string());
+    let default_font = r.fonts.get(&r.deff).map(|n| n.to_string());
     let foreign_styles = r.foreign_styles();
+    let own_styles = r.own_styles();
     Parsed {
         flow: Flow { blocks, meta: r.meta },
         page: r.page,
@@ -353,6 +356,7 @@ fn finalize(mut r: Reader) -> Parsed {
         default_font,
         headers_footers,
         foreign_styles,
+        own_styles,
         notes: r.notes,
         comments: r.comments,
         doc_notes: r.doc_notes,
@@ -432,8 +436,9 @@ fn set_section_revisions(doc: &mut Document) {
 /// Parse RTF bytes into a document.
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
     model::begin_import();
-    let Parsed { flow, last_section, default_font, headers_footers, foreign_styles, notes, comments, doc_notes, doc_opts, doc_set, .. } =
-        parse_full(bytes, true)?;
+    let Parsed {
+        flow, last_section, default_font, headers_footers, foreign_styles, own_styles, notes, comments, doc_notes, doc_opts, doc_set, ..
+    } = parse_full(bytes, true)?;
     let mut doc = model::to_doc_in(&flow, last_section);
     doc_opts.apply(&mut doc.settings);
     doc_set.apply(&mut doc.settings);
@@ -497,7 +502,34 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
             s.chr = chr;
         }
     }
+    // The document's own styles, which its paragraphs and runs already name.
+    for style in own_styles {
+        Arc::make_mut(&mut doc.styles).upsert(style);
+    }
+    // Without `\widowctrl` Word has widow control off for every paragraph that doesn't say.
+    if !doc_opts.widow_control {
+        set_widow_control_off(&mut doc);
+    }
     Ok(doc)
+}
+
+/// Turns widow control off for every paragraph that doesn't set it, in every story: the body,
+/// table cells (nested too), headers and footers, notes, comments and text boxes.
+fn set_widow_control_off(doc: &mut Document) {
+    use wordcraft_doc::StoryRef;
+    let stories: Vec<StoryRef> = std::iter::once(StoryRef::Body).chain(doc.parts.keys().map(|&id| StoryRef::Part(id))).collect();
+    for story in stories {
+        for path in doc.para_paths(story) {
+            let unset = doc.para(story, &path).is_some_and(|p| p.props.widow_control.is_none());
+            if !unset {
+                continue;
+            }
+            if let Ok(p) = doc.para_mut(story, &path) {
+                p.props.widow_control = Some(false);
+                p.touch();
+            }
+        }
+    }
 }
 
 /// Turn the place markers the reader left in the text into note references and comment ranges,

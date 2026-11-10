@@ -65,7 +65,7 @@ mod tags;
 
 #[cfg(test)]
 use export::Fit;
-pub use export::{export, export_layout};
+pub use export::{export, export_layout, export_layout_with_appendix};
 #[cfg(test)]
 use exporter::Exporter;
 #[cfg(test)]
