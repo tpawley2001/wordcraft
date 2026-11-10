@@ -2,19 +2,187 @@ use super::export::HEAD_SIZES;
 use super::state::{Pn, PnKind, St};
 use super::{Align, Fmt, Kind, ListInfo, Para, Reader, model};
 use model::Label;
+use std::collections::{HashMap, HashSet};
 use wordcraft_doc::TextColor;
 use wordcraft_doc::props::{CharProps, ParaProps};
+use wordcraft_doc::styles::{Style, StyleKind, StyleSheet};
 
 impl Reader {
     pub(super) fn commit_style(&mut self) {
         let name = std::mem::take(&mut self.style_name).trim().trim_end_matches(';').trim().to_string();
         let def = std::mem::take(&mut self.style_def_cur);
         if self.styles.len() < 4096 {
-            self.styles.insert(self.style_cur, name);
+            if self.styles.insert(self.style_cur, name).is_none() {
+                self.style_order.push(self.style_cur);
+            }
             self.style_defs.insert(self.style_cur, def);
+            self.style_ids = std::cell::OnceCell::new();
         }
         // The next entry is style 0 (Normal) unless it names a number.
         self.style_cur = 0;
+    }
+
+    /// The document style id of each paragraph and character entry of the stylesheet.
+    fn style_ids(&self) -> &StyleIds {
+        self.style_ids.get_or_init(|| self.make_style_ids())
+    }
+
+    /// The entry's name: the first of its comma-separated names (`Body Text 2,bt2`).
+    fn entry_name(&self, key: i32) -> &str {
+        self.styles.get(&key).and_then(|n| n.split(',').next()).map_or("", str::trim)
+    }
+
+    /// The document style id entry `key` (a paragraph or character style) stands for when it is
+    /// one the flow model's kinds or formatting stand for (Normal, the headings, Title, Quote,
+    /// Code, Default Paragraph Font…), or `None` when it is one of the document's own.
+    fn fixed_entry_id(&self, key: i32, kind: StyleKind, builtin: &StyleSheet) -> Option<String> {
+        let name = self.entry_name(key);
+        if kind == StyleKind::Paragraph {
+            if key == 0 {
+                return Some("Normal".into());
+            }
+            match self.name_kind(key) {
+                Some(Kind::Heading(n)) => {
+                    let n = name.get(7..).and_then(|r| r.trim().parse::<u8>().ok()).filter(|n| (1..=9).contains(n)).unwrap_or(n);
+                    return Some(format!("Heading{n}"));
+                }
+                Some(Kind::Title) => return Some("Title".into()),
+                Some(Kind::Quote) if name.eq_ignore_ascii_case("intense quote") => return Some("IntenseQuote".into()),
+                Some(Kind::Quote) => return Some("Quote".into()),
+                Some(Kind::Code) => return Some(model::CODE_STYLE.into()),
+                _ => {}
+            }
+        }
+        let id = builtin_id(builtin, name, kind).unwrap_or_else(|| model::style_id(name));
+        let fixed = if kind == StyleKind::Paragraph { model::is_fixed_style(&id) } else { model::is_fixed_char_style(&id) };
+        fixed.then_some(id)
+    }
+
+    fn make_style_ids(&self) -> StyleIds {
+        let builtin = StyleSheet::builtin();
+        let mut out = StyleIds::default();
+        let entries: Vec<(i32, StyleKind)> = self
+            .style_order
+            .iter()
+            .filter_map(|k| match self.style_defs.get(k).map(|d| d.entry) {
+                Some(StyleEntry::Para) => Some((*k, StyleKind::Paragraph)),
+                Some(StyleEntry::Char) => Some((*k, StyleKind::Character)),
+                _ => None,
+            })
+            .collect();
+        // The fixed styles first, so the document's own don't take their ids.
+        let mut taken: HashSet<String> = HashSet::new();
+        for &(key, kind) in &entries {
+            if let Some(id) = self.fixed_entry_id(key, kind, &builtin) {
+                taken.insert(id.clone());
+                out.ids.insert(key, (id, false));
+            }
+        }
+        for &(key, kind) in &entries {
+            if out.ids.contains_key(&key) {
+                continue;
+            }
+            let name = self.entry_name(key);
+            let base = builtin_id(&builtin, name, kind).unwrap_or_else(|| model::style_id(name));
+            // An id another entry has, or a built-in style of the other kind or a fixed one has,
+            // takes a number.
+            let free = |id: &str| {
+                !taken.contains(id) && !model::is_fixed_style(id) && !model::is_fixed_char_style(id) && builtin.get(id).is_none_or(|s| s.kind == kind)
+            };
+            let mut id = base.clone();
+            let mut n = 2u32;
+            while !free(&id) {
+                id = format!("{base}{n}");
+                n = n.saturating_add(1);
+            }
+            taken.insert(id.clone());
+            out.ids.insert(key, (id, true));
+            out.own.push((key, kind));
+        }
+        out
+    }
+
+    /// The document style id of the entry numbered `n` that a `\sbasedon`, `\snext` or `\slink`
+    /// names: a character entry's first when `char_first`, else a paragraph entry's.
+    fn style_ref(&self, n: Option<i32>, char_first: bool) -> Option<String> {
+        let n = n.filter(|n| *n >= 0)?;
+        let ids = &self.style_ids().ids;
+        let ck = -1 - n;
+        let keys = if char_first { [ck, n] } else { [n, ck] };
+        keys.iter().find_map(|k| ids.get(k)).map(|(id, _)| id.clone()).or_else(|| (n == 0 && !char_first).then(|| "Normal".into()))
+    }
+
+    /// The document's own paragraph style that `\sN` names, if entry `n` became one.
+    pub(super) fn own_para_style(&self, n: i32) -> Option<String> {
+        self.style_defs.get(&n).filter(|d| d.entry == StyleEntry::Para)?;
+        self.style_ids().ids.get(&n).filter(|(_, own)| *own).map(|(id, _)| id.clone())
+    }
+
+    /// The document's own character style that `\csN` names, if entry `n` became one.
+    pub(super) fn own_char_style(&self, n: i32) -> Option<String> {
+        let key = -1 - n.saturating_abs();
+        self.style_defs.get(&key).filter(|d| d.entry == StyleEntry::Char)?;
+        self.style_ids().ids.get(&key).filter(|(_, own)| *own).map(|(id, _)| id.clone())
+    }
+
+    /// The document's own styles the stylesheet defines, in the file's order: each with its
+    /// based-on, next and linked styles, its flags, and the formatting its entry itself sets.
+    pub(super) fn own_styles(&self) -> Vec<Style> {
+        let builtin = StyleSheet::builtin();
+        let ids = self.style_ids();
+        let mut out = Vec::with_capacity(ids.own.len());
+        for &(key, kind) in &ids.own {
+            let (Some(d), Some((id, _))) = (self.style_defs.get(&key), ids.ids.get(&key)) else { continue };
+            let char = kind == StyleKind::Character;
+            let (para, chr) = self.def_props(d);
+            out.push(Style {
+                id: id.clone(),
+                name: self.entry_name(key).to_string(),
+                kind,
+                based_on: self.style_ref(d.based_on, char),
+                next: self.style_ref(d.next, false),
+                linked: self.style_ref(d.link, !char),
+                para: if char { ParaProps::default() } else { para },
+                chr,
+                priority: d.priority,
+                quick: d.quick,
+                hidden: d.hidden,
+                locked: d.locked,
+                builtin: builtin.get(id).is_some(),
+                ..Default::default()
+            });
+        }
+        out
+    }
+
+    /// The paragraph and character formatting stylesheet entry `d` itself sets, converted as
+    /// the same words on a paragraph and its text are.
+    fn def_props(&self, d: &StyleDef) -> (ParaProps, CharProps) {
+        let pt = |v: i32| (v as f32 / 20.0).clamp(-1584.0, 1584.0);
+        let gap = |v: i32| pt(v).max(0.0);
+        let line = d.sl.and_then(|sl| spacing(&St { sl, slmult: d.slmult.unwrap_or(false), ..Default::default() }).line);
+        let para = ParaProps {
+            align: d.align,
+            indent_left: d.li.map(pt),
+            indent_right: d.ri.map(pt),
+            indent_first: d.fi.map(pt),
+            space_before: d.sb.map(gap),
+            space_after: d.sa.map(gap),
+            line_spacing: line,
+            keep_next: d.keep_next,
+            keep_lines: d.keep_lines,
+            ..Default::default()
+        };
+        let color = |i: i32| usize::try_from(i).ok().and_then(|i| self.colors.get(i).copied().flatten()).map_or(TextColor::Auto, TextColor::Rgb);
+        let chr = CharProps {
+            font: d.font.and_then(|i| self.fonts.get(&i)).map(|n| n.to_string()),
+            size: d.size,
+            bold: d.bold,
+            italic: d.italic,
+            color: d.color.map(color),
+            ..Default::default()
+        };
+        (para, chr)
     }
 
     /// Whether another program wrote the file: its `{\*\generator …}` names one that isn't
@@ -132,6 +300,10 @@ impl Reader {
 
     /// The paragraph kind the stylesheet entry `id`'s name gives.
     fn name_kind(&self, id: i32) -> Option<Kind> {
+        // Only a paragraph style's.
+        if self.style_defs.get(&id).is_some_and(|d| d.entry != StyleEntry::Para) {
+            return None;
+        }
         let name = self.styles.get(&id).map(|s| s.to_ascii_lowercase()).unwrap_or_default();
         if let Some(n) = name.strip_prefix("heading").and_then(|r| r.trim().parse::<u8>().ok()) {
             return Some(Kind::Heading(n.clamp(1, 6)));
@@ -194,6 +366,9 @@ impl Reader {
         }
         if let Some(f) = st.frame.as_deref() {
             f.apply(p.extra.get_or_insert_with(Default::default));
+        }
+        if let Some(id) = self.own_para_style(st.style) {
+            p.extra.get_or_insert_with(Default::default).style = Some(id);
         }
         if let Some(ls) = st.ls {
             let list = self.overrides.get(&ls).and_then(|id| self.lists.get(id));
@@ -290,11 +465,47 @@ pub(super) fn styled(base: &Fmt, f: &Fmt) -> Fmt {
     e
 }
 
+/// The built-in style of kind `kind` whose name is `name` (case aside), as its id.
+fn builtin_id(builtin: &StyleSheet, name: &str, kind: StyleKind) -> Option<String> {
+    builtin.styles.iter().find(|s| s.kind == kind && s.name.eq_ignore_ascii_case(name)).map(|s| s.id.clone())
+}
+
+/// The document style ids of a stylesheet's paragraph and character entries.
+#[derive(Debug, Default)]
+pub(super) struct StyleIds {
+    /// By entry: the id, and whether it is one of the document's own styles.
+    ids: HashMap<i32, (String, bool)>,
+    /// The entries that are the document's own styles, in the file's order.
+    own: Vec<(i32, StyleKind)>,
+}
+
+/// What a `\stylesheet` entry defines.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum StyleEntry {
+    /// A paragraph style (`\sN`, or no number: style 0).
+    #[default]
+    Para,
+    /// A character style (`\*\csN`).
+    Char,
+    /// A table or section style (`\*\tsN`, `\dsN`).
+    Other,
+}
+
 /// A `\stylesheet` entry's formatting; `None` where the entry doesn't set it. Spacing and
 /// indents are in twips, as written.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct StyleDef {
+    pub(super) entry: StyleEntry,
     pub(super) based_on: Option<i32>,
+    /// The style of the next paragraph (`\snext`), the linked style (`\slink`).
+    pub(super) next: Option<i32>,
+    pub(super) link: Option<i32>,
+    /// In the Quick Styles gallery (`\sqformat`), its gallery order (`\spriority`), hidden
+    /// (`\ssemihidden`, `\shidden`), locked (`\slocked`).
+    pub(super) quick: bool,
+    pub(super) priority: Option<u32>,
+    pub(super) hidden: bool,
+    pub(super) locked: bool,
     pub(super) bold: Option<bool>,
     pub(super) italic: Option<bool>,
     pub(super) size: Option<f32>,

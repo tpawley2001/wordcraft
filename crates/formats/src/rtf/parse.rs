@@ -27,6 +27,8 @@ struct Parsed {
     /// Another program's heading, title and quote styles: the document style each stands for,
     /// with the formatting its stylesheet entry gives it.
     foreign_styles: Vec<(String, wordcraft_doc::props::ParaProps, wordcraft_doc::props::CharProps)>,
+    /// The document's own paragraph and character styles the stylesheet defines.
+    own_styles: Vec<wordcraft_doc::styles::Style>,
     notes: Vec<NoteData>,
     comments: Vec<CommentData>,
     /// The document's footnote and endnote options; `num_fmt` is the number format.
@@ -345,6 +347,7 @@ fn finalize(mut r: Reader) -> Parsed {
     }
     let default_font = r.fonts.get(&r.deff).filter(|n| !model::is_mono(n)).map(|n| n.to_string());
     let foreign_styles = r.foreign_styles();
+    let own_styles = r.own_styles();
     Parsed {
         flow: Flow { blocks, meta: r.meta },
         page: r.page,
@@ -353,6 +356,7 @@ fn finalize(mut r: Reader) -> Parsed {
         default_font,
         headers_footers,
         foreign_styles,
+        own_styles,
         notes: r.notes,
         comments: r.comments,
         doc_notes: r.doc_notes,
@@ -432,8 +436,9 @@ fn set_section_revisions(doc: &mut Document) {
 /// Parse RTF bytes into a document.
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
     model::begin_import();
-    let Parsed { flow, last_section, default_font, headers_footers, foreign_styles, notes, comments, doc_notes, doc_opts, doc_set, .. } =
-        parse_full(bytes, true)?;
+    let Parsed {
+        flow, last_section, default_font, headers_footers, foreign_styles, own_styles, notes, comments, doc_notes, doc_opts, doc_set, ..
+    } = parse_full(bytes, true)?;
     let mut doc = model::to_doc_in(&flow, last_section);
     doc_opts.apply(&mut doc.settings);
     doc_set.apply(&mut doc.settings);
@@ -496,6 +501,10 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
             s.para = wordcraft_doc::props::ParaProps { outline_level: s.para.outline_level, ..para };
             s.chr = chr;
         }
+    }
+    // The document's own styles, which its paragraphs and runs already name.
+    for style in own_styles {
+        Arc::make_mut(&mut doc.styles).upsert(style);
     }
     Ok(doc)
 }

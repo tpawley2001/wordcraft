@@ -65,6 +65,11 @@ pub(super) struct Reader {
     pub(super) style_cur: i32,
     pub(super) style_name: String,
     pub(super) style_def_cur: StyleDef,
+    /// The stylesheet's entries in the order the file gives them.
+    pub(super) style_order: Vec<i32>,
+    /// The document style id each paragraph and character entry stands for, made when first
+    /// needed (a new entry clears it).
+    pub(super) style_ids: std::cell::OnceCell<super::styles::StyleIds>,
     /// The text of `{\*\generator …}`, when the file names the program that wrote it.
     pub(super) generator: Option<String>,
     pub(super) meta: Meta,
