@@ -136,11 +136,20 @@ pub struct TableProps {
     pub borders: Option<Borders>,
     /// Default cell margins (top, left, bottom, right), points.
     pub cell_margins: Option<[f32; 4]>,
+    /// Which sides of `cell_margins` the file set (top, left, bottom, right); `None` when all four
+    /// are set. A side left out is not overridden (`w:tblCellMar`, ECMA-376 §17.4.42), so it is
+    /// not written back; `cell_margins` holds 0 for it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cell_margin_sides: Option<[bool; 4]>,
     /// Fixed column widths (no auto-fit).
     pub fixed: bool,
     /// Table style options ("look"): header row, total row, banded rows, first column, last
     /// column, banded columns.
     pub look: TableLook,
+    /// For a row's exceptions (`w:tblPrEx`): whether the file stated `look` (`w:tblLook`), which
+    /// is written back only then. A table always writes its look.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub look_set: bool,
     pub shading: Option<Rgb>,
     /// Alternative text: the title (`w:tblCaption`).
     pub caption: Option<String>,

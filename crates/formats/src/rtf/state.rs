@@ -188,6 +188,24 @@ pub(super) struct Output {
     pub(super) table_rights: Vec<Vec<i32>>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
+    pub(super) nest: Vec<TableLevel>,
+}
+
+/// The state of one open table that encloses the one being read (RTF nested tables, `\itapN`):
+/// its rows so far, the row and cell being read, and the row's definitions.
+#[derive(Default)]
+pub(super) struct TableLevel {
+    pub(super) table: Vec<Vec<Cell>>,
+    pub(super) row: Vec<Cell>,
+    pub(super) cell: Vec<FBlock>,
+    pub(super) defs: Vec<CellDef>,
+    pub(super) def_cur: CellDef,
+    pub(super) row_header: bool,
+    pub(super) row_height: Option<(f32, bool)>,
+    pub(super) row_keep: bool,
+    pub(super) table_rights: Vec<Vec<i32>>,
+    pub(super) table_heights: Vec<Option<(f32, bool)>>,
+    pub(super) table_keeps: Vec<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -214,6 +232,9 @@ pub(super) struct St {
     pub(super) align: Option<Align>,
     pub(super) style: i32,
     pub(super) intbl: bool,
+    /// The paragraph's table depth (`\itapN`): 0 the body, 1 a table, 2 a table in its cell…
+    /// `None` until the paragraph says, when `\intbl` means 1.
+    pub(super) itap: Option<u8>,
     pub(super) ls: Option<i32>,
     pub(super) ilvl: u8,
     pub(super) outline: Option<u8>,
@@ -262,6 +283,8 @@ pub(super) struct St {
     /// Word 6.0/95 paragraph numbering (`{\*\pn …}`), which the group's end keeps here; `\pard`
     /// clears it. A paragraph with `\lsN` (Word 97+) ignores it.
     pub(super) pn: Option<Box<Pn>>,
+    /// The paragraph's frame and drop cap words (`\absw`, `\posx`, `\dropcapli`…).
+    pub(super) frame: Option<Box<super::frames::FrameSt>>,
 }
 
 impl Default for St {
@@ -280,6 +303,7 @@ impl Default for St {
             align: None,
             style: 0,
             intbl: false,
+            itap: None,
             ls: None,
             ilvl: 0,
             outline: None,
@@ -312,6 +336,7 @@ impl Default for St {
             tab_align: TabAlign::Left,
             tab_leader: TabLeader::None,
             pn: None,
+            frame: None,
         }
     }
 }
