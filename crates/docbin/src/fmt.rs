@@ -126,6 +126,11 @@ pub(crate) fn ico(i: u8) -> Option<Rgb> {
     ICO.get(i as usize).copied()
 }
 
+/// Whether `i` is an `Ico` palette index (0 = automatic included).
+pub(crate) fn is_ico(i: u8) -> bool {
+    usize::from(i) < ICO.len()
+}
+
 /// The model border style a `brcType` stands for ([MS-DOC] §2.9.22 BrcType; 0x02, thick, is in
 /// the BRC of Microsoft's Word 97-2007 specification). Types the model doesn't carry (the gap
 /// variants, 3-D, inset/outset) draw as single lines, as the DOCX reader maps them.
@@ -149,16 +154,12 @@ fn brc_width(t: u8, dpt: u8) -> f32 {
     if t >= 0x40 { f32::from(dpt) } else { (f32::from(dpt.max(2)) / 8.0).min(12.0) }
 }
 
-/// One border from a Brc80 operand ([MS-DOC] §2.9.18). All bits set means "no border"; an
-/// operand shorter than four bytes, or one whose `ico` names no palette colour (a truncated
-/// operand leaves the next record's bytes there), is not a Brc80 and is ignored.
+/// One border from a Brc80 operand ([MS-DOC] §2.9.18). All bits set means "no border"; a
+/// truncated operand is ignored.
 pub(crate) fn brc80(op: &[u8]) -> Option<Border> {
     let [dpt, ty, ico_index, tail, ..] = op else { return None };
     if [*dpt, *ty, *ico_index, *tail] == [0xFF; 4] {
         return Some(Border::default());
-    }
-    if usize::from(*ico_index) >= ICO.len() {
-        return None;
     }
     Some(Border { style: brc_style(*ty), width: brc_width(*ty, *dpt), color: ico(*ico_index), space: f32::from(tail & 0x1F) })
 }

@@ -337,8 +337,10 @@ pub(crate) fn apply_section(s: &mut SectionProps, pgn: &mut PageNumbering, prl: 
         // Page borders: Word writes both forms for a side, so the last one in the grpprl wins.
         // A side that decodes to "no border" is stored as such; the whole set is dropped after
         // the Sepx if no side is visible.
+        // An `ico` that names no palette colour means the operand is not a Brc80 (a truncated
+        // one reads the next record's bytes there): that side is skipped.
         S_BRC_TOP80 | S_BRC_LEFT80 | S_BRC_BOTTOM80 | S_BRC_RIGHT80 => {
-            if let Some(b) = fmt::brc80(prl.operand) {
+            if let Some(b) = prl.operand.get(2).filter(|&&i| fmt::is_ico(i)).and_then(|_| fmt::brc80(prl.operand)) {
                 set_page_border(s, prl.op, b);
             }
         }
