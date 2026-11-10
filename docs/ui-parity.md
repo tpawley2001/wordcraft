@@ -1,6 +1,6 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-09 · **Change:** trivial (P0158: Page Setup › Paper › Paper source: the First page: and Other pages: lists choose the section's printer trays (`layout.paperSource`); readiness estimates unchanged.); previously trivial (P0162: Find and Replace › Go To lists Line, going to the n-th layout line of the main text or +n/-n lines from the caret. Readiness estimates unchanged.); previously trivial (P0124: Adjust List Indents dialog from a list item's context menu. Readiness estimates unchanged); previously trivial (P0159: Review › Proofing › Readability Statistics (`review.readability`: counts, averages, Flesch Reading Ease, Flesch-Kincaid Grade Level; no passive sentences, #4152) and File › Options › Proofing › Show readability statistics, shown in the Proofing pane when the check is complete. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-10 · **Change:** trivial (P0190: Paragraph dialog › Line spacing is a drop-down (Single, 1.5 lines, Double, At least, Exactly, Multiple) with an At box, so exact and at-least spacing open as they are and can be set. Readiness estimates unchanged.); previously trivial (P0158: Page Setup › Paper › Paper source: the First page: and Other pages: lists choose the section's printer trays (`layout.paperSource`); readiness estimates unchanged.); previously trivial (P0162: Find and Replace › Go To lists Line, going to the n-th layout line of the main text or +n/-n lines from the caret. Readiness estimates unchanged.); previously trivial (P0124: Adjust List Indents dialog from a list item's context menu. Readiness estimates unchanged); previously trivial (P0159: Review › Proofing › Readability Statistics (`review.readability`: counts, averages, Flesch Reading Ease, Flesch-Kincaid Grade Level; no passive sentences, #4152) and File › Options › Proofing › Show readability statistics, shown in the Proofing pane when the check is complete. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-09 · **Change:** trivial (P0150: View › Window › Reset Window Position puts the two windows viewed side by side back on equal halves of the screen, keeping Synchronous Scrolling; gap #27. Readiness estimates unchanged.)
 
@@ -155,6 +155,8 @@ References › Index › AutoMark… selects a concordance document and inserts 
 Insert Hyperlink › E-mail Address accepts an address and subject and lists recently used addresses from the document.
 
 ## Revision history
+
+> 2026-11-10 · trivial · P0190: Home › Paragraph › Paragraph… Line spacing box (Single, 1.5 lines, Double, At least, Exactly, Multiple) and At box (points or lines); OK sends only a changed rule or value. Readiness estimates unchanged.
 
 > 2026-11-08 · trivial · P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.
 

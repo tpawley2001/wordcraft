@@ -117,9 +117,11 @@ pub enum Dialog {
         first: f32,
         before: f32,
         after: f32,
-        /// Line spacing as a multiple; Exactly and At Least show as 1.0, and OK keeps them
-        /// unless this changes (#467).
-        line: f32,
+        /// The Line spacing box's entry (`LINE_RULES`: Single, 1.5 lines, Double,
+        /// At least, Exactly, Multiple) and the At box's value, in points for At least and
+        /// Exactly and in lines for Multiple.
+        line_rule: u8,
+        line_at: f32,
         keep_next: bool,
         keep_lines: bool,
         page_break: bool,
@@ -1081,3 +1083,5 @@ pub mod dialogs_table_style;
 pub mod dialogs_templates;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_para_line;

@@ -5,7 +5,7 @@ use super::font::{apply_font, font_box, font_sample_box, font_sample_props, samp
 use super::forms::{cell_margins_dialog, custom_properties, table_properties};
 use super::mailings::{ADDRESS_PARTS, recipient_list, rule_params};
 use super::page_setup::{page_layout_commands, page_paper_group, page_paper_source_group, page_valign_combo, page_valign_value, run_as_one_step};
-use super::paragraph::{ParaNumber, apply_paragraph, para_check, para_number};
+use super::paragraph::{ParaNumber, apply_paragraph, line_spacing_boxes, para_check, para_number};
 use super::styles::manage_styles;
 use super::{Dialog, MeasureExt, Tokens, Ui, Value, WordApp, json, semibold, vec2};
 
@@ -271,7 +271,8 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         first,
         before,
         after,
-        line,
+        line_rule,
+        line_at,
         keep_next,
         keep_lines,
         page_break,
@@ -340,7 +341,7 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     let before_label = r.cell(|ui| ui.label(tl!("Before:")));
                     r.cell(|ui| para_number(ui, before, ParaNumber::Points, "spaceBefore", mixed, &before_label));
                     let line_label = r.cell(|ui| ui.label(tl!("Line spacing:")));
-                    r.cell(|ui| para_number(ui, line, ParaNumber::Lines, "lineSpacing", mixed, &line_label));
+                    r.cell(|ui| ui.horizontal(|ui| line_spacing_boxes(ui, line_rule, line_at, mixed, &line_label)));
                 });
                 t.row(|r| {
                     let after_label = r.cell(|ui| ui.label(tl!("After:")));
