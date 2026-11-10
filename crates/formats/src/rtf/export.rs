@@ -1137,9 +1137,16 @@ impl Writer {
         self.inlines(&p.inlines, out);
         self.base = Fmt::default();
         // A tracked paragraph mark is the `\par` inside the revision's group.
-        let marks = self.rev_ctl(p.mark_ins.as_deref(), p.mark_del.as_deref());
+        let mut marks = self.rev_ctl(p.mark_ins.as_deref(), p.mark_del.as_deref());
+        // An empty paragraph's mark formatting: the character formatting at its `\par`.
+        if let Some(m) = p.mark.as_deref().filter(|_| p.textless()) {
+            let f = mark_fmt(m);
+            marks.push_str(&self.char_ctl(&f));
+        }
         if end == "\\par" && !marks.is_empty() {
             out.push_str(&format!("{{{marks} {end}}}"));
+        } else if !marks.is_empty() {
+            out.push_str(&format!("{marks} {end}"));
         } else {
             out.push_str(end);
         }
@@ -1465,6 +1472,26 @@ fn tab_words(t: &wordcraft_doc::props::TabStop) -> String {
     format!("{align}{leader}\\tx{at}")
 }
 
+/// The character formatting RTF writes for a paragraph mark `m` (its font by name, monospaced
+/// or not).
+fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
+    Fmt {
+        bold: m.bold == Some(true),
+        italic: m.italic == Some(true),
+        underline: m.underline.is_some_and(|u| u != wordcraft_doc::props::Underline::None),
+        strike: m.strike == Some(true),
+        sup: m.vert_align == Some(wordcraft_doc::props::VertAlign::Superscript),
+        sub: m.vert_align == Some(wordcraft_doc::props::VertAlign::Subscript),
+        color: match m.color {
+            Some(wordcraft_doc::props::TextColor::Rgb(c)) => Some(c),
+            _ => None,
+        },
+        size: m.size,
+        font: m.font.as_deref().map(Arc::from),
+        ..Fmt::default()
+    }
+}
+
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
     let (marked, marks) = match mark_doc(doc) {
@@ -1483,7 +1510,8 @@ pub fn export(doc: &Document) -> String {
         .map(|(s, n)| (s.id.clone(), n))
         .collect();
     let before = set_own_styles(own);
-    let opts = model::FlowOpts::tracked();
+    // An empty paragraph's mark formatting sets its height.
+    let opts = model::FlowOpts { marks: true, ..model::FlowOpts::tracked() };
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {

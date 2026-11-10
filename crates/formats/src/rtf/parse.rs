@@ -345,7 +345,7 @@ fn finalize(mut r: Reader) -> Parsed {
     if blocks.is_empty() {
         blocks.push(FBlock::Para(Para::default()));
     }
-    let default_font = r.fonts.get(&r.deff).filter(|n| !model::is_mono(n)).map(|n| n.to_string());
+    let default_font = r.fonts.get(&r.deff).map(|n| n.to_string());
     let foreign_styles = r.foreign_styles();
     let own_styles = r.own_styles();
     Parsed {
