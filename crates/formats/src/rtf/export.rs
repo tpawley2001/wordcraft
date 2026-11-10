@@ -418,6 +418,56 @@ fn doc_note_words(set: &wordcraft_doc::Settings) -> String {
     o
 }
 
+/// The document settings that differ from a new document's: view zoom, drawing grid, Restrict
+/// Editing (never a password hash), linked styles, privacy options and Shift+Return expansion.
+fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
+    use wordcraft_doc::ZoomFit;
+    let def = wordcraft_doc::Settings::default();
+    let mut o = String::new();
+    if let Some(z) = set.zoom {
+        o.push_str(&format!("\\viewscale{}", z.percent));
+        // Text Width has no RTF form: the percentage alone.
+        o.push_str(match z.fit {
+            Some(ZoomFit::OnePage) => "\\viewzk1",
+            Some(ZoomFit::PageWidth) => "\\viewzk2",
+            _ => "",
+        });
+    }
+    let grid =
+        |s: &wordcraft_doc::Settings| (s.grid_h, s.grid_v, s.grid_every_h, s.grid_every_v, s.grid_use_margins, s.grid_origin_x, s.grid_origin_y);
+    if grid(set) != grid(&def) {
+        let tw = |v: f32| (v * 20.0).round() as i64;
+        o.push_str(&format!("\\dghspace{}\\dgvspace{}", tw(set.grid_h), tw(set.grid_v)));
+        if set.grid_use_margins {
+            o.push_str("\\dgmargin");
+        } else {
+            o.push_str(&format!("\\dghorigin{}\\dgvorigin{}", tw(set.grid_origin_x), tw(set.grid_origin_y)));
+        }
+        o.push_str(&format!("\\dghshow{}\\dgvshow{}", set.grid_every_h, set.grid_every_v));
+    }
+    let level = match set.protection.as_deref() {
+        Some("trackedChanges") => Some(0),
+        Some("comments") => Some(1),
+        Some("forms") => Some(2),
+        Some("readOnly") => Some(3),
+        _ => None,
+    };
+    if let Some(n) = level {
+        o.push_str(&format!("\\enforceprot1\\protlevel{n}"));
+    }
+    for (on, w) in [
+        (set.link_styles, "\\linkstyles"),
+        (set.remove_personal_info, "\\rempersonalinfo"),
+        (set.remove_date_time, "\\remdttm"),
+        (set.do_not_expand_shift_return, "\\expshrtn"),
+    ] {
+        if on {
+            o.push_str(w);
+        }
+    }
+    o
+}
+
 pub(super) const HEAD_SIZES: [f32; 6] = [20.0, 16.0, 14.0, 12.0, 12.0, 11.0];
 
 fn style_num(k: Kind) -> Option<u32> {
@@ -1224,7 +1274,7 @@ fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionPro
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
     let notes = doc_note_words(settings);
-    let opts = doc_opts_words(settings);
+    let opts = doc_opts_words(settings) + &doc_setting_words(settings);
     out.push_str(&format!(
         "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{landscape}{notes}{opts}\\viewkind4\n",
         tw(sec.page_w),

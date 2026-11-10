@@ -31,6 +31,8 @@ pub(super) struct Reader {
     /// The document's footnote and endnote options (`\ftnbj`, `\aftnstart`…); their `num_fmt`
     /// is the document's note number format.
     pub(super) doc_notes: (wordcraft_doc::section::NoteProps, wordcraft_doc::section::NoteProps),
+    /// The document settings the header names (`\viewscale`, `\dghspace`, `\protlevel`…).
+    pub(super) doc_set: DocSettingWords,
     /// The current section's formatting before a tracked change (`\oldsprops`), and the one
     /// an `\oldsprops` group being read builds.
     pub(super) sec_old: Option<SecFmt>,
@@ -336,6 +338,43 @@ impl Reader {
             "aendnotes" => end.pos = Some(NotePos::SectEnd),
             "aenddoc" => end.pos = Some(NotePos::DocEnd),
             _ => return apply_note_word(w, p, foot, end),
+        }
+        true
+    }
+
+    /// Records document setting word `w` (view zoom, drawing grid, Restrict Editing, privacy
+    /// options, linked styles, Shift+Return expansion). False when `w` isn't one.
+    pub(super) fn doc_setting_word(&mut self, w: &str, p: Option<i32>) -> bool {
+        use wordcraft_doc::ZoomFit;
+        let on = p != Some(0);
+        let pv = p.unwrap_or(0);
+        let d = &mut self.doc_set;
+        match w {
+            "annotprot" => d.old_prot = on.then_some("comments"),
+            "dghorigin" => d.origin_x = (pv >= 0).then(|| pv as f32 / 20.0).or(d.origin_x),
+            "dghshow" => d.every_h = u8::try_from(pv).ok().filter(|&n| n <= 127).or(d.every_h),
+            "dghspace" => d.grid_h = (pv >= 1).then(|| pv as f32 / 20.0).or(d.grid_h),
+            "dgmargin" => d.margins = Some(on),
+            "dgvorigin" => d.origin_y = (pv >= 0).then(|| pv as f32 / 20.0).or(d.origin_y),
+            "dgvshow" => d.every_v = u8::try_from(pv).ok().filter(|&n| n <= 127).or(d.every_v),
+            "dgvspace" => d.grid_v = (pv >= 1).then(|| pv as f32 / 20.0).or(d.grid_v),
+            "enforceprot" => d.enforce = Some(on),
+            "expshrtn" => d.expand_shift_return = Some(on),
+            "formprot" => d.old_prot = on.then_some("forms"),
+            "linkstyles" => d.link_styles = Some(on),
+            "protlevel" => d.level = u8::try_from(pv).ok().filter(|&n| n <= 3).or(d.level),
+            "readprot" => d.old_prot = on.then_some("readOnly"),
+            "remdttm" => d.remove_date_time = Some(on),
+            "rempersonalinfo" => d.remove_personal_info = Some(on),
+            "revprot" => d.old_prot = on.then_some("trackedChanges"),
+            "viewscale" => d.percent = u32::try_from(pv).ok().filter(|n| (10..=500).contains(n)).or(d.percent),
+            "viewzk" => match pv {
+                0 => d.fit = Some(None),
+                1 => d.fit = Some(Some(ZoomFit::OnePage)),
+                2 => d.fit = Some(Some(ZoomFit::PageWidth)),
+                _ => {}
+            },
+            _ => return false,
         }
         true
     }
@@ -662,4 +701,82 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         _ => return false,
     }
     true
+}
+
+/// The document setting words read from the header, applied to `Document.settings` once the
+/// document is built. `None` is a word the header doesn't name.
+#[derive(Default)]
+pub(super) struct DocSettingWords {
+    /// `\viewscale` (10–500) and `\viewzk` (`Some(None)` for `\viewzk0`).
+    percent: Option<u32>,
+    fit: Option<Option<wordcraft_doc::ZoomFit>>,
+    /// The drawing grid, in points.
+    grid_h: Option<f32>,
+    grid_v: Option<f32>,
+    origin_x: Option<f32>,
+    origin_y: Option<f32>,
+    every_h: Option<u8>,
+    every_v: Option<u8>,
+    margins: Option<bool>,
+    /// `\protlevel` (0–3), `\enforceprot`, and the level an older word (`\formprot`…) names.
+    level: Option<u8>,
+    enforce: Option<bool>,
+    old_prot: Option<&'static str>,
+    link_styles: Option<bool>,
+    remove_personal_info: Option<bool>,
+    remove_date_time: Option<bool>,
+    expand_shift_return: Option<bool>,
+}
+
+impl DocSettingWords {
+    pub(super) fn apply(&self, s: &mut wordcraft_doc::Settings) {
+        if self.percent.is_some() || self.fit.is_some() {
+            let (percent, fit) = (self.percent.unwrap_or(100), self.fit.flatten());
+            // 100% with no fit mode is the model's "no saved zoom".
+            s.zoom = (percent != 100 || fit.is_some()).then_some(wordcraft_doc::Zoom { percent, fit });
+        }
+        if let Some(v) = self.grid_h {
+            s.grid_h = v;
+        }
+        if let Some(v) = self.grid_v {
+            s.grid_v = v;
+        }
+        if let Some(v) = self.origin_x {
+            s.grid_origin_x = v;
+        }
+        if let Some(v) = self.origin_y {
+            s.grid_origin_y = v;
+        }
+        if let Some(v) = self.every_h {
+            s.grid_every_h = v;
+        }
+        if let Some(v) = self.every_v {
+            s.grid_every_v = v;
+        }
+        // An origin with no `\dgmargin` is measured from the page edge.
+        match self.margins {
+            Some(m) => s.grid_use_margins = m,
+            None if self.origin_x.is_some() || self.origin_y.is_some() => s.grid_use_margins = false,
+            None => {}
+        }
+        let level = self.level.and_then(|n| ["trackedChanges", "comments", "forms", "readOnly"].get(usize::from(n)).copied());
+        let prot = match self.enforce {
+            Some(true) => level.or(self.old_prot),
+            Some(false) => None,
+            None => self.old_prot,
+        };
+        if let Some(p) = prot {
+            s.protection = Some(p.to_string());
+        }
+        for (v, field) in [
+            (self.link_styles, &mut s.link_styles),
+            (self.remove_personal_info, &mut s.remove_personal_info),
+            (self.remove_date_time, &mut s.remove_date_time),
+            (self.expand_shift_return, &mut s.do_not_expand_shift_return),
+        ] {
+            if let Some(v) = v {
+                *field = v;
+            }
+        }
+    }
 }

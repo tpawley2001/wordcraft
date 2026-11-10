@@ -31,6 +31,8 @@ struct Parsed {
     comments: Vec<CommentData>,
     /// The document's footnote and endnote options; `num_fmt` is the number format.
     doc_notes: (wordcraft_doc::section::NoteProps, wordcraft_doc::section::NoteProps),
+    /// The document settings the header names.
+    doc_set: super::reader::DocSettingWords,
 }
 
 /// Where the document `{\rtf…}` starting at `start` ends: just past the `}` that first brings the
@@ -354,6 +356,7 @@ fn finalize(mut r: Reader) -> Parsed {
         notes: r.notes,
         comments: r.comments,
         doc_notes: r.doc_notes,
+        doc_set: r.doc_set,
     }
 }
 
@@ -429,10 +432,11 @@ fn set_section_revisions(doc: &mut Document) {
 /// Parse RTF bytes into a document.
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
     model::begin_import();
-    let Parsed { flow, last_section, default_font, headers_footers, foreign_styles, notes, comments, doc_notes, doc_opts, .. } =
+    let Parsed { flow, last_section, default_font, headers_footers, foreign_styles, notes, comments, doc_notes, doc_opts, doc_set, .. } =
         parse_full(bytes, true)?;
     let mut doc = model::to_doc_in(&flow, last_section);
     doc_opts.apply(&mut doc.settings);
+    doc_set.apply(&mut doc.settings);
     let (mut foot, mut end) = doc_notes;
     if let Some(f) = foot.num_fmt.take() {
         doc.settings.footnote_format = f;
