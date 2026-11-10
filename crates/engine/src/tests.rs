@@ -40,6 +40,7 @@ mod mark_final;
 mod mark_toc_entry;
 mod move_text_keys;
 mod negative_margins;
+mod rtl_gutter;
 mod para_sort_keys;
 mod manual_duplex;
 mod print_options;

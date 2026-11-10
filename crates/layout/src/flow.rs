@@ -856,7 +856,7 @@ fn line_numbers(ctx: &mut Ctx, pb: &mut PageBuilder, pl: &ParaLayout, (l0, l1): 
                 para: num.clone(),
                 l0: 0,
                 l1: 1,
-                x: pb.sect.margin_left + pb.sect.gutter - dist - w,
+                x: pb.sect.text_left(pb.mirror) - dist - w,
                 y: ly,
                 turn: TextDirection::Horizontal,
             });

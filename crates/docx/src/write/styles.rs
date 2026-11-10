@@ -235,13 +235,25 @@ pub(super) fn numbering_xml(doc: &Document) -> Vec<u8> {
         }
         w.close("w:num");
     }
+    if let Some(v) = doc.numbering.num_id_mac_at_cleanup {
+        w.val("w:numIdMacAtCleanup", &v.to_string());
+    }
     w.close("w:numbering");
     w.into_bytes()
 }
 
 /// One `w:lvl` (list level `i`).
 fn write_level(w: &mut W, i: usize, l: &Level) {
-    w.open("w:lvl", &[("w:ilvl", &i.to_string())]);
+    // CT_Lvl attributes: ilvl, tplc, tentative.
+    let ilvl = i.to_string();
+    let mut attrs: Vec<(&str, &str)> = vec![("w:ilvl", &ilvl)];
+    if let Some(t) = l.tplc.as_deref().filter(|t| t.len() == 8 && t.bytes().all(|b| b.is_ascii_hexdigit())) {
+        attrs.push(("w:tplc", t));
+    }
+    if l.tentative {
+        attrs.push(("w:tentative", "1"));
+    }
+    w.open("w:lvl", &attrs);
     w.val("w:start", &l.start.to_string());
     w.val("w:numFmt", l.format.ooxml());
     if !l.restart {
@@ -261,6 +273,20 @@ fn write_level(w: &mut W, i: usize, l: &Level) {
         LevelSuffix::Nothing => w.val("w:suff", "nothing"),
     }
     w.val("w:lvlText", &l.text);
+    if let Some(g) = &l.legacy {
+        let (space, indent) = (g.space.map(|v| v.to_string()), g.indent.map(|v| v.to_string()));
+        let mut attrs: Vec<(&str, &str)> = Vec::new();
+        if let Some(on) = g.legacy {
+            attrs.push(("w:legacy", if on { "1" } else { "0" }));
+        }
+        if let Some(v) = &space {
+            attrs.push(("w:legacySpace", v));
+        }
+        if let Some(v) = &indent {
+            attrs.push(("w:legacyIndent", v));
+        }
+        w.empty("w:legacy", &attrs);
+    }
     w.val("w:lvlJc", props::align_val(l.align));
     w.open("w:pPr", &[]);
     if let Some(t) = l.tab.filter(|t| t.is_finite()) {

@@ -70,11 +70,16 @@ fn sectpr_body(w: &mut W, s: &SectionProps) {
         };
         w.val("w:type", start);
         let (pw, ph) = (s.page_w.clamp(36.0, crate::units::MAX_LEN_PT), s.page_h.clamp(36.0, crate::units::MAX_LEN_PT));
+        // CT_PageSz attributes: w, h, orient, code.
+        let (pw, ph, code) = (twips(pw), twips(ph), s.paper_code.map(|c| c.to_string()));
+        let mut size: Vec<(&str, &str)> = vec![("w:w", &pw), ("w:h", &ph)];
         if s.landscape {
-            w.empty("w:pgSz", &[("w:w", &twips(pw)), ("w:h", &twips(ph)), ("w:orient", "landscape")]);
-        } else {
-            w.empty("w:pgSz", &[("w:w", &twips(pw)), ("w:h", &twips(ph))]);
+            size.push(("w:orient", "landscape"));
         }
+        if let Some(c) = &code {
+            size.push(("w:code", c));
+        }
+        w.empty("w:pgSz", &size);
         let signed = |v: f32, fixed: bool| if fixed { -v.abs() } else { v };
         w.empty(
             "w:pgMar",
@@ -152,6 +157,9 @@ fn sectpr_body(w: &mut W, s: &SectionProps) {
         }
         if s.rtl {
             w.empty("w:bidi", &[]);
+        }
+        if s.rtl_gutter {
+            w.empty("w:rtlGutter", &[]);
         }
         if let Some(g) = &s.doc_grid {
             let mut a = vec![("w:linePitch", twips(g.line_pitch()))];
