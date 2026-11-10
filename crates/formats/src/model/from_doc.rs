@@ -234,6 +234,11 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         x.indent_right_chars = p.indent_right_chars;
         x.indent_first_chars = p.indent_first_chars;
     }
+    if let Some(lines) = p.drop_cap.filter(|l| opts.frames && *l > 0) {
+        (x.drop_cap, x.drop_cap_margin, x.drop_cap_distance) = (Some(lines), p.drop_cap_margin, p.drop_cap_distance);
+    } else {
+        x.frame = p.frame.clone().filter(|_| opts.frames);
+    }
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
 

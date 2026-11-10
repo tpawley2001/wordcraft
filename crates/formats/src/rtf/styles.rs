@@ -192,6 +192,9 @@ impl Reader {
             x.suppress_hyphens = st.no_hyph;
             x.snap_to_grid = st.snap_grid;
         }
+        if let Some(f) = st.frame.as_deref() {
+            f.apply(p.extra.get_or_insert_with(Default::default));
+        }
         if let Some(ls) = st.ls {
             let list = self.overrides.get(&ls).and_then(|id| self.lists.get(id));
             let lv = st.ilvl.min(8);

@@ -494,6 +494,8 @@ pub struct FlowOpts {
     pub indent_chars: bool,
     /// Table row heights and rows kept from breaking ([`FTable::extra`]), also without `paras`.
     pub rows: bool,
+    /// The paragraph's own text frame and drop cap in [`Para::extra`], also without `paras`.
+    pub frames: bool,
 }
 
 impl FlowOpts {
@@ -501,7 +503,8 @@ impl FlowOpts {
     /// ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]), shading
     /// ([`FlowOpts::shading`]), indents in characters ([`FlowOpts::indent_chars`]), the other
     /// paragraph flags ([`FlowOpts::para_flags`]), table row heights and keeps
-    /// ([`FlowOpts::rows`]), fields and text boxes.
+    /// ([`FlowOpts::rows`]), text frames and drop caps ([`FlowOpts::frames`]), fields and
+    /// text boxes.
     pub fn tracked() -> Self {
         FlowOpts {
             tracked: true,
@@ -511,6 +514,7 @@ impl FlowOpts {
             indent_chars: true,
             para_flags: true,
             rows: true,
+            frames: true,
             fields: true,
             boxes: true,
             ..Default::default()
