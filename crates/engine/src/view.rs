@@ -32,6 +32,10 @@ pub struct ViewState {
     /// Reveal Formatting pane (Home › Styles, Shift+F1).
     #[serde(default)]
     pub reveal_formatting_pane: bool,
+    /// Styles pane › Disable Linked Styles: a linked style always applies as a paragraph style.
+    /// Not kept between runs.
+    #[serde(default)]
+    pub disable_linked_styles: bool,
     /// Selection Pane (Layout › Arrange, Alt+F10): the body's drawings, front-most first.
     #[serde(default)]
     pub selection_pane: bool,
@@ -207,6 +211,7 @@ impl Default for ViewState {
             styles_pane_dock: StylesPaneDock::Right,
             style_inspector: false,
             reveal_formatting_pane: false,
+            disable_linked_styles: false,
             selection_pane: false,
             split: None,
             comments_pane: false,

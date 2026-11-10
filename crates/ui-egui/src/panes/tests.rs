@@ -694,3 +694,30 @@ fn the_styles_pane_scroll_bar_leaves_the_style_markers_clear() {
         );
     }
 }
+
+/// The Styles pane's Disable Linked Styles check box runs `styles.disableLinked` and shows the
+/// view state.
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn the_styles_pane_disables_linked_styles() {
+    use egui_kittest::kittest::{NodeT, Queryable};
+    let app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello")), crate::Services::default());
+    let mut fonts = false;
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(400.0, 1200.0)).build_ui_state(
+        |ui, app: &mut crate::WordApp| {
+            if !fonts {
+                crate::theme::install_fonts(ui.ctx());
+                fonts = true;
+                return;
+            }
+            super::styles(app, ui);
+        },
+        app,
+    );
+    h.run_steps(4);
+    assert!(!h.get_by_label("Disable Linked Styles").accesskit_node().is_toggled());
+    h.get_by_label("Disable Linked Styles").click();
+    h.run_steps(3);
+    assert!(h.state().session.view.disable_linked_styles);
+    assert!(h.get_by_label("Disable Linked Styles").accesskit_node().is_toggled());
+}
