@@ -1,7 +1,8 @@
 //! Rich Text Format.
 //!
-//! Export: font and colour tables, a small stylesheet (headings with outline levels, Title,
-//! Quote, Code), list tables (`\listtable` / `\listoverridetable` with `\listtext` labels for
+//! Export: font and colour tables, a stylesheet (headings with outline levels, Title, Quote,
+//! Code, then the document's own paragraph and character styles from number 10 with their
+//! based-on, next and linked styles and flags; `\sN` and `\csN` on the text that uses them), list tables (`\listtable` / `\listoverridetable` with `\listtext` labels for
 //! older readers), document info, page setup, paragraph formatting (`\pard`, alignment, page
 //! break before), character formatting (`\b \i \ul \strike \super \sub \f \fs \cf \chcbpat`),
 //! hyperlinks as `HYPERLINK` fields, bookmarks, pictures (`\pngblip` / `\jpegblip`), tables
@@ -19,7 +20,9 @@
 //! code page's bytes stream through one decoder, so a lead byte and its trail byte decode
 //! together and a run that looks like a UTF-8 BOM is not mistaken for one; the formatting words
 //! above, stylesheet-based
-//! headings and `\outlinelevel`, lists through `\ls`/`\ilvl`, fields, bookmarks, pictures and
+//! headings and `\outlinelevel`, the document's own paragraph (`\sN`) and character
+//! (`\*\csN`) styles with `\sbasedon`, `\snext`, `\slink`, `\sqformat`, `\spriority`,
+//! `\ssemihidden`/`\shidden` and `\slocked`, on the paragraphs and runs that use them, lists through `\ls`/`\ilvl`, fields, bookmarks, pictures and
 //! tables, footnotes, endnotes (`\footnote` with `\ftnalt`) and comments (author, initials, date,
 //! text, the commented range). Group nesting, picture sizes and the number of notes and comments
 //! are capped. Not kept: custom note marks, comment replies (`\atnparent`), notes inside
@@ -35,6 +38,7 @@ use crate::model::{self, Cell, FBlock, FTable, Flow, Fmt, Inline, Kind, ListInfo
 
 mod date;
 mod export;
+mod frames;
 mod parse;
 mod reader;
 mod state;
@@ -56,6 +60,8 @@ use word::hyperlink;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod own_style_edges;
 #[cfg(test)]
 mod shape_regressions;
 mod shapes;

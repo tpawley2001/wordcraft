@@ -29,6 +29,7 @@ pub(crate) mod linear;
 mod missing_font_line;
 mod missing_font_line_more;
 mod missing_font_line_tahoma;
+mod missing_font_line_windows;
 mod missing_glyphs;
 mod nbsp;
 mod nested_cant_split;

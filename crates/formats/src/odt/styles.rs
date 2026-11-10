@@ -565,18 +565,14 @@ impl DateStyles {
 /// Most date and time styles kept (hostile files).
 const MAX_DATA_STYLES: usize = 10_000;
 
-/// Longest style id made, in characters.
-const MAX_STYLE_ID: usize = 64;
-
 /// The document style id for an ODF style: its name's letters and digits (LibreOffice's
-/// `Text_20_body` is `Textbody`), at most [`MAX_STYLE_ID`] of them.
+/// `Text_20_body` is `Textbody`), at most [`crate::model::MAX_STYLE_ID`] of them.
 pub(super) fn style_id(odt: &str) -> String {
     // LibreOffice's index styles are WordCraft's TOC styles.
     if let Some((id, _)) = super::writer::generating_style(odt) {
         return id;
     }
-    let id: String = odt.replace("_20_", " ").chars().filter(|c| c.is_alphanumeric()).take(MAX_STYLE_ID).collect();
-    if id.is_empty() { "Custom".into() } else { id }
+    crate::model::style_id(&odt.replace("_20_", " "))
 }
 
 /// An ODF border (`0.5pt solid #000000`, `none`; ODF 1.3 §20.183): width, style and colour in any

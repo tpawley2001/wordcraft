@@ -2,7 +2,8 @@ use super::date::{iso_to_dttm, rtf_date};
 use super::state::{MARK_CLOSE, MARK_OPEN, MAX_NOTE_BLOCKS};
 use super::styles::{style_fmt, styled};
 use super::{
-    Align, Arc, Block, Blocks, Document, FBlock, FTable, Fmt, HashSet, Inline, InlineObject, Kind, Meta, Para, Paragraph, RevMark, Rgb, VAlign, model,
+    Align, Arc, Block, Blocks, Document, FBlock, FTable, Fmt, HashMap, HashSet, Inline, InlineObject, Kind, Meta, Para, Paragraph, RevMark, Rgb,
+    VAlign, model,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -477,6 +478,127 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
 
 pub(super) const HEAD_SIZES: [f32; 6] = [20.0, 16.0, 14.0, 12.0, 12.0, 11.0];
 
+thread_local! {
+    /// The `\stylesheet` number of each of the document's own styles, by id, while [`export`]
+    /// writes the document.
+    static OWN_STYLES: std::cell::RefCell<HashMap<String, u32>> = std::cell::RefCell::new(HashMap::new());
+}
+
+/// The `\stylesheet` number of the document's own style `id`, while [`export`] writes it.
+fn own_style_num(id: &str) -> Option<u32> {
+    OWN_STYLES.with(|m| m.try_borrow().ok().and_then(|m| m.get(id).copied()))
+}
+
+/// Set the numbers [`own_style_num`] gives, returning the ones it gave before.
+fn set_own_styles(nums: HashMap<String, u32>) -> HashMap<String, u32> {
+    OWN_STYLES.with(|m| m.try_borrow_mut().map(|mut m| std::mem::replace(&mut *m, nums)).unwrap_or_default())
+}
+
+/// The first `\stylesheet` number of the document's own styles: 0-9 are the fixed entries.
+const FIRST_OWN_STYLE: u32 = 10;
+
+/// The `\stylesheet` number of style `id`: a fixed entry's, or the document's own style's.
+fn style_ref_num(id: &str) -> Option<u32> {
+    match id {
+        "Normal" => Some(0),
+        "Title" => Some(7),
+        "Quote" => Some(8),
+        model::CODE_STYLE => Some(9),
+        _ => id.strip_prefix("Heading").and_then(|n| n.parse::<u32>().ok()).filter(|n| (1..=6).contains(n)).or_else(|| own_style_num(id)),
+    }
+}
+
+/// The `\stylesheet` entries of `doc`'s own paragraph and character styles, numbered as
+/// [`own_style_num`] gives them; their fonts and colours go into `t`.
+fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
+    use wordcraft_doc::styles::StyleKind;
+    let tw = |v: f32| (v.clamp(-1584.0, 1584.0) * 20.0).round() as i32;
+    let mut out = String::new();
+    for s in &doc.styles.styles {
+        let char = s.kind == StyleKind::Character;
+        let Some(n) = own_style_num(&s.id) else { continue };
+        if char {
+            out.push_str(&format!("{{\\*\\cs{n}\\additive"));
+        } else {
+            out.push_str(&format!("{{\\s{n}"));
+        }
+        if let Some(b) = s.based_on.as_deref().and_then(style_ref_num) {
+            out.push_str(&format!("\\sbasedon{b}"));
+        }
+        if !char && let Some(k) = s.next.as_deref().and_then(style_ref_num) {
+            out.push_str(&format!("\\snext{k}"));
+        }
+        if let Some(l) = s.linked.as_deref().and_then(own_style_num) {
+            out.push_str(&format!("\\slink{l}"));
+        }
+        if s.quick {
+            out.push_str("\\sqformat");
+        }
+        if let Some(p) = s.priority {
+            out.push_str(&format!("\\spriority{p}"));
+        }
+        if s.hidden {
+            out.push_str("\\ssemihidden");
+        }
+        if s.locked {
+            out.push_str("\\slocked");
+        }
+        if !char {
+            let p = &s.para;
+            match p.align {
+                Some(Align::Left) => out.push_str("\\ql"),
+                Some(Align::Center) => out.push_str("\\qc"),
+                Some(Align::Right) => out.push_str("\\qr"),
+                Some(Align::Justify) => out.push_str("\\qj"),
+                Some(Align::Distribute) => out.push_str("\\qd"),
+                None => {}
+            }
+            for (word, v) in [("li", p.indent_left), ("ri", p.indent_right), ("fi", p.indent_first), ("sb", p.space_before), ("sa", p.space_after)] {
+                if let Some(v) = v.filter(|v| v.is_finite()) {
+                    out.push_str(&format!("\\{word}{}", tw(v)));
+                }
+            }
+            use wordcraft_doc::props::LineSpacing;
+            match p.line_spacing {
+                Some(LineSpacing::Multiple(m)) if m.is_finite() => {
+                    out.push_str(&format!("\\sl{}\\slmult1", (m.clamp(0.06, 132.0) * 240.0).round() as i32));
+                }
+                Some(LineSpacing::AtLeast(v)) if v.is_finite() => out.push_str(&format!("\\sl{}\\slmult0", tw(v.max(0.0)))),
+                Some(LineSpacing::Exactly(v)) if v.is_finite() => out.push_str(&format!("\\sl-{}\\slmult0", tw(v.max(1.0)))),
+                _ => {}
+            }
+            for (word, v) in [("keepn", p.keep_next), ("keep", p.keep_lines)] {
+                match v {
+                    Some(true) => out.push_str(&format!("\\{word}")),
+                    Some(false) => out.push_str(&format!("\\{word}0")),
+                    None => {}
+                }
+            }
+        }
+        let c = &s.chr;
+        for (word, v) in [("b", c.bold), ("i", c.italic)] {
+            match v {
+                Some(true) => out.push_str(&format!("\\{word}")),
+                Some(false) => out.push_str(&format!("\\{word}0")),
+                None => {}
+            }
+        }
+        if let Some(f) = c.font.as_deref().filter(|f| !f.is_empty()) {
+            out.push_str(&format!("\\f{}", t.font(f)));
+        }
+        if let Some(sz) = c.size.filter(|v| v.is_finite()) {
+            out.push_str(&format!("\\fs{}", (sz * 2.0).round().clamp(2.0, 3276.0) as i32));
+        }
+        match c.color {
+            Some(wordcraft_doc::TextColor::Rgb(rgb)) => out.push_str(&format!("\\cf{}", t.color(rgb))),
+            Some(wordcraft_doc::TextColor::Auto) => out.push_str("\\cf0"),
+            None => {}
+        }
+        out.push_str(&format!(" {};}}", esc_font(&s.name)));
+    }
+    out
+}
+
 fn style_num(k: Kind) -> Option<u32> {
     match k {
         Kind::Heading(n) => Some(u32::from(n.clamp(1, 6))),
@@ -767,6 +889,9 @@ impl Writer {
     /// Character formatting control words of `f` (no revision marks).
     fn char_ctl(&mut self, f: &Fmt) -> String {
         let mut ctl = String::new();
+        if let Some(n) = f.extra.as_ref().and_then(|x| x.style.as_deref()).and_then(own_style_num) {
+            ctl.push_str(&format!("\\cs{n}"));
+        }
         if f.bold {
             ctl.push_str("\\b");
         }
@@ -1026,7 +1151,7 @@ impl Writer {
         if intbl {
             out.push_str("\\intbl");
         }
-        if let Some(s) = style_num(p.kind) {
+        if let Some(s) = p.extra.as_ref().and_then(|x| x.style.as_deref()).and_then(own_style_num).or_else(|| style_num(p.kind)) {
             out.push_str(&format!("\\s{s}"));
         }
         if let Kind::Heading(n) = p.kind {
@@ -1075,6 +1200,7 @@ impl Writer {
                     out.push_str(&format!("{word}{}", (v.clamp(-1584.0, 1584.0) * 100.0).round() as i64));
                 }
             }
+            out.push_str(&super::frames::frame_words(x));
         }
         match p.kind {
             Kind::Quote => out.push_str("\\li720\\ri720\\i"),
@@ -1305,6 +1431,17 @@ pub fn export(doc: &Document) -> String {
         None => (None, Vec::new()),
     };
     let doc = marked.as_ref().unwrap_or(doc);
+    // The document's own styles are numbered after the fixed entries.
+    let own: HashMap<String, u32> = doc
+        .styles
+        .styles
+        .iter()
+        .filter(|s| model::is_custom_style(doc, &s.id) || model::is_custom_char_style(doc, &s.id))
+        .take(4096)
+        .zip(FIRST_OWN_STYLE..)
+        .map(|(s, n)| (s.id.clone(), n))
+        .collect();
+    let before = set_own_styles(own);
     let opts = model::FlowOpts::tracked();
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
@@ -1337,10 +1474,13 @@ pub fn export(doc: &Document) -> String {
         w.sections = secs;
     }
     w.blocks(&flow.blocks, false, "\\par", &mut body, 0);
-    export_with(&flow.meta, &w, &body, &doc.last_section, &doc.settings)
+    let own_entries = own_style_entries(doc, &mut w.t);
+    set_own_styles(before);
+    export_with(&flow.meta, &w, &own_entries, &body, &doc.last_section, &doc.settings)
 }
 
-fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionProps, settings: &wordcraft_doc::Settings) -> String {
+/// The RTF file: its header (`own_styles`: the document's own stylesheet entries) and `body`.
+fn export_with(m: &Meta, w: &Writer, own_styles: &str, body: &str, sec: &wordcraft_doc::SectionProps, settings: &wordcraft_doc::Settings) -> String {
     let mut out = String::from("{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\\uc1\n{\\fonttbl");
     for (i, f) in w.t.fonts.iter().enumerate() {
         let fam = if model::is_mono(f) { "\\fmodern" } else { "\\fswiss" };
@@ -1355,9 +1495,9 @@ fn export_with(m: &Meta, w: &Writer, body: &str, sec: &wordcraft_doc::SectionPro
         let sz = HEAD_SIZES.get(n as usize - 1).copied().unwrap_or(12.0);
         out.push_str(&format!("{{\\s{n}\\sbasedon0\\snext0\\outlinelevel{}\\keepn\\b\\fs{} heading {n};}}", n - 1, (sz * 2.0) as i32));
     }
-    out.push_str(
-        "{\\s7\\sbasedon0\\snext0\\fs56 Title;}{\\s8\\sbasedon0\\snext0\\li720\\ri720\\i Quote;}{\\s9\\sbasedon0\\snext9\\sa0\\fs20 Code;}}\n",
-    );
+    out.push_str("{\\s7\\sbasedon0\\snext0\\fs56 Title;}{\\s8\\sbasedon0\\snext0\\li720\\ri720\\i Quote;}{\\s9\\sbasedon0\\snext9\\sa0\\fs20 Code;}");
+    out.push_str(own_styles);
+    out.push_str("}\n");
     if !w.lists.is_empty() {
         out.push_str("{\\*\\listtable");
         for (i, kinds) in w.lists.iter().enumerate() {
