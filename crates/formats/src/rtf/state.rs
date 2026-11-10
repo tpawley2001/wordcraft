@@ -1,4 +1,4 @@
-use super::{Align, Cell, FBlock, Fmt, Para, Rgb, VAlign};
+use super::{Align, Arc, Cell, FBlock, Fmt, Para, Rgb, VAlign};
 use wordcraft_doc::props::{TabAlign, TabLeader, TabStop};
 
 /// Deepest group nesting we track; deeper groups share the innermost state.
@@ -194,6 +194,9 @@ pub(super) struct Output {
 pub(super) struct St {
     pub(super) dest: Dest,
     pub(super) fmt: Fmt,
+    /// The name of the monospaced font `\f` selected, which [`Fmt::code`] stands for in the
+    /// text: a paragraph mark keeps it by name.
+    pub(super) mono: Option<Arc<str>>,
     pub(super) rev: RevSt,
     /// Tracked change of the character formatting (reset by `\plain`). Its old formatting is
     /// the `\oldcprops` words, applied on top of the run's formatting when text is read: Word
@@ -266,6 +269,7 @@ impl Default for St {
         St {
             dest: Dest::Body,
             fmt: Fmt::default(),
+            mono: None,
             rev: RevSt::default(),
             chg_c: FmtRevSt::default(),
             chg_p: FmtRevSt::default(),

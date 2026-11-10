@@ -591,6 +591,7 @@ impl Reader {
         let read = std::mem::take(&mut self.para);
         let props = self.para_props(&self.st);
         let mut p = Para { inlines: read.inlines, mark_ins: read.mark_ins, mark_del: read.mark_del, ..props };
+        p.mark = self.empty_mark(&p);
         if p.kind == Kind::Normal && p.inlines.is_empty() && self.rule_pending {
             p.kind = Kind::Rule;
         }
@@ -618,6 +619,24 @@ impl Reader {
             self.close_table();
             self.body.push(FBlock::Para(p));
         }
+    }
+
+    /// The paragraph mark's formatting of `p` when it holds no text: the character formatting in
+    /// effect at its end (RTF 1.9.1, Paragraph Text), which sets an empty line's height. A
+    /// monospaced font keeps its name.
+    fn empty_mark(&self, p: &Para) -> Option<Box<wordcraft_doc::props::CharProps>> {
+        if !p.textless() {
+            return None;
+        }
+        let f = &self.st.fmt;
+        let plain = Fmt { link: None, ins: None, del: None, fmt_change: None, ..f.clone() };
+        let mut m = model::char_props(&plain);
+        if f.code
+            && let Some(n) = &self.st.mono
+        {
+            m.font = Some(n.to_string());
+        }
+        (!m.is_empty()).then(|| Box::new(m))
     }
 
     pub(super) fn end_cell(&mut self) {

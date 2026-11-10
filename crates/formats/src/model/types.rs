@@ -494,6 +494,8 @@ pub struct FlowOpts {
     pub indent_chars: bool,
     /// Table row heights and rows kept from breaking ([`FTable::extra`]), also without `paras`.
     pub rows: bool,
+    /// The mark formatting of a paragraph without text ([`Para::mark`]), also without `paras`.
+    pub marks: bool,
 }
 
 impl FlowOpts {

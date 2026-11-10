@@ -85,6 +85,7 @@ impl Reader {
             "uc" => self.st.uc = pv.max(0) as usize,
             "plain" => {
                 self.st.fmt = Fmt { link: self.st.fmt.link.clone(), ..Default::default() };
+                self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
                 self.st.hidden = false;
@@ -94,7 +95,8 @@ impl Reader {
                 // Revision marks are character formatting, which `\pard` leaves alone.
                 let (dest, fmt, rev, uc, hidden) = (self.st.dest, self.st.fmt.clone(), self.st.rev, self.st.uc, self.st.hidden);
                 let chg_c = std::mem::take(&mut self.st.chg_c);
-                self.st = St { dest, fmt, rev, chg_c, uc, hidden, field, ..Default::default() };
+                let mono = self.st.mono.take();
+                self.st = St { dest, fmt, mono, rev, chg_c, uc, hidden, field, ..Default::default() };
                 self.page_side = None;
             }
             "revised" => self.st.rev.ins = on,
@@ -139,13 +141,22 @@ impl Reader {
                 self.st.cp = self.font_cps.get(&pv).copied();
                 let name = self.fonts.get(&pv).cloned();
                 match name {
+                    // The default font (`\deff`), monospaced or not, is the document's: text in
+                    // it is plain text, as after `\plain`.
+                    Some(n) if model::is_mono(&n) && pv == self.deff => {
+                        self.st.fmt.code = false;
+                        self.st.fmt.font = None;
+                        self.st.mono = None;
+                    }
                     Some(n) if model::is_mono(&n) => {
                         self.st.fmt.code = true;
                         self.st.fmt.font = None;
+                        self.st.mono = Some(n);
                     }
                     Some(n) => {
                         self.st.fmt.code = false;
                         self.st.fmt.font = Some(n);
+                        self.st.mono = None;
                     }
                     None => {}
                 }
