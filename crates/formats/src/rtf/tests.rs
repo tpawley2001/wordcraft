@@ -1853,6 +1853,7 @@ mod section_text_flow;
 mod shape_text;
 mod surrogate_boundaries;
 mod table_rows;
+mod table_styles;
 mod tabs_spacing;
 mod trailing_data;
 mod underline_styles;
