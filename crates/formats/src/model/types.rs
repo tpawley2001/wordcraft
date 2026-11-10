@@ -6,6 +6,16 @@ pub const MONO_FONT: &str = "Courier New";
 /// Style id of code-block paragraphs.
 pub const CODE_STYLE: &str = "Code";
 
+/// Longest style id [`style_id`] makes, in characters.
+pub const MAX_STYLE_ID: usize = 64;
+
+/// The document style id for a style a file names `name`: its letters and digits ("Body Text 2"
+/// is `BodyText2`), at most [`MAX_STYLE_ID`] of them, `Custom` when it has none.
+pub fn style_id(name: &str) -> String {
+    let id: String = name.chars().filter(|c| c.is_alphanumeric()).take(MAX_STYLE_ID).collect();
+    if id.is_empty() { "Custom".into() } else { id }
+}
+
 /// Nesting limit for tables in tables (hostile input).
 pub const MAX_DEPTH: usize = 8;
 
@@ -494,6 +504,14 @@ pub struct FlowOpts {
     pub indent_chars: bool,
     /// Table row heights and rows kept from breaking ([`FTable::extra`]), also without `paras`.
     pub rows: bool,
+    /// The mark formatting of a paragraph without text ([`Para::mark`]), also without `paras`.
+    pub marks: bool,
+    /// The paragraph's own text frame and drop cap in [`Para::extra`], also without `paras`.
+    pub frames: bool,
+    /// Without [`FlowOpts::chars`] and [`FlowOpts::paras`]: the document's own paragraph style
+    /// in [`Para::extra`] and character style in [`Fmt::extra`] ([`super::is_custom_style`],
+    /// [`super::is_custom_char_style`]), for formats that write their style sheet (RTF).
+    pub styles: bool,
 }
 
 impl FlowOpts {
@@ -501,7 +519,8 @@ impl FlowOpts {
     /// ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]), shading
     /// ([`FlowOpts::shading`]), indents in characters ([`FlowOpts::indent_chars`]), the other
     /// paragraph flags ([`FlowOpts::para_flags`]), table row heights and keeps
-    /// ([`FlowOpts::rows`]), fields and text boxes.
+    /// ([`FlowOpts::rows`]), text frames and drop caps ([`FlowOpts::frames`]), the document's
+    /// own styles ([`FlowOpts::styles`]), fields and text boxes.
     pub fn tracked() -> Self {
         FlowOpts {
             tracked: true,
@@ -511,6 +530,8 @@ impl FlowOpts {
             indent_chars: true,
             para_flags: true,
             rows: true,
+            frames: true,
+            styles: true,
             fields: true,
             boxes: true,
             ..Default::default()

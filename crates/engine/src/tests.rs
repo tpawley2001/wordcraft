@@ -42,12 +42,15 @@ mod move_text_keys;
 mod negative_margins;
 mod para_sort_keys;
 mod manual_duplex;
+mod print_document_properties;
+mod print_forms_data;
 mod print_options;
 mod reveal_formatting;
 mod reveal_formatting_pane;
 mod para_tools;
 mod revision_checks;
 mod selection_pane;
+mod shape_format_painter;
 mod table_insert_delete_cells;
 mod text_from_file_range;
 mod table_row_column_ends;
@@ -12478,6 +12481,18 @@ fn table_cell_margins_preserves_unpassed_sides() {
     run(&mut s, "table.cellMargins", json!({"top": 0.0, "bottom": 0.0}));
     let margins = s.doc.table(StoryRef::Body, &tp).unwrap().props.cell_margins.unwrap();
     assert_eq!(margins, [0.0, 10.0, 0.0, 15.0]);
+}
+
+/// A table whose file set only some cell-margin sides has all four after `table.cellMargins`,
+/// so a save writes every side the command set.
+#[test]
+fn table_cell_margins_sets_every_side_of_a_partial_file_margin() {
+    let mut s = s();
+    run(&mut s, "insert.table", json!({"rows": 1, "cols": 1}));
+    let (tp, _, _) = s.sel.focus.path.cell().unwrap();
+    s.doc.table_mut(StoryRef::Body, &tp).unwrap().props.cell_margin_sides = Some([true, false, true, false]);
+    run(&mut s, "table.cellMargins", json!({"left": 10.0}));
+    assert_eq!(s.doc.table(StoryRef::Body, &tp).unwrap().props.cell_margin_sides, None);
 }
 
 #[test]

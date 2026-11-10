@@ -107,6 +107,11 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
             }
             f.extra = (x != CharProps::default()).then(|| Box::new(x));
         }
+        if opts.styles
+            && let Some(id) = props.style.as_deref().filter(|id| is_custom_char_style(doc, id))
+        {
+            f.extra.get_or_insert_with(Default::default).style = Some(id.to_string());
+        }
         return f;
     }
     let custom = props.style.as_deref().filter(|id| is_custom_char_style(doc, id));
@@ -187,20 +192,31 @@ fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
 /// Whether character style `id` of `doc` is one of its own rather than one WordCraft gives links,
 /// note and comment marks or placeholders.
 pub fn is_custom_char_style(doc: &Document, id: &str) -> bool {
-    let builtin =
-        ["DefaultParagraphFont", "Hyperlink", "FollowedHyperlink", "FootnoteReference", "EndnoteReference", "CommentReference", "PlaceholderText"];
-    !builtin.contains(&id) && doc.styles.get(id).is_some_and(|s| s.kind == wordcraft_doc::styles::StyleKind::Character)
+    !is_fixed_char_style(id) && doc.styles.get(id).is_some_and(|s| s.kind == wordcraft_doc::styles::StyleKind::Character)
+}
+
+/// Whether character style id `id` is one the flow model's formatting, links and notes stand
+/// for rather than one of a document's own (see [`is_custom_char_style`]).
+pub fn is_fixed_char_style(id: &str) -> bool {
+    ["DefaultParagraphFont", "Hyperlink", "FollowedHyperlink", "FootnoteReference", "EndnoteReference", "CommentReference", "PlaceholderText"]
+        .contains(&id)
 }
 
 /// Whether paragraph style `id` of `doc` is one of its own rather than one the flow model's
 /// paragraph kinds, lists and notes stand for (Normal, the headings, Title, Quote, Code, List
 /// Paragraph, the note texts).
 pub fn is_custom_style(doc: &Document, id: &str) -> bool {
+    !is_fixed_style(id) && doc.styles.get(id).is_some_and(|s| s.kind == wordcraft_doc::styles::StyleKind::Paragraph)
+}
+
+/// Whether paragraph style id `id` is one the flow model's paragraph kinds and notes stand for
+/// rather than one of a document's own (see [`is_custom_style`]).
+pub fn is_fixed_style(id: &str) -> bool {
     // The styles the kinds stand for, and the names formats write fixed styles under.
     let kinds =
         ["Normal", "Title", "Quote", super::types::CODE_STYLE, "FootnoteText", "EndnoteText", "Standard", "Footnote", "Endnote", "Quotations"];
     let heading = id.strip_prefix("Heading").is_some_and(|n| n.len() == 1 && n.chars().all(|c| c.is_ascii_digit()));
-    !heading && !kinds.contains(&id) && doc.styles.get(id).is_some_and(|s| s.kind == wordcraft_doc::styles::StyleKind::Paragraph)
+    heading || kinds.contains(&id)
 }
 
 /// Whether `doc`'s tab stops are measured from each paragraph's indent (an ODF document whose
@@ -211,8 +227,8 @@ pub fn tabs_from_indent(doc: &Document) -> bool {
 
 /// [`Para::extra`] as `opts` asks for it: all of it ([`FlowOpts::paras`]), the paragraph's own
 /// tab stops ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]), shading
-/// ([`FlowOpts::shading`]), indents in characters ([`FlowOpts::indent_chars`]) and other flags
-/// ([`FlowOpts::para_flags`]) alone, or nothing.
+/// ([`FlowOpts::shading`]), indents in characters ([`FlowOpts::indent_chars`]), other flags
+/// ([`FlowOpts::para_flags`]) and custom style ([`FlowOpts::styles`]) alone, or nothing.
 fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: FlowOpts) -> Option<Box<wordcraft_doc::props::ParaProps>> {
     if opts.paras {
         return para_extra(doc, p);
@@ -227,6 +243,11 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         x.space_after_auto = p.space_after_auto;
         x.suppress_hyphens = p.suppress_hyphens;
         x.snap_to_grid = p.snap_to_grid;
+        x.kinsoku = p.kinsoku;
+        x.overflow_punct = p.overflow_punct;
+        x.auto_space_de = p.auto_space_de;
+        x.auto_space_dn = p.auto_space_dn;
+        x.text_alignment = p.text_alignment;
     }
     x.shading = p.shading.filter(|_| opts.shading);
     if opts.indent_chars {
@@ -234,6 +255,12 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         x.indent_right_chars = p.indent_right_chars;
         x.indent_first_chars = p.indent_first_chars;
     }
+    if let Some(lines) = p.drop_cap.filter(|l| opts.frames && *l > 0) {
+        (x.drop_cap, x.drop_cap_margin, x.drop_cap_distance) = (Some(lines), p.drop_cap_margin, p.drop_cap_distance);
+    } else {
+        x.frame = p.frame.clone().filter(|_| opts.frames);
+    }
+    x.style = p.style.clone().filter(|id| opts.styles && is_custom_style(doc, id));
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
 
@@ -266,6 +293,13 @@ fn para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps) -> Option<Box
         widow_control: p.widow_control.filter(|w| !*w),
         // Hyphenated (the document hyphenates and the paragraph doesn't opt out): `Some(false)`.
         suppress_hyphens: (doc.settings.auto_hyphenation && p.suppress_hyphens != Some(true)).then_some(false),
+        // East Asian typography and font alignment, as stated.
+        snap_to_grid: p.snap_to_grid,
+        kinsoku: p.kinsoku,
+        overflow_punct: p.overflow_punct,
+        auto_space_de: p.auto_space_de,
+        auto_space_dn: p.auto_space_dn,
+        text_alignment: p.text_alignment,
         ..Default::default()
     };
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
@@ -860,10 +894,10 @@ fn graphic_group(
 
 /// The mark formatting of `out`, the last piece of `p`, when it holds no text (its height, its
 /// drawings' formatting), for
-/// formats that keep it (flows asked for paragraph formatting).
+/// formats that keep it (flows asked for paragraph formatting or for marks).
 fn empty_mark(out: &Para, p: &Paragraph, opts: FlowOpts) -> Option<Box<CharProps>> {
     let m = CharProps { ins: None, del: None, fmt_change: None, ..p.mark.clone() };
-    (opts.paras && out.textless() && !m.is_empty()).then(|| Box::new(m))
+    ((opts.paras || opts.marks) && out.textless() && !m.is_empty()).then(|| Box::new(m))
 }
 
 /// The drawings from `from` on (just added) raised by their run's position `raise` (points): a

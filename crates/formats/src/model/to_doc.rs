@@ -186,9 +186,12 @@ fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
     if p.extra.as_ref().and_then(|x| x.bidi) == Some(true) {
         out.bidi = Some(true);
     }
-    if let Some(x) = p.extra.as_ref().filter(|x| x.drop_cap.is_some_and(|l| l > 1)) {
+    if let Some(x) = p.extra.as_ref().filter(|x| x.drop_cap.is_some_and(|l| l > 0)) {
         (out.drop_cap, out.drop_cap_distance) =
             (x.drop_cap.map(|l| l.min(10)), x.drop_cap_distance.filter(|d| d.is_finite()).map(|d| d.clamp(0.0, 1584.0)));
+        out.drop_cap_margin = x.drop_cap_margin.filter(|m| *m);
+    } else if let Some(f) = p.extra.as_ref().and_then(|x| x.frame.clone()) {
+        out.frame = Some(f);
     }
     if let Some(bg) = p.extra.as_ref().and_then(|x| x.shading) {
         out.shading = Some(bg);
@@ -201,6 +204,11 @@ fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
         out.space_before_auto = x.space_before_auto.or(out.space_before_auto);
         out.space_after_auto = x.space_after_auto.or(out.space_after_auto);
         out.snap_to_grid = x.snap_to_grid.or(out.snap_to_grid);
+        out.kinsoku = x.kinsoku.or(out.kinsoku);
+        out.overflow_punct = x.overflow_punct.or(out.overflow_punct);
+        out.auto_space_de = x.auto_space_de.or(out.auto_space_de);
+        out.auto_space_dn = x.auto_space_dn.or(out.auto_space_dn);
+        out.text_alignment = x.text_alignment.or(out.text_alignment);
         // An outline level apart from its heading style's.
         out.outline_level = x.outline_level.map(|l| l.min(8)).or(out.outline_level);
         // Indents in characters, beside the twips ones.
