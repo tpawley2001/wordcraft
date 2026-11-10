@@ -1833,6 +1833,7 @@ fn compound_borders_round_trip() {
 mod column_widths;
 mod doc_grid;
 mod doc_page_options;
+mod doc_settings;
 mod foreign_styles;
 mod justification_flag;
 mod legacy_pn;
