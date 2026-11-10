@@ -23,14 +23,42 @@ fn insert_block_at_caret(s: &mut Session, block: Block) -> Result<Path, CmdError
     Ok(insert_at)
 }
 
+/// The widest Fixed column width, 22 in, as Word allows.
+const MAX_COL_WIDTH: f64 = 22.0 * 72.0;
+
 pub(super) fn table(s: &mut Session, v: &Value) -> CmdResult {
     let rows = p::u64(v, "rows").unwrap_or(2).clamp(1, 1000) as usize;
     let cols = p::u64(v, "cols").unwrap_or(2).clamp(1, 63) as usize;
+    // Insert Table's AutoFit behavior; without it, equal columns across the text width.
+    let fit = match p::str(v, "autofit") {
+        None => None,
+        Some(m @ ("fixed" | "contents" | "window")) => Some(m),
+        Some(x) => return Err(CmdError::Params(format!("unknown AutoFit behavior `{x}`"))),
+    };
+    // Fixed column width: 0 (or none) is Auto; Word takes 0 to 22 in.
+    let col_width = match v.get("colWidth") {
+        _ if fit != Some("fixed") => 0.0,
+        None | Some(Value::Null) => 0.0,
+        Some(w) => match w.as_f64() {
+            Some(w) if (0.0..=MAX_COL_WIDTH).contains(&w) => w as f32,
+            _ => return Err(CmdError::Params("`colWidth` must be between 0 and 1584 pt (22 in)".into())),
+        },
+    };
     let width = s.doc.sections().first().map(|(_, sp)| sp.text_width()).unwrap_or(468.0);
     let mut t = Table::new(rows, cols, width);
     if let Some(st) = p::str(v, "style") {
         let id = s.doc.styles.find(st).map(|x| x.id.clone()).ok_or_else(|| CmdError::Params(format!("no table style `{st}`")))?;
         t.props.style = Some(id);
+    }
+    if let Some(mode) = fit {
+        // As `table.autofit` would fit it in the caret's section.
+        crate::cmd::table::fit_table(&s.doc, &mut t, mode, crate::cmd::page::sect(s).text_width());
+        if col_width > 0.0 {
+            t.grid.iter_mut().for_each(|g| *g = col_width);
+            t.props.width = None;
+            t.props.width_pct = None;
+            crate::cmd::table::sync_cell_widths(&mut t);
+        }
     }
     // Like Word, a table inserted in a right-to-left paragraph is a right-to-left table (#2634):
     // its first cell stands at the right, so Tab, which follows reading order, moves leftwards.
@@ -47,6 +75,21 @@ pub(super) fn table(s: &mut Session, v: &Value) -> CmdResult {
     let mut first = path.0.clone();
     first.extend([0, 0, 0]);
     s.sel = Selection::caret(Pos { story, path: Path(first), off: 0 });
+    // Remember dimensions for new tables: the next Insert Table opens with these; `false`
+    // forgets them.
+    match p::bool(v, "remember") {
+        Some(true) => {
+            s.prefs.insert_table = crate::prefs::InsertTablePrefs {
+                rows: rows as u32,
+                cols: cols as u32,
+                autofit: fit.unwrap_or("fixed").into(),
+                col_width,
+                remember: true,
+            }
+        }
+        Some(false) => s.prefs.insert_table = Default::default(),
+        None => {}
+    }
     Ok(json!({"table": path.0}))
 }
 

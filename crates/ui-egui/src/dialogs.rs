@@ -180,6 +180,14 @@ pub enum Dialog {
     InsertTable {
         rows: u32,
         cols: u32,
+        /// AutoFit behavior: `fixed`, `contents` or `window`.
+        autofit: String,
+        /// Fixed column width: `Auto` or a length in the interface unit.
+        col_width: String,
+        /// Remember dimensions for new tables.
+        remember: bool,
+        /// Word's message when the column width is out of range.
+        error: Option<String>,
     },
     PageSetup {
         top: f32,
@@ -822,7 +830,13 @@ impl Dialog {
                 message: String::new(),
                 focus: true,
             },
-            "insertTable" => Dialog::InsertTable { rows: 2, cols: 5 },
+            "insertTable" => {
+                // Remembered dimensions, else Word's 2 x 5 with Auto fixed columns.
+                let p = &app.session.prefs.insert_table;
+                let autofit = if matches!(p.autofit.as_str(), "contents" | "window") { p.autofit.clone() } else { "fixed".into() };
+                let col_width = if p.col_width.is_finite() && p.col_width > 0.0 { crate::options::length(p.col_width) } else { tl!("Auto").into() };
+                Dialog::InsertTable { rows: p.rows.clamp(1, 1000), cols: p.cols.clamp(1, 63), autofit, col_width, remember: p.remember, error: None }
+            }
             "pageSetup" => {
                 let sp = wordcraft_engine::cmd::page::sect(&app.session);
                 use wordcraft_doc::section::DocGridType;

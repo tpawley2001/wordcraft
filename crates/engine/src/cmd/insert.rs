@@ -40,7 +40,8 @@ pub fn specs() -> Vec<CommandSpec> {
             sel_result(s)
         }),
         CommandSpec::new("insert.coverPage", "Cover Page", "Insert › Pages", cover_page).params(r#"{"title"?: string, "subtitle"?: string, "author"?: string}"#),
-        CommandSpec::new("insert.table", "Table", "Insert › Tables", table).params(r#"{"rows": n, "cols": n, "style"?: string}"#),
+        CommandSpec::new("insert.table", "Table", "Insert › Tables", table)
+            .params(r#"{"rows": n, "cols": n, "style"?: string, "autofit"?: "fixed"|"contents"|"window" (as table.autofit; omit for equal columns across the text width), "colWidth"?: pt (with "fixed"; 0 = Auto), "remember"?: bool (true: the Insert Table dialog opens with these next time; false forgets them)}"#),
         CommandSpec::new("insert.picture", "Pictures", "Insert › Illustrations", picture).params(r#"{"path"?: string, "data"?: base64, "width"?: pt, "alt"?: string}"#),
         CommandSpec::new("insert.icon", "Icons", "Insert › Illustrations", icon)
             .params(r#"{"id"?: string (omit to list the library), "color"?: "RRGGBB", "size"?: pt, "query"?: string, "category"?: string}"#),
