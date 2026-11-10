@@ -16,6 +16,7 @@ mod complex;
 mod eq_fields;
 mod eq_integral_limits;
 mod eq_radical_index;
+mod float_table_bottom;
 mod float_table_notes;
 mod float_top;
 mod grid;
