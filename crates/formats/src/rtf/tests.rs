@@ -1835,7 +1835,6 @@ mod doc_grid;
 mod doc_page_options;
 mod doc_settings;
 mod doc_widow_control;
-mod doc_widow_control_stories;
 mod foreign_styles;
 mod justification_flag;
 mod legacy_pn;
