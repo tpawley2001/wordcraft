@@ -159,6 +159,31 @@ impl Reader {
         o
     }
 
+    /// Whether a page, cell or paragraph border side is being described.
+    pub(super) fn border_open(&self) -> bool {
+        self.page_side.is_some() || self.cell_side.is_some() || self.st.border_side.is_some()
+    }
+
+    /// A page border word (section formatting): `\pgbrdrt` … `\pgbrdrr` starts a side, `\brspN`
+    /// gives its space. `\pgbrdropt`, `\pgbrdrhead`, `\pgbrdrfoot`, `\pgbrdrsnap` and `\brdrart`
+    /// have no model value and are skipped. False when `w` isn't one.
+    pub(super) fn page_border_word(&mut self, w: &str, pv: i32) -> bool {
+        match w {
+            "pgbrdrt" | "pgbrdrl" | "pgbrdrb" | "pgbrdrr" => {
+                self.st.border_side = None;
+                self.page_side = w.chars().last();
+            }
+            "brsp" if self.page_side.is_some() => {
+                let space = (pv as f32 / 20.0).clamp(0.0, 31.0);
+                if let Some(Some(b)) = self.cell_border_slot() {
+                    b.space = space;
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+
     /// The border of the page side being described, else of the cell side, else of the
     /// paragraph side.
     pub(super) fn cell_border_slot(&mut self) -> Option<&mut Option<wordcraft_doc::props::Border>> {

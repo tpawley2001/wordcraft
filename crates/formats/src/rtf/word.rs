@@ -212,22 +212,11 @@ impl Reader {
                 self.page_side = None;
                 self.cell_side = w.chars().last();
             }
-            // Page borders (section formatting); `\pgbrdropt`, `\pgbrdrhead`, `\pgbrdrfoot`,
-            // `\pgbrdrsnap` and `\brdrart` have no model value and are skipped.
-            "pgbrdrt" | "pgbrdrl" | "pgbrdrb" | "pgbrdrr" => {
-                self.st.border_side = None;
-                self.page_side = w.chars().last();
-            }
-            "brsp" if self.page_side.is_some() => {
-                let space = (pv as f32 / 20.0).clamp(0.0, 31.0);
-                if let Some(Some(b)) = self.cell_border_slot() {
-                    b.space = space;
-                }
-            }
+            _ if self.page_border_word(w, pv) => {}
             "brdrs" | "brdrth" | "brdrsh" | "brdrdb" | "brdrdot" | "brdrdash" | "brdrdashsm" | "brdrdashd" | "brdrdashdd" | "brdrhair"
             | "brdrtriple" | "brdrthtnsg" | "brdrtnthsg" | "brdrtnthtnsg" | "brdrthtnmg" | "brdrtnthmg" | "brdrtnthtnmg" | "brdrthtnlg"
             | "brdrtnthlg" | "brdrtnthtnlg" | "brdrwavy" | "brdrwavydb" | "brdrnone" | "brdrnil" | "brdrtbl"
-                if self.page_side.is_some() || self.cell_side.is_some() || self.st.border_side.is_some() =>
+                if self.border_open() =>
             {
                 use wordcraft_doc::props::{Border, BorderStyle};
                 let style = match w {
@@ -255,13 +244,13 @@ impl Reader {
                     *slot = b;
                 }
             }
-            "brdrw" if self.page_side.is_some() || self.cell_side.is_some() || self.st.border_side.is_some() => {
+            "brdrw" if self.border_open() => {
                 let width = (pv as f32 / 20.0).clamp(0.25, 6.0);
                 if let Some(Some(b)) = self.cell_border_slot() {
                     b.width = width;
                 }
             }
-            "brdrcf" if self.page_side.is_some() || self.cell_side.is_some() || self.st.border_side.is_some() => {
+            "brdrcf" if self.border_open() => {
                 let color = self.colors.get(pv.max(0) as usize).copied().flatten();
                 if let Some(Some(b)) = self.cell_border_slot() {
                     b.color = color;
