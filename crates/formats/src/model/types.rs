@@ -500,7 +500,17 @@ impl FlowOpts {
     /// ([`FlowOpts::shading`]), indents in characters ([`FlowOpts::indent_chars`]) and the other
     /// paragraph flags ([`FlowOpts::para_flags`]), fields and text boxes.
     pub fn tracked() -> Self {
-        FlowOpts { tracked: true, tabs_spacing: true, widow: true, shading: true, indent_chars: true, para_flags: true, fields: true, boxes: true, ..Default::default() }
+        FlowOpts {
+            tracked: true,
+            tabs_spacing: true,
+            widow: true,
+            shading: true,
+            indent_chars: true,
+            para_flags: true,
+            fields: true,
+            boxes: true,
+            ..Default::default()
+        }
     }
 }
 
