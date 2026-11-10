@@ -30,6 +30,7 @@ mod nested_table;
 mod nested_table_grid;
 mod ole_embed_forms;
 mod ole_embed_keep;
+mod ole_pict_placeholder;
 mod ole_print;
 mod ole_result_objects;
 mod paper_source;

@@ -21,5 +21,6 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 wordcraft-doc = { workspace = true, features = ["test-support"] }
+wordcraft-metafile = { workspace = true }
 proptest = { workspace = true }
 serde_json = { workspace = true }
