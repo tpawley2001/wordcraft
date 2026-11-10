@@ -610,8 +610,31 @@ impl Session {
             links,
             ..Default::default()
         };
-        let bytes = wordcraft_pdf::export_layout(doc, &lay, &opts).map_err(|e| CmdError::Failed(e.to_string()))?;
-        Ok((bytes, plan))
+        let bytes = match self.properties_appendix(v, report.is_some())? {
+            Some((adoc, alay)) => wordcraft_pdf::export_layout_with_appendix(doc, &lay, (&adoc, &alay), &opts),
+            None => wordcraft_pdf::export_layout(doc, &lay, &opts),
+        };
+        Ok((bytes.map_err(|e| CmdError::Failed(e.to_string()))?, plan))
+    }
+
+    /// File › Options › Display › Print document properties: the properties report (laid out as
+    /// [`Self::print_report`] lays it out) that prints after the document's pages. The job param
+    /// `properties` overrides the option. `None` for a Document Info job (`report`), a manual
+    /// duplex pass and a job with several pages per sheet, which print as they would without it.
+    fn properties_appendix(&self, v: &Value, report: bool) -> Result<Option<(wordcraft_doc::Document, std::sync::Arc<DocLayout>)>, CmdError> {
+        if report || !p::bool(v, "properties").unwrap_or(self.prefs.print_properties) {
+            return Ok(None);
+        }
+        if duplex_pass(v)?.is_some() || imposition(v)? != Imposition::Single {
+            return Ok(None);
+        }
+        let lines = properties_report(self);
+        if lines.is_empty() {
+            return Ok(None);
+        }
+        let doc = report_document(&self.doc, &lines);
+        let lay = self.output_layout_of(&doc, false, false, false);
+        Ok(Some((doc, lay)))
     }
 }
 
@@ -709,6 +732,23 @@ mod tests {
         assert!(s.print_pdf(&json!({"pages": "9999"})).is_err());
         let r = s.run("file.printPdf", &json!({})).is_err();
         assert!(r, "printPdf needs a path");
+    }
+
+    /// Print document properties with copies: the report follows each collated copy, or all the
+    /// document's pages when copies aren't collated; manual duplex passes don't get it.
+    #[test]
+    fn properties_page_follows_every_copy() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("text.insert", &json!({"text": "One page"})).unwrap();
+        s.prefs.print_properties = true;
+        let count = |bytes: &[u8]| String::from_utf8_lossy(bytes).matches("/MediaBox[").count();
+        for collate in [true, false] {
+            let (bytes, plan) = s.print_job_pdf(&json!({"copies": 2, "collate": collate})).unwrap();
+            assert_eq!(plan.pages.len(), 2, "the plan describes the document's pages");
+            assert_eq!(count(&bytes), 4, "collate {collate}");
+        }
+        let (front, _) = s.print_job_pdf(&json!({"duplexPass": "front"})).unwrap();
+        assert_eq!(count(&front), 1);
     }
 
     /// #4734: the PDF sent to a printer has no link annotations, which a printer driver can't fit

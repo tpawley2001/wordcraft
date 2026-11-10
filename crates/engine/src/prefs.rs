@@ -25,7 +25,7 @@ pub struct Prefs {
     /// File › Options › Advanced › Print pages in reverse order (off).
     pub print_reverse: bool,
     /// File › Options › Display › Print document properties (off): a print of the document is
-    /// followed by the Document Properties report. (Acceptance-test stub: not wired up yet.)
+    /// followed by the Document Properties report on its own page.
     pub print_properties: bool,
     /// File › Options › Advanced › Print on front of the sheet for duplex printing (off): a manual
     /// duplex job prints the fronts in reverse order.
