@@ -46,6 +46,9 @@ struct LineContext<'a, 'authors, 'author_doc> {
     alpha: f32,
     down: bool,
     auto: Option<Rgb>,
+    /// With [`DisplayOptions::forms_data_only`], the offsets (ascending) of the paragraph's legacy
+    /// form fields that show their data as text (text inputs and drop-downs).
+    forms: &'a [usize],
 }
 
 impl LineContext<'_, '_, '_> {
@@ -67,12 +70,26 @@ pub(super) fn lines(input: LineRender<'_, '_, '_>, out: &mut Vec<Draw>) {
         StoryRef::Part(id) => doc.parts.get(&id).and_then(|p| p.body.auto_color),
         StoryRef::Body => None,
     };
+    let forms: Vec<usize> = match para {
+        Some(p) if opts.forms_data_only => p
+            .objects_with_offsets()
+            .filter(|(_, o)| o.legacy_form().is_some_and(|f| !matches!(f, wordcraft_doc::legacy_form::LegacyForm::CheckBox { .. })))
+            .map(|(off, _)| off)
+            .collect(),
+        _ => Vec::new(),
+    };
     for li in l0..l1 {
         let Some(line) = pl.lines.get(li) else { continue };
         let top = y + (line.top - first.top);
         let base = top + (line.baseline - line.top);
         let bottom = top + line.height;
-        let ctx = LineContext { doc, story, path, pl, para, line, li, x, top, base, bottom, opts, authors, alpha, down, auto };
+        let ctx = LineContext { doc, story, path, pl, para, line, li, x, top, base, bottom, opts, authors, alpha, down, auto, forms: &forms };
+        if opts.forms_data_only {
+            // Print only the data from a form: the form fields' data where it sits, nothing else.
+            draw_glyph_runs(&ctx, out);
+            inline_objects(&ctx, out);
+            continue;
+        }
         comment_backgrounds(&ctx, out);
         character_backgrounds(&ctx, out);
         draw_label_and_hyphen(&ctx, out);
@@ -91,12 +108,14 @@ fn collect_glyph_run(
     start: usize,
     style_index: u32,
     style: &crate::para::StyleRun,
+    stop: usize,
 ) -> (usize, Vec<(u32, f32, f32)>, String, Vec<std::ops::Range<usize>>) {
     let (pl, para, line, x, base) = (ctx.pl, ctx.para, ctx.line, ctx.x, ctx.base);
     let si = style_index;
     let st = style;
     let mut k = start;
-    let run = pl.clusters.get(start..line.c1.min(pl.clusters.len())).unwrap_or_default();
+    let stop = stop.min(line.c1);
+    let run = pl.clusters.get(start..stop.min(pl.clusters.len()).max(start)).unwrap_or_default();
     let (n_glyphs, n_bytes) = run
         .iter()
         .take_while(|cluster| cluster.style == si)
@@ -108,7 +127,7 @@ fn collect_glyph_run(
     let mut text = String::with_capacity(n_bytes);
     let mut ranges: Vec<std::ops::Range<usize>> = Vec::with_capacity(n_glyphs);
     let symbol_font = wordcraft_doc::symbol_fonts::is_symbol_font(&st.rc.font);
-    while k < line.c1 {
+    while k < stop {
         let Some(c) = pl.clusters.get(k) else { break };
         if c.style != si {
             break;
@@ -198,8 +217,15 @@ fn draw_glyph_runs(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
             k += 1;
             continue;
         };
+        let data_only = opts.forms_data_only;
+        // Only a form field's data: each of its clusters is a run of its own.
+        if data_only && ctx.forms.binary_search(&c.start).is_err() {
+            k += 1;
+            continue;
+        }
         let run_start = k;
-        let (run_end, mut glyphs, text, ranges) = collect_glyph_run(ctx, run_start, si, st);
+        let stop = if data_only { k + 1 } else { line.c1 };
+        let (run_end, mut glyphs, text, ranges) = collect_glyph_run(ctx, run_start, si, st, stop);
         k = run_end;
         let rc = &st.rc;
         let m = &opts.revisions;
@@ -232,7 +258,7 @@ fn draw_glyph_runs(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
         let del_mark = del.map(|_| if moved_from { m.move_from_mark } else { m.delete_mark });
         if del_mark == Some(DeleteMark::Caret) {
             // A caret where the text was, instead of the text.
-            if let Some(cx) = line.cl_left(run_start).map(|c| x + c) {
+            if !data_only && let Some(cx) = line.cl_left(run_start).map(|c| x + c) {
                 let h = st.size * 0.3;
                 let w = (st.size / 18.0).max(0.6);
                 out.push(Draw::Line {
@@ -302,6 +328,9 @@ fn draw_glyph_runs(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
                 text_bg,
                 x_scale: rc.scale / 100.0,
             });
+        }
+        if data_only {
+            continue;
         }
         // Decorations across the run (underline skips trailing spaces of the line). Right-to-left
         // text inside a run can split it into several visual spans.
@@ -637,6 +666,10 @@ fn inline_objects(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
         }
         let cx = x + line.cl_left(k).unwrap_or(0.0);
         let obj = para.and_then(|p| p.objects.get(oi));
+        // Only form data: of the objects, just the legacy check boxes.
+        if opts.forms_data_only && !obj.is_some_and(|o| matches!(o, InlineObject::Field { .. })) {
+            continue;
+        }
         let modern = doc.settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT;
         let rect = inline_rect(obj, cx, base, c.adv, (c.obj_h, c.obj_d), pl.rule_room(line, k), modern);
         let spin = obj.and_then(InlineObject::frame).map(|(_, _, f)| f.spin()).unwrap_or_default();

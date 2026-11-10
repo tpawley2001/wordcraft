@@ -155,8 +155,9 @@ pub struct Settings {
     pub default_tab: f32,
     pub even_odd_headers: bool,
     pub mirror_margins: bool,
-    /// Print only the data from a form (`w:printFormsData`). Acceptance-test stub: not read,
-    /// written or printed yet.
+    /// Print only the data from a form (`w:printFormsData`, File › Options › Advanced): printing
+    /// puts only what was filled into the legacy form fields on the paper, where the full page
+    /// has it (for pre-printed forms). PDF export is unaffected.
     pub print_forms_data: bool,
     pub auto_hyphenation: bool,
     /// Hyphenation zone (`w:hyphenationZone`), points: a line is hyphenated only when breaking
