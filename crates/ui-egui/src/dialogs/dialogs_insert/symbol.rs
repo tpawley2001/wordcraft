@@ -106,6 +106,41 @@ pub const SPECIAL: &[(&str, char, Option<&str>)] = &[
     ("No-Width Non Break", '\u{2060}', None),
 ];
 
+/// Symbol dialog "from:" modes. TODO(P05-116): stubs, see the task spec.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SymbolFrom {
+    #[default]
+    UnicodeHex,
+    AsciiDecimal,
+    AsciiHex,
+}
+
+impl SymbolFrom {
+    pub const ALL: [SymbolFrom; 3] = [SymbolFrom::UnicodeHex, SymbolFrom::AsciiDecimal, SymbolFrom::AsciiHex];
+    pub fn label(self) -> &'static str {
+        ""
+    }
+}
+
+pub fn code_text(_c: char, _from: SymbolFrom) -> Option<String> {
+    None
+}
+
+pub fn char_from_code(_code: &str, _from: SymbolFrom) -> Option<char> {
+    None
+}
+
+pub fn symbol_shortcut(_c: char, _from: SymbolFrom, _bound: Option<&str>) -> String {
+    String::new()
+}
+
+pub fn grid_chars(chars: &[char], _from: SymbolFrom) -> Vec<char> {
+    chars.to_vec()
+}
+
+pub fn symbol_autocorrect(_app: &mut WordApp, _c: char) {}
+
 /// The Symbol dialog: the Symbols tab (a font's characters by Unicode subset) and the Special
 /// Characters tab.
 #[derive(Clone, Debug, Serialize)]
@@ -118,6 +153,8 @@ pub struct SymbolForm {
     pub selected: Option<char>,
     /// Character code, hexadecimal Unicode.
     pub code: String,
+    /// The from: list (TODO P05-116).
+    pub from: SymbolFrom,
     /// Selected row on the Special Characters tab.
     pub special: usize,
     /// The caret's font: what (normal text) shows.
@@ -152,7 +189,7 @@ impl SymbolForm {
         let font = recent.as_ref().map(|r| r.font.clone()).unwrap_or_default();
         let selected = recent.and_then(|r| r.ch.chars().next());
         let mut f =
-            SymbolForm { tab, font, selected, code: String::new(), special: 0, text_font, chars: Vec::new(), chars_of: None, scroll_to: None };
+            SymbolForm { tab, font, selected, code: String::new(), from: SymbolFrom::default(), special: 0, text_font, chars: Vec::new(), chars_of: None, scroll_to: None };
         f.sync_code();
         f
     }

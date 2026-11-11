@@ -115,6 +115,8 @@ pub(crate) fn buttons(ui: &mut Ui, ok: &str, cancel: &str, ok_enabled: bool) -> 
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_symbol_from;
 /// The Break dialog's OK: insert the break `kind` (a `layout.break` kind) and close the dialog.
 pub fn break_dialog_ok(app: &mut WordApp, kind: &str) {
     match app.run("layout.break", json!({"kind": kind})) {
