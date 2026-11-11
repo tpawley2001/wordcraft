@@ -15,6 +15,7 @@ mod cell_floats;
 mod complex;
 mod display_hide_body;
 mod early_float_stays;
+mod endnote_suppress;
 mod eq_fields;
 mod eq_integral_limits;
 mod eq_radical_index;

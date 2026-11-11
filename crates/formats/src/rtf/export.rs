@@ -302,6 +302,9 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
         PageVAlign::Justify => "\\vertalj",
         PageVAlign::Bottom => "\\vertalb",
     });
+    if s.no_endnote == Some(false) {
+        o.push_str("\\endnhere");
+    }
     if let Some(n) = s.paper_src_first.filter(|&n| n != 0) {
         o.push_str(&format!("\\binfsxn{n}"));
     }
@@ -1736,7 +1739,20 @@ pub fn export(doc: &Document) -> String {
     };
     let mut body = String::new();
     // Every section starts with its own `\sectd`; `\sect` breaks only where there are several.
-    let secs: Vec<wordcraft_doc::SectionProps> = doc.sections().into_iter().map(|(_, s)| s.clone()).collect();
+    // With endnotes at each section's end, a section that doesn't suppress them includes them
+    // (`\endnhere`, written for `no_endnote == Some(false)`).
+    let sect_end = doc.settings.endnote_pr.pos == Some(wordcraft_doc::section::NotePos::SectEnd);
+    let secs: Vec<wordcraft_doc::SectionProps> = doc
+        .sections()
+        .into_iter()
+        .map(|(_, s)| {
+            let mut s = s.clone();
+            if sect_end && s.no_endnote != Some(true) {
+                s.no_endnote = Some(false);
+            }
+            s
+        })
+        .collect();
     if let Some(first) = secs.first() {
         body.push_str(&sect_words(first, &mut w.t));
         for (set, prefix) in [(&first.headers, "header"), (&first.footers, "footer")] {

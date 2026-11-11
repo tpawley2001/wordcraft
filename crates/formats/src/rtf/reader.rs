@@ -438,11 +438,18 @@ impl Reader {
             return;
         }
         let mut props = self.sec.props(&self.page);
+        props.no_endnote = self.no_endnote();
         props.fmt_change = self.section_change();
         if let Some(FBlock::Para(p)) = self.body.last_mut() {
             p.section = Some(Box::new(props));
             self.section_parts.push(std::mem::take(&mut self.hf_parts));
         }
+    }
+
+    /// The current section's Suppress endnotes: only with endnotes at each section's end
+    /// (`\aendnotes`), where a section without `\endnhere` suppresses them.
+    pub(super) fn no_endnote(&self) -> Option<bool> {
+        (self.doc_notes.1.pos == Some(wordcraft_doc::section::NotePos::SectEnd)).then_some(!self.sec.endnhere)
     }
 
     /// The current section's tracked formatting change (`\oldsprops`), taken: its revision is
@@ -925,6 +932,7 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "headery" => sec.page.header = Some(pv),
         "footery" => sec.page.footer = Some(pv),
         "lndscpsxn" => sec.page.landscape = on,
+        "endnhere" => sec.endnhere = on,
         _ if w.strip_prefix('s').is_some_and(|w| apply_note_word(w, p, &mut sec.footnote_pr, &mut sec.endnote_pr)) => {}
         // Printer bin codes; 0 (the default) and values outside u16 leave the bin unset.
         "binfsxn" => sec.bin_first = u16::try_from(pv).ok().filter(|&v| v != 0),
