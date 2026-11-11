@@ -1839,6 +1839,7 @@ mod doc_settings;
 mod doc_widow_control;
 mod foreign_styles;
 mod frames;
+mod html_auto_spacing;
 mod info_props;
 mod justification_flag;
 mod legacy_pn;
