@@ -20,7 +20,10 @@ use columns::{columns_ui, drop_cap_ui};
 use field::field_ui;
 pub use field::{DATE_FORMATS, FIELD_CATEGORIES, FIELDS, FieldForm, FieldKind, NUMBER_FORMATS, STYLEREF_SWITCHES, field_kind};
 use symbol::symbol_ui;
-pub use symbol::{RECENT_SYMBOLS, RecentSymbol, SPECIAL, SUBSETS, SymbolForm, remember_symbol, subset_of};
+pub use symbol::{
+    RECENT_SYMBOLS, RecentSymbol, SPECIAL, SUBSETS, SymbolForm, SymbolFrom, char_from_code, code_text, cp1252_byte, grid_chars, remember_symbol,
+    subset_of, symbol_autocorrect, symbol_shortcut,
+};
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "form", rename_all = "camelCase")]
