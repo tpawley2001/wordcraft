@@ -1147,6 +1147,8 @@ mod tests_font_underline;
 #[cfg(test)]
 mod tests_insert_table;
 #[cfg(test)]
+mod tests_note_formats;
+#[cfg(test)]
 mod tests_page_layout;
 #[cfg(test)]
 // The acceptance tests pick a check box with `iter_mut().nth(i)`, which clippy prefers as `get_mut`.
