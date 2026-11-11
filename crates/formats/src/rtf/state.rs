@@ -309,6 +309,7 @@ pub(super) struct Output {
     pub(super) row_keep: bool,
     pub(super) rule_pending: bool,
     pub(super) table_rights: Vec<Vec<i32>>,
+    pub(super) table_lefts: Vec<i32>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
     pub(super) row_style: RowStyle,
@@ -329,6 +330,7 @@ pub(super) struct TableLevel {
     pub(super) row_height: Option<(f32, bool)>,
     pub(super) row_keep: bool,
     pub(super) table_rights: Vec<Vec<i32>>,
+    pub(super) table_lefts: Vec<i32>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
     pub(super) row_style: RowStyle,
@@ -341,6 +343,30 @@ pub(super) struct TableLevel {
 pub(super) struct RowStyle {
     pub(super) style: Option<String>,
     pub(super) look: Option<wordcraft_doc::props::TableLook>,
+    /// The row's left edge from the left margin (`\trleftN`, twips), the half gap between its
+    /// cells (`\trgaphN`), its cell text indent (`\tblindN`, with `\tblindtypeN`) and its
+    /// alignment (`\trqc`, `\trqr`; `\trql` none).
+    pub(super) left: i32,
+    pub(super) gap: i32,
+    pub(super) ind: Option<i32>,
+    pub(super) ind_type: i32,
+    pub(super) align: Option<Align>,
+}
+
+impl RowStyle {
+    /// The table's left edge from the left margin in twips, when the row states one: `\tblind`
+    /// in twips (`\tblindtype3`) less the gap, else `\trleft`. A centred or right-aligned row
+    /// has none.
+    pub(super) fn edge(&self) -> Option<i32> {
+        if self.align.is_some() {
+            return None;
+        }
+        let e = match self.ind {
+            Some(n) if self.ind_type == 3 => n.saturating_sub(self.gap),
+            _ => self.left,
+        };
+        (e != 0).then_some(e)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -681,6 +707,8 @@ pub(super) struct SecFmt {
     pub(super) line_grid: Option<i32>,
     /// `\pgbrdrt` … `\pgbrdrr` with their border words: the page borders.
     pub(super) page_borders: wordcraft_doc::props::Borders,
+    /// `\endnhere`: the section includes its endnotes (when they go at each section's end).
+    pub(super) endnhere: bool,
 }
 
 impl SecFmt {
