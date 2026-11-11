@@ -27,6 +27,7 @@ mod heading_levels;
 mod legacy_forms;
 mod level_and_section_extras;
 mod ligatures;
+mod line_numbering;
 mod linked_pictures;
 mod list_items;
 mod lock_aspect;
