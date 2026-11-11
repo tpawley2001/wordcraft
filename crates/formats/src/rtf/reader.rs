@@ -132,8 +132,12 @@ pub(super) struct Reader {
     /// The tables enclosing the one being read, outermost first (nested tables: the current
     /// table's fields above are the innermost open table's).
     nest: Vec<TableLevel>,
-    pub(super) created: Option<(u32, u32, u32, u32, u32)>,
-    pub(super) in_creatim: bool,
+    /// The information group's dates as read (`\yr \mo \dy \hr \min`), 0 `\creatim`, 1 `\revtim`, 2 `\printim`,
+    /// and the one whose group is open with the depth that group started at.
+    pub(super) dates: [Option<(u32, u32, u32, u32, u32)>; 3],
+    pub(super) in_date: Option<(usize, usize)>,
+    /// The information group's fields the flow model has no place for, and `{\*\userprops …}`.
+    pub(super) info_more: super::state::InfoMore,
     pub(super) rule_pending: bool,
     pub(super) info_depth: Option<usize>,
     // Notes and comments (only when the caller wants them).
@@ -560,21 +564,28 @@ impl Reader {
             Dest::StyleSheet if !self.style_name.is_empty() => self.commit_style(),
             Dest::RevTbl if !self.rev_name.trim().is_empty() => self.commit_author(),
             Dest::Info(k) => {
-                let t = std::mem::take(&mut self.info_text).trim().to_string();
+                let mut t = std::mem::take(&mut self.info_text).trim().to_string();
+                super::state::truncate_chars(&mut t, super::state::MAX_INFO_TEXT);
                 match k {
                     1 => self.meta.title = t,
                     2 => self.meta.author = t,
                     3 => self.meta.subject = t,
                     4 => self.meta.keywords = t,
                     5 => self.meta.description = t,
+                    6 => self.info_more.last_modified_by = t,
+                    7 => self.info_more.category = t,
+                    8..=10 => self.info_more.user_prop_text(k, t),
                     _ => {}
                 }
-                self.in_creatim = false;
             }
+            Dest::UserProps => self.info_more.commit_user_prop(),
             Dest::Atn(k) => self.commit_atn(k),
             _ => {}
         }
         let Some(mut prev) = self.stack.pop() else { return };
+        if self.in_date.is_some_and(|(_, d)| self.depth() < d) {
+            self.in_date = None;
+        }
         // The end of old formatting read in the body: the formatting it holds is the change's
         // old formatting (nested old-formatting groups only change their parent's copy).
         if closing == Dest::OldSect && prev.dest == Dest::Body && self.hf.is_none() {

@@ -13,6 +13,7 @@ mod cfb_tolerance;
 mod char_spacing;
 mod char_styles;
 mod compat_mode;
+mod dop_base;
 mod dop_options;
 mod drawing;
 mod emf_font_faces;
