@@ -1137,6 +1137,8 @@ mod tests_insert_table;
 #[cfg(test)]
 mod tests_page_layout;
 #[cfg(test)]
+mod tests_para_grid;
+#[cfg(test)]
 mod tests_para_line;
 #[cfg(test)]
 mod tests_zoom;
