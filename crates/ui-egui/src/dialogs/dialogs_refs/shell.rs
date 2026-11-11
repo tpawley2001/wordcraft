@@ -3,7 +3,7 @@ use super::caption::{CaptionForm, caption_ui, new_label_ui, numbering_ui};
 use super::cross_ref::{CrossRefForm, cross_ref_ui};
 use super::index::{IndexForm, MarkForm, index_ui, mark_ui};
 use super::sources::{SourceForm, source_ui, sources_ui};
-use super::toc::{FiguresForm, TocForm, figures_ui, toc_options_ui, toc_styles_ui, toc_ui};
+use super::toc::{FiguresForm, TocForm, figures_ui, toc_options_ui, toc_styles_ui, toc_ui, update_toc_ui};
 use super::{RefsDialog, Ui, WordApp};
 
 /// The dialog `ui.dialog` opens by `name`: `caption`, `crossReference`, `index`, `markEntry`, `toc`,
@@ -36,6 +36,7 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut RefsDialog) -> bool {
         RefsDialog::TocOptions { form, was } => toc_options_ui(app, ui, form, was),
         RefsDialog::TocStyles { form, level } => toc_styles_ui(app, ui, form, level),
         RefsDialog::Figures(f) => figures_ui(app, ui, f),
+        RefsDialog::UpdateToc { then, entire } => update_toc_ui(app, ui, then, entire),
         RefsDialog::Sources { selected } => sources_ui(app, ui, selected),
         RefsDialog::Source(f) => source_ui(app, ui, f),
     };
