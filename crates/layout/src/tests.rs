@@ -35,6 +35,7 @@ mod missing_font_univers;
 mod missing_glyphs;
 mod nbsp;
 mod nested_cant_split;
+mod next_column_section;
 mod numeral;
 mod pages;
 mod picture_glue;
