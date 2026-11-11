@@ -15,6 +15,7 @@ mod auto_caption;
 mod insert_table_autofit;
 mod insert_table_remember;
 mod drop_cap_from_style;
+mod define_number_format;
 mod drop_cap_in_margin;
 mod bidi;
 mod browse_object;
