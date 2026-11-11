@@ -152,7 +152,7 @@ fn empty_names_are_dropped_and_duplicates_keep_the_last() {
 
 #[test]
 fn unicode_names_and_values_decode() {
-    let d = doc(&with_props(r"{\propname Caf\u233?}\proptype30{\staticval  3?▙1?}"));
+    let d = doc(&with_props(r"{\propname Caf\u233?}\proptype30{\staticval \u20013?\u25991?}"));
     assert_eq!(props(&d), vec![p("Café", "lpwstr", "中文")]);
 }
 
