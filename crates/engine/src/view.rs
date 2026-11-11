@@ -20,6 +20,10 @@ pub struct ViewState {
     /// Table Layout › View Gridlines: outlines of table cells (on screen only); on by default, as in Word.
     #[serde(default = "on")]
     pub table_gridlines: bool,
+    /// Header & Footer › Show Document Text: off, the body is not drawn while a header or footer
+    /// is being edited (on screen only; never printed or saved). On by default, as in Word.
+    #[serde(default = "on")]
+    pub show_document_text: bool,
     pub nav_pane: bool,
     pub styles_pane: bool,
     /// Where the Styles pane sits: docked right (the default) or left, or floating (#1756).
@@ -210,6 +214,7 @@ impl Default for ViewState {
             ruler: true,
             gridlines: false,
             table_gridlines: true,
+            show_document_text: true,
             nav_pane: false,
             styles_pane: false,
             styles_pane_dock: StylesPaneDock::Right,

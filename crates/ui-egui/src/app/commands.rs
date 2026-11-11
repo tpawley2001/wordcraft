@@ -1113,6 +1113,7 @@ fn input_dialog_insert(id: &str, params: &Value) -> Option<&'static str> {
         "insert.symbol" if !has_value(params, "char") => Some("symbol"),
         "insert.buildingBlocks" if no_settings(params) => Some("buildingBlocks"),
         "insert.field" if !has_value(params, "instr") => Some("field"),
+        "insert.alignmentTab" if no_settings(params) => Some("alignmentTab"),
         "insert.smartArt" if !has_value(params, "layout") && !has_value(params, "items") => Some("insertSmartArt"),
         "insert.chart" if !has_value(params, "type") && !has_value(params, "data") => Some("insertChart"),
         "chart.type" if !has_value(params, "type") => Some("changeChartType"),

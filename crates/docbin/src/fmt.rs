@@ -206,12 +206,17 @@ fn s16_of(p: &Prl) -> Option<i16> {
     u16_of(p).map(|v| v as i16)
 }
 
-fn set(props: &mut Option<bool>, t: Toggle, base: bool) {
+/// A toggle sprm's value: absolute, or the base's (the paragraph style's) value kept or
+/// inverted. A kept value the base leaves unset stays as it was.
+fn set(props: &mut Option<bool>, t: Toggle, base: Option<bool>) {
     *props = Some(match t {
         Toggle::On => true,
         Toggle::Off => false,
-        Toggle::Invert => !base,
-        Toggle::Keep => return,
+        Toggle::Invert => !base.unwrap_or(false),
+        Toggle::Keep => match base {
+            Some(b) => b,
+            None => return,
+        },
     });
 }
 
@@ -220,12 +225,12 @@ fn set(props: &mut Option<bool>, t: Toggle, base: bool) {
 pub(crate) fn apply_char(p: &mut CharProps, prl: &Prl, base: &CharProps, fonts: &[String]) {
     let op = prl.op;
     match op {
-        C_BOLD => set(&mut p.bold, sprm::toggle(prl), base.bold.unwrap_or(false)),
-        C_ITALIC => set(&mut p.italic, sprm::toggle(prl), base.italic.unwrap_or(false)),
-        C_STRIKE => set(&mut p.strike, sprm::toggle(prl), base.strike.unwrap_or(false)),
-        C_SMALL_CAPS => set(&mut p.small_caps, sprm::toggle(prl), base.small_caps.unwrap_or(false)),
-        C_CAPS => set(&mut p.caps, sprm::toggle(prl), base.caps.unwrap_or(false)),
-        C_HIDDEN => set(&mut p.hidden, sprm::toggle(prl), base.hidden.unwrap_or(false)),
+        C_BOLD => set(&mut p.bold, sprm::toggle(prl), base.bold),
+        C_ITALIC => set(&mut p.italic, sprm::toggle(prl), base.italic),
+        C_STRIKE => set(&mut p.strike, sprm::toggle(prl), base.strike),
+        C_SMALL_CAPS => set(&mut p.small_caps, sprm::toggle(prl), base.small_caps),
+        C_CAPS => set(&mut p.caps, sprm::toggle(prl), base.caps),
+        C_HIDDEN => set(&mut p.hidden, sprm::toggle(prl), base.hidden),
         C_KUL => {
             p.underline = match prl.operand.first().copied().unwrap_or(0) {
                 0x00 => Some(Underline::None),

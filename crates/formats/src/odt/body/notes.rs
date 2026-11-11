@@ -348,7 +348,13 @@ impl Body<'_> {
                 p.inlines.insert(at, Inline::Anchor(name.clone()));
             }
             // A fixed field keeps what it shows (§19.807 `text:fixed`): a locked field.
-            p.inlines.push(Inline::Field { instr, result: result.trim().to_string(), fmt, locked: fixed && !result.trim().is_empty() });
+            p.inlines.push(Inline::Field {
+                instr,
+                result: result.trim().to_string(),
+                fmt,
+                locked: fixed && !result.trim().is_empty(),
+                form: String::new(),
+            });
             if let Some(name) = anchor {
                 p.inlines.push(Inline::AnchorEnd(name));
             }

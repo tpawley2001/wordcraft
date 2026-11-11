@@ -37,6 +37,11 @@ pub fn esc(s: &str) -> String {
     o
 }
 
+/// A note reference: the automatic number (`\chftn`), or the custom mark's text (RTF 1.9.1).
+fn note_mark(custom: &str) -> String {
+    if custom.is_empty() { String::from("{\\super\\chftn}") } else { format!("{{\\super {}}}", esc(custom)) }
+}
+
 /// [`esc`] for a `\fonttbl` name: `;` would end the entry, so it is written `\'3b`, and control
 /// characters, which `esc` writes as `\line` or `\tab`, are dropped.
 fn esc_font(name: &str) -> String {
@@ -74,8 +79,12 @@ impl Tables {
 pub(super) enum Mark {
     Note {
         endnote: bool,
+        /// The custom reference mark (empty: the automatic number).
+        custom: String,
         blocks: Vec<FBlock>,
     },
+    /// A custom-marked note's own mark, at the start of its text.
+    Own(String),
     RangeStart(u32),
     /// The end of a comment's range; the first end of each comment also carries its annotation.
     RangeEnd {
@@ -187,12 +196,14 @@ impl Marker<'_> {
         for off in p.object_offsets().into_iter().rev() {
             let Some(obj) = q.object_at(off).cloned() else { continue };
             let tok = match obj {
-                InlineObject::NoteRef { id, .. } if note == Some(id) => Some(String::from("S")),
+                InlineObject::NoteRef { id, custom, .. } if note == Some(id) => {
+                    Some(if custom.is_empty() { String::from("S") } else { self.token(Mark::Own(custom)) })
+                }
                 InlineObject::NoteRef { .. } if note.is_some() => Some(String::new()),
-                InlineObject::NoteRef { id, kind, .. } => self.doc.parts.get(&id).map(|part| {
+                InlineObject::NoteRef { id, kind, custom } => self.doc.parts.get(&id).map(|part| {
                     let mut blocks = Vec::new();
                     self.story(&part.blocks, id, 0, &mut blocks);
-                    self.token(Mark::Note { endnote: kind == wordcraft_doc::para::NoteKind::Endnote, blocks })
+                    self.token(Mark::Note { endnote: kind == wordcraft_doc::para::NoteKind::Endnote, custom, blocks })
                 }),
                 InlineObject::CommentStart { id } if note.is_none() => Some(self.token(Mark::RangeStart(id))),
                 InlineObject::CommentEnd { id } if note.is_none() => {
@@ -916,8 +927,9 @@ impl Writer {
         }
         let Some(m) = tok.parse::<usize>().ok().and_then(|i| self.marks.get_mut(i)) else { return };
         match std::mem::replace(m, Mark::Done) {
-            Mark::Note { endnote, blocks } => {
-                out.push_str("{\\super\\chftn}{\\footnote");
+            Mark::Note { endnote, custom, blocks } => {
+                out.push_str(&note_mark(&custom));
+                out.push_str("{\\footnote");
                 if endnote {
                     out.push_str("\\ftnalt");
                 }
@@ -925,6 +937,7 @@ impl Writer {
                 self.blocks(&blocks, 0, "\\par", out, 0);
                 out.push('}');
             }
+            Mark::Own(custom) => out.push_str(&note_mark(&custom)),
             Mark::RangeStart(id) => out.push_str(&format!("{{\\*\\atrfstart {id}}}")),
             Mark::RangeEnd { id, ann } => {
                 out.push_str(&format!("{{\\*\\atrfend {id}}}"));
@@ -1231,8 +1244,12 @@ impl Writer {
                 Inline::Ruby { base, fmt, .. } => self.run(base, fmt, out),
                 // ASK and SET show nothing (see `model::shows_nothing`).
                 Inline::Field { instr, .. } if model::shows_nothing(instr) => {}
-                Inline::Field { instr, result, fmt, .. } => {
-                    out.push_str(&format!("{{\\field{{\\*\\fldinst {}}}{{\\fldrslt ", esc(instr)));
+                Inline::Field { instr, result, fmt, form, .. } => {
+                    // A legacy form field's definition goes in its instruction, as Word writes it.
+                    match super::form_field::rtf_group(form) {
+                        Some(group) => out.push_str(&format!("{{\\field{{\\*\\fldinst {{{} {group}}}}}{{\\fldrslt ", esc(instr.trim()))),
+                        None => out.push_str(&format!("{{\\field{{\\*\\fldinst {}}}{{\\fldrslt ", esc(instr))),
+                    }
                     self.run(result, fmt, out);
                     out.push_str("}}");
                 }

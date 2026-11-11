@@ -1,7 +1,7 @@
 use super::bidi::{Dir, bidi_levels, strong_rtl, visual_order};
 use super::chars::{
-    SegKey, caps_expands, context_digit_dirs, draws_something, is_khmer, is_mark, is_numeral_digit, ligature_features, lookup_family, remap_range,
-    reported_font_name, thai_run_face, upper_char,
+    FeatureList, SegKey, caps_expands, context_digit_dirs, draws_something, is_khmer, is_mark, is_numeral_digit, ligature_features, lookup_family,
+    number_and_set_features, remap_range, reported_font_name, thai_run_face, upper_char,
 };
 use super::grid::east_asian;
 use super::model::{ClKind, Cluster, Enclosed, Glyph, ParaEnv, RubyLayout, StyleRun, SymbolRun};
@@ -399,7 +399,14 @@ impl<'a> Builder<'a> {
             };
             let from = usize::from(rc.kerned());
             let to = if ligatures.is_some() { all.len() } else { 1 };
-            let features: &[wordcraft_fonts::Feature] = all.get(from..to).unwrap_or_default();
+            // Number forms, number spacing, stylistic sets and contextual alternates come after.
+            let mut list = FeatureList::new();
+            list.extend(all.get(from..to).unwrap_or_default());
+            if rc.num_form.is_some() || rc.num_spacing.is_some() || rc.stylistic_sets.is_some() || rc.contextual_alternates.is_some() {
+                let khmer = rc.contextual_alternates.is_some() && shape_text.chars().any(is_khmer);
+                list.extend(number_and_set_features(rc, khmer).as_slice());
+            }
+            let features: &[wordcraft_fonts::Feature] = list.as_slice();
             // Letters join across a change of font or direction inside the run too.
             let around = ShapeContext {
                 before: if a == 0 { around.before } else { text.get(..a).unwrap_or("") },
