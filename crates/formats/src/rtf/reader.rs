@@ -599,6 +599,9 @@ impl Reader {
                     6 => self.info_more.last_modified_by = t,
                     7 => self.info_more.category = t,
                     8..=10 => self.info_more.user_prop_text(k, t),
+                    11 => self.info_more.manager = t,
+                    12 => self.info_more.company = t,
+                    13 => self.info_more.hyperlink_base = t,
                     _ => {}
                 }
             }

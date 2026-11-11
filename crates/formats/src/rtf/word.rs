@@ -385,6 +385,9 @@ impl Reader {
             "doccomm" if self.in_info() => Some(Dest::Info(5)),
             "operator" if self.in_info() => Some(Dest::Info(6)),
             "category" if self.in_info() => Some(Dest::Info(7)),
+            "manager" if self.in_info() => Some(Dest::Info(11)),
+            "company" if self.in_info() => Some(Dest::Info(12)),
+            "hlinkbase" if self.in_info() => Some(Dest::Info(13)),
             "creatim" | "revtim" | "printim" if self.in_info() => {
                 let which = match w {
                     "creatim" => 0,
@@ -781,7 +784,22 @@ impl Reader {
             return true;
         }
         let kept_info = self.in_info()
-            && matches!(word, "title" | "author" | "subject" | "keywords" | "doccomm" | "operator" | "category" | "creatim" | "revtim" | "printim");
+            && matches!(
+                word,
+                "title"
+                    | "author"
+                    | "subject"
+                    | "keywords"
+                    | "doccomm"
+                    | "operator"
+                    | "category"
+                    | "creatim"
+                    | "revtim"
+                    | "printim"
+                    | "manager"
+                    | "company"
+                    | "hlinkbase"
+            );
         if !matches!(self.st.dest, Dest::Skip | Dest::Object) || kept_info {
             return false;
         }

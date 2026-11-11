@@ -94,6 +94,11 @@ pub(super) fn truncate_chars(s: &mut String, max: usize) {
 pub(super) struct InfoMore {
     pub(super) last_modified_by: String,
     pub(super) category: String,
+    /// `{\manager …}`, `{\company …}` and `{\hlinkbase …}`: kept as the DOCX code keeps
+    /// `docProps/app.xml`'s Manager, Company and HyperlinkBase.
+    pub(super) manager: String,
+    pub(super) company: String,
+    pub(super) hyperlink_base: String,
     pub(super) revision: u32,
     pub(super) props: Vec<wordcraft_doc::CustomProp>,
     /// The user property being read: its name, `\proptypeN`, value and linked bookmark.
