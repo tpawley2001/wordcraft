@@ -615,9 +615,10 @@ fn table_properties_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bo
     table_properties(ui, form);
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok {
-        let changes = form.changes(basis);
-        if changes.as_object().is_some_and(|m| !m.is_empty()) {
-            let _ = app.run("table.properties", changes);
+        let commands = form.commands(basis);
+        if !commands.is_empty() {
+            // Table settings and alt text: one undo step.
+            let _ = super::page_setup::run_as_one_step(app, commands);
         }
     }
     ok || cancel
