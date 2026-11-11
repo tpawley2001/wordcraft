@@ -128,7 +128,7 @@ fn cross_reference_dialog_lists_targets_and_inserts_a_ref_field() {
 fn cross_reference_dialog_offers_custom_caption_labels() {
     let mut a = app("Rock\nSee ");
     let types = |a: &WordApp| ref_types(a).into_iter().map(|(v, _)| v).collect::<Vec<_>>();
-    assert_eq!(types(&a), ["heading", "bookmark", "equation", "figure", "table"]);
+    assert_eq!(types(&a), ["heading", "bookmark", "footnote", "endnote", "equation", "figure", "table"]);
     // Made in the Caption dialog but not used yet: listed, with nothing to pick.
     a.ui.caption_labels.push("Plate".into());
     assert!(types(&a).contains(&"label:Plate".to_string()));
@@ -477,4 +477,21 @@ fn index_automark_picker_marks_and_reports_count() {
     a.run("edit.undo", json!({})).unwrap();
     assert_eq!(a.session.doc.plain_text(StoryRef::Body), "fox fox");
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The Cross-reference dialog's Footnote type lists the notes with their numbers, offers Word's
+/// four choices, and Insert as hyperlink (on by default) decides the field's `\h`.
+#[test]
+fn cross_reference_dialog_refers_to_footnotes() {
+    let mut a = app("Alpha\nSee ");
+    a.run("select.text", json!({"text": "Alpha"})).unwrap();
+    a.run("caret.right", json!({})).unwrap();
+    a.run("references.footnote", json!({"text": "Note one"})).unwrap();
+    a.run("caret.set", json!({"pos": {"block": 1, "off": 4}})).unwrap();
+    let mut f = CrossRefForm::read(&a, "footnote");
+    assert_eq!((f.targets.clone(), f.show.as_str(), f.hyperlink), (vec!["1 Note one".to_string()], "number", true));
+    assert_eq!(f.shows().iter().map(|(v, _)| *v).collect::<Vec<_>>(), ["number", "page", "aboveBelow", "formattedNumber"]);
+    f.hyperlink = false;
+    a.run("insert.crossReference", f.params().unwrap()).unwrap();
+    assert!(instrs(&a).iter().any(|i| i.starts_with("NOTEREF _Ref") && !i.contains("\\h")), "{:?}", instrs(&a));
 }

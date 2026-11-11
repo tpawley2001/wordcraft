@@ -497,6 +497,23 @@ fn bookmark_page_pos(doc: &wordcraft_doc::Document, name: &str, pos: Pos) -> Pos
     pos
 }
 
+/// The mark of the footnote or endnote whose reference starts the bookmark at `at` (NOTEREF's
+/// result): its custom mark, or its number as shown.
+fn noteref_mark(doc: &wordcraft_doc::Document, at: &Pos, marks: &std::collections::HashMap<u32, String>) -> Option<String> {
+    let p = doc.para(at.story, &at.path)?;
+    for (off, o) in p.objects_with_offsets() {
+        if off < at.off {
+            continue;
+        }
+        match o {
+            InlineObject::NoteRef { id, custom, .. } => return if custom.is_empty() { marks.get(id).cloned() } else { Some(custom.clone()) },
+            InlineObject::BookmarkStart { .. } | InlineObject::BookmarkEnd { .. } => {}
+            _ => return None,
+        }
+    }
+    None
+}
+
 /// [`update_fields`], or with `all` the whole document: the body (with SEQ, citations and TOC) and
 /// every part story, wherever the caret is (what printing needs).
 pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
@@ -508,6 +525,12 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
     let mut pages: std::collections::HashMap<String, (u32, NumFormat, String)> = Default::default();
     let formats = page_formats(s);
     let marks = s.doc.bookmarks();
+    // Where each body bookmark starts, for `\p` (above/below) and NOTEREF.
+    let mut bookmark_at: std::collections::HashMap<String, Pos> = Default::default();
+    for (name, pos) in &marks {
+        bookmark_at.entry(name.clone()).or_insert_with(|| pos.clone());
+    }
+    let mut note_marks = None;
     for (name, pos) in marks {
         let pos = bookmark_page_pos(&s.doc, &name, pos);
         let l = s.layout();
@@ -535,6 +558,7 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
             continue;
         }
         let mut updates: Vec<(usize, String)> = Vec::new();
+        let offsets: Vec<usize> = p.objects_with_offsets().map(|(off, _)| off).collect();
         for (k, o) in p.objects.iter().enumerate() {
             let InlineObject::Field { instr, locked: false, .. } = o else { continue };
             // A table formula reads the cells around its own cell again.
@@ -562,13 +586,22 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
                     let value = if name == "CREATEDATE" { &core.created } else { &core.last_printed };
                     updates.extend(document_date_result(instr, value).map(|text| (k, text)));
                 }
-                "REF" | "PAGEREF" => {
+                "REF" | "PAGEREF" | "NOTEREF" => {
                     let f = FieldCode::parse(instr);
                     let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
-                    let r = if name == "REF" {
-                        if has_switch(instr, 'p') {
-                            None
-                        } else if let Some(sw) = ['w', 'r', 'n'].into_iter().find(|c| has_switch(instr, *c)) {
+                    let r = if name != "PAGEREF" && has_switch(instr, 'p') {
+                        // Above/below: where the bookmark is from the field (ECMA-376 §17.16.5.40,
+                        // §17.16.5.51), in the body only.
+                        let here = offsets.get(k).map(|off| Pos { story, path: path.clone(), off: *off });
+                        match (bookmark_at.get(target), here) {
+                            (Some(at), Some(here)) if story == StoryRef::Body => Some(if *at < here { "above" } else { "below" }.to_string()),
+                            _ => None,
+                        }
+                    } else if name == "NOTEREF" {
+                        let marks = note_marks.get_or_insert_with(|| wordcraft_layout::note_marks(&s.doc));
+                        bookmark_at.get(target).and_then(|at| noteref_mark(&s.doc, at, marks))
+                    } else if name == "REF" {
+                        if let Some(sw) = ['w', 'r', 'n'].into_iter().find(|c| has_switch(instr, *c)) {
                             if has_switch(instr, 'd') || has_switch(instr, 't') {
                                 continue; // Preserve cached results for unsupported delimiter/text switches.
                             }
@@ -591,7 +624,7 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
                         None
                     };
                     if let Some(r) = r {
-                        updates.push((k, if name == "REF" { text_result(instr, r) } else { r }));
+                        updates.push((k, if name == "PAGEREF" { r } else { text_result(instr, r) }));
                     }
                 }
                 // A value given a name (the layout draws nothing for it; its result stays).

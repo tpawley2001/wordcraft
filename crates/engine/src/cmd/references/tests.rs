@@ -186,6 +186,31 @@ fn update_fields_ref_and_pageref() {
     assert_eq!(res[4], ("REF TargetMark \\p".into(), "above".into()));
 }
 
+/// Update Field keeps Above/below (`\\p`) as "above" or "below" for REF and NOTEREF, and NOTEREF
+/// shows the note's number as it is now (ECMA-376 §17.16.5.40, §17.16.5.51).
+#[test]
+fn update_fields_above_below_and_noteref() {
+    let mut s = Session::new(wordcraft_doc::Document::from_text("Lead\nAlpha\nbm text"));
+    let caret = |s: &mut Session, block: usize, off: usize| {
+        s.run("caret.set", &json!({"pos": {"block": block, "off": off}})).unwrap();
+    };
+    caret(&mut s, 1, 5);
+    s.run("references.footnote", &json!({"text": "Note one"})).unwrap();
+    s.run("select.range", &json!({"anchor": {"block": 2, "off": 0}, "focus": {"block": 2, "off": 7}})).unwrap();
+    s.run("insert.bookmark", &json!({"name": "bm"})).unwrap();
+    caret(&mut s, 0, 4);
+    s.run("insert.crossReference", &json!({"to": "bookmark", "target": "bm", "show": "aboveBelow"})).unwrap();
+    s.run("insert.crossReference", &json!({"to": "footnote", "target": "1", "show": "aboveBelow"})).unwrap();
+    s.run("insert.crossReference", &json!({"to": "footnote", "target": "1", "show": "number"})).unwrap();
+    // A new footnote before the first renumbers it.
+    caret(&mut s, 0, 0);
+    s.run("references.footnote", &json!({"text": "Earlier"})).unwrap();
+    caret(&mut s, 0, 0);
+    update_fields(&mut s).unwrap();
+    let res: Vec<String> = fields(&s).into_iter().map(|(_, r)| r).collect();
+    assert_eq!(res, ["below", "below", "2"]);
+}
+
 /// A document with a body AUTHOR field and a header holding AUTHOR, NUMWORDS and a locked TITLE,
 /// all stale; the author is "Ada".
 fn doc_with_header_fields() -> (wordcraft_doc::Document, u32) {
