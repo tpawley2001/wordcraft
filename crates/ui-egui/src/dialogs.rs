@@ -139,8 +139,9 @@ pub enum Dialog {
         /// Latin text, space between Asian text and numbers.
         asian: [bool; 6],
         /// Mirror indents, don't add space between paragraphs of the same style, suppress line
-        /// numbers, don't hyphenate (#512).
-        opts: [bool; 4],
+        /// numbers, don't hyphenate (#512), automatically adjust right indent and snap to grid
+        /// when a document grid is defined.
+        opts: [bool; 6],
         /// The fields every selected paragraph shares, as `para_fields` names them, from when
         /// the dialog opened: OK sends only the fields that differ from these, so an untouched
         /// tab adds no direct formatting (#1346).
