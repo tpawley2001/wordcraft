@@ -220,12 +220,18 @@ pub(super) struct Sub {
     pub(super) depth: usize,
     pub(super) comment: bool,
     pub(super) endnote: bool,
+    /// The note's custom reference mark (empty: numbered).
+    pub(super) custom: String,
+    /// A group with text has been read in the note (only the first can be its own mark).
+    pub(super) own_mark_done: bool,
     pub(super) saved: Box<Output>,
 }
 
 /// A note read: its kind and text.
 pub(super) struct NoteData {
     pub(super) endnote: bool,
+    /// The custom reference mark (empty: numbered).
+    pub(super) custom: String,
     pub(super) blocks: Vec<FBlock>,
 }
 

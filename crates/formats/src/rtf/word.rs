@@ -463,6 +463,9 @@ impl Reader {
     /// the two inside a note: `\ftnalt` (an endnote) and `\chftn` (the note's own number).
     fn start_note_word(&mut self, word: &str) -> bool {
         if self.st.dest == Dest::Body {
+            if word == "chftn" {
+                self.note_mark.saw_chftn();
+            }
             match word {
                 "ftnalt" => {
                     if let Some(sub) = self.sub.as_mut() {
