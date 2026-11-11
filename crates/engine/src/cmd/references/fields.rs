@@ -595,18 +595,19 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
         let offsets: Vec<usize> = p.objects_with_offsets().map(|(off, _)| off).collect();
         for (k, o) in p.objects.iter().enumerate() {
             let InlineObject::Field { instr, locked: false, .. } = o else { continue };
-            // A table formula reads the cells around its own cell again.
+            // A table formula reads the cells around its own cell again; a formula anywhere
+            // else reads numbers and bookmarks only.
             if instr.trim_start().starts_with('=') {
-                if let Some((tp, r, c)) = path.cell()
-                    && let Some(t) = s.doc.table(StoryRef::Body, &tp)
-                {
-                    let default_lang = crate::cmd::default_lang(s);
-                    let text = match crate::cmd::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, instr) {
-                        Ok(text) => text,
-                        Err(e) => format!("!{e}"),
-                    };
-                    updates.push((k, text));
-                }
+                let default_lang = crate::cmd::default_lang(s);
+                let result = match path.cell().and_then(|(tp, r, c)| s.doc.table(story, &tp).map(|t| (t, r, c))) {
+                    Some((t, r, c)) => crate::cmd::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, instr),
+                    None => crate::cmd::table_formula::evaluate_text_field(&s.doc, default_lang.as_deref(), instr),
+                };
+                let text = match result {
+                    Ok(text) => text,
+                    Err(e) => format!("!{e}"),
+                };
+                updates.push((k, text));
                 continue;
             }
             let name = wordcraft_layout::fields::field_name(instr);
