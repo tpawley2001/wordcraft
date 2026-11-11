@@ -1305,6 +1305,9 @@ impl Writer {
         }
         if let Kind::Heading(n) = p.kind {
             out.push_str(&format!("\\outlinelevel{}", n.clamp(1, 6) - 1));
+        } else if let Some(l) = p.extra.as_ref().and_then(|x| x.outline_level).filter(|l| *l < 9) {
+            // An outline level apart from a heading style: the paragraph keeps its own style.
+            out.push_str(&format!("\\outlinelevel{l}"));
         }
         match p.align {
             Some(Align::Center) => out.push_str("\\qc"),
@@ -1721,7 +1724,7 @@ pub fn export(doc: &Document) -> String {
         .collect();
     let before = set_own_styles(own);
     // An empty paragraph's mark formatting sets its height.
-    let opts = model::FlowOpts { marks: true, ..model::FlowOpts::tracked() };
+    let opts = model::FlowOpts { marks: true, outline_apart: true, ..model::FlowOpts::tracked() };
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {

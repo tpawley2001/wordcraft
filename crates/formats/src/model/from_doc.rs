@@ -337,12 +337,13 @@ fn rev_marks(doc: &Document, cp: &CharProps) -> (Option<RevMark>, Option<RevMark
 /// Paragraph kind and list membership of a document paragraph.
 pub fn para_kind(doc: &Document, p: &Paragraph) -> (Kind, Option<ListInfo>) {
     let blank = p.plain_text().trim().is_empty() && p.objects.iter().all(|o| o.is_marker());
-    props_kind(doc, &p.props, blank)
+    props_kind(doc, &p.props, blank, false)
 }
 
 /// Paragraph kind and list membership of paragraph properties; `blank` = the paragraph shows
-/// nothing (a bottom border then makes it a rule).
-fn props_kind(doc: &Document, props: &ParaProps, blank: bool) -> (Kind, Option<ListInfo>) {
+/// nothing (a bottom border then makes it a rule); with `outline_apart` an outline level alone
+/// doesn't make a heading ([`FlowOpts::outline_apart`]).
+fn props_kind(doc: &Document, props: &ParaProps, blank: bool, outline_apart: bool) -> (Kind, Option<ListInfo>) {
     let rp = doc.styles.resolve_para(props);
     let style = props.style.as_deref().unwrap_or("Normal");
     // A heading's kind is its style's (Heading 2 looks as Heading 2 whatever its outline level,
@@ -351,7 +352,7 @@ fn props_kind(doc: &Document, props: &ParaProps, blank: bool) -> (Kind, Option<L
         doc.styles.chain(style).iter().find_map(|s| s.id.strip_prefix("Heading").and_then(|n| n.parse::<u8>().ok()).filter(|n| (1..=9).contains(n)));
     let kind = if let Some(l) = style_level.filter(|_| rp.outline_level.is_some()) {
         Kind::Heading(l.min(6))
-    } else if let Some(l) = rp.outline_level {
+    } else if let Some(l) = rp.outline_level.filter(|_| !outline_apart) {
         Kind::Heading((l + 1).min(6))
     } else if doc.styles.chain(style).iter().any(|s| s.id == "Title") {
         Kind::Title
@@ -593,7 +594,8 @@ pub fn flow_paras(doc: &Document, p: &Paragraph) -> Vec<Para> {
 /// insertion and deletion marks.
 fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
     let tracked = opts.tracked;
-    let (kind, list) = para_kind(doc, p);
+    let blank = p.plain_text().trim().is_empty() && p.objects.iter().all(|o| o.is_marker());
+    let (kind, list) = props_kind(doc, &p.props, blank, opts.outline_apart);
     let list = flow_list(doc, kind, list, p, opts);
     let mut done: Vec<Para> = Vec::new();
     let borders = if kind == Kind::Rule { None } else { p.props.borders.filter(|b| b.takes_room()) };
@@ -618,6 +620,13 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
         group: None,
     };
     out.extra = flow_para_extra(doc, &p.props, opts);
+    // An outline level apart from a heading style, as the paragraph's own.
+    if opts.outline_apart
+        && !matches!(kind, Kind::Heading(_))
+        && let Some(l) = doc.styles.resolve_para(&p.props).outline_level.filter(|l| *l < 9)
+    {
+        out.extra.get_or_insert_with(Default::default).outline_level = Some(l);
+    }
     let in_code = kind == Kind::Code;
     let mut k = 0usize;
     let mut control = OpenControl::default();
@@ -764,7 +773,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
         // The formatting change belongs to the paragraph the mark ends.
         out.fmt_change = p.props.fmt_change.as_deref().map(|c| {
             let blank = out.inlines.is_empty();
-            let (kind, mut list) = props_kind(doc, &c.old, blank);
+            let (kind, mut list) = props_kind(doc, &c.old, blank, opts.outline_apart);
             if !opts.lists
                 && let Some(li) = &mut list
             {
