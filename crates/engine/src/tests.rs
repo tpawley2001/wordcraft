@@ -44,6 +44,7 @@ mod mark_toc_entry;
 mod move_text_keys;
 mod negative_margins;
 mod rtl_gutter;
+mod para_sort_case;
 mod para_sort_keys;
 mod manual_duplex;
 mod print_document_properties;
@@ -13316,3 +13317,4 @@ fn drop_cap_menu_availability_uses_the_resolved_cap() {
 mod readability;
 mod linked_style_apply;
 mod style_pane_options;
+mod backup_copy;
