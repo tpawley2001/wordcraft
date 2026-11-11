@@ -239,6 +239,7 @@ impl<'a> Exempt<'a> {
             || matches!(plain, "Captain's Log" | "Keep a true log, Captain: the sea forgets, but the page remembers.")
             || plain == "CONFIDENTIAL" // the watermark dialog's text: document content, kept as typed
             || plain == "Figure 1" // the caption dialog's sample: the label goes into the document as is
+            || crate::dialogs_insert::date_time_preview_matches(plain)
     }
 }
 

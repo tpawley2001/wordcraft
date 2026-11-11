@@ -13,6 +13,7 @@ use crate::theme::{Tokens, regular, semibold};
 
 mod alignment_tab;
 mod columns;
+mod date_time;
 mod field;
 mod symbol;
 
@@ -20,6 +21,10 @@ use alignment_tab::alignment_tab_ui;
 pub use alignment_tab::{ALIGNMENT_TAB_LEADERS, AlignmentTabForm, alignment_tab_ok};
 pub use columns::{ColumnsForm, DropCapForm};
 use columns::{columns_ui, drop_cap_ui};
+pub use date_time::DateTimeForm;
+#[cfg(test)]
+pub(crate) use date_time::date_time_preview_matches;
+use date_time::date_time_ui;
 use field::field_ui;
 pub use field::{DATE_FORMATS, FIELD_CATEGORIES, FIELDS, FieldForm, FieldKind, NUMBER_FORMATS, STYLEREF_SWITCHES, field_kind};
 use symbol::symbol_ui;
@@ -31,6 +36,8 @@ pub use symbol::{
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "form", rename_all = "camelCase")]
 pub enum InsertDialog {
+    /// Date & Time insertion dialog.
+    DateTime(DateTimeForm),
     Columns(ColumnsForm),
     Symbol(SymbolForm),
     Field(FieldForm),
@@ -42,8 +49,10 @@ pub enum InsertDialog {
 }
 
 impl InsertDialog {
+    /// The dialog name used in command dispatch and UI state.
     pub fn name(&self) -> &'static str {
         match self {
+            InsertDialog::DateTime(_) => "dateTime",
             InsertDialog::Columns(_) => "columns",
             InsertDialog::Symbol(_) => "symbol",
             InsertDialog::Field(_) => "field",
@@ -59,6 +68,7 @@ impl InsertDialog {
     /// The window title (English; the caller translates it).
     pub fn title(&self) -> &'static str {
         match self {
+            InsertDialog::DateTime(_) => "Date and Time",
             InsertDialog::Columns(_) => "Columns",
             InsertDialog::Symbol(_) => "Symbol",
             InsertDialog::Field(_) => "Field",
@@ -78,6 +88,7 @@ impl InsertDialog {
 /// `alignmentTab` (Header & Footer › Insert Alignment Tab).
 pub fn open(name: &str, app: &WordApp) -> Option<InsertDialog> {
     Some(match name {
+        "dateTime" => InsertDialog::DateTime(DateTimeForm::new(app)),
         "columns" => InsertDialog::Columns(ColumnsForm::read(app)),
         "symbol" => InsertDialog::Symbol(SymbolForm::new(app, 0)),
         "specialCharacters" => InsertDialog::Symbol(SymbolForm::new(app, 1)),
@@ -95,6 +106,7 @@ pub fn open(name: &str, app: &WordApp) -> Option<InsertDialog> {
 /// Draws the dialog; returns true to close it.
 pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut InsertDialog) -> bool {
     match d {
+        InsertDialog::DateTime(f) => date_time_ui(app, ui, f),
         InsertDialog::Columns(f) => columns_ui(app, ui, f),
         InsertDialog::Symbol(f) => symbol_ui(app, ui, f),
         InsertDialog::Field(f) => field_ui(app, ui, f),

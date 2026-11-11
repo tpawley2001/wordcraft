@@ -1838,6 +1838,7 @@ mod doc_page_options;
 mod doc_settings;
 mod doc_widow_control;
 mod foreign_styles;
+mod form_fields;
 mod frames;
 mod html_auto_spacing;
 mod info_props;

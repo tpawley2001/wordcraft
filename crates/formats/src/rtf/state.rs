@@ -62,6 +62,11 @@ pub(super) enum Dest {
     PnTxtA,
     /// The program that wrote the file (`{\*\generator …}`): its text is kept.
     Generator,
+    /// A legacy form field's definition inside a field instruction (`{\*\formfield …}`): its
+    /// words are read into the field's [`super::form_field::FormField`].
+    FormField,
+    /// A text-valued part of a `{\*\formfield …}` group (`{\*\ffname …}`, `{\*\ffl …}`…).
+    FfText(super::form_field::FfSlot),
     /// User properties (`{\*\userprops …}`, RTF 1.9.1 "User Properties"): `\proptypeN` is read
     /// here, `\propname`, `\staticval` and `\linkval` are text groups (`Info(8..=10)`).
     UserProps,

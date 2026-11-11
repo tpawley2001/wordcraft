@@ -17,6 +17,33 @@ use super::MAX_FONT_NAME;
 use super::drawing_color::adjust_lum;
 use crate::units::{int, line_multiple, measure, on_off, tw, tw_i16, tw_u16, u32_of};
 
+/// A `w14:` on/off property ([MS-DOCX] `CT_OnOff`): no `w14:val` is on.
+fn w14_on_off(k: &El) -> bool {
+    k.attr("w14:val").is_none_or(|v| !matches!(v.trim(), "0" | "false" | "off" | "False" | "FALSE"))
+}
+
+/// The stylistic sets of `w14:stylisticSets`: sorted by id, ids outside 1..=20 dropped, the
+/// last entry for an id kept. A set without `w14:val` is on.
+fn stylistic_sets(k: &El) -> Vec<wordcraft_doc::props::StyleSet> {
+    use wordcraft_doc::props::StyleSet;
+    let mut sets: Vec<StyleSet> = Vec::new();
+    for e in k.children("w14:styleSet") {
+        let Some(id) = e.attr("w14:id").and_then(|v| v.trim().parse::<u8>().ok()).filter(|id| (1..=StyleSet::MAX_ID).contains(id)) else {
+            continue;
+        };
+        let set = StyleSet { id, on: w14_on_off(e) };
+        match sets.binary_search_by_key(&id, |s| s.id) {
+            Ok(i) => {
+                if let Some(s) = sets.get_mut(i) {
+                    *s = set;
+                }
+            }
+            Err(i) => sets.insert(i, set),
+        }
+    }
+    sets
+}
+
 /// A text frame (`w:framePr` without a drop cap, ECMA-376 §17.3.1.11), sizes and offsets in
 /// points (clamped), names kept as OOXML writes them.
 fn text_frame(k: &El) -> wordcraft_doc::props::TextFrame {
@@ -337,6 +364,10 @@ impl PropCtx {
                     c.lang_ea = k.attr("w:eastAsia").map(str::trim).filter(|v| !v.is_empty() && v.len() < 64).map(str::to_string);
                 }
                 "w14:ligatures" => c.ligatures = k.attr("w14:val").and_then(wordcraft_doc::props::Ligatures::from_ooxml),
+                "w14:numForm" => c.num_form = k.attr("w14:val").and_then(wordcraft_doc::props::NumForm::from_ooxml),
+                "w14:numSpacing" => c.num_spacing = k.attr("w14:val").and_then(wordcraft_doc::props::NumSpacing::from_ooxml),
+                "w14:stylisticSets" => c.stylistic_sets = Some(stylistic_sets(k)),
+                "w14:cntxtAlts" => c.contextual_alternates = Some(w14_on_off(k)),
                 n if n.starts_with("w14:") => {
                     let fx = c.text_effects.get_or_insert_with(Default::default);
                     super::wordart::read(k, &self.theme, fx);

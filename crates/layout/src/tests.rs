@@ -46,6 +46,7 @@ mod picture_glue;
 mod picture_glue_touching;
 mod rtf_justify_squeeze;
 mod rtf_wraptrsp_squeeze;
+mod rtl_gutter_vertical;
 mod styleref;
 mod symbol_field;
 mod symbol_font_lines;
@@ -4084,6 +4085,76 @@ fn line_numbers_follow_the_line_number_style() {
     });
     let styled = number_runs(&d);
     assert!(styled.iter().all(|(size, color)| *size == 8.0 && *color == red), "{styled:?}");
+}
+
+/// #6018: German Word saves the "line number" style as `Zeilennummer`; the numbers still take
+/// its formatting, found by the built-in name.
+#[test]
+fn line_numbers_follow_a_localised_line_number_style() {
+    let mut d = Document::from_text("one\ntwo\nthree");
+    d.last_section.line_numbers = Some(Default::default());
+    let red = wordcraft_doc::TextColor::Rgb(wordcraft_doc::Rgb(0xC0, 0, 0));
+    Arc::make_mut(&mut d.styles).upsert(wordcraft_doc::Style {
+        id: "Zeilennummer".into(),
+        name: "Line Number".into(),
+        kind: wordcraft_doc::StyleKind::Character,
+        chr: CharProps { size: Some(8.0), color: Some(red), ..Default::default() },
+        ..Default::default()
+    });
+    let l = lay(&d);
+    let runs: Vec<_> = l.pages[0]
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Placed::Lines { story, para, .. } if *story == DECOR_STORY => para.styles.first().map(|s| (s.size, s.rc.color)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(runs.len(), 3);
+    assert!(runs.iter().all(|(size, color)| *size == 8.0 && *color == red), "{runs:?}");
+}
+
+/// #6018: in two columns each column has its numbers at its own left edge, as in Word; the
+/// second column's used to be drawn in the page margin over the first column's.
+#[test]
+fn line_numbers_stand_beside_each_column() {
+    crate::test_fonts();
+    let text = (1..=120).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+    let mut d = Document::from_text(&text);
+    d.last_section.line_numbers = Some(Default::default());
+    d.last_section.columns = wordcraft_doc::section::Columns { count: 2, space: 36.0, separator: false, widths: Vec::new() };
+    let s = d.last_section.clone();
+    let col2 = s.margin_left + s.gutter + (s.text_width() - 36.0) / 2.0 + 36.0;
+    let l = lay(&d);
+    let p = &l.pages[0];
+    // Right edge and top of every number.
+    let numbers: Vec<(f32, f32)> = p
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Placed::Lines { story, para, x, y, .. } if *story == DECOR_STORY => {
+                Some((x + para.lines.first().and_then(|l| l.xs.last().copied()).unwrap_or(0.0), *y))
+            }
+            _ => None,
+        })
+        .collect();
+    let body_xs: Vec<f32> = p
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Placed::Lines { story: StoryRef::Body, x, .. } => Some(*x),
+            _ => None,
+        })
+        .collect();
+    assert!(body_xs.iter().any(|x| (x - col2).abs() < 0.5), "the text runs into the second column: {body_xs:?}");
+    let in_col2 = body_xs.iter().filter(|x| (*x - col2).abs() < 0.5).count();
+    let right: Vec<_> = numbers.iter().filter(|(r, _)| *r > s.margin_left + 1.0).collect();
+    assert_eq!(right.len(), in_col2, "one number per second-column line");
+    // Numbers end 18 pt (auto distance) left of their column.
+    assert!(right.iter().all(|(r, _)| (r - (col2 - 18.0)).abs() < 0.5), "{right:?}");
+    let left = numbers.len() - right.len();
+    assert!(numbers.iter().filter(|(r, _)| *r <= s.margin_left + 1.0).all(|(r, _)| (r - (s.margin_left - 18.0)).abs() < 0.5));
+    assert!(left > 0);
 }
 
 #[test]
@@ -15318,4 +15389,33 @@ fn turned_cell_float_keeps_its_along_text_offset() {
         let reference = place(direction, true);
         assert!((confined.y - reference.y).abs() < 0.01, "{direction:?}: {confined:?} vs {reference:?}");
     }
+}
+
+/// `w14:numForm`, `w14:numSpacing`, `w14:stylisticSets` and `w14:cntxtAlts` set `onum`/`lnum`,
+/// `tnum`/`pnum`, `ssNN` and `calt`; without them no feature is added, so the shaper's defaults stay.
+#[test]
+fn number_forms_spacing_sets_and_alternates_map_to_opentype_features() {
+    use wordcraft_doc::props::{CharProps, NumForm, NumSpacing, StyleSet};
+    let f = |t: &[u8; 4], v: u32| wordcraft_fonts::feature_value(t, v);
+    let sheet = wordcraft_doc::styles::StyleSheet::default();
+    let chr = CharProps {
+        num_form: Some(NumForm::OldStyle),
+        num_spacing: Some(NumSpacing::Tabular),
+        stylistic_sets: Some(vec![StyleSet { id: 2, on: true }]),
+        contextual_alternates: Some(false),
+        ..Default::default()
+    };
+    let rc = sheet.resolve_char(None, &chr);
+    assert_eq!(para::number_and_set_features(&rc, false).as_slice(), [f(b"onum", 1), f(b"tnum", 1), f(b"ss02", 1), f(b"calt", 0)]);
+    // Khmer text keeps the shaper's contextual alternates.
+    assert_eq!(para::number_and_set_features(&rc, true).as_slice(), [f(b"onum", 1), f(b"tnum", 1), f(b"ss02", 1)]);
+    let sets = CharProps {
+        stylistic_sets: Some(vec![StyleSet { id: 1, on: false }, StyleSet { id: 20, on: true }]),
+        num_form: Some(NumForm::Lining),
+        ..Default::default()
+    };
+    assert_eq!(para::number_and_set_features(&sheet.resolve_char(None, &sets), false).as_slice(), [f(b"lnum", 1), f(b"ss01", 0), f(b"ss20", 1)]);
+    let defaults = CharProps { num_form: Some(NumForm::Default), num_spacing: Some(NumSpacing::Default), ..Default::default() };
+    assert!(para::number_and_set_features(&sheet.resolve_char(None, &defaults), false).as_slice().is_empty());
+    assert!(para::number_and_set_features(&sheet.resolve_char(None, &CharProps::default()), false).as_slice().is_empty());
 }

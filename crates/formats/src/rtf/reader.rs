@@ -82,6 +82,13 @@ pub(super) struct Reader {
     pub(super) ov_list: i32,
     pub(super) ov_ls: i32,
     pub(super) fields: Vec<String>,
+    /// The legacy form field definitions read, by index in `fields`.
+    pub(super) forms: HashMap<usize, super::form_field::FormField>,
+    /// Where each field's result started in the paragraph being read, by index in `fields`.
+    pub(super) field_at: HashMap<usize, usize>,
+    /// Fields whose result runs over a paragraph mark (a table of contents, an index): their
+    /// result is read as plain text, so one field never turns into one field per paragraph.
+    pub(super) plain_fields: HashSet<usize>,
     // Picture being read.
     pub(super) pict_depth: Option<usize>,
     pub(super) pict_hex: Vec<u8>,
@@ -665,9 +672,35 @@ impl Reader {
         self.end_para(false);
     }
 
+    /// Whether text in the current field's result is read as an [`Inline::Field`]: always beside
+    /// shapes and for legacy form fields, otherwise while the result stays in one paragraph.
+    pub(super) fn field_inline(&self) -> bool {
+        !self.shapes.is_empty() || self.st.field.is_some_and(|i| self.forms.contains_key(&i) || !self.plain_fields.contains(&i))
+    }
+
+    /// A paragraph mark inside a field's result (other than beside shapes or in a legacy form
+    /// field): the result read so far in this paragraph goes back to plain text, and so does the
+    /// rest of it.
+    fn plain_field_result(&mut self) {
+        let Some(i) = self.st.field else { return };
+        if !self.shapes.is_empty() || self.forms.contains_key(&i) || !self.plain_fields.insert(i) {
+            return;
+        }
+        let (Some(at), Some(instr)) = (self.field_at.remove(&i), self.fields.get(i)) else { return };
+        let Some(tail) = self.para.inlines.get(at..).map(<[Inline]>::to_vec) else { return };
+        self.para.inlines.truncate(at);
+        for inline in tail {
+            match inline {
+                Inline::Field { instr: x, result, fmt, .. } if &x == instr => self.para.push_text(&result, &fmt),
+                other => self.para.inlines.push(other),
+            }
+        }
+    }
+
     /// End the current paragraph (`\par`, `\cell`).
     pub(super) fn end_para(&mut self, in_cell: bool) {
         self.flush_high_surrogate();
+        self.plain_field_result();
         let read = std::mem::take(&mut self.para);
         let props = self.para_props(&self.st);
         let mut p = Para { inlines: read.inlines, mark_ins: read.mark_ins, mark_del: read.mark_del, ..props };
