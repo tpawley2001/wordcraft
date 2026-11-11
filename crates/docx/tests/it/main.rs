@@ -24,6 +24,7 @@ mod fixtures;
 mod glossary;
 mod heading_levels;
 mod legacy_forms;
+mod level_and_section_extras;
 mod ligatures;
 mod linked_pictures;
 mod list_items;

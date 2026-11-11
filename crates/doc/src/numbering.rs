@@ -48,6 +48,29 @@ pub struct Level {
     pub legal: bool,
     /// Paragraph style linked to this level (e.g. Heading 1 for outline numbering).
     pub style: Option<String>,
+    /// Word's template code for the level (`w:tplc`, ECMA-376 §17.9.6), 8 upper-case hex digits;
+    /// kept from the file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tplc: Option<String>,
+    /// A level Word made but the user never used (`w:tentative`); kept from the file.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub tentative: bool,
+    /// A Word 6/95 list level (`w:legacy`, §17.9.10); kept from the file, not laid out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub legacy: Option<LegacyLevel>,
+}
+
+/// `w:legacy` on a list level: each attribute as the file gave it (`None`: absent). Space and
+/// indent are twips.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LegacyLevel {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub legacy: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub indent: Option<i32>,
 }
 
 impl Default for Level {
@@ -66,6 +89,9 @@ impl Default for Level {
             tab: None,
             legal: false,
             style: None,
+            tplc: None,
+            tentative: false,
+            legacy: None,
         }
     }
 }
@@ -107,6 +133,9 @@ pub struct Num {
 pub struct Numbering {
     pub abstracts: Vec<AbstractNum>,
     pub nums: Vec<Num>,
+    /// `w:numIdMacAtCleanup` (ECMA-376 §17.9.21); kept from the file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_id_mac_at_cleanup: Option<u32>,
 }
 
 /// Built-in list kinds for the Bullets / Numbering / Multilevel galleries.

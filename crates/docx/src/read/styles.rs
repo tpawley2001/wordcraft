@@ -1,6 +1,6 @@
 use super::{
-    AbstractNum, DocxError, El, Level, LevelSuffix, Num, NumFormat, PartFormat, Reader, Style, StyleKind, StyleSheet, TablePart, TableStyleParts,
-    VAlign, flag, int, props, tw, u32_of,
+    AbstractNum, DocxError, El, LegacyLevel, Level, LevelSuffix, Num, NumFormat, PartFormat, Reader, Style, StyleKind, StyleSheet, TablePart,
+    TableStyleParts, VAlign, flag, int, props, tw, u32_of,
 };
 use crate::units::tw_i16;
 use std::sync::Arc;
@@ -348,6 +348,7 @@ impl Reader<'_> {
         }
         Arc::make_mut(&mut self.doc.numbering).abstracts = abstracts;
         Arc::make_mut(&mut self.doc.numbering).nums = nums;
+        Arc::make_mut(&mut self.doc.numbering).num_id_mac_at_cleanup = root.child_val("w:numIdMacAtCleanup").and_then(u32_of);
         Ok(())
     }
 
@@ -394,6 +395,18 @@ impl Reader<'_> {
             .filter(|v| v.is_finite())
             .map(|v| v.clamp(-1584.0, 1584.0));
         lv.style = l.child_val("w:pStyle").filter(|s| !s.is_empty()).map(|s| self.pc.style_id(s));
+        // Kept from the file (ECMA-376 §17.9.6, §17.9.10): the template code (ST_LongHexNumber),
+        // the tentative flag (ST_OnOff) and a Word 6/95 level's settings.
+        lv.tplc = l.attr("w:tplc").filter(|v| v.len() == 8 && v.bytes().all(|b| b.is_ascii_hexdigit())).map(str::to_ascii_uppercase);
+        lv.tentative = l.attr("w:tentative").is_some_and(|v| matches!(v.trim(), "1" | "true" | "on"));
+        lv.legacy = l.child("w:legacy").map(|g| {
+            let twips = |k: &str| g.attr(k).and_then(int).map(|v| v.clamp(-31_680, 31_680) as i32);
+            LegacyLevel {
+                legacy: g.attr("w:legacy").map(|v| !matches!(v.trim(), "0" | "false" | "off")),
+                space: twips("w:legacySpace"),
+                indent: twips("w:legacyIndent"),
+            }
+        });
         lv
     }
 }

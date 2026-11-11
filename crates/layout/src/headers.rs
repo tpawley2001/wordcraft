@@ -195,7 +195,7 @@ pub(crate) fn header_table_areas(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<Rect> {
     let Some(id) = id else { return Vec::new() };
     let Some(part) = ctx.doc.parts.get(&id) else { return Vec::new() };
     let blocks = part.blocks.clone();
-    let x = sect.margin_left + sect.gutter;
+    let x = sect.text_left(ctx.mirror);
     let frame = PageFrame { sect, margin_top: Some(page.body.y), origin: (x, sect.header), number: page.number, mirror: ctx.mirror };
     let base = hf.defining_width(false, page.section, Some(id));
     let counters = std::mem::take(&mut ctx.counters);
@@ -417,7 +417,7 @@ pub(crate) fn headers_footers(ctx: &mut Ctx, pages: &mut [Page], sections: &[(us
             (ix.clone(), ix.page_at(paths, page.first_block))
         });
         let w = sect.text_width();
-        let x = sect.margin_left + sect.gutter;
+        let x = sect.text_left(ctx.mirror);
         if let Some(id) = hid
             && let Some(part) = ctx.doc.parts.get(&id)
         {
