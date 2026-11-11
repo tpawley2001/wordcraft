@@ -230,7 +230,10 @@ impl Reader {
             let old = self.old_fmt(&words);
             f.fmt_change = Some(Box::new(model::FmtChange { mark, old }));
         }
-        if let Some(instr) = self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty() && super::word::hyperlink(s).is_none()) {
+        if self.field_inline()
+            && let Some(instr) =
+                self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty() && super::word::hyperlink(s).is_none())
+        {
             if let Some(Inline::Field { instr: old, result, .. }) = self.para.inlines.last_mut()
                 && old == instr
             {

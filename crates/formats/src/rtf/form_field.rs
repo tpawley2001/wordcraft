@@ -348,4 +348,14 @@ mod tests {
             matches!(LegacyForm::parse(&form), Some(LegacyForm::DropDown { entries, selected: 0, .. }) if entries.len() == wordcraft_doc::legacy_form::MAX_ENTRIES)
         );
     }
+
+    #[test]
+    fn a_result_over_several_paragraphs_stays_text() {
+        let rtf = br"{\rtf1\ansi {\field{\*\fldinst TOC \\o}{\fldrslt {One\tab 1\par Two\tab 2}}}\par}";
+        let d = import(rtf).unwrap();
+        let fields = d.body.iter().filter_map(|b| b.as_para()).flat_map(|p| &p.objects).filter(|o| matches!(o, InlineObject::Field { .. })).count();
+        assert_eq!(fields, 0, "a TOC is not split into one field per paragraph");
+        let text: Vec<String> = d.body.iter().filter_map(|b| b.as_para()).map(|p| p.text.clone()).collect();
+        assert!(text.iter().any(|t| t.contains("One")) && text.iter().any(|t| t.contains("Two")), "{text:?}");
+    }
 }

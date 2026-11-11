@@ -301,9 +301,14 @@ impl Reader {
                 let link = self.st.field.and_then(|i| self.fields.get(i)).and_then(|s| hyperlink(s));
                 if link.is_some() {
                     self.st.fmt.link = link.as_deref().and_then(model::kept_link);
-                } else if let Some(instr) = self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty()) {
+                } else if self.field_inline()
+                    && let Some(instr) = self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty())
+                {
                     // Each result starts its own field, even when it is empty or follows the
                     // same instruction without intervening text.
+                    if let Some(i) = self.st.field {
+                        self.field_at.entry(i).or_insert(self.para.inlines.len());
+                    }
                     self.para.inlines.push(super::Inline::Field {
                         instr: instr.clone(),
                         result: String::new(),
