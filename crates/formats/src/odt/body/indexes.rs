@@ -103,7 +103,7 @@ impl Body<'_> {
             _ => None,
         };
         if let Some(FBlock::Para(p)) = titled {
-            p.inlines.push(Inline::Field { instr, result: String::new(), fmt: Fmt::default(), locked: false });
+            p.inlines.push(Inline::Field { instr, result: String::new(), fmt: Fmt::default(), locked: false, form: String::new() });
             return;
         }
         let Some(entries) = blocks.get_mut(start..) else { return };

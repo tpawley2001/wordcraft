@@ -5,6 +5,7 @@ use super::notes::{NOTE_SEP, NOTE_SEP_W, NoteBox, NoteSeps, v_span};
 use super::para::ClKind;
 use super::placed::Placed;
 use super::{Block, Border, FloatAlign, Page, ParaLayout, Rect, SectionProps, StoryRef};
+use wordcraft_doc::para::Wrap;
 
 #[derive(Clone)]
 pub(crate) struct PageBuilder<'a> {
@@ -516,7 +517,10 @@ pub(crate) fn body_top_for(ctx: &mut Ctx, sect: &SectionProps, header: Option<u3
 /// borders, while the empty paragraphs in cells (a cell's paragraph after a nested table) and
 /// the rest of a borderless cell don't count. Empty paragraphs outside tables do (pressing Enter
 /// in a header pushes the body down), and a line of only inline pictures that a float moved down
-/// reaches down to its baseline. Floating objects (also top-and-bottom ones) only count through the lines they move down. `None` for turned text, which this doesn't measure.
+/// reaches down to its baseline. Floating objects only count through the lines they move down,
+/// except a Top and Bottom one anchored in the header itself (not in its table cells): it moves
+/// no header lines, but the body starts below it. `None` for turned text, which this doesn't
+/// measure.
 pub(crate) fn drawn_extent(items: &[Placed], story: StoryRef) -> Option<f32> {
     let mut bottom = 0.0f32;
     for it in items {
@@ -545,6 +549,9 @@ pub(crate) fn drawn_extent(items: &[Placed], story: StoryRef) -> Option<f32> {
             }
             Placed::Fill { rect, .. } => bottom = bottom.max(rect.bottom()),
             Placed::Rule { y0, y1, border, .. } if border.is_visible() => bottom = bottom.max(y0.max(*y1)),
+            Placed::Object { rect, spin, story: s, path, wrap: Wrap::TopAndBottom, .. } if *s == story && path.0.len() == 1 => {
+                bottom = bottom.max(spin.bounds(*rect).bottom());
+            }
             _ => {}
         }
     }

@@ -79,6 +79,7 @@ fn new_ctx<'a>(
         opts,
         hide_deleted: opts.hides_deleted(StoryRef::Body),
         counters: Counters::default(),
+        part_starts: Arc::new(crate::list_stories::part_starts(doc)),
         fields: FieldCtx {
             page: 1,
             pages: totals.pages,
@@ -251,7 +252,7 @@ fn turned_sections(ctx: &mut Ctx, sections: &[(usize, &SectionProps)], web: bool
             (!web && s.text_direction.is_turned()).then(|| {
                 ctx.fields.page_format = s.page_num_format;
                 let top = body_top_for(ctx, s, s.headers.default);
-                vertical::unturned_sect(s, top)
+                vertical::unturned_sect(s, top, ctx.mirror)
             })
         })
         .collect()
@@ -272,12 +273,21 @@ fn section_tops(ctx: &mut Ctx, hf: &HfLinks, (si, sect): (usize, &SectionProps),
     Tops { body, first, foot, first_foot }
 }
 
-/// Set up the walk state for a section: its grid, field values and footnote separators.
-fn begin_section_state<'p>(ctx: &mut Ctx, pb: &mut PageBuilder<'p>, sec: &Sec<'p>, totals: &Totals, web: bool) {
-    let (doc, sect, si) = (ctx.doc, sec.sect, sec.si);
+/// Set up the walk state for a section before its header and footer room is measured: no grid yet
+/// (the previous section's must not leak into headers, footers and separators), the field values
+/// and the footnote separators.
+fn begin_section_state<'p>(
+    ctx: &mut Ctx,
+    pb: &mut PageBuilder<'p>,
+    (si, sect, page_format): (usize, &'p SectionProps, wordcraft_doc::section::NumFormat),
+    totals: &Totals,
+    web: bool,
+) {
+    let doc = ctx.doc;
+    ctx.grid = para::Grid::default();
     pb.sect = sect;
-    pb.page_format = sec.page_format;
-    ctx.fields.page_format = sec.page_format;
+    pb.page_format = page_format;
+    ctx.fields.page_format = page_format;
     pb.sect_idx = si;
     pb.sect_beneath = doc.note_options(sect, false).pos == wordcraft_doc::section::NotePos::BeneathText;
     if !web && !doc.footnote_separators.is_empty() {
@@ -285,7 +295,11 @@ fn begin_section_state<'p>(ctx: &mut Ctx, pb: &mut PageBuilder<'p>, sec: &Sec<'p
     }
     ctx.fields.section = u32::try_from(si).unwrap_or(u32::MAX).saturating_add(1);
     ctx.fields.section_pages = totals.section(si);
-    ctx.grid = para::Grid::of(doc, sect);
+}
+
+/// The section's own grid and line numbering, once its header and footer room is known.
+fn apply_section_grid(ctx: &mut Ctx, pb: &mut PageBuilder<'_>, sect: &SectionProps) {
+    ctx.grid = para::Grid::of(ctx.doc, sect);
     if sect.line_numbers.as_ref().is_some_and(|l| l.restart == wordcraft_doc::section::LineNumberRestart::Section) {
         pb.line_no = 0;
     }
@@ -426,8 +440,16 @@ fn place_section_blocks<'p>(
 }
 
 /// Endnotes at the end of the section: those referenced so far.
-fn section_endnotes(ctx: &mut Ctx, pb: &mut PageBuilder, endnotes: &mut VecDeque<(u32, usize)>, (sect, si, block): (&SectionProps, usize, usize)) {
-    if ctx.doc.note_options(sect, true).pos != wordcraft_doc::section::NotePos::SectEnd || pb.pages.is_empty() {
+/// A section with Suppress endnotes (`no_endnote`) that isn't the last places none: they stay
+/// queued for the next section that includes them (the last section prints whatever is left).
+fn section_endnotes(
+    ctx: &mut Ctx,
+    pb: &mut PageBuilder,
+    endnotes: &mut VecDeque<(u32, usize)>,
+    (sect, si, block): (&SectionProps, usize, usize),
+    suppressed: bool,
+) {
+    if ctx.doc.note_options(sect, true).pos != wordcraft_doc::section::NotePos::SectEnd || pb.pages.is_empty() || suppressed {
         return;
     }
     let mut here = Vec::new();
@@ -583,10 +605,7 @@ pub(crate) fn layout_pass(
             _ if mode.reflow => sect_ref,
             _ => sect,
         };
-        ctx.fields.page_format = page_format;
-        let tops = section_tops(&mut ctx, &hf, (si, sect), mode.reflow || turn.is_turned());
         let start = if si == 0 { SectionStart::NextPage } else { sect.start };
-        let sec = Sec { si, sect, page_format, start, tops };
         let next_col = !mode.web && turn == prev_turn && starts_next_column(&pb, sect, start);
         if !mode.web && !pb.pages.is_empty() && !next_col && (start != SectionStart::Continuous || turn != prev_turn) {
             // The page the section before ends on is finished with its own margins and footnote
@@ -594,7 +613,15 @@ pub(crate) fn layout_pass(
             // belong to the section whose page it is (#5289).
             pb.finish_page();
         }
-        begin_section_state(&mut ctx, &mut pb, &sec, totals, mode.web);
+        // This section's fields and separators, without the previous section's grid, before its
+        // header and footer room is measured; its own grid once that room is known (#4501).
+        begin_section_state(&mut ctx, &mut pb, (si, sect, page_format), totals, mode.web);
+        let tops = section_tops(&mut ctx, &hf, (si, sect), mode.reflow || turn.is_turned());
+        // Measuring the room took the (reflow) section's own number format; the body keeps the
+        // document section's.
+        ctx.fields.page_format = page_format;
+        apply_section_grid(&mut ctx, &mut pb, sect);
+        let sec = Sec { si, sect, page_format, start, tops };
         if mode.web && si > 0 {
             // one long page
         } else if next_col {
@@ -610,7 +637,8 @@ pub(crate) fn layout_pass(
         let balance = prepare_section_end(&mut pb, sections, (si, mode.web));
         let (next, discarded) = place_section_blocks(&mut ctx, &mut pb, &outline, (block, last), (balance, sec.tops.body));
         (block, boxes_discarded) = (next, boxes_discarded + discarded);
-        section_endnotes(&mut ctx, &mut pb, &mut endnotes, (sect, si, block));
+        let suppressed = si + 1 < sections.len() && sections.get(si).is_some_and(|(_, s)| s.no_endnote == Some(true));
+        section_endnotes(&mut ctx, &mut pb, &mut endnotes, (sect, si, block), suppressed);
     }
     if pb.pages.is_empty() {
         pb.new_page(0, sect_ref.margin_top);

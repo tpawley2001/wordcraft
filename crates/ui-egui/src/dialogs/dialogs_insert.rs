@@ -11,20 +11,33 @@ use crate::WordApp;
 use crate::options::MeasureExt;
 use crate::theme::{Tokens, regular, semibold};
 
+mod alignment_tab;
 mod columns;
+mod date_time;
 mod field;
 mod symbol;
 
+use alignment_tab::alignment_tab_ui;
+pub use alignment_tab::{ALIGNMENT_TAB_LEADERS, AlignmentTabForm, alignment_tab_ok};
 pub use columns::{ColumnsForm, DropCapForm};
 use columns::{columns_ui, drop_cap_ui};
+pub use date_time::DateTimeForm;
+#[cfg(test)]
+pub(crate) use date_time::date_time_preview_matches;
+use date_time::date_time_ui;
 use field::field_ui;
 pub use field::{DATE_FORMATS, FIELD_CATEGORIES, FIELDS, FieldForm, FieldKind, NUMBER_FORMATS, STYLEREF_SWITCHES, field_kind};
 use symbol::symbol_ui;
-pub use symbol::{RECENT_SYMBOLS, RecentSymbol, SPECIAL, SUBSETS, SymbolForm, remember_symbol, subset_of};
+pub use symbol::{
+    RECENT_SYMBOLS, RecentSymbol, SPECIAL, SUBSETS, SymbolForm, SymbolFrom, char_from_code, code_text, cp1252_byte, grid_chars, remember_symbol,
+    subset_of, symbol_autocorrect, symbol_shortcut,
+};
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "form", rename_all = "camelCase")]
 pub enum InsertDialog {
+    /// Date & Time insertion dialog.
+    DateTime(DateTimeForm),
     Columns(ColumnsForm),
     Symbol(SymbolForm),
     Field(FieldForm),
@@ -32,11 +45,14 @@ pub enum InsertDialog {
     ChartType(crate::dialogs_chart::ChartTypeForm),
     ChartData(crate::dialogs_chart::ChartDataForm),
     DropCap(DropCapForm),
+    AlignmentTab(AlignmentTabForm),
 }
 
 impl InsertDialog {
+    /// The dialog name used in command dispatch and UI state.
     pub fn name(&self) -> &'static str {
         match self {
+            InsertDialog::DateTime(_) => "dateTime",
             InsertDialog::Columns(_) => "columns",
             InsertDialog::Symbol(_) => "symbol",
             InsertDialog::Field(_) => "field",
@@ -45,12 +61,14 @@ impl InsertDialog {
             InsertDialog::ChartType(_) => "insertChart",
             InsertDialog::ChartData(_) => "chartData",
             InsertDialog::DropCap(_) => "dropCap",
+            InsertDialog::AlignmentTab(_) => "alignmentTab",
         }
     }
 
     /// The window title (English; the caller translates it).
     pub fn title(&self) -> &'static str {
         match self {
+            InsertDialog::DateTime(_) => "Date and Time",
             InsertDialog::Columns(_) => "Columns",
             InsertDialog::Symbol(_) => "Symbol",
             InsertDialog::Field(_) => "Field",
@@ -59,15 +77,18 @@ impl InsertDialog {
             InsertDialog::ChartType(_) => "Insert Chart",
             InsertDialog::ChartData(_) => "Edit Data",
             InsertDialog::DropCap(_) => "Drop Cap",
+            InsertDialog::AlignmentTab(_) => "Alignment Tab",
         }
     }
 }
 
 /// The dialog `ui.dialog` opens by `name`: `columns`, `symbol`, `specialCharacters`, `field`,
 /// `insertChart`, `changeChartType` or `chartData` (the last two for the selected chart), or
-/// `insertSmartArt`, or `dropCap` (Drop Cap Options…, where the paragraph can take one).
+/// `insertSmartArt`, or `dropCap` (Drop Cap Options…, where the paragraph can take one), or
+/// `alignmentTab` (Header & Footer › Insert Alignment Tab).
 pub fn open(name: &str, app: &WordApp) -> Option<InsertDialog> {
     Some(match name {
+        "dateTime" => InsertDialog::DateTime(DateTimeForm::new(app)),
         "columns" => InsertDialog::Columns(ColumnsForm::read(app)),
         "symbol" => InsertDialog::Symbol(SymbolForm::new(app, 0)),
         "specialCharacters" => InsertDialog::Symbol(SymbolForm::new(app, 1)),
@@ -77,6 +98,7 @@ pub fn open(name: &str, app: &WordApp) -> Option<InsertDialog> {
         "changeChartType" => InsertDialog::ChartType(crate::dialogs_chart::ChartTypeForm::new(app, true)?),
         "chartData" => InsertDialog::ChartData(crate::dialogs_chart::ChartDataForm::new(app)?),
         "dropCap" => InsertDialog::DropCap(DropCapForm::read(app)?),
+        "alignmentTab" => InsertDialog::AlignmentTab(AlignmentTabForm::default()),
         _ => return None,
     })
 }
@@ -84,6 +106,7 @@ pub fn open(name: &str, app: &WordApp) -> Option<InsertDialog> {
 /// Draws the dialog; returns true to close it.
 pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut InsertDialog) -> bool {
     match d {
+        InsertDialog::DateTime(f) => date_time_ui(app, ui, f),
         InsertDialog::Columns(f) => columns_ui(app, ui, f),
         InsertDialog::Symbol(f) => symbol_ui(app, ui, f),
         InsertDialog::Field(f) => field_ui(app, ui, f),
@@ -91,6 +114,7 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut InsertDialog) -> bool {
         InsertDialog::ChartType(f) => crate::dialogs_chart::type_ui(app, ui, f),
         InsertDialog::ChartData(f) => crate::dialogs_chart::data_ui(app, ui, f),
         InsertDialog::DropCap(f) => drop_cap_ui(app, ui, f),
+        InsertDialog::AlignmentTab(f) => alignment_tab_ui(app, ui, f),
     }
 }
 
@@ -116,7 +140,11 @@ pub(crate) fn buttons(ui: &mut Ui, ok: &str, cancel: &str, ok_enabled: bool) -> 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_alignment_tab;
+#[cfg(test)]
 mod tests_new_column;
+#[cfg(test)]
+mod tests_symbol_from;
 /// The Break dialog's OK: insert the break `kind` (a `layout.break` kind) and close the dialog.
 pub fn break_dialog_ok(app: &mut WordApp, kind: &str) {
     match app.run("layout.break", json!({"kind": kind})) {

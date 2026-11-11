@@ -235,3 +235,31 @@ pub(super) fn strip_headers(doc: &mut wordcraft_doc::Document, ids: &[u32]) -> b
     }
     any
 }
+
+/// Header & Footer › Insert Alignment Tab: a positional tab (`w:ptab`, ECMA-376 §17.3.3.23) at the
+/// caret, replacing any selection. Bad values are refused before anything changes.
+pub(super) fn alignment_tab(s: &mut Session, v: &Value) -> CmdResult {
+    use wordcraft_doc::para::{PTabAlign, PTabBase};
+    use wordcraft_doc::props::TabLeader;
+    let align = match p::str(v, "align") {
+        None => PTabAlign::Left,
+        Some(a) => PTabAlign::from_ooxml(a).ok_or_else(|| CmdError::Params(format!("align must be left, center or right, not `{a}`")))?,
+    };
+    let relative_to = match p::str(v, "relativeTo") {
+        None => PTabBase::Margin,
+        Some(r) => PTabBase::from_ooxml(r).ok_or_else(|| CmdError::Params(format!("relativeTo must be margin or indent, not `{r}`")))?,
+    };
+    let leader = match p::str(v, "leader") {
+        None | Some("none") => TabLeader::None,
+        Some("dot") => TabLeader::Dot,
+        Some("hyphen") => TabLeader::Hyphen,
+        Some("underscore") => TabLeader::Underscore,
+        Some("middleDot") => TabLeader::MiddleDot,
+        Some(l) => return Err(CmdError::Params(format!("leader must be none, dot, hyphen, underscore or middleDot, not `{l}`"))),
+    };
+    let props = s.typing_props();
+    let at = super::delete_selection(s)?;
+    let end = s.doc.insert_object(&at, InlineObject::PositionalTab { align, relative_to, leader }, &props)?;
+    s.sel = Selection::caret(end);
+    super::sel_result(s)
+}

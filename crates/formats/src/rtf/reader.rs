@@ -82,6 +82,13 @@ pub(super) struct Reader {
     pub(super) ov_list: i32,
     pub(super) ov_ls: i32,
     pub(super) fields: Vec<String>,
+    /// The legacy form field definitions read, by index in `fields`.
+    pub(super) forms: HashMap<usize, super::form_field::FormField>,
+    /// Where each field's result started in the paragraph being read, by index in `fields`.
+    pub(super) field_at: HashMap<usize, usize>,
+    /// Fields whose result runs over a paragraph mark (a table of contents, an index): their
+    /// result is read as plain text, so one field never turns into one field per paragraph.
+    pub(super) plain_fields: HashSet<usize>,
     // Picture being read.
     pub(super) pict_depth: Option<usize>,
     pub(super) pict_hex: Vec<u8>,
@@ -91,6 +98,9 @@ pub(super) struct Reader {
     pub(super) pict_h: Option<f32>,
     pub(super) pict_sx: f32,
     pub(super) pict_sy: f32,
+    /// `\piccropl`/`t`/`r`/`b` as written: twips cut off the left, top, right and bottom,
+    /// measured against the goal size (0 when absent).
+    pub(super) pict_crop: [i32; 4],
     /// `\picw`/`\pich` as written, read for metafiles (0 when absent).
     pub(super) pict_nat: (i32, i32),
     /// The mapping mode `N` of `\wmetafileN`.
@@ -156,6 +166,8 @@ pub(super) struct Reader {
     pub(super) range_ends: HashSet<i32>,
     pub(super) claimed: HashSet<i32>,
     pub(super) synth: i32,
+    /// Custom note marks: the groups read in the body.
+    pub(super) note_mark: super::note_marks::MarkTrack,
 }
 
 impl Reader {
@@ -166,6 +178,7 @@ impl Reader {
     /// Set the output aside (a header or footer starts) or put it back (it ended), returning the
     /// other one.
     pub(super) fn swap_output(&mut self, mut o: Output) -> Output {
+        self.note_mark.serial = self.note_mark.serial.wrapping_add(1);
         std::mem::swap(&mut o.body, &mut self.body);
         std::mem::swap(&mut o.para, &mut self.para);
         std::mem::swap(&mut o.para_has, &mut self.para_has);
@@ -327,8 +340,9 @@ impl Reader {
             self.st.dest = Dest::Skip;
             return;
         }
+        let custom = if comment { String::new() } else { self.take_custom_mark() };
         let saved = self.swap_output(Output::default());
-        self.sub = Some(Sub { depth: self.depth(), comment, endnote: false, saved: Box::new(saved) });
+        self.sub = Some(Sub { depth: self.depth(), comment, endnote: false, custom, own_mark_done: false, saved: Box::new(saved) });
         self.st.intbl = false;
     }
 
@@ -355,7 +369,7 @@ impl Reader {
         inner.body.truncate(MAX_NOTE_BLOCKS);
         if !sub.comment {
             self.push_mark('N', self.notes.len() as i64, fmt);
-            self.notes.push(NoteData { endnote: sub.endnote, blocks: inner.body });
+            self.notes.push(NoteData { endnote: sub.endnote, custom: sub.custom, blocks: inner.body });
             return;
         }
         let want = self.atn_ref.take().or(self.last_end.take());
@@ -427,11 +441,18 @@ impl Reader {
             return;
         }
         let mut props = self.sec.props(&self.page);
+        props.no_endnote = self.no_endnote();
         props.fmt_change = self.section_change();
         if let Some(FBlock::Para(p)) = self.body.last_mut() {
             p.section = Some(Box::new(props));
             self.section_parts.push(std::mem::take(&mut self.hf_parts));
         }
+    }
+
+    /// The current section's Suppress endnotes: only with endnotes at each section's end
+    /// (`\aendnotes`), where a section without `\endnhere` suppresses them.
+    pub(super) fn no_endnote(&self) -> Option<bool> {
+        (self.doc_notes.1.pos == Some(wordcraft_doc::section::NotePos::SectEnd)).then_some(!self.sec.endnhere)
     }
 
     /// The current section's tracked formatting change (`\oldsprops`), taken: its revision is
@@ -544,6 +565,7 @@ impl Reader {
             return;
         }
         self.stack.push(self.st.clone());
+        self.mark_group_open();
     }
 
     pub(super) fn close(&mut self) {
@@ -554,6 +576,7 @@ impl Reader {
             self.overflow -= 1;
             return;
         }
+        self.mark_group_close();
         self.close_shape_group();
         if self.sub.as_ref().is_some_and(|s| s.depth == self.depth()) {
             self.end_sub();
@@ -665,10 +688,37 @@ impl Reader {
         self.end_para(false);
     }
 
+    /// Whether text in the current field's result is read as an [`Inline::Field`]: always beside
+    /// shapes and for legacy form fields, otherwise while the result stays in one paragraph.
+    pub(super) fn field_inline(&self) -> bool {
+        !self.shapes.is_empty() || self.st.field.is_some_and(|i| self.forms.contains_key(&i) || !self.plain_fields.contains(&i))
+    }
+
+    /// A paragraph mark inside a field's result (other than beside shapes or in a legacy form
+    /// field): the result read so far in this paragraph goes back to plain text, and so does the
+    /// rest of it.
+    fn plain_field_result(&mut self) {
+        let Some(i) = self.st.field else { return };
+        if !self.shapes.is_empty() || self.forms.contains_key(&i) || !self.plain_fields.insert(i) {
+            return;
+        }
+        let (Some(at), Some(instr)) = (self.field_at.remove(&i), self.fields.get(i)) else { return };
+        let Some(tail) = self.para.inlines.get(at..).map(<[Inline]>::to_vec) else { return };
+        self.para.inlines.truncate(at);
+        for inline in tail {
+            match inline {
+                Inline::Field { instr: x, result, fmt, .. } if &x == instr => self.para.push_text(&result, &fmt),
+                other => self.para.inlines.push(other),
+            }
+        }
+    }
+
     /// End the current paragraph (`\par`, `\cell`).
     pub(super) fn end_para(&mut self, in_cell: bool) {
         self.flush_high_surrogate();
+        self.plain_field_result();
         let read = std::mem::take(&mut self.para);
+        self.note_mark.serial = self.note_mark.serial.wrapping_add(1);
         let props = self.para_props(&self.st);
         let mut p = Para { inlines: read.inlines, mark_ins: read.mark_ins, mark_del: read.mark_del, ..props };
         p.mark = self.empty_mark(&p);
@@ -885,6 +935,7 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "headery" => sec.page.header = Some(pv),
         "footery" => sec.page.footer = Some(pv),
         "lndscpsxn" => sec.page.landscape = on,
+        "endnhere" => sec.endnhere = on,
         _ if w.strip_prefix('s').is_some_and(|w| apply_note_word(w, p, &mut sec.footnote_pr, &mut sec.endnote_pr)) => {}
         // Printer bin codes; 0 (the default) and values outside u16 leave the bin unset.
         "binfsxn" => sec.bin_first = u16::try_from(pv).ok().filter(|&v| v != 0),

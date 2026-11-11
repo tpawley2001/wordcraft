@@ -62,6 +62,11 @@ pub(super) enum Dest {
     PnTxtA,
     /// The program that wrote the file (`{\*\generator …}`): its text is kept.
     Generator,
+    /// A legacy form field's definition inside a field instruction (`{\*\formfield …}`): its
+    /// words are read into the field's [`super::form_field::FormField`].
+    FormField,
+    /// A text-valued part of a `{\*\formfield …}` group (`{\*\ffname …}`, `{\*\ffl …}`…).
+    FfText(super::form_field::FfSlot),
     /// User properties (`{\*\userprops …}`, RTF 1.9.1 "User Properties"): `\proptypeN` is read
     /// here, `\propname`, `\staticval` and `\linkval` are text groups (`Info(8..=10)`).
     UserProps,
@@ -215,12 +220,18 @@ pub(super) struct Sub {
     pub(super) depth: usize,
     pub(super) comment: bool,
     pub(super) endnote: bool,
+    /// The note's custom reference mark (empty: numbered).
+    pub(super) custom: String,
+    /// A group with text has been read in the note (only the first can be its own mark).
+    pub(super) own_mark_done: bool,
     pub(super) saved: Box<Output>,
 }
 
 /// A note read: its kind and text.
 pub(super) struct NoteData {
     pub(super) endnote: bool,
+    /// The custom reference mark (empty: numbered).
+    pub(super) custom: String,
     pub(super) blocks: Vec<FBlock>,
 }
 
@@ -351,7 +362,6 @@ pub(super) struct St {
     /// Tracked change of the paragraph formatting (reset by `\pard`).
     pub(super) chg_p: FmtRevSt<Para>,
     pub(super) uc: usize,
-    pub(super) hidden: bool,
     // Paragraph properties.
     pub(super) align: Option<Align>,
     pub(super) style: i32,
@@ -363,6 +373,11 @@ pub(super) struct St {
     pub(super) ilvl: u8,
     pub(super) outline: Option<u8>,
     pub(super) pagebb: bool,
+    /// Keep with next (`\keepn`), keep lines together (`\keep`) and suppress line numbers
+    /// (`\noline`); cleared by `\pard`.
+    pub(super) keepn: bool,
+    pub(super) keep: bool,
+    pub(super) noline: bool,
     /// Widow/orphan control (`\widctlpar`, `\nowidctlpar`); `None` until the paragraph says.
     pub(super) widow: Option<bool>,
     /// Contextual spacing (`\contextualspace`), mirror indents (`\mirrorindents`), automatic
@@ -423,7 +438,6 @@ impl Default for St {
             old_words: Vec::new(),
             old_rev: (None, None),
             uc: 1,
-            hidden: false,
             align: None,
             style: 0,
             intbl: false,
@@ -432,6 +446,9 @@ impl Default for St {
             ilvl: 0,
             outline: None,
             pagebb: false,
+            keepn: false,
+            keep: false,
+            noline: false,
             widow: None,
             contextual: None,
             mirror: None,
@@ -664,6 +681,8 @@ pub(super) struct SecFmt {
     pub(super) line_grid: Option<i32>,
     /// `\pgbrdrt` … `\pgbrdrr` with their border words: the page borders.
     pub(super) page_borders: wordcraft_doc::props::Borders,
+    /// `\endnhere`: the section includes its endnotes (when they go at each section's end).
+    pub(super) endnhere: bool,
 }
 
 impl SecFmt {

@@ -265,6 +265,9 @@ pub enum Inline {
         fmt: Fmt,
         /// Its result is kept, not worked out again (Word's locked field, ODF's `text:fixed`).
         locked: bool,
+        /// A legacy form field's definition, as the raw `<w:ffData>` XML the document model
+        /// keeps (empty for other fields).
+        form: String,
     },
     /// A footnote or endnote: its custom mark (empty: numbered) and its content, without the
     /// note's own mark. Only flows asked for notes ([`FlowOpts::notes`]) hold them; formats
@@ -517,8 +520,12 @@ pub struct FlowOpts {
     pub tabs_spacing: bool,
     /// The paragraph's own widow/orphan control in [`Para::extra`], also without `paras`.
     pub widow: bool,
+    /// Without [`FlowOpts::chars`]: hidden text kept, marked [`Fmt::hidden`] (otherwise left
+    /// out), for formats that write it (RTF `\v`).
+    pub hidden: bool,
     /// The paragraph's own contextual spacing, mirror indents, automatic space before/after,
-    /// hyphenation and line-grid snapping in [`Para::extra`], also without `paras`.
+    /// hyphenation, line-grid snapping, keep lines together and suppress line numbers in
+    /// [`Para::extra`], also without `paras`.
     pub para_flags: bool,
     /// The paragraph's own shading in [`Para::extra`], also without `paras`.
     pub shading: bool,
@@ -539,18 +546,23 @@ pub struct FlowOpts {
     /// [`Inline::ObjRev`], deleted objects kept (otherwise objects carry no marks and deleted
     /// ones are left out).
     pub obj_revs: bool,
+    /// A picture's crop ([`Img::crop`]), also without `paras`.
+    pub crop: bool,
 }
 
 impl FlowOpts {
-    /// What RTF keeps: tracked changes, the paragraph's own tab stops and character spacing
+    /// What RTF keeps: tracked changes, hidden text ([`FlowOpts::hidden`]), the paragraph's own
+    /// tab stops and character spacing
     /// ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]), shading
     /// ([`FlowOpts::shading`]), indents in characters ([`FlowOpts::indent_chars`]), the other
     /// paragraph flags ([`FlowOpts::para_flags`]), table row heights and keeps
     /// ([`FlowOpts::rows`]), text frames and drop caps ([`FlowOpts::frames`]), the document's
-    /// own styles ([`FlowOpts::styles`]), fields and text boxes.
+    /// own styles ([`FlowOpts::styles`]), pictures' crops ([`FlowOpts::crop`]), fields and text
+    /// boxes.
     pub fn tracked() -> Self {
         FlowOpts {
             tracked: true,
+            hidden: true,
             tabs_spacing: true,
             widow: true,
             shading: true,
@@ -561,6 +573,7 @@ impl FlowOpts {
             styles: true,
             fields: true,
             boxes: true,
+            crop: true,
             ..Default::default()
         }
     }
