@@ -497,7 +497,8 @@ impl Reader {
     }
 
     /// Records document setting word `w` (view zoom, drawing grid, Restrict Editing, privacy
-    /// options, linked styles, Shift+Return expansion). False when `w` isn't one.
+    /// options, linked styles, Shift+Return expansion, Track Changes on, print form data only).
+    /// False when `w` isn't one.
     pub(super) fn doc_setting_word(&mut self, w: &str, p: Option<i32>) -> bool {
         use wordcraft_doc::ZoomFit;
         let on = p != Some(0);
@@ -516,10 +517,12 @@ impl Reader {
             "expshrtn" => d.expand_shift_return = Some(on),
             "formprot" => d.old_prot = on.then_some("forms"),
             "linkstyles" => d.link_styles = Some(on),
+            "printdata" => d.print_forms_data = Some(on),
             "protlevel" => d.level = u8::try_from(pv).ok().filter(|&n| n <= 3).or(d.level),
             "readprot" => d.old_prot = on.then_some("readOnly"),
             "remdttm" => d.remove_date_time = Some(on),
             "rempersonalinfo" => d.remove_personal_info = Some(on),
+            "revisions" => d.track_changes = Some(on),
             "revprot" => d.old_prot = on.then_some("trackedChanges"),
             "viewscale" => d.percent = u32::try_from(pv).ok().filter(|n| (10..=500).contains(n)).or(d.percent),
             "viewzk" => match pv {
@@ -980,6 +983,9 @@ pub(super) struct DocSettingWords {
     remove_personal_info: Option<bool>,
     remove_date_time: Option<bool>,
     expand_shift_return: Option<bool>,
+    /// `\revisions` (Track Changes on) and `\printdata` (print only the data from a form).
+    track_changes: Option<bool>,
+    print_forms_data: Option<bool>,
 }
 
 impl DocSettingWords {
@@ -1027,6 +1033,8 @@ impl DocSettingWords {
             (self.remove_personal_info, &mut s.remove_personal_info),
             (self.remove_date_time, &mut s.remove_date_time),
             (self.expand_shift_return, &mut s.do_not_expand_shift_return),
+            (self.track_changes, &mut s.track_changes),
+            (self.print_forms_data, &mut s.print_forms_data),
         ] {
             if let Some(v) = v {
                 *field = v;
