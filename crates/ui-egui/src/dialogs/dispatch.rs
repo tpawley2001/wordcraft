@@ -715,7 +715,7 @@ fn insert_table_width(text: &str) -> Option<f32> {
 }
 
 /// A margin's number box, in the unit the interface measures in.
-fn margin(value: &mut f32) -> impl egui::Widget + '_ {
+pub(super) fn margin(value: &mut f32) -> impl egui::Widget + '_ {
     move |ui: &mut Ui| {
         // DragValue's unfocused button extends to fit its value; keep it inside the field too.
         let (_, rect) = ui.allocate_space(egui::vec2(80.0, ui.spacing().interact_size.y));
