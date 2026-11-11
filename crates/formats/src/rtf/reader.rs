@@ -54,6 +54,8 @@ pub(super) struct Reader {
     pub(super) page_side: Option<char>,
     /// Each table row's cell right edges (`\cellx`, twips), for the table's column grid.
     table_rights: Vec<Vec<i32>>,
+    /// Each table row's left edge (`\trleft`, twips), which its `\cellx` edges are measured with.
+    table_lefts: Vec<i32>,
     /// Each table row's height (points, exact) and whether it keeps from breaking across pages.
     table_heights: Vec<Option<(f32, bool)>>,
     table_keeps: Vec<bool>,
@@ -177,6 +179,7 @@ impl Reader {
         std::mem::swap(&mut o.row_header, &mut self.row_header);
         std::mem::swap(&mut o.rule_pending, &mut self.rule_pending);
         std::mem::swap(&mut o.table_rights, &mut self.table_rights);
+        std::mem::swap(&mut o.table_lefts, &mut self.table_lefts);
         std::mem::swap(&mut o.row_height, &mut self.row_height);
         std::mem::swap(&mut o.row_keep, &mut self.row_keep);
         std::mem::swap(&mut o.table_heights, &mut self.table_heights);
@@ -198,6 +201,7 @@ impl Reader {
         std::mem::swap(&mut l.row_height, &mut self.row_height);
         std::mem::swap(&mut l.row_keep, &mut self.row_keep);
         std::mem::swap(&mut l.table_rights, &mut self.table_rights);
+        std::mem::swap(&mut l.table_lefts, &mut self.table_lefts);
         std::mem::swap(&mut l.table_heights, &mut self.table_heights);
         std::mem::swap(&mut l.table_keeps, &mut self.table_keeps);
         std::mem::swap(&mut l.row_style, &mut self.row_style);
@@ -824,6 +828,7 @@ impl Reader {
             }
             self.table.push(out);
             self.table_rights.push(rights);
+            self.table_lefts.push(self.row_style.left);
             self.table_heights.push(self.row_height);
             self.table_keeps.push(self.row_keep);
         }
@@ -851,6 +856,8 @@ impl Reader {
         }
         let mut rows = std::mem::take(&mut self.table);
         let rights = std::mem::take(&mut self.table_rights);
+        let lefts = std::mem::take(&mut self.table_lefts);
+        let rights = from_left_edge(rights, &lefts);
         let widths = column_grid(&mut rows, &rights);
         let heights = std::mem::take(&mut self.table_heights);
         let keep_rows = std::mem::take(&mut self.table_keeps);
@@ -859,6 +866,12 @@ impl Reader {
             .then(|| Box::new(model::TableExtra { heights, keep_rows, ..Default::default() }));
         // Its first row's table style and look.
         let ts = std::mem::take(&mut self.table_style);
+        // Its first row's position: a zero edge with no alignment is the default.
+        let indent = ts.edge().map(|e| e as f32 / 20.0);
+        if ts.align.is_some() || indent.is_some() {
+            let x = extra.get_or_insert_with(Default::default);
+            (x.align, x.indent) = (ts.align, indent);
+        }
         if ts.style.is_some() || ts.look.is_some() {
             let x = extra.get_or_insert_with(Default::default);
             (x.style, x.look) = (ts.style, ts.look);
@@ -866,6 +879,33 @@ impl Reader {
         // Word draws only the borders the cells name: no grid style, each cell its own.
         Some(FTable { rows, widths, borderless: true, extra, kept: None, wrap: None })
     }
+}
+
+/// The rows' cell right edges measured from the table's left edge rather than the margin: less
+/// the first row's `\trleft`, or each row's own when the first row's would put a row's first edge
+/// at or left of the table's; as read when neither leaves a cell.
+fn from_left_edge(rights: Vec<Vec<i32>>, lefts: &[i32]) -> Vec<Vec<i32>> {
+    let shift = |own: bool| -> Vec<Vec<i32>> {
+        let first = lefts.first().copied().unwrap_or(0);
+        rights
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let left = if own { lefts.get(i).copied().unwrap_or(0) } else { first };
+                r.iter().map(|&x| x.saturating_sub(left)).collect()
+            })
+            .collect()
+    };
+    let starts = |rs: &[Vec<i32>]| rs.iter().all(|r| r.first().is_none_or(|&x| x > 0));
+    if lefts.iter().all(|&l| l == 0) {
+        return rights;
+    }
+    let shared = shift(false);
+    if starts(&shared) {
+        return shared;
+    }
+    let own = shift(true);
+    if starts(&own) { own } else { rights }
 }
 
 /// Applies section formatting word `w` (parameter `p`) to `sec`. False when `w` isn't one.
