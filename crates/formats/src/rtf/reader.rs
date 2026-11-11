@@ -493,7 +493,7 @@ impl Reader {
     }
 
     /// Records document setting word `w` (view zoom, drawing grid, Restrict Editing, privacy
-    /// options, linked styles, Shift+Return expansion). False when `w` isn't one.
+    /// options, linked styles, Shift+Return expansion, HTML paragraph auto spacing). False when `w` isn't one.
     pub(super) fn doc_setting_word(&mut self, w: &str, p: Option<i32>) -> bool {
         use wordcraft_doc::ZoomFit;
         let on = p != Some(0);
@@ -511,6 +511,7 @@ impl Reader {
             "enforceprot" => d.enforce = Some(on),
             "expshrtn" => d.expand_shift_return = Some(on),
             "formprot" => d.old_prot = on.then_some("forms"),
+            "htmautsp" => d.html_auto_spacing = on,
             "linkstyles" => d.link_styles = Some(on),
             "protlevel" => d.level = u8::try_from(pv).ok().filter(|&n| n <= 3).or(d.level),
             "readprot" => d.old_prot = on.then_some("readOnly"),
@@ -969,10 +970,14 @@ pub(super) struct DocSettingWords {
     remove_personal_info: Option<bool>,
     remove_date_time: Option<bool>,
     expand_shift_return: Option<bool>,
+    /// `\htmautsp` (Use HTML paragraph auto spacing): the space between two paragraphs is the
+    /// larger of space after and space before. Without it Word adds the two.
+    html_auto_spacing: bool,
 }
 
 impl DocSettingWords {
     pub(super) fn apply(&self, s: &mut wordcraft_doc::Settings) {
+        s.sum_paragraph_spacing = !self.html_auto_spacing;
         if self.percent.is_some() || self.fit.is_some() {
             let (percent, fit) = (self.percent.unwrap_or(100), self.fit.flatten());
             // 100% with no fit mode is the model's "no saved zoom".

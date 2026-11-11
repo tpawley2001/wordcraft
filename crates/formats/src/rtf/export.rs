@@ -466,6 +466,7 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
         o.push_str(&format!("\\enforceprot1\\protlevel{n}"));
     }
     for (on, w) in [
+        (!set.sum_paragraph_spacing, "\\htmautsp"),
         (set.link_styles, "\\linkstyles"),
         (set.remove_personal_info, "\\rempersonalinfo"),
         (set.remove_date_time, "\\remdttm"),
