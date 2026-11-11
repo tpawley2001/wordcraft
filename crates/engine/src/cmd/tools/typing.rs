@@ -129,6 +129,7 @@ pub fn autocorrect_word(s: &mut Session, on_enter: bool) -> Result<(), CmdError>
         // the formatting outside a `*bold*` or `_italic_` span).
         let mut after = outside.unwrap_or_else(|| s.doc.para_at(&f).map(|p| p.props_of_char(start).clone()).unwrap_or_default());
         after.link = None;
+        after.link_tip = None;
         after.style = None;
         s.pending = Some(after);
         return Ok(());

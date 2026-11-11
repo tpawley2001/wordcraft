@@ -50,6 +50,8 @@ const MAX_FORM: usize = 64 * 1024;
 #[derive(Clone, Default)]
 pub struct RunCtx {
     link: Option<String>,
+    /// The link's ScreenTip (`w:hyperlink/@w:tooltip`).
+    link_tip: Option<String>,
     ins: Option<u32>,
     del: Option<u32>,
 }

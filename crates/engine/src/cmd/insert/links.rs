@@ -2,7 +2,8 @@ use super::{CharProps, CmdError, CmdResult, InlineObject, Pos, Selection, Sessio
 
 /// What a link can point to inside the document (Insert › Link › Place in This Document): the top
 /// of the document, its headings (body block, level, text) and its bookmarks, without the hidden
-/// ones (names starting with `_`), plus distinct body e-mail link targets in document order.
+/// ones (names starting with `_`), plus distinct body e-mail link targets in document order, and
+/// the ScreenTip of the link at the selection (`screenTip`, "" when none).
 pub(super) fn link_targets(s: &mut Session, _: &Value) -> CmdResult {
     let headings: Vec<Value> = crate::cmd::references::headings(s)
         .into_iter()
@@ -29,7 +30,7 @@ pub(super) fn link_targets(s: &mut Session, _: &Value) -> CmdResult {
             emails.push(json!({"address": address, "subject": subject.map(|(_, value)| decode_subject(value)).unwrap_or_default()}));
         }
     }
-    Ok(json!({"top": true, "headings": headings, "bookmarks": bookmarks, "emails": emails}))
+    Ok(json!({"top": true, "headings": headings, "bookmarks": bookmarks, "emails": emails, "screenTip": selected_link_tip(s)}))
 }
 
 /// Accept the URI scheme case-insensitively, without slicing inside a UTF-8 character.
@@ -122,11 +123,14 @@ pub(super) fn link(s: &mut Session, v: &Value) -> CmdResult {
     if url.is_empty() || url.len() > 4096 {
         return Err(CmdError::Params("bad url".into()));
     }
+    let tip = screen_tip(v)?;
     let style = Some("Hyperlink".to_string());
     if s.sel.is_collapsed() {
         let text = p::str(v, "text").unwrap_or(&label).to_string();
         let mut props = s.typing_props();
         props.link = Some(url.clone());
+        // A new link has only the ScreenTip it is given.
+        props.link_tip = tip.clone().flatten();
         props.style = style;
         let at = s.sel.focus.clone();
         let end = s.doc.insert_text(&at, &text, &props)?;
@@ -139,6 +143,9 @@ pub(super) fn link(s: &mut Session, v: &Value) -> CmdResult {
         let start = Pos { off: end.off.saturating_sub(text.len()), ..end.clone() };
         s.doc.format_range(&start, &end, &|c| {
             c.link = Some(url.clone());
+            if let Some(tip) = &tip {
+                c.link_tip = tip.clone();
+            }
             c.style = style.clone();
         })?;
         s.sel = Selection::caret(end);
@@ -147,10 +154,43 @@ pub(super) fn link(s: &mut Session, v: &Value) -> CmdResult {
         let (a, b) = s.sel.ordered();
         s.doc.format_range(&a, &b, &|c| {
             c.link = Some(url.clone());
+            if let Some(tip) = &tip {
+                c.link_tip = tip.clone();
+            }
             c.style = style.clone();
         })?;
     }
     sel_result(s)
+}
+
+/// Word's ScreenTip box holds at most this many characters.
+pub const MAX_SCREEN_TIP: usize = 255;
+
+/// The `screenTip` param of `insert.link`: absent (`None`: a selected link keeps its tip), empty
+/// (`Some(None)`: the tip is cleared) or the text to show on hover. Longer than
+/// [`MAX_SCREEN_TIP`] characters, holding a control character or not a string: refused.
+fn screen_tip(v: &Value) -> Result<Option<Option<String>>, CmdError> {
+    let Some(tip) = v.get("screenTip") else { return Ok(None) };
+    let bad = || CmdError::Params("bad screenTip".into());
+    let tip = tip.as_str().ok_or_else(bad)?;
+    if tip.chars().count() > MAX_SCREEN_TIP || tip.chars().any(char::is_control) {
+        return Err(bad());
+    }
+    Ok(Some((!tip.is_empty()).then(|| tip.to_string())))
+}
+
+/// The ScreenTip of the link at the selection (the character at its start, or just before a
+/// caret at a link's end), "" when it has none: what Insert Hyperlink shows when opened on a link.
+pub fn selected_link_tip(s: &Session) -> String {
+    let (a, _) = s.sel.ordered();
+    let Some(para) = s.doc.para_at(&a) else { return String::new() };
+    [Some(a.off).filter(|o| *o < para.len()), (a.off > 0).then(|| para.prev_boundary(a.off))]
+        .into_iter()
+        .flatten()
+        .map(|off| para.props_of_char(off))
+        .find(|c| c.link.is_some())
+        .and_then(|c| c.link_tip.clone())
+        .unwrap_or_default()
 }
 
 /// The `text` to retype a selection with before linking it: only when it differs from the selected

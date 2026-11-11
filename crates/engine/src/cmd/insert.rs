@@ -21,8 +21,8 @@ pub use items::{
     DropCapState, default_date_picture, drop_cap_state, format_date, format_date_at, format_date_in, format_date_parts, format_date_parts_in,
 };
 use items::{cover_page, date_time, drop_cap, drop_cap_off, field, page_number, symbol};
+pub use links::{MAX_SCREEN_TIP, bookmark_name_ok, bookmark_range, bookmark_span, selected_link_tip};
 use links::{bookmark, delete_bookmark, link, link_targets};
-pub use links::{bookmark_name_ok, bookmark_range, bookmark_span};
 pub use objects::{base64_decode, base64_encode};
 use objects::{icon, shape, table, text_box};
 pub(crate) use objects::{image_ext, picture};
@@ -58,11 +58,12 @@ pub fn specs() -> Vec<CommandSpec> {
                     .then_some("text boxes can't go inside a text box")
             }),
         CommandSpec::new("insert.link", "Link", "Insert › Links", link).key("Mod+K").params(
-            r#"{"url": string} | {"email": string, "subject"?: string} | {"bookmark": name} | {"heading": block (see link.targets)} | {"top": true}, "text"?: string (Place in This Document: a bookmark, a heading or the top of the document)"#,
+            r#"{"url": string} | {"email": string, "subject"?: string} | {"bookmark": name} | {"heading": block (see link.targets)} | {"top": true}, "text"?: string (Place in This Document: a bookmark, a heading or the top of the document), "screenTip"?: string (shown on hover instead of the address, at most 255 characters; "" clears it; absent keeps the selected link's)"#,
         ),
         CommandSpec::new("link.targets", "Link", "Insert › Links", link_targets).pure(),
         CommandSpec::new("insert.removeLink", "Remove Hyperlink", "Insert › Links", |s, _| super::format::apply(s, &|c| {
             c.link = None;
+            c.link_tip = None;
             if c.style.as_deref() == Some("Hyperlink") {
                 c.style = None;
             }

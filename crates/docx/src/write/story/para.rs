@@ -198,7 +198,9 @@ impl Writer<'_> {
             }
         }
 
-        let mut open_link: Option<String> = None;
+        // The open `w:hyperlink`: its target and ScreenTip. Neighbouring runs with one target but
+        // different tips are separate links.
+        let mut open_link: Option<(String, Option<String>)> = None;
         let mut i = 0;
         while i < pieces.len() {
             let Some((piece, props)) = pieces.get(i) else { break };
@@ -220,19 +222,26 @@ impl Writer<'_> {
                 continue;
             }
             // Hyperlink grouping.
-            if props.link != open_link {
-                if open_link.is_some() {
+            let want = props.link.as_deref().filter(|l| !l.is_empty()).map(|l| (l, props.link_tip.as_deref().filter(|t| !t.is_empty())));
+            if want != open_link.as_ref().map(|(l, t)| (l.as_str(), t.as_deref())) {
+                if open_link.take().is_some() {
                     w.close("w:hyperlink");
                 }
-                open_link = None;
-                if let Some(l) = props.link.as_deref().filter(|l| !l.is_empty()) {
-                    if let Some(anchor) = l.strip_prefix('#') {
-                        w.open("w:hyperlink", &[("w:anchor", anchor), ("w:history", "1")]);
-                    } else {
-                        let id = rels.add(rt::HYPERLINK, l, true);
-                        w.open("w:hyperlink", &[("r:id", &id), ("w:history", "1")]);
+                if let Some((l, tip)) = want {
+                    let id;
+                    let mut attrs = match l.strip_prefix('#') {
+                        Some(anchor) => vec![("w:anchor", anchor)],
+                        None => {
+                            id = rels.add(rt::HYPERLINK, l, true);
+                            vec![("r:id", id.as_str())]
+                        }
+                    };
+                    if let Some(tip) = tip {
+                        attrs.push(("w:tooltip", tip));
                     }
-                    open_link = Some(l.to_string());
+                    attrs.push(("w:history", "1"));
+                    w.open("w:hyperlink", &attrs);
+                    open_link = Some((l.to_string(), tip.map(str::to_string)));
                 }
             }
             match piece {

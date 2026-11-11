@@ -247,6 +247,10 @@ pub enum Dialog {
         targets: Option<Value>,
         /// The chosen place: the `insert.link` parameters, and the name it shows.
         pick: Option<(Value, String)>,
+        /// The ScreenTip (shown on hover instead of the address), sent as `screenTip` on OK.
+        tip: String,
+        /// The ScreenTip being edited while Set Hyperlink ScreenTip is open.
+        tip_edit: Option<String>,
     },
     Bookmark {
         name: String,
@@ -902,6 +906,8 @@ impl Dialog {
                 subject: String::new(),
                 targets: None,
                 pick: None,
+                tip: wordcraft_engine::cmd::insert::selected_link_tip(&app.session),
+                tip_edit: None,
                 focus: true,
             },
             "bookmark" => Dialog::Bookmark { name: bookmark_at_caret(&app.session), by_location: false, hidden: false, deleted: false },
