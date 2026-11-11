@@ -11,10 +11,13 @@ use crate::WordApp;
 use crate::options::MeasureExt;
 use crate::theme::{Tokens, regular, semibold};
 
+mod alignment_tab;
 mod columns;
 mod field;
 mod symbol;
 
+use alignment_tab::alignment_tab_ui;
+pub use alignment_tab::{ALIGNMENT_TAB_LEADERS, AlignmentTabForm, alignment_tab_ok};
 pub use columns::{ColumnsForm, DropCapForm};
 use columns::{columns_ui, drop_cap_ui};
 use field::field_ui;
@@ -35,6 +38,7 @@ pub enum InsertDialog {
     ChartType(crate::dialogs_chart::ChartTypeForm),
     ChartData(crate::dialogs_chart::ChartDataForm),
     DropCap(DropCapForm),
+    AlignmentTab(AlignmentTabForm),
 }
 
 impl InsertDialog {
@@ -48,6 +52,7 @@ impl InsertDialog {
             InsertDialog::ChartType(_) => "insertChart",
             InsertDialog::ChartData(_) => "chartData",
             InsertDialog::DropCap(_) => "dropCap",
+            InsertDialog::AlignmentTab(_) => "alignmentTab",
         }
     }
 
@@ -62,13 +67,15 @@ impl InsertDialog {
             InsertDialog::ChartType(_) => "Insert Chart",
             InsertDialog::ChartData(_) => "Edit Data",
             InsertDialog::DropCap(_) => "Drop Cap",
+            InsertDialog::AlignmentTab(_) => "Alignment Tab",
         }
     }
 }
 
 /// The dialog `ui.dialog` opens by `name`: `columns`, `symbol`, `specialCharacters`, `field`,
 /// `insertChart`, `changeChartType` or `chartData` (the last two for the selected chart), or
-/// `insertSmartArt`, or `dropCap` (Drop Cap Options…, where the paragraph can take one).
+/// `insertSmartArt`, or `dropCap` (Drop Cap Options…, where the paragraph can take one), or
+/// `alignmentTab` (Header & Footer › Insert Alignment Tab).
 pub fn open(name: &str, app: &WordApp) -> Option<InsertDialog> {
     Some(match name {
         "columns" => InsertDialog::Columns(ColumnsForm::read(app)),
@@ -80,6 +87,7 @@ pub fn open(name: &str, app: &WordApp) -> Option<InsertDialog> {
         "changeChartType" => InsertDialog::ChartType(crate::dialogs_chart::ChartTypeForm::new(app, true)?),
         "chartData" => InsertDialog::ChartData(crate::dialogs_chart::ChartDataForm::new(app)?),
         "dropCap" => InsertDialog::DropCap(DropCapForm::read(app)?),
+        "alignmentTab" => InsertDialog::AlignmentTab(AlignmentTabForm::default()),
         _ => return None,
     })
 }
@@ -94,6 +102,7 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut InsertDialog) -> bool {
         InsertDialog::ChartType(f) => crate::dialogs_chart::type_ui(app, ui, f),
         InsertDialog::ChartData(f) => crate::dialogs_chart::data_ui(app, ui, f),
         InsertDialog::DropCap(f) => drop_cap_ui(app, ui, f),
+        InsertDialog::AlignmentTab(f) => alignment_tab_ui(app, ui, f),
     }
 }
 
@@ -118,6 +127,8 @@ pub(crate) fn buttons(ui: &mut Ui, ok: &str, cancel: &str, ok_enabled: bool) -> 
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_alignment_tab;
 #[cfg(test)]
 mod tests_new_column;
 #[cfg(test)]

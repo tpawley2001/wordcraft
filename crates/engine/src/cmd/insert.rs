@@ -16,7 +16,7 @@ mod links;
 mod objects;
 
 pub(crate) use header_footer::saved_copy;
-use header_footer::{create_hf, edit_hf, header_footer, new_empty_headers, strip_headers};
+use header_footer::{alignment_tab, create_hf, edit_hf, header_footer, new_empty_headers, strip_headers};
 pub use items::{DropCapState, drop_cap_state, format_date, format_date_at, format_date_parts};
 use items::{cover_page, date_time, drop_cap, drop_cap_off, field, page_number, symbol};
 use links::{bookmark, delete_bookmark, link, link_targets};
@@ -93,6 +93,8 @@ pub fn specs() -> Vec<CommandSpec> {
             sel_result(s)
         })
         .pure(),
+        CommandSpec::new("insert.alignmentTab", "Insert Alignment Tab", "Header & Footer › Position", alignment_tab)
+            .params(r#"{"align"?: "left|center|right", "relativeTo"?: "margin|indent", "leader"?: "none|dot|hyphen|underscore|middleDot"}"#),
         CommandSpec::new("insert.removeEmptyHeaders", "Close Header and Footer", "Header & Footer", |s, _| {
             let ids = new_empty_headers(s);
             if strip_headers(&mut s.doc, &ids) {
