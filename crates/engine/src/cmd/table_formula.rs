@@ -105,6 +105,13 @@ pub fn evaluate_field_with(
     })
 }
 
+/// The text a formula field outside a table shows: as [`evaluate_field_with`], with no cells to
+/// read. A bookmark name is an operand that reads the number the bookmark marks.
+pub fn evaluate_text_field(doc: &wordcraft_doc::Document, default_lang: Option<&str>, instr: &str) -> Result<String, CmdError> {
+    let _ = (doc, default_lang, instr);
+    Err(CmdError::Failed("formula fields outside a table are not worked out yet".into()))
+}
+
 /// The text of a formula result under the field's `\*` switches, where `text` is `value` formatted
 /// with the `\#` picture, or in the cell's language when there is no picture. A number format such
 /// as `\* CardText`, `\* OrdText` or `\* roman` writes a whole number the format covers (up to
