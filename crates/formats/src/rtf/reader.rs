@@ -978,6 +978,7 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "margrsxn" => sec.page.right = Some(pv),
         "margtsxn" => sec.page.top = Some(pv),
         "margbsxn" => sec.page.bottom = Some(pv),
+        "guttersxn" => sec.page.gutter = Some(pv),
         "headery" => sec.page.header = Some(pv),
         "footery" => sec.page.footer = Some(pv),
         "lndscpsxn" => sec.page.landscape = on,
