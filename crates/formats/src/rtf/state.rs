@@ -361,6 +361,26 @@ pub(super) struct RowStyle {
 }
 
 impl RowStyle {
+    /// `\trgaphN`: the gap, twips, clamped to 22 inches.
+    pub(super) fn gap_word(&mut self, pv: i32) {
+        self.gap = pv.clamp(0, 31_680);
+        self.has_gap = self.gap > 0;
+    }
+
+    /// A `\trpadd?N` value or `\trpaddf?N` unit word, by its side (top, left, bottom, right).
+    pub(super) fn pad_word(&mut self, w: &str, pv: i32) {
+        let i = match w.as_bytes().last() {
+            Some(b't') => 0,
+            Some(b'l') => 1,
+            Some(b'b') => 2,
+            _ => 3,
+        };
+        let slot = if w.starts_with("trpaddf") { self.pad_unit.get_mut(i) } else { self.pad.get_mut(i) };
+        if let Some(v) = slot {
+            *v = pv.clamp(-31_680, 31_680);
+        }
+    }
+
     /// The row's default cell padding (top, left, bottom, right), points, when it is not Word's
     /// default: a side in twips (unit 3) as stated, else left and right the gap and top and
     /// bottom none. A row with a table style and neither a gap nor a side in twips keeps the
