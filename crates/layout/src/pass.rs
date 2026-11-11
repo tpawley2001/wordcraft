@@ -339,6 +339,38 @@ fn continue_page(pb: &mut PageBuilder, sect: &SectionProps, block: usize) {
     pb.open_column_lines(block);
 }
 
+/// Whether a section starting with a next column break (`start`) goes on in the next column of
+/// the current page, as in Word: when the section before (still `pb.sect`) has as many columns on
+/// the same page geometry and did not end in its last column. Otherwise it starts a new page, as
+/// Next Page does.
+fn starts_next_column(pb: &PageBuilder, sect: &SectionProps, start: SectionStart) -> bool {
+    let prev = pb.sect;
+    let same_page = prev.page_w == sect.page_w
+        && prev.page_h == sect.page_h
+        && prev.margin_left == sect.margin_left
+        && prev.margin_right == sect.margin_right
+        && prev.margin_top == sect.margin_top
+        && prev.margin_bottom == sect.margin_bottom
+        && prev.gutter == sect.gutter;
+    start == SectionStart::NextColumn
+        && !pb.pages.is_empty()
+        && same_page
+        && prev.columns.count == sect.columns.count
+        && pb.cols.len() == sect.column_boxes().len()
+        && pb.col + 1 < pb.cols.len()
+}
+
+/// Next column: the section's text starts at the top of the column after the one the section
+/// before ended in, on the same page (as a column break moves on).
+fn next_column(pb: &mut PageBuilder, sect: &SectionProps, block: usize) {
+    pb.close_column_lines();
+    pb.max_y = pb.max_y.max(pb.y);
+    pb.cols = sect.column_boxes();
+    pb.col = pb.col.saturating_add(1);
+    pb.y = pb.top;
+    pb.open_column_lines(block);
+}
+
 /// Whether the section's last page balances its columns (see [`balance_columns`]), and set what
 /// the builder needs to know about the sections after it. Newspaper columns are balanced when the
 /// next section starts on the same page (a continuous break), as in Word. That page is laid out
@@ -553,7 +585,8 @@ pub(crate) fn layout_pass(
         let tops = section_tops(&mut ctx, &hf, (si, sect), mode.reflow || turn.is_turned());
         let start = if si == 0 { SectionStart::NextPage } else { sect.start };
         let sec = Sec { si, sect, page_format, start, tops };
-        if !mode.web && !pb.pages.is_empty() && (start != SectionStart::Continuous || turn != prev_turn) {
+        let next_col = !mode.web && turn == prev_turn && starts_next_column(&pb, sect, start);
+        if !mode.web && !pb.pages.is_empty() && !next_col && (start != SectionStart::Continuous || turn != prev_turn) {
             // The page the section before ends on is finished with its own margins and footnote
             // separators, before this section's replace them: the footnotes pending on it
             // belong to the section whose page it is (#5289).
@@ -562,6 +595,8 @@ pub(crate) fn layout_pass(
         begin_section_state(&mut ctx, &mut pb, &sec, totals, mode.web);
         if mode.web && si > 0 {
             // one long page
+        } else if next_col {
+            next_column(&mut pb, sect, block);
         } else if pb.pages.is_empty() || start != SectionStart::Continuous || turn != prev_turn {
             start_section_page(&mut ctx, &mut pb, &hf, &sec, (mode, block));
         } else {
