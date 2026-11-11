@@ -17,7 +17,9 @@ fn png() -> Vec<u8> {
 }
 
 fn package(drawing: &str) -> Vec<u8> {
-    let doc = format!(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document {NS}><w:body><w:p><w:r><w:drawing>{drawing}</w:drawing></w:r></w:p></w:body></w:document>"#);
+    let doc = format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document {NS}><w:body><w:p><w:r><w:drawing>{drawing}</w:drawing></w:r></w:p></w:body></w:document>"#
+    );
     let root = r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#;
     let rels = r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdP" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/p.png"/></Relationships>"#;
     let types = r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>"#;
@@ -62,7 +64,11 @@ fn frame_prs(xml: &str) -> Vec<String> {
     while let Some(i) = rest.find("<wp:cNvGraphicFramePr") {
         let tail = &rest[i..];
         let end = if let Some(open_end) = tail.find('>') {
-            if tail[..open_end].ends_with('/') { open_end + 1 } else { tail.find("</wp:cNvGraphicFramePr>").map_or(open_end + 1, |e| e + "</wp:cNvGraphicFramePr>".len()) }
+            if tail[..open_end].ends_with('/') {
+                open_end + 1
+            } else {
+                tail.find("</wp:cNvGraphicFramePr>").map_or(open_end + 1, |e| e + "</wp:cNvGraphicFramePr>".len())
+            }
         } else {
             tail.len()
         };
@@ -114,7 +120,9 @@ fn a_locked_picture_is_read_locked() {
 fn a_picture_without_the_lock_is_read_unlocked() {
     let d = wordcraft_docx::read(&package(&inline_picture(UNLOCKED))).unwrap();
     assert_eq!(locks(&d), vec![Some(false)]);
-    let d = wordcraft_docx::read(&package(&inline_picture(r#"<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="0"/></wp:cNvGraphicFramePr>"#))).unwrap();
+    let d =
+        wordcraft_docx::read(&package(&inline_picture(r#"<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="0"/></wp:cNvGraphicFramePr>"#)))
+            .unwrap();
     assert_eq!(locks(&d), vec![Some(false)]);
 }
 
