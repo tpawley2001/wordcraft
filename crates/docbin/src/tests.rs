@@ -16,6 +16,7 @@ mod compat_mode;
 mod dop_base;
 mod dop_options;
 mod drawing;
+mod emf_blip_repair;
 mod emf_font_faces;
 mod emf_header_repair;
 mod empty_inline_shape;
