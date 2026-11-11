@@ -147,6 +147,12 @@ pub fn watermark_run(wm: &wordcraft_doc::Watermark, max_chars: usize) -> Option<
     Some((face, text, shaped))
 }
 
+/// The characters a metafile text run draws: a run set in a symbol font that is not installed
+/// shows its Unicode symbols (see `wordcraft_doc::symbol_fonts`); any other run its own text.
+pub fn metafile_drawn_text(t: &wordcraft_metafile::Text) -> String {
+    t.text.clone()
+}
+
 /// How a metafile text run is shaped for output, as the PDF export and the page raster both do:
 /// in the face its font name resolves to (no fallback face), so a character that face lacks shapes
 /// to glyph id 0. Strict export checks these same glyphs, so the check and the exporters can't
