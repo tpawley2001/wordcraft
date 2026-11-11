@@ -49,4 +49,6 @@ mod tables;
 mod tabs;
 mod text_boxes;
 mod text_direction;
+mod tracked_objects;
+mod tracked_objects_nested;
 mod unstated;

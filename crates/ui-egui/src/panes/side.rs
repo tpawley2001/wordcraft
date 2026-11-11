@@ -98,6 +98,10 @@ pub(super) fn styles(app: &mut WordApp, ui: &mut Ui) {
     if ui.selectable_label(app.session.view.reveal_formatting_pane, tl!("Reveal Formatting")).clicked() {
         let _ = app.run("view.revealFormattingPane", json!({}));
     }
+    let mut disable_linked = app.session.view.disable_linked_styles;
+    if ui.checkbox(&mut disable_linked, tl!("Disable Linked Styles")).changed() {
+        let _ = app.run("styles.disableLinked", json!({"value": disable_linked}));
+    }
     ui.separator();
     // The pane's styles, in its order (Options… chooses which and how they sort).
     let listed = app.session.run("styles.paneList", &json!({})).unwrap_or_default();

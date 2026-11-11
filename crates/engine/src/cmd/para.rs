@@ -270,6 +270,15 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .key("Mod+Alt+Shift+S")
         .pure(),
+        // Styles pane › Disable Linked Styles: a linked style then always applies as a paragraph
+        // style, never as its character half on part of a paragraph.
+        CommandSpec::new("styles.disableLinked", "Disable Linked Styles", "Home › Styles", |s, v| {
+            let on = p::bool(v, "value").unwrap_or(!s.view.disable_linked_styles);
+            s.view.disable_linked_styles = on;
+            Ok(json!({"value": on}))
+        })
+        .params(r#"{"value"?: bool (missing: toggles)}"#)
+        .pure(),
         CommandSpec::new("styles.apply", "Apply Styles", "Home › Styles", apply_styles)
             .params(r#"{"style"?: string (name or id)}"#)
             // On macOS ⌘⇧S is Save As, as in Word for Mac.

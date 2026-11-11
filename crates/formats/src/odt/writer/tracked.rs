@@ -2,12 +2,29 @@
 //! deleted content, paragraph marks included.
 
 use super::{FBlock, HashMap, Inline, Para, RevMark, Writer, x};
+use crate::model::ObjRev;
 
 /// One piece of a paragraph being written: an inline, or the deleted mark of a paragraph
 /// joined to the next one.
 pub(in crate::odt) enum Item<'a> {
     Inl(&'a Inline),
+    /// An object with its tracked change (the [`Inline::ObjRev`] before it).
+    Obj(&'a ObjRev, &'a Inline),
     Mark(&'a Para),
+}
+
+/// `inlines` as items, each object with the tracked change stated before it.
+pub(in crate::odt) fn inline_items(inlines: &[Inline]) -> Vec<Item<'_>> {
+    let mut out = Vec::with_capacity(inlines.len());
+    let mut rev = None;
+    for i in inlines {
+        match (i, rev.take()) {
+            (Inline::ObjRev(r), _) => rev = Some(&**r),
+            (i, Some(r)) if i.is_object() => out.push(Item::Obj(r, i)),
+            (i, _) => out.push(Item::Inl(i)),
+        }
+    }
+    out
 }
 
 impl Item<'_> {
@@ -16,6 +33,7 @@ impl Item<'_> {
         match self {
             Item::Inl(Inline::Text(_, f) | Inline::Ruby { fmt: f, .. } | Inline::Field { fmt: f, .. }) => (f.ins.as_ref(), f.del.as_ref()),
             Item::Inl(_) => (None, None),
+            Item::Obj(r, _) => (r.ins.as_ref(), r.del.as_ref()),
             Item::Mark(p) => (p.mark_ins.as_deref(), p.mark_del.as_deref()),
         }
     }
@@ -31,7 +49,7 @@ impl Item<'_> {
 
     pub(in crate::odt) fn inline(&self) -> Option<&Inline> {
         match self {
-            Item::Inl(i) => Some(i),
+            Item::Inl(i) | Item::Obj(_, i) => Some(i),
             Item::Mark(_) => None,
         }
     }

@@ -1178,7 +1178,8 @@ impl Writer {
                 | Inline::Group { .. }
                 | Inline::FieldStart(_)
                 | Inline::FieldEnd
-                | Inline::AnchorEnd(_) => {}
+                | Inline::AnchorEnd(_)
+                | Inline::ObjRev(_) => {}
             }
         }
     }

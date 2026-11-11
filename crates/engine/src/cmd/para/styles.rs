@@ -22,6 +22,30 @@ pub(super) fn apply_styles(s: &mut Session, v: &Value) -> CmdResult {
     }
 }
 
+/// The character style a paragraph style `id` is linked to (`w:link`), when it is a character
+/// style that links back.
+fn linked_char(s: &Session, id: &str) -> Option<String> {
+    if s.view.disable_linked_styles {
+        return None;
+    }
+    let sheet = &s.doc.styles;
+    let c = sheet.get(id)?.linked.as_deref().and_then(|l| sheet.get(l))?;
+    (c.kind == StyleKind::Character && c.linked.as_deref() == Some(id)).then(|| c.id.clone())
+}
+
+/// The selection when it is part of one paragraph's text: not a caret, not all of the paragraph
+/// (with or without its mark), and not across paragraphs.
+fn part_of_one_paragraph(s: &Session) -> bool {
+    if s.sel.is_collapsed() {
+        return false;
+    }
+    let (a, b) = s.sel.ordered();
+    if a.story != b.story || a.path != b.path {
+        return false;
+    }
+    s.doc.para_at(&a).is_some_and(|p| a.off < b.off && (a.off > 0 || b.off < p.len()))
+}
+
 pub(super) fn apply_style(s: &mut Session, v: &Value) -> CmdResult {
     let name = p::req_str(v, "style")?;
     let id = style_id(s, name)?;
@@ -29,6 +53,13 @@ pub(super) fn apply_style(s: &mut Session, v: &Value) -> CmdResult {
     s.applied_styles.insert(id.clone());
     if kind == StyleKind::Character {
         return crate::cmd::format::apply(s, &|c| c.style = Some(id.clone()));
+    }
+    // A linked style on part of one paragraph is its character half (ECMA-376 §17.7.4.6), unless
+    // Disable Linked Styles is on.
+    if let Some(c_id) = linked_char(s, &id)
+        && part_of_one_paragraph(s)
+    {
+        return crate::cmd::format::apply(s, &|c| c.style = Some(c_id.clone()));
     }
     let (a, b) = s.sel.ordered();
     // A style linked to a list level (a heading in a numbered-headings list) brings its number.
