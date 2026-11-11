@@ -564,6 +564,23 @@ fn set_own_styles(nums: HashMap<String, u32>) -> HashMap<String, u32> {
     OWN_STYLES.with(|m| m.try_borrow_mut().map(|mut m| std::mem::replace(&mut *m, nums)).unwrap_or_default())
 }
 
+thread_local! {
+    /// The bookmarks of the story being written whose end follows their start
+    /// ([`model::ranged_anchors`]): their `\bkmkend` goes where the range ends, while every other
+    /// bookmark is written as a point, start and end together.
+    static RANGED: std::cell::RefCell<HashSet<String>> = std::cell::RefCell::new(HashSet::new());
+}
+
+/// Whether bookmark `name` covers text in the story being written.
+fn is_ranged(name: &str) -> bool {
+    RANGED.with(|r| r.try_borrow().is_ok_and(|r| r.contains(name)))
+}
+
+/// Set the bookmarks [`is_ranged`] knows, returning the ones it knew before.
+fn set_ranged(names: HashSet<String>) -> HashSet<String> {
+    RANGED.with(|r| r.try_borrow_mut().map(|mut r| std::mem::replace(&mut *r, names)).unwrap_or_default())
+}
+
 /// The first `\stylesheet` number of the document's own styles: 0-9 are the fixed entries.
 const FIRST_OWN_STYLE: u32 = 10;
 
@@ -1244,19 +1261,25 @@ impl Writer {
                     self.base = base;
                     out.push_str("}}}");
                 }
+                // RTF 1.9.1 "Bookmarks": a range's end is written where it ends; a point bookmark
+                // gets both marks together, as Word needs an end for each start.
+                Inline::Anchor(a) if is_ranged(a) => out.push_str(&format!("{{\\*\\bkmkstart {}}}", esc(a))),
                 Inline::Anchor(a) => {
                     let a = esc(a);
                     out.push_str(&format!("{{\\*\\bkmkstart {a}}}{{\\*\\bkmkend {a}}}"));
                 }
+                Inline::AnchorEnd(a) if is_ranged(a) => out.push_str(&format!("{{\\*\\bkmkend {}}}", esc(a))),
                 // RTF keeps no ruby yet: its base text, in the run's formatting.
                 Inline::Ruby { base, fmt, .. } => self.run(base, fmt, out),
                 // ASK and SET show nothing (see `model::shows_nothing`).
                 Inline::Field { instr, .. } if model::shows_nothing(instr) => {}
-                Inline::Field { instr, result, fmt, form, .. } => {
+                Inline::Field { instr, result, fmt, form, locked } => {
+                    // A locked field keeps its result (RTF 1.9.1 "Fields": `\fldlock`).
+                    let lock = if *locked { "\\fldlock" } else { "" };
                     // A legacy form field's definition goes in its instruction, as Word writes it.
                     match super::form_field::rtf_group(form) {
-                        Some(group) => out.push_str(&format!("{{\\field{{\\*\\fldinst {{{} {group}}}}}{{\\fldrslt ", esc(instr.trim()))),
-                        None => out.push_str(&format!("{{\\field{{\\*\\fldinst {}}}{{\\fldrslt ", esc(instr))),
+                        Some(group) => out.push_str(&format!("{{\\field{lock}{{\\*\\fldinst {{{} {group}}}}}{{\\fldrslt ", esc(instr.trim()))),
+                        None => out.push_str(&format!("{{\\field{lock}{{\\*\\fldinst {}}}{{\\fldrslt ", esc(instr))),
                     }
                     self.run(result, fmt, out);
                     out.push_str("}}");
@@ -1781,6 +1804,7 @@ pub fn export(doc: &Document) -> String {
         .map(|(s, n)| (s.id.clone(), n))
         .collect();
     let before = set_own_styles(own);
+    let ranged_before = set_ranged(HashSet::new());
     // An empty paragraph's mark formatting sets its height.
     let opts = model::FlowOpts { marks: true, ..model::FlowOpts::tracked() };
     let flow = model::from_doc_with(doc, opts);
@@ -1817,6 +1841,7 @@ pub fn export(doc: &Document) -> String {
                 if let Some(part) = id.and_then(|id| doc.parts.get(&id)) {
                     body.push_str(&format!("{{\\{prefix}{suffix} "));
                     let blocks = model::part_flow(doc, &part.blocks, opts);
+                    set_ranged(model::ranged_anchors(&blocks));
                     w.blocks(&blocks, 0, "\\par", &mut body, 1);
                     body.push('}');
                 }
@@ -1826,9 +1851,11 @@ pub fn export(doc: &Document) -> String {
     if secs.len() > 1 {
         w.sections = secs;
     }
+    set_ranged(model::ranged_anchors(&flow.blocks));
     w.blocks(&flow.blocks, 0, "\\par", &mut body, 0);
     let own_entries = own_style_entries(doc, &mut w.t);
     set_own_styles(before);
+    set_ranged(ranged_before);
     export_with(&flow.meta, doc, &w, &own_entries, &body)
 }
 

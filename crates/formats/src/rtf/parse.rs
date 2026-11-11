@@ -235,7 +235,7 @@ fn parse_full(bytes: &[u8], marks: bool) -> Result<Parsed, String> {
                                 | Dest::Info(_)
                                 | Dest::FldInst
                                 | Dest::FfText(_)
-                                | Dest::Bookmark
+                                | Dest::Bookmark(_)
                                 | Dest::FontTbl
                                 | Dest::RevTbl
                                 | Dest::Atn(_)
