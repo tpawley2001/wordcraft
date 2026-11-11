@@ -35,9 +35,13 @@ pub(super) const MIN_TEXT: f32 = 72.0;
 /// page's left (or top) edge: snapped to 1/16 inch, never negative, and leaving at least an inch
 /// of text between it and the opposite margin.
 pub(crate) fn dragged_margin(edge: MarginEdge, at: f32, s: &wordcraft_doc::section::SectionProps) -> f32 {
+    // The gutter sits in the left band, or the right band with a right-to-left gutter: the
+    // visible edge is the margin plus the band's gutter, and the gutter isn't margin.
+    let left_gutter = s.left_gutter(false);
+    let right_gutter = s.gutter - left_gutter;
     let (raw, room, cur) = match edge {
-        MarginEdge::Left => (at - s.gutter, s.page_w - s.margin_right - s.gutter - MIN_TEXT, s.margin_left),
-        MarginEdge::Right => (s.page_w - at, s.page_w - s.margin_left - s.gutter - MIN_TEXT, s.margin_right),
+        MarginEdge::Left => (at - left_gutter, s.page_w - s.margin_right - s.gutter - MIN_TEXT, s.margin_left),
+        MarginEdge::Right => (s.page_w - at - right_gutter, s.page_w - s.margin_left - s.gutter - MIN_TEXT, s.margin_right),
         MarginEdge::Top => (at, s.page_h - s.margin_bottom - MIN_TEXT, s.margin_top),
         MarginEdge::Bottom => (s.page_h - at, s.page_h - s.margin_top - MIN_TEXT, s.margin_bottom),
     };

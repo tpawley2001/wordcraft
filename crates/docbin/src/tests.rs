@@ -39,6 +39,7 @@ mod section_columns;
 mod section_line_numbers_grid;
 mod section_page_borders;
 mod section_page_numbers;
+mod section_rtl_gutter;
 mod style_name_case;
 mod table_float;
 mod table_width;
