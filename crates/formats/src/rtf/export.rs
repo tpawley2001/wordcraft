@@ -429,7 +429,8 @@ fn doc_note_words(set: &wordcraft_doc::Settings) -> String {
 }
 
 /// The document settings that differ from a new document's: view zoom, drawing grid, Restrict
-/// Editing (never a password hash), linked styles, privacy options and Shift+Return expansion.
+/// Editing (never a password hash), linked styles, privacy options, Shift+Return expansion,
+/// Track Changes on and print only the data from a form.
 fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
     use wordcraft_doc::ZoomFit;
     let def = wordcraft_doc::Settings::default();
@@ -470,6 +471,8 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
         (set.remove_personal_info, "\\rempersonalinfo"),
         (set.remove_date_time, "\\remdttm"),
         (set.do_not_expand_shift_return, "\\expshrtn"),
+        (set.track_changes, "\\revisions"),
+        (set.print_forms_data, "\\printdata"),
     ] {
         if on {
             o.push_str(w);
