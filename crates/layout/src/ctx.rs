@@ -24,6 +24,9 @@ pub(crate) struct Ctx<'a> {
     pub(crate) cache: &'a mut LayoutCache,
     pub(crate) opts: &'a LayoutOptions,
     pub(crate) counters: Counters,
+    /// The list counters each header, footer, text box and note part starts from
+    /// ([`crate::list_stories::part_starts`]).
+    pub(crate) part_starts: Arc<HashMap<u32, Counters>>,
     pub(crate) fields: FieldCtx,
     pub(crate) notes_hash: u64,
     pub(crate) numbers: HashMap<u32, Arc<ParaLayout>>,
@@ -532,6 +535,7 @@ mod tests {
             cache: &mut cache,
             opts: &opts,
             counters: Default::default(),
+            part_starts: Default::default(),
             fields: FieldCtx::default(),
             notes_hash: 0,
             numbers: Default::default(),

@@ -197,6 +197,15 @@ pub(crate) fn layout_box(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
     // Deletions in balloons leave the body's text only: a header, note or text box keeps its own
     // inline (restored for the story around this box when it's done).
     let outer_hide = std::mem::replace(&mut ctx.hide_deleted, ctx.opts.hides_deleted(story));
+    // A header, footer, note or text box counts its lists in its own story, from where its story
+    // has got to before it (the same numbers each time it is laid out); the story around this box
+    // gets its counters back when it's done. A table cell keeps counting in its own story.
+    let outer_counters = match (story, &context) {
+        (StoryRef::Part(id), BoxContext::Other) if prefix.is_empty() => {
+            ctx.part_starts.get(&id).map(|start| std::mem::replace(&mut ctx.counters, start.clone()))
+        }
+        _ => None,
+    };
     let empty_cell = para::CellText::default();
     let (in_cell, table, cell_edges) = match context {
         BoxContext::Other => (false, None, None),
@@ -413,6 +422,9 @@ pub(crate) fn layout_box(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
     }
     let floats_bottom = float_tables.iter().map(|r| r.bottom()).fold(float_objects_bottom, f32::max);
     ctx.hide_deleted = outer_hide;
+    if let Some(c) = outer_counters {
+        ctx.counters = c;
+    }
     BoxLayout { items, height: y.max(0.0), floats_bottom, last_top: last_top.max(0.0), table_areas, page_table_wraps }
 }
 
