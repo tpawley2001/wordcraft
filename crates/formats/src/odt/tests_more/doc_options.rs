@@ -106,3 +106,31 @@ fn default_options_write_nothing() {
     }
     assert_eq!(opts(&import(&export(&d).unwrap()).unwrap()), (false, 0, DEFAULT_HYPHENATION_ZONE, true));
 }
+
+/// Changes made after opening a file are saved, not the file's own page layout or default
+/// style (review of #6218): Mirror margins on and off, consecutive hyphen limit, capitals.
+#[test]
+fn changes_after_open_are_saved() {
+    type Change = fn(&mut wordcraft_doc::Settings);
+    let mirrored = r#"style:page-usage="mirrored""#;
+    let ladder = r#"fo:hyphenation-ladder-count="2""#;
+    let no_caps = r#"loext:hyphenation-no-caps="true""#;
+    let cases: [(&str, &str, &str, Change, (bool, u32, bool)); 4] = [
+        ("", "", "", |s| s.mirror_margins = true, (true, 0, true)),
+        ("", "", mirrored, |s| s.mirror_margins = false, (false, 0, true)),
+        (ladder, "", "", |s| s.consecutive_hyphen_limit = 4, (false, 4, true)),
+        ("", no_caps, "", |s| s.hyphenate_caps = true, (false, 0, true)),
+    ];
+    for (i, (para, text, usage, change, (mirror, ladder_count, caps))) in cases.into_iter().enumerate() {
+        let mut d = open(para, text, usage);
+        change(&mut d.settings);
+        let saved = export(&d).unwrap();
+        let st = styles_of(&saved);
+        assert_eq!(st.contains(mirrored), mirror, "case {i}: page-usage in {st}");
+        let back = import(&saved).unwrap();
+        let o = opts(&back);
+        assert_eq!((o.0, o.1, o.3), (mirror, ladder_count, caps), "case {i}");
+        let sec = back.sections()[0].1;
+        assert_eq!((sec.margin_left, sec.margin_right), (90.0, 54.0), "case {i}: margins");
+    }
+}

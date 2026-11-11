@@ -48,6 +48,8 @@ const T_VERT_ALIGN: u16 = 0xD62C;
 const T_SET_SHD: u16 = 0xD62D;
 const T_CANT_SPLIT: u16 = 0x3466;
 const T_CELL_WIDTH: u16 = 0xD635;
+/// `sprmTTableWidth`: the table's preferred width, an `FtsWWidth_TablePart` ([MS-DOC] 2.6.4).
+const T_TABLE_WIDTH: u16 = 0xF614;
 /// `sprmTCellPadding` / `sprmTCellPaddingDefault`: a CSSA operand giving cell margins for a
 /// cell range / the whole table ([MS-DOC] §2.6.4, §2.9.43).
 const T_CELL_PADDING: u16 = 0xD632;
@@ -94,6 +96,8 @@ pub(crate) struct RowInfo {
     /// Default cell margins `[top, left, bottom, right]` (points), from
     /// `sprmTCellPaddingDefault` with `sprmTDxaGapHalf` for an unset left or right side.
     cell_margins: Option<[f32; 4]>,
+    /// The table's preferred width from `sprmTTableWidth`.
+    width: Option<TableWidth>,
     /// Per-cell margin overrides from `sprmTCellPadding`, one slot per cell.
     cell_padding: Vec<(u8, [Option<f32>; 4])>,
     /// Horizontal merges: (itcFirst, itcLim) cell-index ranges.
@@ -112,6 +116,28 @@ pub(crate) struct RowInfo {
     tap_dist_right: Option<f32>,
     tap_dist_bottom: Option<f32>,
     tap_no_overlap: Option<bool>,
+}
+
+/// A table's preferred width as `sprmTTableWidth` gives it.
+#[derive(Clone, Copy)]
+enum TableWidth {
+    Auto,
+    Points(f32),
+    Percent(f32),
+}
+
+/// Decode a `sprmTTableWidth` operand: ftsWidth (1 byte, an Fts, [MS-DOC] 2.9.102) then
+/// wWidth (2 bytes). ftsDxa (3) and ftsDxaSys (0x13) are twips, ftsPercent (2) is 50ths of
+/// a percent; ftsNil (0) and ftsAuto (1) leave the width automatic. A truncated operand or
+/// another fts gives `None`.
+fn table_width(operand: &[u8]) -> Option<TableWidth> {
+    let [fts, w0, w1, ..] = operand else { return None };
+    match *fts {
+        0x03 | 0x13 => Some(TableWidth::Points((i16::from_le_bytes([*w0, *w1]) as f32 / 20.0).clamp(0.0, 1584.0))),
+        0x02 => Some(TableWidth::Percent((u16::from_le_bytes([*w0, *w1]) as f32 / 50.0).clamp(0.0, 100.0))),
+        0x00 | 0x01 => Some(TableWidth::Auto),
+        _ => None,
+    }
 }
 
 /// Read the table context out of a paragraph mark's PAPX grpprl.
@@ -264,6 +290,7 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
                     set(&mut r.shading, (first + i) as u8, shd_rgb(b));
                 }
             }
+            T_TABLE_WIDTH => r.width = table_width(prl.operand).or(r.width),
             T_CELL_WIDTH => {
                 // Operand: cb (1 byte), itcFirst (1 byte), itcLim (1 byte), ftsWidth (1 byte), wWidth (2 bytes).
                 // [MS-DOC] §2.9.290 sprmTCellWidth (0xD635).
@@ -517,6 +544,8 @@ struct TableBuilder {
     // later table — including the change history with its own 40-twip gap — inherited 5.4 pt
     // margins).
     props: TableProps,
+    /// A row's `sprmTTableWidth` has been taken (even an automatic one): later rows keep it.
+    width_set: bool,
     /// The frame of the table's first paragraph, the fallback when its first row-end has none.
     first_frame: Option<TextFrame>,
 }
@@ -540,6 +569,16 @@ impl TableBuilder {
         }
         if self.props.indent.is_none() {
             self.props.indent = info.indent;
+        }
+        if !self.width_set
+            && let Some(w) = info.width
+        {
+            self.width_set = true;
+            match w {
+                TableWidth::Points(pt) => self.props.width = Some(pt),
+                TableWidth::Percent(pct) => self.props.width_pct = Some(pct),
+                TableWidth::Auto => {}
+            }
         }
         if self.props.cell_margins.is_none() {
             self.props.cell_margins = info.cell_margins;

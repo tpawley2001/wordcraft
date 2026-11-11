@@ -48,6 +48,18 @@ pub struct ResolvedChar {
     /// contextual).
     #[serde(default)]
     pub ligatures: Option<crate::props::Ligatures>,
+    /// OpenType number forms (`w14:numForm`); `None` = the font's own figures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_form: Option<crate::props::NumForm>,
+    /// OpenType number spacing (`w14:numSpacing`); `None` = the font's own spacing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_spacing: Option<crate::props::NumSpacing>,
+    /// OpenType stylistic sets (`w14:stylisticSets`), sorted by id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stylistic_sets: Option<Vec<crate::props::StyleSet>>,
+    /// Contextual alternates (`w14:cntxtAlts`); `None` = the shaper's default (on).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contextual_alternates: Option<bool>,
     pub outline: bool,
     pub shadow: bool,
     pub emboss: bool,
@@ -102,6 +114,10 @@ impl ResolvedChar {
             kern: c.kern.filter(|k| k.is_finite()).unwrap_or(0.0).clamp(0.0, 1638.0),
             emphasis: c.emphasis.unwrap_or_default(),
             ligatures: c.ligatures,
+            num_form: c.num_form,
+            num_spacing: c.num_spacing,
+            stylistic_sets: c.stylistic_sets.clone(),
+            contextual_alternates: c.contextual_alternates,
             outline: c.outline.unwrap_or(false),
             shadow: c.shadow.unwrap_or(false),
             emboss: c.emboss.unwrap_or(false),
