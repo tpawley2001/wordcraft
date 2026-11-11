@@ -83,8 +83,11 @@ fn old_fmt(doc: &Document, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fm
     let mut f = fmt_of(doc, old, in_code);
     if !opts.chars {
         f.hidden = opts.hidden && effective(doc, old).hidden == Some(true);
-        if let Some(pt) = effective(doc, old).position.filter(|v| *v != 0.0 && v.is_finite()).filter(|_| opts.tabs_spacing) {
-            f.extra = Some(Box::new(CharProps { position: Some(pt), ..Default::default() }));
+        let e = effective(doc, old);
+        if opts.tabs_spacing {
+            let (highlight, shading) = highlight_of(&e);
+            let x = CharProps { position: e.position.filter(|v| *v != 0.0 && v.is_finite()), highlight, shading, ..Default::default() };
+            f.extra = (x != CharProps::default()).then(|| Box::new(x));
         }
     }
     f
@@ -101,6 +104,7 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
             // its own word there, not single strikethrough.
             let e = effective(doc, props);
             let set = |v: Option<bool>| v.filter(|b| *b);
+            let (highlight, shading) = highlight_of(&e);
             let x = CharProps {
                 spacing: e.spacing.filter(|v| *v != 0.0 && v.is_finite()),
                 caps: set(e.caps),
@@ -115,6 +119,10 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
                 position: e.position.filter(|v| *v != 0.0 && v.is_finite()),
                 underline: e.underline.filter(|u| f.underline && *u != Underline::Single),
                 underline_color: e.underline_color,
+                no_proof: set(e.no_proof),
+                emphasis: e.emphasis.filter(|m| *m != wordcraft_doc::props::EmphasisMark::None),
+                highlight,
+                shading,
                 ..Default::default()
             };
             if x.double_strike.is_some() {
@@ -167,10 +175,18 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
     f
 }
 
+/// The highlight in `e` (effective character properties) and, with one, the shading under it;
+/// without a highlight the shading is [`Fmt::background`] alone.
+fn highlight_of(e: &CharProps) -> (Option<wordcraft_doc::props::Highlight>, Option<wordcraft_doc::props::Rgb>) {
+    let highlight = e.highlight.filter(|h| h.rgb().is_some());
+    (highlight, highlight.and(e.shading))
+}
+
 /// The formatting in `e` (effective character properties) that only [`Fmt::extra`] holds;
 /// `None` when it sets none of it.
 fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
     let set = |v: Option<bool>| v.filter(|b| *b);
+    let (highlight, shading) = highlight_of(e);
     let x = CharProps {
         // What it turns off, over what the style of its paragraph or span turns on, too.
         bold: e.bold.filter(|b| !*b),
@@ -201,6 +217,8 @@ fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
         lang_ea: e.lang_ea.clone().filter(|l| !l.is_empty()),
         no_proof: set(e.no_proof),
         east_asian_layout: e.east_asian_layout.clone().filter(|l| *l != Default::default()),
+        highlight,
+        shading,
         ..Default::default()
     };
     (x != CharProps::default()).then(|| Box::new(x))

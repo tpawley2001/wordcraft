@@ -2,7 +2,7 @@ use super::reader::apply_section_word;
 use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pn, PnKind, RevSt, SecFmt, St};
 use super::styles::{StyleDef, StyleEntry, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
-use wordcraft_doc::props::{CharProps, TabAlign, TabLeader, TabStop, Underline};
+use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline};
 
 impl Reader {
     pub(super) fn word(&mut self, w: &str, p: Option<i32>, starred: bool, first_in_group: bool) {
@@ -175,7 +175,8 @@ impl Reader {
                 }
             }
             "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
-            "highlight" | "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "highlight" => self.highlight(pv),
             // Hidden text: kept, as hidden text.
             "v" => self.st.fmt.hidden = on,
             "ql" => self.st.align = Some(Align::Left),
@@ -838,12 +839,29 @@ impl Reader {
             "shad" => self.set_extra(|x| x.shadow = on.then_some(true)),
             "embo" => self.set_extra(|x| x.emboss = on.then_some(true)),
             "impr" => self.set_extra(|x| x.engrave = on.then_some(true)),
+            "noproof" => self.set_extra(|x| x.no_proof = on.then_some(true)),
+            "accnone" => self.set_extra(|x| x.emphasis = None),
+            "accdot" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Dot)),
+            "acccomma" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Comma)),
+            "acccircle" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Circle)),
+            "accunderdot" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::UnderDot)),
             // Horizontal scale, percent (100 = normal); kerning from a size in half-points (0 = off).
             "charscalex" if (1..=600).contains(&pv) => self.set_extra(|x| x.scale = (pv != 100).then_some(pv as f32)),
             "kerning" if (0..=3276).contains(&pv) => self.set_extra(|x| x.kern = (pv != 0).then_some(pv as f32 / 2.0)),
             _ => return false,
         }
         true
+    }
+
+    /// `\highlightN`: colour entry `n` as the text's highlight when it is one of the highlight
+    /// colours; any other colour stays character shading, and none (0, auto, missing) clears both.
+    fn highlight(&mut self, n: i32) {
+        let c = self.colors.get(n.max(0) as usize).copied().flatten();
+        let h = c.and_then(|c| Highlight::ALL.into_iter().find(|h| *h != Highlight::None && h.rgb() == Some(c)));
+        if h.is_none() {
+            self.st.fmt.background = c;
+        }
+        self.set_extra(|x| x.highlight = h);
     }
 
     /// `\csN`: the text's character style, when entry `n` became one of the document's own.
