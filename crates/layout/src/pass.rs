@@ -251,7 +251,7 @@ fn turned_sections(ctx: &mut Ctx, sections: &[(usize, &SectionProps)], web: bool
             (!web && s.text_direction.is_turned()).then(|| {
                 ctx.fields.page_format = s.page_num_format;
                 let top = body_top_for(ctx, s, s.headers.default);
-                vertical::unturned_sect(s, top)
+                vertical::unturned_sect(s, top, ctx.mirror)
             })
         })
         .collect()

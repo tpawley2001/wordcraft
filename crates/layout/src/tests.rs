@@ -46,6 +46,7 @@ mod symbol_field;
 mod symbol_font_lines;
 mod tab_to_right_indent;
 mod table_contact;
+mod rtl_gutter_vertical;
 mod textbox;
 mod vertical;
 
