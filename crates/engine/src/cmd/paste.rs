@@ -25,20 +25,30 @@ pub const MAX_PICTURE_BYTES: usize = 96 << 20;
 const MAX_DEPTH: usize = 64;
 
 /// The formats, in the order the dialog lists them: (id, label).
-pub const FORMATS: [(&str, &str); 5] = [
+pub const FORMATS: [(&str, &str); 6] = [
     ("formatted", "Formatted Text"),
-    ("rtf", "Rich Text Format (RTF)"),
+    ("rtf", "Formatted Text (RTF)"),
     ("html", "HTML Format"),
     ("picture", "Picture"),
     ("text", "Unformatted Text"),
+    ("unicode", "Unformatted Unicode Text"),
 ];
 
+/// What OK does with a format, as the Paste Special dialog's Result box says it.
+pub fn result_text(id: &str) -> &'static str {
+    match id {
+        "formatted" | "rtf" => "Inserts the contents of the Clipboard as text with font and table formatting.",
+        "html" => "Inserts the contents of the Clipboard as HTML Format.",
+        "picture" => "Inserts the contents of the Clipboard as a picture.",
+        "text" | "unicode" => "Inserts the contents of the Clipboard as text without any formatting.",
+        _ => "",
+    }
+}
+
 pub fn specs() -> Vec<CommandSpec> {
-    vec![
-        CommandSpec::new("edit.pasteSpecial", "Paste Special", "Home › Clipboard › Paste", paste_special)
-            .key("Mod+Alt+V")
-            .params(r#"{"as"?: "formatted"|"rtf"|"html"|"picture"|"text", "text"?: string, "html"?: string, "rtf"?: string, "picture"?: base64}"#),
-    ]
+    vec![CommandSpec::new("edit.pasteSpecial", "Paste Special", "Home › Clipboard › Paste", paste_special).key("Mod+Alt+V").params(
+        r#"{"as"?: "formatted"|"rtf"|"html"|"picture"|"text"|"unicode", "text"?: string, "html"?: string, "rtf"?: string, "picture"?: base64}"#,
+    )]
 }
 
 /// Clipboard text from the params (system clipboard), else WordCraft's own copy.
@@ -73,7 +83,7 @@ fn source(s: &Session, v: &Value, fmt: &str) -> Option<String> {
         "rtf" => p::str(v, "rtf").map(str::to_string).or_else(|| clip_text(s, v).filter(|t| looks_like_rtf(t))).and_then(non_empty),
         "html" => p::str(v, "html").map(str::to_string).or_else(|| clip_text(s, v).filter(|t| looks_like_html(t))).and_then(non_empty),
         "picture" => p::str(v, "picture").map(str::to_string).and_then(non_empty),
-        "text" => clip_text(s, v).and_then(non_empty),
+        "text" | "unicode" => clip_text(s, v).and_then(non_empty),
         _ => None,
     }
 }
@@ -84,7 +94,11 @@ pub fn available(s: &Session, v: &Value) -> Vec<&'static str> {
 }
 
 fn formats_json(ids: &[&str]) -> Value {
-    json!(ids.iter().map(|id| json!({"id": id, "label": FORMATS.iter().find(|(f, _)| f == id).map(|(_, l)| *l).unwrap_or(*id)})).collect::<Vec<_>>())
+    json!(
+        ids.iter()
+            .map(|id| json!({"id": id, "label": FORMATS.iter().find(|(f, _)| f == id).map(|(_, l)| *l).unwrap_or(*id), "result": result_text(id)}))
+            .collect::<Vec<_>>()
+    )
 }
 
 fn paste_special(s: &mut Session, v: &Value) -> CmdResult {
@@ -116,7 +130,8 @@ fn paste_special(s: &mut Session, v: &Value) -> CmdResult {
         "html" => "html",
         "picture" | "png" | "image" => "picture",
         "text" | "unformatted" | "plain" => "text",
-        other => return Err(CmdError::Params(format!("unknown format `{other}` (formatted, rtf, html, picture or text)"))),
+        "unicode" => "unicode",
+        other => return Err(CmdError::Params(format!("unknown format `{other}` (formatted, rtf, html, picture, text or unicode)"))),
     };
     let Some(src) = source(s, v, fmt) else {
         return Err(CmdError::Failed(if ids.is_empty() {
@@ -126,7 +141,7 @@ fn paste_special(s: &mut Session, v: &Value) -> CmdResult {
         }));
     };
     let frag = match fmt {
-        "text" => {
+        "text" | "unicode" => {
             super::paste_text(s, &src.replace("\r\n", "\r").replace('\n', "\r"))?;
             let mut r = sel_result(s)?;
             r["pastedAs"] = json!(fmt);

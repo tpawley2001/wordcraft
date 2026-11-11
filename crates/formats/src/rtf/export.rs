@@ -271,17 +271,18 @@ fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
 
 /// `\sectd` and a section's formatting, in the words the reader reads back, then its formatting
 /// before a tracked change (`{\*\oldsprops …}`) when it has one.
-fn sect_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
-    let mut o = sect_props_words(s, t);
+/// `doc_gutter` is the document's `\gutterN` (points), which `\sectd` resets a section to.
+fn sect_words(s: &wordcraft_doc::SectionProps, doc_gutter: f32, t: &mut Tables) -> String {
+    let mut o = sect_props_words(s, doc_gutter, t);
     if let Some(c) = &s.fmt_change {
-        o.push_str(&format!("{{\\*\\oldsprops {}}}", sect_props_words(&c.old, t)));
+        o.push_str(&format!("{{\\*\\oldsprops {}}}", sect_props_words(&c.old, doc_gutter, t)));
     }
     o.push('\n');
     o
 }
 
 /// `\sectd` and a section's own formatting words; page border colours go into `t`.
-fn sect_props_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
+fn sect_props_words(s: &wordcraft_doc::SectionProps, doc_gutter: f32, t: &mut Tables) -> String {
     use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NotePos, NumFormat, PageVAlign, SectionStart};
     let tw = |v: f32| if v.is_finite() { ((v * 20.0).round() as i64).max(0) } else { 0 };
     let mut o = String::from("\\sectd");
@@ -302,6 +303,9 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
         PageVAlign::Justify => "\\vertalj",
         PageVAlign::Bottom => "\\vertalb",
     });
+    if s.no_endnote == Some(false) {
+        o.push_str("\\endnhere");
+    }
     if let Some(n) = s.paper_src_first.filter(|&n| n != 0) {
         o.push_str(&format!("\\binfsxn{n}"));
     }
@@ -324,6 +328,7 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
         tw(s.header),
         tw(s.footer)
     ));
+    o.push_str(&section_gutter_word(s.gutter, doc_gutter));
     if s.columns.count > 1 {
         o.push_str(&format!("\\cols{}\\colsx{}", s.columns.count, tw(s.columns.space)));
         if s.columns.separator {
@@ -401,6 +406,13 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
     o
 }
 
+/// The `\guttersxn` word of a section whose gutter (points) differs from the document's `\gutter`,
+/// else nothing: a section with the document's gutter needs no word of its own.
+fn section_gutter_word(gutter: f32, doc_gutter: f32) -> String {
+    let tw = |v: f32| if v.is_finite() { ((v * 20.0).round() as i64).max(0) } else { 0 };
+    if tw(gutter) == tw(doc_gutter) { String::new() } else { format!("\\guttersxn{}", tw(gutter)) }
+}
+
 /// The start, restart and number format words of footnote or endnote options `n` (`prefix`:
 /// `\ftn`, `\aftn`, `\sftn` or `\saftn`), each only when set; endnotes have no per-page restart.
 fn note_words(prefix: &str, n: &wordcraft_doc::section::NoteProps, fmt: Option<wordcraft_doc::section::NumFormat>) -> String {
@@ -422,23 +434,61 @@ fn note_words(prefix: &str, n: &wordcraft_doc::section::NoteProps, fmt: Option<w
     o
 }
 
+/// Whether `bl` (and the tables in it) holds a footnote reference and an endnote reference.
+fn note_kinds(bl: &Blocks, depth: usize, found: &mut (bool, bool)) {
+    use wordcraft_doc::para::NoteKind;
+    for b in bl.iter() {
+        match &**b {
+            Block::Para(p) => {
+                for o in &p.objects {
+                    match o {
+                        InlineObject::NoteRef { kind: NoteKind::Endnote, .. } => found.1 = true,
+                        InlineObject::NoteRef { .. } => found.0 = true,
+                        _ => {}
+                    }
+                }
+            }
+            Block::Table(t) if depth < 8 => {
+                for c in t.rows.iter().flat_map(|r| r.cells.iter()) {
+                    note_kinds(&c.blocks, depth + 1, found);
+                }
+            }
+            Block::Table(_) => {}
+        }
+    }
+}
+
 /// The document's footnote and endnote options: each word only when the option is set, the
 /// number formats only when they aren't the defaults (decimal footnotes, lower Roman endnotes).
-fn doc_note_words(set: &wordcraft_doc::Settings) -> String {
+/// A document with notes always states where footnotes and endnotes go and which it has
+/// (`\fet`): a reader takes footnotes in a file that never says where they go for endnotes.
+fn doc_note_words(doc: &Document) -> String {
     use wordcraft_doc::section::{NotePos, NumFormat};
+    let set = &doc.settings;
+    let mut found = (false, false);
+    note_kinds(&doc.body, 0, &mut found);
+    for part in doc.parts.values() {
+        note_kinds(&part.blocks, 0, &mut found);
+    }
+    let (has_notes, has_endnotes) = (found.0 || found.1, found.1);
     let mut o = String::new();
     o.push_str(match set.footnote_pr.pos {
         Some(NotePos::PageBottom) => "\\ftnbj",
         Some(NotePos::BeneathText) => "\\ftntj",
+        _ if has_notes => "\\ftnbj",
         _ => "",
     });
     o.push_str(match set.endnote_pr.pos {
         Some(NotePos::SectEnd) => "\\aendnotes",
         Some(NotePos::DocEnd) => "\\aenddoc",
+        _ if has_notes => "\\aenddoc",
         _ => "",
     });
     o.push_str(&note_words("\\ftn", &set.footnote_pr, Some(set.footnote_format).filter(|&f| f != NumFormat::Decimal)));
     o.push_str(&note_words("\\aftn", &set.endnote_pr, Some(set.endnote_format).filter(|&f| f != NumFormat::LowerRoman)));
+    if has_notes {
+        o.push_str(if has_endnotes { "\\fet2" } else { "\\fet0" });
+    }
     o
 }
 
@@ -1130,11 +1180,7 @@ impl Writer {
             "\\emfblip" | "\\wmetafile8" => hundredths,
             _ => model::image_px(&data).map(|(a, b)| (i64::from(a), i64::from(b))).unwrap_or((1, 1)),
         };
-        out.push_str(&format!(
-            "{{\\pict{blip}\\picw{pw}\\pich{ph}\\picwgoal{}\\pichgoal{}\n",
-            (img.w * 20.0).round() as i64,
-            (img.h * 20.0).round() as i64
-        ));
+        out.push_str(&format!("{{\\pict{blip}\\picw{pw}\\pich{ph}{}\n", pict_goal(img)));
         for chunk in data.chunks(64) {
             for b in chunk {
                 out.push_str(&format!("{b:02x}"));
@@ -1396,7 +1442,9 @@ impl Writer {
                     // A paragraph that ends a section ends it with `\sect`; the next one begins.
                     if p.section.is_some() && itap == 0 && depth == 0 && self.sect_i + 1 < self.sections.len() {
                         self.sect_i += 1;
-                        end = format!("\\sect\n{}", self.sections.get(self.sect_i).map(|s| sect_words(s, &mut self.t)).unwrap_or_default());
+                        let doc_gutter = self.sections.first().map_or(0.0, |f| f.gutter);
+                        end =
+                            format!("\\sect\n{}", self.sections.get(self.sect_i).map(|s| sect_words(s, doc_gutter, &mut self.t)).unwrap_or_default());
                         // A body that ends on the break keeps its last section: an empty paragraph holds it.
                         if i + 1 == n {
                             end.push_str("\\pard\\plain \\par");
@@ -1478,8 +1526,20 @@ impl Writer {
     fn row_props(&mut self, t: &FTable, ri: usize, row: &[model::Cell], widths: &[f32]) -> String {
         let mut props = String::new();
         let out = &mut props;
-        out.push_str("\\trowd\\trgaph108\\trleft0");
         let extra = t.extra.as_deref();
+        // Its alignment, else its left edge (`\trleft`, which each `\cellx` is measured with).
+        out.push_str("\\trowd");
+        let align = extra.and_then(|x| x.align);
+        match align {
+            Some(Align::Center) => out.push_str("\\trqc"),
+            Some(Align::Right) => out.push_str("\\trqr"),
+            _ => {}
+        }
+        let left = match align {
+            Some(Align::Center | Align::Right) => 0,
+            _ => extra.and_then(|x| x.indent).filter(|i| i.is_finite()).map_or(0, |i| ((i * 20.0).round() as i64).clamp(-31_680, 31_680)),
+        };
+        out.push_str(&format!("\\trgaph108\\trleft{left}"));
         // The table's style and its look.
         if let Some(n) = extra.and_then(|x| x.style.as_deref()).and_then(own_style_num) {
             out.push_str(&format!("\\ts{n}"));
@@ -1541,7 +1601,7 @@ impl Writer {
                 let i = self.t.color(s);
                 out.push_str(&format!("\\clcbpat{i}"));
             }
-            out.push_str(&format!("\\cellx{}", x.round() as i64));
+            out.push_str(&format!("\\cellx{}", (x.round() as i64).saturating_add(left)));
         }
         props
     }
@@ -1736,9 +1796,22 @@ pub fn export(doc: &Document) -> String {
     };
     let mut body = String::new();
     // Every section starts with its own `\sectd`; `\sect` breaks only where there are several.
-    let secs: Vec<wordcraft_doc::SectionProps> = doc.sections().into_iter().map(|(_, s)| s.clone()).collect();
+    // With endnotes at each section's end, a section that doesn't suppress them includes them
+    // (`\endnhere`, written for `no_endnote == Some(false)`).
+    let sect_end = doc.settings.endnote_pr.pos == Some(wordcraft_doc::section::NotePos::SectEnd);
+    let secs: Vec<wordcraft_doc::SectionProps> = doc
+        .sections()
+        .into_iter()
+        .map(|(_, s)| {
+            let mut s = s.clone();
+            if sect_end && s.no_endnote != Some(true) {
+                s.no_endnote = Some(false);
+            }
+            s
+        })
+        .collect();
     if let Some(first) = secs.first() {
-        body.push_str(&sect_words(first, &mut w.t));
+        body.push_str(&sect_words(first, first.gutter, &mut w.t));
         for (set, prefix) in [(&first.headers, "header"), (&first.footers, "footer")] {
             for (id, suffix) in [(set.default, ""), (set.first, "f"), (set.even, "l")] {
                 if let Some(part) = id.and_then(|id| doc.parts.get(&id)) {
@@ -1847,10 +1920,21 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     out.push_str(&user_props(&doc.custom_props));
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
-    let notes = doc_note_words(settings);
+    let notes = doc_note_words(doc);
     let opts = doc_opts_words(settings) + &doc_setting_words(settings);
+    // The gutter and its side, from the first section (sections that differ say `\guttersxn`).
+    let mut gutter = String::new();
+    if let Some((_, first)) = doc.sections().first() {
+        let g = if first.gutter.is_finite() { ((first.gutter * 20.0).round() as i64).max(0) } else { 0 };
+        if g != 0 {
+            gutter.push_str(&format!("\\gutter{g}"));
+        }
+        if first.rtl_gutter {
+            gutter.push_str("\\rtlgutter");
+        }
+    }
     out.push_str(&format!(
-        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{landscape}{notes}{opts}\\viewkind4\n",
+        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{gutter}{landscape}{notes}{opts}\\viewkind4\n",
         tw(sec.page_w),
         tw(sec.page_h),
         tw(sec.margin_left),
@@ -1861,4 +1945,28 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     out.push_str(body);
     out.push_str("}\n");
     out
+}
+
+/// A picture's `\picwgoal`/`\pichgoal` and, when it is cropped, its `\piccrop*` words: the goal is
+/// the uncropped size and each crop the twips cut off that side (only the non-zero ones). A crop
+/// leaving under 1 % of an axis, or an uncropped goal over 31,680 twips, writes no crop.
+fn pict_goal(img: &model::Img) -> String {
+    let plain = format!("\\picwgoal{}\\pichgoal{}", (img.w * 20.0).round() as i64, (img.h * 20.0).round() as i64);
+    let [l, t, r, b] = img.crop.map(|c| if c.is_finite() && c > 0.0 { c } else { 0.0 });
+    if l + t + r + b <= 0.0 || l + r >= 0.99 || t + b >= 0.99 {
+        return plain;
+    }
+    let gw = (img.w * 20.0 / (1.0 - l - r)).round();
+    let gh = (img.h * 20.0 / (1.0 - t - b)).round();
+    if !(gw.is_finite() && gh.is_finite()) || gw > 31_680.0 || gh > 31_680.0 {
+        return plain;
+    }
+    let mut s = format!("\\picwgoal{}\\pichgoal{}", gw as i64, gh as i64);
+    for (word, frac, goal) in [("l", l, gw), ("t", t, gh), ("r", r, gw), ("b", b, gh)] {
+        let n = (frac * goal).round() as i64;
+        if n != 0 {
+            s.push_str(&format!("\\piccrop{word}{n}"));
+        }
+    }
+    s
 }

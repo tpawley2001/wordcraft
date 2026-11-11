@@ -68,6 +68,9 @@ pub struct ResolvedChar {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_effects: Option<Box<crate::wordart::TextEffects>>,
     pub link: Option<String>,
+    /// The hyperlink's ScreenTip, shown on hover instead of the address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_tip: Option<Box<str>>,
     pub ins: Option<u32>,
     pub del: Option<u32>,
     /// The revision of a tracked formatting change (`w:rPrChange`) of the run.
@@ -124,6 +127,7 @@ impl ResolvedChar {
             engrave: c.engrave.unwrap_or(false),
             text_effects: c.text_effects.as_deref().map(crate::wordart::TextEffects::sanitized).filter(|t| !t.is_empty()).map(Box::new),
             link: c.link.clone(),
+            link_tip: c.link_tip.clone(),
             ins: c.ins,
             del: c.del,
             fmt: c.fmt_change.as_ref().map(|f| f.rev),

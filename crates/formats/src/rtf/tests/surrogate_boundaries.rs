@@ -9,7 +9,7 @@ const R: char = '\u{FFFD}';
 const EMOJI: char = '\u{1F600}';
 
 fn doc(body: &str) -> wordcraft_doc::Document {
-    let rtf = format!("{{\\rtf1\\ansi\\ansicpg1252{{\\fonttbl\\f0\\fswiss Helvetica;}}\\pard\\f0\\fs22\\uc0 {body}\n}}");
+    let rtf = format!("{{\\rtf1\\ansi\\ansicpg1252{{\\fonttbl\\f0\\fswiss Helvetica;}}\\ftnbj\\pard\\f0\\fs22\\uc0 {body}\n}}");
     import(rtf.as_bytes()).unwrap()
 }
 

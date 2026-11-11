@@ -546,6 +546,8 @@ pub struct FlowOpts {
     /// [`Inline::ObjRev`], deleted objects kept (otherwise objects carry no marks and deleted
     /// ones are left out).
     pub obj_revs: bool,
+    /// A picture's crop ([`Img::crop`]), also without `paras`.
+    pub crop: bool,
 }
 
 impl FlowOpts {
@@ -555,7 +557,8 @@ impl FlowOpts {
     /// ([`FlowOpts::shading`]), indents in characters ([`FlowOpts::indent_chars`]), the other
     /// paragraph flags ([`FlowOpts::para_flags`]), table row heights and keeps
     /// ([`FlowOpts::rows`]), text frames and drop caps ([`FlowOpts::frames`]), the document's
-    /// own styles ([`FlowOpts::styles`]), fields and text boxes.
+    /// own styles ([`FlowOpts::styles`]), pictures' crops ([`FlowOpts::crop`]), fields and text
+    /// boxes.
     pub fn tracked() -> Self {
         FlowOpts {
             tracked: true,
@@ -570,6 +573,7 @@ impl FlowOpts {
             styles: true,
             fields: true,
             boxes: true,
+            crop: true,
             ..Default::default()
         }
     }
@@ -1059,6 +1063,9 @@ pub struct FTable {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TableExtra {
     pub align: Option<wordcraft_doc::Align>,
+    /// The table's left edge from the left margin, points (negative: into the margin), for
+    /// formats that keep it.
+    pub indent: Option<f32>,
     /// Width, points.
     pub width: Option<f32>,
     /// Width, percent of the text width.

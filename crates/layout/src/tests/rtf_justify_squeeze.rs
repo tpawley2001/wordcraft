@@ -139,3 +139,52 @@ fn without_rtf_justification_the_mode_15_rule_still_wraps_these_words() {
         assert_ne!(shown, p.line, "{}: mode 15 wraps the last word", p.name);
     }
 }
+
+/// Word's rule doesn't cap the squeeze at a number of spaces: with 20 single spaces (Courier New
+/// 12 pt, half a space 3.6 pt, Letter page, margins 72 pt left / 36 pt right) the overrunning word
+/// stays however long it is, as long as the space before it starts inside the line, left and
+/// justified alike. Measured in Microsoft 365 Word from synthetic RTF files: (right indent, the
+/// line's last word, kept).
+#[rustfmt::skip]
+const WORD_LENGTH_PROBES: &[(f32, &str, bool)] = &[
+    (55.0, "stuvwxyz", true),  // overrun 47.8 pt, the space before the word starts 17 pt inside the edge
+    (65.0, "stuvwxyz", true),  // 57.8 pt, 7 pt inside
+    (71.0, "stuvwxyz", true),  // 63.8 pt, 1 pt inside
+    (73.0, "stuvwxyz", false), // 65.8 pt, 1 pt past the edge
+    (65.0, "uvwxyz", true),    // 43.4 pt, 7 pt inside
+    (71.0, "yz", true),        // 20.6 pt, 1 pt inside
+    (73.0, "yz", false),       // 22.6 pt, 1 pt past the edge
+];
+
+#[test]
+fn a_long_overrunning_word_stays_while_the_space_before_it_starts_inside_the_line() {
+    crate::test_fonts();
+    let head = format!("P00{}", " ab".repeat(19));
+    for &(indent_right, word, kept) in WORD_LENGTH_PROBES {
+        for align in [Align::Left, Align::Justify] {
+            let line = format!("{head} {word}");
+            let text = format!("{line} cd cd cd cd cd cd end");
+            let chr = wordcraft_doc::CharProps { font: Some("Courier New".into()), size: Some(12.0), ..Default::default() };
+            let mut para = wordcraft_doc::Paragraph::with_text(&text, chr);
+            para.props.align = Some(align);
+            para.props.indent_right = Some(indent_right);
+            para.props.space_after = Some(0.0);
+            let mut d = Document::new();
+            d.last_section.page_w = 612.0;
+            d.last_section.margin_left = LEFT;
+            d.last_section.margin_right = 36.0;
+            d.settings.rtf_justification = true;
+            d.body = vec![wordcraft_doc::para_block(para)];
+            let l = lay(&d);
+            let (para, x) =
+                l.pages[0].items.iter().find_map(|it| if let Placed::Lines { para, x, .. } = it { Some((para.clone(), *x)) } else { None }).unwrap();
+            let first = &para.lines[0];
+            let shown = text[first.start..first.stop].trim_end();
+            let want = if kept { line.as_str() } else { head.as_str() };
+            assert_eq!(shown, want, "{word} at {indent_right} pt, {align:?}: first line");
+            let end = para.x_of(0, first.start + shown.len()).unwrap() + x;
+            let edge = 612.0 - 36.0 - indent_right;
+            assert!(end <= edge + 0.05, "{word} at {indent_right} pt, {align:?}: the line ends at {end}, past the edge {edge}");
+        }
+    }
+}

@@ -220,6 +220,14 @@ impl Reader {
             "ts" => self.row_style.style = self.table_style_id(pv),
             "tbllkhdrrows" | "tbllklastrow" | "tbllkhdrcols" | "tbllklastcol" | "tbllknorowband" | "tbllknocolband" => self.look_word(w, on),
             "trhdr" => self.row_header = true,
+            // The row's position, twips; beyond 22 inches clamped.
+            "trleft" => self.row_style.left = pv.clamp(-31_680, 31_680),
+            "trgaph" => self.row_style.gap = pv.clamp(0, 31_680),
+            "tblind" => self.row_style.ind = Some(pv.clamp(-31_680, 31_680)),
+            "tblindtype" => self.row_style.ind_type = pv,
+            "trqc" => self.row_style.align = Some(Align::Center),
+            "trqr" => self.row_style.align = Some(Align::Right),
+            "trql" => self.row_style.align = None,
             // Twips: positive at least, negative exactly, 0 auto; beyond 22 inches ignored.
             "trrh" => {
                 self.row_height = (pv != 0 && pv.unsigned_abs() <= 31680).then(|| (pv.unsigned_abs() as f32 / 20.0, pv < 0));
@@ -296,6 +304,8 @@ impl Reader {
             "margr" => self.page.right = Some(pv),
             "margt" => self.page.top = Some(pv),
             "margb" => self.page.bottom = Some(pv),
+            "gutter" => self.page.gutter = Some(pv),
+            "rtlgutter" => self.page.rtl_gutter = on,
             "landscape" => self.page.landscape = on,
             _ if self.doc_note_word(w, p) || self.doc_opts.word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
             _ if self.section_word(w, p) => {}
@@ -349,6 +359,7 @@ impl Reader {
                 self.pict_h = None;
                 self.pict_sx = 0.0;
                 self.pict_sy = 0.0;
+                self.pict_crop = [0; 4];
                 self.pict_nat = (0, 0);
                 self.pict_mm = 0;
             }
@@ -765,6 +776,10 @@ impl Reader {
             "pichgoal" => self.pict_h = Some(value.clamp(1, 31_680) as f32 / 20.0),
             "picscalex" => self.pict_sx = value.clamp(1, 1000) as f32,
             "picscaley" => self.pict_sy = value.clamp(1, 1000) as f32,
+            "piccropl" => self.pict_crop[0] = value.clamp(-31_680, 31_680),
+            "piccropt" => self.pict_crop[1] = value.clamp(-31_680, 31_680),
+            "piccropr" => self.pict_crop[2] = value.clamp(-31_680, 31_680),
+            "piccropb" => self.pict_crop[3] = value.clamp(-31_680, 31_680),
             _ => {}
         }
     }

@@ -49,33 +49,9 @@ fn scheme(url: &str) -> Option<String> {
 /// Where a `HYPERLINK` field code points, as a `w:hyperlink` reads: `url`, `url#bookmark` (`\l`)
 /// or `#bookmark`. None for any other field, or one with no target.
 pub fn hyperlink_target(instr: &str) -> Option<String> {
-    // Only a `HYPERLINK` code is split up (a field's code may run to megabytes).
-    if !instr.trim_start().get(..9).is_some_and(|k| k.eq_ignore_ascii_case("HYPERLINK")) {
-        return None;
-    }
-    let args = field_args(instr);
-    let mut args = args.iter().peekable();
-    if !args.next().is_some_and(|(k, quoted)| !quoted && k.eq_ignore_ascii_case("HYPERLINK")) {
-        return None;
-    }
-    let is_switch = |(a, quoted): &&(String, bool)| !quoted && a.starts_with('\\');
-    let (mut url, mut anchor) = (None, None);
-    while let Some(arg @ (a, _)) = args.next() {
-        if !is_switch(&arg) {
-            url = url.or(Some(a.as_str()));
-            continue;
-        }
-        // `\l` names a bookmark, `\o` a tooltip, `\t` a frame, `\*` `\#` `\@` a format; `\m` and `\n` take none.
-        let takes = matches!(a.to_ascii_lowercase().as_str(), "\\l" | "\\o" | "\\t" | "\\*" | "\\#" | "\\@");
-        let value = takes.then(|| args.next_if(|v| !is_switch(v))).flatten();
-        if a.eq_ignore_ascii_case("\\l")
-            && let Some((v, _)) = value
-        {
-            anchor = Some(v.as_str());
-        }
-    }
-    let url = url.map(str::trim).filter(|u| !u.is_empty());
-    let anchor = anchor.map(|a| a.trim().trim_start_matches('#')).filter(|a| !a.is_empty());
+    let parts = hyperlink_parts(instr)?;
+    let url = parts.url.as_deref().map(str::trim).filter(|u| !u.is_empty());
+    let anchor = parts.anchor.as_deref().map(|a| a.trim().trim_start_matches('#')).filter(|a| !a.is_empty());
     match (url, anchor) {
         // `\l` replaces a fragment the address already has, as in Word.
         (Some(u), Some(a)) => Some(format!("{}#{a}", u.split_once('#').map_or(u, |(base, _)| base))),
@@ -83,6 +59,50 @@ pub fn hyperlink_target(instr: &str) -> Option<String> {
         (None, Some(a)) => Some(format!("#{a}")),
         (None, None) => None,
     }
+}
+
+/// The ScreenTip of a `HYPERLINK` field code: the value of its `\o` switch (ECMA-376 Part 1
+/// §17.16.5.25). None for any other field, a missing `\o` or an empty value.
+pub fn hyperlink_tip(instr: &str) -> Option<String> {
+    hyperlink_parts(instr)?.tip.filter(|t| !t.is_empty())
+}
+
+/// The arguments of a `HYPERLINK` field code that name where it points and its ScreenTip.
+struct HyperlinkParts {
+    url: Option<String>,
+    anchor: Option<String>,
+    tip: Option<String>,
+}
+
+/// Walk a `HYPERLINK` field code's arguments; None for any other field.
+fn hyperlink_parts(instr: &str) -> Option<HyperlinkParts> {
+    // Only a `HYPERLINK` code is split up (a field's code may run to megabytes).
+    if !instr.trim_start().get(..9).is_some_and(|k| k.eq_ignore_ascii_case("HYPERLINK")) {
+        return None;
+    }
+    let args = field_args(instr);
+    let mut args = args.into_iter().peekable();
+    if !args.next().is_some_and(|(k, quoted)| !quoted && k.eq_ignore_ascii_case("HYPERLINK")) {
+        return None;
+    }
+    let is_switch = |(a, quoted): &(String, bool)| !quoted && a.starts_with('\\');
+    let mut parts = HyperlinkParts { url: None, anchor: None, tip: None };
+    while let Some(arg) = args.next() {
+        if !is_switch(&arg) {
+            parts.url = parts.url.or(Some(arg.0));
+            continue;
+        }
+        let a = arg.0.to_ascii_lowercase();
+        // `\l` names a bookmark, `\o` a tooltip, `\t` a frame, `\*` `\#` `\@` a format; `\m` and `\n` take none.
+        let takes = matches!(a.as_str(), "\\l" | "\\o" | "\\t" | "\\*" | "\\#" | "\\@");
+        let value = takes.then(|| args.next_if(|v| !is_switch(v))).flatten().map(|(v, _)| v);
+        match (a.as_str(), value) {
+            ("\\l", Some(v)) => parts.anchor = Some(v),
+            ("\\o", Some(v)) => parts.tip = Some(v),
+            _ => {}
+        }
+    }
+    Some(parts)
 }
 
 /// A field code's words: the field's name, its switches and its arguments, each with whether
@@ -159,6 +179,21 @@ mod tests {
             ("", None),
         ] {
             assert_eq!(hyperlink_target(code).as_deref(), want, "{code:?}");
+        }
+    }
+
+    /// A `HYPERLINK` field's `\o` switch is its ScreenTip; nothing else is.
+    #[test]
+    fn hyperlink_field_codes_name_their_screen_tips() {
+        for (code, want) in [
+            (r#"HYPERLINK "https://example.com" \o "Field tip""#, Some("Field tip")),
+            (r#"HYPERLINK \l "Spot" \o "Go \"there\"""#, Some("Go \"there\"")),
+            (r#"HYPERLINK "https://example.com""#, None),
+            (r#"HYPERLINK "https://example.com" \o """#, None),
+            (r#"HYPERLINK "https://example.com" \o \t "_blank""#, None),
+            (r#"PAGEREF _Toc1 \o "x""#, None),
+        ] {
+            assert_eq!(hyperlink_tip(code).as_deref(), want, "{code:?}");
         }
     }
 

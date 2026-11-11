@@ -13,6 +13,7 @@ pub struct ParaSortForm {
     pub other: String,
     pub paragraphs: Vec<String>,
     pub lang: Option<String>,
+    pub case_sensitive: bool,
 }
 
 impl ParaSortForm {
@@ -36,6 +37,7 @@ impl ParaSortForm {
                 .para(a.story, &a.path)
                 .and_then(|p| wordcraft_engine::cmd::para_lang(&s.doc, p))
                 .or_else(|| wordcraft_engine::cmd::default_lang(s)),
+            case_sensitive: false,
         };
         f.pick(0, Some(0));
         Some(f)
@@ -89,7 +91,7 @@ impl ParaSortForm {
             })
             .collect();
         let separator = if self.separator == "other" { &self.other } else { &self.separator };
-        json!({"keys": keys, "header": self.header, "separator": separator})
+        json!({"keys": keys, "header": self.header, "separator": separator, "caseSensitive": self.case_sensitive})
     }
 }
 
@@ -139,6 +141,7 @@ pub(super) fn para_sort_ui(app: &mut WordApp, ui: &mut Ui, f: &mut ParaSortForm)
             ui.radio_value(&mut f.separator, "other".into(), tl!("Other"));
             ui.add_enabled(f.separator == "other", egui::TextEdit::singleline(&mut f.other).char_limit(1).desired_width(40.0));
         });
+        ui.checkbox(&mut f.case_sensitive, tl!("Case sensitive"));
     });
     if before != (f.separator.clone(), f.other.clone()) {
         for row in 0..f.keys.len() {
