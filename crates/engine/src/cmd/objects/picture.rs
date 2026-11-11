@@ -72,10 +72,23 @@ pub fn cropped_original_size(s: &Session, o: &InlineObject) -> Option<(f32, f32)
 
 /// Size: `scale` is a percentage of the current size, or with `original` of what the crop leaves
 /// of the original size (`original` alone gives that back: the Size dialog's Reset); then `width`
-/// and `height`, where one alone keeps the proportions unless `lockAspect` is false.
+/// and `height`, where one alone keeps the proportions when the object's aspect ratio is locked
+/// (`lockAspect` overrides that for the call). `aspectLocked` stores the lock, in the same step.
 pub(super) fn size(s: &mut Session, v: &Value) -> CmdResult {
     let (_, o) = selected(s).ok_or_else(|| CmdError::Disabled("no object".into()))?;
-    let lock = p::bool(v, "lockAspect").unwrap_or(true);
+    let stored = p::bool(v, "aspectLocked");
+    let picture = matches!(o, InlineObject::Image { .. });
+    let locked = stored.unwrap_or_else(|| o.frame().is_some_and(|(_, _, f)| f.locks_aspect(picture)));
+    let lock = p::bool(v, "lockAspect").unwrap_or(locked);
+    let sized = ["width", "height", "scale", "original"].iter().any(|k| v.get(k).is_some_and(|x| !x.is_null()));
+    if let (Some(l), false) = (stored, sized) {
+        // The lock alone: the size stays as it is.
+        return with_obj(s, |o| {
+            if let Some(f) = o.float_mut() {
+                f.lock_aspect = Some(l);
+            }
+        });
+    }
     let (w0, h0) = obj_size(&o);
     let (mut w, mut h) = (w0, h0);
     let scale = p::f32(v, "scale");
@@ -129,6 +142,9 @@ pub(super) fn size(s: &mut Session, v: &Value) -> CmdResult {
     // SmartArt graphic lays itself out again at the new size.
     let theme = s.doc.settings.theme_colors.clone();
     with_obj(s, |o| {
+        if let (Some(l), Some(f)) = (stored, o.float_mut()) {
+            f.lock_aspect = Some(l);
+        }
         o.set_size(w, h);
         crate::cmd::chart::redraw(o, &theme);
         crate::cmd::smart_art::redraw(o, &theme);

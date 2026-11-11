@@ -45,7 +45,8 @@ impl SizeForm {
     pub fn read(app: &WordApp) -> Option<SizeForm> {
         use wordcraft_doc::para::InlineObject;
         let (at, o) = wordcraft_engine::cmd::objects::selected(&app.session)?;
-        let (w, h, _) = o.frame()?;
+        let (w, h, fl) = o.frame()?;
+        let lock = fl.locks_aspect(matches!(o, InlineObject::Image { .. }));
         let full = match &o {
             InlineObject::Image { media, .. } => wordcraft_engine::cmd::objects::original_size(&app.session, media),
             _ => None,
@@ -55,7 +56,7 @@ impl SizeForm {
             at,
             width: w,
             height: h,
-            lock: matches!(o, InlineObject::Image { .. }),
+            lock,
             relative: original.is_some(),
             start: (w, h),
             original,
@@ -128,9 +129,9 @@ impl SizeForm {
         }
     }
 
-    /// `picture.size` parameters: both sides, as set here.
+    /// `picture.size` parameters: both sides, as set here, and Lock aspect ratio to store.
     pub fn params(&self) -> Value {
-        json!({"width": self.width, "height": self.height, "lockAspect": false})
+        json!({"width": self.width, "height": self.height, "lockAspect": false, "aspectLocked": self.lock})
     }
 }
 

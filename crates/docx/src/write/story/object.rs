@@ -276,7 +276,7 @@ impl Writer<'_> {
         let link = Self::drawing_link(props, rels);
         let name = format!("Picture {docpr}");
         self.drawing_open(w, DrawingInfo { float, size: (*iw, *ih), docpr: &docpr, name: &name, alt, link: link.as_deref() });
-        w.empty("wp:cNvGraphicFramePr", &[]);
+        super::drawing::frame_pr(w, float, true);
         w.open("a:graphic", &[]);
         w.open("a:graphicData", &[("uri", "http://schemas.openxmlformats.org/drawingml/2006/picture")]);
         self.pic(w, o, &file, (0.0, 0.0), rels);
@@ -379,7 +379,7 @@ impl Writer<'_> {
         }
         let float = &float;
         self.drawing_open(w, DrawingInfo { float, size: (*sw, *sh), docpr: &docpr, name: &name, alt: o.alt_text(), link: link.as_deref() });
-        w.empty("wp:cNvGraphicFramePr", &[]);
+        super::drawing::frame_pr(w, float, false);
         w.open("a:graphic", &[]);
         w.open("a:graphicData", &[("uri", "http://schemas.microsoft.com/office/word/2010/wordprocessingShape")]);
         self.wsp(w, o, None, (0.0, 0.0), rels, depth);
@@ -401,7 +401,7 @@ impl Writer<'_> {
         let link = Self::drawing_link(props, rels);
         let name = format!("{} {docpr}", if canvas.is_some() { "Canvas" } else { "Group" });
         self.drawing_open(w, DrawingInfo { float, size: (*gw, *gh), docpr: &docpr, name: &name, alt: o.alt_text(), link: link.as_deref() });
-        w.empty("wp:cNvGraphicFramePr", &[]);
+        super::drawing::frame_pr(w, float, false);
         w.open("a:graphic", &[]);
         let outer = match canvas {
             Some(c) => {

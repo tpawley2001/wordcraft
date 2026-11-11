@@ -29,6 +29,7 @@ mod level_and_section_extras;
 mod ligatures;
 mod linked_pictures;
 mod list_items;
+mod lock_aspect;
 mod malformed;
 mod missing_doc_defaults;
 mod missing_pictures;
