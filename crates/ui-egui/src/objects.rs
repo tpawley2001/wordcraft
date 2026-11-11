@@ -407,6 +407,15 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         let _ = app.run("select.addObject", json!({"pos": object.pos()}));
         return true;
     }
+    // The Format Painter holding a shape's formatting paints the shape clicked, as the text
+    // painter paints the text a click selects; it doesn't start a drag.
+    if pressed && app.session.shape_painter.is_some() {
+        let pos = object.pos();
+        let end = Pos { off: pos.off + OBJ.len_utf8(), ..pos.clone() };
+        let _ = app.run("select.range", json!({"anchor": pos, "focus": end}));
+        let _ = app.run("edit.pasteFormat", json!({}));
+        return true;
+    }
     if pressed && grab == Grab::Move && object.behind() && behind_draggable(app, &object) {
         let (min, picture) = match app.session.doc.para_at(&object.pos()).and_then(|p| p.object_at(object.pos().off)) {
             Some(o) => (wordcraft_engine::cmd::objects::min_size(o), matches!(o, InlineObject::Image { .. })),

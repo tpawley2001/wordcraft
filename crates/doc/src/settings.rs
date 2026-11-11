@@ -121,6 +121,79 @@ pub struct CoreProps {
     pub content_type: String,
 }
 
+/// The Styles pane's options (Style Pane Options…), as the settings part keeps them
+/// (`w:stylePaneFormatFilter`, ECMA-376 Part 1 §17.15.1.85; `w:stylePaneSortMethod`, §17.15.1.86).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct StylePaneOptions {
+    /// The format filter's 16 bits, as read (`w:val`, 4 hex digits). Only the `PANE_*` bits are
+    /// interpreted; every other bit is written back unchanged.
+    pub filter: u16,
+    /// The file wrote the Word 2010 attribute form (`w:allStyles="1"` …) next to `w:val`.
+    pub filter_attrs: bool,
+    /// `None` when the file had no `w:stylePaneSortMethod`.
+    pub sort: Option<StylePaneSort>,
+}
+
+/// Format filter bit: all styles (`w:allStyles`).
+pub const PANE_ALL_STYLES: u16 = 0x0001;
+/// Format filter bit: styles in use (`w:stylesInUse`).
+pub const PANE_IN_USE: u16 = 0x0008;
+
+/// How the Styles pane sorts its list (ST_StyleSort, ECMA-376 Part 1 §17.18.86).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StylePaneSort {
+    Name,
+    Priority,
+    Default,
+    Font,
+    BasedOn,
+    Type,
+}
+
+impl StylePaneSort {
+    /// Every value, in ST_StyleSort's numeric order (`0000`…`0005`).
+    pub const ALL: [StylePaneSort; 6] = [Self::Name, Self::Priority, Self::Default, Self::Font, Self::BasedOn, Self::Type];
+
+    /// The value's number (transitional files write it as 4 hex digits).
+    pub fn code(self) -> u16 {
+        match self {
+            Self::Name => 0,
+            Self::Priority => 1,
+            Self::Default => 2,
+            Self::Font => 3,
+            Self::BasedOn => 4,
+            Self::Type => 5,
+        }
+    }
+
+    /// The strict schema's name for the value.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Name => "name",
+            Self::Priority => "priority",
+            Self::Default => "default",
+            Self::Font => "font",
+            Self::BasedOn => "basedOn",
+            Self::Type => "type",
+        }
+    }
+
+    /// A `w:val` as either form writes it (`0003` or `font`); `None` when unknown.
+    pub fn parse(v: &str) -> Option<Self> {
+        let v = v.trim();
+        if let Some(s) = Self::ALL.into_iter().find(|s| s.name() == v) {
+            return Some(s);
+        }
+        if v.is_empty() || v.len() > 4 {
+            return None;
+        }
+        let n = u16::from_str_radix(v, 16).ok()?;
+        Self::ALL.into_iter().find(|s| s.code() == n)
+    }
+}
+
 /// Read-only recommended and Password to modify (`w:writeProtection`, ECMA-376 Part 1
 /// §17.15.1.93). Not encryption and not an editing restriction: a document opened read-only can
 /// be edited, but Save can't overwrite its file.
@@ -155,6 +228,10 @@ pub struct Settings {
     pub default_tab: f32,
     pub even_odd_headers: bool,
     pub mirror_margins: bool,
+    /// Print only the data from a form (`w:printFormsData`, File › Options › Advanced): printing
+    /// puts only what was filled into the legacy form fields on the paper, where the full page
+    /// has it (for pre-printed forms). PDF export is unaffected.
+    pub print_forms_data: bool,
     pub auto_hyphenation: bool,
     /// Hyphenation zone (`w:hyphenationZone`), points: a line is hyphenated only when breaking
     /// it at a word boundary would leave more than this empty at its end.
@@ -257,6 +334,9 @@ pub struct Settings {
     pub attached_template: Option<String>,
     /// Update the document's styles from the attached template when it is opened (`w:linkStyles`).
     pub link_styles: bool,
+    /// Styles pane options (Style Pane Options…): `w:stylePaneFormatFilter` / `w:stylePaneSortMethod`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style_pane: Option<StylePaneOptions>,
     /// The zoom the document was saved at (`w:zoom`), restored when it is opened; `None` for 100%
     /// without a fit mode.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -546,6 +626,7 @@ impl Default for Settings {
             default_tab: 36.0,
             even_odd_headers: false,
             mirror_margins: false,
+            print_forms_data: false,
             auto_hyphenation: false,
             hyphenation_zone: DEFAULT_HYPHENATION_ZONE,
             hyphenate_caps: true,
@@ -584,11 +665,27 @@ impl Default for Settings {
             bib_style: None,
             attached_template: None,
             link_styles: false,
+            style_pane: None,
             zoom: None,
             remove_personal_info: false,
             remove_date_time: false,
             odf: None,
             captions: Captions::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StylePaneSort;
+
+    #[test]
+    fn style_pane_sort_reads_both_forms() {
+        assert_eq!(StylePaneSort::parse("0003"), Some(StylePaneSort::Font));
+        assert_eq!(StylePaneSort::parse("basedOn"), Some(StylePaneSort::BasedOn));
+        assert_eq!(StylePaneSort::parse("5"), Some(StylePaneSort::Type));
+        for bad in ["", "0006", "size", "00000", "zz"] {
+            assert_eq!(StylePaneSort::parse(bad), None, "{bad}");
         }
     }
 }

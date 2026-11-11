@@ -5,8 +5,8 @@ use super::{Remember, Stroke, Target, Tokens, Ui, Value, WordApp, big, group, js
 /// The Format Painter button. A click arms it for one use (blue border only); a double-click keeps
 /// it on across several uses (full checked look), like Word. Esc or another click turns it off.
 fn format_painter_button(ui: &mut Ui, app: &mut WordApp) {
-    let sticky = matches!(app.session.painter, Some((_, _, true)));
-    let armed = app.session.painter.is_some();
+    let sticky = app.session.painter_sticky();
+    let armed = app.session.painter_armed();
     let resp =
         small(ui, app, "painter", Some("Format"), "Format Painter", crate::widgets::ButtonAction::new("edit.formatPainter", json!({}), sticky));
     if resp.double_clicked() {
@@ -20,7 +20,7 @@ fn format_painter_button(ui: &mut Ui, app: &mut WordApp) {
 /// A double-click fires `clicked()` twice, so by now the painter has been armed and disarmed again.
 /// Arm it once more, this time sticky.
 pub(super) fn painter_double_click(app: &mut WordApp) {
-    if app.session.painter.is_some() {
+    if app.session.painter_armed() {
         let _ = app.run("edit.formatPainter", json!({}));
     }
     let _ = app.run("edit.formatPainter", json!({"sticky": true}));

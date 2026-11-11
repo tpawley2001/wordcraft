@@ -1037,6 +1037,10 @@ pub struct TableExtra {
     /// ODT's `table:table-header-rows`). Its header cells ([`FCell::header`]) may be more: a
     /// table style's header row is one too.
     pub header_rows: usize,
+    /// Its table style's document id and its style options ("look"), for formats that write
+    /// them by row (RTF's `\\tsN` and `\\tbllk*`); `None` leaves the table's own.
+    pub style: Option<String>,
+    pub look: Option<wordcraft_doc::props::TableLook>,
 }
 
 impl FTable {

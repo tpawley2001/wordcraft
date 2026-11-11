@@ -7,7 +7,7 @@ use serde_json::{Map, Value, json};
 use wordcraft_doc::props::{CharProps, ParaProps};
 
 use super::sel_result;
-use crate::{CmdError, CmdResult, CommandSpec, Session, p};
+use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
 /// The levels `styles.inspectorClear` can reset.
 pub const LEVELS: [&str; 4] = ["paragraphStyle", "paragraphFormatting", "characterStyle", "characterFormatting"];
@@ -36,20 +36,20 @@ pub fn specs() -> Vec<CommandSpec> {
 }
 
 /// The paragraph props at the caret (the selection start for a selection).
-pub(super) fn para_props(s: &Session) -> ParaProps {
-    let (a, _) = s.sel.ordered();
+pub(super) fn para_props(s: &Session, sel: &Selection) -> ParaProps {
+    let (a, _) = sel.ordered();
     s.doc.para_at(&a).map(|p| p.props.clone()).unwrap_or_default()
 }
 
 /// The direct character props at the caret (the first selected character for a selection).
-pub(super) fn char_props(s: &Session) -> CharProps {
-    let (a, b) = s.sel.ordered();
+pub(super) fn char_props(s: &Session, sel: &Selection) -> CharProps {
+    let (a, b) = sel.ordered();
     if a == b {
-        return s.caret_props();
+        return s.caret_props_at(&sel.focus);
     }
     match s.doc.para_at(&a) {
         Some(p) if a.off < p.len() => p.props_of_char(a.off).clone(),
-        _ => s.caret_props(),
+        _ => s.caret_props_at(&sel.focus),
     }
 }
 
@@ -78,7 +78,7 @@ pub(super) fn style_name(s: &Session, id: &str) -> String {
 
 /// What the Style Inspector shows, as JSON.
 pub fn inspect(s: &Session) -> Value {
-    let pp = para_props(s);
+    let pp = para_props(s, &s.sel);
     let pstyle = pp.style.clone().unwrap_or_else(|| "Normal".into());
     let styles = &s.doc.styles;
     let para_base = ParaProps { style: Some(pstyle.clone()), ..Default::default() };
@@ -88,7 +88,7 @@ pub fn inspect(s: &Session) -> Value {
         serde_json::to_value(styles.resolve_para(&one)).unwrap_or(Value::Null)
     });
 
-    let cp = char_props(s);
+    let cp = char_props(s, &s.sel);
     let cstyle = cp.style.clone();
     let char_base = CharProps { style: cstyle.clone(), ..Default::default() };
     let cbase = serde_json::to_value(styles.resolve_char(Some(&pstyle), &char_base)).unwrap_or(Value::Null);

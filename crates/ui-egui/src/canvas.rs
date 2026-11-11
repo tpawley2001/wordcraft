@@ -1504,11 +1504,13 @@ fn finish_canvas_frame(finish: CanvasFinish<'_>, out: egui::scroll_area::ScrollA
         // so the copy pointer stands in (#3453). The selection bar keeps its arrow.
         let fallback = if in_bar {
             egui::CursorIcon::Default
-        } else if app.session.painter.is_some() {
+        } else if app.session.painter_armed() {
             egui::CursorIcon::Copy
         } else {
             egui::CursorIcon::Text
         };
+        // A Format Painter holding a shape's formatting shows its pointer over the objects too.
+        let over_object = over_object.map(|c| if app.session.shape_painter.is_some() { egui::CursorIcon::Copy } else { c });
         ui.ctx().set_cursor_icon(over_object.unwrap_or(fallback));
     }
     crate::table_resize::cursor(app, ui, &resp, layout, &rects, geo.scale);
