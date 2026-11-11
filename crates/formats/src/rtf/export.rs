@@ -574,6 +574,17 @@ fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
                     None => {}
                 }
             }
+            // Tab stops in position order, then indents in hundredths of a character.
+            let mut tabs: Vec<_> = p.tabs.iter().flatten().filter(|t| t.pos.is_finite()).collect();
+            tabs.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+            for t in tabs {
+                out.push_str(&tab_words(t));
+            }
+            for (word, v) in [("\\cufi", p.indent_first_chars), ("\\culi", p.indent_left_chars), ("\\curi", p.indent_right_chars)] {
+                if let Some(v) = v.filter(|v| v.is_finite()) {
+                    out.push_str(&format!("{word}{}", (v.clamp(-1584.0, 1584.0) * 100.0).round() as i64));
+                }
+            }
         }
         let c = &s.chr;
         for (word, v) in [("b", c.bold), ("i", c.italic)] {
@@ -593,6 +604,11 @@ fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
             Some(wordcraft_doc::TextColor::Rgb(rgb)) => out.push_str(&format!("\\cf{}", t.color(rgb))),
             Some(wordcraft_doc::TextColor::Auto) => out.push_str("\\cf0"),
             None => {}
+        }
+        // Expanded or condensed, as the text writes it: quarter points, then the exact twips.
+        if let Some(pt) = c.spacing.filter(|v| v.is_finite() && *v != 0.0) {
+            let pt = pt.clamp(-1584.0, 1584.0);
+            out.push_str(&format!("\\expnd{}\\expndtw{}", (pt * 4.0).round() as i32, (pt * 20.0).round() as i32));
         }
         out.push_str(&format!(" {};}}", esc_font(&s.name)));
     }
