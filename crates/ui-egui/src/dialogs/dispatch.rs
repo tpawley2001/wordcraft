@@ -620,24 +620,61 @@ fn cell_margins_arm(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 }
 
 fn insert_table_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::InsertTable { rows, cols } = d else {
+    let Dialog::InsertTable { rows, cols, autofit, col_width, remember, error } = d else {
         return false;
     };
+    ui.label(egui::RichText::new(tl!("Table size")).font(semibold(12.5)));
     crate::rtl::Table::new("it").columns(2).show(ui, |t| {
         t.row(|r| {
-            r.cell(|ui| ui.label(tl!("Number of columns:")));
-            r.cell(|ui| ui.add(egui::DragValue::new(cols).range(1..=63)));
+            let label = r.cell(|ui| ui.label(tl!("Number of columns:")));
+            r.cell(|ui| ui.add(egui::DragValue::new(cols).range(1..=63)).labelled_by(label.id));
         });
         t.row(|r| {
-            r.cell(|ui| ui.label(tl!("Number of rows:")));
-            r.cell(|ui| ui.add(egui::DragValue::new(rows).range(1..=1000)));
+            let label = r.cell(|ui| ui.label(tl!("Number of rows:")));
+            r.cell(|ui| ui.add(egui::DragValue::new(rows).range(1..=1000)).labelled_by(label.id));
         });
     });
+    ui.label(egui::RichText::new(tl!("AutoFit behavior")).font(semibold(12.5)));
+    ui.horizontal(|ui| {
+        let radio = ui.radio_value(autofit, "fixed".to_string(), tl!("Fixed column width:"));
+        ui.add_enabled(autofit == "fixed", egui::TextEdit::singleline(col_width).desired_width(72.0)).labelled_by(radio.id);
+    });
+    ui.radio_value(autofit, "contents".to_string(), tl!("AutoFit to contents"));
+    ui.radio_value(autofit, "window".to_string(), tl!("AutoFit to window"));
+    ui.checkbox(remember, tl!("Remember dimensions for new tables"));
+    if let Some(e) = error.as_deref() {
+        ui.colored_label(ui.visuals().error_fg_color, e);
+    }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok {
-        let _ = app.run("insert.table", json!({"rows": *rows, "cols": *cols}));
+        let mut v = json!({"rows": *rows, "cols": *cols, "autofit": autofit.as_str(), "remember": *remember});
+        if autofit == "fixed" {
+            match insert_table_width(col_width) {
+                Some(w) => v["colWidth"] = json!(w),
+                None => {
+                    // Out of range: Word's message, and the dialog stays open.
+                    let sep = crate::options::decimal();
+                    let unit = crate::options::unit();
+                    let (min, max) = (unit.format_with(0.0, sep), unit.format_with(22.0 * 72.0, sep));
+                    *error = Some(crate::i18n::fmt(tl!("The measurement must be between {min} and {max}."), &[("min", &min), ("max", &max)]));
+                    return false;
+                }
+            }
+        }
+        let _ = app.run("insert.table", v);
     }
     ok || cancel
+}
+
+/// Insert Table's Fixed column width in points: 0 for Auto, `None` when it isn't a measurement
+/// from 0 to 22 in.
+fn insert_table_width(text: &str) -> Option<f32> {
+    let text = text.trim();
+    if text.is_empty() || text.eq_ignore_ascii_case("auto") || text == tl!("Auto") {
+        return Some(0.0);
+    }
+    let unit = crate::options::unit();
+    crate::options::parse_length(text, unit).map(|n| n as f32 * unit.pt_per_unit()).filter(|pt| (0.0..=22.0 * 72.0).contains(pt))
 }
 
 /// A margin's number box, in the unit the interface measures in.

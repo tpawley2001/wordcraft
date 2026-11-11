@@ -11,27 +11,34 @@ pub(super) fn autofit(s: &mut Session, v: &Value) -> CmdResult {
     let (tp, _, _) = cell(s)?;
     let story = s.sel.focus.story;
     let tw = crate::cmd::page::sect(s).text_width();
+    let mut t = s.doc.table(story, &tp).cloned().ok_or_else(|| CmdError::Disabled("the cursor isn't in a table".into()))?;
+    fit_table(&s.doc, &mut t, mode, tw);
+    *s.doc.table_mut(story, &tp)? = t;
+    touch_cells(s, &tp)?;
+    sel_result(s)
+}
+
+/// AutoFit `t` for a text column `tw` wide (`mode` as `table.autofit` takes it). `t` need not
+/// be in `doc` yet: `doc` only supplies the styles its text is measured in.
+pub(crate) fn fit_table(doc: &wordcraft_doc::Document, t: &mut Table, mode: &str, tw: f32) {
     match mode {
-        "fixed" => with_table(s, |t| t.props.fixed = true),
+        "fixed" => t.props.fixed = true,
         "contents" => {
-            let t = s.doc.table(story, &tp).ok_or_else(|| CmdError::Disabled("the cursor isn't in a table".into()))?;
             let avail = (tw - t.props.indent.filter(|i| i.is_finite()).unwrap_or(0.0).max(0.0)).max(72.0);
-            let widths = wordcraft_layout::autofit_widths(&wordcraft_layout::measure_table_columns(&s.doc, t), avail);
-            with_table(s, |t| {
-                t.props.fixed = false;
-                t.props.width = None;
-                t.props.width_pct = None;
-                t.grid = widths.iter().map(|w| w.max(6.0)).collect();
-                sync_cell_widths(t);
-            })
+            let widths = wordcraft_layout::autofit_widths(&wordcraft_layout::measure_table_columns(doc, t), avail);
+            t.props.fixed = false;
+            t.props.width = None;
+            t.props.width_pct = None;
+            t.grid = widths.iter().map(|w| w.max(6.0)).collect();
+            sync_cell_widths(t);
         }
-        _ => with_table(s, |t| {
+        _ => {
             t.props.fixed = false;
             t.props.width_pct = Some(100.0);
             let n = t.grid.len().max(1) as f32;
             t.grid.iter_mut().for_each(|g| *g = tw / n);
             sync_cell_widths(t);
-        }),
+        }
     }
 }
 
