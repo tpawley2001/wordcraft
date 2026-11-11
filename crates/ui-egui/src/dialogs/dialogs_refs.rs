@@ -69,6 +69,12 @@ pub enum RefsDialog {
         level: u8,
     },
     Figures(FiguresForm),
+    /// Update Table of Contents: page numbers only (the default) or the entire table, then the
+    /// command `then` (`references.updateToc` or `references.updateFields`) with `pageNumbersOnly`.
+    UpdateToc {
+        then: String,
+        entire: bool,
+    },
     Sources {
         selected: Option<usize>,
     },
@@ -89,6 +95,7 @@ impl RefsDialog {
             RefsDialog::TocOptions { .. } => "tocOptions",
             RefsDialog::TocStyles { .. } => "tocStyles",
             RefsDialog::Figures(_) => "tableOfFigures",
+            RefsDialog::UpdateToc { .. } => "updateToc",
             RefsDialog::Sources { .. } => "sourceManager",
             RefsDialog::Source(f) if f.edit => "editSource",
             RefsDialog::Source(_) => "createSource",
@@ -109,6 +116,7 @@ impl RefsDialog {
             RefsDialog::TocOptions { .. } => "Table of Contents Options",
             RefsDialog::TocStyles { .. } => "Table of Contents Styles",
             RefsDialog::Figures(_) => "Table of Figures",
+            RefsDialog::UpdateToc { .. } => "Update Table of Contents",
             RefsDialog::Sources { .. } => "Source Manager",
             RefsDialog::Source(f) if f.edit => "Edit Source",
             RefsDialog::Source(_) => "Create Source",

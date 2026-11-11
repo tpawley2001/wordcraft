@@ -136,6 +136,19 @@ pub(super) fn toc_ui(app: &mut WordApp, ui: &mut Ui, f: &mut TocForm) -> Next {
     if ok || cancel { Next::Close } else { Next::Stay }
 }
 
+/// Update Table of Contents: Update page numbers only (selected first, as in Word) or Update
+/// entire table; OK runs `then` with `pageNumbersOnly`, Cancel runs nothing.
+pub(super) fn update_toc_ui(app: &mut WordApp, ui: &mut Ui, then: &str, entire: &mut bool) -> Next {
+    ui.radio_value(entire, false, tl!("Update page numbers only"));
+    ui.radio_value(entire, true, tl!("Update entire table"));
+    ui.add_space(4.0);
+    let (ok, cancel) = buttons(ui, tl!("OK"));
+    if ok && let Err(e) = app.run(then, json!({"pageNumbersOnly": !*entire})) {
+        app.status(e);
+    }
+    if ok || cancel { Next::Close } else { Next::Stay }
+}
+
 /// Draws the TOC sources: heading styles, per-style TOC levels, outline levels and TC entry
 /// fields, with Reset. OK returns the edited form and Cancel the original.
 pub(super) fn toc_options_ui(app: &mut WordApp, ui: &mut Ui, f: &mut TocForm, was: &TocForm) -> Next {

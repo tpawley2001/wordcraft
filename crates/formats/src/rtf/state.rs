@@ -40,7 +40,8 @@ pub(super) enum Dest {
     /// An embedded object (`\object`): its control data is skipped, its `{\result …}` group is
     /// read as body content, which is what Word shows for the object.
     Object,
-    Bookmark,
+    /// A bookmark's name: its start (`\bkmkstart`, `false`) or its end (`\bkmkend`, `true`).
+    Bookmark(bool),
     /// A comment's text-valued word: 1 `\atrfstart`, 2 `\atrfend`, 3 `\atnid`, 4 `\atnauthor`,
     /// 5 `\atndate`/`\atntime`, 6 `\atnref`.
     Atn(u8),
@@ -314,6 +315,7 @@ pub(super) struct Output {
     pub(super) row_keep: bool,
     pub(super) rule_pending: bool,
     pub(super) table_rights: Vec<Vec<i32>>,
+    pub(super) table_lefts: Vec<i32>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
     pub(super) row_style: RowStyle,
@@ -334,6 +336,7 @@ pub(super) struct TableLevel {
     pub(super) row_height: Option<(f32, bool)>,
     pub(super) row_keep: bool,
     pub(super) table_rights: Vec<Vec<i32>>,
+    pub(super) table_lefts: Vec<i32>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
     pub(super) row_style: RowStyle,
@@ -346,6 +349,30 @@ pub(super) struct TableLevel {
 pub(super) struct RowStyle {
     pub(super) style: Option<String>,
     pub(super) look: Option<wordcraft_doc::props::TableLook>,
+    /// The row's left edge from the left margin (`\trleftN`, twips), the half gap between its
+    /// cells (`\trgaphN`), its cell text indent (`\tblindN`, with `\tblindtypeN`) and its
+    /// alignment (`\trqc`, `\trqr`; `\trql` none).
+    pub(super) left: i32,
+    pub(super) gap: i32,
+    pub(super) ind: Option<i32>,
+    pub(super) ind_type: i32,
+    pub(super) align: Option<Align>,
+}
+
+impl RowStyle {
+    /// The table's left edge from the left margin in twips, when the row states one: `\tblind`
+    /// in twips (`\tblindtype3`) less the gap, else `\trleft`. A centred or right-aligned row
+    /// has none.
+    pub(super) fn edge(&self) -> Option<i32> {
+        if self.align.is_some() {
+            return None;
+        }
+        let e = match self.ind {
+            Some(n) if self.ind_type == 3 => n.saturating_sub(self.gap),
+            _ => self.left,
+        };
+        (e != 0).then_some(e)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -512,6 +539,10 @@ pub(super) struct PageGeom {
     pub(super) bottom: Option<i32>,
     pub(super) header: Option<i32>,
     pub(super) footer: Option<i32>,
+    /// The gutter (`\gutterN`, `\guttersxnN`).
+    pub(super) gutter: Option<i32>,
+    /// `\rtlgutter`: the gutter is on the right (document-wide).
+    pub(super) rtl_gutter: bool,
     pub(super) landscape: bool,
 }
 
@@ -543,6 +574,12 @@ impl PageGeom {
                 *f = v;
             }
         }
+        // The gutter: negative counts as none; capped like the margins.
+        if let Some(g) = self.gutter {
+            let g = g.max(0) as f32 / 20.0;
+            s.gutter = if g.is_finite() { g.min(720.0) } else { 0.0 };
+        }
+        s.rtl_gutter = self.rtl_gutter;
         // Margins that leave no room for text fall back to Word's.
         let d = wordcraft_doc::SectionProps::default();
         if s.page_w - s.margin_left - s.margin_right < 72.0 {
@@ -703,6 +740,8 @@ impl SecFmt {
             bottom: p.bottom.or(doc.bottom),
             header: p.header.or(doc.header),
             footer: p.footer.or(doc.footer),
+            gutter: p.gutter.or(doc.gutter),
+            rtl_gutter: doc.rtl_gutter,
             // A section that gives its own page size or orientation has its own orientation;
             // the document's `\landscape` only applies to sections that give neither.
             landscape: if p.w.is_some() || p.h.is_some() || p.landscape { p.landscape } else { doc.landscape },

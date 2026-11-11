@@ -220,6 +220,14 @@ impl Reader {
             "ts" => self.row_style.style = self.table_style_id(pv),
             "tbllkhdrrows" | "tbllklastrow" | "tbllkhdrcols" | "tbllklastcol" | "tbllknorowband" | "tbllknocolband" => self.look_word(w, on),
             "trhdr" => self.row_header = true,
+            // The row's position, twips; beyond 22 inches clamped.
+            "trleft" => self.row_style.left = pv.clamp(-31_680, 31_680),
+            "trgaph" => self.row_style.gap = pv.clamp(0, 31_680),
+            "tblind" => self.row_style.ind = Some(pv.clamp(-31_680, 31_680)),
+            "tblindtype" => self.row_style.ind_type = pv,
+            "trqc" => self.row_style.align = Some(Align::Center),
+            "trqr" => self.row_style.align = Some(Align::Right),
+            "trql" => self.row_style.align = None,
             // Twips: positive at least, negative exactly, 0 auto; beyond 22 inches ignored.
             "trrh" => {
                 self.row_height = (pv != 0 && pv.unsigned_abs() <= 31680).then(|| (pv.unsigned_abs() as f32 / 20.0, pv < 0));
@@ -296,6 +304,8 @@ impl Reader {
             "margr" => self.page.right = Some(pv),
             "margt" => self.page.top = Some(pv),
             "margb" => self.page.bottom = Some(pv),
+            "gutter" => self.page.gutter = Some(pv),
+            "rtlgutter" => self.page.rtl_gutter = on,
             "landscape" => self.page.landscape = on,
             _ if self.doc_note_word(w, p) || self.doc_opts.word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
             _ if self.section_word(w, p) => {}
@@ -308,6 +318,7 @@ impl Reader {
                 }
             }
             "field" => self.start_field(),
+            "fldlock" => self.lock_field(),
             "fldrslt" => {
                 let link = self.st.field.and_then(|i| self.fields.get(i)).and_then(|s| hyperlink(s));
                 if link.is_some() {
@@ -324,7 +335,7 @@ impl Reader {
                         instr: instr.clone(),
                         result: String::new(),
                         fmt: self.st.fmt.clone(),
-                        locked: false,
+                        locked: self.st.field.is_some_and(|i| self.locked_fields.contains(&i)),
                         form: self.st.field.and_then(|i| self.forms.get(&i)).map(|ff| ff.to_xml()).unwrap_or_default(),
                     });
                     self.para_has = true;
@@ -337,8 +348,9 @@ impl Reader {
     /// Enters destination `d`, setting up what it collects.
     fn enter_destination(&mut self, d: Dest) {
         match d {
-            Dest::Bookmark => {
+            Dest::Bookmark(end) => {
                 self.bkmk = Some((self.depth(), String::new()));
+                self.bkmk_end = end;
             }
             Dest::Pict => {
                 self.pict_depth = Some(self.depth());
@@ -424,7 +436,8 @@ impl Reader {
             // control data, skipped below.
             "object" => Some(Dest::Object),
             "result" if self.st.dest == Dest::Object => Some(Dest::Body),
-            "bkmkstart" => Some(Dest::Bookmark),
+            "bkmkstart" => Some(Dest::Bookmark(false)),
+            "bkmkend" => Some(Dest::Bookmark(true)),
             "atrfstart" | "atrfend" | "atnid" | "atnauthor" | "atndate" | "atntime" | "atnref"
                 if self.marks_on
                     && self.hf.is_none()
@@ -442,7 +455,7 @@ impl Reader {
                 }))
             }
             "header" | "footer" | "headerl" | "headerr" | "headerf" | "footerl" | "footerr" | "footerf" | "footnote" | "annotation" | "pntext"
-            | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "bkmkend" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
+            | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
             | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb" | "fontfile"
@@ -513,7 +526,7 @@ impl Reader {
     fn skip_ignorable_destination(&mut self, word: &str, starred: bool, first_in_group: bool) -> bool {
         // A character style's stylesheet entry is `{\*\csN …}`, a table style's `{\*\tsN …}`.
         let char_style = matches!(word, "cs" | "ts") && self.st.dest == Dest::StyleSheet;
-        if !starred || !first_in_group || char_style || matches!(word, "fldinst" | "bkmkstart") {
+        if !starred || !first_in_group || char_style || matches!(word, "fldinst" | "bkmkstart" | "bkmkend") {
             return false;
         }
         self.st.dest = Dest::Skip;
@@ -652,8 +665,8 @@ impl Reader {
                 }
                 true
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator | Dest::FfText(_) if !matches!(word, "u" | "uc") => true,
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator | Dest::FfText(_) => false,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) if !matches!(word, "u" | "uc") => true,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) => false,
             Dest::OldProps(false) if matches!(word, "crauth" | "crdate") => {
                 if word == "crauth" {
                     self.st.old_rev.0 = Some(value);
@@ -829,6 +842,16 @@ impl Reader {
             "hr" => created.3 = value,
             "min" => created.4 = value,
             _ => {}
+        }
+    }
+
+    /// `\fldlock`: the field of this `\field` group keeps its stored result (RTF 1.9.1
+    /// "Fields"); fields nested in it are not locked by it.
+    fn lock_field(&mut self) {
+        if self.st.dest == Dest::Body
+            && let Some(i) = self.st.field
+        {
+            self.locked_fields.insert(i);
         }
     }
 

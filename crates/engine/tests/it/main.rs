@@ -2,6 +2,7 @@ mod comment_ids;
 mod date_fields;
 mod doc_ole_objects;
 mod doc_plain_text;
+mod doc_tracked_changes;
 mod drop_cap_indents;
 mod html_div_margins;
 mod index_automark;
@@ -20,7 +21,9 @@ mod recovery_format;
 mod rtf_sections;
 #[cfg(not(target_arch = "wasm32"))]
 mod safe_save;
+mod suppress_endnotes;
 mod three_column_headers;
+mod toc_page_numbers_only;
 
 mod custom_labels;
 mod print_section_ranges;

@@ -603,6 +603,14 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
             let turn = cell.props.text_direction;
             let mut turned = None;
             let (items, h) = if cell.props.vmerge == VMerge::Continue {
+                // A hidden cell isn't drawn, but its numbered paragraphs with text still use up
+                // their numbers, as in Word (`hidden_cell_counts`). A table nested in it counts
+                // nothing (not measured).
+                for p in cell.blocks.iter().filter_map(|b| b.as_para()) {
+                    if crate::list_stories::hidden_cell_counts(p) {
+                        let _ = ctx.next_label(p);
+                    }
+                }
                 (Vec::new(), 0.0)
             } else if turn.is_turned() {
                 collapsed = false;
