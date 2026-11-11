@@ -4,8 +4,8 @@
 //! back, as Word does.
 
 use super::*;
-use wordcraft_doc::Document;
 use wordcraft_doc::Block;
+use wordcraft_doc::Document;
 use wordcraft_doc::props::{CharProps, LineSpacing, ParaProps, VertAlign};
 
 fn open(body: &str) -> Document {
@@ -68,7 +68,9 @@ fn round_trip(body: &str) -> (String, Document) {
 
 #[test]
 fn spacing_and_indents_are_written() {
-    let (rtf, back) = round_trip(r"\pard\sb240\sa120\li720\ri360\fi-360 Alpha\par\pard\sl360\slmult1 Bravo\par\pard\sl-280\slmult0 Charlie\par\pard\sl280\slmult0 Delta\par");
+    let (rtf, back) = round_trip(
+        r"\pard\sb240\sa120\li720\ri360\fi-360 Alpha\par\pard\sl360\slmult1 Bravo\par\pard\sl-280\slmult0 Charlie\par\pard\sl280\slmult0 Delta\par",
+    );
     let a = para_words(&rtf, "Alpha");
     for w in [r"\sb240", r"\sa120", r"\li720", r"\ri360", r"\fi-360"] {
         assert!(has(&a, w), "{w} missing in {a}");
@@ -103,7 +105,10 @@ fn a_paragraph_without_its_own_spacing_writes_none() {
     let rtf = export(&open(r"\pard Foxtrot\par"));
     let w = para_words(&rtf, "Foxtrot");
     for x in [r"\sb", r"\sa", r"\sl", r"\li", r"\ri", r"\fi"] {
-        assert!(!w.split('\\').any(|t| t.starts_with(&x[1..]) && t[x.len() - 1..].starts_with(|c: char| c == '-' || c.is_ascii_digit())), "{x} written in {w}");
+        assert!(
+            !w.split('\\').any(|t| t.starts_with(&x[1..]) && t[x.len() - 1..].starts_with(|c: char| c == '-' || c.is_ascii_digit())),
+            "{x} written in {w}"
+        );
     }
 }
 
