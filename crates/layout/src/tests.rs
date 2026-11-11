@@ -46,6 +46,7 @@ mod picture_glue_touching;
 mod rtf_justify_squeeze;
 mod rtf_wraptrsp_squeeze;
 mod styleref;
+mod styleref_errors;
 mod symbol_field;
 mod symbol_font_lines;
 mod tab_to_right_indent;
