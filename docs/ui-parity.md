@@ -161,6 +161,8 @@ Insert Hyperlink › E-mail Address accepts an address and subject and lists rec
 
 ## Revision history
 
+> 2026-11-11 · trivial · P0225: Home › Paragraph › Paragraph… Indents and Spacing has an Outline level box (Body Text, Level 1..9), greyed for the built-in heading styles; OK sends only a changed level. Readiness estimates unchanged.
+
 > 2026-11-10 · trivial · P0205: Styles pane › Options… chooses In use or All styles and the sort order (Alphabetical, As Recommended, Font, Based on, By type); the pane lists `styles.paneList`, linked pairs once. Recommended, In current document and the other Style Pane Options settings remain future work. Readiness estimates unchanged.
 
 > 2026-11-10 · trivial · P0190: Home › Paragraph › Paragraph… Line spacing box (Single, 1.5 lines, Double, At least, Exactly, Multiple) and At box (points or lines); OK sends only a changed rule or value. Readiness estimates unchanged.
