@@ -308,13 +308,7 @@ impl Reader {
                 }
             }
             "field" => self.start_field(),
-            // A locked field keeps its stored result (RTF 1.9.1 "Fields"); the lock belongs to
-            // this `\field` group's own field, not to fields nested in it.
-            "fldlock" if self.st.dest == Dest::Body => {
-                if let Some(i) = self.st.field {
-                    self.locked_fields.insert(i);
-                }
-            }
+            "fldlock" => self.lock_field(),
             "fldrslt" => {
                 let link = self.st.field.and_then(|i| self.fields.get(i)).and_then(|s| hyperlink(s));
                 if link.is_some() {
@@ -815,6 +809,16 @@ impl Reader {
             "hr" => created.3 = value,
             "min" => created.4 = value,
             _ => {}
+        }
+    }
+
+    /// `\fldlock`: the field of this `\field` group keeps its stored result (RTF 1.9.1
+    /// "Fields"); fields nested in it are not locked by it.
+    fn lock_field(&mut self) {
+        if self.st.dest == Dest::Body
+            && let Some(i) = self.st.field
+        {
+            self.locked_fields.insert(i);
         }
     }
 
