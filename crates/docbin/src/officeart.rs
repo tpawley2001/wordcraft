@@ -358,6 +358,11 @@ pub(crate) struct Props {
     pub(crate) wrap_polygon: Option<WrapPolygon>,
     /// `fEditedWrap` (Group Shape Boolean Properties): the polygon was edited by hand.
     pub(crate) edited_wrap: bool,
+    /// `dxTextLeft`, `dyTextTop`, `dxTextRight`, `dyTextBottom` ([MS-ODRAW] §2.3.21): a text
+    /// box's internal margins (left, top, right, bottom), EMUs, signed.
+    pub(crate) text_inset: [Option<u32>; 4],
+    /// `anchorText` (`MSOANCHOR`): where the text sits between the box's top and bottom.
+    pub(crate) anchor_text: Option<u32>,
 }
 
 impl Props {
@@ -425,6 +430,8 @@ impl Props {
                         self.edited_wrap = op & (1 << 6) != 0;
                     }
                 }
+                0x0081..=0x0084 => self.text_inset[(pid - 0x0081) as usize] = Some(op),
+                0x0087 => self.anchor_text = Some(op),
                 0x0384..=0x0387 => self.wrap_dist[(pid - 0x0384) as usize] = Some(op),
                 0x038F => self.posh = Some(op),
                 0x0390 => self.posrelh = Some(op),
@@ -441,6 +448,25 @@ impl Props {
 }
 
 impl Props {
+    /// The text box body the Text properties describe: internal margins (`None` when they are
+    /// Word's defaults; negative margins are 0, huge ones are capped) and vertical alignment.
+    pub(crate) fn text_body(&self, mut body: wordcraft_doc::TextBody) -> wordcraft_doc::TextBody {
+        let mut inset = wordcraft_doc::TEXT_BOX_INSET;
+        for (slot, v) in inset.iter_mut().zip(self.text_inset) {
+            if let Some(v) = v {
+                *slot = u32::try_from(v as i32).unwrap_or(0).min(wordcraft_doc::MAX_TEXT_BOX_INSET);
+            }
+        }
+        body.inset = (inset != wordcraft_doc::TEXT_BOX_INSET).then_some(inset);
+        // MSOANCHOR: top, middle, bottom, then the centered and baseline variants.
+        body.anchor = match self.anchor_text {
+            Some(1 | 4) => wordcraft_doc::props::VAlign::Center,
+            Some(2 | 5 | 7 | 9) => wordcraft_doc::props::VAlign::Bottom,
+            _ => wordcraft_doc::props::VAlign::Top,
+        };
+        body
+    }
+
     /// The wrap polygon, marked edited as `fEditedWrap` says (the properties may come in
     /// either order).
     pub(crate) fn wrap_polygon(&self) -> Option<WrapPolygon> {
