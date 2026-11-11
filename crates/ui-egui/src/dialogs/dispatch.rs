@@ -1414,14 +1414,7 @@ fn paste_special_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool 
     if let Some(f) = formats.get(*choice) {
         ui.add_space(6.0);
         ui.label(egui::RichText::new(tl!("Result")).font(semibold(12.5)));
-        let hint = match f.as_str() {
-            "formatted" => "Keeps the fonts and formatting of the copied text.",
-            "rtf" => "Reads the clipboard's rich text and keeps its formatting.",
-            "html" => "Reads the clipboard's web content and keeps its formatting.",
-            "picture" => "Pastes the clipboard's picture.",
-            _ => "Drops all formatting and pastes plain text.",
-        };
-        ui.label(egui::RichText::new(tl!(hint)).weak());
+        ui.label(egui::RichText::new(tl!(wordcraft_engine::cmd::paste::result_text(f))).weak());
     }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok && let Some(f) = formats.get(*choice) {
