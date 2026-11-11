@@ -37,6 +37,11 @@ pub fn esc(s: &str) -> String {
     o
 }
 
+/// A note reference: the automatic number (`\chftn`), or the custom mark's text (RTF 1.9.1).
+fn note_mark(custom: &str) -> String {
+    if custom.is_empty() { String::from("{\\super\\chftn}") } else { format!("{{\\super {}}}", esc(custom)) }
+}
+
 /// [`esc`] for a `\fonttbl` name: `;` would end the entry, so it is written `\'3b`, and control
 /// characters, which `esc` writes as `\line` or `\tab`, are dropped.
 fn esc_font(name: &str) -> String {
@@ -74,8 +79,12 @@ impl Tables {
 pub(super) enum Mark {
     Note {
         endnote: bool,
+        /// The custom reference mark (empty: the automatic number).
+        custom: String,
         blocks: Vec<FBlock>,
     },
+    /// A custom-marked note's own mark, at the start of its text.
+    Own(String),
     RangeStart(u32),
     /// The end of a comment's range; the first end of each comment also carries its annotation.
     RangeEnd {
@@ -187,12 +196,14 @@ impl Marker<'_> {
         for off in p.object_offsets().into_iter().rev() {
             let Some(obj) = q.object_at(off).cloned() else { continue };
             let tok = match obj {
-                InlineObject::NoteRef { id, .. } if note == Some(id) => Some(String::from("S")),
+                InlineObject::NoteRef { id, custom, .. } if note == Some(id) => {
+                    Some(if custom.is_empty() { String::from("S") } else { self.token(Mark::Own(custom)) })
+                }
                 InlineObject::NoteRef { .. } if note.is_some() => Some(String::new()),
-                InlineObject::NoteRef { id, kind, .. } => self.doc.parts.get(&id).map(|part| {
+                InlineObject::NoteRef { id, kind, custom } => self.doc.parts.get(&id).map(|part| {
                     let mut blocks = Vec::new();
                     self.story(&part.blocks, id, 0, &mut blocks);
-                    self.token(Mark::Note { endnote: kind == wordcraft_doc::para::NoteKind::Endnote, blocks })
+                    self.token(Mark::Note { endnote: kind == wordcraft_doc::para::NoteKind::Endnote, custom, blocks })
                 }),
                 InlineObject::CommentStart { id } if note.is_none() => Some(self.token(Mark::RangeStart(id))),
                 InlineObject::CommentEnd { id } if note.is_none() => {
@@ -292,6 +303,9 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps, doc_gutter: f32, t: &mut Ta
         PageVAlign::Justify => "\\vertalj",
         PageVAlign::Bottom => "\\vertalb",
     });
+    if s.no_endnote == Some(false) {
+        o.push_str("\\endnhere");
+    }
     if let Some(n) = s.paper_src_first.filter(|&n| n != 0) {
         o.push_str(&format!("\\binfsxn{n}"));
     }
@@ -415,23 +429,61 @@ fn note_words(prefix: &str, n: &wordcraft_doc::section::NoteProps, fmt: Option<w
     o
 }
 
+/// Whether `bl` (and the tables in it) holds a footnote reference and an endnote reference.
+fn note_kinds(bl: &Blocks, depth: usize, found: &mut (bool, bool)) {
+    use wordcraft_doc::para::NoteKind;
+    for b in bl.iter() {
+        match &**b {
+            Block::Para(p) => {
+                for o in &p.objects {
+                    match o {
+                        InlineObject::NoteRef { kind: NoteKind::Endnote, .. } => found.1 = true,
+                        InlineObject::NoteRef { .. } => found.0 = true,
+                        _ => {}
+                    }
+                }
+            }
+            Block::Table(t) if depth < 8 => {
+                for c in t.rows.iter().flat_map(|r| r.cells.iter()) {
+                    note_kinds(&c.blocks, depth + 1, found);
+                }
+            }
+            Block::Table(_) => {}
+        }
+    }
+}
+
 /// The document's footnote and endnote options: each word only when the option is set, the
 /// number formats only when they aren't the defaults (decimal footnotes, lower Roman endnotes).
-fn doc_note_words(set: &wordcraft_doc::Settings) -> String {
+/// A document with notes always states where footnotes and endnotes go and which it has
+/// (`\fet`): a reader takes footnotes in a file that never says where they go for endnotes.
+fn doc_note_words(doc: &Document) -> String {
     use wordcraft_doc::section::{NotePos, NumFormat};
+    let set = &doc.settings;
+    let mut found = (false, false);
+    note_kinds(&doc.body, 0, &mut found);
+    for part in doc.parts.values() {
+        note_kinds(&part.blocks, 0, &mut found);
+    }
+    let (has_notes, has_endnotes) = (found.0 || found.1, found.1);
     let mut o = String::new();
     o.push_str(match set.footnote_pr.pos {
         Some(NotePos::PageBottom) => "\\ftnbj",
         Some(NotePos::BeneathText) => "\\ftntj",
+        _ if has_notes => "\\ftnbj",
         _ => "",
     });
     o.push_str(match set.endnote_pr.pos {
         Some(NotePos::SectEnd) => "\\aendnotes",
         Some(NotePos::DocEnd) => "\\aenddoc",
+        _ if has_notes => "\\aenddoc",
         _ => "",
     });
     o.push_str(&note_words("\\ftn", &set.footnote_pr, Some(set.footnote_format).filter(|&f| f != NumFormat::Decimal)));
     o.push_str(&note_words("\\aftn", &set.endnote_pr, Some(set.endnote_format).filter(|&f| f != NumFormat::LowerRoman)));
+    if has_notes {
+        o.push_str(if has_endnotes { "\\fet2" } else { "\\fet0" });
+    }
     o
 }
 
@@ -882,8 +934,9 @@ impl Writer {
         }
         let Some(m) = tok.parse::<usize>().ok().and_then(|i| self.marks.get_mut(i)) else { return };
         match std::mem::replace(m, Mark::Done) {
-            Mark::Note { endnote, blocks } => {
-                out.push_str("{\\super\\chftn}{\\footnote");
+            Mark::Note { endnote, custom, blocks } => {
+                out.push_str(&note_mark(&custom));
+                out.push_str("{\\footnote");
                 if endnote {
                     out.push_str("\\ftnalt");
                 }
@@ -891,6 +944,7 @@ impl Writer {
                 self.blocks(&blocks, 0, "\\par", out, 0);
                 out.push('}');
             }
+            Mark::Own(custom) => out.push_str(&note_mark(&custom)),
             Mark::RangeStart(id) => out.push_str(&format!("{{\\*\\atrfstart {id}}}")),
             Mark::RangeEnd { id, ann } => {
                 out.push_str(&format!("{{\\*\\atrfend {id}}}"));
@@ -1121,11 +1175,7 @@ impl Writer {
             "\\emfblip" | "\\wmetafile8" => hundredths,
             _ => model::image_px(&data).map(|(a, b)| (i64::from(a), i64::from(b))).unwrap_or((1, 1)),
         };
-        out.push_str(&format!(
-            "{{\\pict{blip}\\picw{pw}\\pich{ph}\\picwgoal{}\\pichgoal{}\n",
-            (img.w * 20.0).round() as i64,
-            (img.h * 20.0).round() as i64
-        ));
+        out.push_str(&format!("{{\\pict{blip}\\picw{pw}\\pich{ph}{}\n", pict_goal(img)));
         for chunk in data.chunks(64) {
             for b in chunk {
                 out.push_str(&format!("{b:02x}"));
@@ -1197,8 +1247,12 @@ impl Writer {
                 Inline::Ruby { base, fmt, .. } => self.run(base, fmt, out),
                 // ASK and SET show nothing (see `model::shows_nothing`).
                 Inline::Field { instr, .. } if model::shows_nothing(instr) => {}
-                Inline::Field { instr, result, fmt, .. } => {
-                    out.push_str(&format!("{{\\field{{\\*\\fldinst {}}}{{\\fldrslt ", esc(instr)));
+                Inline::Field { instr, result, fmt, form, .. } => {
+                    // A legacy form field's definition goes in its instruction, as Word writes it.
+                    match super::form_field::rtf_group(form) {
+                        Some(group) => out.push_str(&format!("{{\\field{{\\*\\fldinst {{{} {group}}}}}{{\\fldrslt ", esc(instr.trim()))),
+                        None => out.push_str(&format!("{{\\field{{\\*\\fldinst {}}}{{\\fldrslt ", esc(instr))),
+                    }
                     self.run(result, fmt, out);
                     out.push_str("}}");
                 }
@@ -1467,8 +1521,20 @@ impl Writer {
     fn row_props(&mut self, t: &FTable, ri: usize, row: &[model::Cell], widths: &[f32]) -> String {
         let mut props = String::new();
         let out = &mut props;
-        out.push_str("\\trowd\\trgaph108\\trleft0");
         let extra = t.extra.as_deref();
+        // Its alignment, else its left edge (`\trleft`, which each `\cellx` is measured with).
+        out.push_str("\\trowd");
+        let align = extra.and_then(|x| x.align);
+        match align {
+            Some(Align::Center) => out.push_str("\\trqc"),
+            Some(Align::Right) => out.push_str("\\trqr"),
+            _ => {}
+        }
+        let left = match align {
+            Some(Align::Center | Align::Right) => 0,
+            _ => extra.and_then(|x| x.indent).filter(|i| i.is_finite()).map_or(0, |i| ((i * 20.0).round() as i64).clamp(-31_680, 31_680)),
+        };
+        out.push_str(&format!("\\trgaph108\\trleft{left}"));
         // The table's style and its look.
         if let Some(n) = extra.and_then(|x| x.style.as_deref()).and_then(own_style_num) {
             out.push_str(&format!("\\ts{n}"));
@@ -1530,7 +1596,7 @@ impl Writer {
                 let i = self.t.color(s);
                 out.push_str(&format!("\\clcbpat{i}"));
             }
-            out.push_str(&format!("\\cellx{}", x.round() as i64));
+            out.push_str(&format!("\\cellx{}", (x.round() as i64).saturating_add(left)));
         }
         props
     }
@@ -1725,7 +1791,20 @@ pub fn export(doc: &Document) -> String {
     };
     let mut body = String::new();
     // Every section starts with its own `\sectd`; `\sect` breaks only where there are several.
-    let secs: Vec<wordcraft_doc::SectionProps> = doc.sections().into_iter().map(|(_, s)| s.clone()).collect();
+    // With endnotes at each section's end, a section that doesn't suppress them includes them
+    // (`\endnhere`, written for `no_endnote == Some(false)`).
+    let sect_end = doc.settings.endnote_pr.pos == Some(wordcraft_doc::section::NotePos::SectEnd);
+    let secs: Vec<wordcraft_doc::SectionProps> = doc
+        .sections()
+        .into_iter()
+        .map(|(_, s)| {
+            let mut s = s.clone();
+            if sect_end && s.no_endnote != Some(true) {
+                s.no_endnote = Some(false);
+            }
+            s
+        })
+        .collect();
     if let Some(first) = secs.first() {
         body.push_str(&sect_words(first, first.gutter, &mut w.t));
         for (set, prefix) in [(&first.headers, "header"), (&first.footers, "footer")] {
@@ -1836,7 +1915,7 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     out.push_str(&user_props(&doc.custom_props));
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
-    let notes = doc_note_words(settings);
+    let notes = doc_note_words(doc);
     let opts = doc_opts_words(settings) + &doc_setting_words(settings);
     // The gutter and its side, from the first section (sections that differ say `\guttersxn`).
     let mut gutter = String::new();
@@ -1861,4 +1940,28 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     out.push_str(body);
     out.push_str("}\n");
     out
+}
+
+/// A picture's `\picwgoal`/`\pichgoal` and, when it is cropped, its `\piccrop*` words: the goal is
+/// the uncropped size and each crop the twips cut off that side (only the non-zero ones). A crop
+/// leaving under 1 % of an axis, or an uncropped goal over 31,680 twips, writes no crop.
+fn pict_goal(img: &model::Img) -> String {
+    let plain = format!("\\picwgoal{}\\pichgoal{}", (img.w * 20.0).round() as i64, (img.h * 20.0).round() as i64);
+    let [l, t, r, b] = img.crop.map(|c| if c.is_finite() && c > 0.0 { c } else { 0.0 });
+    if l + t + r + b <= 0.0 || l + r >= 0.99 || t + b >= 0.99 {
+        return plain;
+    }
+    let gw = (img.w * 20.0 / (1.0 - l - r)).round();
+    let gh = (img.h * 20.0 / (1.0 - t - b)).round();
+    if !(gw.is_finite() && gh.is_finite()) || gw > 31_680.0 || gh > 31_680.0 {
+        return plain;
+    }
+    let mut s = format!("\\picwgoal{}\\pichgoal{}", gw as i64, gh as i64);
+    for (word, frac, goal) in [("l", l, gw), ("t", t, gh), ("r", r, gw), ("b", b, gh)] {
+        let n = (frac * goal).round() as i64;
+        if n != 0 {
+            s.push_str(&format!("\\piccrop{word}{n}"));
+        }
+    }
+    s
 }

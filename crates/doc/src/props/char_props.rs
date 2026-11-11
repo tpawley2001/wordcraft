@@ -61,6 +61,66 @@ impl Underline {
     }
 }
 
+/// OpenType number forms a run asks for ([MS-DOCX] `w14:numForm`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NumForm {
+    Default,
+    Lining,
+    OldStyle,
+}
+
+impl NumForm {
+    /// The `w14:val` name.
+    pub fn ooxml(self) -> &'static str {
+        match self {
+            NumForm::Default => "default",
+            NumForm::Lining => "lining",
+            NumForm::OldStyle => "oldStyle",
+        }
+    }
+    /// `None` for a name [MS-DOCX] doesn't define.
+    pub fn from_ooxml(s: &str) -> Option<NumForm> {
+        [NumForm::Default, NumForm::Lining, NumForm::OldStyle].into_iter().find(|v| v.ooxml() == s)
+    }
+}
+
+/// OpenType number spacing a run asks for ([MS-DOCX] `w14:numSpacing`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NumSpacing {
+    Default,
+    Proportional,
+    Tabular,
+}
+
+impl NumSpacing {
+    /// The `w14:val` name.
+    pub fn ooxml(self) -> &'static str {
+        match self {
+            NumSpacing::Default => "default",
+            NumSpacing::Proportional => "proportional",
+            NumSpacing::Tabular => "tabular",
+        }
+    }
+    /// `None` for a name [MS-DOCX] doesn't define.
+    pub fn from_ooxml(s: &str) -> Option<NumSpacing> {
+        [NumSpacing::Default, NumSpacing::Proportional, NumSpacing::Tabular].into_iter().find(|v| v.ooxml() == s)
+    }
+}
+
+/// One stylistic set (`w14:styleSet`): set `id` (1..=20, feature `ssNN`) on or off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct StyleSet {
+    pub id: u8,
+    pub on: bool,
+}
+
+impl StyleSet {
+    /// The highest stylistic set OpenType defines (`ss20`).
+    pub const MAX_ID: u8 = 20;
+}
+
 /// The OpenType ligatures a run asks for ([MS-DOCX] `w14:ligatures`): standard (`liga`),
 /// contextual (`clig`), historical (`hlig`) and discretional (`dlig`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -299,6 +359,19 @@ pub struct CharProps {
     /// contextual ligatures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ligatures: Option<Ligatures>,
+    /// OpenType number forms (`w14:numForm`, [MS-DOCX]); `None` = the font's own figures.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_form: Option<NumForm>,
+    /// OpenType number spacing (`w14:numSpacing`, [MS-DOCX]); `None` = the font's own spacing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_spacing: Option<NumSpacing>,
+    /// OpenType stylistic sets (`w14:stylisticSets`, [MS-DOCX]): sorted by id, one entry per id
+    /// in 1..=20. A run's list replaces its style's as a whole.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stylistic_sets: Option<Vec<StyleSet>>,
+    /// Use Contextual Alternates (`w14:cntxtAlts`, [MS-DOCX]); `None` = the shaper's default (`calt` on).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contextual_alternates: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outline: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -513,7 +586,7 @@ impl CharProps {
     }
 
     fn minus_document_marks(&mut self, base: &CharProps) {
-        drop_same_fields!(self, base; link, ins, del, ligatures);
+        drop_same_fields!(self, base; link, ins, del, ligatures, num_form, num_spacing, stylistic_sets, contextual_alternates);
     }
 
     /// Apply every `Some` field of `patch` on top of `self`.
@@ -544,7 +617,7 @@ impl CharProps {
     }
 
     fn overlay_document_marks(&mut self, patch: &CharProps) {
-        overlay_fields!(self, patch; link, ins, del, fmt_change, ligatures);
+        overlay_fields!(self, patch; link, ins, del, fmt_change, ligatures, num_form, num_spacing, stylistic_sets, contextual_alternates);
     }
     pub fn overlaid(mut self, patch: &CharProps) -> CharProps {
         self.overlay(patch);

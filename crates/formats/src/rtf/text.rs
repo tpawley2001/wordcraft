@@ -177,8 +177,13 @@ impl Reader {
         }
         let sx = if self.pict_sx > 0.0 { self.pict_sx / 100.0 } else { 1.0 };
         let sy = if self.pict_sy > 0.0 { self.pict_sy / 100.0 } else { 1.0 };
-        let w = self.pict_w.map(|v| v * sx);
-        let h = self.pict_h.map(|v| v * sy);
+        // `\piccrop*` cut twips off each side of the goal size; the scale applies after the crop.
+        let [cl, ct, cr, cb] = self.pict_crop;
+        let (w, crop_x) = crop_axis(self.pict_w, cl, cr);
+        let (h, crop_y) = crop_axis(self.pict_h, ct, cb);
+        let w = w.map(|v| v * sx);
+        let h = h.map(|v| v * sy);
+        let crop = [crop_x.0, crop_y.0, crop_x.1, crop_y.1];
         // The control word only says "a metafile": the bytes decide what it is (#4259).
         let img = if matches!(self.pict_kind, 3 | 4) && wordcraft_metafile::is_metafile(&data) {
             // An EMF starts with its header record, type 1.
@@ -200,7 +205,8 @@ impl Reader {
         } else {
             make_img(data, w, h, "")
         };
-        if let Some(img) = img {
+        if let Some(mut img) = img {
+            img.crop = crop;
             self.para.inlines.push(Inline::Image(img));
             self.para_has = true;
         }
@@ -227,7 +233,7 @@ impl Reader {
             let old = self.old_fmt(&words);
             f.fmt_change = Some(Box::new(model::FmtChange { mark, old }));
         }
-        if !self.shapes.is_empty()
+        if self.field_inline()
             && let Some(instr) =
                 self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty() && super::word::hyperlink(s).is_none())
         {
@@ -236,7 +242,8 @@ impl Reader {
             {
                 result.push_str(s);
             } else {
-                self.para.inlines.push(Inline::Field { instr: instr.clone(), result: s.to_string(), fmt: f, locked: false });
+                let form = self.st.field.and_then(|i| self.forms.get(&i)).map(|ff| ff.to_xml()).unwrap_or_default();
+                self.para.inlines.push(Inline::Field { instr: instr.clone(), result: s.to_string(), fmt: f, locked: false, form });
             }
         } else {
             self.para.push_text(s, &f);
@@ -300,6 +307,12 @@ impl Reader {
             Dest::Atn(_) => {
                 if self.atn_text.len() < 256 {
                     self.atn_text.push_str(s);
+                }
+            }
+            Dest::FormField => {}
+            Dest::FfText(slot) => {
+                if let Some(f) = self.st.field.and_then(|i| self.forms.get_mut(&i)) {
+                    f.text(slot, s);
                 }
             }
             Dest::FldInst => {
@@ -386,4 +399,17 @@ impl Reader {
         let mut buf = [0u8; 4];
         self.text(c.encode_utf8(&mut buf));
     }
+}
+
+/// One axis of a `\pict` crop: the goal size `goal` (points, uncropped) and the twips `a` and `b`
+/// cut off its two ends. Returns the cropped size (points, before scaling) and the two ends as
+/// fractions of the goal. A negative crop cuts nothing (the blank band Word adds is not
+/// modelled); with no goal, no crop, or a crop leaving under 1 % of the goal, the axis is uncropped.
+fn crop_axis(goal: Option<f32>, a: i32, b: i32) -> (Option<f32>, (f32, f32)) {
+    let Some(g) = goal.map(|v| v * 20.0).filter(|g| g.is_finite() && *g > 0.0) else { return (goal, (0.0, 0.0)) };
+    let (a, b) = (a.max(0) as f32, b.max(0) as f32);
+    if a + b <= 0.0 || a + b >= 0.99 * g {
+        return (goal, (0.0, 0.0));
+    }
+    (Some((g - a - b) / 20.0), (a / g, b / g))
 }

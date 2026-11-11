@@ -193,6 +193,23 @@ fn layout_table_block(input: TableBlockContext<'_, '_, '_>) -> bool {
 /// says where the box sits on its page, for floating objects positioned relative to the page or
 /// its margins; without it (cells, notes, text boxes) they're positioned in the box.
 pub(crate) fn layout_box(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
+    // A header, footer, note or text box counts its lists in its own story, from where its story
+    // has got to before it (the same numbers each time it is laid out); the story around this box
+    // gets its counters back when it's done. A table cell keeps counting in its own story.
+    let outer = match (input.story, &input.context) {
+        (StoryRef::Part(id), BoxContext::Other) if input.prefix.is_empty() => {
+            ctx.part_starts.get(&id).map(|start| std::mem::replace(&mut ctx.counters, start.clone()))
+        }
+        _ => None,
+    };
+    let laid = layout_box_in(ctx, input);
+    if let Some(c) = outer {
+        ctx.counters = c;
+    }
+    laid
+}
+
+fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
     let BoxInput { story, blocks, prefix, width, context, depth, frame } = input;
     // Deletions in balloons leave the body's text only: a header, note or text box keeps its own
     // inline (restored for the story around this box when it's done).

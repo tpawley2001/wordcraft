@@ -79,6 +79,7 @@ fn new_ctx<'a>(
         opts,
         hide_deleted: opts.hides_deleted(StoryRef::Body),
         counters: Counters::default(),
+        part_starts: Arc::new(crate::list_stories::part_starts(doc)),
         fields: FieldCtx {
             page: 1,
             pages: totals.pages,
@@ -251,7 +252,7 @@ fn turned_sections(ctx: &mut Ctx, sections: &[(usize, &SectionProps)], web: bool
             (!web && s.text_direction.is_turned()).then(|| {
                 ctx.fields.page_format = s.page_num_format;
                 let top = body_top_for(ctx, s, s.headers.default);
-                vertical::unturned_sect(s, top)
+                vertical::unturned_sect(s, top, ctx.mirror)
             })
         })
         .collect()
@@ -439,8 +440,16 @@ fn place_section_blocks<'p>(
 }
 
 /// Endnotes at the end of the section: those referenced so far.
-fn section_endnotes(ctx: &mut Ctx, pb: &mut PageBuilder, endnotes: &mut VecDeque<(u32, usize)>, (sect, si, block): (&SectionProps, usize, usize)) {
-    if ctx.doc.note_options(sect, true).pos != wordcraft_doc::section::NotePos::SectEnd || pb.pages.is_empty() {
+/// A section with Suppress endnotes (`no_endnote`) that isn't the last places none: they stay
+/// queued for the next section that includes them (the last section prints whatever is left).
+fn section_endnotes(
+    ctx: &mut Ctx,
+    pb: &mut PageBuilder,
+    endnotes: &mut VecDeque<(u32, usize)>,
+    (sect, si, block): (&SectionProps, usize, usize),
+    suppressed: bool,
+) {
+    if ctx.doc.note_options(sect, true).pos != wordcraft_doc::section::NotePos::SectEnd || pb.pages.is_empty() || suppressed {
         return;
     }
     let mut here = Vec::new();
@@ -628,7 +637,8 @@ pub(crate) fn layout_pass(
         let balance = prepare_section_end(&mut pb, sections, (si, mode.web));
         let (next, discarded) = place_section_blocks(&mut ctx, &mut pb, &outline, (block, last), (balance, sec.tops.body));
         (block, boxes_discarded) = (next, boxes_discarded + discarded);
-        section_endnotes(&mut ctx, &mut pb, &mut endnotes, (sect, si, block));
+        let suppressed = si + 1 < sections.len() && sections.get(si).is_some_and(|(_, s)| s.no_endnote == Some(true));
+        section_endnotes(&mut ctx, &mut pb, &mut endnotes, (sect, si, block), suppressed);
     }
     if pb.pages.is_empty() {
         pb.new_page(0, sect_ref.margin_top);

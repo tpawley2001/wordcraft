@@ -1,7 +1,10 @@
 use super::bookmarks::{bookmark, enclose_preview, icons_body, macros};
 use super::chrome::{buttons, color_field};
 use super::find::{FindTab, SEARCH_SUGGESTIONS, command_matches, find_in_navigation_pane, goto_body, special_menu, swallow_shortcut_text};
-use super::font::{UNDERLINE_STYLES, apply_font, font_box, font_sample_box, font_sample_lines, font_sample_props, sample_paper, underline_style};
+use super::font::{
+    UNDERLINE_STYLES, apply_font, font_box, font_sample_box, font_sample_lines, font_sample_props, sample_paper, scale_box, signed_by_box,
+    underline_style,
+};
 use super::forms::{cell_margins_dialog, custom_properties, table_properties};
 use super::mailings::{ADDRESS_PARTS, recipient_list, rule_params};
 use super::page_setup::{
@@ -130,6 +133,8 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         hidden,
         color,
         spacing,
+        scale,
+        position,
         kern,
         kern_at,
         ..
@@ -141,6 +146,8 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let mut sample_props =
         font_sample_props(app, sample_paper(app), font, size, color, (*bold, *italic, lined, *strike), (*small_caps, *caps, *hidden), *spacing);
     font_sample_lines(&mut sample_props, underline, underline_color, *double_strike);
+    // The sample is a few lines tall: a large raise or drop shows as the most it can.
+    (sample_props.scale, sample_props.position) = (Some(scale.clamp(1.0, 600.0)), Some(position.clamp(-8.0, 8.0)));
     crate::rtl::Table::new("fontdlg").columns(2).spacing(vec2(10.0, 6.0)).show(ui, |t| {
         // Word's two font boxes when East Asian text is in use: the Latin text font and
         // the Asian text font, each with its own list (type to find a font).
@@ -216,8 +223,16 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             });
         });
         t.row(|r| {
-            let spacing_label = r.cell(|ui| ui.label(tl!("Spacing (pt):")));
-            r.cell(|ui| ui.add(egui::DragValue::new(spacing).speed(0.1).range(-20.0..=20.0)).labelled_by(spacing_label.id));
+            let label = r.cell(|ui| ui.label(tl!("Scale:")));
+            r.cell(|ui| scale_box(ui, scale, &label));
+        });
+        t.row(|r| {
+            let label = r.cell(|ui| ui.label(tl!("Spacing:")));
+            r.cell(|ui| signed_by_box(ui, "fontdlg_spacing", spacing, (tl!("Expanded"), tl!("Condensed")), 1.0, &label));
+        });
+        t.row(|r| {
+            let label = r.cell(|ui| ui.label(tl!("Position:")));
+            r.cell(|ui| signed_by_box(ui, "fontdlg_position", position, (tl!("Raised"), tl!("Lowered")), 3.0, &label));
         });
         t.row(|r| {
             let label = tl!("Kerning for fonts:");
@@ -393,6 +408,7 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 });
             });
             para_check(ui, &mut opts[0], tl!("Mirror indents"), "mirrorIndents", mixed);
+            para_check(ui, &mut opts[4], tl!("Automatically adjust right indent when document grid is defined"), "adjustRightIndent", mixed);
             ui.label(egui::RichText::new(tl!("Spacing")).font(semibold(12.5)));
             crate::rtl::Table::new("sp").columns(4).show(ui, |t| {
                 t.row(|r| {
@@ -407,6 +423,7 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 });
             });
             para_check(ui, &mut opts[1], tl!("Don't add space between paragraphs of the same style"), "contextualSpacing", mixed);
+            para_check(ui, &mut opts[5], tl!("Snap to grid when document grid is defined"), "snapToGrid", mixed);
         }
         1 => {
             ui.label(egui::RichText::new(tl!("Line and Page Breaks")).font(semibold(12.5)));
@@ -615,9 +632,10 @@ fn table_properties_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bo
     table_properties(ui, form);
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok {
-        let changes = form.changes(basis);
-        if changes.as_object().is_some_and(|m| !m.is_empty()) {
-            let _ = app.run("table.properties", changes);
+        let commands = form.commands(basis);
+        if !commands.is_empty() {
+            // Table settings and alt text: one undo step.
+            let _ = super::page_setup::run_as_one_step(app, commands);
         }
     }
     ok || cancel
