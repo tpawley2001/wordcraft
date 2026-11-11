@@ -25,3 +25,4 @@ mod three_column_headers;
 mod custom_labels;
 mod print_section_ranges;
 mod ref_paragraph_numbers;
+mod table_cell_options;
