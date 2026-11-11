@@ -795,6 +795,7 @@ fn the_arabic_interface_is_mirrored_and_never_panics() {
         "rules",
         "matchFields",
         "dropCap",
+        "alignmentTab",
         "dateTime",
         "crossReference",
     ];

@@ -34,8 +34,9 @@ pub fn page_display(doc: &Document, page: &Page, opts: &DisplayOptions) -> Vec<D
     let (ha, ba) = dimming(opts);
     let authors = Authors::new(doc);
     stories_display(doc, &[&page.header[..], &page.footer[..]], None, opts, &authors, ha, &mut out);
-    stories_display(doc, &[&page.items[..]], None, opts, &authors, ba, &mut out);
-    body_change_bars(doc, page, &page.items, opts, ba, &mut out);
+    let items = body_items(doc, page, opts);
+    stories_display(doc, &[items], None, opts, &authors, ba, &mut out);
+    body_change_bars(doc, page, items, opts, ba, &mut out);
     if opts.picture_placeholders {
         out = picture_placeholders(out, 0);
     }
@@ -185,13 +186,25 @@ pub fn page_layers(doc: &Document, page: &Page, opts: &DisplayOptions) -> [(f32,
     let (mut hf, mut body) = (Vec::new(), Vec::new());
     let authors = Authors::new(doc);
     stories_display(doc, &[&page.header[..], &page.footer[..]], None, opts, &authors, 1.0, &mut hf);
-    stories_display(doc, &[&page.items[..]], None, opts, &authors, 1.0, &mut body);
-    body_change_bars(doc, page, &page.items, opts, 1.0, &mut body);
+    let items = body_items(doc, page, opts);
+    stories_display(doc, &[items], None, opts, &authors, 1.0, &mut body);
+    body_change_bars(doc, page, items, opts, 1.0, &mut body);
     if opts.picture_placeholders {
         hf = picture_placeholders(hf, 0);
         body = picture_placeholders(body, 0);
     }
     [(ha, hf), (ba, body)]
+}
+
+/// The page's body items to draw: all of them, or with [`DisplayOptions::hide_body`] only the
+/// page borders its section gives it (always the page's first items).
+fn body_items<'p>(doc: &Document, page: &'p Page, opts: &DisplayOptions) -> &'p [Placed] {
+    if !opts.hide_body {
+        return &page.items;
+    }
+    let borders = doc.sections().get(page.section).map_or(0, |(_, s)| crate::page::page_border_rules(s).len());
+    let n = page.items.iter().take(borders).take_while(|it| matches!(it, Placed::Rule { .. })).count();
+    page.items.get(..n).unwrap_or_default()
 }
 
 /// The opacity of the headers/footers and of the body.

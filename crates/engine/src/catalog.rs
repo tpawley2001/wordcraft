@@ -497,6 +497,8 @@ Header & Footer|Navigation|Go to Footer|insert.editFooter
 Header & Footer|Navigation|Previous Section|hf.previous
 Header & Footer|Navigation|Next Section|hf.next
 Header & Footer|Position|Header from Top|hf.position
+Header & Footer|Position|Insert Alignment Tab|insert.alignmentTab
+Header & Footer|Options|Show Document Text|view.showDocumentText
 Editing|Keyboard|Type Text|text.insert
 Editing|Keyboard|New Paragraph|text.newParagraph
 Editing|Keyboard|Line Break|text.lineBreak

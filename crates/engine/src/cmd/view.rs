@@ -150,6 +150,10 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(
                 r#"{"horizontalSpacing"?: pt (0.5-1584), "verticalSpacing"?: pt (0.5-1584), "horizontalEvery"?: n (0-127; vertical gridlines every n units, 0 = none), "verticalEvery"?: n (0-127; horizontal gridlines every n units, 0 = none), "useMargins"?: bool, "horizontalOrigin"?: pt (0-1584), "verticalOrigin"?: pt (0-1584)} → the resulting values"#,
             ),
+        // Header & Footer › Show Document Text (Word's `View.ShowMainTextLayer`): screen only.
+        CommandSpec::new("view.showDocumentText", "Show Document Text", "Header & Footer › Options", |s, v| toggle(s, v, |x| &mut x.show_document_text))
+            .params(r#"{"value"?: bool (omit to toggle)}"#)
+            .pure(),
         // Outlines of table cells (screen only; never printed or exported).
         CommandSpec::new("table.viewGridlines", "View Gridlines", "Table Layout › Table", |s, v| toggle(s, v, |x| &mut x.table_gridlines))
             .params(r#"{"value"?: bool}"#)

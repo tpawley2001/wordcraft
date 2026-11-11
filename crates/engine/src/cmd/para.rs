@@ -204,7 +204,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("para.borders", "Borders", "Home › Paragraph", borders).params(
             r#"{"kind": "bottom|top|left|right|none|all|outside|inside|horizontalLine", "width"?: pt, "color"?: "RRGGBB", "style"?: "single|double|dotted|dashed|thick|triple|dotDash|wave", "sides"?: Sides} where Sides = {"top"|"left"|"bottom"|"right"|"between": {"style"?, "width"?: pt, "color"?: "RRGGBB", "space"?: pt (0-31, distance from text)} | null}: exactly these sides (others off), instead of `kind`"#,
         ),
-        CommandSpec::new("para.sort", "Sort", "Home › Paragraph", sort).params(r#"{"keys"?: [{"field"?: n, "type"?: "text|number|date", "descending"?: bool}] (1 to 3), "separator"?: "tab|comma|<one character>", "header"?: bool, "descending"?: bool}"#),
+        CommandSpec::new("para.sort", "Sort", "Home › Paragraph", sort).params(r#"{"keys"?: [{"field"?: n, "type"?: "text|number|date", "descending"?: bool}] (1 to 3), "separator"?: "tab|comma|<one character>", "header"?: bool, "descending"?: bool, "caseSensitive"?: bool}"#),
         CommandSpec::new("para.keepNext", "Keep with Next", "Home › Paragraph › Line and Page Breaks", |s, v| tog(s, v, |p| p.keep_next, |p, b| p.keep_next = Some(b)))
             .params(r#"{"value"?: bool}"#),
         CommandSpec::new("para.keepLines", "Keep Lines Together", "Home › Paragraph › Line and Page Breaks", |s, v| tog(s, v, |p| p.keep_lines, |p, b| p.keep_lines = Some(b)))
