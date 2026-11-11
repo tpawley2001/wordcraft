@@ -52,7 +52,8 @@ pub struct PdfOptions {
     pub numeral: NumeralMode,
     /// Draw only what was filled into the legacy form fields, where the full page has it (Print
     /// only the data from a form, `w:printFormsData`): no other text, page colour, watermark,
-    /// borders, shading or pictures. Print jobs only.
+    /// borders, shading or pictures. Print jobs only. Applies to the document's own pages: the
+    /// appendix of [`crate::export_layout_with_appendix`] is drawn in full.
     pub forms_data_only: bool,
 }
 
