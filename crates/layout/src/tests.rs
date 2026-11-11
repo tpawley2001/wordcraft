@@ -15388,3 +15388,32 @@ fn turned_cell_float_keeps_its_along_text_offset() {
         assert!((confined.y - reference.y).abs() < 0.01, "{direction:?}: {confined:?} vs {reference:?}");
     }
 }
+
+/// `w14:numForm`, `w14:numSpacing`, `w14:stylisticSets` and `w14:cntxtAlts` set `onum`/`lnum`,
+/// `tnum`/`pnum`, `ssNN` and `calt`; without them no feature is added, so the shaper's defaults stay.
+#[test]
+fn number_forms_spacing_sets_and_alternates_map_to_opentype_features() {
+    use wordcraft_doc::props::{CharProps, NumForm, NumSpacing, StyleSet};
+    let f = |t: &[u8; 4], v: u32| wordcraft_fonts::feature_value(t, v);
+    let sheet = wordcraft_doc::styles::StyleSheet::default();
+    let chr = CharProps {
+        num_form: Some(NumForm::OldStyle),
+        num_spacing: Some(NumSpacing::Tabular),
+        stylistic_sets: Some(vec![StyleSet { id: 2, on: true }]),
+        contextual_alternates: Some(false),
+        ..Default::default()
+    };
+    let rc = sheet.resolve_char(None, &chr);
+    assert_eq!(para::number_and_set_features(&rc, false).as_slice(), [f(b"onum", 1), f(b"tnum", 1), f(b"ss02", 1), f(b"calt", 0)]);
+    // Khmer text keeps the shaper's contextual alternates.
+    assert_eq!(para::number_and_set_features(&rc, true).as_slice(), [f(b"onum", 1), f(b"tnum", 1), f(b"ss02", 1)]);
+    let sets = CharProps {
+        stylistic_sets: Some(vec![StyleSet { id: 1, on: false }, StyleSet { id: 20, on: true }]),
+        num_form: Some(NumForm::Lining),
+        ..Default::default()
+    };
+    assert_eq!(para::number_and_set_features(&sheet.resolve_char(None, &sets), false).as_slice(), [f(b"lnum", 1), f(b"ss01", 0), f(b"ss20", 1)]);
+    let defaults = CharProps { num_form: Some(NumForm::Default), num_spacing: Some(NumSpacing::Default), ..Default::default() };
+    assert!(para::number_and_set_features(&sheet.resolve_char(None, &defaults), false).as_slice().is_empty());
+    assert!(para::number_and_set_features(&sheet.resolve_char(None, &CharProps::default()), false).as_slice().is_empty());
+}

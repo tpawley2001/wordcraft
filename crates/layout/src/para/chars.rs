@@ -43,6 +43,69 @@ pub(crate) fn ligature_features(l: wordcraft_doc::props::Ligatures) -> [wordcraf
     [f(b"liga", l.standard), f(b"clig", l.contextual), f(b"hlig", l.historical), f(b"dlig", l.discretional)]
 }
 
+/// Shaping features for one run, kept inline: no heap allocation per run.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FeatureList {
+    buf: [wordcraft_fonts::Feature; FeatureList::CAP],
+    len: usize,
+}
+
+impl FeatureList {
+    /// Kerning and the four ligature features, number form, number spacing, 20 stylistic sets
+    /// and contextual alternates.
+    const CAP: usize = 28;
+
+    pub(crate) fn new() -> FeatureList {
+        FeatureList { buf: [wordcraft_fonts::feature_value(b"kern", 0); FeatureList::CAP], len: 0 }
+    }
+
+    /// Adds `f`; a full list ignores it (the capacity holds every feature WordCraft sets).
+    pub(crate) fn push(&mut self, f: wordcraft_fonts::Feature) {
+        if let Some(slot) = self.buf.get_mut(self.len) {
+            *slot = f;
+            self.len += 1;
+        }
+    }
+
+    pub(crate) fn extend(&mut self, fs: &[wordcraft_fonts::Feature]) {
+        for f in fs {
+            self.push(*f);
+        }
+    }
+
+    pub(crate) fn as_slice(&self) -> &[wordcraft_fonts::Feature] {
+        self.buf.get(..self.len).unwrap_or_default()
+    }
+}
+
+/// The OpenType features a run's number forms (`w14:numForm`: `lnum`/`onum`), number spacing
+/// (`w14:numSpacing`: `pnum`/`tnum`), stylistic sets (`w14:stylisticSets`: `ss01`..`ss20`) and
+/// contextual alternates (`w14:cntxtAlts`: `calt`) ask for. Empty when none is set, so the
+/// shaper's defaults stay. Khmer text keeps the shaper's `calt`, as it keeps its ligatures.
+pub(crate) fn number_and_set_features(rc: &ResolvedChar, khmer: bool) -> FeatureList {
+    use wordcraft_doc::props::{NumForm, NumSpacing, StyleSet};
+    let f = wordcraft_fonts::feature_value;
+    let mut out = FeatureList::new();
+    match rc.num_form {
+        Some(NumForm::Lining) => out.push(f(b"lnum", 1)),
+        Some(NumForm::OldStyle) => out.push(f(b"onum", 1)),
+        Some(NumForm::Default) | None => {}
+    }
+    match rc.num_spacing {
+        Some(NumSpacing::Proportional) => out.push(f(b"pnum", 1)),
+        Some(NumSpacing::Tabular) => out.push(f(b"tnum", 1)),
+        Some(NumSpacing::Default) | None => {}
+    }
+    for s in rc.stylistic_sets.iter().flatten().filter(|s| (1..=StyleSet::MAX_ID).contains(&s.id)) {
+        let tag = [b's', b's', b'0' + s.id / 10, b'0' + s.id % 10];
+        out.push(f(&tag, u32::from(s.on)));
+    }
+    if let Some(on) = rc.contextual_alternates.filter(|_| !khmer) {
+        out.push(f(b"calt", u32::from(on)));
+    }
+    out
+}
+
 /// A Khmer letter, sign or digit (U+1780–U+17FF, Khmer Symbols U+19E0–U+19FF).
 pub(super) fn is_khmer(c: char) -> bool {
     matches!(u32::from(c), 0x1780..=0x17FF | 0x19E0..=0x19FF)
