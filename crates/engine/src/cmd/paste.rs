@@ -45,6 +45,21 @@ pub fn result_text(id: &str) -> &'static str {
     }
 }
 
+/// The LINK field instruction Paste Special > Paste link inserts for a copy from `path` whose
+/// source range is the bookmark `bookmark`, pasted as format `fmt`; `None` for a format that
+/// can't be linked. Stub: see the task spec.
+pub fn link_instr(path: &std::path::Path, bookmark: &str, fmt: &str) -> Option<String> {
+    let _ = (path, bookmark, fmt);
+    None
+}
+
+/// What OK does with a format when Paste link is chosen, as the dialog's Result box says it.
+/// Stub: see the task spec.
+pub fn link_result_text(id: &str) -> String {
+    let _ = id;
+    String::new()
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![CommandSpec::new("edit.pasteSpecial", "Paste Special", "Home › Clipboard › Paste", paste_special).key("Mod+Alt+V").params(
         r#"{"as"?: "formatted"|"rtf"|"html"|"picture"|"text"|"unicode", "text"?: string, "html"?: string, "rtf"?: string, "picture"?: base64}"#,
