@@ -2,6 +2,7 @@
 //! around the text.
 
 use super::{Attrs, Body, FBlock, HashMap, Inline, MAX_OPEN_INSERTIONS, MAX_REGIONS, Para, RevMark, RevisionKind, get, local};
+use crate::model::ObjRev;
 
 /// A `text:changed-region` read from `text:tracked-changes`.
 #[derive(Default)]
@@ -127,13 +128,30 @@ impl Body<'_> {
         let mut paras: Vec<Para> = Vec::new();
         for b in blocks {
             let FBlock::Para(mut p) = b else { continue };
-            // Pictures and other objects carry no revision mark: leave them out.
-            p.inlines.retain(|i| matches!(i, Inline::Text(..) | Inline::Anchor(_)));
-            for i in &mut p.inlines {
-                if let Inline::Text(_, f) = i {
-                    f.del = Some(mark.clone());
+            // Text and objects (pictures, charts, shapes, equations) are the deleted content,
+            // each marked deleted; an object's mark goes before it.
+            let mut kept = Vec::with_capacity(p.inlines.len());
+            let mut rev: Option<Box<ObjRev>> = None;
+            for i in std::mem::take(&mut p.inlines) {
+                // A mark read before an object (text inserted, then deleted) is that object's only.
+                let before = rev.take();
+                match i {
+                    Inline::ObjRev(r) => rev = Some(r),
+                    Inline::Text(t, mut f) => {
+                        f.del = Some(mark.clone());
+                        kept.push(Inline::Text(t, f));
+                    }
+                    Inline::Anchor(a) => kept.push(Inline::Anchor(a)),
+                    o if o.is_object() => {
+                        let mut r = before.unwrap_or_default();
+                        r.del = Some(mark.clone());
+                        kept.push(Inline::ObjRev(r));
+                        kept.push(o);
+                    }
+                    _ => {}
                 }
             }
+            p.inlines = kept;
             paras.push(p);
         }
         let append = |dst: &mut Para, src: Vec<Inline>| {
