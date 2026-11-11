@@ -156,6 +156,8 @@ pub(super) struct Reader {
     pub(super) range_ends: HashSet<i32>,
     pub(super) claimed: HashSet<i32>,
     pub(super) synth: i32,
+    /// Custom note marks: the groups read in the body.
+    pub(super) note_mark: super::note_marks::MarkTrack,
 }
 
 impl Reader {
@@ -166,6 +168,7 @@ impl Reader {
     /// Set the output aside (a header or footer starts) or put it back (it ended), returning the
     /// other one.
     pub(super) fn swap_output(&mut self, mut o: Output) -> Output {
+        self.note_mark.serial = self.note_mark.serial.wrapping_add(1);
         std::mem::swap(&mut o.body, &mut self.body);
         std::mem::swap(&mut o.para, &mut self.para);
         std::mem::swap(&mut o.para_has, &mut self.para_has);
@@ -327,8 +330,9 @@ impl Reader {
             self.st.dest = Dest::Skip;
             return;
         }
+        let custom = if comment { String::new() } else { self.take_custom_mark() };
         let saved = self.swap_output(Output::default());
-        self.sub = Some(Sub { depth: self.depth(), comment, endnote: false, saved: Box::new(saved) });
+        self.sub = Some(Sub { depth: self.depth(), comment, endnote: false, custom, own_mark_done: false, saved: Box::new(saved) });
         self.st.intbl = false;
     }
 
@@ -355,7 +359,7 @@ impl Reader {
         inner.body.truncate(MAX_NOTE_BLOCKS);
         if !sub.comment {
             self.push_mark('N', self.notes.len() as i64, fmt);
-            self.notes.push(NoteData { endnote: sub.endnote, blocks: inner.body });
+            self.notes.push(NoteData { endnote: sub.endnote, custom: sub.custom, blocks: inner.body });
             return;
         }
         let want = self.atn_ref.take().or(self.last_end.take());
@@ -544,6 +548,7 @@ impl Reader {
             return;
         }
         self.stack.push(self.st.clone());
+        self.mark_group_open();
     }
 
     pub(super) fn close(&mut self) {
@@ -554,6 +559,7 @@ impl Reader {
             self.overflow -= 1;
             return;
         }
+        self.mark_group_close();
         self.close_shape_group();
         if self.sub.as_ref().is_some_and(|s| s.depth == self.depth()) {
             self.end_sub();
@@ -669,6 +675,7 @@ impl Reader {
     pub(super) fn end_para(&mut self, in_cell: bool) {
         self.flush_high_surrogate();
         let read = std::mem::take(&mut self.para);
+        self.note_mark.serial = self.note_mark.serial.wrapping_add(1);
         let props = self.para_props(&self.st);
         let mut p = Para { inlines: read.inlines, mark_ins: read.mark_ins, mark_del: read.mark_del, ..props };
         p.mark = self.empty_mark(&p);

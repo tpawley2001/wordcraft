@@ -39,6 +39,7 @@ use crate::model::{self, Cell, FBlock, FTable, Flow, Fmt, Inline, Kind, ListInfo
 mod date;
 mod export;
 mod frames;
+mod note_marks;
 mod parse;
 mod reader;
 mod state;
