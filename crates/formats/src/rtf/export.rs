@@ -328,9 +328,7 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps, doc_gutter: f32, t: &mut Ta
         tw(s.header),
         tw(s.footer)
     ));
-    if tw(s.gutter) != tw(doc_gutter) {
-        o.push_str(&format!("\\guttersxn{}", tw(s.gutter)));
-    }
+    o.push_str(&section_gutter_word(s.gutter, doc_gutter));
     if s.columns.count > 1 {
         o.push_str(&format!("\\cols{}\\colsx{}", s.columns.count, tw(s.columns.space)));
         if s.columns.separator {
@@ -406,6 +404,13 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps, doc_gutter: f32, t: &mut Ta
     o.push_str(&note_words("\\sftn", &s.footnote_pr, s.footnote_pr.num_fmt));
     o.push_str(&note_words("\\saftn", &s.endnote_pr, s.endnote_pr.num_fmt));
     o
+}
+
+/// The `\guttersxn` word of a section whose gutter (points) differs from the document's `\gutter`,
+/// else nothing: a section with the document's gutter needs no word of its own.
+fn section_gutter_word(gutter: f32, doc_gutter: f32) -> String {
+    let tw = |v: f32| if v.is_finite() { ((v * 20.0).round() as i64).max(0) } else { 0 };
+    if tw(gutter) == tw(doc_gutter) { String::new() } else { format!("\\guttersxn{}", tw(gutter)) }
 }
 
 /// The start, restart and number format words of footnote or endnote options `n` (`prefix`:
