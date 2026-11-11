@@ -220,6 +220,14 @@ impl Reader {
             "ts" => self.row_style.style = self.table_style_id(pv),
             "tbllkhdrrows" | "tbllklastrow" | "tbllkhdrcols" | "tbllklastcol" | "tbllknorowband" | "tbllknocolband" => self.look_word(w, on),
             "trhdr" => self.row_header = true,
+            // The row's position, twips; beyond 22 inches clamped.
+            "trleft" => self.row_style.left = pv.clamp(-31_680, 31_680),
+            "trgaph" => self.row_style.gap = pv.clamp(0, 31_680),
+            "tblind" => self.row_style.ind = Some(pv.clamp(-31_680, 31_680)),
+            "tblindtype" => self.row_style.ind_type = pv,
+            "trqc" => self.row_style.align = Some(Align::Center),
+            "trqr" => self.row_style.align = Some(Align::Right),
+            "trql" => self.row_style.align = None,
             // Twips: positive at least, negative exactly, 0 auto; beyond 22 inches ignored.
             "trrh" => {
                 self.row_height = (pv != 0 && pv.unsigned_abs() <= 31680).then(|| (pv.unsigned_abs() as f32 / 20.0, pv < 0));

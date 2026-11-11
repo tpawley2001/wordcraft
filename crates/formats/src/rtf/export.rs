@@ -1477,8 +1477,20 @@ impl Writer {
     fn row_props(&mut self, t: &FTable, ri: usize, row: &[model::Cell], widths: &[f32]) -> String {
         let mut props = String::new();
         let out = &mut props;
-        out.push_str("\\trowd\\trgaph108\\trleft0");
         let extra = t.extra.as_deref();
+        // Its alignment, else its left edge (`\trleft`, which each `\cellx` is measured with).
+        out.push_str("\\trowd");
+        let align = extra.and_then(|x| x.align);
+        match align {
+            Some(Align::Center) => out.push_str("\\trqc"),
+            Some(Align::Right) => out.push_str("\\trqr"),
+            _ => {}
+        }
+        let left = match align {
+            Some(Align::Center | Align::Right) => 0,
+            _ => extra.and_then(|x| x.indent).filter(|i| i.is_finite()).map_or(0, |i| ((i * 20.0).round() as i64).clamp(-31_680, 31_680)),
+        };
+        out.push_str(&format!("\\trgaph108\\trleft{left}"));
         // The table's style and its look.
         if let Some(n) = extra.and_then(|x| x.style.as_deref()).and_then(own_style_num) {
             out.push_str(&format!("\\ts{n}"));
@@ -1540,7 +1552,7 @@ impl Writer {
                 let i = self.t.color(s);
                 out.push_str(&format!("\\clcbpat{i}"));
             }
-            out.push_str(&format!("\\cellx{}", x.round() as i64));
+            out.push_str(&format!("\\cellx{}", (x.round() as i64).saturating_add(left)));
         }
         props
     }

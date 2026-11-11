@@ -1,5 +1,6 @@
 # File-format parity with Microsoft Word
 
+> **Last updated:** 2026-11-11 · **Change:** trivial (P0257: RTF tables keep their left position, `\trleft`/`\tblind`, and centre or right alignment, `\trqc`/`\trqr`, on open and save; the first column is measured from `\trleft`. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0251: `.doc` text box internal margins and vertical alignment); previously trivial (P0240: an opened ODT saves a changed Mirror margins setting and changed hyphenation options instead of the page layouts and default style as read)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0253: RTF picture crop read and written, `\piccropl`/`t`/`r`/`b` against the goal size, as in Word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0250: RTF reads and writes `\endnhere`, Suppress endnotes. Readiness estimates unchanged.)
@@ -920,6 +921,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 | 2026-11-11 | trivial | `.doc`: sprmSFRTLGutter (0x322A) puts the section's gutter on the right of the page, as `w:rtlGutter` does (P0237) |
 | 2026-11-10 | trivial | DOCX: list levels keep `w:tplc`, `w:tentative` and `w:legacy`, `w:numbering` keeps `w:numIdMacAtCleanup`, sections keep `w:rtlGutter` and `w:pgSz/@w:code`; an RTL gutter widens the right margin instead of the left (P0207) |
 | 2026-11-10 | trivial | DOCX: a style's `w:semiHidden`, `w:unhideWhenUsed` and `w:hidden` are written back as read instead of all as `w:semiHidden` + `w:unhideWhenUsed`; `w:aliases`, `w:autoRedefine`, `w:personal`, `w:personalCompose`, `w:personalReply` and `w:rsid` are kept (P0206) |
+| 2026-11-11 | trivial | RTF tables keep their left position and alignment: `\trleftN` is the row's left edge (each `\cellx` measured from the margin, the first column `cellx - trleft` wide), `\tblindN` with `\tblindtype3` the cell text indent (edge = `tblind - trgaph`), `\trqc`/`\trqr` centre or right-align; the first row places the table; written back as `\trleft`, `\trqc`, `\trqr` (P0257) |
 | 2026-11-11 | trivial | P0253: RTF picture crop read and written: `\piccropl`/`\piccropt`/`\piccropr`/`\piccropb` (twips against `\picwgoal`/`\pichgoal`, scale applied after) open as the picture's crop at Word's displayed size, and a cropped picture saves with its uncropped goal and the non-zero crop words; negative and whole-axis crops are not modelled |
 | 2026-11-11 | trivial | P0250: RTF reads and writes a section's `\endnhere` when endnotes go at each section's end (`\aendnotes`); a section without it suppresses its endnotes, as Word reads it |
 | 2026-11-11 | trivial | P0243: RTF footnotes and endnotes with a custom reference mark (`Alpha{\super *}{\footnote …}`, no `\chftn`) keep it on import and export; the mark's text leaves the body text |
