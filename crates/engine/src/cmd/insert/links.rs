@@ -169,14 +169,14 @@ pub const MAX_SCREEN_TIP: usize = 255;
 /// The `screenTip` param of `insert.link`: absent (`None`: a selected link keeps its tip), empty
 /// (`Some(None)`: the tip is cleared) or the text to show on hover. Longer than
 /// [`MAX_SCREEN_TIP`] characters, holding a control character or not a string: refused.
-fn screen_tip(v: &Value) -> Result<Option<Option<String>>, CmdError> {
+fn screen_tip(v: &Value) -> Result<Option<Option<Box<str>>>, CmdError> {
     let Some(tip) = v.get("screenTip") else { return Ok(None) };
     let bad = || CmdError::Params("bad screenTip".into());
     let tip = tip.as_str().ok_or_else(bad)?;
     if tip.chars().count() > MAX_SCREEN_TIP || tip.chars().any(char::is_control) {
         return Err(bad());
     }
-    Ok(Some((!tip.is_empty()).then(|| tip.to_string())))
+    Ok(Some((!tip.is_empty()).then(|| Box::from(tip))))
 }
 
 /// The ScreenTip of the link at the selection (the character at its start, or just before a
@@ -189,8 +189,9 @@ pub fn selected_link_tip(s: &Session) -> String {
         .flatten()
         .map(|off| para.props_of_char(off))
         .find(|c| c.link.is_some())
-        .and_then(|c| c.link_tip.clone())
+        .and_then(|c| c.link_tip.as_deref())
         .unwrap_or_default()
+        .to_string()
 }
 
 /// The `text` to retype a selection with before linking it: only when it differs from the selected

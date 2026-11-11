@@ -97,7 +97,7 @@ impl Reader<'_> {
         // carrying the link, so a tab in it reaches its tab stop and the `PAGEREF` in a table of
         // contents entry (Word for the web writes them this way) stays a field of its own (#2174).
         if !nested_in_instr && let Some(target) = hyperlink_target(&f.instr) {
-            let tip = hyperlink_tip(&f.instr);
+            let tip = hyperlink_tip(&f.instr).map(Box::<str>::from);
             for (it, mut p) in f.buf {
                 p.link.get_or_insert_with(|| target.clone());
                 if let Some(tip) = &tip {

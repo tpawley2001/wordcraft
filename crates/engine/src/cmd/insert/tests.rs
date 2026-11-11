@@ -436,7 +436,7 @@ fn local_civil_date_follows_the_utc_offset() {
 /// The ScreenTip of every character of the body's first paragraph, with its link.
 fn link_tips(s: &Session) -> Vec<(Option<String>, Option<String>)> {
     let para = s.doc.body.first().and_then(|b| b.as_para()).unwrap();
-    para.text.char_indices().map(|(i, _)| para.props_of_char(i)).map(|c| (c.link.clone(), c.link_tip.clone())).collect()
+    para.text.char_indices().map(|(i, _)| para.props_of_char(i)).map(|c| (c.link.clone(), c.link_tip.as_deref().map(str::to_string))).collect()
 }
 
 fn document_xml(s: &Session) -> String {

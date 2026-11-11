@@ -29,7 +29,7 @@ pub(super) fn link_and_tip_under(app: &WordApp, layout: &DocLayout, page: usize,
     [(pos.off, para.next_boundary(pos.off)), (para.prev_boundary(pos.off), pos.off)].into_iter().filter(|(a, b)| a < b).find_map(|(a, b)| {
         let props = para.props_of_char(a);
         let link = match props.link.clone().filter(|l| !l.is_empty()) {
-            Some(link) => (link, props.link_tip.clone().filter(|t| !t.is_empty())),
+            Some(link) => (link, props.link_tip.as_deref().filter(|t| !t.is_empty()).map(str::to_string)),
             None => (field_link(para.object_at(a)?)?, None),
         };
         let (from, to) = (Pos { off: a, ..pos.clone() }, Pos { off: b, ..pos.clone() });

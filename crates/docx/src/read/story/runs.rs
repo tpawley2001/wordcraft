@@ -36,7 +36,7 @@ impl Reader<'_> {
                 };
                 // A link with no target of its own keeps the outer link's ScreenTip too.
                 if own {
-                    c.link_tip = k.attr("w:tooltip").filter(|t| !t.is_empty()).map(str::to_string);
+                    c.link_tip = k.attr("w:tooltip").filter(|t| !t.is_empty()).map(Box::from);
                 }
                 self.read_inline_children(sc, pb, k, rels, &c, depth + 1);
             }

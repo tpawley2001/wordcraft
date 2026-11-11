@@ -70,7 +70,7 @@ pub struct ResolvedChar {
     pub link: Option<String>,
     /// The hyperlink's ScreenTip, shown on hover instead of the address.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub link_tip: Option<String>,
+    pub link_tip: Option<Box<str>>,
     pub ins: Option<u32>,
     pub del: Option<u32>,
     /// The revision of a tracked formatting change (`w:rPrChange`) of the run.

@@ -426,7 +426,7 @@ pub struct CharProps {
     /// A hyperlink's ScreenTip (`w:hyperlink/@w:tooltip`, a HYPERLINK field's `\o`): the text shown on hover
     /// instead of the address. Only meaningful on a run that has `link`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub link_tip: Option<String>,
+    pub link_tip: Option<Box<str>>,
     /// Tracked insertion: index into `Document::revisions`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ins: Option<u32>,
