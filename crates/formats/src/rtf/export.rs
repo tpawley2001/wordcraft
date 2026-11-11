@@ -1548,7 +1548,7 @@ pub fn export(doc: &Document) -> String {
     export_with(&flow.meta, doc, &w, &own_entries, &body)
 }
 
-/// `{\\*\\userprops …}` (RTF 1.9.1 "User Properties") for the custom properties RTF has a type
+/// `{\*\userprops …}` (RTF 1.9.1 "User Properties") for the custom properties RTF has a type
 /// for, in document order; empty when there are none.
 fn user_props(props: &[wordcraft_doc::CustomProp]) -> String {
     let mut out = String::new();
