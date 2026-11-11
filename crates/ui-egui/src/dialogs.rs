@@ -1147,6 +1147,8 @@ pub mod dialogs_templates;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_border_options;
+#[cfg(test)]
 mod tests_font_spacing;
 #[cfg(test)]
 mod tests_font_underline;

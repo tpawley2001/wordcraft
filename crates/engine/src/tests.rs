@@ -13319,3 +13319,4 @@ mod linked_style_apply;
 mod style_pane_options;
 mod backup_copy;
 mod formula_bookmarks;
+mod border_from_text;
