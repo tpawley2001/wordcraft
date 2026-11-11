@@ -47,7 +47,8 @@ fn choosing_symbols_in_the_dialog_numbers_the_documents_footnotes_with_them() {
     assert_eq!(params["numFmt"], "chicago");
     a.dialog = None;
     a.run("references.noteOptions", params).unwrap();
-    assert_eq!(a.session.doc.settings.footnote_pr.num_fmt, Some(NumFormat::Chicago));
+    // The document's note format lives in `Settings::footnote_format` (saved as settings.xml's w:footnotePr/w:numFmt).
+    assert_eq!(a.session.doc.settings.footnote_format, NumFormat::Chicago);
     // The dialog opens again on the symbols; endnotes keep their own format.
     a.run("references.noteOptions", json!({})).unwrap();
     let Some(Dialog::NoteOptions { form }) = &a.dialog else { panic!("dialog") };
