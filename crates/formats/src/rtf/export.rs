@@ -1545,11 +1545,34 @@ pub fn export(doc: &Document) -> String {
     w.blocks(&flow.blocks, 0, "\\par", &mut body, 0);
     let own_entries = own_style_entries(doc, &mut w.t);
     set_own_styles(before);
-    export_with(&flow.meta, &w, &own_entries, &body, &doc.last_section, &doc.settings)
+    export_with(&flow.meta, doc, &w, &own_entries, &body)
+}
+
+/// `{\\*\\userprops …}` (RTF 1.9.1 "User Properties") for the custom properties RTF has a type
+/// for, in document order; empty when there are none.
+fn user_props(props: &[wordcraft_doc::CustomProp]) -> String {
+    let mut out = String::new();
+    for p in props {
+        let (ptype, value) = match p.kind.as_str() {
+            "lpwstr" => (30, p.value.as_str()),
+            "i4" => (3, p.value.as_str()),
+            "r8" => (5, p.value.as_str()),
+            "bool" => (11, if p.value.eq_ignore_ascii_case("true") || p.value == "1" { "1" } else { "0" }),
+            "filetime" => (64, p.value.as_str()),
+            // `raw` vectors and blobs, and kinds RTF has no type for.
+            _ => continue,
+        };
+        out.push_str(&format!("{{\\propname {}}}\\proptype{ptype}{{\\staticval {}}}", esc(&p.name), esc(value)));
+        if let Some(link) = &p.link_target {
+            out.push_str(&format!("{{\\linkval {}}}", esc(link)));
+        }
+    }
+    if out.is_empty() { out } else { format!("{{\\*\\userprops {out}}}\n") }
 }
 
 /// The RTF file: its header (`own_styles`: the document's own stylesheet entries) and `body`.
-fn export_with(m: &Meta, w: &Writer, own_styles: &str, body: &str, sec: &wordcraft_doc::SectionProps, settings: &wordcraft_doc::Settings) -> String {
+fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &str) -> String {
+    let (sec, settings, core) = (&doc.last_section, &doc.settings, &doc.core);
     let mut out = String::from("{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\\uc1\n{\\fonttbl");
     for (i, f) in w.t.fonts.iter().enumerate() {
         let fam = if model::is_mono(f) { "\\fmodern" } else { "\\fswiss" };
@@ -1596,10 +1619,21 @@ fn export_with(m: &Meta, w: &Writer, own_styles: &str, body: &str, sec: &wordcra
             out.push_str(&format!("{{\\{k} {}}}", esc(v)));
         }
     }
-    if let Some(d) = rtf_date(&m.created) {
-        out.push_str(&format!("{{\\creatim{d}}}"));
+    for (k, v) in [("operator", &core.last_modified_by), ("category", &core.category)] {
+        if !v.is_empty() {
+            out.push_str(&format!("{{\\{k} {}}}", esc(v)));
+        }
+    }
+    if core.revision > 0 {
+        out.push_str(&format!("{{\\version{}}}", core.revision));
+    }
+    for (k, v) in [("creatim", &m.created), ("revtim", &core.modified), ("printim", &core.last_printed)] {
+        if let Some(d) = rtf_date(v) {
+            out.push_str(&format!("{{\\{k}{d}}}"));
+        }
     }
     out.push_str("}\n");
+    out.push_str(&user_props(&doc.custom_props));
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
     let notes = doc_note_words(settings);

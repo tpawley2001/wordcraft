@@ -382,6 +382,21 @@ impl Reader {
             "subject" if self.in_info() => Some(Dest::Info(3)),
             "keywords" if self.in_info() => Some(Dest::Info(4)),
             "doccomm" if self.in_info() => Some(Dest::Info(5)),
+            "operator" if self.in_info() => Some(Dest::Info(6)),
+            "category" if self.in_info() => Some(Dest::Info(7)),
+            "creatim" | "revtim" | "printim" if self.in_info() => {
+                let which = match w {
+                    "creatim" => 0,
+                    "revtim" => 1,
+                    _ => 2,
+                };
+                self.in_date = Some((which, self.depth()));
+                Some(Dest::Skip)
+            }
+            "userprops" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => Some(Dest::UserProps),
+            "propname" if self.st.dest == Dest::UserProps => Some(Dest::Info(8)),
+            "staticval" if self.st.dest == Dest::UserProps => Some(Dest::Info(9)),
+            "linkval" if self.st.dest == Dest::UserProps => Some(Dest::Info(10)),
             "listtable" => Some(Dest::ListTable),
             "revtbl" => Some(Dest::RevTbl),
             "oldcprops" => Some(Dest::OldProps(false)),
@@ -429,10 +444,6 @@ impl Reader {
             "pntxtb" | "pntxta" if self.pn_depth.is_some() => {
                 self.pn_txt.clear();
                 Some(if w == "pntxtb" { Dest::PnTxtB } else { Dest::PnTxtA })
-            }
-            "creatim" if self.in_info() => {
-                self.in_creatim = true;
-                Some(Dest::Skip)
             }
             _ => None,
         }
@@ -496,8 +507,12 @@ impl Reader {
         match self.st.dest {
             Dest::ShapeInst | Dest::ShapeName | Dest::ShapeValue => true,
             Dest::Skip | Dest::Object => {
-                if self.in_creatim {
-                    self.record_created_part(word, value);
+                self.record_date_part(word, value);
+                true
+            }
+            Dest::UserProps => {
+                if word == "proptype" {
+                    self.info_more.set_prop_type(value);
                 }
                 true
             }
@@ -717,7 +732,13 @@ impl Reader {
     }
 
     fn skip_destination_word(&mut self, word: &str, value: i32, first_in_group: bool) -> bool {
-        let kept_info = self.in_info() && matches!(word, "title" | "author" | "subject" | "keywords" | "doccomm" | "creatim");
+        // `{\version N}` is a value, not a destination with text.
+        if word == "version" && self.st.dest == Dest::Skip && self.in_info() {
+            self.info_more.revision = value.max(0).unsigned_abs();
+            return true;
+        }
+        let kept_info = self.in_info()
+            && matches!(word, "title" | "author" | "subject" | "keywords" | "doccomm" | "operator" | "category" | "creatim" | "revtim" | "printim");
         if !matches!(self.st.dest, Dest::Skip | Dest::Object) || kept_info {
             return false;
         }
@@ -730,15 +751,16 @@ impl Reader {
             // Give them their own skipped destination so a nested result stays hidden.
             self.st.dest = Dest::Skip;
         }
-        if self.in_creatim {
-            self.record_created_part(word, value);
-        }
+        self.record_date_part(word, value);
         true
     }
 
-    fn record_created_part(&mut self, word: &str, value: i32) {
+    /// A `\yr \mo \dy \hr \min` word inside `\creatim`, `\revtim` or `\printim`.
+    fn record_date_part(&mut self, word: &str, value: i32) {
+        let Some((which, _)) = self.in_date else { return };
+        let Some(date) = self.dates.get_mut(which) else { return };
         let value = value.clamp(0, 9999) as u32;
-        let created = self.created.get_or_insert((0, 1, 1, 0, 0));
+        let created = date.get_or_insert((0, 1, 1, 0, 0));
         match word {
             "yr" => created.0 = value,
             "mo" => created.1 = value,
