@@ -344,11 +344,14 @@ fn the_paragraph_budget_counts_down_and_notes_the_overrun() {
 }
 
 /// The cap is far above any real document (10,000 pages of 50 paragraphs is 500,000), and a
-/// paragraph outside a table no longer carries a table context (a `ParaOut` was 1,224 bytes).
+/// paragraph outside a table no longer carries a table context (a `ParaOut` was 1,224 bytes):
+/// a `ParaOut` is its paragraph plus the end CP and a boxed table context, nothing more.
 #[test]
 fn the_paragraph_cap_leaves_room_and_a_paragraph_stays_small() {
     const { assert!(super::MAX_PARAGRAPHS >= 1_000_000) };
-    assert!(std::mem::size_of::<crate::table::ParaOut>() < 1000, "{}", std::mem::size_of::<crate::table::ParaOut>());
+    let (out, para) = (std::mem::size_of::<crate::table::ParaOut>(), std::mem::size_of::<wordcraft_doc::Paragraph>());
+    assert!(out <= para + 16, "ParaOut {out}, Paragraph {para}");
+    assert!(out < 1024, "{out}");
     let doc = read(&marks_doc('\r', 10)).expect("opens");
     assert_eq!(doc.body.len(), 10);
 }
