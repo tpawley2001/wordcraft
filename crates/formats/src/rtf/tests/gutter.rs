@@ -2,21 +2,16 @@
 //! form of DOCX `w:pgMar/@w:gutter` and `w:rtlGutter`.
 
 use super::*;
-use wordcraft_doc::{Block, SectionProps};
+use wordcraft_doc::SectionProps;
 
 fn doc(rtf: &str) -> Document {
     import(rtf.as_bytes()).unwrap()
 }
 
-/// The section properties in document order (each is stored on a paragraph).
+/// The section properties in document order: `Document::sections`, which ends with the document's
+/// last section (`Document::last_section`, not held on a paragraph).
 fn sections(d: &Document) -> Vec<SectionProps> {
-    d.body
-        .iter()
-        .filter_map(|b| match b.as_ref() {
-            Block::Para(p) => p.section.as_deref().cloned(),
-            _ => None,
-        })
-        .collect()
+    d.sections().into_iter().map(|(_, s)| s.clone()).collect()
 }
 
 /// (gutter in points, gutter on the right) of the first and the last section.
