@@ -911,6 +911,9 @@ pub fn state(s: &Session) -> Value {
         "caps": all.iter().all(|r| r.caps),
         "hidden": all.iter().all(|r| r.hidden),
         "spacing": same(&|r| json!(r.spacing)),
+        // Scale, percent (100 = normal), and Position, points (raised above zero).
+        "scale": same(&|r| json!(r.scale)),
+        "position": same(&|r| json!(r.position)),
         "emphasisMark": same(&|r| json!(r.emphasis.ooxml())),
         // Kerning for fonts: the smallest kerned size, points; 0 = off.
         "kern": same(&|r| json!(r.kern)),

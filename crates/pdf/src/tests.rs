@@ -1412,9 +1412,14 @@ fn cosmetic_metafile_pens_are_thin_but_visible() {
 /// EMF text records: EXTCREATEFONTINDIRECTW (Arial, 20 units high) in slot 1, SELECTOBJECT,
 /// SETTEXTCOLOR (black), then EXTTEXTOUTW `text` at (5, 40) with no dx array.
 fn emf_text_records(text: &str) -> Vec<Vec<u8>> {
+    emf_font_text_records("Arial", text)
+}
+
+/// [`emf_text_records`] in the font `face`.
+fn emf_font_text_records(face: &str, text: &str) -> Vec<Vec<u8>> {
     let mut font = [82i32.to_le_bytes(), 104u32.to_le_bytes(), 1i32.to_le_bytes(), (-20i32).to_le_bytes()].concat();
     font.extend([0i32, 0, 0, 400, 0, 0].iter().flat_map(|v| v.to_le_bytes()));
-    let mut name: Vec<u8> = "Arial".encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let mut name: Vec<u8> = face.encode_utf16().flat_map(u16::to_le_bytes).collect();
     name.resize(64, 0);
     font.extend(name);
     let units: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
@@ -1454,6 +1459,41 @@ fn metafile_text_records_are_drawn_as_text() {
     let bytes = export(&d, &PdfOptions { compress: false, tagged: false, ..Default::default() }).unwrap();
     let text = extract_text(&bytes).concat();
     assert!(text.contains("Cell42"), "the metafile's text is drawn: {text:?}");
+}
+
+/// A metafile run set in Wingdings, when Wingdings is not installed, draws its bullet code as the
+/// Unicode symbol (as Word shows it), and that symbol is the run's PDF text, not U+F0A7.
+#[test]
+fn metafile_wingdings_text_is_written_as_its_unicode_symbol() {
+    if !wordcraft_fonts::word::resolve("Wingdings", false, false).substituted {
+        return; // The real font draws its own codes.
+    }
+    let mut recs = emf_font_text_records("Wingdings", "\u{F0A7}");
+    recs.push(emf_rec(14, &[0; 3]));
+    let mut d = Document::new();
+    let media = d.add_media(emf_file(&recs), "emf");
+    let mut p = Paragraph::with_text("Bullet: ", CharProps::default());
+    let n = p.len();
+    p.insert_object(
+        n,
+        InlineObject::Image {
+            media,
+            w: 70.0,
+            h: 70.0,
+            alt: String::new(),
+            float: Default::default(),
+            crop: [0.0; 4],
+            fx: Default::default(),
+            ole: None,
+        },
+        &CharProps::default(),
+    )
+    .unwrap();
+    d.body = vec![para_block(p)];
+    let bytes = export(&d, &PdfOptions { compress: false, tagged: false, ..Default::default() }).unwrap();
+    let text = extract_text(&bytes).concat();
+    assert!(text.contains('\u{25AA}'), "the bullet is written as its symbol: {text:?}");
+    assert!(!text.contains('\u{F0A7}'), "not as the Wingdings code: {text:?}");
 }
 
 /// #455: a link to a bookmark after a page break inside its paragraph goes to the page the

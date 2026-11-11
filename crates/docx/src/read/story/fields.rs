@@ -1,5 +1,5 @@
 use super::{CharProps, FieldState, InlineObject, Item, MAX_FIELD_DEPTH, PB, Phase, Reader, StoryCtx};
-use wordcraft_doc::link::hyperlink_target;
+use wordcraft_doc::link::{hyperlink_target, hyperlink_tip};
 
 /// Enclosed characters (`eq \o\ac(○,字)`), with their style from the code's font sizes: Word
 /// enlarges the symbol (bigger than the text, which keeps the field's size) or shrinks the text
@@ -97,8 +97,12 @@ impl Reader<'_> {
         // carrying the link, so a tab in it reaches its tab stop and the `PAGEREF` in a table of
         // contents entry (Word for the web writes them this way) stays a field of its own (#2174).
         if !nested_in_instr && let Some(target) = hyperlink_target(&f.instr) {
+            let tip = hyperlink_tip(&f.instr).map(Box::<str>::from);
             for (it, mut p) in f.buf {
                 p.link.get_or_insert_with(|| target.clone());
+                if let Some(tip) = &tip {
+                    p.link_tip.get_or_insert_with(|| tip.clone());
+                }
                 match it {
                     Item::Text(t) => self.emit_text(sc, pb, &t, &p),
                     Item::Obj(o) => self.emit_obj(sc, pb, *o, &p),
