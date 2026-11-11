@@ -215,8 +215,4 @@ pub mod p {
 
 #[cfg(test)]
 #[rustfmt::skip]
-// `tests/shape_format_painter.rs` binds Shape A's outline width (`aw`) without reading it and ends
-// its `let … else` matches with `unreachable!()`; without this, clippy's `-D warnings` over the
-// test targets fails on them. Tests only: the crate's deny still holds for production code.
-#[allow(unused_variables, clippy::unreachable)]
 mod tests;
