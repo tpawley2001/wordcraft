@@ -287,7 +287,9 @@ impl Reader {
                     }
                 }
             }
-            Dest::Info(_) => self.info_text.push_str(s),
+            // Cut to `MAX_INFO_TEXT` at the group's end; this bounds what a hostile file makes us hold.
+            Dest::Info(_) if self.info_text.len() <= super::state::MAX_INFO_TEXT => self.info_text.push_str(s),
+            Dest::Info(_) => {}
             Dest::Generator => {
                 if let Some(g) = self.generator.as_mut()
                     && g.len() < 256
@@ -350,7 +352,7 @@ impl Reader {
                     self.pn_txt.push(c);
                 }
             }
-            Dest::Skip | Dest::Object | Dest::ListTable | Dest::ListOverride | Dest::OldProps(_) | Dest::OldSect | Dest::Pn => {}
+            Dest::Skip | Dest::Object | Dest::ListTable | Dest::ListOverride | Dest::OldProps(_) | Dest::OldSect | Dest::Pn | Dest::UserProps => {}
         }
     }
 

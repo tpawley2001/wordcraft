@@ -62,6 +62,118 @@ pub(super) enum Dest {
     PnTxtA,
     /// The program that wrote the file (`{\*\generator …}`): its text is kept.
     Generator,
+    /// User properties (`{\*\userprops …}`, RTF 1.9.1 "User Properties"): `\proptypeN` is read
+    /// here, `\propname`, `\staticval` and `\linkval` are text groups (`Info(8..=10)`).
+    UserProps,
+}
+
+/// Longest text kept of one information-group field or user property name or value (bytes).
+pub(super) const MAX_INFO_TEXT: usize = 64 * 1024;
+/// Most user properties one file may bring in.
+pub(super) const MAX_USER_PROPS: usize = 1_000;
+
+/// Cut `s` to at most `max` bytes, at a character boundary.
+pub(super) fn truncate_chars(s: &mut String, max: usize) {
+    if s.len() > max {
+        let mut end = max;
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        s.truncate(end);
+    }
+}
+
+/// What the information group says beyond the flow model's metadata: `\operator`, `\category`
+/// and `\version` (the dates are read with `\creatim`), and the user properties.
+#[derive(Debug, Default)]
+pub(super) struct InfoMore {
+    pub(super) last_modified_by: String,
+    pub(super) category: String,
+    pub(super) revision: u32,
+    pub(super) props: Vec<wordcraft_doc::CustomProp>,
+    /// The user property being read: its name, `\proptypeN`, value and linked bookmark.
+    pub(super) cur: Option<UserProp>,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct UserProp {
+    pub(super) name: String,
+    pub(super) ptype: i32,
+    pub(super) value: String,
+    pub(super) link: Option<String>,
+}
+
+impl InfoMore {
+    /// The text of a `\propname` (8), `\staticval` (9) or `\linkval` (10) group. A name starts
+    /// a new property, committing the one before it.
+    pub(super) fn user_prop_text(&mut self, k: u8, t: String) {
+        if k == 8 {
+            self.commit_user_prop();
+            self.cur = Some(UserProp { name: t, ..Default::default() });
+            return;
+        }
+        if let Some(p) = self.cur.as_mut() {
+            if k == 9 {
+                p.value = t;
+            } else {
+                p.link = Some(t);
+            }
+        }
+    }
+
+    pub(super) fn set_prop_type(&mut self, n: i32) {
+        if let Some(p) = self.cur.as_mut() {
+            p.ptype = n;
+        }
+    }
+
+    /// Keep the property being read, if it has a name: a later one of the same name (in any
+    /// case) replaces it.
+    pub(super) fn commit_user_prop(&mut self) {
+        let Some(p) = self.cur.take() else { return };
+        if p.name.is_empty() {
+            return;
+        }
+        let (kind, value) = user_prop_value(p.ptype, p.value);
+        let link_target = p.link;
+        let room = self.props.len() < MAX_USER_PROPS;
+        match self.props.iter_mut().find(|q| q.name.eq_ignore_ascii_case(&p.name)) {
+            Some(q) => (q.kind, q.value, q.link_target) = (kind.into(), value, link_target),
+            None if room => self.props.push(wordcraft_doc::CustomProp { name: p.name, kind: kind.into(), value, link_target, ..Default::default() }),
+            None => {}
+        }
+    }
+}
+
+/// A user property's variant type and value from its `\proptypeN` and `\staticval` text; a value
+/// that doesn't read as its type stays text.
+fn user_prop_value(ptype: i32, v: String) -> (&'static str, String) {
+    match ptype {
+        3 => match v.parse::<i32>() {
+            Ok(n) => ("i4", n.to_string()),
+            Err(_) => ("lpwstr", v),
+        },
+        5 if v.parse::<f64>().is_ok_and(f64::is_finite) => ("r8", v),
+        11 => match v.to_ascii_lowercase().as_str() {
+            "1" | "true" => ("bool", "true".into()),
+            "0" | "false" => ("bool", "false".into()),
+            _ => ("lpwstr", v),
+        },
+        64 => match prop_date(&v) {
+            Some(d) => ("filetime", d),
+            None => ("lpwstr", v),
+        },
+        _ => ("lpwstr", v),
+    }
+}
+
+/// `YYYY-MM-DDTHH:MM:SSZ` from a date property's value that starts with a valid `YYYY-MM-DD`; the
+/// time after it is read when given.
+fn prop_date(v: &str) -> Option<String> {
+    let date = chrono::NaiveDate::parse_from_str(v.get(..10)?, "%Y-%m-%d").ok()?;
+    let part = |a: usize, b: usize, max: u32| v.get(a..b).and_then(|x| x.parse::<u32>().ok()).filter(|n| *n <= max).unwrap_or(0);
+    let (h, mi, sec) = (part(11, 13, 23), part(14, 16, 59), part(17, 19, 59));
+    Some(format!("{}T{h:02}:{mi:02}:{sec:02}Z", date.format("%Y-%m-%d")))
 }
 
 /// Word 6.0/95 paragraph numbering (`{\*\pn …}`, RTF 1.9.1 "Bullets and Numbering"): what one
@@ -449,6 +561,8 @@ pub(super) struct DocOpts {
     /// `\widowctrl`: widow and orphan control on for the paragraphs that don't say
     /// (`\widctlpar`/`\nowidctlpar`). Without it Word has it off for them.
     pub(super) widow_control: bool,
+    /// `\wraptrsp`: Wrap trailing spaces onto the next line.
+    pub(super) wrap_trail_spaces: Option<bool>,
 }
 
 impl DocOpts {
@@ -477,6 +591,7 @@ impl DocOpts {
                 }
             }
             "widowctrl" => self.widow_control = true,
+            "wraptrsp" => self.wrap_trail_spaces = Some(on),
             _ => return false,
         }
         true
@@ -504,6 +619,9 @@ impl DocOpts {
         }
         if let Some(v) = self.consecutive_hyphen_limit {
             s.consecutive_hyphen_limit = u32::try_from(v).unwrap_or(0);
+        }
+        if let Some(v) = self.wrap_trail_spaces {
+            s.wrap_trail_spaces = v;
         }
     }
 }

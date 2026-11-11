@@ -1,5 +1,6 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-11 · **Change:** trivial (P0222: a one-row floating table placed relative to the paragraph stays on its anchor's page past the bottom margin and ends at the page edge at most, as in Word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.)
@@ -168,6 +169,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-11: P0228: in an RTF document with `\wraptrsp` (Wrap trailing spaces) a justified line keeps its overrunning word only when the word's first character overruns by less than half the space before it, and squeezed RTF lines leave runs of spaces at full width, as in Word; `w:wrapTrailSpaces` round-trips in DOCX. Readiness estimates unchanged.
 - 2026-11-08: P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged.
 - 2026-11-08: P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.
 - 2026-11-08 · P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.

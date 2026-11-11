@@ -228,6 +228,13 @@ pub(crate) fn layout_box(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
     // Word has no frames in a text box: a framed paragraph there (its style's frame, usually)
     // runs with the box's text (#2357).
     let frames = !matches!(story, StoryRef::Part(id) if ctx.doc.parts.get(&id).is_some_and(|p| p.kind == wordcraft_doc::PartKind::TextBox));
+    // Word: a Top and Bottom object anchored in a header or footer doesn't move that header's or
+    // footer's own lines of text (they run as if it were in front of the text); it still counts
+    // for where the body starts. A paragraph of only pictures still goes below it (Word's PDF: a
+    // header's inline logo under a Top and Bottom text box, `tests::header_extent`). Its table
+    // cells, like the body, keep text above and below it.
+    let hf_over = !in_cell
+        && matches!(story, StoryRef::Part(id) if ctx.doc.parts.get(&id).is_some_and(|p| matches!(p.kind, wordcraft_doc::PartKind::Header | wordcraft_doc::PartKind::Footer)));
     // The bottom of the last paragraph's lines.
     let mut prev_end = 0.0f32;
     for (i, b) in blocks.iter().enumerate() {
@@ -280,6 +287,7 @@ pub(crate) fn layout_box(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                 let mut floats = HashMap::new();
                 // A header or footer cell's floats placed on the page: no room taken in the cell.
                 let mut pinned = HashMap::new();
+                let text_over = hf_over && p.text.chars().any(|c| c != '\u{FFFC}' && !c.is_whitespace());
                 let left_out = left_out_objects(ctx.doc, p, table.map(|t| &t.chr), ctx.opts.show_hidden, ctx.hide_deleted);
                 for (oi, o) in p.objects.iter().enumerate() {
                     let Some((w, h, float)) = floating(o) else { continue };
@@ -306,8 +314,10 @@ pub(crate) fn layout_box(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                     {
                         r.x = keep_in_cell(r.x, r.w, left, right);
                     }
-                    let outline = ctx.wrap_outline(o);
-                    excl.extend(wrap_area(r, float, outline.as_deref().map(Vec::as_slice)));
+                    if !(text_over && float.wrap == Wrap::TopAndBottom) {
+                        let outline = ctx.wrap_outline(o);
+                        excl.extend(wrap_area(r, float, outline.as_deref().map(Vec::as_slice)));
+                    }
                     floats.insert(oi, r);
                 }
                 let rel = rel_exclusions(&excl, 0.0, y);
