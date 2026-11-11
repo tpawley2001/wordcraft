@@ -1074,12 +1074,6 @@ impl WordApp {
     }
 }
 
-/// The dialog a user-run command opens when it lacks the input it needs (scripts and agents get
-/// the command's own error or default instead): Select Recipients and Edit Recipient List without
-/// data, Insert Merge Field without a field, Find Recipient without text, the If and Skip
-/// Record If rules (or Rules with no rule at all) without a field, Finish & Merge and Print
-/// Documents without records, Table Properties without settings, Symbol and Field without a
-/// character or code, and Enclose Characters without a shape.
 /// Whether `id` asks Update page numbers only or Update entire table first: Update Table with a
 /// table of contents in the body, or Update Field with the selection reaching into it, without
 /// `pageNumbersOnly` saying which. F9 elsewhere updates fields without asking.
@@ -1102,6 +1096,12 @@ fn asks_update_toc(app: &WordApp, id: &str, params: &Value) -> bool {
     }
 }
 
+/// The dialog a user-run command opens when it lacks the input it needs (scripts and agents get
+/// the command's own error or default instead): Select Recipients and Edit Recipient List without
+/// data, Insert Merge Field without a field, Find Recipient without text, the If and Skip
+/// Record If rules (or Rules with no rule at all) without a field, Finish & Merge and Print
+/// Documents without records, Table Properties without settings, Symbol and Field without a
+/// character or code, and Enclose Characters without a shape.
 fn input_dialog(id: &str, params: &Value) -> Option<&'static str> {
     input_dialog_mailings(id, params)
         .or_else(|| input_dialog_insert(id, params))
