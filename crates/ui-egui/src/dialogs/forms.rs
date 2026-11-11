@@ -287,6 +287,16 @@ pub struct TableForm {
     pub cell_width: f32,
     /// `top`, `center` or `bottom`.
     pub valign: String,
+    /// Measure in: the table's preferred width is a percentage of the text column, and `width`
+    /// holds that percentage.
+    pub width_percent: bool,
+    /// Alt Text › Title (`w:tblCaption`).
+    pub alt_title: String,
+    /// Alt Text › Description (`w:tblDescription`).
+    pub alt_description: String,
+    /// The section's text width in points, for converting between Percent and the unit.
+    #[serde(skip)]
+    pub text_width: f32,
 }
 
 /// The Cell Margins dialog's values, in the interface unit.
@@ -352,11 +362,16 @@ impl TableForm {
             .collect();
         let cell = t.rows.get(r).and_then(|x| x.cells.get(c)).map(|x| x.props.clone()).unwrap_or_default();
         let tw = wordcraft_engine::cmd::page::sect(s).text_width();
-        let width = t.props.width_pct.filter(|p| *p > 0.0).map(|p| tw * p.min(100.0) / 100.0).or(t.props.width.filter(|w| *w > 0.0));
         let fin = |v: f32| if v.is_finite() { v } else { 0.0 };
+        // A percentage of the text column shows as that percentage, measured in Percent.
+        let pct = t.props.width_pct.filter(|p| p.is_finite() && *p > 0.0).map(|p| p.min(100.0));
+        let width = t.props.width.filter(|w| *w > 0.0);
         Some(TableForm {
-            width_on: width.is_some(),
-            width: fin(width.unwrap_or(tw)) / k,
+            width_on: pct.is_some() || width.is_some(),
+            width: match pct {
+                Some(p) => p,
+                None => fin(width.unwrap_or(tw)) / k,
+            },
             align: match t.props.align {
                 Some(Align::Center) => "center",
                 Some(Align::Right) => "right",
@@ -380,7 +395,32 @@ impl TableForm {
                 _ => "top",
             }
             .into(),
+            width_percent: pct.is_some(),
+            alt_title: t.props.caption.clone().unwrap_or_default(),
+            alt_description: t.props.description.clone().unwrap_or_default(),
+            text_width: fin(tw),
         })
+    }
+
+    /// The commands OK runs, in order: `table.properties` with what differs from `basis`, then
+    /// `table.altText` with the changed Title and Description (an emptied box clears).
+    pub fn commands(&self, basis: &TableForm) -> Vec<(&'static str, Value)> {
+        let mut out = Vec::new();
+        let changes = self.changes(basis);
+        if changes.as_object().is_some_and(|m| !m.is_empty()) {
+            out.push(("table.properties", changes));
+        }
+        let mut alt = serde_json::Map::new();
+        if self.alt_title != basis.alt_title {
+            alt.insert("title".into(), json!(self.alt_title));
+        }
+        if self.alt_description != basis.alt_description {
+            alt.insert("text".into(), json!(self.alt_description));
+        }
+        if !alt.is_empty() {
+            out.push(("table.altText", Value::Object(alt)));
+        }
+        out
     }
 
     /// `table.properties` parameters for what differs from `basis` (empty when nothing does).
@@ -388,8 +428,16 @@ impl TableForm {
         let k = crate::options::unit().pt_per_unit();
         let moved = |a: f32, b: f32| (a - b).abs() > 1e-4;
         let mut v = serde_json::Map::new();
-        if self.width_on != basis.width_on || (self.width_on && moved(self.width, basis.width)) {
-            v.insert("width".into(), if self.width_on { json!(self.width * k) } else { Value::Null });
+        // `width` and `widthPct` never go together: either one replaces the other.
+        if self.width_on != basis.width_on || (self.width_on && (self.width_percent != basis.width_percent || moved(self.width, basis.width))) {
+            if !self.width_on {
+                v.insert("width".into(), Value::Null);
+            } else if self.width_percent {
+                let pct = if self.width.is_finite() { self.width.clamp(1.0, 100.0) } else { 100.0 };
+                v.insert("widthPct".into(), json!(pct));
+            } else {
+                v.insert("width".into(), json!(self.width * k));
+            }
         }
         if self.align != basis.align {
             v.insert("align".into(), json!(self.align));
@@ -488,8 +536,32 @@ pub(super) fn table_properties(ui: &mut Ui, f: &mut TableForm) {
     heading(ui, "Table");
     crate::rtl::Table::new("tp_table").columns(2).spacing(vec2(10.0, 6.0)).show(ui, |t| {
         t.row(|r| {
-            r.cell(|ui| ui.checkbox(&mut f.width_on, tl!("Preferred width:")));
-            r.cell(|ui| ui.add_enabled(f.width_on, len(&mut f.width, 0.1, unit)));
+            let preferred = r.cell(|ui| ui.checkbox(&mut f.width_on, tl!("Preferred width:")));
+            r.cell(|ui| {
+                ui.horizontal(|ui| {
+                    if f.width_percent {
+                        let pct = egui::DragValue::new(&mut f.width).speed(0.5).range(1.0..=100.0).suffix("%").max_decimals(1);
+                        ui.add_enabled(f.width_on, pct).labelled_by(preferred.id);
+                    } else {
+                        ui.add_enabled(f.width_on, len(&mut f.width, 0.1, unit)).labelled_by(preferred.id);
+                    }
+                    let measure = ui.label(tl!("Measure in:"));
+                    let was_percent = f.width_percent;
+                    let unit_name = crate::options::UNITS.iter().find(|(u, _)| *u == unit).map_or("Inches", |(_, n)| n);
+                    ui.add_enabled_ui(f.width_on, |ui| {
+                        let combo = craft_ui::ComboBox::from_id_salt("tp_measure")
+                            .selected_text(tl!(if f.width_percent { "Percent" } else { unit_name }))
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut f.width_percent, false, tl!(unit_name));
+                                ui.selectable_value(&mut f.width_percent, true, tl!("Percent"));
+                            });
+                        combo.response.labelled_by(measure.id);
+                    });
+                    if f.width_percent != was_percent {
+                        f.width = convert_measure(f.width, f.width_percent, f.text_width, unit.pt_per_unit());
+                    }
+                });
+            });
         });
         t.row(|r| {
             r.cell(|ui| ui.label(tl!("Alignment:")));
@@ -564,6 +636,27 @@ pub(super) fn table_properties(ui: &mut Ui, f: &mut TableForm) {
             });
         });
     });
+    heading(ui, "Alt Text");
+    crate::rtl::Table::new("tp_alt").columns(2).spacing(vec2(10.0, 6.0)).show(ui, |t| {
+        t.row(|r| {
+            let title = r.cell(|ui| ui.label(tl!("Title")));
+            r.cell(|ui| ui.add(egui::TextEdit::singleline(&mut f.alt_title).desired_width(260.0)).labelled_by(title.id));
+        });
+        t.row(|r| {
+            let description = r.cell(|ui| ui.label(tl!("Description")));
+            r.cell(|ui| ui.add(egui::TextEdit::multiline(&mut f.alt_description).desired_rows(3).desired_width(260.0)).labelled_by(description.id));
+        });
+    });
+}
+
+/// Measure in: the preferred width's value after switching between the interface unit and
+/// Percent of the text column (`text_width` points), with `pt_per_unit` points per unit.
+fn convert_measure(value: f32, to_percent: bool, text_width: f32, pt_per_unit: f32) -> f32 {
+    let value = if value.is_finite() { value } else { 0.0 };
+    if !(text_width.is_finite() && text_width > 0.0 && pt_per_unit.is_finite() && pt_per_unit > 0.0) {
+        return if to_percent { 100.0 } else { value };
+    }
+    if to_percent { (value * pt_per_unit / text_width * 100.0).clamp(1.0, 100.0) } else { value.clamp(1.0, 100.0) * text_width / 100.0 / pt_per_unit }
 }
 
 pub(super) fn cell_margins_dialog(ui: &mut Ui, f: &mut CellMarginsForm) {
@@ -684,4 +777,20 @@ pub(super) fn custom_properties(app: &mut WordApp, ui: &mut Ui, f: &mut CustomPr
         }
     }
     false
+}
+
+#[cfg(test)]
+mod measure_tests {
+    use super::convert_measure;
+
+    #[test]
+    fn measure_in_converts_between_the_unit_and_percent() {
+        // 6.5 in of text: 3.25 in is 50%, and 50% is 3.25 in.
+        assert!((convert_measure(3.25, true, 468.0, 72.0) - 50.0).abs() < 1e-3);
+        assert!((convert_measure(50.0, false, 468.0, 72.0) - 3.25).abs() < 1e-3);
+        // Clamped to 1..=100, and hostile values stay finite.
+        assert_eq!(convert_measure(20.0, true, 468.0, 72.0), 100.0);
+        assert!(convert_measure(f32::NAN, true, 0.0, 72.0).is_finite());
+        assert!(convert_measure(f32::INFINITY, false, 468.0, 72.0).is_finite());
+    }
 }

@@ -393,6 +393,29 @@ fn advanced_alignment_guides_checkbox_turns_snapping_off_and_on() {
     assert!(h.state().ui.alignment_guides, "and on again");
 }
 
+/// File › Options › Advanced › Save: the checkbox is the `alwaysCreateBackup` preference.
+#[test]
+fn advanced_always_create_backup_copy_checkbox_sets_the_preference() {
+    let mut a = app();
+    a.run("file.options", json!({"pane": "advanced"})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        a,
+    );
+    h.run_steps(4);
+    assert!(!h.state().session.prefs.always_create_backup, "off by default");
+    h.get_by_label("Always create backup copy").click();
+    h.run_steps(4);
+    assert!(h.state().session.prefs.always_create_backup, "the checkbox turns it on");
+    h.get_by_label("Always create backup copy").click();
+    h.run_steps(4);
+    assert!(!h.state().session.prefs.always_create_backup, "and off again");
+}
+
 /// File › Options › Advanced › Animation: the checkbox is the `ui.caretAnimation` setting,
 /// and the section is translated.
 #[test]

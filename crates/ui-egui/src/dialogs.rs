@@ -102,6 +102,9 @@ pub enum Dialog {
         hidden: bool,
         color: String,
         spacing: f32,
+        /// Scale, percent (100 = normal), and Position, points (raised above zero, lowered below).
+        scale: f32,
+        position: f32,
         /// Kerning for fonts (`w:kern`), from the Advanced tab: `None` while the selected text
         /// differs, shown neither on nor off; `kern_at` is its Points and above size.
         kern: Option<bool>,
@@ -143,8 +146,9 @@ pub enum Dialog {
         /// Latin text, space between Asian text and numbers.
         asian: [bool; 6],
         /// Mirror indents, don't add space between paragraphs of the same style, suppress line
-        /// numbers, don't hyphenate (#512).
-        opts: [bool; 4],
+        /// numbers, don't hyphenate (#512), automatically adjust right indent and snap to grid
+        /// when a document grid is defined.
+        opts: [bool; 6],
         /// The fields every selected paragraph shares, as `para_fields` names them, from when
         /// the dialog opened: OK sends only the fields that differ from these, so an untouched
         /// tab adds no direct formatting (#1346).
@@ -773,6 +777,8 @@ impl Dialog {
                     hidden: b("hidden"),
                     color: s("color"),
                     spacing: st.get("spacing").and_then(Value::as_f64).unwrap_or(0.0) as f32,
+                    scale: st.get("scale").and_then(Value::as_f64).unwrap_or(100.0) as f32,
+                    position: st.get("position").and_then(Value::as_f64).unwrap_or(0.0) as f32,
                     kern: kern.map(|k| k > 0.0),
                     kern_at: kern.filter(|k| *k > 0.0).unwrap_or(12.0) as f32,
                     start: serde_json::Map::new(),
@@ -1135,14 +1141,22 @@ pub mod dialogs_templates;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_font_spacing;
+#[cfg(test)]
 mod tests_font_underline;
 #[cfg(test)]
 mod tests_insert_table;
 #[cfg(test)]
 mod tests_page_layout;
 #[cfg(test)]
+// The acceptance tests pick a check box with `iter_mut().nth(i)`, which clippy prefers as `get_mut`.
+#[allow(clippy::iter_nth)]
+mod tests_para_grid;
+#[cfg(test)]
 mod tests_para_line;
 #[cfg(test)]
 mod tests_para_outline;
+#[cfg(test)]
+mod tests_table_props;
 #[cfg(test)]
 mod tests_zoom;

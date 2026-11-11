@@ -1418,6 +1418,7 @@ impl Body<'_> {
         let contained = !self.tables.is_empty() || self.containers.len() > 1 || self.sec.columns.count > 1;
         let extra = model::TableExtra {
             align,
+            indent: None,
             width: None,
             width_pct,
             heights: Vec::new(),
@@ -1592,7 +1593,7 @@ impl Body<'_> {
             && let Some(set) = super::fields::set_instr(a)
         {
             let fmt = self.cur_fmt();
-            self.push_inline(Inline::Field { instr: set, result: String::new(), fmt, locked: false });
+            self.push_inline(Inline::Field { instr: set, result: String::new(), fmt, locked: false, form: String::new() });
             if get(a, "text:display").map(str::trim) == Some("none") {
                 self.skip = 1;
                 return true;
@@ -1686,7 +1687,7 @@ impl Body<'_> {
                             })
                             .collect();
                         if let Some(instr) = super::fields::xe_instr(k1.as_deref(), k2.as_deref(), &text) {
-                            let field = Inline::Field { instr, result: String::new(), fmt: Fmt::default(), locked: false };
+                            let field = Inline::Field { instr, result: String::new(), fmt: Fmt::default(), locked: false, form: String::new() };
                             // Inside a run: split it there.
                             let split = match p.inlines.get_mut(from) {
                                 Some(Inline::Text(t, f)) if off > 0 && t.is_char_boundary(off) && off < t.len() => {

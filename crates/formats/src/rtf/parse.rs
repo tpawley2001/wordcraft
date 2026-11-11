@@ -35,6 +35,8 @@ struct Parsed {
     comments: Vec<CommentData>,
     /// The document's footnote and endnote options; `num_fmt` is the number format.
     doc_notes: (wordcraft_doc::section::NoteProps, wordcraft_doc::section::NoteProps),
+    /// The document's `\fetN`, when it names one.
+    fet: Option<i32>,
     /// The document settings the header names.
     doc_set: super::reader::DocSettingWords,
 }
@@ -229,7 +231,14 @@ fn parse_full(bytes: &[u8], marks: bool) -> Result<Parsed, String> {
                     if r.skip_chars > 0
                         && matches!(
                             r.st.dest,
-                            Dest::Body | Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::FontTbl | Dest::RevTbl | Dest::Atn(_)
+                            Dest::Body
+                                | Dest::Info(_)
+                                | Dest::FldInst
+                                | Dest::FfText(_)
+                                | Dest::Bookmark
+                                | Dest::FontTbl
+                                | Dest::RevTbl
+                                | Dest::Atn(_)
                         )
                     {
                         r.skip_chars -= 1;
@@ -367,6 +376,7 @@ fn finalize(mut r: Reader) -> Parsed {
     // A file that ends with `\sect` ends its last section there: no empty one follows, and
     // header or footer groups after that `\sect` (a section without text) are dropped.
     let mut last_section = r.sec.props(&r.page);
+    last_section.no_endnote = r.no_endnote();
     last_section.fmt_change = r.section_change();
     let mut headers_footers = std::mem::take(&mut r.section_parts);
     if let Some(FBlock::Para(p)) = blocks.last_mut()
@@ -395,6 +405,7 @@ fn finalize(mut r: Reader) -> Parsed {
         notes: r.notes,
         comments: r.comments,
         doc_notes: r.doc_notes,
+        fet: r.fet,
         doc_set: r.doc_set,
     }
 }
@@ -479,9 +490,10 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
         headers_footers,
         foreign_styles,
         own_styles,
-        notes,
+        mut notes,
         comments,
         doc_notes,
+        fet,
         doc_opts,
         doc_set,
         ..
@@ -496,6 +508,15 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     }
     if let Some(f) = end.num_fmt.take() {
         doc.settings.endnote_format = f;
+    }
+    // Word reads a file that never says where footnotes go (no `\ftnbj` or `\ftntj` in the
+    // document formatting, `\fet` absent or 0) as holding endnotes: every `{\footnote}` without
+    // `\ftnalt` is an endnote then, numbered i, ii… whatever `\aftnn…` says.
+    if foot.pos.is_none() && fet.unwrap_or(0) == 0 && notes.iter().any(|n| !n.endnote) {
+        for n in &mut notes {
+            n.endnote = true;
+        }
+        doc.settings.endnote_format = wordcraft_doc::section::NumFormat::LowerRoman;
     }
     (doc.settings.footnote_pr, doc.settings.endnote_pr) = (foot, end);
     // Word fits justified lines of an RTF document more tightly than a DOCX one; RTF has no
@@ -588,8 +609,8 @@ fn place_notes_and_comments(doc: &mut Document, notes: Vec<NoteData>, comments: 
     if notes.is_empty() && comments.is_empty() {
         return;
     }
-    // (kind, part id) per note, by index.
-    let mut note_parts: Vec<(NoteKind, u32)> = Vec::new();
+    // (kind, part id, custom mark) per note, by index.
+    let mut note_parts: Vec<(NoteKind, u32, String)> = Vec::new();
     for n in notes {
         let (pk, nk, style) =
             if n.endnote { (PartKind::Endnote, NoteKind::Endnote, "EndnoteText") } else { (PartKind::Footnote, NoteKind::Footnote, "FootnoteText") };
@@ -601,7 +622,7 @@ fn place_notes_and_comments(doc: &mut Document, notes: Vec<NoteData>, comments: 
                 p.props.style = Some(style.to_string());
             }
         }
-        note_parts.push((nk, doc.add_part(pk, blocks)));
+        note_parts.push((nk, doc.add_part(pk, blocks), n.custom));
     }
     // RTF range id to the comment's id in the document.
     let mut by_rtf: HashMap<i64, u32> = HashMap::new();
@@ -620,16 +641,16 @@ fn place_notes_and_comments(doc: &mut Document, notes: Vec<NoteData>, comments: 
     let ids: Vec<u32> = doc.parts.keys().copied().collect();
     for id in ids {
         let Some(part) = doc.parts.get_mut(&id) else { continue };
-        let own = ctx.note_parts.iter().find(|(_, p)| *p == id).copied();
+        let own = ctx.note_parts.iter().find(|(_, p, _)| *p == id).map(|(k, p, c)| (*k, *p, c.as_str()));
         ctx.blocks(&mut part.blocks, own, 0);
-        // A note starts with its own number, as Word's do.
-        if let Some((kind, pid)) = own
+        // A note starts with its own number (or custom mark), as Word's do.
+        if let Some((kind, pid, custom)) = own
             && let Some(first) = part.blocks.first_mut()
             && let Block::Para(p) = Arc::make_mut(first)
             && !p.objects.iter().any(|o| matches!(o, InlineObject::NoteRef { id, .. } if *id == pid))
         {
             let props = Placer::ref_props(kind);
-            if p.insert_object(0, InlineObject::NoteRef { kind, id: pid, custom: String::new() }, &props).is_err() {
+            if p.insert_object(0, InlineObject::NoteRef { kind, id: pid, custom: custom.to_string() }, &props).is_err() {
                 // The paragraph can't take it; the note simply has no number mark.
             }
         }
@@ -637,7 +658,7 @@ fn place_notes_and_comments(doc: &mut Document, notes: Vec<NoteData>, comments: 
 }
 
 struct Placer {
-    note_parts: Vec<(wordcraft_doc::para::NoteKind, u32)>,
+    note_parts: Vec<(wordcraft_doc::para::NoteKind, u32, String)>,
     by_rtf: HashMap<i64, u32>,
 }
 
@@ -647,7 +668,7 @@ impl Placer {
         wordcraft_doc::CharProps { style: Some(style.into()), ..Default::default() }
     }
 
-    fn blocks(&self, bl: &mut Blocks, own: Option<(wordcraft_doc::para::NoteKind, u32)>, depth: usize) {
+    fn blocks(&self, bl: &mut Blocks, own: Option<(wordcraft_doc::para::NoteKind, u32, &str)>, depth: usize) {
         for b in bl.iter_mut() {
             let needs = match &**b {
                 Block::Para(p) => p.text.contains(MARK_OPEN),
@@ -669,7 +690,7 @@ impl Placer {
         }
     }
 
-    fn para(&self, p: &mut Paragraph, own: Option<(wordcraft_doc::para::NoteKind, u32)>) {
+    fn para(&self, p: &mut Paragraph, own: Option<(wordcraft_doc::para::NoteKind, u32, &str)>) {
         // Every pass removes one marker, so this ends; the bound is only a seat belt.
         for _ in 0..100_000 {
             let Some(a) = p.text.find(MARK_OPEN) else { return };
@@ -681,11 +702,13 @@ impl Placer {
             let n = chars.as_str().parse::<i64>().unwrap_or(i64::MIN);
             let (obj, props) = match tag {
                 'N' => match usize::try_from(n).ok().and_then(|i| self.note_parts.get(i)) {
-                    Some(&(kind, id)) => (Some(InlineObject::NoteRef { kind, id, custom: String::new() }), Self::ref_props(kind)),
+                    Some((kind, id, custom)) => {
+                        (Some(InlineObject::NoteRef { kind: *kind, id: *id, custom: custom.clone() }), Self::ref_props(*kind))
+                    }
                     None => (None, Default::default()),
                 },
                 'S' => match own {
-                    Some((kind, id)) => (Some(InlineObject::NoteRef { kind, id, custom: String::new() }), Self::ref_props(kind)),
+                    Some((kind, id, custom)) => (Some(InlineObject::NoteRef { kind, id, custom: custom.to_string() }), Self::ref_props(kind)),
                     None => (None, Default::default()),
                 },
                 'B' => (self.by_rtf.get(&n).map(|&id| InlineObject::CommentStart { id }), Default::default()),
