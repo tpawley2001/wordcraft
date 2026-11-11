@@ -48,6 +48,7 @@ mod manual_duplex;
 mod print_document_properties;
 mod print_forms_data;
 mod print_options;
+mod print_selection;
 mod reveal_formatting;
 mod reveal_compare;
 mod reveal_formatting_pane;
@@ -13310,4 +13311,5 @@ fn drop_cap_menu_availability_uses_the_resolved_cap() {
     assert_eq!(s.why_disabled("insert.dropCap"), None);
 }
 mod readability;
+mod linked_style_apply;
 mod style_pane_options;

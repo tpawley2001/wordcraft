@@ -334,6 +334,13 @@ fn shown_key(key: &str) -> String {
     }
 }
 
+/// Print Selection prints no headers or footers (so no page numbers in them), as in Word.
+fn no_headers(sec: &mut wordcraft_doc::section::SectionProps) {
+    sec.headers = wordcraft_doc::section::HeaderSet::default();
+    sec.footers = wordcraft_doc::section::HeaderSet::default();
+    sec.title_page = false;
+}
+
 /// The report `lines` as a plain document: one Normal paragraph each, on the page size and
 /// margins of `doc`'s first section, without its headers and footers.
 pub fn report_document(doc: &wordcraft_doc::Document, lines: &[String]) -> wordcraft_doc::Document {
@@ -373,11 +380,12 @@ pub fn plan_in(v: &Value, ids: &[(usize, u32)], current: (usize, usize)) -> Resu
     let range = p::str(v, "range").unwrap_or(if pages_text.is_some() { "custom" } else { "all" });
     let last = total.saturating_sub(1);
     let mut pages: Vec<usize> = match range {
-        "all" => (0..total).collect(),
+        // Print Selection's layout is the selection's own: all of it prints.
+        "all" | "selectedText" => (0..total).collect(),
         "current" => vec![current.0.min(last)],
         "selection" => (current.0.min(last)..=current.1.min(last).max(current.0.min(last))).collect(),
         "custom" => parse_page_range_in(pages_text.unwrap_or(""), ids).map_err(bad)?,
-        other => return Err(bad(format!("unknown range `{other}`; use all, current, selection or custom"))),
+        other => return Err(bad(format!("unknown range `{other}`; use all, current, selection, selectedText or custom"))),
     };
     match p::str(v, "parity").unwrap_or("all") {
         "all" => {}
@@ -567,6 +575,58 @@ impl Session {
         Ok(Some((doc, lay)))
     }
 
+    /// Print Selection (`range: "selectedText"`): the selected content as the document that
+    /// prints instead, with its print layout; `None` for any other range. As in Word, the
+    /// selection is laid out afresh from the top of the first page with the page setup of the
+    /// section it starts in, and no headers or footers print. Nothing selected is an error.
+    pub fn print_selection(&self, v: &Value) -> Result<Option<(wordcraft_doc::Document, std::sync::Arc<DocLayout>)>, CmdError> {
+        if p::str(v, "range") != Some("selectedText") {
+            return Ok(None);
+        }
+        let out = crate::cmd::references::output_fields(&self.doc);
+        let source = out.as_ref().unwrap_or(&self.doc);
+        let Some(frag) = crate::cmd::edit::selection_fragment_in(self, source) else {
+            return Err(CmdError::Params("nothing is selected to print".into()));
+        };
+        // The section the selection starts in: the one holding its first top-level body block
+        // (a selection in another story takes the first section).
+        let (a, _) = self.sel.ordered();
+        let block = match a.story {
+            wordcraft_doc::StoryRef::Body => a.path.0.first().map_or(0, |&i| i as usize),
+            _ => 0,
+        };
+        let sections = source.sections();
+        let mut section = sections
+            .iter()
+            .find(|(end, _)| *end >= block)
+            .or(sections.last())
+            .map(|(_, sec)| (*sec).clone())
+            .unwrap_or_else(|| source.last_section.clone());
+        no_headers(&mut section);
+        let mut doc = source.clone();
+        doc.body = frag.blocks.into_iter().map(std::sync::Arc::new).collect();
+        // A section break copied with the selection prints without headers and footers too.
+        for b in doc.body.iter_mut() {
+            if let wordcraft_doc::Block::Para(para) = &**b
+                && para.section.is_some()
+                && let wordcraft_doc::Block::Para(para) = std::sync::Arc::make_mut(b)
+                && let Some(sec) = para.section.as_mut()
+            {
+                no_headers(sec);
+            }
+        }
+        doc.last_section = section;
+        doc.ensure_nonempty();
+        let markup = crate::cmd::file::export_options(self, v);
+        let lay = self.output_layout_of(
+            &doc,
+            markup.markup,
+            p::bool(v, "hiddenText").unwrap_or(self.prefs.print_hidden_text),
+            p::bool(v, "fieldCodes").unwrap_or(self.prefs.print_field_codes),
+        );
+        Ok(Some((doc, lay)))
+    }
+
     /// Render a shared sheet plan for a saved PDF or an annotation-free printer job.
     fn print_pdf_with(&self, v: &Value, links: bool) -> Result<(Vec<u8>, PrintPlan), CmdError> {
         if !v.is_object() {
@@ -576,18 +636,25 @@ impl Session {
         let mut markup = crate::cmd::file::export_options(self, v);
         let out = crate::cmd::references::output_fields(&self.doc);
         let report = self.print_report(v)?;
-        let (doc, lay, current) = match &report {
-            Some((report, lay)) => {
+        // A Document Info job wins over the range; Print Selection prints the selection's own
+        // document, all of it.
+        let selection = if report.is_none() { self.print_selection(v)? } else { None };
+        let mut settings = v.clone();
+        let (doc, lay, current) = match (&report, &selection) {
+            (Some((report, lay)), _) => {
                 markup.markup = false;
                 (report, lay.clone(), (0, 0))
             }
-            None => {
+            (None, Some((sel, lay))) => {
+                settings["range"] = json!("all");
+                (sel, lay.clone(), (0, 0))
+            }
+            (None, None) => {
                 let lay = self.print_layout(v);
                 let current = self.current_pages(&lay);
                 (out.as_ref().unwrap_or(&self.doc), lay, current)
             }
         };
-        let mut settings = v.clone();
         settings["reverse"] = json!(p::bool(v, "reverse").unwrap_or(self.prefs.print_reverse));
         settings["frontReverse"] = json!(p::bool(v, "frontReverse").unwrap_or(self.prefs.print_duplex_front));
         settings["backReverse"] = json!(p::bool(v, "backReverse").unwrap_or(self.prefs.print_duplex_back));
@@ -685,6 +752,8 @@ mod tests {
         assert_eq!(p(json!({})), Ok(vec![0, 1, 2, 3, 4, 5]));
         assert_eq!(p(json!({"range": "current"})), Ok(vec![2]));
         assert_eq!(p(json!({"range": "selection"})), Ok(vec![2, 3]));
+        // Print Selection's own layout prints whole.
+        assert_eq!(p(json!({"range": "selectedText"})), Ok(vec![0, 1, 2, 3, 4, 5]));
         assert_eq!(p(json!({"pages": "2-4", "copies": 2})), Ok(vec![1, 2, 3, 1, 2, 3]));
         assert_eq!(p(json!({"pages": "2-3", "copies": 2, "collate": false})), Ok(vec![1, 1, 2, 2]));
         assert_eq!(p(json!({"parity": "even"})), Ok(vec![1, 3, 5]));

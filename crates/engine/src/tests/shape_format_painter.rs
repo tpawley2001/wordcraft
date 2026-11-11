@@ -2,6 +2,8 @@
 //! Word copies the shape's fill, outline and effects onto the next selected shape, leaving its
 //! size, position and name as they were. Synthetic DOCX fixture: two anchored rectangles.
 
+#![allow(clippy::unreachable)]
+
 use std::io::Write;
 
 use serde_json::{Value, json};
@@ -92,7 +94,7 @@ fn copy_and_paste_formatting_carry_fill_outline_and_effects() {
     assert!(af.is_some(), "Shape A has its fill");
     assert_eq!(bf, af, "fill");
     assert_eq!(bst, ast, "outline colour");
-    assert_eq!(*bw, 3.0, "outline width");
+    assert_eq!((*aw, *bw), (3.0, 3.0), "outline width");
     assert_eq!(be, ae, "effects");
     assert_eq!((w, h), (w0, h0), "size unchanged");
     assert_eq!((float.x, float.y, &float.name), (float0.x, float0.y, &float0.name), "position and name unchanged");

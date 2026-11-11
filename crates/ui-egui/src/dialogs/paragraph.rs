@@ -1,7 +1,23 @@
 use super::{BTreeSet, Dialog, MeasureExt, Ui, Value, WordApp, json};
 
-/// The Paragraph dialog as one paragraph's formatting fills it, on page `tab`.
-pub(super) fn paragraph_dialog(rp: &wordcraft_doc::resolve::ResolvedPara, tab: u8) -> Dialog {
+/// The Outline level box's entries, in Word's order: Body Text, then Level 1 .. Level 9.
+pub(super) const OUTLINE_LEVELS: [&str; 10] =
+    ["Body Text", "Level 1", "Level 2", "Level 3", "Level 4", "Level 5", "Level 6", "Level 7", "Level 8", "Level 9"];
+
+/// The Outline level box's entry for a model level (0..8 = Level 1..9, 9 = Body Text).
+pub(super) fn outline_entry(level: u8) -> usize {
+    if level < 9 { usize::from(level) + 1 } else { 0 }
+}
+
+/// Whether `style` is one of the built-in headings (`Heading1` .. `Heading9`), whose outline
+/// level comes from the style and is greyed in the Paragraph dialog, as in Word.
+pub(super) fn is_builtin_heading(style: Option<&str>) -> bool {
+    style.and_then(|s| s.strip_prefix("Heading")).is_some_and(|n| n.len() == 1 && matches!(n.as_bytes().first(), Some(b'1'..=b'9')))
+}
+
+/// The Paragraph dialog as one paragraph's formatting fills it, on page `tab`; `style` is the
+/// paragraph's own style id.
+pub(super) fn paragraph_dialog(rp: &wordcraft_doc::resolve::ResolvedPara, style: Option<&str>, tab: u8) -> Dialog {
     let (line_rule, line_at) = line_box(rp.line_spacing);
     let (vl, vr) = rp.visual_indents();
     let unit = crate::options::unit().pt_per_unit();
@@ -20,6 +36,8 @@ pub(super) fn paragraph_dialog(rp: &wordcraft_doc::resolve::ResolvedPara, tab: u
         page_break: rp.page_break_before,
         widow: rp.widow_control,
         tab,
+        outline: rp.outline_level.filter(|l| *l < 9).unwrap_or(9),
+        outline_fixed: is_builtin_heading(style),
         asian: [rp.kinsoku, rp.word_wrap, rp.overflow_punct, rp.top_line_punct, rp.auto_space_de, rp.auto_space_dn],
         opts: [rp.mirror_indents, rp.contextual_spacing, rp.suppress_line_numbers, rp.suppress_hyphens],
         start: serde_json::Map::new(),
@@ -46,6 +64,8 @@ pub(super) fn para_fields(d: &Dialog) -> serde_json::Map<String, Value> {
         widow,
         asian,
         opts,
+        outline,
+        outline_fixed,
         ..
     } = d
     else {
@@ -61,10 +81,15 @@ pub(super) fn para_fields(d: &Dialog) -> serde_json::Map<String, Value> {
         "mirrorIndents": mirror, "contextualSpacing": contextual, "suppressLineNumbers": no_numbers, "suppressHyphens": no_hyphens,
         "kinsoku": kinsoku, "wordWrap": word_wrap, "overflowPunct": overflow, "topLinePunct": top_line, "autoSpaceDE": de, "autoSpaceDN": dn,
     });
-    match fields {
+    let mut fields = match fields {
         Value::Object(m) => m,
         _ => serde_json::Map::new(),
+    };
+    // A greyed box (a built-in heading's level) is never sent.
+    if !outline_fixed {
+        fields.insert("outlineLevel".into(), json!((*outline).min(9)));
     }
+    fields
 }
 
 /// The Line spacing box's entries, in Word's order: the index is the dialog's `line_rule`.

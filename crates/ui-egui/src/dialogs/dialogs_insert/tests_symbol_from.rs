@@ -1,8 +1,8 @@
 //! Symbol dialog, Symbols tab: Word's "from:" list (Unicode (hex), ASCII (decimal), ASCII (hex)),
 //! the Shortcut key line and the AutoCorrect… button.
 
-use super::*;
 use super::symbol::{SymbolFrom, char_from_code, code_text, grid_chars, symbol_autocorrect, symbol_shortcut};
+use super::*;
 
 use SymbolFrom::{AsciiDecimal, AsciiHex, UnicodeHex};
 

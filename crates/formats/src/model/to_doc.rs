@@ -567,8 +567,18 @@ impl<'a> Builder<'a> {
         out.section.clone_from(&p.section);
         // Inlines are appended in order, so build the runs directly: inserting each one through
         // `Paragraph::insert_text` rescans every earlier run and is quadratic in their number.
+        // The tracked change of the object right after an `Inline::ObjRev`.
+        let mut obj_rev: Option<&crate::model::ObjRev> = None;
         for i in &p.inlines {
+            let rev = std::mem::take(&mut obj_rev).filter(|_| i.is_object());
+            let (ins, del) = match rev {
+                Some(r) => {
+                    (r.ins.as_ref().map(|m| self.revision(RevisionKind::Insert, m)), r.del.as_ref().map(|m| self.revision(RevisionKind::Delete, m)))
+                }
+                None => (None, None),
+            };
             match i {
+                Inline::ObjRev(r) => obj_rev = Some(r),
                 Inline::Text(t, f) => {
                     let t = clean_text(t);
                     let mut cp = self.budget(char_props(f));
@@ -613,6 +623,7 @@ impl<'a> Builder<'a> {
                             cp.position = Some(f.y.clamp(-1584.0, 1584.0));
                             f.y = 0.0;
                         }
+                        (cp.ins, cp.del) = (ins, del);
                         append(&mut out, "", &cp, Some(obj));
                     }
                 }
@@ -673,7 +684,7 @@ impl<'a> Builder<'a> {
                     let linear = clean_text(linear);
                     if !linear.is_empty() {
                         let obj = InlineObject::Equation { linear, display: *display, math: Default::default() };
-                        append(&mut out, "", &CharProps::default(), Some(obj));
+                        append(&mut out, "", &CharProps { ins, del, ..Default::default() }, Some(obj));
                     }
                 }
                 Inline::Ruby { base, ruby, fmt } => {

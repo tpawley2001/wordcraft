@@ -190,9 +190,16 @@ impl Body<'_> {
 
     /// `inline` at the end of the paragraph being read (a new one if none is).
     pub(in crate::odt) fn push_inline(&mut self, inline: Inline) {
+        // An object inside an insertion's change range is inserted content (ODF 1.3 §5.5.7-8).
+        let rev = self
+            .open_insertion()
+            .filter(|_| inline.is_object() && self.note.is_none())
+            .map(|ins| Inline::ObjRev(Box::new(model::ObjRev { ins: Some(ins), del: None })));
         // A drawing in the text outside any paragraph waits for the next one.
         let drawing = matches!(inline, Inline::Image(_) | Inline::Shape { .. } | Inline::Chart(_) | Inline::Group { .. });
-        if self.para.is_none() && drawing && self.at_body_level() && self.loose.len() < super::MAX_LOOSE {
+        let room = super::MAX_LOOSE.saturating_sub(usize::from(rev.is_some()));
+        if self.para.is_none() && drawing && self.at_body_level() && self.loose.len() < room {
+            self.loose.extend(rev);
             self.loose.push(inline);
             return;
         }
@@ -200,6 +207,7 @@ impl Body<'_> {
             self.start_para(None, None);
         }
         if let Some(p) = &mut self.para {
+            p.inlines.extend(rev);
             p.inlines.push(inline);
         }
     }

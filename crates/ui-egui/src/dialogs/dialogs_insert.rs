@@ -119,7 +119,8 @@ pub(crate) fn buttons(ui: &mut Ui, ok: &str, cancel: &str, ok_enabled: bool) -> 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
-#[rustfmt::skip] // Its imports are kept as written (a protected acceptance test).
+mod tests_new_column;
+#[cfg(test)]
 mod tests_symbol_from;
 /// The Break dialog's OK: insert the break `kind` (a `layout.break` kind) and close the dialog.
 pub fn break_dialog_ok(app: &mut WordApp, kind: &str) {

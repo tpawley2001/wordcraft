@@ -8,7 +8,7 @@ use super::page_setup::{
     page_layout_commands, page_paper_group, page_paper_source_group, page_section_start_combo, page_section_start_value, page_valign_combo,
     page_valign_value, run_as_one_step,
 };
-use super::paragraph::{ParaNumber, apply_paragraph, line_spacing_boxes, para_check, para_number};
+use super::paragraph::{OUTLINE_LEVELS, ParaNumber, apply_paragraph, line_spacing_boxes, outline_entry, para_check, para_number};
 use super::styles::manage_styles;
 use super::{Dialog, MeasureExt, Tokens, Ui, Value, WordApp, json, semibold, vec2};
 
@@ -316,6 +316,8 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         keep_lines,
         page_break,
         widow,
+        outline,
+        outline_fixed,
         tab,
         asian,
         opts,
@@ -357,6 +359,23 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     }
                 });
                 combo.response.labelled_by(align_label.id);
+            });
+            // Greyed for a built-in heading, whose level comes from its style.
+            ui.add_enabled_ui(!*outline_fixed, |ui| {
+                ui.horizontal(|ui| {
+                    let outline_label = ui.label(tl!("Outline level:"));
+                    let blank = mixed.contains("outlineLevel");
+                    let shown = if blank { "" } else { OUTLINE_LEVELS.get(outline_entry(*outline)).map_or("", |l| tl!(l)) };
+                    let combo = craft_ui::ComboBox::from_id_salt("para_outline").selected_text(shown).show_ui(ui, |ui| {
+                        for (level, l) in std::iter::once(9u8).chain(0..9).zip(OUTLINE_LEVELS) {
+                            if ui.selectable_label(!blank && *outline == level, tl!(l)).clicked() {
+                                *outline = level;
+                                mixed.remove("outlineLevel");
+                            }
+                        }
+                    });
+                    combo.response.labelled_by(outline_label.id);
+                });
             });
             ui.label(egui::RichText::new(tl!("Indentation")).font(semibold(12.5)));
             // Mirrored indents are the inside and outside ones (they swap on even pages).

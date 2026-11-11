@@ -13,6 +13,7 @@ mod cfb_tolerance;
 mod char_spacing;
 mod char_styles;
 mod compat_mode;
+mod dop_base;
 mod dop_options;
 mod drawing;
 mod emf_font_faces;
@@ -3112,4 +3113,67 @@ fn formatting_runs_break_where_the_chpx_changes() {
     // "aaaa" bold, "bbbb" plain, the field's anchor (3 bytes, formatted as its bold result "12")
     // with "ccd" bold (the run from the field to CP 20), "d(ee" italic.
     assert_eq!(shape, [(4, Some(true), None), (4, None, None), (6, Some(true), None), (4, None, Some(true))], "{shape:?}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Range fields: a TOC or ADDIN field's result is ordinary paragraphs, as Word shows it (P03-102).
+
+/// Paragraph texts of the body without the U+FFFC object anchors.
+fn range_field_texts(doc: &wordcraft_doc::Document) -> Vec<String> {
+    doc.body.iter().filter_map(|b| b.as_para()).map(|p| p.text.replace('\u{FFFC}', "")).collect()
+}
+
+/// An EndNote bibliography (`ADDIN EN.REFLIST`) keeps one paragraph per reference.
+#[test]
+fn an_addin_bibliography_keeps_one_paragraph_per_reference() {
+    use wordcraft_doc::para::InlineObject;
+    let text = "\u{13} ADDIN EN.REFLIST \u{14}Ref one\rRef two\u{15}\rBody\r";
+    let spec = structured_spec(text, text.chars().count() as u32);
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    assert_eq!(range_field_texts(&doc), ["Ref one", "Ref two", "Body"]);
+    let paras: Vec<_> = doc.body.iter().filter_map(|b| b.as_para()).collect();
+    let first = paras.first().expect("first reference");
+    assert!(
+        matches!(first.objects.first(), Some(InlineObject::FieldStart { instr, .. }) if instr.trim_start().starts_with("ADDIN EN.REFLIST")),
+        "{:?}",
+        first.objects
+    );
+    let second = paras.get(1).expect("second reference");
+    assert!(second.objects.iter().any(|o| matches!(o, InlineObject::FieldEnd)), "{:?}", second.objects);
+    let all: Vec<&InlineObject> = paras.iter().flat_map(|p| &p.objects).collect();
+    let starts = all.iter().filter(|o| matches!(o, InlineObject::FieldStart { .. })).count();
+    let ends = all.iter().filter(|o| matches!(o, InlineObject::FieldEnd)).count();
+    assert_eq!((starts, ends), (1, 1), "{all:?}");
+}
+
+/// An inline EndNote citation (`ADDIN EN.CITE`) shows its result in the paragraph, not its code.
+#[test]
+fn an_addin_citation_shows_its_result_in_the_paragraph() {
+    use wordcraft_doc::para::InlineObject;
+    let text = "Text \u{13} ADDIN EN.CITE <EndNote/>\u{14}(Smith 1999)\u{15} more\r";
+    let spec = structured_spec(text, text.chars().count() as u32);
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    assert_eq!(range_field_texts(&doc), ["Text (Smith 1999) more"]);
+    let p = doc.body.iter().find_map(|b| b.as_para()).expect("para");
+    assert!(!p.objects.iter().any(|o| matches!(o, InlineObject::Field { .. })), "{:?}", p.objects);
+    let starts = p.objects.iter().filter(|o| matches!(o, InlineObject::FieldStart { .. })).count();
+    let ends = p.objects.iter().filter(|o| matches!(o, InlineObject::FieldEnd)).count();
+    assert_eq!((starts, ends), (1, 1), "{:?}", p.objects);
+}
+
+/// TOC entries built from nested HYPERLINK and PAGEREF fields never show those codes as text.
+#[test]
+fn toc_entries_never_show_nested_field_codes() {
+    let entry = |bm: &str, title: &str, page: &str| {
+        format!("\u{13} HYPERLINK \\l \"{bm}\" \u{14}{title}\t\u{13} PAGEREF {bm} \\h \u{14}{page}\u{15}\u{15}")
+    };
+    let text = format!("\u{13} TOC \\o \"1-3\" \\h \\z \\u \u{14}{}\r{}\r{}\u{15}\rBody\r", entry("_Toc1", "Goal", "3"), entry("_Toc2", "Overview", "3"), entry("_Toc3", "Issues", "7"));
+    let text: &'static str = Box::leak(text.into_boxed_str());
+    let spec = structured_spec(text, text.chars().count() as u32);
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    let texts = range_field_texts(&doc);
+    assert_eq!(texts, ["Goal\t3", "Overview\t3", "Issues\t7", "Body"]);
+    for t in &texts {
+        assert!(!t.contains("HYPERLINK") && !t.contains("PAGEREF"), "{t:?}");
+    }
 }
