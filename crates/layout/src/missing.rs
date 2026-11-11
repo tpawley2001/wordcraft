@@ -147,20 +147,67 @@ pub fn watermark_run(wm: &wordcraft_doc::Watermark, max_chars: usize) -> Option<
     Some((face, text, shaped))
 }
 
-/// The characters a metafile text run draws: a run set in a symbol font that is not installed
-/// shows its Unicode symbols (see `wordcraft_doc::symbol_fonts`); any other run its own text.
+/// The characters a metafile text run draws: a run set in a symbol font (Symbol, Wingdings,
+/// Webdings) that is not installed shows its codes as their Unicode symbols, as body text does
+/// (see `wordcraft_doc::symbol_fonts`); an installed symbol font, and any other font, draws the
+/// run's own text. One character for one, so `t.dx` still gives each its advance.
 pub fn metafile_drawn_text(t: &wordcraft_metafile::Text) -> String {
-    t.text.clone()
+    if !wordcraft_doc::symbol_fonts::is_symbol_font(&t.font) || !wordcraft_fonts::word::resolve(&t.font, t.bold, t.italic).substituted {
+        return t.text.clone();
+    }
+    wordcraft_doc::symbol_fonts::map_text(&t.font, &t.text)
 }
 
 /// How a metafile text run is shaped for output, as the PDF export and the page raster both do:
-/// in the face its font name resolves to (no fallback face), so a character that face lacks shapes
-/// to glyph id 0. Strict export checks these same glyphs, so the check and the exporters can't
-/// drift.
+/// [`metafile_drawn_text`] in the face its font name resolves to (no fallback face), so a
+/// character that face lacks shapes to glyph id 0. A symbol-font run whose symbols the substitute
+/// lacks is shaped in the face with the most of them instead. The glyphs' clusters index
+/// [`metafile_drawn_text`]. Strict export checks these same glyphs, so the check and the
+/// exporters can't drift.
 pub fn metafile_text_run(t: &wordcraft_metafile::Text) -> (wordcraft_fonts::FaceRef, Vec<ShapedGlyph>) {
     let face = wordcraft_fonts::word::resolve(&t.font, t.bold, t.italic).face;
-    let shaped = wordcraft_fonts::shape(&face, &t.text, &[], |c| c);
+    let drawn = metafile_drawn_text(t);
+    let face = if drawn == t.text { face } else { symbol_face(face, &drawn, t.bold, t.italic) };
+    let shaped = wordcraft_fonts::shape(&face, &drawn, &[], |c| c);
     (face, shaped)
+}
+
+/// The face that draws the most of `text` (a symbol-font run's Unicode symbols): `face` when it
+/// has them all, else one fallback face with them all, else the face with the most of them
+/// (`face` on a tie).
+fn symbol_face(face: wordcraft_fonts::FaceRef, text: &str, bold: bool, italic: bool) -> wordcraft_fonts::FaceRef {
+    let wanted: Vec<char> = text.chars().filter(|c| draws_something(*c)).collect();
+    let lacking: Vec<char> = wanted.iter().copied().filter(|c| !face.covers(*c)).collect();
+    if lacking.is_empty() {
+        return face;
+    }
+    let db = wordcraft_fonts::FontDb::global();
+    if let Some(f) = db.fallback_for_run(&wanted, face.id(), bold, italic) {
+        return wordcraft_fonts::FaceRef::of(&f);
+    }
+    let score = |f: &wordcraft_fonts::FaceRef| wanted.iter().filter(|c| f.covers(**c)).count();
+    let mut best = (score(&face), face);
+    let mut tried: Vec<u32> = vec![face.id()];
+    for c in lacking {
+        let Some(f) = db.fallback_styled(c, face.id(), bold, italic).or_else(|| db.fallback_for(c, face.id())) else { continue };
+        let f = wordcraft_fonts::FaceRef::of(&f);
+        if tried.contains(&f.id()) {
+            continue;
+        }
+        tried.push(f.id());
+        let n = score(&f);
+        if n > best.0 {
+            best = (n, f);
+        }
+    }
+    best.1
+}
+
+/// A metafile text run as it is drawn: `t` with [`metafile_drawn_text`] as its text (borrowed
+/// when that is unchanged), so the glyphs of [`metafile_text_run`] lay out against it.
+pub fn metafile_drawn_run(t: &wordcraft_metafile::Text) -> std::borrow::Cow<'_, wordcraft_metafile::Text> {
+    let drawn = metafile_drawn_text(t);
+    if drawn == t.text { std::borrow::Cow::Borrowed(t) } else { std::borrow::Cow::Owned(wordcraft_metafile::Text { text: drawn, ..t.clone() }) }
 }
 
 /// The characters of the watermark that draw as an empty box (glyph id 0), counted as
@@ -282,6 +329,7 @@ fn meta_runs(bytes: &[u8]) -> Vec<MetaRun> {
     for item in &pic.items {
         let wordcraft_metafile::Item::Text(t) = item else { continue };
         let (face, shaped) = metafile_text_run(t);
+        let t = metafile_drawn_run(t);
         let glyphs: Vec<_> = shaped.iter().map(|g| (g.cluster, f64::from(g.x_advance), f64::from(g.x_offset), f64::from(g.y_offset))).collect();
         if t.layout(face.upem, face.ascent, face.descent, &glyphs).is_none() {
             continue;
