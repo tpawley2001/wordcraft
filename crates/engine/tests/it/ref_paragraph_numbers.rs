@@ -204,7 +204,8 @@ fn relative_number_keeps_context_already_in_the_target_label() {
     assert_eq!(got, ["1.1.1", "1.1.1", "1.1.1"]);
 }
 
-/// Cached values of unsupported switches, missing targets and locked fields are not replaced with paragraph text.
+/// Cached values of unsupported switches and locked fields are not replaced with paragraph text; a
+/// missing target shows Word's error text instead (Update Field in Word).
 #[test]
 fn unsupported_or_unresolvable_numeric_refs_preserve_their_cache() {
     let body = [
@@ -225,9 +226,14 @@ fn unsupported_or_unresolvable_numeric_refs_preserve_their_cache() {
     ]
     .concat();
     let mut s = open(&body);
-    let before = fields(&s);
+    let mut want = fields(&s);
+    for (instr, result) in &mut want {
+        if instr.contains("_Missing") {
+            *result = "Error! Reference source not found.".to_string();
+        }
+    }
     s.run("references.updateFields", &json!({"all":true})).unwrap();
-    assert_eq!(fields(&s), before);
+    assert_eq!(fields(&s), want);
 }
 
 /// Updating, undoing and saving keep the field instructions and their numeric results intact.
