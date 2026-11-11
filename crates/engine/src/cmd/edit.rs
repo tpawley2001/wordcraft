@@ -2,7 +2,7 @@
 
 use serde_json::{Value, json};
 use wordcraft_doc::edit::Fragment;
-use wordcraft_doc::{InlineObject, Path, Pos, StoryRef};
+use wordcraft_doc::{InlineObject, Pos, StoryRef};
 
 use super::{delete_selection, find_pattern, pos_json, sel_result};
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
@@ -178,11 +178,10 @@ pub fn specs() -> Vec<CommandSpec> {
 }
 
 fn copy(s: &mut Session, _: &Value) -> CmdResult {
-    let whole = super::table::selected_table(s);
     // The same selection copied again with nothing changed in between: Ctrl+C pressed twice.
     let key = (s.sel.clone(), s.document_id(), s.rev());
     let twice = s.last_copy.as_ref() == Some(&key);
-    let mut r = copy_with(s, whole.as_ref())?;
+    let mut r = copy_with(s)?;
     s.last_copy = Some(key);
     if twice && s.prefs.clipboard.show_on_copy_twice {
         s.view.clipboard_pane = true;
@@ -238,9 +237,9 @@ pub(crate) fn take_copy(s: &mut Session, f: Fragment) -> Value {
     r
 }
 
-/// Copy, `whole` being the table the selection covers whole, if it does.
-fn copy_with(s: &mut Session, whole: Option<&Path>) -> CmdResult {
-    match fragment_of(s, &s.doc, whole) {
+/// Copy: the selection's fragment ([`selection_fragment`]) onto the clipboard.
+fn copy_with(s: &mut Session) -> CmdResult {
+    match selection_fragment(s) {
         Some(f) => Ok(take_copy(s, f)),
         None => Ok(json!({"text": ""})),
     }
@@ -256,14 +255,10 @@ pub(crate) fn selection_fragment(s: &Session) -> Option<Fragment> {
 /// structure (its fields refreshed for output, say).
 pub(crate) fn selection_fragment_in(s: &Session, doc: &wordcraft_doc::Document) -> Option<Fragment> {
     let whole = super::table::selected_table(s);
-    fragment_of(s, doc, whole.as_ref())
-}
-
-fn fragment_of(s: &Session, doc: &wordcraft_doc::Document, whole: Option<&Path>) -> Option<Fragment> {
     let (a, b) = s.sel.ordered();
     // Whole table cells selected copy as a table, even empty ones (their selection has no
     // length): the whole table, or a table of just the selected rows or cells (#1744).
-    let table = match (whole, s.cell_range()) {
+    let table = match (&whole, s.cell_range()) {
         (Some(tp), _) => doc.copy_block(a.story, tp),
         (None, Some(r)) => doc.copy_table_cells(r.story, &r.table, r.rows, r.cols),
         (None, None) => None,
@@ -304,7 +299,7 @@ pub(crate) fn copy_result(s: &mut Session) -> Value {
 
 fn cut(s: &mut Session, _: &Value) -> CmdResult {
     let whole = super::table::selected_table(s);
-    let r = copy_with(s, whole.as_ref())?;
+    let r = copy_with(s)?;
     // A whole table selected: Cut removes the table, as Delete Table does (#1744). With Track
     // Changes on, the cut below marks its text deleted (a tracked cut may become a move).
     if !s.doc.settings.track_changes
