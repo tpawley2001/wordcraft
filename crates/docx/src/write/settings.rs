@@ -15,6 +15,40 @@ pub(super) fn notes_part(doc: &Document, wr: &Writer<'_>, foot: bool) -> bool {
     !ids.is_empty() || !seps.is_empty()
 }
 
+/// `w:stylePaneFormatFilter` (with the attribute form when the file had it) and
+/// `w:stylePaneSortMethod` (ECMA-376 Part 1 §17.15.1.85, §17.15.1.86).
+fn write_style_pane(w: &mut W, pane: &wordcraft_doc::StylePaneOptions) {
+    let f = pane.filter;
+    let val = format!("{f:04X}");
+    let bit = |b: u16| if f & b == b { "1" } else { "0" };
+    // The four direct-formatting attributes are one group of bits in `w:val`.
+    let direct = bit(0x0F00);
+    let mut a: Vec<(&str, &str)> = vec![("w:val", &val)];
+    if pane.filter_attrs {
+        a.extend([
+            ("w:allStyles", bit(0x0001)),
+            ("w:customStyles", bit(0x0002)),
+            ("w:latentStyles", bit(0x0004)),
+            ("w:stylesInUse", bit(0x0008)),
+            ("w:headingStyles", bit(0x0020)),
+            ("w:numberingStyles", bit(0x0010)),
+            ("w:tableStyles", bit(0x0040)),
+            ("w:directFormattingOnRuns", direct),
+            ("w:directFormattingOnParagraphs", direct),
+            ("w:directFormattingOnNumbering", direct),
+            ("w:directFormattingOnTables", direct),
+            ("w:clearFormatting", bit(0x1000)),
+            ("w:top3HeadingStyles", bit(0x2000)),
+            ("w:visibleStyles", bit(0x4000)),
+            ("w:alternateStyleNames", bit(0x8000)),
+        ]);
+    }
+    w.empty("w:stylePaneFormatFilter", &a);
+    if let Some(sort) = pane.sort {
+        w.empty("w:stylePaneSortMethod", &[("w:val", &format!("{:04X}", sort.code()))]);
+    }
+}
+
 /// `w:settings`, its children in the schema's order (CT_Settings is a sequence). `template_rel`
 /// is the id of the attached template's relationship, when there is one.
 pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, template_rel: Option<&str>) -> Vec<u8> {
@@ -61,6 +95,9 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
     }
     if s.link_styles {
         w.empty("w:linkStyles", &[]);
+    }
+    if let Some(pane) = &s.style_pane {
+        write_style_pane(&mut w, pane);
     }
     if s.track_changes {
         w.empty("w:trackRevisions", &[]);

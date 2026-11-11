@@ -1476,6 +1476,7 @@ fn bookmark_destination_is_the_page_of_its_start() {
         doc: &d,
         lay: &lay,
         opts: &PdfOptions::default(),
+        forms_data_only: false,
         out_index: pages.iter().enumerate().map(|(o, p)| (*p, (o, Fit::of(&lay.pages[*p], None)))).collect(),
         fonts: HashMap::new(),
         font_error: None,

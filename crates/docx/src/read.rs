@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use wordcraft_doc::control::{ControlEvent, ControlKind, control_events, pair_events};
 use wordcraft_doc::graphic::{Graphic, GraphicKind};
-use wordcraft_doc::numbering::{AbstractNum, Level, LevelSuffix, Num};
+use wordcraft_doc::numbering::{AbstractNum, LegacyLevel, Level, LevelSuffix, Num};
 use wordcraft_doc::para::NoteKind;
 use wordcraft_doc::para::OBJ;
 use wordcraft_doc::props::Rgb;

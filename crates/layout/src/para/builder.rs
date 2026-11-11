@@ -412,6 +412,9 @@ impl<'a> Builder<'a> {
             };
             let k = st.size / st.face.upem.max(1.0) as f32;
             let hscale = rc.scale / 100.0;
+            // A missing font Word has advances for (Univers) keeps them: the substitute's glyph is
+            // drawn at the start of a cell as wide as the real font's (`missing_font_advance`).
+            let word_advances = resolved.substituted && !key.complex && st.face.id() == primary.id() && st.size.is_finite() && st.size > 0.0;
             // Group glyphs by cluster byte offset; graphemes may span several shaper clusters.
             // Complex-script syllables the graphemes split (Myanmar vowel signs, stacked
             // consonants) stay one cluster: the caret never stops inside them.
@@ -445,6 +448,8 @@ impl<'a> Builder<'a> {
                 } else {
                     ClKind::Text
                 });
+                // The substitute's kerning pairs aren't the missing font's: Word's advance stands.
+                let adv = word_advances.then(|| self.missing_font_advance(s, map, rc, st.size * hscale, g0)).flatten().unwrap_or(adv);
                 let adv = if kind == ClKind::Marker { 0.0 } else { adv + rc.spacing };
                 // Clusters index the document text, never the displayed text.
                 let (cs, ce) = if substituted { remap_range(&map_starts, &orig_of, sub.len(), gs, ge) } else { (gs, ge) };
@@ -466,6 +471,19 @@ impl<'a> Builder<'a> {
                 self.split_ligature_advances(seg_c0, rc.spacing, key.rtl);
             }
         }
+    }
+
+    /// The width (points) Word gives the one-character cluster `s` of a missing font it has
+    /// advances for, when its single glyph starts at `g0`; `em` is the drawn size in points,
+    /// character scale included.
+    fn missing_font_advance(&self, s: &str, map: impl Fn(char) -> char, rc: &ResolvedChar, em: f32, g0: u32) -> Option<f32> {
+        let mut chars = s.chars();
+        let (Some(c), None) = (chars.next(), chars.next()) else { return None };
+        if self.glyphs.len() != (g0 as usize).saturating_add(1) {
+            return None;
+        }
+        let w = wordcraft_fonts::word::missing_font_advance(&rc.font, rc.bold, map(c))? as f32 * em;
+        w.is_finite().then_some(w)
     }
 
     /// A ligature glyph (fi, ffi, lam-alef) sits on the first cluster of the letters it draws and
@@ -777,4 +795,35 @@ fn one_em_line(face: &wordcraft_fonts::FontFace) -> (f64, f64) {
     let (a, d) = wordcraft_fonts::word::line_metrics(face);
     let total = a + d;
     if total.is_finite() && total > 0.0 { (a / total, d / total) } else { (0.8, 0.2) }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Document, LayoutCache, LayoutOptions, Placed, layout};
+
+    /// How many clusters of "current revision" in `font` at `size` have a width that isn't finite.
+    fn non_finite_widths(font: &str, size: f32) -> usize {
+        let chr = wordcraft_doc::CharProps { font: Some(font.into()), size: Some(size), ..Default::default() };
+        let mut d = Document::new();
+        d.body = vec![wordcraft_doc::para_block(wordcraft_doc::Paragraph::with_text("current revision", chr))];
+        let l = layout(&d, &mut LayoutCache::new(), &LayoutOptions::default());
+        l.pages
+            .iter()
+            .flat_map(|p| &p.items)
+            .filter_map(
+                |it| if let Placed::Lines { para, .. } = it { Some(para.clusters.iter().filter(|c| !c.adv.is_finite()).count()) } else { None },
+            )
+            .sum()
+    }
+
+    #[test]
+    fn hostile_univers_sizes_add_no_bad_widths() {
+        crate::test_fonts();
+        // A file naming a missing Univers at a 0, NaN or huge size: Word's advances are scaled by
+        // the size, and must bring no NaN or infinity a font without such a table doesn't have.
+        for size in [0.0, f32::NAN, f32::INFINITY, -12.0, f32::MAX, 12.0] {
+            assert!(non_finite_widths("Univers", size) <= non_finite_widths("Arial", size), "size {size}");
+        }
+        assert_eq!(non_finite_widths("Univers", 12.0), 0);
+    }
 }

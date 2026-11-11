@@ -1,11 +1,12 @@
 //! Paragraph widow/orphan control (`\widctlpar`, `\nowidctlpar`, RTF 1.9.1): read into the
-//! paragraph's own properties, reset by `\pard`, and written back.
+//! paragraph's own properties, reset by `\pard`, and written back. The document turns widow control
+//! on (`\widowctrl`), so an unset paragraph stays unset.
 
 use super::*;
 use wordcraft_doc::Document;
 
 fn open(body: &str) -> Document {
-    import(format!(r"{{\rtf1\ansi\deff0{{\fonttbl{{\f0 Times New Roman;}}}}{body}}}").as_bytes()).unwrap()
+    import(format!(r"{{\rtf1\ansi\deff0{{\fonttbl{{\f0 Times New Roman;}}}}\widowctrl{body}}}").as_bytes()).unwrap()
 }
 
 fn widow(d: &Document) -> Vec<Option<bool>> {
