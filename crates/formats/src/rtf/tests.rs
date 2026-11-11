@@ -1839,6 +1839,7 @@ mod doc_settings;
 mod doc_widow_control;
 mod foreign_styles;
 mod frames;
+mod info_props;
 mod justification_flag;
 mod legacy_pn;
 mod mark_and_default_font;
