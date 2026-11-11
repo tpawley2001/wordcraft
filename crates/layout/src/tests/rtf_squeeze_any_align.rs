@@ -1,7 +1,8 @@
 //! A line of a document opened from RTF (`Settings::rtf_justification`, no `\wraptrsp`) keeps the
-//! word that overruns its right edge, squeezing its single spaces, when the overrun is less than
-//! min(spaces on the line, 10) x half a space, for left, right, centred and justified lines alike,
-//! and only in a fixed-pitch font: a proportional font (Times New Roman) never squeezes.
+//! word that overruns its right edge, squeezing its single spaces, when the space before that word
+//! starts inside the line and the overrun is less than half the width of the line's single spaces,
+//! for left, right, centred and justified lines alike, and only in a fixed-pitch font: a
+//! proportional font (Times New Roman) never squeezes.
 //!
 //! Measured in Microsoft 365 Word (16.0.20527) from synthetic RTF files: Letter page (or 792 pt
 //! wide where noted), margins 72 pt left / 36 pt right, the probe's right indent, single spaces.
@@ -85,7 +86,7 @@ fn first_line(font: &str, size: f32, page_width: f32, align: Align, indent_right
 }
 
 #[test]
-fn every_alignment_keeps_the_word_up_to_ten_half_spaces_in_courier() {
+fn every_alignment_keeps_the_overrunning_word_in_courier() {
     crate::test_fonts();
     for p in PROBES {
         let text = format!("{}{TAIL}", p.line);
