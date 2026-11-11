@@ -33,6 +33,7 @@ mod keep_next_long_chain;
 mod ligature;
 pub(crate) mod linear;
 mod list_numbers_per_story;
+mod metafile_symbol_text;
 mod missing_font_line;
 mod missing_font_line_more;
 mod missing_font_line_tahoma;
