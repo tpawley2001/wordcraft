@@ -80,10 +80,16 @@ fn each_cell_keeps_its_own_margins_and_the_next_row_starts_clean() {
     assert_eq!(second, [(None, None), (None, None)]);
 }
 
+/// Word sets the side to 0 (it does not fall back to the row's padding) for a negative value, a
+/// value past 22 inches, and a unit word with no value.
 #[test]
-fn a_huge_margin_is_capped_at_22_inches() {
-    let d = open(&row(r"\clpadl99999999\clpadfl3"));
-    assert_eq!(sides(&d, 0), [Some(1584.0), None, None, None]);
+fn a_negative_huge_or_missing_value_sets_the_side_to_zero() {
+    for words in [r"\clpadt-720\clpadft3", r"\clpadt99999999\clpadft3", r"\clpadt32767\clpadft3", r"\clpadft3", r"\clpadt0\clpadft3"] {
+        let d = open(&row(words));
+        assert_eq!(sides(&d, 0), [None, Some(0.0), None, None], "{words}");
+    }
+    let d = open(&row(r"\clpadt2000\clpadft3"));
+    assert_eq!(sides(&d, 0), [None, Some(100.0), None, None]);
 }
 
 #[test]
