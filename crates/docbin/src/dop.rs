@@ -1,7 +1,7 @@
 //! The Document Properties (`Dop`, [MS-DOC] §2.7) in the Table stream, located by the FIB's
-//! `fcDop`/`lcbDop`. Only the compatibility options the layout engine models are read; every
-//! option whose containing structure lies beyond `lcbDop` keeps its default, except that
-//! Dop95/Dop97 predate HTML paragraph auto spacing and therefore sum paragraph spacing.
+//! `fcDop`/`lcbDop`. The `DopBase` document options and the compatibility options the layout
+//! engine models are read; every option whose containing structure lies beyond `lcbDop` keeps its
+//! default, except that Dop95/Dop97 predate HTML paragraph auto spacing and therefore sum paragraph spacing.
 
 use wordcraft_doc::Settings;
 
@@ -27,6 +27,58 @@ const DOP2000_LEN: usize = 544;
 /// a DOP at least this long.
 const DOP2003_LEN: usize = 616;
 
+/// Bytes of the `DopBase` ([MS-DOC] §2.7.3) holding every option `apply_base` reads.
+const DOPBASE_READ_LEN: usize = 20;
+/// `DopBase.fFacingPages` (byte 0, bit A; [MS-DOC] §2.7.3): Different odd and even pages.
+const OFF_FACING: usize = 0;
+const F_FACING_PAGES: u8 = 0x01;
+/// The byte of `DopBase` holding `fHyphCapitals`, `fAutoHyphen` and `fRevMarking` ([MS-DOC] §2.7.3).
+const OFF_HYPH_REV: usize = 5;
+/// `DopBase.fHyphCapitals` ([MS-DOC] §2.7.3).
+const F_HYPH_CAPITALS: u8 = 0x08;
+/// `DopBase.fAutoHyphen` ([MS-DOC] §2.7.3).
+const F_AUTO_HYPHEN: u8 = 0x10;
+/// `DopBase.fRevMarking` ([MS-DOC] §2.7.3): Track Changes is on.
+const F_REV_MARKING: u8 = 0x80;
+/// The byte of `DopBase` holding `fMirrorMargins` ([MS-DOC] §2.7.3).
+const OFF_MIRROR: usize = 6;
+/// `DopBase.fMirrorMargins` ([MS-DOC] §2.7.3).
+const F_MIRROR_MARGINS: u8 = 0x20;
+/// `DopBase.dxaTab` ([MS-DOC] §2.7.3): the default tab stop interval in twips.
+const OFF_DXA_TAB: usize = 10;
+/// `DopBase.dxaHotZ` ([MS-DOC] §2.7.3): the hyphenation zone in twips.
+const OFF_DXA_HOT_Z: usize = 14;
+/// `DopBase.cConsecHypLim` ([MS-DOC] §2.7.3): consecutive hyphenated lines, 0 = no limit.
+const OFF_CONSEC_HYP_LIM: usize = 16;
+/// The largest default tab or hyphenation zone taken from a file: 22 inches in twips.
+const MAX_DXA: u16 = 31_680;
+
+/// Apply the `DopBase` document options ([MS-DOC] §2.7.3): the default tab stop, Different odd
+/// and even pages, mirror margins, the hyphenation options and Track Changes. A DOP shorter than
+/// the fields read leaves every option at its default; a zero or out-of-range `dxaTab`/`dxaHotZ`
+/// keeps its default.
+fn apply_base(dop: &[u8], settings: &mut Settings) {
+    if dop.len() < DOPBASE_READ_LEN {
+        return;
+    }
+    let byte = |at: usize| dop.get(at).copied().unwrap_or(0);
+    settings.even_odd_headers = byte(OFF_FACING) & F_FACING_PAGES != 0;
+    let hyph_rev = byte(OFF_HYPH_REV);
+    settings.hyphenate_caps = hyph_rev & F_HYPH_CAPITALS != 0;
+    settings.auto_hyphenation = hyph_rev & F_AUTO_HYPHEN != 0;
+    settings.track_changes = hyph_rev & F_REV_MARKING != 0;
+    settings.mirror_margins = byte(OFF_MIRROR) & F_MIRROR_MARGINS != 0;
+    if let Some(tab) = u16_at(dop, OFF_DXA_TAB).filter(|t| (1..=MAX_DXA).contains(t)) {
+        settings.default_tab = f32::from(tab) / 20.0;
+    }
+    if let Some(zone) = u16_at(dop, OFF_DXA_HOT_Z).filter(|z| (1..=MAX_DXA).contains(z)) {
+        settings.hyphenation_zone = f32::from(zone) / 20.0;
+    }
+    if let Some(limit) = u16_at(dop, OFF_CONSEC_HYP_LIM) {
+        settings.consecutive_hyphen_limit = u32::from(limit);
+    }
+}
+
 /// Apply the DOP's compatibility options to `settings`. A DOP outside the Table stream is
 /// ignored (the defaults stay). A valid Dop95/Dop97 sums paragraph spacing because HTML
 /// paragraph auto spacing was introduced with Dop2000.
@@ -34,6 +86,7 @@ pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Setti
     let Some((fc, lcb)) = pair else { return };
     let (Ok(fc), Ok(lcb)) = (usize::try_from(fc), usize::try_from(lcb)) else { return };
     let Some(dop) = fc.checked_add(lcb).and_then(|end| table.get(fc..end)) else { return };
+    apply_base(dop, settings);
     if dop.len() >= DOP95_LEN
         && let Some(copts60) = u16_at(dop, OFF_COPTS60)
     {
