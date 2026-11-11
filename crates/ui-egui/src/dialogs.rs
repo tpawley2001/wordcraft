@@ -102,6 +102,9 @@ pub enum Dialog {
         hidden: bool,
         color: String,
         spacing: f32,
+        /// Scale, percent (100 = normal), and Position, points (raised above zero, lowered below).
+        scale: f32,
+        position: f32,
         /// Kerning for fonts (`w:kern`), from the Advanced tab: `None` while the selected text
         /// differs, shown neither on nor off; `kern_at` is its Points and above size.
         kern: Option<bool>,
@@ -773,6 +776,8 @@ impl Dialog {
                     hidden: b("hidden"),
                     color: s("color"),
                     spacing: st.get("spacing").and_then(Value::as_f64).unwrap_or(0.0) as f32,
+                    scale: 100.0,
+                    position: 0.0,
                     kern: kern.map(|k| k > 0.0),
                     kern_at: kern.filter(|k| *k > 0.0).unwrap_or(12.0) as f32,
                     start: serde_json::Map::new(),
@@ -1134,6 +1139,8 @@ pub mod dialogs_table_style;
 pub mod dialogs_templates;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_font_spacing;
 #[cfg(test)]
 mod tests_font_underline;
 #[cfg(test)]
