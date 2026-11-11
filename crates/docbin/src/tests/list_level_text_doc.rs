@@ -79,11 +79,7 @@ fn doc_with_lists(lst: &[u8], lfo: &[u8]) -> Vec<u8> {
 fn unicode_number_text_survives_opening() {
     // Level 1: 第%1章 (decimal, placeholder at offset 2); level 2: a ● bullet (nfc 0x17, as the
     // real file stores it in MS Mincho); level 3: "%3" followed by U+1F600 as a surrogate pair.
-    let mut levels = vec![
-        lvl(0x00, &[2], &[0x7B2C, 0x0000, 0x7AE0]),
-        lvl(0x17, &[], &[0x25CF]),
-        lvl(0x00, &[1], &[0x0002, 0xD83D, 0xDE00]),
-    ];
+    let mut levels = vec![lvl(0x00, &[2], &[0x7B2C, 0x0000, 0x7AE0]), lvl(0x17, &[], &[0x25CF]), lvl(0x00, &[1], &[0x0002, 0xD83D, 0xDE00])];
     levels.extend((3..9).map(|i| lvl(0x00, &[1], &[i, 0x002E])));
     let (lst, lfo) = lists(&levels);
     let doc = read(&doc_with_lists(&lst, &lfo)).expect("opens");
