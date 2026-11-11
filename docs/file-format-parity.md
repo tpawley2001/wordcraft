@@ -1,5 +1,6 @@
 # File-format parity with Microsoft Word
 
+> **Last updated:** 2026-11-11 · **Change:** trivial (P0246: `.doc` toggle formatting stored as "the style's value" or "the opposite of the style's value" (bold, italic, strike, caps, small caps, hidden) resolves against the style of the paragraph the character is in, as in Word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0244: `.doc` EMF pictures from OfficeArt BLIPs get the embedded-object EMF header and face-name repair, so Word opens the saved .docx. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0239: `.doc` tables keep their preferred width from `sprmTTableWidth`)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0238: DOCX keeps and draws `w14:numForm`, `w14:numSpacing`, `w14:stylisticSets` and `w14:cntxtAlts`. Readiness estimates unchanged.)
@@ -914,6 +915,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 | 2026-11-11 | trivial | `.doc`: sprmSFRTLGutter (0x322A) puts the section's gutter on the right of the page, as `w:rtlGutter` does (P0237) |
 | 2026-11-10 | trivial | DOCX: list levels keep `w:tplc`, `w:tentative` and `w:legacy`, `w:numbering` keeps `w:numIdMacAtCleanup`, sections keep `w:rtlGutter` and `w:pgSz/@w:code`; an RTL gutter widens the right margin instead of the left (P0207) |
 | 2026-11-10 | trivial | DOCX: a style's `w:semiHidden`, `w:unhideWhenUsed` and `w:hidden` are written back as read instead of all as `w:semiHidden` + `w:unhideWhenUsed`; `w:aliases`, `w:autoRedefine`, `w:personal`, `w:personalCompose`, `w:personalReply` and `w:rsid` are kept (P0206) |
+| 2026-11-11 | trivial | P0246: `.doc` toggle sprms with operand 0x80/0x81 ([MS-DOC] §2.9.326) resolve against the character's own paragraph style, looked up from the paragraph mark before its characters are read; before, they resolved against no style, so 0x81 in a bold paragraph style drew bold text where Word draws regular |
 | 2026-11-11 | trivial | P0244: `.doc` EMF pictures from OfficeArt BLIPs (`OfficeArtBlipEMF`) get the same EMF header-count and 32-unit face-name repair as embedded objects' EMFs; WMF and PICT unchanged |
 | 2026-11-11 | trivial | P0234: RTF reads and writes legacy form fields' settings (`{\*\formfield …}` in FORMCHECKBOX, FORMDROPDOWN and FORMTEXT fields: name, protection, help and status text, macros, check box size, default and state, drop-down entries and selection, text type, default, maximum length and format) as the field's `w:ffData`; fields in the body open as fields, not their result text |
 | 2026-11-11 | trivial | DOCX: OpenType number forms, number spacing, stylistic sets and contextual alternates (`w14:numForm`, `w14:numSpacing`, `w14:stylisticSets`, `w14:cntxtAlts`) read, written and drawn (P0238) |
