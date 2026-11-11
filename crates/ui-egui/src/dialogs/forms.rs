@@ -287,6 +287,13 @@ pub struct TableForm {
     pub cell_width: f32,
     /// `top`, `center` or `bottom`.
     pub valign: String,
+    /// Measure in: the table's preferred width is a percentage of the text column, and `width`
+    /// holds that percentage.
+    pub width_percent: bool,
+    /// Alt Text › Title (`w:tblCaption`).
+    pub alt_title: String,
+    /// Alt Text › Description (`w:tblDescription`).
+    pub alt_description: String,
 }
 
 /// The Cell Margins dialog's values, in the interface unit.
@@ -380,7 +387,16 @@ impl TableForm {
                 _ => "top",
             }
             .into(),
+            width_percent: false,
+            alt_title: String::new(),
+            alt_description: String::new(),
         })
+    }
+
+    /// The commands OK runs, in order: `table.properties` with what differs from `basis`.
+    pub fn commands(&self, basis: &TableForm) -> Vec<(&'static str, Value)> {
+        let changes = self.changes(basis);
+        if changes.as_object().is_some_and(|m| !m.is_empty()) { vec![("table.properties", changes)] } else { Vec::new() }
     }
 
     /// `table.properties` parameters for what differs from `basis` (empty when nothing does).

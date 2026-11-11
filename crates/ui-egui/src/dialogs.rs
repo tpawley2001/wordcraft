@@ -1145,4 +1145,6 @@ mod tests_para_line;
 #[cfg(test)]
 mod tests_para_outline;
 #[cfg(test)]
+mod tests_table_props;
+#[cfg(test)]
 mod tests_zoom;
