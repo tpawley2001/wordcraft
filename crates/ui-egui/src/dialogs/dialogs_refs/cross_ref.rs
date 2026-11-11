@@ -6,8 +6,15 @@ use super::{Serialize, Ui, Value, WordApp, buttons, json, vec2};
 // Cross-reference
 
 /// Reference types: (`insert.crossReference`'s `to`, label).
-const REF_TYPES: [(&str, &str); 5] =
-    [("heading", "Heading"), ("bookmark", "Bookmark"), ("equation", "Equation"), ("figure", "Figure"), ("table", "Table")];
+const REF_TYPES: [(&str, &str); 7] = [
+    ("heading", "Heading"),
+    ("bookmark", "Bookmark"),
+    ("footnote", "Footnote"),
+    ("endnote", "Endnote"),
+    ("equation", "Equation"),
+    ("figure", "Figure"),
+    ("table", "Table"),
+];
 
 /// The Reference types to pick from: [`REF_TYPES`], then each caption label of the person's own
 /// (Insert Caption › New Label, or already in the document's captions) as `label:<Name>` (#2940).
@@ -27,11 +34,13 @@ pub(super) fn ref_types(app: &WordApp) -> Vec<(String, String)> {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CrossRefForm {
-    /// `heading`, `bookmark`, `equation`, `figure`, `table`, or `label:<Name>` for a caption label
-    /// of the person's own.
+    /// `heading`, `bookmark`, `footnote`, `endnote`, `equation`, `figure`, `table`, or
+    /// `label:<Name>` for a caption label of the person's own.
     pub to: String,
-    /// `text`, `page`, `number` or `aboveBelow`.
+    /// `text`, `page`, `number`, `aboveBelow` or (notes) `formattedNumber`.
     pub show: String,
+    /// Insert as hyperlink: the field's `\h` switch (on by default).
+    pub hyperlink: bool,
     /// The document's targets of this type.
     pub targets: Vec<String>,
     pub selected: Option<usize>,
@@ -41,7 +50,8 @@ impl CrossRefForm {
     pub fn read(app: &WordApp, to: &str) -> CrossRefForm {
         let targets: Vec<String> = wordcraft_engine::cmd::citations::ref_targets(&app.session, to).into_iter().map(|(t, _)| t).collect();
         let selected = (!targets.is_empty()).then_some(0);
-        CrossRefForm { to: to.into(), show: "text".into(), targets, selected }
+        let show = if matches!(to, "footnote" | "endnote") { "number" } else { "text" };
+        CrossRefForm { to: to.into(), show: show.into(), targets, selected, hyperlink: true }
     }
 
     /// What can be inserted for this type: (`show`, label).
@@ -49,6 +59,18 @@ impl CrossRefForm {
         match self.to.as_str() {
             "heading" => &[("text", "Heading text"), ("page", "Page number"), ("aboveBelow", "Above/below")],
             "bookmark" => &[("text", "Bookmark text"), ("page", "Page number"), ("aboveBelow", "Above/below")],
+            "footnote" => &[
+                ("number", "Footnote number"),
+                ("page", "Page number"),
+                ("aboveBelow", "Above/below"),
+                ("formattedNumber", "Footnote number (formatted)"),
+            ],
+            "endnote" => &[
+                ("number", "Endnote number"),
+                ("page", "Page number"),
+                ("aboveBelow", "Above/below"),
+                ("formattedNumber", "Endnote number (formatted)"),
+            ],
             _ => &[("text", "Entire caption"), ("number", "Only label and number"), ("page", "Page number"), ("aboveBelow", "Above/below")],
         }
     }
@@ -56,7 +78,7 @@ impl CrossRefForm {
     /// `insert.crossReference` parameters, or `None` with nothing picked.
     pub fn params(&self) -> Option<Value> {
         let target = self.targets.get(self.selected?)?;
-        Some(json!({"to": self.to, "target": target, "show": self.show}))
+        Some(json!({"to": self.to, "target": target, "show": self.show, "hyperlink": self.hyperlink}))
     }
 }
 
@@ -83,10 +105,18 @@ pub(super) fn cross_ref_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CrossRefForm)
         });
     });
     if f.to != was {
+        let hyperlink = f.hyperlink;
         *f = CrossRefForm::read(app, &f.to);
+        // Insert as hyperlink stays as set while the dialog is open.
+        f.hyperlink = hyperlink;
     }
+    ui.checkbox(&mut f.hyperlink, tl!("Insert as hyperlink"));
     ui.add_space(4.0);
-    ui.label(tl!("For which item:"));
+    ui.label(match f.to.as_str() {
+        "footnote" => tl!("For which footnote:"),
+        "endnote" => tl!("For which endnote:"),
+        _ => tl!("For which item:"),
+    });
     egui::Frame::group(ui.style()).show(ui, |ui| {
         egui::ScrollArea::vertical().max_height(180.0).auto_shrink([false, false]).show(ui, |ui| {
             ui.set_width(320.0);

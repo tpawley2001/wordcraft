@@ -38,6 +38,9 @@ pub struct DisplayOptions {
     /// Dim headers/footers (editing the body) or the body (editing a header/footer).
     pub dim_header: bool,
     pub dim_body: bool,
+    /// Header & Footer › Show Document Text off: the body's text, tables and objects are left out
+    /// (page borders stay; headers and footers draw as before). Screen only.
+    pub hide_body: bool,
     /// Show tracked changes as markup (coloured, underlined/struck).
     pub markup: bool,
     /// Show on-screen-only marks: equation placeholders and prompts (never in print or PDF).
@@ -65,6 +68,7 @@ impl Default for DisplayOptions {
             always: FormattingMarks::default(),
             dim_header: true,
             dim_body: false,
+            hide_body: false,
             markup: true,
             placeholders: false,
             hide_ink: false,

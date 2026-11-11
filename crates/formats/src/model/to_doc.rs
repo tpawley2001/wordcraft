@@ -662,13 +662,13 @@ impl<'a> Builder<'a> {
                         append(&mut out, "", &cp, Some(obj));
                     }
                 }
-                Inline::Field { instr, result, fmt, locked } => {
+                Inline::Field { instr, result, fmt, locked, form } => {
                     let cp = self.budget(char_props(fmt));
                     let (instr, result) = (clean_text(instr), clean_text(result));
                     if instr.trim().is_empty() {
                         append(&mut out, &result, &cp, None);
                     } else {
-                        let obj = InlineObject::Field { instr, result, locked: *locked, dirty: false, code: false, form: String::new() };
+                        let obj = InlineObject::Field { instr, result, locked: *locked, dirty: false, code: false, form: form.clone() };
                         append(&mut out, "", &cp, Some(obj));
                     }
                 }
@@ -891,7 +891,7 @@ impl<'a> Builder<'a> {
         let mut tb = Table::new(1, cols, width);
         // A table from a format that keeps cell formatting (ODT) has its cells' own borders and no
         // table style of Word's kind: Table Grid's single spacing would change its text.
-        if t.borderless || t.extra.is_some() {
+        if t.borderless || t.extra.as_deref().is_some_and(|x| !placement_only(x)) {
             tb.props.style = None;
         }
         if t.widths.len() == cols && t.widths.iter().all(|w| w.is_finite() && *w > 1.0) {
@@ -900,6 +900,7 @@ impl<'a> Builder<'a> {
         tb.rows.clear();
         if let Some(x) = &t.extra {
             tb.props.align = x.align;
+            tb.props.indent = x.indent.filter(|i| i.is_finite()).map(|i| i.clamp(-1584.0, 1584.0));
             tb.props.width_pct = x.width_pct.filter(|p| p.is_finite() && *p > 0.0).map(|p| p.min(100.0));
             tb.props.width = x.width.filter(|w| w.is_finite() && *w > 0.0).map(|w| w.min(1584.0));
             tb.props.fixed |= x.fixed;
@@ -985,6 +986,20 @@ impl<'a> Builder<'a> {
         }
         Some(tb)
     }
+}
+
+/// Whether a table's extra holds nothing but its alignment and left edge, which leave the style it
+/// gets as it was.
+fn placement_only(x: &super::types::TableExtra) -> bool {
+    x.width.is_none()
+        && x.width_pct.is_none()
+        && x.heights.iter().all(Option::is_none)
+        && !x.keep_rows.contains(&true)
+        && !x.fixed
+        && x.space.iter().all(Option::is_none)
+        && x.header_rows == 0
+        && x.style.is_none()
+        && x.look.is_none()
 }
 
 fn finite_or(v: f32, d: f32) -> f32 {

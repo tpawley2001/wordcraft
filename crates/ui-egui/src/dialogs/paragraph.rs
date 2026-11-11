@@ -39,7 +39,7 @@ pub(super) fn paragraph_dialog(rp: &wordcraft_doc::resolve::ResolvedPara, style:
         outline: rp.outline_level.filter(|l| *l < 9).unwrap_or(9),
         outline_fixed: is_builtin_heading(style),
         asian: [rp.kinsoku, rp.word_wrap, rp.overflow_punct, rp.top_line_punct, rp.auto_space_de, rp.auto_space_dn],
-        opts: [rp.mirror_indents, rp.contextual_spacing, rp.suppress_line_numbers, rp.suppress_hyphens],
+        opts: [rp.mirror_indents, rp.contextual_spacing, rp.suppress_line_numbers, rp.suppress_hyphens, rp.adjust_right_indent, rp.snap_to_grid],
         start: serde_json::Map::new(),
         mixed: BTreeSet::new(),
     }
@@ -73,12 +73,13 @@ pub(super) fn para_fields(d: &Dialog) -> serde_json::Map<String, Value> {
     };
     let unit = crate::options::unit().pt_per_unit();
     let [kinsoku, word_wrap, overflow, top_line, de, dn] = asian;
-    let [mirror, contextual, no_numbers, no_hyphens] = opts;
+    let [mirror, contextual, no_numbers, no_hyphens, adjust_right, snap] = opts;
     let fields = json!({
         "bidi": rtl, "align": align, "left": left * unit, "right": right * unit, "indentFirst": first * unit,
         "spaceBefore": before, "spaceAfter": after, "lineSpacing": line_spacing(*line_rule, *line_at),
         "keepNext": keep_next, "keepLines": keep_lines, "pageBreakBefore": page_break, "widowControl": widow,
         "mirrorIndents": mirror, "contextualSpacing": contextual, "suppressLineNumbers": no_numbers, "suppressHyphens": no_hyphens,
+        "adjustRightIndent": adjust_right, "snapToGrid": snap,
         "kinsoku": kinsoku, "wordWrap": word_wrap, "overflowPunct": overflow, "topLinePunct": top_line, "autoSpaceDE": de, "autoSpaceDN": dn,
     });
     let mut fields = match fields {

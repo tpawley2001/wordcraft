@@ -553,7 +553,7 @@ impl Writer {
                 // A field around content: an index's is its element (see `index_at`).
                 Inline::FieldStart(_) | Inline::FieldEnd | Inline::ObjRev(_) => {}
                 Inline::CommentEnd(id) => out.push_str(&format!("<office:annotation-end office:name=\"{}\"/>", annotation_name(self.prefix, *id))),
-                Inline::Field { instr, result, fmt, locked } => {
+                Inline::Field { instr, result, fmt, locked, .. } => {
                     match self
                         .field_element(instr, result)
                         .and_then(|el| if *locked { super::fields::locked(&el, instr, result) } else { Some(super::fields::unfixed(&el)) })

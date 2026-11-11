@@ -1,27 +1,58 @@
 use super::{CharProps, CmdError, CmdResult, Document, InlineObject, Paragraph, Pos, Selection, Session, StoryRef, Value, delete_selection, json, p};
 use crate::cmd::references::page_label;
+use wordcraft_doc::para::NoteKind;
+
+const MARK: usize = wordcraft_doc::para::OBJ.len_utf8();
+
+/// The note kind a cross-reference type names: `footnote` or `endnote`.
+fn note_kind(to: &str) -> Option<NoteKind> {
+    match to {
+        "footnote" => Some(NoteKind::Footnote),
+        "endnote" => Some(NoteKind::Endnote),
+        _ => None,
+    }
+}
+
+/// "above" when `pos` is before the selection, else "below" (Word's `\p` result).
+fn above_below(s: &Session, pos: &Pos) -> String {
+    if *pos < s.sel.focus { "above".into() } else { "below".into() }
+}
+
+/// The field instruction: `<name> <bookmark>` with its switches, and `\h` unless Insert as
+/// hyperlink is off.
+fn instruction(field: &str, name: &str, switches: &str, hyperlink: bool) -> String {
+    let mut instr = format!("{field} {name}");
+    for sw in [switches, if hyperlink { "\\h" } else { "" }] {
+        if !sw.is_empty() {
+            instr.push(' ');
+            instr.push_str(sw);
+        }
+    }
+    instr
+}
 
 pub(super) fn cross_ref(s: &mut Session, v: &Value) -> CmdResult {
     let to = p::str(v, "to").unwrap_or("heading");
+    if let Some(kind) = note_kind(to) {
+        return note_cross_ref(s, v, kind);
+    }
     let targets = ref_targets(s, to);
     let Some(target) = p::str(v, "target") else {
         return Ok(Value::Array(targets.iter().map(|(t, _)| json!(t)).collect()));
     };
+    let show = p::str(v, "show").unwrap_or("text");
+    if show == "formattedNumber" {
+        return Err(CmdError::Params("`formattedNumber` is for footnotes and endnotes".into()));
+    }
+    let hyperlink = p::bool(v, "hyperlink").unwrap_or(true);
     let find = |ts: Vec<(String, Pos)>| ts.into_iter().find(|(t, _)| t == target || t.starts_with(target));
     let (text, pos) = find(targets).ok_or_else(|| CmdError::Params(format!("no {to} `{target}`")))?;
-    let show = p::str(v, "show").unwrap_or("text");
     let result = match show {
         // The page the target's text starts on (after its leading page breaks), as its footer
         // shows it.
         "page" => page_label(s, &Pos { off: leading_breaks(&s.doc, &pos), ..pos.clone() }),
         "number" => text.split(':').next().unwrap_or(&text).trim().to_string(),
-        "aboveBelow" => {
-            if pos < s.sel.focus {
-                "above".into()
-            } else {
-                "below".into()
-            }
-        }
+        "aboveBelow" => above_below(s, &pos),
         _ if to == "bookmark" => crate::cmd::references::bookmark_text(&s.doc, &text).unwrap_or_default(),
         _ => text.clone(),
     };
@@ -36,7 +67,13 @@ pub(super) fn cross_ref(s: &mut Session, v: &Value) -> CmdResult {
         let (_, pos) = find(ref_targets(s, to)).ok_or_else(|| CmdError::Params(format!("no {to} `{target}`")))?;
         ref_bookmark(s, &pos, show == "number", at)?
     };
-    let instr = format!("{} {name} \\h", if show == "page" { "PAGEREF" } else { "REF" });
+    // Above/below keeps its `\p` switch, so Update Field shows "above" or "below" again
+    // (ECMA-376 §17.16.5.51), not the target's text.
+    let instr = match show {
+        "page" => instruction("PAGEREF", &name, "", hyperlink),
+        "aboveBelow" => instruction("REF", &name, "\\p", hyperlink),
+        _ => instruction("REF", &name, "", hyperlink),
+    };
     let end = s.doc.insert_object(
         &at,
         InlineObject::Field { instr, result: result.clone(), locked: false, dirty: false, code: false, form: String::new() },
@@ -44,6 +81,123 @@ pub(super) fn cross_ref(s: &mut Session, v: &Value) -> CmdResult {
     )?;
     s.sel = Selection::caret(end);
     Ok(json!({"inserted": result}))
+}
+
+/// A body footnote or endnote reference: its part id, its mark as shown, the listing text
+/// (`<mark> <start of its text>`) and where its mark is.
+struct NoteTarget {
+    id: u32,
+    mark: String,
+    listing: String,
+    pos: Pos,
+}
+
+/// Characters of a note's text the Cross-reference list shows.
+const NOTE_TEXT_CHARS: usize = 50;
+
+/// The body's notes of `kind`, in document order.
+fn note_targets(s: &Session, kind: NoteKind) -> Vec<NoteTarget> {
+    let marks = wordcraft_layout::note_marks(&s.doc);
+    let mut out = Vec::new();
+    for path in s.doc.para_paths(StoryRef::Body) {
+        let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
+        for (off, o) in p.objects_with_offsets() {
+            let InlineObject::NoteRef { kind: k, id, custom } = o else { continue };
+            if *k != kind {
+                continue;
+            }
+            let mark = if custom.is_empty() { marks.get(id).cloned().unwrap_or_default() } else { custom.clone() };
+            let text: String = s
+                .doc
+                .para_paths(StoryRef::Part(*id))
+                .first()
+                .and_then(|pp| s.doc.para(StoryRef::Part(*id), pp))
+                .map(|np| np.text.chars().filter(|c| *c != wordcraft_doc::para::OBJ).collect())
+                .unwrap_or_default();
+            let text: String = text.trim().chars().take(NOTE_TEXT_CHARS).collect();
+            let listing = format!("{mark} {}", text.trim_end()).trim().to_string();
+            out.push(NoteTarget { id: *id, mark, listing, pos: Pos { story: StoryRef::Body, path: path.clone(), off } });
+        }
+    }
+    out
+}
+
+/// `insert.crossReference` to a footnote or endnote: `NOTEREF` (number, formatted number,
+/// above/below) or `PAGEREF` (page) to a hidden `_Ref` bookmark around its reference mark
+/// (ECMA-376 §17.16.5.40, §17.16.5.45).
+fn note_cross_ref(s: &mut Session, v: &Value, kind: NoteKind) -> CmdResult {
+    let targets = note_targets(s, kind);
+    let Some(target) = p::str(v, "target") else {
+        return Ok(Value::Array(targets.iter().map(|t| json!(t.listing)).collect()));
+    };
+    let show = p::str(v, "show").unwrap_or("number");
+    if !matches!(show, "number" | "formattedNumber" | "page" | "aboveBelow") {
+        return Err(CmdError::Params(format!("a note cross-reference can't show `{show}`")));
+    }
+    let hyperlink = p::bool(v, "hyperlink").unwrap_or(true);
+    let what = if kind == NoteKind::Footnote { "footnote" } else { "endnote" };
+    let t = targets.into_iter().find(|t| t.mark == target || t.listing == target).ok_or_else(|| CmdError::Params(format!("no {what} `{target}`")))?;
+    let result = match show {
+        "page" => page_label(s, &t.pos),
+        "aboveBelow" => above_below(s, &t.pos),
+        _ => t.mark.clone(),
+    };
+    let mut props = s.typing_props();
+    if show == "formattedNumber" {
+        // Drawn like a reference mark.
+        props.style = Some(if kind == NoteKind::Footnote { "FootnoteReference" } else { "EndnoteReference" }.into());
+    }
+    let at = delete_selection(s)?;
+    // Deleting the selection can move the mark: look the note up again.
+    let pos =
+        note_targets(s, kind).into_iter().find(|n| n.id == t.id).map(|n| n.pos).ok_or_else(|| CmdError::Params(format!("no {what} `{target}`")))?;
+    let (name, at) = note_bookmark(s, &pos, at)?;
+    let instr = match show {
+        "page" => instruction("PAGEREF", &name, "", hyperlink),
+        "formattedNumber" => instruction("NOTEREF", &name, "\\f", hyperlink),
+        "aboveBelow" => instruction("NOTEREF", &name, "\\p", hyperlink),
+        _ => instruction("NOTEREF", &name, "", hyperlink),
+    };
+    let end = s.doc.insert_object(
+        &at,
+        InlineObject::Field { instr, result: result.clone(), locked: false, dirty: false, code: false, form: String::new() },
+        &props,
+    )?;
+    s.sel = Selection::caret(end);
+    Ok(json!({"inserted": result}))
+}
+
+/// The hidden `_Ref` bookmark around the note reference mark at `pos`, reusing one already
+/// there. Returns its name and `at` moved past the bookmark marks inserted before it.
+fn note_bookmark(s: &mut Session, pos: &Pos, at: Pos) -> Result<(String, Pos), CmdError> {
+    let para = s.doc.para(pos.story, &pos.path).ok_or_else(|| CmdError::Params("cross-reference target is gone".into()))?;
+    if let Some(before) = pos.off.checked_sub(MARK)
+        && let Some(InlineObject::BookmarkStart { name }) = para.object_at(before)
+        && name.starts_with("_Ref")
+        && matches!(para.object_at(pos.off.saturating_add(MARK)), Some(InlineObject::BookmarkEnd { name: n }) if n == name)
+    {
+        return Ok((name.clone(), at));
+    }
+    add_ref_bookmark(s, pos, pos.off, pos.off.saturating_add(MARK), at)
+}
+
+/// A new hidden `_Ref` bookmark over `start..end` of the paragraph at `pos`, numbered after the
+/// document's others. Returns its name and `at` moved past the marks inserted before it.
+fn add_ref_bookmark(s: &mut Session, pos: &Pos, start: usize, end: usize, mut at: Pos) -> Result<(String, Pos), CmdError> {
+    let next =
+        s.doc.bookmarks().iter().filter_map(|(n, _)| n.strip_prefix("_Ref").and_then(|d| d.parse::<u64>().ok())).max().unwrap_or(0).saturating_add(1);
+    let name = format!("_Ref{next:09}");
+    let props = CharProps::default();
+    s.doc.insert_object(&Pos { off: end, ..pos.clone() }, InlineObject::BookmarkEnd { name: name.clone() }, &props)?;
+    s.doc.insert_object(&Pos { off: start, ..pos.clone() }, InlineObject::BookmarkStart { name: name.clone() }, &props)?;
+    if at.story == pos.story && at.path == pos.path {
+        if at.off >= end {
+            at.off = at.off.saturating_add(2 * MARK);
+        } else if at.off > start {
+            at.off = at.off.saturating_add(MARK);
+        }
+    }
+    Ok((name, at))
 }
 
 /// The label of a caption: the text before its first field (`Plate ` in `Plate `, `SEQ Plate`,
@@ -123,6 +277,10 @@ pub fn ref_targets(s: &Session, to: &str) -> Vec<(String, Pos)> {
     let mut targets: Vec<(String, Pos)> = Vec::new();
     match to {
         "bookmark" => targets = s.doc.bookmarks(),
+        "footnote" | "endnote" => {
+            let kind = if to == "footnote" { NoteKind::Footnote } else { NoteKind::Endnote };
+            targets = note_targets(s, kind).into_iter().map(|t| (t.listing, t.pos)).collect();
+        }
         // A caption label of the person's own: the captions that use exactly that label.
         t if t.starts_with("label:") => {
             let want = t.get("label:".len()..).unwrap_or_default();
@@ -181,8 +339,7 @@ pub(crate) fn leading_breaks(doc: &Document, pos: &Pos) -> usize {
 /// The hidden `_Ref` bookmark around the target paragraph at `pos` (its label and number only
 /// when `number_only`), reusing one already there. Returns its name and `at` moved past the
 /// bookmark marks inserted before it.
-fn ref_bookmark(s: &mut Session, pos: &Pos, number_only: bool, mut at: Pos) -> Result<(String, Pos), CmdError> {
-    const MARK: usize = wordcraft_doc::para::OBJ.len_utf8();
+fn ref_bookmark(s: &mut Session, pos: &Pos, number_only: bool, at: Pos) -> Result<(String, Pos), CmdError> {
     let para = s.doc.para(pos.story, &pos.path).ok_or_else(|| CmdError::Params("cross-reference target is gone".into()))?;
     let end = if number_only { para.text.find(':').unwrap_or(para.len()) } else { para.len() };
     // The bookmark starts after the leading page breaks, so `PAGEREF` reads the page the text is on.
@@ -203,18 +360,5 @@ fn ref_bookmark(s: &mut Session, pos: &Pos, number_only: bool, mut at: Pos) -> R
             }
         }
     }
-    let next =
-        s.doc.bookmarks().iter().filter_map(|(n, _)| n.strip_prefix("_Ref").and_then(|d| d.parse::<u64>().ok())).max().unwrap_or(0).saturating_add(1);
-    let name = format!("_Ref{next:09}");
-    let props = CharProps::default();
-    s.doc.insert_object(&Pos { off: end, ..pos.clone() }, InlineObject::BookmarkEnd { name: name.clone() }, &props)?;
-    s.doc.insert_object(&Pos { off: start, ..pos.clone() }, InlineObject::BookmarkStart { name: name.clone() }, &props)?;
-    if at.story == pos.story && at.path == pos.path {
-        if at.off >= end {
-            at.off = at.off.saturating_add(2 * MARK);
-        } else if at.off > start {
-            at.off = at.off.saturating_add(MARK);
-        }
-    }
-    Ok((name, at))
+    add_ref_bookmark(s, pos, start, end, at)
 }

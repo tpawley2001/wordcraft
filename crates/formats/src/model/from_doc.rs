@@ -443,8 +443,8 @@ fn rich_inlines(doc: &Document, o: &InlineObject, f: &Fmt, opts: FlowOpts) -> Op
         InlineObject::FieldEnd if opts.fields => vec![Inline::FieldEnd],
         // Where a bookmark ends, so it covers its text (Word's `_GoBack` is the last edit's spot).
         InlineObject::BookmarkEnd { name } if opts.fields && name != "_GoBack" => vec![Inline::AnchorEnd(name.clone())],
-        InlineObject::Field { instr, result, locked, .. } if opts.fields => {
-            vec![Inline::Field { instr: instr.clone(), result: result.clone(), fmt: f.clone(), locked: *locked }]
+        InlineObject::Field { instr, result, locked, form, .. } if opts.fields => {
+            vec![Inline::Field { instr: instr.clone(), result: result.clone(), fmt: f.clone(), locked: *locked, form: form.clone() }]
         }
         _ => return None,
     })
@@ -505,7 +505,7 @@ fn drawing_inline(doc: &Document, o: &InlineObject, opts: FlowOpts, depth: usize
                 alt: alt.to_string(),
                 float: kept_float(float),
                 object: ole.as_deref().filter(|_| opts.boxes).and_then(|e| super::odf_object::load(doc, e)),
-                crop: if opts.paras { *crop } else { [0.0; 4] },
+                crop: if opts.paras || opts.crop { *crop } else { [0.0; 4] },
             }))
         }
         InlineObject::Group { w, h, float, ch_w, ch_h, children, .. } if depth < MAX_GROUP_DEPTH => {
@@ -711,7 +711,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
                             alt: alt.to_string(),
                             float: kept_float(float).filter(|_| opts.paras),
                             object: ole.as_deref().filter(|_| opts.boxes).and_then(|e| super::odf_object::load(doc, e)),
-                            crop: if opts.paras { *crop } else { [0.0; 4] },
+                            crop: if opts.paras || opts.crop { *crop } else { [0.0; 4] },
                         })),
                         None if !alt.is_empty() => buf.push_str(alt),
                         None => {}
@@ -1290,11 +1290,14 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     };
     let keep_rows = || t.rows.iter().map(|r| r.props.cant_split).collect::<Vec<_>>();
     // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one,
-    // and the table's style and look, when it has a style.
+    // and the table's style and look, when it has a style, and its alignment and left edge.
+    let placed = t.props.align.is_some() || t.props.indent.is_some();
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
-        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some())
+        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed)
         .map(|(heights, keep_rows)| super::types::TableExtra {
+            align: t.props.align,
+            indent: t.props.indent,
             heights,
             keep_rows,
             style: t.props.style.clone(),
@@ -1305,6 +1308,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
         let heights = heights();
         super::types::TableExtra {
             align: t.props.align,
+            indent: None,
             width: t.props.width,
             width_pct: t.props.width_pct,
             heights,
