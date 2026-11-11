@@ -618,14 +618,29 @@ pub(crate) fn stylesheet(raw: &[crate::stsh::RawStyle], ids: &[String], fonts: &
             _ => StyleKind::Paragraph,
         };
         let base = base_of(raw, istd).and_then(|i| ids.get(i)).cloned();
-        // Inherit: properties come from the base chain, root first, then our own grpprls.
+        // Character properties come from the base chain, root first, then our own grpprl.
+        // Paragraph properties are resolved the same way, but the style keeps only its own
+        // ([MS-DOC] §2.9.260: the UPX holds the style's own settings): what it merely inherits
+        // comes through `based_on`. So a style with a list and no indent of its own takes the
+        // list level's indents, not a copy of its base's (Word; the same as DOCX `w:ind`).
         let mut chr = CharProps::default();
-        let mut para = ParaProps::default();
-        for s in style_chain(raw, istd).into_iter().filter_map(|i| raw.get(i)) {
+        let mut inherited = ParaProps::default();
+        let chain = style_chain(raw, istd);
+        let (own_ix, bases) = chain.split_last().map_or((None, &[][..]), |(o, b)| (Some(*o), b));
+        for s in chain.iter().filter_map(|&i| raw.get(i)) {
             apply_chain(&mut chr, &s.chpx, fonts);
-            apply_chain_para(&mut para, &s.papx);
         }
-        if para.outline_level.is_none() && kind == StyleKind::Paragraph {
+        for s in bases.iter().filter_map(|&i| raw.get(i)) {
+            apply_chain_para(&mut inherited, &s.papx);
+        }
+        let own_papx = own_ix.and_then(|i| raw.get(i)).map_or(&[][..], |s| s.papx.as_slice());
+        let mut full = inherited.clone();
+        apply_chain_para(&mut full, own_papx);
+        let mut own = ParaProps::default();
+        apply_chain_para(&mut own, own_papx);
+        let mut para = if bases.is_empty() { full.clone() } else { full.clone().own_part(&own, &inherited) };
+        // A heading without an outline level anywhere in its chain gets its heading's.
+        if full.outline_level.is_none() && kind == StyleKind::Paragraph {
             let h = builtin.as_ref().map_or_else(|| heading_level(&st.name), |b| b.2);
             if h > 0 {
                 para.outline_level = Some(h - 1);
@@ -878,5 +893,99 @@ mod style_id_tests {
         let second = crate::char_props(&[0x30, 0x4A, 1, 0], &[], &base, &raw, &ids);
         assert_eq!(first.style.as_deref(), Some("Emphasis"));
         assert_eq!(second.style.as_deref(), Some("Emphasis_2"));
+    }
+}
+
+/// A style with a list and no indent of its own, based on an indented Normal, takes its list
+/// level's indents ([MS-DOC] §2.9.260: the style's UPX holds only its own settings); one that sets
+/// its own left indent keeps it over the level's.
+#[cfg(test)]
+mod style_list_indent_tests {
+    use super::*;
+    use crate::stsh::RawStyle;
+    use wordcraft_doc::{Document, Paragraph};
+
+    fn prl(op: u16, operand: &[u8]) -> Vec<u8> {
+        [op.to_le_bytes().as_slice(), operand].concat()
+    }
+
+    /// A `PlfLst` with one simple list (lsid 7) whose only level has left 1701 / first line
+    /// −1701 twips, then a `PlfLfo` with one LFO bound to it. Returns (table, fc of each).
+    fn lists() -> (Vec<u8>, u32, u32) {
+        let mut t = 1u16.to_le_bytes().to_vec(); // cLst
+        t.extend_from_slice(&7i32.to_le_bytes()); // lsid
+        t.extend_from_slice(&0u32.to_le_bytes()); // tplc
+        for _ in 0..9 {
+            t.extend_from_slice(&0x0FFFu16.to_le_bytes());
+        }
+        t.extend_from_slice(&[1, 0]); // fSimpleList, grfhic
+        let papx = [prl(0x840F, &1701i16.to_le_bytes()), prl(0x8411, &(-1701i16).to_le_bytes())].concat();
+        let mut lvlf = vec![0u8; 28];
+        lvlf[0] = 1; // iStartAt
+        lvlf[6] = 1; // the placeholder is the first character
+        lvlf[25] = papx.len() as u8; // cbGrpprlPapx
+        t.extend_from_slice(&lvlf);
+        t.extend_from_slice(&papx);
+        t.extend_from_slice(&1u16.to_le_bytes()); // Xst: one character, the level placeholder
+        t.extend_from_slice(&0u16.to_le_bytes());
+        let lfo_at = t.len() as u32;
+        t.extend_from_slice(&1u32.to_le_bytes()); // lfoMac
+        t.extend_from_slice(&7i32.to_le_bytes()); // LFO.lsid
+        t.extend_from_slice(&[0u8; 12]); // unused, clfolvl 0, ibstFltAutoNum, grfhic, unused
+        t.extend_from_slice(&0u32.to_le_bytes()); // LFOData.cp
+        (t, 0, lfo_at)
+    }
+
+    /// The opened document's styles and lists: Normal (left 1134, right 170, justified) and
+    /// "Numbered" on list 1 at level 0, with `own` added to its grpprl.
+    fn doc(own: &[u8]) -> Document {
+        let normal = [prl(0x2461, &[3]), prl(0x845D, &170i16.to_le_bytes()), prl(0x845E, &1134i16.to_le_bytes())].concat();
+        let numbered = [prl(0x460B, &1i16.to_le_bytes()), prl(0x260A, &[0]), own.to_vec()].concat();
+        let raw = vec![
+            RawStyle { sti: 0, stk: 1, istd_base: 0x0FFF, name: "Normal".into(), papx: normal, chpx: Vec::new() },
+            RawStyle { sti: 0x0FFE, stk: 1, istd_base: 0, name: "Numbered".into(), papx: numbered, chpx: Vec::new() },
+        ];
+        let fonts = vec!["Times New Roman".to_string()];
+        let ids = style_ids(&raw);
+        let (table, lst_at, lfo_at) = lists();
+        let mut pairs = vec![0u32; 2 * 75];
+        pairs[2 * crate::fib::pair::PLF_LST] = lst_at;
+        pairs[2 * crate::fib::pair::PLF_LST + 1] = lfo_at;
+        pairs[2 * crate::fib::pair::PLF_LFO] = lfo_at;
+        pairs[2 * crate::fib::pair::PLF_LFO + 1] = table.len() as u32 - lfo_at;
+        let fib = crate::fib::Fib { which_tbl_stm: false, ccp: Default::default(), pairs, word6: None };
+        let mut d = Document::default();
+        d.styles = std::sync::Arc::new(stylesheet(&raw, &ids, &fonts, Default::default()));
+        d.numbering = std::sync::Arc::new(crate::list::parse(&table, &fib, &fonts));
+        d
+    }
+
+    /// The left and first-line indents of a paragraph in style "Numbered", as layout places it:
+    /// the list level's, unless the style chain from the style giving the list sets its own.
+    fn indents(d: &Document) -> (f32, f32) {
+        let p = Paragraph { props: ParaProps { style: Some("Numbered".into()), ..Default::default() }, ..Default::default() };
+        let r = d.styles.resolve_para(&p.props);
+        let n = r.numbering.expect("the style's list");
+        let lvl = d.numbering.level(n.num, n.level).expect("level");
+        let (style_left, style_first) = d.styles.indents_over_list("Numbered");
+        (if style_left { r.indent_left } else { lvl.indent }, if style_first { r.indent_first } else { -lvl.hanging })
+    }
+
+    #[test]
+    fn a_list_style_without_its_own_indent_takes_the_levels() {
+        let d = doc(&[]);
+        let st = d.styles.get("Numbered").expect("style");
+        assert_eq!(st.para.indent_left, None, "not a copy of Normal's");
+        let (left, first) = indents(&d);
+        assert!((left - 85.05).abs() < 0.01, "left: {left}");
+        assert!((first + 85.05).abs() < 0.01, "first line: {first}");
+    }
+
+    #[test]
+    fn a_list_style_with_its_own_indent_beats_the_level() {
+        let d = doc(&prl(0x845E, &1134i16.to_le_bytes()));
+        let (left, first) = indents(&d);
+        assert!((left - 56.7).abs() < 0.01, "left: {left}");
+        assert!((first + 85.05).abs() < 0.01, "first line stays the level's: {first}");
     }
 }
