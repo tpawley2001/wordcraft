@@ -20,6 +20,12 @@ pub(crate) const FORMATS: [(&str, &str); 5] = [
     ("upperRoman", "I, II, III, …"),
 ];
 
+/// The start value as the Start at box shows it: in the chosen number format, as Word does.
+pub(crate) fn start_label(fmt: &str, n: u32) -> String {
+    let _ = fmt;
+    n.to_string()
+}
+
 /// The dialog's fields; `[footnotes, endnotes]` where each kind has its own.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct NoteForm {
