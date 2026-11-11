@@ -27,10 +27,10 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("layout.size", "Size", "Layout › Page Setup", size).params(r#"{"name"?: "Letter|Legal|A4|…", "width"?: pt, "height"?: pt} (each side clamped to 7.2–1584 pt, 0.1–22 in; the section keeps its orientation)"#),
         CommandSpec::new("layout.columns", "Columns", "Layout › Page Setup", columns)
             .params(
-                r#"{"count": 1-12, "space"?: pt, "separator"?: bool, "preset"?: "left|right", "widths"?: [[width pt, space after pt], …] (unequal columns; sets the count), "apply"?: "section|document|forward|selection"} (default: selection when text is selected in the main text — section breaks around it — else section)"#,
+                r#"{"count": 1-12, "space"?: pt, "separator"?: bool, "preset"?: "left|right", "widths"?: [[width pt, space after pt], …] (unequal columns; sets the count), "apply"?: "section|document|forward|selection", "newColumn"?: bool (forward only: a New column section break instead of a Continuous one)} (default: selection when text is selected in the main text — section breaks around it — else section)"#,
             ),
         CommandSpec::new("layout.break", "Breaks", "Layout › Page Setup", breaks)
-            .params(r#"{"kind": "page|column|textWrapping|nextPage|continuous|evenPage|oddPage"}"#),
+            .params(r#"{"kind": "page|column|textWrapping|nextPage|continuous|nextColumn|evenPage|oddPage"}"#),
         CommandSpec::new("layout.lineNumbers", "Line Numbers", "Layout › Page Setup", line_numbers).params(
             r#"{"value"?: "none|continuous|restartPage|restartSection", "start"?: 1-32767, "countBy"?: 1-100, "distance"?: pt (0 = auto)}"#,
         ),
@@ -659,11 +659,13 @@ fn columns(s: &mut Session, v: &Value) -> CmdResult {
             }
             Ok(serde_json::to_value(sect(s)).unwrap_or(Value::Null))
         }
-        // From the caret on: a continuous section break first, then the new section's columns.
+        // From the caret on: a continuous section break first (a New column one with Start new
+        // column), then the new section's columns.
         "forward" => {
+            let kind = if p::bool(v, "newColumn").unwrap_or(false) { "nextColumn" } else { "continuous" };
             let start = s.sel.ordered().0;
             s.sel = Selection::caret(start);
-            breaks(s, &json!({"kind": "continuous"}))?;
+            breaks(s, &json!({"kind": kind}))?;
             with_sect(s, |x| x.columns = cols.clone())
         }
         "selection" => {
@@ -754,9 +756,14 @@ fn breaks(s: &mut Session, v: &Value) -> CmdResult {
         }
         "nextPage" => SectionStart::NextPage,
         "continuous" => SectionStart::Continuous,
+        "nextColumn" => SectionStart::NextColumn,
         "evenPage" => SectionStart::EvenPage,
         "oddPage" => SectionStart::OddPage,
-        x => return Err(CmdError::Params(format!("unknown break `{x}`"))),
+        x => {
+            return Err(CmdError::Params(format!(
+                "unknown break `{x}` (page, column, textWrapping, nextPage, continuous, nextColumn, evenPage or oddPage)"
+            )));
+        }
     };
     // A section break goes just before the selection and never replaces it, as in Word (#852:
     // selected text was deleted, so the first section lost its text).

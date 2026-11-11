@@ -162,7 +162,7 @@ impl ColumnsForm {
 
     /// Start new column is available only with This point forward, as in Word.
     pub fn new_column_enabled(&self) -> bool {
-        false
+        self.apply == "forward"
     }
 
     fn min_w() -> f32 {
@@ -293,12 +293,19 @@ impl ColumnsForm {
     pub fn params(&self) -> Value {
         let k = Self::k();
         let r = |x: f32| (x * k * 100.0).round() / 100.0;
-        if self.equal || self.count <= 1 {
+        let mut v = if self.equal || self.count <= 1 {
             json!({"count": self.count, "space": r(self.spacing()), "separator": self.separator, "apply": self.apply})
         } else {
             let widths: Vec<[f32; 2]> = self.cols.iter().map(|(w, s)| [r(*w), r(*s)]).collect();
             json!({"widths": widths, "separator": self.separator, "apply": self.apply})
+        };
+        if self.new_column_enabled()
+            && self.new_column
+            && let Some(o) = v.as_object_mut()
+        {
+            o.insert("newColumn".into(), Value::Bool(true));
         }
+        v
     }
 }
 
@@ -509,6 +516,9 @@ pub(super) fn columns_ui(app: &mut WordApp, ui: &mut Ui, f: &mut ColumnsForm) ->
                 ui.selectable_value(&mut f.apply, (*k).to_string(), tl!(l));
             }
         });
+        ui.add_space(16.0);
+        let enabled = f.new_column_enabled();
+        ui.add_enabled(enabled, egui::Checkbox::new(&mut f.new_column, tl!("Start new column")));
     });
     let (ok, cancel) = buttons(ui, "OK", "Cancel", true);
     if ok {
