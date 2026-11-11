@@ -660,7 +660,9 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
             control.interrupt(obj, &mut out, &f);
             // Hidden text a format leaves out, a deleted object, or a hidden drawing: not in the
             // copy (a format keeping hidden text keeps its objects too, as it keeps the text).
-            if hidden_obj || obj.and_then(InlineObject::frame).is_some_and(|(_, _, f)| f.hidden) {
+            // A flow keeping objects' revisions keeps a deleted drawing or equation, marked.
+            let marked = tracked && opts.obj_revs && obj.is_some_and(revisable);
+            if (hidden_obj && !(marked && props.hidden != Some(true))) || obj.and_then(InlineObject::frame).is_some_and(|(_, _, f)| f.hidden) {
                 continue;
             }
             let from = out.inlines.len();
@@ -670,6 +672,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
                 }
                 out.inlines.extend(items);
                 raise_drawings(&mut out.inlines, from, props.position.filter(|_| opts.paras));
+                mark_objects(&mut out.inlines, from, &f, marked);
                 continue;
             }
             match obj {
@@ -729,6 +732,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
                 None => {}
             }
             raise_drawings(&mut out.inlines, from, props.position.filter(|_| opts.paras));
+            mark_objects(&mut out.inlines, from, &f, marked);
         }
         if !hidden_text {
             control.run_end(&buf, &mut out, &f);
@@ -900,6 +904,37 @@ fn graphic_group(
 fn empty_mark(out: &Para, p: &Paragraph, opts: FlowOpts) -> Option<Box<CharProps>> {
     let m = CharProps { ins: None, del: None, fmt_change: None, ..p.mark.clone() };
     ((opts.paras || opts.marks) && out.textless() && !m.is_empty()).then(|| Box::new(m))
+}
+
+/// A drawing or equation: the objects a flow keeping objects' revisions marks
+/// ([`FlowOpts::obj_revs`]).
+fn revisable(o: &InlineObject) -> bool {
+    matches!(
+        o,
+        InlineObject::Image { .. }
+            | InlineObject::Graphic { .. }
+            | InlineObject::Equation { .. }
+            | InlineObject::Shape { .. }
+            | InlineObject::Group { .. }
+    )
+}
+
+/// Put the run's tracked insertion and deletion (`f`) before each object from `from` on, as an
+/// [`Inline::ObjRev`]; nothing when the run has neither or the flow keeps no object marks
+/// (`marked` false).
+fn mark_objects(inlines: &mut Vec<Inline>, from: usize, f: &Fmt, marked: bool) {
+    if !marked || (f.ins.is_none() && f.del.is_none()) {
+        return;
+    }
+    let rev = crate::model::ObjRev { ins: f.ins.clone(), del: f.del.clone() };
+    let mut k = from;
+    while k < inlines.len() {
+        if inlines.get(k).is_some_and(Inline::is_object) {
+            inlines.insert(k, Inline::ObjRev(Box::new(rev.clone())));
+            k += 1;
+        }
+        k += 1;
+    }
 }
 
 /// The drawings from `from` on (just added) raised by their run's position `raise` (points): a
@@ -1235,11 +1270,18 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             .collect::<Vec<_>>()
     };
     let keep_rows = || t.rows.iter().map(|r| r.props.cant_split).collect::<Vec<_>>();
-    // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one.
+    // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one,
+    // and the table's style and look, when it has a style.
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
-        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true))
-        .map(|(heights, keep_rows)| super::types::TableExtra { heights, keep_rows, ..Default::default() });
+        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some())
+        .map(|(heights, keep_rows)| super::types::TableExtra {
+            heights,
+            keep_rows,
+            style: t.props.style.clone(),
+            look: t.props.style.is_some().then_some(t.props.look),
+            ..Default::default()
+        });
     let extra = tracked.paras.then(|| {
         let heights = heights();
         super::types::TableExtra {
@@ -1251,6 +1293,8 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             fixed: t.props.fixed,
             space: [t.props.space_before, t.props.space_after],
             header_rows: t.rows.iter().take_while(|r| r.props.header).count(),
+            style: None,
+            look: None,
         }
     });
     // Kept whole for formats that ask for it: its header rows count even without the rest.

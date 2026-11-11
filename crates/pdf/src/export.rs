@@ -24,9 +24,9 @@ pub fn export_layout(doc: &Document, lay: &DocLayout, opts: &PdfOptions) -> Resu
 
 /// [`export_layout`] followed by every page of a second document's layout, one page per sheet
 /// (File › Options › Print document properties: the properties report after each copy of the
-/// document, or after all of its pages when copies aren't collated). The appendix pages take
-/// the paper of [`PdfOptions::paper`]; the PDF has no structure tree, since its two documents
-/// would share one.
+/// document, or after all of its pages when copies aren't collated). The appendix pages are
+/// drawn in full even with [`PdfOptions::forms_data_only`] and take the paper of
+/// [`PdfOptions::paper`]; the PDF has no structure tree, since its two documents would share one.
 pub fn export_layout_with_appendix(
     doc: &Document,
     lay: &DocLayout,
@@ -131,6 +131,7 @@ fn write_attempt<'a>(
         doc,
         lay,
         opts,
+        forms_data_only: opts.forms_data_only,
         out_index: destinations,
         fonts: HashMap::new(),
         font_error: None,
@@ -154,6 +155,9 @@ fn write_attempt<'a>(
             // Switch documents: links and bookmarks resolve within the document drawn.
             showing_appendix = in_appendix;
             (ex.doc, ex.lay) = if in_appendix { (adoc, alay) } else { (doc, lay) };
+            // Print only the data from a form is the document's setting: the appendix is a
+            // report about the document and prints in full.
+            ex.forms_data_only = opts.forms_data_only && !in_appendix;
             std::mem::swap(&mut ex.out_index, &mut appendix_destinations);
             ex.bookmarks = std::cell::OnceCell::new();
         }

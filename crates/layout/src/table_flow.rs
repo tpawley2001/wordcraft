@@ -37,7 +37,7 @@ pub(crate) fn footer_table_wraps(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<WrapAre
     let Some(id) = id else { return Vec::new() };
     let Some(part) = doc.parts.get(&id) else { return Vec::new() };
     let blocks = part.blocks.clone();
-    let x = sect.margin_left + sect.gutter;
+    let x = sect.text_left(ctx.mirror);
     let base = hf.defining_width(true, page.section, Some(id));
     let counters = std::mem::take(&mut ctx.counters);
     let boxes = std::mem::take(&mut ctx.boxes);
@@ -349,18 +349,26 @@ fn place_floating_table(ctx: &mut Ctx, pb: &mut PageBuilder, tl: &table::TableLa
         let x = float_table_x(pb, w, f, legacy, ctx.mirror);
         let mut obstacles = if f.overlap { Vec::new() } else { header_table_areas(ctx, pb) };
         obstacles.extend_from_slice(&pb.float_tables);
-        let r = clear_of_float_tables(
+        let mut r = clear_of_float_tables(
             Rect::new(x, align_in(v_area, f.y, h, f.v_align), w, h),
             f,
             ctx.doc.settings.compat_mode >= 15,
             h_area.0,
             &obstacles,
         );
+        // Word leaves a one-row table placed relative to the paragraph at its offset, past the
+        // bottom margin, on its anchor's page; only the page's bottom edge stops it, moving it up
+        // to end there (never above the page's top).
+        let one_row = f.v_rel == Anchor::Paragraph && tl.rows.len() == 1;
+        if one_row && r.bottom() > s.page_h {
+            r.y = r.y.min(s.page_h - h).max(0.0);
+        }
         // Like Word, a table that doesn't fit below the text before it moves to the next page with
-        // its anchor: one placed relative to the paragraph when it would run off the page, one
-        // placed on the page or margin when it would also cover the text already on the page.
+        // its anchor: one placed relative to the paragraph with more than one row when it would
+        // run off the page, one placed on the page or margin when it would also cover the text
+        // already on the page.
         let moves = if f.v_rel == Anchor::Paragraph {
-            r.bottom() > pb.bottom + 0.01
+            !one_row && r.bottom() > pb.bottom + 0.01
         } else {
             let covers_text = pb.page().is_some_and(|page| page.items.iter().any(|item| placed_intersects(item, &r)));
             covers_text && pb.y + h > pb.bottom + 0.01

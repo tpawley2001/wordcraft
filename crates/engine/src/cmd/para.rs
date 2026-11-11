@@ -14,6 +14,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Session, p};
 mod format;
 mod lists;
 mod outline;
+mod style_pane;
 mod styles;
 mod tabs_borders;
 mod tools;
@@ -24,6 +25,7 @@ pub use lists::{ListButtons, list_buttons, manage_list, style_description, touch
 use lists::{list, restart_numbering};
 pub(crate) use outline::{ensure_heading_style, set_heading};
 use outline::{move_paras, outline_step, sort};
+use style_pane::{pane_list, pane_options};
 use styles::{apply_style, apply_styles, create_style, delete_style, modify_style, set_visibility, style_id, update_to_match};
 pub use tabs_borders::border_sides;
 use tabs_borders::{borders, tabs};
@@ -248,6 +250,12 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"sort"?: "recommended|alphabetical"} → [{id, name, type: "paragraph|character|linked|table", builtIn, inGallery, hidden, basedOn, priority, format}]"#)
         .pure(),
+        CommandSpec::new("styles.paneOptions", "Style Pane Options", "Home › Styles › Styles Pane", pane_options).params(
+            r#"{"show"?: "inUse|all", "sort"?: "alphabetical|recommended|font|basedOn|type"} → {"show", "sort"} (the options after the change; none given: a read)"#,
+        ),
+        CommandSpec::new("styles.paneList", "Styles Pane List", "Home › Styles › Styles Pane", pane_list)
+            .params(r#"{} → [{"id", "name", "type": "paragraph|character|linked"}] (the styles the Styles pane shows, in its order)"#)
+            .pure(),
         CommandSpec::new("styles.setVisibility", "Show or Hide Style", "Home › Styles", set_visibility)
             .params(r#"{"style": string, "gallery"?: bool (Styles gallery, w:qFormat), "hidden"?: bool (hidden from style lists, w:semiHidden)}"#),
         CommandSpec::new("styles.list", "Styles", "Home › Styles", |s, _| {
@@ -261,6 +269,15 @@ pub fn specs() -> Vec<CommandSpec> {
             sel_result(s)
         })
         .key("Mod+Alt+Shift+S")
+        .pure(),
+        // Styles pane › Disable Linked Styles: a linked style then always applies as a paragraph
+        // style, never as its character half on part of a paragraph.
+        CommandSpec::new("styles.disableLinked", "Disable Linked Styles", "Home › Styles", |s, v| {
+            let on = p::bool(v, "value").unwrap_or(!s.view.disable_linked_styles);
+            s.view.disable_linked_styles = on;
+            Ok(json!({"value": on}))
+        })
+        .params(r#"{"value"?: bool (missing: toggles)}"#)
         .pure(),
         CommandSpec::new("styles.apply", "Apply Styles", "Home › Styles", apply_styles)
             .params(r#"{"style"?: string (name or id)}"#)

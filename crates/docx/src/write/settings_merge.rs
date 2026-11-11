@@ -22,6 +22,8 @@ const OWNED: &[&str] = &[
     "w:mirrorMargins",
     "w:attachedTemplate",
     "w:linkStyles",
+    "w:stylePaneFormatFilter",
+    "w:stylePaneSortMethod",
     "w:trackRevisions",
     "w:doNotTrackMoves",
     "w:documentProtection",

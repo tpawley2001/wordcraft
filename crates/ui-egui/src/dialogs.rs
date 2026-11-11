@@ -29,6 +29,7 @@ mod forms;
 mod mailings;
 mod page_setup;
 mod paragraph;
+pub mod style_pane_options;
 mod styles;
 
 use bookmarks::bookmark_at_caret;
@@ -180,6 +181,14 @@ pub enum Dialog {
     InsertTable {
         rows: u32,
         cols: u32,
+        /// AutoFit behavior: `fixed`, `contents` or `window`.
+        autofit: String,
+        /// Fixed column width: `Auto` or a length in the interface unit.
+        col_width: String,
+        /// Remember dimensions for new tables.
+        remember: bool,
+        /// Word's message when the column width is out of range.
+        error: Option<String>,
     },
     PageSetup {
         top: f32,
@@ -248,6 +257,8 @@ pub enum Dialog {
     },
     Zoom {
         percent: f32,
+        /// The fit choice (`view.zoom` value: pageWidth, textWidth, onePage, multiplePages); "" = Percent.
+        fit: String,
     },
     /// Select Browse Object (Alt+Ctrl+Home): what Ctrl+PageDown / Ctrl+PageUp move by.
     BrowseObject {
@@ -564,6 +575,10 @@ pub enum Dialog {
     Templates {
         form: Box<crate::dialogs_templates::TemplatesForm>,
     },
+    /// Styles pane › Options…: which styles the pane shows and how it sorts them.
+    StylePaneOptions {
+        form: Box<style_pane_options::StylePaneForm>,
+    },
     /// Templates and Add-ins › Organizer: copy, delete and rename styles (#377).
     Organizer {
         form: Box<crate::dialogs_templates::OrganizerForm>,
@@ -668,6 +683,7 @@ impl Dialog {
             Dialog::NoteOptions { .. } => "noteOptions",
             Dialog::Templates { .. } => "templates",
             Dialog::Organizer { .. } => "organizer",
+            Dialog::StylePaneOptions { .. } => "stylePaneOptions",
             Dialog::CustomProperties(..) => "customProperties",
             Dialog::ConvertDocument => "convertDocument",
             Dialog::MarkAsFinal => "markAsFinal",
@@ -829,7 +845,13 @@ impl Dialog {
                 message: String::new(),
                 focus: true,
             },
-            "insertTable" => Dialog::InsertTable { rows: 2, cols: 5 },
+            "insertTable" => {
+                // Remembered dimensions, else Word's 2 x 5 with Auto fixed columns.
+                let p = &app.session.prefs.insert_table;
+                let autofit = if matches!(p.autofit.as_str(), "contents" | "window") { p.autofit.clone() } else { "fixed".into() };
+                let col_width = if p.col_width.is_finite() && p.col_width > 0.0 { crate::options::length(p.col_width) } else { tl!("Auto").into() };
+                Dialog::InsertTable { rows: p.rows.clamp(1, 1000), cols: p.cols.clamp(1, 63), autofit, col_width, remember: p.remember, error: None }
+            }
             "pageSetup" => {
                 let sp = wordcraft_engine::cmd::page::sect(&app.session);
                 use wordcraft_doc::section::DocGridType;
@@ -888,7 +910,13 @@ impl Dialog {
                     .unwrap_or_default();
                 Dialog::BrowseObject { objects, current: st.get("current").and_then(Value::as_str).unwrap_or("find").into(), focus: true }
             }
-            "zoom" => Dialog::Zoom { percent: (app.session.view.zoom * 100.0).round() },
+            "zoom" => Dialog::Zoom {
+                percent: (app.session.view.zoom * 100.0).round(),
+                fit: match app.session.view.fit.as_str() {
+                    f @ ("pageWidth" | "textWidth" | "onePage" | "multiplePages") => f.to_string(),
+                    _ => String::new(),
+                },
+            },
             "watermark" => Dialog::Watermark { text: "CONFIDENTIAL".into(), diagonal: true },
             "phonetic" => {
                 let v = wordcraft_engine::cmd::phonetic::state(&app.session);
@@ -1018,6 +1046,7 @@ impl Dialog {
             }
             "noteOptions" => Dialog::NoteOptions { form: Box::new(crate::dialogs_notes::NoteForm::read(app)) },
             "templates" => Dialog::Templates { form: Box::new(crate::dialogs_templates::TemplatesForm::read(app)) },
+            "stylePaneOptions" => Dialog::StylePaneOptions { form: Box::new(style_pane_options::StylePaneForm::read(app)) },
             "organizer" => Dialog::Organizer { form: Box::new(crate::dialogs_templates::OrganizerForm::read(app, None)) },
             "customProperties" => Dialog::CustomProperties(Box::new(CustomPropertiesForm::read(app))),
             "convertDocument" => Dialog::ConvertDocument,
@@ -1104,6 +1133,10 @@ mod tests;
 #[cfg(test)]
 mod tests_font_underline;
 #[cfg(test)]
+mod tests_insert_table;
+#[cfg(test)]
 mod tests_page_layout;
 #[cfg(test)]
 mod tests_para_line;
+#[cfg(test)]
+mod tests_zoom;

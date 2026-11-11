@@ -66,6 +66,45 @@ pub(super) fn styles_xml(doc: &Document) -> Vec<u8> {
     w.into_bytes()
 }
 
+/// The `w:style` children from `w:autoRedefine` to `w:rsid`, in CT_Style order.
+fn style_flags(w: &mut W, st: &Style) {
+    if st.auto_redefine {
+        w.empty("w:autoRedefine", &[]);
+    }
+    // Visibility as read (ECMA-376 §17.7.4.4, .16, .20). A style hidden in the app, with no
+    // visibility flag of its own, is hidden until used.
+    let from_file = st.semi_hidden || st.unhide_when_used || st.hidden_everywhere;
+    let hidden = st.hidden && st.hidden_everywhere;
+    let semi_hidden = st.hidden && (st.semi_hidden || !st.hidden_everywhere);
+    let unhide_when_used = st.unhide_when_used || (st.hidden && !from_file);
+    if hidden {
+        w.empty("w:hidden", &[]);
+    }
+    if let Some(p) = st.priority {
+        w.val("w:uiPriority", &p.to_string());
+    }
+    if semi_hidden {
+        w.empty("w:semiHidden", &[]);
+    }
+    if unhide_when_used {
+        w.empty("w:unhideWhenUsed", &[]);
+    }
+    if st.quick {
+        w.empty("w:qFormat", &[]);
+    }
+    if st.locked {
+        w.empty("w:locked", &[]);
+    }
+    for (on, tag) in [(st.personal, "w:personal"), (st.personal_compose, "w:personalCompose"), (st.personal_reply, "w:personalReply")] {
+        if on {
+            w.empty(tag, &[]);
+        }
+    }
+    if let Some(r) = st.rsid.as_deref().filter(|r| r.len() == 8 && r.chars().all(|c| c.is_ascii_hexdigit())) {
+        w.val("w:rsid", &r.to_ascii_uppercase());
+    }
+}
+
 fn style_xml(w: &mut W, st: &Style, flagged: &[StyleKind]) {
     let ty = match st.kind {
         StyleKind::Paragraph => "paragraph",
@@ -90,6 +129,9 @@ fn style_xml(w: &mut W, st: &Style, flagged: &[StyleKind]) {
     }
     w.open("w:style", &a);
     w.val("w:name", &file_style_name(if st.name.is_empty() { &st.id } else { &st.name }));
+    if let Some(a) = st.aliases.as_deref().filter(|a| !a.trim().is_empty()) {
+        w.val("w:aliases", a);
+    }
     if let Some(b) = &st.based_on {
         w.val("w:basedOn", b);
     }
@@ -99,19 +141,7 @@ fn style_xml(w: &mut W, st: &Style, flagged: &[StyleKind]) {
     if let Some(b) = &st.linked {
         w.val("w:link", b);
     }
-    if let Some(p) = st.priority {
-        w.val("w:uiPriority", &p.to_string());
-    }
-    if st.hidden {
-        w.empty("w:semiHidden", &[]);
-        w.empty("w:unhideWhenUsed", &[]);
-    }
-    if st.quick {
-        w.empty("w:qFormat", &[]);
-    }
-    if st.locked {
-        w.empty("w:locked", &[]);
-    }
+    style_flags(w, st);
     if !st.para.is_empty() && st.kind != StyleKind::Character {
         w.open("w:pPr", &[]);
         props::ppr_inner(w, &st.para, false, None);
@@ -235,13 +265,25 @@ pub(super) fn numbering_xml(doc: &Document) -> Vec<u8> {
         }
         w.close("w:num");
     }
+    if let Some(v) = doc.numbering.num_id_mac_at_cleanup {
+        w.val("w:numIdMacAtCleanup", &v.to_string());
+    }
     w.close("w:numbering");
     w.into_bytes()
 }
 
 /// One `w:lvl` (list level `i`).
 fn write_level(w: &mut W, i: usize, l: &Level) {
-    w.open("w:lvl", &[("w:ilvl", &i.to_string())]);
+    // CT_Lvl attributes: ilvl, tplc, tentative.
+    let ilvl = i.to_string();
+    let mut attrs: Vec<(&str, &str)> = vec![("w:ilvl", &ilvl)];
+    if let Some(t) = l.tplc.as_deref().filter(|t| t.len() == 8 && t.bytes().all(|b| b.is_ascii_hexdigit())) {
+        attrs.push(("w:tplc", t));
+    }
+    if l.tentative {
+        attrs.push(("w:tentative", "1"));
+    }
+    w.open("w:lvl", &attrs);
     w.val("w:start", &l.start.to_string());
     w.val("w:numFmt", l.format.ooxml());
     if !l.restart {
@@ -261,6 +303,20 @@ fn write_level(w: &mut W, i: usize, l: &Level) {
         LevelSuffix::Nothing => w.val("w:suff", "nothing"),
     }
     w.val("w:lvlText", &l.text);
+    if let Some(g) = &l.legacy {
+        let (space, indent) = (g.space.map(|v| v.to_string()), g.indent.map(|v| v.to_string()));
+        let mut attrs: Vec<(&str, &str)> = Vec::new();
+        if let Some(on) = g.legacy {
+            attrs.push(("w:legacy", if on { "1" } else { "0" }));
+        }
+        if let Some(v) = &space {
+            attrs.push(("w:legacySpace", v));
+        }
+        if let Some(v) = &indent {
+            attrs.push(("w:legacyIndent", v));
+        }
+        w.empty("w:legacy", &attrs);
+    }
     w.val("w:lvlJc", props::align_val(l.align));
     w.open("w:pPr", &[]);
     if let Some(t) = l.tab.filter(|t| t.is_finite()) {

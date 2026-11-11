@@ -10,6 +10,10 @@ use wordcraft_doc::Settings;
 const OFF_COPTS60: usize = 84;
 /// `Copts60.fExpShRtn` (bit N, the 14th bit; [MS-DOC] §2.7.2 Copts60).
 const F_EXP_SH_RTN: u16 = 1 << 13;
+/// Offset of `Dop95.copts80`'s second u16 (after `Copts60`; [MS-DOC] §2.7.3 Copts80).
+const OFF_COPTS80_HI: usize = 86;
+/// `Copts80.f2ptExtLeadingOnly` (bit G of the u16 at Dop offset 86; [MS-DOC] §2.7.3).
+const F_2PT_EXT_LEADING_ONLY: u16 = 1 << 6;
 /// Size of `Dop95` ([MS-DOC] §2.7, Dop95): `DopBase` (84) + `Copts80` (4).
 const DOP95_LEN: usize = 88;
 /// Offset of `Dop2000.copts` ([MS-DOC] §2.7, Dop2000): after `dop97` (500 bytes), the two
@@ -91,6 +95,11 @@ pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Setti
         && let Some(copts60) = u16_at(dop, OFF_COPTS60)
     {
         settings.do_not_expand_shift_return = copts60 & F_EXP_SH_RTN != 0;
+    }
+    if dop.len() >= DOP95_LEN
+        && let Some(copts80) = u16_at(dop, OFF_COPTS80_HI)
+    {
+        settings.ext_leading_2pt_only = copts80 & F_2PT_EXT_LEADING_ONLY != 0;
     }
     if (DOP95_LEN..DOP2000_LEN).contains(&dop.len()) {
         settings.sum_paragraph_spacing = true;

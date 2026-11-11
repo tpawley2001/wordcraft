@@ -551,7 +551,7 @@ impl Writer {
                     prev_space = false;
                 }
                 // A field around content: an index's is its element (see `index_at`).
-                Inline::FieldStart(_) | Inline::FieldEnd => {}
+                Inline::FieldStart(_) | Inline::FieldEnd | Inline::ObjRev(_) => {}
                 Inline::CommentEnd(id) => out.push_str(&format!("<office:annotation-end office:name=\"{}\"/>", annotation_name(self.prefix, *id))),
                 Inline::Field { instr, result, fmt, locked } => {
                     match self
@@ -760,11 +760,14 @@ impl Writer {
             }
         };
         let tracked = paras.len() > 1
-            || p.inlines.iter().any(|i| matches!(i, Inline::Text(_, f) | Inline::Ruby { fmt: f, .. } | Inline::Field { fmt: f, .. } if f.ins.is_some() || f.del.is_some()));
+            || p.inlines.iter().any(|i| {
+                matches!(i, Inline::Text(_, f) | Inline::Ruby { fmt: f, .. } | Inline::Field { fmt: f, .. } if f.ins.is_some() || f.del.is_some())
+                    || matches!(i, Inline::ObjRev(_))
+            });
         if tracked {
             let mut items = Vec::new();
             for (k, q) in paras.iter().enumerate() {
-                items.extend(q.inlines.iter().map(Item::Inl));
+                items.extend(tracked::inline_items(&q.inlines));
                 if k + 1 < paras.len() {
                     items.push(Item::Mark(q));
                 }

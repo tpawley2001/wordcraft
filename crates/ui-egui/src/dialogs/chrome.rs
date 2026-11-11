@@ -224,6 +224,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
         Dialog::NoteOptions { .. } => "Footnote and Endnote",
         Dialog::Templates { .. } => "Templates and Add-ins",
         Dialog::Organizer { .. } => "Organizer",
+        Dialog::StylePaneOptions { .. } => "Style Pane Options",
         Dialog::CustomProperties { .. } => "Custom Document Properties",
         Dialog::ConvertDocument => "Convert Document",
         Dialog::MarkAsFinal => "Mark as Final",
