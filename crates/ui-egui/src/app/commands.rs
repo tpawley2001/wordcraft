@@ -37,6 +37,13 @@ impl WordApp {
             self.ui.backstage = true;
             self.ui.backstage_page = "recover".into();
         }
+        // Update Table (or F9 in the table) asks what to update, as Word does (#1197); a script
+        // or the dialog's own OK says it with `pageNumbersOnly`.
+        if asks_update_toc(self, id, &params) && widgets::enabled(self, id) {
+            let d = crate::dialogs_refs::RefsDialog::UpdateToc { then: id.to_string(), entire: false };
+            self.dialog = Some(dialogs::Dialog::Refs(Box::new(d)));
+            return Ok(json!({"pending": "updateToc"}));
+        }
         // A button whose command needs input the user hasn't given yet opens its dialog (#240).
         if let Some(name) = input_dialog(id, &params)
             && widgets::enabled(self, id)
@@ -1073,6 +1080,28 @@ impl WordApp {
 /// Record If rules (or Rules with no rule at all) without a field, Finish & Merge and Print
 /// Documents without records, Table Properties without settings, Symbol and Field without a
 /// character or code, and Enclose Characters without a shape.
+/// Whether `id` asks Update page numbers only or Update entire table first: Update Table with a
+/// table of contents in the body, or Update Field with the selection reaching into it, without
+/// `pageNumbersOnly` saying which. F9 elsewhere updates fields without asking.
+fn asks_update_toc(app: &WordApp, id: &str, params: &Value) -> bool {
+    if params.get("pageNumbersOnly").is_some() {
+        return false;
+    }
+    let Some((start, end)) = wordcraft_engine::cmd::references::toc_blocks(&app.session) else { return false };
+    match id {
+        "references.updateToc" => true,
+        "references.updateFields" => {
+            let (a, b) = app.session.sel.ordered();
+            if a.story != wordcraft_doc::StoryRef::Body || b.story != wordcraft_doc::StoryRef::Body {
+                return false;
+            }
+            let block = |p: &wordcraft_doc::Pos| p.path.0.first().map(|t| *t as usize);
+            matches!((block(&a), block(&b)), (Some(a), Some(b)) if a <= end && b >= start)
+        }
+        _ => false,
+    }
+}
+
 fn input_dialog(id: &str, params: &Value) -> Option<&'static str> {
     input_dialog_mailings(id, params)
         .or_else(|| input_dialog_insert(id, params))

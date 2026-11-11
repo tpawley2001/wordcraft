@@ -478,3 +478,109 @@ fn index_automark_picker_marks_and_reports_count() {
     assert_eq!(a.session.doc.plain_text(StoryRef::Body), "fox fox");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// An app on "Intro" (Heading 1) and "Body text." with a table of contents at the top; "Intro"
+/// then starts page 2, so the entry's number "1" is out of date.
+fn app_with_toc() -> WordApp {
+    let mut a = app("Intro\nBody text.");
+    a.run("select.text", json!({"text": "Intro"})).unwrap();
+    a.run("styles.apply", json!({"style": "Heading 1"})).unwrap();
+    a.run("caret.docStart", json!({})).unwrap();
+    a.run("references.toc", json!({})).unwrap();
+    let heading = a
+        .session
+        .doc
+        .body
+        .iter()
+        .position(|b| b.as_para().is_some_and(|p| p.props.style.as_deref() == Some("Heading1") && p.plain_text() == "Intro"))
+        .unwrap();
+    a.session.sel = wordcraft_engine::Selection::caret(wordcraft_doc::Pos::body(heading, 0));
+    a.run("para.pageBreakBefore", json!({"value": true})).unwrap();
+    a
+}
+
+fn toc_entries(a: &WordApp) -> Vec<String> {
+    a.session
+        .doc
+        .body
+        .iter()
+        .filter_map(|b| b.as_para())
+        .filter(|p| p.props.style.as_deref().is_some_and(|s| s.starts_with("TOC") && s != "TOCHeading"))
+        .map(|p| p.plain_text())
+        .collect()
+}
+
+/// #1197: Update Table asks Update page numbers only (selected first) or Update entire table;
+/// OK runs the update it says, Cancel changes nothing.
+#[test]
+fn update_table_asks_page_numbers_only_or_entire_table() {
+    use egui::accesskit::Role;
+    use egui_kittest::kittest::Queryable;
+    for ok in [false, true] {
+        let mut a = app_with_toc();
+        // Text typed into the entry: page numbers only keeps it.
+        let entry = a.session.doc.body.iter().position(|b| b.as_para().is_some_and(|p| p.props.style.as_deref() == Some("TOC1"))).unwrap();
+        a.session.sel = wordcraft_engine::Selection::caret(wordcraft_doc::Pos::body(entry, 2));
+        a.run("text.insert", json!({"text": "X"})).unwrap();
+        assert_eq!(toc_entries(&a), ["InXtro\t1"]);
+        let steps = a.session.undo_depth();
+        assert_eq!(a.run("references.updateToc", json!({})).unwrap(), json!({"pending": "updateToc"}));
+        let RefsDialog::UpdateToc { then, entire } = form(&a) else { panic!("{:?}", a.dialog) };
+        assert_eq!((then.as_str(), entire), ("references.updateToc", false), "page numbers only first");
+        assert_eq!(a.session.undo_depth(), steps, "nothing ran yet");
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        h.get_by_role_and_label(Role::Window, "Update Table of Contents");
+        let button = if ok { "OK" } else { "Cancel" };
+        h.get_all_by_role_and_label(Role::Button, button).last().expect("the dialog's button").click();
+        h.run_steps(3);
+        assert!(h.state().dialog.is_none(), "{button} closes the dialog");
+        if ok {
+            assert_eq!(toc_entries(h.state()), ["InXtro\t2"], "page numbers only");
+            assert_eq!(h.state().session.undo_depth(), steps + 1);
+        } else {
+            assert_eq!(toc_entries(h.state()), ["InXtro\t1"], "Cancel changes nothing");
+            assert_eq!(h.state().session.undo_depth(), steps);
+        }
+    }
+}
+
+/// #1197: F9 with the caret outside the table updates the fields without asking.
+#[test]
+fn f9_outside_the_table_does_not_ask() {
+    let mut a = app_with_toc();
+    a.run("select.text", json!({"text": "Body text."})).unwrap();
+    let r = a.run("references.updateFields", json!({})).unwrap();
+    assert!(r.get("pending").is_none(), "{r}");
+    assert!(a.dialog.is_none());
+    assert_eq!(toc_entries(&a), ["Intro\t2"], "the table is updated as before");
+    // In the table, it asks, and OK updates the fields with the choice.
+    let entry = a.session.doc.body.iter().position(|b| b.as_para().is_some_and(|p| p.props.style.as_deref() == Some("TOC1"))).unwrap();
+    a.session.sel = wordcraft_engine::Selection::caret(wordcraft_doc::Pos::body(entry, 0));
+    assert_eq!(a.run("references.updateFields", json!({})).unwrap(), json!({"pending": "updateToc"}));
+    let RefsDialog::UpdateToc { then, .. } = form(&a) else { panic!() };
+    assert_eq!(then, "references.updateFields");
+}
+
+/// #1197: with `pageNumbersOnly` (scripts, the dialog's OK) Update Table runs without asking.
+#[test]
+fn update_toc_with_the_key_runs_without_the_dialog() {
+    for (pages_only, expected) in [(true, "Intro\t2"), (false, "Intro\t2")] {
+        let mut a = app_with_toc();
+        let r = a.run("references.updateToc", json!({"pageNumbersOnly": pages_only})).unwrap();
+        assert!(r.get("pending").is_none(), "{r}");
+        assert!(a.dialog.is_none());
+        assert_eq!(toc_entries(&a), [expected]);
+    }
+    let mut a = app_with_toc();
+    let r = a.run("references.updateFields", json!({"pageNumbersOnly": true})).unwrap();
+    assert!(r.get("pending").is_none(), "{r}");
+    assert_eq!(toc_entries(&a), ["Intro\t2"]);
+}

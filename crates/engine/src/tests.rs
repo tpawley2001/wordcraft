@@ -59,6 +59,7 @@ mod selection_pane;
 mod shape_format_painter;
 mod table_insert_delete_cells;
 mod text_from_file_range;
+mod toc_page_numbers_only;
 mod table_row_column_ends;
 mod table_sort_keys;
 mod symbol_field_update;

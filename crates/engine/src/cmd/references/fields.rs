@@ -3,7 +3,7 @@ use super::properties::{
     bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property, doc_property_arg, new_property_value,
     set_summary_property, summary_property, text_result,
 };
-use super::toc::{heading_style_level, update_toc};
+use super::toc::{heading_style_level, update_toc, update_toc_pages};
 use super::{
     Block, CharProps, CmdError, CmdResult, FieldCode, InlineObject, NumFormat, Paragraph, Path, Pos, Selection, Session, StoryRef, Value, p,
     sel_result,
@@ -442,7 +442,7 @@ pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Doc
 }
 
 /// Whether `instr` has the one-letter switch `\sw`, also run together with another (`\p\h`).
-fn has_switch(instr: &str, sw: char) -> bool {
+pub(super) fn has_switch(instr: &str, sw: char) -> bool {
     instr.split('\\').skip(1).any(|s| {
         let mut chars = s.chars();
         chars.next().is_some_and(|c| c.eq_ignore_ascii_case(&sw)) && chars.next().is_none_or(|c| !c.is_alphanumeric())
@@ -455,7 +455,7 @@ fn has_switch(instr: &str, sw: char) -> bool {
 /// caret is in (the body's fields stay as they are then). SEQ numbering, citations and TOC are
 /// body-only, so they run only when the caret is in the body.
 pub fn update_fields(s: &mut Session) -> Result<(), CmdError> {
-    update_fields_in(s, false)
+    update_fields_in(s, false, false)
 }
 
 /// Each section's page number format (`w:pgNumType w:fmt`), by section index.
@@ -489,7 +489,7 @@ pub(crate) fn page_label(s: &mut Session, pos: &Pos) -> String {
 /// Where `PAGEREF` reads bookmark `name` (starting at `pos`): a hidden `_Ref` bookmark from the
 /// start of a heading that starts with page breaks reads the page its text is on, as when its
 /// cross-reference was inserted.
-fn bookmark_page_pos(doc: &wordcraft_doc::Document, name: &str, pos: Pos) -> Pos {
+pub(super) fn bookmark_page_pos(doc: &wordcraft_doc::Document, name: &str, pos: Pos) -> Pos {
     if pos.off == 0 && name.starts_with("_Ref") {
         let off = crate::cmd::citations::leading_breaks(doc, &pos);
         return Pos { off, ..pos };
@@ -498,8 +498,9 @@ fn bookmark_page_pos(doc: &wordcraft_doc::Document, name: &str, pos: Pos) -> Pos
 }
 
 /// [`update_fields`], or with `all` the whole document: the body (with SEQ, citations and TOC) and
-/// every part story, wherever the caret is (what printing needs).
-pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
+/// every part story, wherever the caret is (what printing needs). With `toc_pages_only` the table
+/// of contents keeps its entries and only its page numbers are updated ([`update_toc_pages`]).
+pub fn update_fields_in(s: &mut Session, all: bool, toc_pages_only: bool) -> Result<(), CmdError> {
     let caret_story = s.sel.focus.story;
     let in_body = all || caret_story == StoryRef::Body;
     if in_body {
@@ -672,7 +673,7 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
         return Ok(());
     }
     crate::cmd::citations::update_citations(s)?;
-    update_toc(s)
+    if toc_pages_only { update_toc_pages(s) } else { update_toc(s) }
 }
 
 /// Refresh every unlocked `DATE` and `TIME` field to now, as Word does whenever it shows,
