@@ -766,6 +766,8 @@ pub fn sectpr(pc: &PropCtx, e: &El) -> (SectionProps, Vec<HfRef>) {
                     Some(_) => false,
                     None => s.page_w > s.page_h,
                 };
+                // The printer's paper code (§17.6.13), kept for saving.
+                s.paper_code = k.attr("w:code").and_then(|v| v.trim().parse::<u32>().ok());
             }
             "w:pgMar" => {
                 let m = |n: &str, d: f32| tw(k, n).map(f32::abs).unwrap_or(d).min(s.page_w.max(s.page_h));
@@ -804,6 +806,7 @@ pub fn sectpr(pc: &PropCtx, e: &El) -> (SectionProps, Vec<HfRef>) {
             "w:formProt" => s.form_prot = Some(on_off(k)),
             "w:titlePg" => s.title_page = on_off(k),
             "w:bidi" => s.rtl = on_off(k),
+            "w:rtlGutter" => s.rtl_gutter = on_off(k),
             "w:textDirection" => {
                 s.text_direction = wordcraft_doc::props::TextDirection::from_ooxml(k.attr("w:val").unwrap_or(""));
                 s.text_direction_set = k.attr("w:val") == Some("lrTb");

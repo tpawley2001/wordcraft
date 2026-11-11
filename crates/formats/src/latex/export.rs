@@ -249,7 +249,8 @@ impl Writer {
                 | Inline::Group { .. }
                 | Inline::FieldStart(_)
                 | Inline::FieldEnd
-                | Inline::AnchorEnd(_) => {}
+                | Inline::AnchorEnd(_)
+                | Inline::ObjRev(_) => {}
                 // ASK and SET show nothing (see `model::shows_nothing`).
                 Inline::Field { instr, .. } if model::shows_nothing(instr) => {}
                 Inline::Field { result, fmt, .. } | Inline::Control { text: result, fmt, .. } => {

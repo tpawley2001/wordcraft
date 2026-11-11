@@ -694,3 +694,64 @@ fn the_styles_pane_scroll_bar_leaves_the_style_markers_clear() {
         );
     }
 }
+
+/// The Reveal Formatting pane's Compare to another selection check box turns `view.revealCompare`
+/// on, and the pane then lists the formatting differences.
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn reveal_formatting_compare_check_box_lists_differences() {
+    use egui_kittest::kittest::{NodeT, Queryable};
+
+    let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("One\nTwo")), crate::Services::default());
+    app.run("select.range", serde_json::json!({"anchor": {"block": 0, "off": 0}, "focus": {"block": 0, "off": 3}})).unwrap();
+    app.run("format.bold", serde_json::json!({"value": true})).unwrap();
+    app.run("caret.set", serde_json::json!({"pos": {"block": 0, "off": 1}})).unwrap();
+    app.run("view.revealFormattingPane", serde_json::json!({"value": true})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut crate::WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        app,
+    );
+    h.run_steps(4);
+    assert!(h.state().session.view.reveal_compare.is_none());
+    h.get_by_label("Compare to another selection").click();
+    h.run_steps(4);
+    assert!(h.state().session.view.reveal_compare.is_some(), "the check box turns compare on");
+    h.state_mut().run("caret.set", serde_json::json!({"pos": {"block": 1, "off": 1}})).unwrap();
+    h.run_steps(4);
+    h.get_by_label("Formatting differences").accesskit_node();
+    h.get_by_label("Bold -> Not Bold").accesskit_node();
+    h.get_by_label("Compare to another selection").click();
+    h.run_steps(4);
+    assert!(h.state().session.view.reveal_compare.is_none(), "and off again");
+}
+
+/// The Styles pane's Disable Linked Styles check box runs `styles.disableLinked` and shows the
+/// view state.
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn the_styles_pane_disables_linked_styles() {
+    use egui_kittest::kittest::{NodeT, Queryable};
+    let app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello")), crate::Services::default());
+    let mut fonts = false;
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(400.0, 1200.0)).build_ui_state(
+        |ui, app: &mut crate::WordApp| {
+            if !fonts {
+                crate::theme::install_fonts(ui.ctx());
+                fonts = true;
+                return;
+            }
+            super::styles(app, ui);
+        },
+        app,
+    );
+    h.run_steps(4);
+    assert_eq!(h.get_by_label("Disable Linked Styles").accesskit_node().toggled(), Some(egui::accesskit::Toggled::False));
+    h.get_by_label("Disable Linked Styles").click();
+    h.run_steps(3);
+    assert!(h.state().session.view.disable_linked_styles);
+    assert_eq!(h.get_by_label("Disable Linked Styles").accesskit_node().toggled(), Some(egui::accesskit::Toggled::True));
+}

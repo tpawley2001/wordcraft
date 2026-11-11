@@ -98,23 +98,37 @@ pub(super) fn styles(app: &mut WordApp, ui: &mut Ui) {
     if ui.selectable_label(app.session.view.reveal_formatting_pane, tl!("Reveal Formatting")).clicked() {
         let _ = app.run("view.revealFormattingPane", json!({}));
     }
+    let mut disable_linked = app.session.view.disable_linked_styles;
+    if ui.checkbox(&mut disable_linked, tl!("Disable Linked Styles")).changed() {
+        let _ = app.run("styles.disableLinked", json!({"value": disable_linked}));
+    }
     ui.separator();
-    let mut list: Vec<(String, String, bool, bool)> = app
-        .session
-        .doc
-        .styles
-        .styles
+    // The pane's styles, in its order (Options… chooses which and how they sort).
+    let listed = app.session.run("styles.paneList", &json!({})).unwrap_or_default();
+    let sheet = &app.session.doc.styles;
+    let list: Vec<(String, String, &str, bool)> = listed
+        .as_array()
+        .map(|a| a.as_slice())
+        .unwrap_or_default()
         .iter()
-        .filter(|s| !s.hidden && s.kind != wordcraft_doc::StyleKind::Table)
-        .map(|s| (s.id.clone(), crate::i18n::style_name(s), s.kind == wordcraft_doc::StyleKind::Character, s.builtin))
+        .filter_map(|x| {
+            let st = sheet.get(x.get("id").and_then(Value::as_str)?)?;
+            let mark = match x.get("type").and_then(Value::as_str) {
+                Some("character") => "a",
+                Some("linked") => "¶a",
+                _ => "¶",
+            };
+            Some((st.id.clone(), crate::i18n::style_name(st), mark, st.builtin))
+        })
         .collect();
-    list.sort_by_key(|s| s.1.to_lowercase());
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        for (id, name, is_char, builtin) in list {
+    // Leave room below the list for Options….
+    let list_height = (ui.available_height() - 32.0).max(60.0);
+    egui::ScrollArea::vertical().max_height(list_height).show(ui, |ui| {
+        for (id, name, mark, builtin) in list {
             ui.horizontal(|ui| {
                 let r = ui.selectable_label(id == cur, &name);
                 ui.with_layout(crate::rtl::far_side(ui, egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new(if is_char { "a" } else { "¶" }).weak());
+                    ui.label(egui::RichText::new(mark).weak());
                 });
                 if r.clicked() {
                     let _ = app.run("para.style", json!({"style": id}));
@@ -139,4 +153,8 @@ pub(super) fn styles(app: &mut WordApp, ui: &mut Ui) {
             });
         }
     });
+    ui.separator();
+    if ui.button(tl!("Options…")).clicked() {
+        app.dialog = crate::dialogs::Dialog::open("stylePaneOptions", app);
+    }
 }

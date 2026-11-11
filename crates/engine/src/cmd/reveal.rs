@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use wordcraft_doc::props::{Align, LineSpacing, TextColor, Underline, VertAlign};
 
 use super::inspector::{char_props, para_props, style_name};
-use crate::{CommandSpec, Session, p};
+use crate::{CommandSpec, Selection, Session, p};
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
@@ -20,6 +20,13 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"value"?: bool (show/hide the pane)}"#)
         .key("Shift+F1")
+        .pure(),
+        CommandSpec::new("view.revealCompare", "Compare to another selection", "Home › Styles › Reveal Formatting", |s, v| {
+            let on = p::bool(v, "value").unwrap_or(s.view.reveal_compare.is_none());
+            s.view.reveal_compare = if on { Some(s.sel.clone()) } else { None };
+            Ok(reveal(s))
+        })
+        .params(r#"{"value"?: bool (compare with the selection where it was turned on; absent toggles)}"#)
         .pure(),
     ]
 }
@@ -61,9 +68,9 @@ fn language_name(tag: &str) -> String {
     LANGUAGES.iter().find(|(t, _)| t.eq_ignore_ascii_case(tag)).map(|(_, n)| (*n).to_string()).unwrap_or_else(|| tag.to_string())
 }
 
-/// The section holding the caret (the selection start for a body selection).
-fn caret_section(s: &Session) -> wordcraft_doc::section::SectionProps {
-    let (a, _) = s.sel.ordered();
+/// The section holding the start of `sel` (the caret's section for a body selection).
+fn caret_section(s: &Session, sel: &Selection) -> wordcraft_doc::section::SectionProps {
+    let (a, _) = sel.ordered();
     if a.story != wordcraft_doc::StoryRef::Body {
         return super::page::sect(s);
     }
@@ -108,11 +115,30 @@ fn pt_value(v: f32) -> f64 {
 
 /// What Reveal Formatting shows for the caret, as JSON.
 pub fn reveal(s: &Session) -> Value {
+    let mut out = reveal_at(s, &s.sel);
+    let first = s.view.reveal_compare.as_ref().map(|sel| reveal_at(s, &clamped(s, sel)));
+    let diffs = first.as_ref().map(|first| differences(first, &out));
+    if let Value::Object(m) = &mut out {
+        m.insert("compare".into(), json!(first.is_some()));
+        if let Some(diffs) = diffs {
+            m.insert("differences".into(), diffs);
+        }
+    }
+    out
+}
+
+/// `sel` made valid for the document as it is now (its text may have been deleted since).
+fn clamped(s: &Session, sel: &Selection) -> Selection {
+    Selection { anchor: s.doc.clamp(&sel.anchor), focus: s.doc.clamp(&sel.focus) }
+}
+
+/// What Reveal Formatting shows for `sel`, as JSON.
+pub fn reveal_at(s: &Session, sel: &Selection) -> Value {
     let styles = &s.doc.styles;
-    let pp = para_props(s);
+    let pp = para_props(s, sel);
     let pstyle = pp.style.clone().unwrap_or_else(|| "Normal".into());
     let rp = styles.resolve_para(&pp);
-    let rc = styles.resolve_char(Some(&pstyle), &char_props(s));
+    let rc = styles.resolve_char(Some(&pstyle), &char_props(s, sel));
 
     let mut font = Lines::default();
     font.add(rc.font.clone(), json!({"label": null, "font": rc.font}));
@@ -181,7 +207,7 @@ pub fn reveal(s: &Session) -> Value {
     }
     spacing.add(format!("Line spacing: {line}"), line_entry);
 
-    let sect = caret_section(s);
+    let sect = caret_section(s, sel);
     let mut margins = Lines::default();
     margins.inches("Left", sect.margin_left);
     margins.inches("Right", sect.margin_right);
@@ -203,6 +229,65 @@ pub fn reveal(s: &Session) -> Value {
         ]},
         {"name": "Section", "sections": [section("MARGINS", margins), section("PAPER", paper)]},
     ]})
+}
+
+/// The key two entries in a section are matched by: the label when it has one, else the name of
+/// its value kind. A label-less `text` entry in the FONT section is an effect (`Bold`), keyed by
+/// its text so an effect on one side only is a difference.
+fn entry_key(entry: &Value, font_section: bool) -> String {
+    if let Some(label) = entry.get("label").and_then(Value::as_str) {
+        return label.to_string();
+    }
+    let Some(map) = entry.as_object() else { return String::new() };
+    for kind in ["font", "pt", "style", "lang", "hex", "multiple", "atLeast", "exactly", "text", "inches"] {
+        if let Some(v) = map.get(kind) {
+            if kind == "text" && font_section {
+                return v.as_str().unwrap_or_default().to_string();
+            }
+            return kind.to_string();
+        }
+    }
+    String::new()
+}
+
+/// The entries of a section by key, in order.
+fn keyed(section: &Value, font_section: bool) -> Vec<(String, Value)> {
+    section
+        .get("entries")
+        .and_then(Value::as_array)
+        .map(|entries| entries.iter().map(|e| (entry_key(e, font_section), e.clone())).collect())
+        .unwrap_or_default()
+}
+
+/// The Formatting differences between two listings: each section's entries that differ, the first
+/// selection's entries in order then keys only the second side has.
+fn differences(first: &Value, second: &Value) -> Value {
+    let mut out = Vec::new();
+    let groups = |v: &Value| v.get("groups").and_then(Value::as_array).cloned().unwrap_or_default();
+    for group in &groups(first) {
+        let name = group.get("name").and_then(Value::as_str).unwrap_or_default();
+        let other = groups(second).into_iter().find(|g| g.get("name").and_then(Value::as_str) == Some(name));
+        let sections = |g: Option<&Value>| g.and_then(|g| g.get("sections")).and_then(Value::as_array).cloned().unwrap_or_default();
+        for section in sections(Some(group)) {
+            let heading = section.get("heading").and_then(Value::as_str).unwrap_or_default();
+            let font_section = name == "Font" && heading == "FONT";
+            let other_section = sections(other.as_ref()).into_iter().find(|x| x.get("heading").and_then(Value::as_str) == Some(heading));
+            let a = keyed(&section, font_section);
+            let b = keyed(other_section.as_ref().unwrap_or(&Value::Null), font_section);
+            for (key, entry) in &a {
+                let same = b.iter().find(|(k, _)| k == key).map(|(_, e)| e);
+                if same != Some(entry) {
+                    out.push(json!({"group": name, "heading": heading, "first": entry, "second": same}));
+                }
+            }
+            for (key, entry) in &b {
+                if !a.iter().any(|(k, _)| k == key) {
+                    out.push(json!({"group": name, "heading": heading, "first": null, "second": entry}));
+                }
+            }
+        }
+    }
+    Value::Array(out)
 }
 
 #[cfg(test)]
@@ -246,6 +331,24 @@ mod tests {
         assert_eq!(spacing[2]["label"], "Line spacing");
         let margins = &r["groups"][2]["sections"][0]["entries"];
         assert_eq!(margins[0], json!({"label": "Left", "inches": 1.0}));
+    }
+
+    #[test]
+    fn entries_match_by_label_then_value_kind() {
+        let key = |e: Value, font: bool| super::entry_key(&e, font);
+        assert_eq!(key(json!({"label": "After", "pt": 12.0}), false), "After");
+        assert_eq!(key(json!({"label": null, "font": "Arial"}), false), "font");
+        assert_eq!(key(json!({"label": null, "pt": 14.0}), false), "pt");
+        assert_eq!(key(json!({"label": null, "text": "Left"}), false), "text");
+        assert_eq!(key(json!({"label": null, "text": "Bold"}), true), "Bold");
+        assert_eq!(key(json!({"label": null, "text": "Bold"}), false), "text");
+        assert_eq!(key(json!({"label": null, "inches": 1.0}), false), "inches");
+        assert_eq!(key(json!({"label": null, "atLeast": 12.0}), false), "atLeast");
+        assert_eq!(key(json!({"label": null, "exactly": 12.0}), false), "exactly");
+        assert_eq!(key(json!({"label": null, "multiple": 1.5}), false), "multiple");
+        assert_eq!(key(json!({"label": null, "style": "Normal"}), false), "style");
+        assert_eq!(key(json!({"label": null, "lang": "en-US"}), false), "lang");
+        assert_eq!(key(json!({"label": "Font color", "hex": "FF0000"}), false), "Font color");
     }
 
     #[test]

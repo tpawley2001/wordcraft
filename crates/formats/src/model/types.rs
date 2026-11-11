@@ -313,6 +313,29 @@ pub enum Inline {
         float: Option<Box<wordcraft_doc::para::Float>>,
         members: Vec<Member>,
     },
+    /// The tracked insertion and deletion of the object right after it (an
+    /// [`Inline::Image`], [`Inline::Chart`], [`Inline::Shape`], [`Inline::Group`],
+    /// [`Inline::Equation`] or [`Inline::Figure`]), which have no [`Fmt`] to carry them. Only
+    /// flows asked for them ([`FlowOpts::obj_revs`]) hold them; a deleted object is in such a
+    /// flow only after one. Other inlines ignore it.
+    ObjRev(Box<ObjRev>),
+}
+
+/// An object's tracked insertion and deletion ([`Inline::ObjRev`]).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ObjRev {
+    pub ins: Option<RevMark>,
+    pub del: Option<RevMark>,
+}
+
+impl Inline {
+    /// A drawing or equation: the inlines an [`Inline::ObjRev`] stands before.
+    pub fn is_object(&self) -> bool {
+        matches!(
+            self,
+            Inline::Image(_) | Inline::Chart(_) | Inline::Shape { .. } | Inline::Group { .. } | Inline::Equation { .. } | Inline::Figure(_)
+        )
+    }
 }
 
 /// A member of an [`Inline::Group`]: a shape, text box or picture (its placement in the group is
@@ -512,6 +535,10 @@ pub struct FlowOpts {
     /// in [`Para::extra`] and character style in [`Fmt::extra`] ([`super::is_custom_style`],
     /// [`super::is_custom_char_style`]), for formats that write their style sheet (RTF).
     pub styles: bool,
+    /// With [`FlowOpts::tracked`]: objects' tracked insertions and deletions as
+    /// [`Inline::ObjRev`], deleted objects kept (otherwise objects carry no marks and deleted
+    /// ones are left out).
+    pub obj_revs: bool,
 }
 
 impl FlowOpts {
@@ -826,6 +853,7 @@ impl Para {
                     | Inline::CommentEnd(_)
                     | Inline::FieldStart(_)
                     | Inline::FieldEnd
+                    | Inline::ObjRev(_)
             )
         })
     }
@@ -864,7 +892,8 @@ impl Para {
                 | Inline::Group { .. }
                 | Inline::FieldStart(_)
                 | Inline::FieldEnd
-                | Inline::AnchorEnd(_) => {}
+                | Inline::AnchorEnd(_)
+                | Inline::ObjRev(_) => {}
             }
         }
         s
@@ -895,7 +924,8 @@ impl Para {
                 | Inline::Group { .. }
                 | Inline::FieldStart(_)
                 | Inline::FieldEnd
-                | Inline::AnchorEnd(_) => {}
+                | Inline::AnchorEnd(_)
+                | Inline::ObjRev(_) => {}
             }
         }
         s
@@ -1037,6 +1067,10 @@ pub struct TableExtra {
     /// ODT's `table:table-header-rows`). Its header cells ([`FCell::header`]) may be more: a
     /// table style's header row is one too.
     pub header_rows: usize,
+    /// Its table style's document id and its style options ("look"), for formats that write
+    /// them by row (RTF's `\\tsN` and `\\tbllk*`); `None` leaves the table's own.
+    pub style: Option<String>,
+    pub look: Option<wordcraft_doc::props::TableLook>,
 }
 
 impl FTable {
