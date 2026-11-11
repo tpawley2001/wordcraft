@@ -673,7 +673,12 @@ pub fn update_fields_in(s: &mut Session, all: bool, toc_pages_only: bool) -> Res
         return Ok(());
     }
     crate::cmd::citations::update_citations(s)?;
-    if toc_pages_only { update_toc_pages(s) } else { update_toc(s) }
+    update_body_toc(s, toc_pages_only)
+}
+
+/// The table of contents at the end of a body update: its page numbers only, or rebuilt.
+fn update_body_toc(s: &mut Session, pages_only: bool) -> Result<(), CmdError> {
+    if pages_only { update_toc_pages(s) } else { update_toc(s) }
 }
 
 /// Refresh every unlocked `DATE` and `TIME` field to now, as Word does whenever it shows,
