@@ -196,7 +196,7 @@ pub(crate) fn blip(rec: &Rec, limit: usize, work: &mut Decode) -> Option<Blip> {
             let raw = rec.body.get(uids + 34..)?;
             let raw = raw.get(..cb_save.min(raw.len()))?;
             let cap = limit.min(MAX_METAFILE);
-            let bytes = if compression == 0 {
+            let mut bytes = if compression == 0 {
                 let want = if cb_size > 0 { cb_size.min(cap) } else { cap };
                 // The compressed stream is read whole whatever it inflates to: a record that
                 // claims to inflate to nothing still costs its input (#3871).
@@ -212,6 +212,12 @@ pub(crate) fn blip(rec: &Rec, limit: usize, work: &mut Decode) -> Option<Blip> {
             };
             if bytes.is_empty() {
                 return None;
+            }
+            if rec.typ == rt::BLIP_EMF {
+                // Same header-count and face-name repair as embedded objects' EMFs: Word cannot
+                // open a .docx whose EMF has a 32-unit face name with no NUL. A malformed record
+                // chain is left byte-identical.
+                crate::ole::repair_emf_header(&mut bytes);
             }
             match rec.typ {
                 rt::BLIP_EMF => Some(Blip { bytes, ext: "emf", placeholder: false }),

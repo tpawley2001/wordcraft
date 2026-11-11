@@ -38,7 +38,9 @@ use crate::model::{self, Cell, FBlock, FTable, Flow, Fmt, Inline, Kind, ListInfo
 
 mod date;
 mod export;
+mod form_field;
 mod frames;
+mod note_marks;
 mod parse;
 mod reader;
 mod state;
@@ -57,7 +59,10 @@ use state::MAX_SECTIONS;
 #[cfg(test)]
 use word::hyperlink;
 
+// The RTF tests keep their acceptance files exactly as committed (long fixture lines included),
+// so rustfmt leaves them as written.
 #[cfg(test)]
+#[rustfmt::skip]
 mod tests;
 
 #[cfg(test)]

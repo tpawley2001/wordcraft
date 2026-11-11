@@ -63,6 +63,37 @@ impl LegacyForm {
     }
 }
 
+/// Whether `ff_data` has a tag `name` (`w:checkBox`, `w:sizeAuto`…), for writers of other formats.
+pub fn has_tag(ff_data: &str, name: &str) -> bool {
+    tag(ff_data, name).is_some()
+}
+
+/// Attribute `attr` (`w:val`, `w:type`…) of the first tag `name` in `ff_data`, entities resolved;
+/// `None` when the tag or the attribute is absent.
+pub fn tag_attr(ff_data: &str, name: &str, attr: &str) -> Option<String> {
+    let t = tag(ff_data, name)?;
+    let pat = format!(" {attr}=");
+    let at = t.find(&pat)? + pat.len();
+    let quote = t.get(at..)?.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let rest = t.get(at + 1..)?;
+    let end = rest.find(quote)?;
+    Some(unescape(rest.get(..end)?))
+}
+
+/// The `w:val` of every tag `name` in `ff_data`, in order (a drop-down's `w:listEntry`s), at most
+/// [`MAX_ENTRIES`].
+pub fn tag_vals(ff_data: &str, name: &str) -> Vec<String> {
+    tags(ff_data, name).filter_map(attr_in).take(MAX_ENTRIES).collect()
+}
+
+/// Whether an `ST_OnOff` value is on (anything but `0`, `false` or `off`).
+pub fn is_on(v: &str) -> bool {
+    on(v)
+}
+
 fn on(v: &str) -> bool {
     !matches!(v.trim(), "0" | "false" | "off")
 }

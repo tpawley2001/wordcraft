@@ -678,6 +678,9 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
     // Storage id of the embedded object the open field's code references (sprmCFOle2).
     let mut object_id: Option<u32> = None;
     let mut fmt = FmtState::default();
+    // The paragraph being built has had its mark looked up ([`para_head`]): its style is known
+    // before its characters are resolved, and the mark's PAPX is read once.
+    let mut head: Option<Option<ParaHead<'a>>> = None;
     while cp < cp_end {
         // Bookmark boundaries at this CP (main-document walks only; subdocument walks get
         // an empty table and `cp` never matches the main-document CPs).
@@ -705,6 +708,13 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
         if ctx.budget.get() == 0 {
             break;
         }
+        if head.is_none() {
+            // Toggle operands (0x80/0x81) resolve against the paragraph's own style, which only
+            // its mark's PAPX names: look it up before the first character is resolved.
+            let found = para_head(ctx, cp, cp_end);
+            pb.props.style = found.and_then(|h| ctx.style_ids.get(usize::from(h.istd))).filter(|id| !id.is_empty()).cloned();
+            head = Some(found);
+        }
         ctx.budget.set(ctx.budget.get() - 1);
         // A section mark (0x0C) at a section's end is that section's last paragraph mark.
         let section_mark = c == '\u{C}' && ctx.sect_ends.binary_search(&cp.saturating_add(1)).is_ok();
@@ -715,9 +725,10 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 }
                 // Paragraph mark: its PAPX covers the FC range of the paragraph it ends, so
                 // querying at the mark's own FC finds that paragraph's properties.
-                let fc_mark = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
-                let (istd, papx) = ctx.papx_bins.papx(ctx.word, fc_mark);
-                let papx = huge_papx(ctx.data, papx).unwrap_or(papx);
+                let (istd, papx) = match head.take().flatten().filter(|h| h.mark == cp) {
+                    Some(h) => (h.istd, h.papx),
+                    None => mark_papx(ctx, cp),
+                };
                 pb.props.style = ctx.style_ids.get(usize::from(istd)).filter(|id| !id.is_empty()).cloned();
                 let mut row = table::decode(papx);
                 row.cell_mark = c == '\u{7}';
@@ -754,8 +765,10 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     _ => None,
                 };
                 let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
-                pb.mark = char_props(ctx.chpx_bins.chpx(ctx.word, fc), ctx.fonts, &CharProps::default(), ctx.raw_styles, ctx.style_ids);
+                let base = pb.props.style.as_deref().and_then(|id| ctx.sheet.get(id)).map(|style| style.chr.clone()).unwrap_or_default();
+                pb.mark = char_props(ctx.chpx_bins.chpx(ctx.word, fc), ctx.fonts, &base, ctx.raw_styles, ctx.style_ids);
                 let done = std::mem::take(&mut pb);
+                head = None;
                 out.push(ParaOut {
                     para: Paragraph {
                         text: done.text,
@@ -857,6 +870,52 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
         });
     }
     out
+}
+
+/// A paragraph's mark, found before its characters are walked: its CP and the istd and grpprl
+/// of its PAPX.
+#[derive(Clone, Copy)]
+struct ParaHead<'a> {
+    mark: u32,
+    istd: u16,
+    papx: &'a [u8],
+}
+
+/// The PAPX of the paragraph whose mark is at `cp`: it covers the FC range of the paragraph it
+/// ends, so querying at the mark's own FC finds that paragraph's properties.
+fn mark_papx<'a>(ctx: &WalkCtx<'a>, cp: u32) -> (u16, &'a [u8]) {
+    let fc_mark = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
+    let (istd, papx) = ctx.papx_bins.papx(ctx.word, fc_mark);
+    (istd, huge_papx(ctx.data, papx).unwrap_or(papx))
+}
+
+/// The mark of the paragraph starting at `cp` (the next 0x0D, 0x07 or section-end 0x0C before
+/// `cp_end`) and its PAPX. The scan reads no more characters than the walk may still read
+/// ([`WalkCtx::budget`]), and the walk then reads the same ones, so it at most doubles the
+/// work; `None` when there is no mark within that.
+fn para_head<'a>(ctx: &WalkCtx<'a>, cp: u32, cp_end: u32) -> Option<ParaHead<'a>> {
+    let mut left = ctx.budget.get();
+    let mut at = cp;
+    while at < cp_end {
+        match ctx.pieces.char_at(ctx.word, at) {
+            Ok((c, units)) => {
+                left = left.checked_sub(1)?;
+                let mark = match c {
+                    '\r' | '\u{7}' => true,
+                    '\u{C}' => ctx.sect_ends.binary_search(&at.saturating_add(1)).is_ok(),
+                    _ => false,
+                };
+                if mark {
+                    let (istd, papx) = mark_papx(ctx, at);
+                    return Some(ParaHead { mark: at, istd, papx });
+                }
+                at = at.saturating_add(units.max(1));
+            }
+            Err(next) if next > at => at = next,
+            Err(_) => return None,
+        }
+    }
+    None
 }
 
 /// An inline picture anchor (`\x01`): the CHPX carries sprmCPicLocation. `open` is whether the
@@ -1339,9 +1398,11 @@ fn apply_prm(props: &mut CharProps, prm: PrmRef<'_>, fonts: &[String], base: &Ch
     }
 }
 
-/// Character props from a CHPX grpprl applied over `base`.
+/// Character props from a CHPX grpprl: the direct formatting only. `base` is the paragraph
+/// style's character formatting, which toggle operands (0x80 keep, 0x81 invert, [MS-DOC]
+/// §2.9.326) resolve against; it is not copied into the result.
 fn char_props(grpprl: &[u8], fonts: &[String], base: &CharProps, raw_styles: &[stsh::RawStyle], style_ids: &[String]) -> CharProps {
-    let mut p = base.clone();
+    let mut p = CharProps::default();
     for prl in sprm::iter(grpprl) {
         if prl.op == fmt::C_ISTD {
             // sprmCIstd names a character style, not direct formatting. Index 10 is

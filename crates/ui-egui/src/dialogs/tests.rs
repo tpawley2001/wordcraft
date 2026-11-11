@@ -488,7 +488,7 @@ fn ok_unchanged(app: &mut WordApp) {
 }
 
 /// Open the Paragraph dialog, change its options (`opts`) with `edit` and press OK.
-fn ok_with(app: &mut WordApp, edit: impl FnOnce(&mut [bool; 4])) {
+fn ok_with(app: &mut WordApp, edit: impl FnOnce(&mut [bool; 6])) {
     ok_edit(app, |d| {
         if let Dialog::Paragraph { opts, .. } = d {
             edit(opts);
@@ -652,14 +652,14 @@ fn paragraph_dialog_sets_only_the_options_that_changed() {
     ok_unchanged(&mut app);
     let p = props(&app);
     assert_eq!((p.mirror_indents, p.contextual_spacing, p.suppress_line_numbers, p.suppress_hyphens), (None, None, None, None));
-    ok_with(&mut app, |o| *o = [true; 4]);
+    ok_with(&mut app, |o| *o = [true; 6]);
     let p = props(&app);
     assert_eq!(
         (p.mirror_indents, p.contextual_spacing, p.suppress_line_numbers, p.suppress_hyphens),
         (Some(true), Some(true), Some(true), Some(true))
     );
     let Some(Dialog::Paragraph { opts, .. }) = Dialog::open("paragraph", &mut app) else { panic!() };
-    assert_eq!(opts, [true; 4], "the dialog shows what is set");
+    assert_eq!(opts, [true; 6], "the dialog shows what is set");
     ok_with(&mut app, |o| o[3] = false);
     assert_eq!(props(&app).suppress_hyphens, Some(false));
     assert_eq!(props(&app).mirror_indents, Some(true));
