@@ -1087,6 +1087,9 @@ pub struct TableExtra {
     /// them by row (RTF's `\\tsN` and `\\tbllk*`); `None` leaves the table's own.
     pub style: Option<String>,
     pub look: Option<wordcraft_doc::props::TableLook>,
+    /// The table's default cell padding (top, left, bottom, right), points, for formats that
+    /// state it by row (RTF).
+    pub cell_margins: Option<[f32; 4]>,
 }
 
 impl FTable {

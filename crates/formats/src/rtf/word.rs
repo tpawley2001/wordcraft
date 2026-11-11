@@ -222,7 +222,23 @@ impl Reader {
             "trhdr" => self.row_header = true,
             // The row's position, twips; beyond 22 inches clamped.
             "trleft" => self.row_style.left = pv.clamp(-31_680, 31_680),
-            "trgaph" => self.row_style.gap = pv.clamp(0, 31_680),
+            "trgaph" => {
+                self.row_style.gap = pv.clamp(0, 31_680);
+                self.row_style.has_gap = self.row_style.gap > 0;
+            }
+            // The row's default cell padding, by side (top, left, bottom, right), and its units.
+            "trpaddt" | "trpaddl" | "trpaddb" | "trpaddr" | "trpaddft" | "trpaddfl" | "trpaddfb" | "trpaddfr" => {
+                let i = match w.as_bytes().last() {
+                    Some(b't') => 0,
+                    Some(b'l') => 1,
+                    Some(b'b') => 2,
+                    _ => 3,
+                };
+                let slot = if w.starts_with("trpaddf") { self.row_style.pad_unit.get_mut(i) } else { self.row_style.pad.get_mut(i) };
+                if let Some(v) = slot {
+                    *v = pv.clamp(-31_680, 31_680);
+                }
+            }
             "tblind" => self.row_style.ind = Some(pv.clamp(-31_680, 31_680)),
             "tblindtype" => self.row_style.ind_type = pv,
             "trqc" => self.row_style.align = Some(Align::Center),

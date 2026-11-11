@@ -351,9 +351,35 @@ pub(super) struct RowStyle {
     pub(super) ind: Option<i32>,
     pub(super) ind_type: i32,
     pub(super) align: Option<Align>,
+    /// Whether the row states a gap at all (`\trgaphN`, N > 0).
+    pub(super) has_gap: bool,
+    /// The row's default cell padding (`\trpaddlN`, `\trpaddtN`, `\trpaddbN`, `\trpaddrN`,
+    /// twips) and each side's unit (`\trpaddflN`… : 3 twips, else the value is ignored), in
+    /// the order top, left, bottom, right.
+    pub(super) pad: [i32; 4],
+    pub(super) pad_unit: [i32; 4],
 }
 
 impl RowStyle {
+    /// The row's default cell padding (top, left, bottom, right), points, when it is not Word's
+    /// default: a side in twips (unit 3) as stated, else left and right the gap and top and
+    /// bottom none. A row with a table style and neither a gap nor a side in twips keeps the
+    /// style's.
+    pub(super) fn cell_margins(&self) -> Option<[f32; 4]> {
+        let twips = |i: usize| self.pad_unit.get(i) == Some(&3);
+        let stated = (0..4).any(twips);
+        if self.style.is_some() && !self.has_gap && !stated {
+            return None;
+        }
+        let gap = self.gap.clamp(0, 31_680) as f32 / 20.0;
+        let side = |i: usize, default: f32| {
+            if twips(i) { self.pad.get(i).copied().unwrap_or(0).clamp(0, 31_680) as f32 / 20.0 } else { default }
+        };
+        let m = [side(0, 0.0), side(1, gap), side(2, 0.0), side(3, gap)];
+        let word = [0.0, 5.4, 0.0, 5.4];
+        if m.iter().zip(word).all(|(v, w)| (v - w).abs() < 0.01) { None } else { Some(m) }
+    }
+
     /// The table's left edge from the left margin in twips, when the row states one: `\tblind`
     /// in twips (`\tblindtype3`) less the gap, else `\trleft`. A centred or right-aligned row
     /// has none.

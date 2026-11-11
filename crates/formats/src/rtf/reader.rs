@@ -928,6 +928,10 @@ impl Reader {
             let x = extra.get_or_insert_with(Default::default);
             (x.align, x.indent) = (ts.align, indent);
         }
+        // Its first row's default cell padding, when not Word's.
+        if let Some(m) = ts.cell_margins() {
+            extra.get_or_insert_with(Default::default).cell_margins = Some(m);
+        }
         if ts.style.is_some() || ts.look.is_some() {
             let x = extra.get_or_insert_with(Default::default);
             (x.style, x.look) = (ts.style, ts.look);
