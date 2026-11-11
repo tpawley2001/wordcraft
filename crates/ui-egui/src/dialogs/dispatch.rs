@@ -2,8 +2,8 @@ use super::bookmarks::{bookmark, enclose_preview, icons_body, macros};
 use super::chrome::{buttons, color_field};
 use super::find::{FindTab, SEARCH_SUGGESTIONS, command_matches, find_in_navigation_pane, goto_body, special_menu, swallow_shortcut_text};
 use super::font::{
-    UNDERLINE_STYLES, apply_font, font_box, font_sample_box, font_sample_lines, font_sample_props, sample_paper, scale_box, signed_by_box,
-    underline_style,
+    LIGATURES, NUM_FORMS, NUM_SPACINGS, UNDERLINE_STYLES, apply_font, font_box, font_sample_box, font_sample_lines, font_sample_props, name_box,
+    sample_paper, scale_box, signed_by_box, stylistic_set_box, underline_style,
 };
 use super::forms::{cell_margins_dialog, custom_properties, table_properties};
 use super::mailings::{ADDRESS_PARTS, recipient_list, rule_params};
@@ -137,6 +137,11 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         position,
         kern,
         kern_at,
+        ligatures,
+        num_spacing,
+        num_form,
+        stylistic_set,
+        contextual_alternates,
         ..
     } = d
     else {
@@ -264,6 +269,37 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             });
         });
     });
+    ui.separator();
+    ui.label(egui::RichText::new(tl!("OpenType Features")).font(semibold(12.5)));
+    crate::rtl::Table::new("fontdlg_opentype").columns(2).spacing(vec2(10.0, 6.0)).show(ui, |t| {
+        t.row(|r| {
+            let label = r.cell(|ui| ui.label(tl!("Ligatures:")));
+            r.cell(|ui| name_box(ui, "fontdlg_ligatures", ligatures, &LIGATURES, &label));
+        });
+        t.row(|r| {
+            let label = r.cell(|ui| ui.label(tl!("Number spacing:")));
+            r.cell(|ui| name_box(ui, "fontdlg_num_spacing", num_spacing, &NUM_SPACINGS, &label));
+        });
+        t.row(|r| {
+            let label = r.cell(|ui| ui.label(tl!("Number forms:")));
+            r.cell(|ui| name_box(ui, "fontdlg_num_forms", num_form, &NUM_FORMS, &label));
+        });
+        t.row(|r| {
+            let label = r.cell(|ui| ui.label(tl!("Stylistic sets:")));
+            r.cell(|ui| stylistic_set_box(ui, stylistic_set, &label));
+        });
+    });
+    let alternates = tl!("Use Contextual Alternates");
+    match contextual_alternates {
+        Some(on) => {
+            ui.checkbox(on, alternates);
+        }
+        None => {
+            if ui.add(egui::Checkbox::new(&mut false, alternates).indeterminate(true)).clicked() {
+                *contextual_alternates = Some(true);
+            }
+        }
+    }
     ui.separator();
     ui.label(egui::RichText::new(tl!("Effects")).font(semibold(12.5)));
     crate::rtl::Table::new("fx").columns(2).show(ui, |t| {
