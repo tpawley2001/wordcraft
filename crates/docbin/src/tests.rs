@@ -27,6 +27,7 @@ mod header_guard;
 mod horizontal_rules;
 mod hps_pos;
 mod linked_pictures;
+mod list_level_text;
 mod metadata;
 mod nested_table;
 mod nested_table_grid;
