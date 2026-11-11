@@ -61,7 +61,7 @@ fn chftn_note_stays_numbered() {
 
 #[test]
 fn unicode_custom_mark_on_an_endnote() {
-    let d = doc(&wrap(r"D{\super 舤?}{\footnote\ftnalt\pard {\super 舤?} Dag.}\par"));
+    let d = doc(&wrap(r"D{\super \u8224?}{\footnote\ftnalt\pard {\super \u8224?} Dag.}\par"));
     assert_eq!(body_refs(&d), ("D".to_string(), vec![(NoteKind::Endnote, "\u{2020}".to_string())]));
     assert_eq!(notes(&d), [("Dag.".to_string(), Some("\u{2020}".to_string()))]);
 }
