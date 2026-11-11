@@ -445,6 +445,12 @@ impl Reader {
         if !st.tabs.is_empty() {
             p.extra = Some(Box::new(wordcraft_doc::props::ParaProps { tabs: Some(st.tabs.clone()), ..Default::default() }));
         }
+        p.keep_next = st.keepn;
+        if st.keep || st.noline {
+            let x = p.extra.get_or_insert_with(Default::default);
+            x.keep_lines = st.keep.then_some(true);
+            x.suppress_line_numbers = st.noline.then_some(true);
+        }
         let flags = [st.contextual, st.mirror, st.sb_auto, st.sa_auto, st.no_hyph, st.snap_grid];
         if flags.iter().any(Option::is_some) {
             let x = p.extra.get_or_insert_with(Default::default);

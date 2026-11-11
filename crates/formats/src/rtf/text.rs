@@ -208,9 +208,6 @@ impl Reader {
 
     /// Document text: a run in the current formatting, or a shape field's result.
     fn body_text(&mut self, s: &str) {
-        if self.st.hidden {
-            return;
-        }
         let mut f = self.st.fmt.clone();
         if s.contains([MARK_OPEN, MARK_CLOSE]) {
             self.para.push_text(&s.replace([MARK_OPEN, MARK_CLOSE], "\u{FFFD}"), &f);

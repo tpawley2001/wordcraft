@@ -94,15 +94,14 @@ impl Reader {
                 self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
-                self.st.hidden = false;
             }
             "pard" => {
                 let field = self.st.field;
                 // Revision marks are character formatting, which `\pard` leaves alone.
-                let (dest, fmt, rev, uc, hidden) = (self.st.dest, self.st.fmt.clone(), self.st.rev, self.st.uc, self.st.hidden);
+                let (dest, fmt, rev, uc) = (self.st.dest, self.st.fmt.clone(), self.st.rev, self.st.uc);
                 let chg_c = std::mem::take(&mut self.st.chg_c);
                 let mono = self.st.mono.take();
-                self.st = St { dest, fmt, mono, rev, chg_c, uc, hidden, field, ..Default::default() };
+                self.st = St { dest, fmt, mono, rev, chg_c, uc, field, ..Default::default() };
                 self.page_side = None;
             }
             "revised" => self.st.rev.ins = on,
@@ -119,11 +118,19 @@ impl Reader {
             "b" => self.st.fmt.bold = on,
             "i" => self.st.fmt.italic = on,
             "strike" => self.st.fmt.strike = on,
-            "super" | "up" => {
+            "super" => {
                 self.st.fmt.sup = on;
                 self.st.fmt.sub = false;
             }
-            "sub" | "dn" => {
+            // Raised or lowered by N half-points, at full size (RTF 1.9.1; `w:position`): a
+            // position, not superscript or subscript (no N: 6). `\up0`/`\dn0` clear it.
+            "up" | "dn" => {
+                let n = p.unwrap_or(6);
+                let half = if w == "up" { n } else { n.saturating_neg() };
+                let pt = (half as f32 / 2.0).clamp(-1584.0, 1584.0);
+                self.set_extra(|x| x.position = (pt != 0.0).then_some(pt));
+            }
+            "sub" => {
                 self.st.fmt.sub = on;
                 self.st.fmt.sup = false;
             }
@@ -169,7 +176,8 @@ impl Reader {
             }
             "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
             "highlight" | "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
-            "v" => self.st.hidden = on,
+            // Hidden text: kept, as hidden text.
+            "v" => self.st.fmt.hidden = on,
             "ql" => self.st.align = Some(Align::Left),
             "qc" => self.st.align = Some(Align::Center),
             "qr" => self.st.align = Some(Align::Right),
@@ -180,6 +188,9 @@ impl Reader {
             "cs" => self.char_style(pv),
             "outlinelevel" => self.st.outline = Some(pv.clamp(0, 9) as u8),
             "pagebb" => self.st.pagebb = on,
+            "keepn" => self.st.keepn = on,
+            "keep" => self.st.keep = on,
+            "noline" => self.st.noline = on,
             "widctlpar" => self.st.widow = Some(true),
             "nowidctlpar" => self.st.widow = Some(false),
             "contextualspace" => self.st.contextual = Some(true),
