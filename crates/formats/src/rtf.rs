@@ -23,7 +23,8 @@
 //! headings and `\outlinelevel`, the document's own paragraph (`\sN`) and character
 //! (`\*\csN`) styles with `\sbasedon`, `\snext`, `\slink`, `\sqformat`, `\spriority`,
 //! `\ssemihidden`/`\shidden` and `\slocked`, on the paragraphs and runs that use them, lists through `\ls`/`\ilvl`, fields, bookmarks, pictures and
-//! tables, footnotes, endnotes (`\footnote` with `\ftnalt`) and comments (author, initials, date,
+//! tables, footnotes, endnotes (`\footnote` with `\ftnalt`, or any `\footnote` when the file has
+//! no `\ftnbj`/`\ftntj` and `\fet` is absent or 0, as Word reads it) and comments (author, initials, date,
 //! text, the commented range). Group nesting, picture sizes and the number of notes and comments
 //! are capped. Not kept: custom note marks, comment replies (`\atnparent`), notes inside
 //! headers, footers and other notes, tables inside note and comment texts (flattened).
