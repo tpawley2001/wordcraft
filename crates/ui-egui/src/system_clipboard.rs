@@ -140,6 +140,7 @@ pub(crate) fn explain(app: &mut WordApp, id: &str, r: Result<Value, String>) -> 
 mod tests {
     use super::*;
     use crate::Services;
+    use crate::dialogs::Dialog;
     use crate::paste_picture::ClipboardPicture;
     use serde_json::json;
     use wordcraft_engine::Session;
@@ -187,7 +188,7 @@ mod tests {
         // Paste Special lists what is on the system clipboard.
         let r = a.run("edit.pasteSpecial", json!({})).unwrap();
         let ids: Vec<&str> = r["formats"].as_array().unwrap().iter().filter_map(|f| f["id"].as_str()).collect();
-        assert_eq!(ids, ["html", "text"]);
+        assert_eq!(ids, ["html", "text", "unicode"]);
     }
 
     /// RTF is used where the clipboard has no HTML; oversized payloads are dropped, not pasted.
@@ -220,6 +221,16 @@ mod tests {
         let r = a.run("edit.pasteSpecial", json!({"as": "picture"})).unwrap();
         assert_eq!(r["pastedAs"], "picture");
         assert_eq!(a.session.doc.media.len(), 1);
+    }
+
+    /// The Paste Special dialog for plain text lists Unformatted Text and Unformatted Unicode Text.
+    #[test]
+    fn paste_special_dialog_lists_text_and_unicode_text() {
+        let a = app(Services::default());
+        let Dialog::PasteSpecial { formats, .. } = Dialog::paste_special(&a, &json!({"text": "x"})) else {
+            panic!("not the Paste Special dialog");
+        };
+        assert_eq!(formats, ["text", "unicode"]);
     }
 
     /// A clipboard holding nothing WordCraft can paste says what it holds (#833); one that can't

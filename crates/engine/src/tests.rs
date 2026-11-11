@@ -44,7 +44,9 @@ mod mark_toc_entry;
 mod move_text_keys;
 mod negative_margins;
 mod rtl_gutter;
+mod para_sort_case;
 mod para_sort_keys;
+mod paste_special_results;
 mod manual_duplex;
 mod print_document_properties;
 mod print_forms_data;
@@ -64,6 +66,7 @@ mod table_sort_keys;
 mod symbol_field_update;
 mod accent_compose;
 mod alignment_tab;
+mod cross_ref_notes;
 mod typing;
 mod view_split;
 mod word_window_keys;
@@ -1642,7 +1645,7 @@ fn paste_special_lists_formats_and_pastes_text_without_formatting() {
     // No format: the formats are listed (and a front end is asked to show the dialog).
     let r = run(&mut s, "edit.pasteSpecial", json!({}));
     let ids: Vec<&str> = r["formats"].as_array().unwrap().iter().map(|f| f["id"].as_str().unwrap()).collect();
-    assert_eq!(ids, ["formatted", "text"]);
+    assert_eq!(ids, ["formatted", "text", "unicode"]);
     assert_eq!(s.ui_requests.last().unwrap()["open"], "pasteSpecial");
     run(&mut s, "caret.docEnd", json!({}));
     let r = run(&mut s, "edit.pasteSpecial", json!({"as": "text"}));
@@ -1656,7 +1659,7 @@ fn paste_special_lists_formats_and_pastes_text_without_formatting() {
     assert!(bold_at(&s, 0, 15));
     // Text that someone else copied since: our rich copy is no longer offered.
     let r = run(&mut s, "edit.pasteSpecial", json!({"text": "elsewhere"}));
-    assert_eq!(r["formats"].as_array().unwrap().len(), 1);
+    assert_eq!(r["formats"].as_array().unwrap().len(), 2);
     assert!(s.run("edit.pasteSpecial", &json!({"as": "formatted", "text": "elsewhere"})).is_err());
 }
 
@@ -1781,7 +1784,7 @@ fn paste_special_html_and_rtf_keep_bold() {
     let html = "<p>plain <b>strong</b></p>";
     let r = run(&mut s, "edit.pasteSpecial", json!({"html": html, "text": "plain strong"}));
     let ids: Vec<&str> = r["formats"].as_array().unwrap().iter().map(|f| f["id"].as_str().unwrap()).collect();
-    assert_eq!(ids, ["html", "text"]);
+    assert_eq!(ids, ["html", "text", "unicode"]);
     run(&mut s, "edit.pasteSpecial", json!({"as": "html", "html": html}));
     assert_eq!(text(&s), "xplain strong");
     assert!(!bold_at(&s, 0, 2));
@@ -13315,3 +13318,6 @@ fn drop_cap_menu_availability_uses_the_resolved_cap() {
 mod readability;
 mod linked_style_apply;
 mod style_pane_options;
+mod backup_copy;
+mod formula_bookmarks;
+mod border_from_text;

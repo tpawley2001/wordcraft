@@ -2,6 +2,7 @@ mod comment_ids;
 mod date_fields;
 mod doc_ole_objects;
 mod doc_plain_text;
+mod doc_tracked_changes;
 mod drop_cap_indents;
 mod html_div_margins;
 mod index_automark;

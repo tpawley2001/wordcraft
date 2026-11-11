@@ -376,6 +376,7 @@ fn finalize(mut r: Reader) -> Parsed {
     // A file that ends with `\sect` ends its last section there: no empty one follows, and
     // header or footer groups after that `\sect` (a section without text) are dropped.
     let mut last_section = r.sec.props(&r.page);
+    last_section.no_endnote = r.no_endnote();
     last_section.fmt_change = r.section_change();
     let mut headers_footers = std::mem::take(&mut r.section_parts);
     if let Some(FBlock::Para(p)) = blocks.last_mut()

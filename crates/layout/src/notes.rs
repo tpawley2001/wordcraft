@@ -66,6 +66,13 @@ pub(crate) fn note_info(doc: &Document, hide_deleted: HideDeleted, pages: &HashM
     m
 }
 
+/// The number each footnote and endnote shows, in its section's number format (part id → mark),
+/// counted in document order with tracked deletions left out (as in the final text). Notes
+/// numbered again on each page count on here: the page they land on needs a layout.
+pub fn note_marks(doc: &Document) -> HashMap<u32, String> {
+    note_info(doc, HideDeleted::ALL, &HashMap::new()).into_iter().map(|(id, n)| (id, n.fmt.format(n.n))).collect()
+}
+
 /// Note part ids → numbers, numbered on (see [`note_info`]).
 #[cfg(test)]
 pub(crate) fn note_numbers(doc: &Document, hide_deleted: HideDeleted) -> HashMap<u32, u32> {
