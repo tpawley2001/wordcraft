@@ -18,13 +18,15 @@ use crate::{Page, Placed, turn_point, turn_rect};
 /// header). Columns divide the turned page's width, so they stack down the real page. `mirror`:
 /// the document's mirror margins (they keep the gutter on the inside).
 pub(crate) fn unturned_sect(s: &SectionProps, body_top: f32, mirror: bool) -> SectionProps {
-    // Stub for the acceptance tests: the gutter's side is not applied yet.
-    let _ = mirror;
     let mut v = s.clone();
     v.page_w = s.page_h;
     v.page_h = s.page_w;
     v.gutter = 0.0;
-    let (top, right, bottom, left) = (body_top, s.margin_right, s.margin_bottom, s.margin_left + s.gutter);
+    // The gutter widens the real page's left band, or its right band with `rtl_gutter` (unless
+    // mirror margins keep it on the inside), as on an unturned page.
+    let left_gutter = s.left_gutter(mirror);
+    let right_gutter = (s.gutter - left_gutter).max(0.0);
+    let (top, right, bottom, left) = (body_top, s.margin_right + right_gutter, s.margin_bottom, s.margin_left + left_gutter);
     // The unturned frame's (u, v) lands at (W - v, u) for `Down` and (v, H - u) for `Up`: its
     // top edge is the real right edge (left for `Up`), its left edge the real top (bottom).
     match s.text_direction {

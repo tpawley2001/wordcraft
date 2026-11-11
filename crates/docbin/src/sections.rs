@@ -35,6 +35,7 @@ const S_DXA_RIGHT: u16 = 0xB022;
 const S_DYA_TOP: u16 = 0x9023;
 const S_DYA_BOTTOM: u16 = 0x9024;
 const S_DXA_GUTTER: u16 = 0xB025;
+const S_F_RTL_GUTTER: u16 = 0x322A; // sprmSFRTLGutter: the gutter is on the right of the page
 const S_DXA_COL_WIDTH: u16 = 0xF203; // sprmSDxaColWidth
 const S_DXA_COL_SPACING: u16 = 0xF204; // sprmSDxaColSpacing
 const S_LNC: u16 = 0x3013; // sprmSLnc
@@ -418,6 +419,11 @@ pub(crate) fn apply_section(s: &mut SectionProps, pgn: &mut PageNumbering, prl: 
         S_DXA_GUTTER => {
             if let Some(v) = s16(prl) {
                 s.gutter = tw(v as i32);
+            }
+        }
+        S_F_RTL_GUTTER => {
+            if let Some(&v) = prl.operand.first() {
+                s.rtl_gutter = v != 0;
             }
         }
         _ => {}
