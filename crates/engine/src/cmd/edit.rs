@@ -240,20 +240,39 @@ pub(crate) fn take_copy(s: &mut Session, f: Fragment) -> Value {
 
 /// Copy, `whole` being the table the selection covers whole, if it does.
 fn copy_with(s: &mut Session, whole: Option<&Path>) -> CmdResult {
+    match fragment_of(s, &s.doc, whole) {
+        Some(f) => Ok(take_copy(s, f)),
+        None => Ok(json!({"text": ""})),
+    }
+}
+
+/// What Copy would put on the clipboard for the current selection; `None` when nothing is
+/// selected (a caret, and no whole table cells). Print Selection prints this.
+pub(crate) fn selection_fragment(s: &Session) -> Option<Fragment> {
+    selection_fragment_in(s, &s.doc)
+}
+
+/// [`selection_fragment`] taken from `doc`, a copy of the session's document with the same
+/// structure (its fields refreshed for output, say).
+pub(crate) fn selection_fragment_in(s: &Session, doc: &wordcraft_doc::Document) -> Option<Fragment> {
+    let whole = super::table::selected_table(s);
+    fragment_of(s, doc, whole.as_ref())
+}
+
+fn fragment_of(s: &Session, doc: &wordcraft_doc::Document, whole: Option<&Path>) -> Option<Fragment> {
     let (a, b) = s.sel.ordered();
     // Whole table cells selected copy as a table, even empty ones (their selection has no
     // length): the whole table, or a table of just the selected rows or cells (#1744).
     let table = match (whole, s.cell_range()) {
-        (Some(tp), _) => s.doc.copy_block(a.story, tp),
-        (None, Some(r)) => s.doc.copy_table_cells(r.story, &r.table, r.rows, r.cols),
+        (Some(tp), _) => doc.copy_block(a.story, tp),
+        (None, Some(r)) => doc.copy_table_cells(r.story, &r.table, r.rows, r.cols),
         (None, None) => None,
     };
-    let f = match table {
-        Some(f) => f,
-        None if a == b => return Ok(json!({"text": ""})),
-        None => s.doc.copy_range(&a, &b),
-    };
-    Ok(take_copy(s, f))
+    match table {
+        Some(f) => Some(f),
+        None if a == b => None,
+        None => Some(doc.copy_range(&a, &b)),
+    }
 }
 
 /// What Copy and Cut return: the clipboard's text, and the copy as HTML (equations as MathML,

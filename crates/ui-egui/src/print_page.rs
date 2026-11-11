@@ -105,7 +105,16 @@ impl PrintSettings {
     }
 }
 
-const RANGES: [(&str, &str); 4] = [("all", "All pages"), ("current", "Current page"), ("selection", "Selected pages"), ("custom", "Custom range")];
+/// `selectedText` is Word's Print Selection (only the selected text, without headers and
+/// footers); `selection` prints the whole pages the selection touches.
+const RANGES: [(&str, &str); 5] =
+    [("all", "All pages"), ("selectedText", "Selection"), ("current", "Current page"), ("selection", "Selected pages"), ("custom", "Custom range")];
+
+/// Something is selected to print: text, or whole table cells. Print Selection is greyed out
+/// without it, as in Word.
+fn has_selection(s: &wordcraft_engine::Session) -> bool {
+    !s.sel.is_collapsed() || s.cell_range().is_some()
+}
 /// File › Print › Document Info: reports printed instead of the document, listed after the
 /// page ranges as in Word.
 const DOCUMENT_INFO: [(&str, &str); 5] = [
@@ -140,7 +149,7 @@ fn choice(ui: &mut Ui, salt: &str, current: &mut String, items: &[(&str, &str)],
 }
 
 /// The Pages choice: the page ranges, then the Document Info reports under their heading.
-fn range_choice(ui: &mut Ui, current: &mut String, label: &egui::Response) -> bool {
+fn range_choice(ui: &mut Ui, current: &mut String, label: &egui::Response, has_selection: bool) -> bool {
     let shown = RANGES.iter().chain(DOCUMENT_INFO.iter()).find(|(id, _)| *id == current.as_str()).map_or("", |(_, l)| *l);
     let mut changed = false;
     let combo = craft_ui::ComboBox::from_id_salt("print_range").width(260.0).selected_text(tl!(shown)).show_ui(ui, |ui| {
@@ -149,7 +158,8 @@ fn range_choice(ui: &mut Ui, current: &mut String, label: &egui::Response) -> bo
                 ui.separator();
                 ui.label(egui::RichText::new(tl!("Document Info")).strong());
             }
-            if ui.selectable_label(current == id, tl!(item)).clicked() && current != id {
+            let enabled = *id != "selectedText" || has_selection;
+            if ui.add_enabled_ui(enabled, |ui| ui.selectable_label(current == id, tl!(item))).inner.clicked() && current != id {
                 *current = (*id).to_string();
                 changed = true;
             }
@@ -180,7 +190,8 @@ fn choice_named(ui: &mut Ui, salt: &str, current: &mut String, items: &[(&str, &
 #[derive(Clone)]
 struct Previewed {
     lay: Arc<DocLayout>,
-    /// The report printed instead of the document; `None` for the document itself.
+    /// The report (or, for Print Selection, the selection) printed instead of the document;
+    /// `None` for the document itself.
     report: Option<Arc<wordcraft_doc::Document>>,
     error: Option<String>,
 }
@@ -191,7 +202,7 @@ fn layout_of(app: &WordApp, ctx: &egui::Context) -> Previewed {
     let id = egui::Id::unique("print_page_layout");
     let rev = app.session.rev();
     let markup = app.session.prefs.print_markup;
-    let what = app.ui.print.what().map(str::to_string);
+    let what = preview_key(app);
     if let Some((r, m, w, l)) = ctx.data(|d| d.get_temp::<(u64, bool, Option<String>, Previewed)>(id))
         && r == rev
         && m == markup
@@ -199,7 +210,12 @@ fn layout_of(app: &WordApp, ctx: &egui::Context) -> Previewed {
     {
         return l;
     }
-    let l = match what.as_deref() {
+    let l = match app.ui.print.what() {
+        None if app.ui.print.range == "selectedText" => match app.session.print_selection(&app.ui.print.params()) {
+            Ok(Some((doc, lay))) => Previewed { lay, report: Some(Arc::new(doc)), error: None },
+            Ok(None) => Previewed { lay: app.session.export_layout_with(markup), report: None, error: None },
+            Err(e) => Previewed { lay: app.session.export_layout_with(markup), report: None, error: Some(e.to_string()) },
+        },
         None => Previewed { lay: app.session.export_layout_with(markup), report: None, error: None },
         Some(w) => match app.session.print_report(&json!({"what": w})) {
             Ok(Some((doc, lay))) => Previewed { lay, report: Some(Arc::new(doc)), error: None },
@@ -211,11 +227,21 @@ fn layout_of(app: &WordApp, ctx: &egui::Context) -> Previewed {
     l
 }
 
+/// What the preview shows besides the document itself, for its caches: the Document Info report,
+/// or Print Selection with the selection it prints.
+fn preview_key(app: &WordApp) -> Option<String> {
+    match app.ui.print.what() {
+        Some(w) => Some(w.to_string()),
+        None if app.ui.print.range == "selectedText" => Some(format!("selectedText {:?} {:?}", app.session.sel, app.session.cell_range())),
+        None => None,
+    }
+}
+
 /// A bounded per-cell texture cache, refreshed when the page, scale or Print Markup changes.
 fn page_texture(app: &WordApp, ctx: &egui::Context, shown: &Previewed, page: usize, cache_slot: usize, width: f32) -> Option<TextureHandle> {
     let lay = &shown.lay;
     let id = egui::Id::unique(("print_page_texture", cache_slot));
-    let what = app.ui.print.what().map(str::to_string);
+    let what = preview_key(app);
     let key = (app.session.rev(), app.session.prefs.print_markup, what, page, width as u32, (ctx.pixels_per_point() * 100.0) as u32);
     if let Some((k, t)) = ctx.data(|d| d.get_temp::<((u64, bool, Option<String>, usize, u32, u32), TextureHandle)>(id))
         && k == key
@@ -254,6 +280,10 @@ fn return_prints(ctx: &egui::Context) -> bool {
 pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let ctx = ui.ctx().clone();
+    // Print Selection with nothing selected falls back to all pages, as Word greys it out.
+    if app.ui.print.range == "selectedText" && !has_selection(&app.session) {
+        app.ui.print.range = "all".into();
+    }
     let shown = layout_of(app, &ctx);
     let lay = shown.lay.clone();
     let total = lay.pages.len();
@@ -326,7 +356,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 }
 
                 let pages_label = ui.label(egui::RichText::new(tl!("Pages")).font(medium(13.0)));
-                if range_choice(ui, &mut app.ui.print.range, &pages_label) {
+                if range_choice(ui, &mut app.ui.print.range, &pages_label, has_selection(&app.session)) {
                     // Show the first page that will print.
                     app.ui.print.preview = 0;
                 }
