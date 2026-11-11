@@ -71,4 +71,5 @@ mod vml_wordart_shadows;
 mod web_divs;
 mod word_xml;
 mod wordml2003_write;
+mod wrap_trail_spaces;
 mod write_protection;

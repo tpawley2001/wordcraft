@@ -1866,3 +1866,4 @@ mod trailing_data;
 mod underline_styles;
 mod unicode_surrogates;
 mod widow_control;
+mod wrap_trail_spaces;
