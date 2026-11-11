@@ -126,6 +126,20 @@ enum TableWidth {
     Percent(f32),
 }
 
+/// Decode a `sprmTTableWidth` operand: ftsWidth (1 byte, an Fts, [MS-DOC] 2.9.102) then
+/// wWidth (2 bytes). ftsDxa (3) and ftsDxaSys (0x13) are twips, ftsPercent (2) is 50ths of
+/// a percent; ftsNil (0) and ftsAuto (1) leave the width automatic. A truncated operand or
+/// another fts gives `None`.
+fn table_width(operand: &[u8]) -> Option<TableWidth> {
+    let [fts, w0, w1, ..] = operand else { return None };
+    match *fts {
+        0x03 | 0x13 => Some(TableWidth::Points((i16::from_le_bytes([*w0, *w1]) as f32 / 20.0).clamp(0.0, 1584.0))),
+        0x02 => Some(TableWidth::Percent((u16::from_le_bytes([*w0, *w1]) as f32 / 50.0).clamp(0.0, 100.0))),
+        0x00 | 0x01 => Some(TableWidth::Auto),
+        _ => None,
+    }
+}
+
 /// Read the table context out of a paragraph mark's PAPX grpprl.
 impl RowInfo {
     /// Does the mark belong to a table: inside one, ending a row, or ending a cell?
@@ -276,25 +290,7 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
                     set(&mut r.shading, (first + i) as u8, shd_rgb(b));
                 }
             }
-            T_TABLE_WIDTH => {
-                // Operand: ftsWidth (1 byte, an Fts, [MS-DOC] 2.9.102), wWidth (2 bytes).
-                // ftsDxa (3) and ftsDxaSys (0x13) are twips, ftsPercent (2) is 50ths of a
-                // percent; ftsNil (0) and ftsAuto (1) leave the width automatic.
-                if let [fts, w0, w1, ..] = prl.operand {
-                    match *fts {
-                        0x03 | 0x13 => {
-                            let w = (i16::from_le_bytes([*w0, *w1]) as f32 / 20.0).clamp(0.0, 1584.0);
-                            r.width = Some(TableWidth::Points(w));
-                        }
-                        0x02 => {
-                            let pct = (u16::from_le_bytes([*w0, *w1]) as f32 / 50.0).clamp(0.0, 100.0);
-                            r.width = Some(TableWidth::Percent(pct));
-                        }
-                        0x00 | 0x01 => r.width = Some(TableWidth::Auto),
-                        _ => {}
-                    }
-                }
-            }
+            T_TABLE_WIDTH => r.width = table_width(prl.operand).or(r.width),
             T_CELL_WIDTH => {
                 // Operand: cb (1 byte), itcFirst (1 byte), itcLim (1 byte), ftsWidth (1 byte), wWidth (2 bytes).
                 // [MS-DOC] §2.9.290 sprmTCellWidth (0xD635).
@@ -574,14 +570,14 @@ impl TableBuilder {
         if self.props.indent.is_none() {
             self.props.indent = info.indent;
         }
-        if !self.width_set {
-            if let Some(w) = info.width {
-                self.width_set = true;
-                match w {
-                    TableWidth::Points(pt) => self.props.width = Some(pt),
-                    TableWidth::Percent(pct) => self.props.width_pct = Some(pct),
-                    TableWidth::Auto => {}
-                }
+        if !self.width_set
+            && let Some(w) = info.width
+        {
+            self.width_set = true;
+            match w {
+                TableWidth::Points(pt) => self.props.width = Some(pt),
+                TableWidth::Percent(pct) => self.props.width_pct = Some(pct),
+                TableWidth::Auto => {}
             }
         }
         if self.props.cell_margins.is_none() {
