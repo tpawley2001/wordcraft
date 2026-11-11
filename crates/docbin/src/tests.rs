@@ -41,6 +41,7 @@ mod section_page_borders;
 mod section_page_numbers;
 mod style_name_case;
 mod table_float;
+mod toggle_para_style;
 mod word6;
 mod wrap_polygon;
 
