@@ -1436,6 +1436,10 @@ mod tests;
 mod table_float_tap;
 
 #[cfg(test)]
+#[path = "tests/list_level_text_doc.rs"]
+mod list_level_text_doc;
+
+#[cfg(test)]
 mod character_style_tests {
     use super::*;
 
