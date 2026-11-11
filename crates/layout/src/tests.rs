@@ -13,6 +13,7 @@ mod budget;
 mod button_fields;
 mod cell_floats;
 mod complex;
+mod early_float_stays;
 mod eq_fields;
 mod eq_integral_limits;
 mod eq_radical_index;
