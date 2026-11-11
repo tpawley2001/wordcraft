@@ -251,6 +251,7 @@ impl Reader {
     fn def_props(&self, d: &StyleDef) -> (ParaProps, CharProps) {
         let pt = |v: i32| (v as f32 / 20.0).clamp(-1584.0, 1584.0);
         let gap = |v: i32| pt(v).max(0.0);
+        let chars = |v: i32| v as f32 / 100.0;
         let line = d.sl.and_then(|sl| spacing(&St { sl, slmult: d.slmult.unwrap_or(false), ..Default::default() }).line);
         let para = ParaProps {
             align: d.align,
@@ -262,6 +263,10 @@ impl Reader {
             line_spacing: line,
             keep_next: d.keep_next,
             keep_lines: d.keep_lines,
+            tabs: (!d.tabs.is_empty()).then(|| d.tabs.clone()),
+            indent_first_chars: d.cufi.map(chars),
+            indent_left_chars: d.culi.map(chars),
+            indent_right_chars: d.curi.map(chars),
             ..Default::default()
         };
         let color = |i: i32| usize::try_from(i).ok().and_then(|i| self.colors.get(i).copied().flatten()).map_or(TextColor::Auto, TextColor::Rgb);
@@ -271,6 +276,7 @@ impl Reader {
             bold: d.bold,
             italic: d.italic,
             color: d.color.map(color),
+            spacing: d.spacing,
             ..Default::default()
         };
         (para, chr)
@@ -309,6 +315,16 @@ impl Reader {
             out.keep_next = out.keep_next.or(d.keep_next);
             out.keep_lines = out.keep_lines.or(d.keep_lines);
             out.align = out.align.or(d.align);
+            // Tab stops add up along the chain; a derived style's stop replaces one at its position.
+            for t in &d.tabs {
+                if out.tabs.len() < super::state::MAX_TABS && !out.tabs.iter().any(|o| o.pos == t.pos) {
+                    out.tabs.push(*t);
+                }
+            }
+            out.cufi = out.cufi.or(d.cufi);
+            out.culi = out.culi.or(d.culi);
+            out.curi = out.curi.or(d.curi);
+            out.spacing = out.spacing.or(d.spacing);
             cur = d.based_on;
         }
         out
@@ -373,6 +389,10 @@ impl Reader {
                 contextual_spacing: Some(false),
                 keep_next: Some(d.keep_next.unwrap_or(false)),
                 keep_lines: Some(d.keep_lines.unwrap_or(false)),
+                tabs: (!d.tabs.is_empty()).then(|| d.tabs.clone()),
+                indent_first_chars: d.cufi.map(|v| v as f32 / 100.0),
+                indent_left_chars: d.culi.map(|v| v as f32 / 100.0),
+                indent_right_chars: d.curi.map(|v| v as f32 / 100.0),
                 ..Default::default()
             };
             let color = d.color.and_then(|i| usize::try_from(i).ok()).and_then(|i| self.colors.get(i).copied().flatten());
@@ -382,6 +402,7 @@ impl Reader {
                 bold: Some(d.bold.unwrap_or(false)),
                 italic: Some(d.italic.unwrap_or(false)),
                 color: Some(color.map_or(TextColor::Auto, TextColor::Rgb)),
+                spacing: d.spacing,
                 ..Default::default()
             };
             out.push((style, para, chr));
@@ -586,7 +607,7 @@ pub(super) enum StyleEntry {
 
 /// A `\stylesheet` entry's formatting; `None` where the entry doesn't set it. Spacing and
 /// indents are in twips, as written.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(super) struct StyleDef {
     pub(super) entry: StyleEntry,
     pub(super) based_on: Option<i32>,
@@ -616,6 +637,16 @@ pub(super) struct StyleDef {
     pub(super) keep_next: Option<bool>,
     pub(super) keep_lines: Option<bool>,
     pub(super) align: Option<Align>,
+    /// Tab stops (`\tx`, `\tb`), and the alignment and leader words read for the next one.
+    pub(super) tabs: Vec<wordcraft_doc::props::TabStop>,
+    pub(super) tab_align: wordcraft_doc::props::TabAlign,
+    pub(super) tab_leader: wordcraft_doc::props::TabLeader,
+    /// Indents in hundredths of a character (`\cufi`, `\culi`, `\curi`).
+    pub(super) cufi: Option<i32>,
+    pub(super) culi: Option<i32>,
+    pub(super) curi: Option<i32>,
+    /// Character spacing in points (`\expnd`, `\expndtw`; the later wins).
+    pub(super) spacing: Option<f32>,
     /// A table style's row formatting (after `\tsrowd`).
     pub(super) table: TableDef,
 }

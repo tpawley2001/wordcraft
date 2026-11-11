@@ -82,4 +82,7 @@ use picture::{load_image, load_image_within};
 mod tests;
 
 #[cfg(test)]
+mod appendix_forms_tests;
+
+#[cfg(test)]
 mod fill_alpha_tests;

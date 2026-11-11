@@ -132,8 +132,12 @@ pub(super) struct Reader {
     /// The tables enclosing the one being read, outermost first (nested tables: the current
     /// table's fields above are the innermost open table's).
     nest: Vec<TableLevel>,
-    pub(super) created: Option<(u32, u32, u32, u32, u32)>,
-    pub(super) in_creatim: bool,
+    /// The information group's dates as read (`\yr \mo \dy \hr \min`), 0 `\creatim`, 1 `\revtim`, 2 `\printim`,
+    /// and the one whose group is open with the depth that group started at.
+    pub(super) dates: [Option<(u32, u32, u32, u32, u32)>; 3],
+    pub(super) in_date: Option<(usize, usize)>,
+    /// The information group's fields the flow model has no place for, and `{\*\userprops …}`.
+    pub(super) info_more: super::state::InfoMore,
     pub(super) rule_pending: bool,
     pub(super) info_depth: Option<usize>,
     // Notes and comments (only when the caller wants them).
@@ -493,7 +497,8 @@ impl Reader {
     }
 
     /// Records document setting word `w` (view zoom, drawing grid, Restrict Editing, privacy
-    /// options, linked styles, Shift+Return expansion, HTML paragraph auto spacing). False when `w` isn't one.
+    /// options, linked styles, Shift+Return expansion, HTML paragraph auto spacing, Track Changes on,
+    /// print form data only). False when `w` isn't one.
     pub(super) fn doc_setting_word(&mut self, w: &str, p: Option<i32>) -> bool {
         use wordcraft_doc::ZoomFit;
         let on = p != Some(0);
@@ -513,10 +518,12 @@ impl Reader {
             "formprot" => d.old_prot = on.then_some("forms"),
             "htmautsp" => d.html_auto_spacing = on,
             "linkstyles" => d.link_styles = Some(on),
+            "printdata" => d.print_forms_data = Some(on),
             "protlevel" => d.level = u8::try_from(pv).ok().filter(|&n| n <= 3).or(d.level),
             "readprot" => d.old_prot = on.then_some("readOnly"),
             "remdttm" => d.remove_date_time = Some(on),
             "rempersonalinfo" => d.remove_personal_info = Some(on),
+            "revisions" => d.track_changes = Some(on),
             "revprot" => d.old_prot = on.then_some("trackedChanges"),
             "viewscale" => d.percent = u32::try_from(pv).ok().filter(|n| (10..=500).contains(n)).or(d.percent),
             "viewzk" => match pv {
@@ -558,21 +565,28 @@ impl Reader {
             Dest::StyleSheet if !self.style_name.is_empty() => self.commit_style(),
             Dest::RevTbl if !self.rev_name.trim().is_empty() => self.commit_author(),
             Dest::Info(k) => {
-                let t = std::mem::take(&mut self.info_text).trim().to_string();
+                let mut t = std::mem::take(&mut self.info_text).trim().to_string();
+                super::state::truncate_chars(&mut t, super::state::MAX_INFO_TEXT);
                 match k {
                     1 => self.meta.title = t,
                     2 => self.meta.author = t,
                     3 => self.meta.subject = t,
                     4 => self.meta.keywords = t,
                     5 => self.meta.description = t,
+                    6 => self.info_more.last_modified_by = t,
+                    7 => self.info_more.category = t,
+                    8..=10 => self.info_more.user_prop_text(k, t),
                     _ => {}
                 }
-                self.in_creatim = false;
             }
+            Dest::UserProps => self.info_more.commit_user_prop(),
             Dest::Atn(k) => self.commit_atn(k),
             _ => {}
         }
         let Some(mut prev) = self.stack.pop() else { return };
+        if self.in_date.is_some_and(|(_, d)| self.depth() < d) {
+            self.in_date = None;
+        }
         // The end of old formatting read in the body: the formatting it holds is the change's
         // old formatting (nested old-formatting groups only change their parent's copy).
         if closing == Dest::OldSect && prev.dest == Dest::Body && self.hf.is_none() {
@@ -973,6 +987,9 @@ pub(super) struct DocSettingWords {
     /// `\htmautsp` (Use HTML paragraph auto spacing): the space between two paragraphs is the
     /// larger of space after and space before. Without it Word adds the two.
     html_auto_spacing: bool,
+    /// `\revisions` (Track Changes on) and `\printdata` (print only the data from a form).
+    track_changes: Option<bool>,
+    print_forms_data: Option<bool>,
 }
 
 impl DocSettingWords {
@@ -1021,6 +1038,8 @@ impl DocSettingWords {
             (self.remove_personal_info, &mut s.remove_personal_info),
             (self.remove_date_time, &mut s.remove_date_time),
             (self.expand_shift_return, &mut s.do_not_expand_shift_return),
+            (self.track_changes, &mut s.track_changes),
+            (self.print_forms_data, &mut s.print_forms_data),
         ] {
             if let Some(v) = v {
                 *field = v;

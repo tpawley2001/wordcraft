@@ -16,6 +16,8 @@ fn parse_with_page(bytes: &[u8]) -> Result<(Flow, PageGeom, Option<String>), Str
 /// Everything an import takes from an RTF file.
 struct Parsed {
     flow: Flow,
+    /// The information group beyond the flow's metadata, and the user properties.
+    info: Info,
     page: PageGeom,
     /// The document formatting words that go into the document's settings.
     doc_opts: DocOpts,
@@ -35,6 +37,39 @@ struct Parsed {
     doc_notes: (wordcraft_doc::section::NoteProps, wordcraft_doc::section::NoteProps),
     /// The document settings the header names.
     doc_set: super::reader::DocSettingWords,
+}
+
+/// What the information group gives the document's properties beyond [`model::Meta`], with the user
+/// properties (`{\*\userprops …}`).
+#[derive(Debug, Default)]
+struct Info {
+    more: super::state::InfoMore,
+    /// `\revtim` and `\printim` as `YYYY-MM-DDTHH:MM:00Z` (empty when absent).
+    modified: String,
+    printed: String,
+}
+
+impl Info {
+    fn apply(self, doc: &mut Document) {
+        let c = &mut doc.core;
+        c.last_modified_by = self.more.last_modified_by;
+        c.category = self.more.category;
+        c.revision = self.more.revision;
+        c.modified = self.modified;
+        c.last_printed = self.printed;
+        doc.custom_props = self.more.props;
+    }
+}
+
+/// An information-group date read from `\yr \mo \dy \hr \min`, as `YYYY-MM-DDTHH:MM:00Z`; empty
+/// when it wasn't given or has no year.
+fn info_date(d: Option<(u32, u32, u32, u32, u32)>) -> String {
+    match d {
+        Some((y, mo, d, h, mi)) if y > 0 => {
+            format!("{y:04}-{:02}-{:02}T{:02}:{:02}:00Z", mo.clamp(1, 12), d.clamp(1, 31), h.min(23), mi.min(59))
+        }
+        _ => String::new(),
+    }
 }
 
 /// Where the document `{\rtf…}` starting at `start` ends: just past the `}` that first brings the
@@ -324,11 +359,10 @@ fn finalize(mut r: Reader) -> Parsed {
         r.end_para(false);
     }
     r.close_table();
-    if let Some((y, mo, d, h, mi)) = r.created
-        && y > 0
-    {
-        r.meta.created = format!("{y:04}-{:02}-{:02}T{:02}:{:02}:00Z", mo.clamp(1, 12), d.clamp(1, 31), h.min(23), mi.min(59));
-    }
+    let [created, modified, printed] = r.dates.map(info_date);
+    r.meta.created = created;
+    r.info_more.commit_user_prop();
+    let info = Info { more: std::mem::take(&mut r.info_more), modified, printed };
     let mut blocks = std::mem::take(&mut r.body);
     // A file that ends with `\sect` ends its last section there: no empty one follows, and
     // header or footer groups after that `\sect` (a section without text) are dropped.
@@ -349,6 +383,7 @@ fn finalize(mut r: Reader) -> Parsed {
     let foreign_styles = r.foreign_styles();
     let own_styles = r.own_styles();
     Parsed {
+        info,
         flow: Flow { blocks, meta: r.meta },
         page: r.page,
         doc_opts: r.doc_opts,
@@ -437,9 +472,22 @@ fn set_section_revisions(doc: &mut Document) {
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
     model::begin_import();
     let Parsed {
-        flow, last_section, default_font, headers_footers, foreign_styles, own_styles, notes, comments, doc_notes, doc_opts, doc_set, ..
+        flow,
+        info,
+        last_section,
+        default_font,
+        headers_footers,
+        foreign_styles,
+        own_styles,
+        notes,
+        comments,
+        doc_notes,
+        doc_opts,
+        doc_set,
+        ..
     } = parse_full(bytes, true)?;
     let mut doc = model::to_doc_in(&flow, last_section);
+    info.apply(&mut doc);
     doc_opts.apply(&mut doc.settings);
     doc_set.apply(&mut doc.settings);
     let (mut foot, mut end) = doc_notes;

@@ -553,8 +553,8 @@ impl<'a> Body<'a> {
         }
         // A body table, kept whole as the paragraphs are.
         match &ev {
-            Ev::Start(q, _) => match &mut self.kept_table {
-                Some(k) => k.clean &= keepable(q),
+            Ev::Start(q, a) => match &mut self.kept_table {
+                Some(k) => k.clean &= keepable(q, a),
                 None if q == "table:table"
                     && self.tables.is_empty()
                     && !self.raw.is_empty()
@@ -603,7 +603,7 @@ impl<'a> Body<'a> {
                     let paired = q.starts_with("office:annotation")
                         || matches!(q.as_str(), "text:change" | "text:change-start" | "text:change-end")
                         || mark_pair(q).is_some();
-                    k.clean &= (paired || keepable(q)) && k.comments.start(q, a, self.depth + 1, self.paras_done);
+                    k.clean &= (paired || keepable(q, a)) && k.comments.start(q, a, self.depth + 1, self.paras_done);
                 }
                 None if (q == "text:p" || q == "text:h")
                     && !self.raw.is_empty()
@@ -1021,7 +1021,7 @@ impl Body<'_> {
         let tracked = self.del.is_some()
             || p.mark_ins.is_some()
             || p.mark_del.is_some()
-            || p.inlines.iter().any(|i| matches!(i, Inline::Text(_, f) if f.ins.is_some() || f.del.is_some()));
+            || p.inlines.iter().any(|i| matches!(i, Inline::Text(_, f) if f.ins.is_some() || f.del.is_some()) || matches!(i, Inline::ObjRev(_)));
         // Leading XML whitespace is never read (see `text`); a trailing one is trimmed here.
         // Explicit `text:s` spaces and tabs stay.
         let xml_space_end = std::mem::take(&mut self.xml_space_end);
@@ -1255,7 +1255,7 @@ impl Body<'_> {
             }
             // Drawing shapes (ODF 1.3 §10.3) anchored in the text, with their text.
             "rect" | "ellipse" | "circle" | "line" | "custom-shape" | "polygon" | "polyline" | "path" | "regular-polygon" | "connector"
-                if q.starts_with("draw:") && self.frame.is_none() && self.note.is_none() && self.del.is_none() && !self.in_tc =>
+                if q.starts_with("draw:") && self.frame.is_none() && self.note.is_none() && (!self.in_tc || self.del.is_some()) =>
             {
                 self.start_shape(q, a);
             }
@@ -1263,7 +1263,7 @@ impl Body<'_> {
             // their members its own.
             "g" if q == "draw:g" && self.group_at.is_none() => {
                 self.group_at = Some(self.depth);
-                if self.frame.is_none() && self.note.is_none() && self.del.is_none() && !self.in_tc {
+                if self.frame.is_none() && self.note.is_none() && (!self.in_tc || self.del.is_some()) {
                     self.group = Some(OpenGroup {
                         anchor: get(a, "text:anchor-type").map(String::from),
                         page: get(a, "text:anchor-page-number").map(String::from),
@@ -2111,9 +2111,12 @@ impl KeptComments {
 /// can't, nor
 /// marks that pair up with others elsewhere by ids the writer gives (comments and tracked
 /// changes are paired apart). Bookmarks can: their names are kept, so either end may be
-/// written as read and the other from the model.
-fn keepable(q: &str) -> bool {
+/// written as read and the other from the model. Nor an author field that doesn't say it is
+/// not fixed (§19.807 `text:fixed`): it is read as a field, and written so (see
+/// `fields::unfixed`).
+fn keepable(q: &str, a: &Attrs) -> bool {
     !(q == "draw:control"
+        || matches!(q, "text:author-name" | "text:author-initials") && get(a, "text:fixed").is_none()
         || q.starts_with("office:annotation")
         || q.starts_with("text:change")
         || q.starts_with("form:")

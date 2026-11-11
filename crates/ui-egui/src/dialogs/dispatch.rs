@@ -8,7 +8,7 @@ use super::page_setup::{
     page_layout_commands, page_paper_group, page_paper_source_group, page_section_start_combo, page_section_start_value, page_valign_combo,
     page_valign_value, run_as_one_step,
 };
-use super::paragraph::{ParaNumber, apply_paragraph, line_spacing_boxes, para_check, para_number};
+use super::paragraph::{OUTLINE_LEVELS, ParaNumber, apply_paragraph, line_spacing_boxes, outline_entry, para_check, para_number};
 use super::styles::manage_styles;
 use super::{Dialog, MeasureExt, Tokens, Ui, Value, WordApp, json, semibold, vec2};
 
@@ -316,6 +316,8 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         keep_lines,
         page_break,
         widow,
+        outline,
+        outline_fixed,
         tab,
         asian,
         opts,
@@ -357,6 +359,23 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     }
                 });
                 combo.response.labelled_by(align_label.id);
+            });
+            // Greyed for a built-in heading, whose level comes from its style.
+            ui.add_enabled_ui(!*outline_fixed, |ui| {
+                ui.horizontal(|ui| {
+                    let outline_label = ui.label(tl!("Outline level:"));
+                    let blank = mixed.contains("outlineLevel");
+                    let shown = if blank { "" } else { OUTLINE_LEVELS.get(outline_entry(*outline)).map_or("", |l| tl!(l)) };
+                    let combo = craft_ui::ComboBox::from_id_salt("para_outline").selected_text(shown).show_ui(ui, |ui| {
+                        for (level, l) in std::iter::once(9u8).chain(0..9).zip(OUTLINE_LEVELS) {
+                            if ui.selectable_label(!blank && *outline == level, tl!(l)).clicked() {
+                                *outline = level;
+                                mixed.remove("outlineLevel");
+                            }
+                        }
+                    });
+                    combo.response.labelled_by(outline_label.id);
+                });
             });
             ui.label(egui::RichText::new(tl!("Indentation")).font(semibold(12.5)));
             // Mirrored indents are the inside and outside ones (they swap on even pages).
@@ -620,24 +639,61 @@ fn cell_margins_arm(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 }
 
 fn insert_table_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::InsertTable { rows, cols } = d else {
+    let Dialog::InsertTable { rows, cols, autofit, col_width, remember, error } = d else {
         return false;
     };
+    ui.label(egui::RichText::new(tl!("Table size")).font(semibold(12.5)));
     crate::rtl::Table::new("it").columns(2).show(ui, |t| {
         t.row(|r| {
-            r.cell(|ui| ui.label(tl!("Number of columns:")));
-            r.cell(|ui| ui.add(egui::DragValue::new(cols).range(1..=63)));
+            let label = r.cell(|ui| ui.label(tl!("Number of columns:")));
+            r.cell(|ui| ui.add(egui::DragValue::new(cols).range(1..=63)).labelled_by(label.id));
         });
         t.row(|r| {
-            r.cell(|ui| ui.label(tl!("Number of rows:")));
-            r.cell(|ui| ui.add(egui::DragValue::new(rows).range(1..=1000)));
+            let label = r.cell(|ui| ui.label(tl!("Number of rows:")));
+            r.cell(|ui| ui.add(egui::DragValue::new(rows).range(1..=1000)).labelled_by(label.id));
         });
     });
+    ui.label(egui::RichText::new(tl!("AutoFit behavior")).font(semibold(12.5)));
+    ui.horizontal(|ui| {
+        let radio = ui.radio_value(autofit, "fixed".to_string(), tl!("Fixed column width:"));
+        ui.add_enabled(autofit == "fixed", egui::TextEdit::singleline(col_width).desired_width(72.0)).labelled_by(radio.id);
+    });
+    ui.radio_value(autofit, "contents".to_string(), tl!("AutoFit to contents"));
+    ui.radio_value(autofit, "window".to_string(), tl!("AutoFit to window"));
+    ui.checkbox(remember, tl!("Remember dimensions for new tables"));
+    if let Some(e) = error.as_deref() {
+        ui.colored_label(ui.visuals().error_fg_color, e);
+    }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok {
-        let _ = app.run("insert.table", json!({"rows": *rows, "cols": *cols}));
+        let mut v = json!({"rows": *rows, "cols": *cols, "autofit": autofit.as_str(), "remember": *remember});
+        if autofit == "fixed" {
+            match insert_table_width(col_width) {
+                Some(w) => v["colWidth"] = json!(w),
+                None => {
+                    // Out of range: Word's message, and the dialog stays open.
+                    let sep = crate::options::decimal();
+                    let unit = crate::options::unit();
+                    let (min, max) = (unit.format_with(0.0, sep), unit.format_with(22.0 * 72.0, sep));
+                    *error = Some(crate::i18n::fmt(tl!("The measurement must be between {min} and {max}."), &[("min", &min), ("max", &max)]));
+                    return false;
+                }
+            }
+        }
+        let _ = app.run("insert.table", v);
     }
     ok || cancel
+}
+
+/// Insert Table's Fixed column width in points: 0 for Auto, `None` when it isn't a measurement
+/// from 0 to 22 in.
+fn insert_table_width(text: &str) -> Option<f32> {
+    let text = text.trim();
+    if text.is_empty() || text.eq_ignore_ascii_case("auto") || text == tl!("Auto") {
+        return Some(0.0);
+    }
+    let unit = crate::options::unit();
+    crate::options::parse_length(text, unit).map(|n| n as f32 * unit.pt_per_unit()).filter(|pt| (0.0..=22.0 * 72.0).contains(pt))
 }
 
 /// A margin's number box, in the unit the interface measures in.
@@ -964,37 +1020,62 @@ fn word_count_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 }
 
 fn zoom_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::Zoom { percent } = d else {
+    let Dialog::Zoom { percent, fit } = d else {
         return false;
     };
-    ui.horizontal(|ui| {
-        for p in [200.0, 100.0, 75.0] {
-            ui.radio_value(percent, p, format!("{p}%"));
+    // Word's "Zoom to" group: one set of radios for the three percentages and the four fits.
+    // Nothing applies until OK.
+    ui.label(tl!("Zoom to"));
+    let percents = [(200.0, tl!("200%")), (100.0, tl!("100%")), (75.0, tl!("75%"))];
+    let fits =
+        [("pageWidth", tl!("Page width")), ("textWidth", tl!("Text width")), ("onePage", tl!("Whole page")), ("multiplePages", tl!("Many pages"))];
+    crate::rtl::Table::new("zoom_to").columns(2).spacing(vec2(16.0, 4.0)).show(ui, |t| {
+        for row in 0..fits.len() {
+            t.row(|r| {
+                r.cell(|ui| {
+                    if let Some((p, label)) = percents.get(row)
+                        && ui.radio(fit.is_empty() && *percent == *p, *label).clicked()
+                    {
+                        *percent = *p;
+                        fit.clear();
+                    }
+                });
+                r.cell(|ui| {
+                    if let Some((f, label)) = fits.get(row)
+                        && ui.radio(fit.as_str() == *f, *label).clicked()
+                    {
+                        *fit = (*f).to_string();
+                    }
+                });
+            });
         }
     });
+    let percent_label = ui
+        .horizontal(|ui| {
+            let label = ui.label(tl!("Percent:"));
+            let before = *percent;
+            let r = ui.add(egui::DragValue::new(percent).range(10.0..=500.0).speed(1.0).suffix("%")).labelled_by(label.id);
+            // Typing a percentage replaces a fit choice.
+            if r.changed() && *percent != before {
+                fit.clear();
+            }
+            label.id
+        })
+        .inner;
     // Logarithmic like the status bar slider, and wide enough to aim: the default 100 pt
     // linear slider jumped from 100% to 480% within a short drag (issue #67).
     ui.spacing_mut().slider_width = 220.0;
-    crate::rtl::island(ui, |ui| ui.add(egui::Slider::new(percent, 10.0..=500.0).logarithmic(true).step_by(1.0).suffix("%")));
-    let mut fit = None;
-    ui.horizontal(|ui| {
-        if ui.button(tl!("Page width")).clicked() {
-            fit = Some("pageWidth");
-        }
-        if ui.button(tl!("Whole page")).clicked() {
-            fit = Some("onePage");
-        }
-        if ui.button(tl!("Many pages")).clicked() {
-            fit = Some("multiplePages");
-        }
+    let before = *percent;
+    let slider = crate::rtl::island(ui, |ui| {
+        ui.add(egui::Slider::new(percent, 10.0..=500.0).logarithmic(true).step_by(1.0).suffix("%").show_value(false)).labelled_by(percent_label)
     });
-    if let Some(f) = fit {
-        let _ = app.run("view.zoom", json!({"value": f}));
-        return true;
+    if slider.changed() && *percent != before {
+        fit.clear();
     }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok {
-        let _ = app.run("view.zoom", json!({"value": *percent}));
+        let value = if fit.is_empty() { json!(*percent) } else { json!(fit.as_str()) };
+        let _ = app.run("view.zoom", json!({"value": value}));
     }
     ok || cancel
 }

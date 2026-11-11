@@ -132,6 +132,10 @@ pub enum Dialog {
         keep_lines: bool,
         page_break: bool,
         widow: bool,
+        /// The Outline level box: 0..8 = Level 1..9, 9 = Body Text (`w:outlineLvl`).
+        outline: u8,
+        /// The box is greyed: the paragraph's style is a built-in heading, whose level it keeps.
+        outline_fixed: bool,
         /// Page: 0 Indents and Spacing, 1 Line and Page Breaks, 2 Asian Typography.
         tab: u8,
         /// Asian Typography as the model has it (`para.asianTypography`): kinsoku, word wrap,
@@ -181,6 +185,14 @@ pub enum Dialog {
     InsertTable {
         rows: u32,
         cols: u32,
+        /// AutoFit behavior: `fixed`, `contents` or `window`.
+        autofit: String,
+        /// Fixed column width: `Auto` or a length in the interface unit.
+        col_width: String,
+        /// Remember dimensions for new tables.
+        remember: bool,
+        /// Word's message when the column width is out of range.
+        error: Option<String>,
     },
     PageSetup {
         top: f32,
@@ -249,6 +261,8 @@ pub enum Dialog {
     },
     Zoom {
         percent: f32,
+        /// The fit choice (`view.zoom` value: pageWidth, textWidth, onePage, multiplePages); "" = Percent.
+        fit: String,
     },
     /// Select Browse Object (Alt+Ctrl+Home): what Ctrl+PageDown / Ctrl+PageUp move by.
     BrowseObject {
@@ -773,7 +787,7 @@ impl Dialog {
                 let tab = if name == "asianTypography" { 2 } else { 0 };
                 let s = &app.session;
                 let story = s.sel.focus.story;
-                let of = |props: &wordcraft_doc::props::ParaProps| paragraph_dialog(&s.doc.styles.resolve_para(props), tab);
+                let of = |props: &wordcraft_doc::props::ParaProps| paragraph_dialog(&s.doc.styles.resolve_para(props), props.style.as_deref(), tab);
                 // Every selected paragraph as the dialog would show it: what they all share is
                 // shown, and what OK compares with; the rest shows blank (#1346).
                 let mut each = wordcraft_engine::cmd::selected_paths(s).into_iter().filter_map(|path| s.doc.para(story, &path)).map(|p| of(&p.props));
@@ -835,7 +849,13 @@ impl Dialog {
                 message: String::new(),
                 focus: true,
             },
-            "insertTable" => Dialog::InsertTable { rows: 2, cols: 5 },
+            "insertTable" => {
+                // Remembered dimensions, else Word's 2 x 5 with Auto fixed columns.
+                let p = &app.session.prefs.insert_table;
+                let autofit = if matches!(p.autofit.as_str(), "contents" | "window") { p.autofit.clone() } else { "fixed".into() };
+                let col_width = if p.col_width.is_finite() && p.col_width > 0.0 { crate::options::length(p.col_width) } else { tl!("Auto").into() };
+                Dialog::InsertTable { rows: p.rows.clamp(1, 1000), cols: p.cols.clamp(1, 63), autofit, col_width, remember: p.remember, error: None }
+            }
             "pageSetup" => {
                 let sp = wordcraft_engine::cmd::page::sect(&app.session);
                 use wordcraft_doc::section::DocGridType;
@@ -894,7 +914,13 @@ impl Dialog {
                     .unwrap_or_default();
                 Dialog::BrowseObject { objects, current: st.get("current").and_then(Value::as_str).unwrap_or("find").into(), focus: true }
             }
-            "zoom" => Dialog::Zoom { percent: (app.session.view.zoom * 100.0).round() },
+            "zoom" => Dialog::Zoom {
+                percent: (app.session.view.zoom * 100.0).round(),
+                fit: match app.session.view.fit.as_str() {
+                    f @ ("pageWidth" | "textWidth" | "onePage" | "multiplePages") => f.to_string(),
+                    _ => String::new(),
+                },
+            },
             "watermark" => Dialog::Watermark { text: "CONFIDENTIAL".into(), diagonal: true },
             "phonetic" => {
                 let v = wordcraft_engine::cmd::phonetic::state(&app.session);
@@ -1111,6 +1137,12 @@ mod tests;
 #[cfg(test)]
 mod tests_font_underline;
 #[cfg(test)]
+mod tests_insert_table;
+#[cfg(test)]
 mod tests_page_layout;
 #[cfg(test)]
 mod tests_para_line;
+#[cfg(test)]
+mod tests_para_outline;
+#[cfg(test)]
+mod tests_zoom;
