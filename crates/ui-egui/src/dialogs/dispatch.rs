@@ -964,37 +964,62 @@ fn word_count_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 }
 
 fn zoom_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::Zoom { percent } = d else {
+    let Dialog::Zoom { percent, fit } = d else {
         return false;
     };
-    ui.horizontal(|ui| {
-        for p in [200.0, 100.0, 75.0] {
-            ui.radio_value(percent, p, format!("{p}%"));
+    // Word's "Zoom to" group: one set of radios for the three percentages and the four fits.
+    // Nothing applies until OK.
+    ui.label(tl!("Zoom to"));
+    let percents = [(200.0, tl!("200%")), (100.0, tl!("100%")), (75.0, tl!("75%"))];
+    let fits =
+        [("pageWidth", tl!("Page width")), ("textWidth", tl!("Text width")), ("onePage", tl!("Whole page")), ("multiplePages", tl!("Many pages"))];
+    crate::rtl::Table::new("zoom_to").columns(2).spacing(vec2(16.0, 4.0)).show(ui, |t| {
+        for row in 0..fits.len() {
+            t.row(|r| {
+                r.cell(|ui| {
+                    if let Some((p, label)) = percents.get(row)
+                        && ui.radio(fit.is_empty() && *percent == *p, *label).clicked()
+                    {
+                        *percent = *p;
+                        fit.clear();
+                    }
+                });
+                r.cell(|ui| {
+                    if let Some((f, label)) = fits.get(row)
+                        && ui.radio(fit.as_str() == *f, *label).clicked()
+                    {
+                        *fit = (*f).to_string();
+                    }
+                });
+            });
         }
     });
+    let percent_label = ui
+        .horizontal(|ui| {
+            let label = ui.label(tl!("Percent:"));
+            let before = *percent;
+            let r = ui.add(egui::DragValue::new(percent).range(10.0..=500.0).speed(1.0).suffix("%")).labelled_by(label.id);
+            // Typing a percentage replaces a fit choice.
+            if r.changed() && *percent != before {
+                fit.clear();
+            }
+            label.id
+        })
+        .inner;
     // Logarithmic like the status bar slider, and wide enough to aim: the default 100 pt
     // linear slider jumped from 100% to 480% within a short drag (issue #67).
     ui.spacing_mut().slider_width = 220.0;
-    crate::rtl::island(ui, |ui| ui.add(egui::Slider::new(percent, 10.0..=500.0).logarithmic(true).step_by(1.0).suffix("%")));
-    let mut fit = None;
-    ui.horizontal(|ui| {
-        if ui.button(tl!("Page width")).clicked() {
-            fit = Some("pageWidth");
-        }
-        if ui.button(tl!("Whole page")).clicked() {
-            fit = Some("onePage");
-        }
-        if ui.button(tl!("Many pages")).clicked() {
-            fit = Some("multiplePages");
-        }
+    let before = *percent;
+    let slider = crate::rtl::island(ui, |ui| {
+        ui.add(egui::Slider::new(percent, 10.0..=500.0).logarithmic(true).step_by(1.0).suffix("%").show_value(false)).labelled_by(percent_label)
     });
-    if let Some(f) = fit {
-        let _ = app.run("view.zoom", json!({"value": f}));
-        return true;
+    if slider.changed() && *percent != before {
+        fit.clear();
     }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok {
-        let _ = app.run("view.zoom", json!({"value": *percent}));
+        let value = if fit.is_empty() { json!(*percent) } else { json!(fit.as_str()) };
+        let _ = app.run("view.zoom", json!({"value": value}));
     }
     ok || cancel
 }
