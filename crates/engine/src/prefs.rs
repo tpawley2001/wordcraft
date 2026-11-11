@@ -82,6 +82,29 @@ pub struct Prefs {
     pub autocorrect: crate::cmd::tools::AutoCorrectPrefs,
     /// The Clipboard pane's Options (`edit.clipboardOptions`).
     pub clipboard: ClipboardPrefs,
+    /// What the Insert Table dialog opens with (Remember dimensions for new tables).
+    #[serde(deserialize_with = "lenient_insert_table")]
+    pub insert_table: InsertTablePrefs,
+}
+
+/// Insert Table's remembered size and AutoFit behavior (`insert.table` with `remember`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct InsertTablePrefs {
+    pub rows: u32,
+    pub cols: u32,
+    /// `fixed`, `contents` or `window`.
+    pub autofit: String,
+    /// Fixed column width in points; 0 is Auto.
+    pub col_width: f32,
+    /// Remember dimensions for new tables is on.
+    pub remember: bool,
+}
+
+impl Default for InsertTablePrefs {
+    fn default() -> Self {
+        InsertTablePrefs { rows: 2, cols: 5, autofit: "fixed".into(), col_width: 0.0, remember: false }
+    }
 }
 
 /// The Clipboard pane's Options (Home › Clipboard › Clipboard Pane › Options), as in Word.
@@ -136,6 +159,7 @@ impl Default for Prefs {
             default_language: None,
             autocorrect: Default::default(),
             clipboard: Default::default(),
+            insert_table: Default::default(),
         }
     }
 }
@@ -164,6 +188,12 @@ fn lenient_paper_color<'de, D: serde::Deserializer<'de>>(d: D) -> Result<crate::
 
 /// Ignore an invalid saved Page Color without discarding other preferences.
 fn lenient_read_page_color<'de, D: serde::Deserializer<'de>>(d: D) -> Result<crate::cmd::view::ReadPageColor, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(value).unwrap_or_default())
+}
+
+/// Ignore a damaged remembered Insert Table size without discarding other preferences.
+fn lenient_insert_table<'de, D: serde::Deserializer<'de>>(d: D) -> Result<InsertTablePrefs, D::Error> {
     let value = serde_json::Value::deserialize(d)?;
     Ok(serde_json::from_value(value).unwrap_or_default())
 }

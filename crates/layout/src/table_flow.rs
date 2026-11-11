@@ -37,7 +37,7 @@ pub(crate) fn footer_table_wraps(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<WrapAre
     let Some(id) = id else { return Vec::new() };
     let Some(part) = doc.parts.get(&id) else { return Vec::new() };
     let blocks = part.blocks.clone();
-    let x = sect.margin_left + sect.gutter;
+    let x = sect.text_left(ctx.mirror);
     let base = hf.defining_width(true, page.section, Some(id));
     let counters = std::mem::take(&mut ctx.counters);
     let boxes = std::mem::take(&mut ctx.boxes);

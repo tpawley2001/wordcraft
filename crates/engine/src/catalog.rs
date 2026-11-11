@@ -132,8 +132,10 @@ Home|Styles|Modify Style|styles.modify
 Home|Styles|Update Style to Match|styles.updateToMatch
 Home|Styles|Delete Style|styles.delete
 Home|Styles|Styles Pane|styles.pane
+Home|Styles|Disable Linked Styles|styles.disableLinked
 Home|Styles|Style Inspector|styles.inspector
 Home|Styles|Manage Styles|styles.manage
+Home|Styles|Style Pane Options|styles.paneOptions
 Home|Styles|Apply Styles|styles.apply
 Home|Styles|Character Style|format.charStyle
 Home|Editing|Find|edit.find

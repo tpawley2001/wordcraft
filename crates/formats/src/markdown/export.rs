@@ -146,7 +146,8 @@ fn inlines_md_impl(inlines: &[Inline], in_table: bool) -> String {
             | Inline::Group { .. }
             | Inline::FieldStart(_)
             | Inline::FieldEnd
-            | Inline::AnchorEnd(_) => {}
+            | Inline::AnchorEnd(_)
+            | Inline::ObjRev(_) => {}
             // Read as its base text by `ruby_as_text` above.
             Inline::Ruby { .. } => {}
         }

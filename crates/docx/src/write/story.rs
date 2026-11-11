@@ -17,6 +17,7 @@ use crate::xml::W;
 mod blocks;
 mod drawing;
 mod field;
+mod grid;
 mod nested;
 mod object;
 mod para;
@@ -39,4 +40,6 @@ enum Piece<'a> {
     Sym(&'a str, char),
     /// An object and its byte offset in the paragraph.
     Obj(&'a InlineObject, usize),
+    /// The start or end of a `w:dir` / `w:bdo` element.
+    Dir(super::bidi::DirElement),
 }

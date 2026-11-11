@@ -253,6 +253,7 @@ pub fn missing_font_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)
 /// Consolas: `/Ascent` 743, the descent the rest of the line; 8 pt lines 9.36 pt apart (1.172 em).
 /// Garamond: `/Ascent` 862, the descent the rest of the line; 20 pt lines 22.44 to 22.58 pt apart (1.125 em).
 /// Comic Sans MS: `/Ascent` 1102, the descent the rest of the line; 11 pt lines 15.36 and 15.24 pt apart (1.394 em).
+/// Univers: `/Ascent` 989, the descent the rest of the line; 12 pt lines 14.88 pt apart (1.24 em).
 fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
     match family.trim().to_ascii_lowercase().as_str() {
         "lucida console" => Some((0.789, 0.211)),
@@ -268,9 +269,189 @@ fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
         "consolas" => Some((0.743, 0.429)),
         "garamond" => Some((0.862, 0.263)),
         "comic sans ms" => Some((1.102, 0.292)),
+        "univers" => Some((0.989, 0.251)),
         _ => None,
     }
 }
+
+/// The advance, in em, Word gives `ch` in `family` when that font is missing (its substitute's
+/// advance differs); `None` when there is no table for the family or the character. Italic takes
+/// the upright advances (Word draws a missing italic as slanted upright text), bold italic the
+/// bold ones. Matching is exact: "Univers Condensed" is another face.
+pub fn missing_font_advance(family: &str, bold: bool, ch: char) -> Option<f64> {
+    let table = match (family.trim().to_ascii_lowercase().as_str(), bold) {
+        ("univers", false) => UNIVERS,
+        ("univers", true) => UNIVERS_BOLD,
+        _ => return None,
+    };
+    table.binary_search_by_key(&ch, |&(c, _)| c).ok().and_then(|i| table.get(i)).map(|&(_, w)| f64::from(w) / 1000.0)
+}
+
+/// Univers advances (1/1000 em), sorted by character: the widths Word's PDFs of Univers
+/// documents give the WinAnsi characters they use.
+const UNIVERS: &[(char, u16)] = &[
+    (' ', 278),
+    ('"', 400),
+    ('$', 556),
+    ('%', 889),
+    ('&', 778),
+    ('\'', 278),
+    ('(', 333),
+    (')', 333),
+    (',', 278),
+    ('-', 333),
+    ('.', 278),
+    ('/', 278),
+    ('0', 556),
+    ('1', 556),
+    ('2', 556),
+    ('3', 556),
+    ('4', 556),
+    ('5', 556),
+    ('6', 556),
+    ('7', 556),
+    ('8', 556),
+    ('9', 556),
+    (':', 278),
+    (';', 278),
+    ('=', 584),
+    ('>', 584),
+    ('?', 500),
+    ('@', 1015),
+    ('A', 722),
+    ('B', 667),
+    ('C', 667),
+    ('D', 722),
+    ('E', 611),
+    ('F', 556),
+    ('G', 778),
+    ('H', 722),
+    ('I', 278),
+    ('J', 556),
+    ('K', 667),
+    ('L', 556),
+    ('M', 944),
+    ('N', 778),
+    ('O', 778),
+    ('P', 611),
+    ('Q', 778),
+    ('R', 667),
+    ('S', 667),
+    ('T', 611),
+    ('U', 778),
+    ('V', 667),
+    ('W', 1000),
+    ('X', 722),
+    ('Y', 667),
+    ('Z', 611),
+    ('[', 333),
+    (']', 333),
+    ('_', 500),
+    ('a', 556),
+    ('b', 611),
+    ('c', 500),
+    ('d', 611),
+    ('e', 556),
+    ('f', 333),
+    ('g', 611),
+    ('h', 611),
+    ('i', 278),
+    ('j', 278),
+    ('k', 500),
+    ('l', 278),
+    ('m', 944),
+    ('n', 611),
+    ('o', 611),
+    ('p', 611),
+    ('q', 611),
+    ('r', 389),
+    ('s', 500),
+    ('t', 333),
+    ('u', 611),
+    ('v', 556),
+    ('w', 833),
+    ('x', 556),
+    ('y', 556),
+    ('z', 444),
+];
+
+/// Univers Bold advances (1/1000 em), sorted by character, as [`UNIVERS`].
+const UNIVERS_BOLD: &[(char, u16)] = &[
+    (' ', 278),
+    ('#', 556),
+    ('&', 778),
+    ('\'', 238),
+    ('(', 333),
+    (')', 333),
+    (',', 278),
+    ('-', 333),
+    ('.', 278),
+    ('/', 444),
+    ('0', 556),
+    ('1', 556),
+    ('2', 556),
+    ('3', 556),
+    ('4', 556),
+    ('5', 556),
+    ('6', 556),
+    ('7', 556),
+    ('8', 556),
+    ('9', 556),
+    (':', 278),
+    ('=', 584),
+    ('A', 722),
+    ('B', 667),
+    ('C', 667),
+    ('D', 722),
+    ('E', 611),
+    ('F', 556),
+    ('G', 778),
+    ('H', 722),
+    ('I', 278),
+    ('J', 556),
+    ('K', 667),
+    ('L', 556),
+    ('M', 944),
+    ('N', 778),
+    ('O', 778),
+    ('P', 611),
+    ('Q', 778),
+    ('R', 667),
+    ('S', 667),
+    ('T', 611),
+    ('U', 778),
+    ('V', 722),
+    ('W', 1000),
+    ('X', 722),
+    ('Y', 667),
+    ('Z', 611),
+    ('a', 556),
+    ('b', 611),
+    ('c', 500),
+    ('d', 611),
+    ('e', 556),
+    ('f', 333),
+    ('g', 611),
+    ('h', 611),
+    ('i', 278),
+    ('j', 278),
+    ('k', 556),
+    ('l', 278),
+    ('m', 944),
+    ('n', 611),
+    ('o', 611),
+    ('p', 611),
+    ('q', 611),
+    ('r', 389),
+    ('s', 500),
+    ('t', 389),
+    ('u', 611),
+    ('v', 556),
+    ('w', 889),
+    ('x', 556),
+    ('y', 556),
+    ('z', 500),
+];
 
 /// Is a line's (ascent, descent) one `upem` em tall?
 fn one_em((ascent, descent): (f64, f64), upem: f64) -> bool {
@@ -856,6 +1037,14 @@ pub fn line_metrics(face: &crate::FontFace) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_font_advance_tables_are_sorted() {
+        // `missing_font_advance` binary-searches them: every listed character must be found.
+        for table in [UNIVERS, UNIVERS_BOLD] {
+            assert!(table.windows(2).all(|w| w[0].0 < w[1].0));
+        }
+    }
 
     #[test]
     fn the_line_gap_goes_above_the_ascent() {

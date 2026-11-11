@@ -1,6 +1,6 @@
 use super::{
-    AbstractNum, DocxError, El, Level, LevelSuffix, Num, NumFormat, PartFormat, Reader, Style, StyleKind, StyleSheet, TablePart, TableStyleParts,
-    VAlign, flag, int, props, tw, u32_of,
+    AbstractNum, DocxError, El, LegacyLevel, Level, LevelSuffix, Num, NumFormat, PartFormat, Reader, Style, StyleKind, StyleSheet, TablePart,
+    TableStyleParts, VAlign, flag, int, props, tw, u32_of,
 };
 use crate::units::tw_i16;
 use std::sync::Arc;
@@ -141,6 +141,19 @@ impl Reader<'_> {
                 quick: flag(s, "w:qFormat").unwrap_or(false),
                 hidden: flag(s, "w:semiHidden").unwrap_or(false) || flag(s, "w:hidden").unwrap_or(false),
                 builtin: !s.attr("w:customStyle").is_some_and(|v| matches!(v.trim(), "1" | "true" | "on")),
+                semi_hidden: flag(s, "w:semiHidden").unwrap_or(false),
+                unhide_when_used: flag(s, "w:unhideWhenUsed").unwrap_or(false),
+                hidden_everywhere: flag(s, "w:hidden").unwrap_or(false),
+                aliases: s.child_val("w:aliases").filter(|a| !a.trim().is_empty() && a.len() <= 4096).map(str::to_string),
+                auto_redefine: flag(s, "w:autoRedefine").unwrap_or(false),
+                personal: flag(s, "w:personal").unwrap_or(false),
+                personal_compose: flag(s, "w:personalCompose").unwrap_or(false),
+                personal_reply: flag(s, "w:personalReply").unwrap_or(false),
+                rsid: s
+                    .child_val("w:rsid")
+                    .map(str::trim)
+                    .filter(|v| v.len() == 8 && v.chars().all(|c| c.is_ascii_hexdigit()))
+                    .map(str::to_ascii_uppercase),
                 locked: flag(s, "w:locked").unwrap_or(false),
                 // Only where the writer couldn't tell from the id (it flags the English ids).
                 default: s.attr("w:default").is_some_and(|v| v == "1" || v == "true")
@@ -153,6 +166,11 @@ impl Reader<'_> {
                     ),
                 ..Default::default()
             };
+            // Hidden until used is what the writer gives a style hidden in the app: read it back as that.
+            if st.semi_hidden && st.unhide_when_used && !st.hidden_everywhere {
+                st.semi_hidden = false;
+                st.unhide_when_used = false;
+            }
             if let Some(p) = s.child("w:pPr") {
                 st.para = self.pc.ppr(p).0;
             }
@@ -330,6 +348,7 @@ impl Reader<'_> {
         }
         Arc::make_mut(&mut self.doc.numbering).abstracts = abstracts;
         Arc::make_mut(&mut self.doc.numbering).nums = nums;
+        Arc::make_mut(&mut self.doc.numbering).num_id_mac_at_cleanup = root.child_val("w:numIdMacAtCleanup").and_then(u32_of);
         Ok(())
     }
 
@@ -376,6 +395,18 @@ impl Reader<'_> {
             .filter(|v| v.is_finite())
             .map(|v| v.clamp(-1584.0, 1584.0));
         lv.style = l.child_val("w:pStyle").filter(|s| !s.is_empty()).map(|s| self.pc.style_id(s));
+        // Kept from the file (ECMA-376 §17.9.6, §17.9.10): the template code (ST_LongHexNumber),
+        // the tentative flag (ST_OnOff) and a Word 6/95 level's settings.
+        lv.tplc = l.attr("w:tplc").filter(|v| v.len() == 8 && v.bytes().all(|b| b.is_ascii_hexdigit())).map(str::to_ascii_uppercase);
+        lv.tentative = l.attr("w:tentative").is_some_and(|v| matches!(v.trim(), "1" | "true" | "on"));
+        lv.legacy = l.child("w:legacy").map(|g| {
+            let twips = |k: &str| g.attr(k).and_then(int).map(|v| v.clamp(-31_680, 31_680) as i32);
+            LegacyLevel {
+                legacy: g.attr("w:legacy").map(|v| !matches!(v.trim(), "0" | "false" | "off")),
+                space: twips("w:legacySpace"),
+                indent: twips("w:legacyIndent"),
+            }
+        });
         lv
     }
 }

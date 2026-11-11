@@ -3,6 +3,35 @@ use super::{
     Seen, StoryCtx, Zoom, ZoomFit, int, math, on_off, para_block, props, tw, u32_of,
 };
 
+/// `w:stylePaneFormatFilter`'s attributes whose bit in `w:val` was measured, with that bit.
+const PANE_FILTER_ATTRS: [(&str, u16); 7] = [
+    ("w:allStyles", 0x0001),
+    ("w:customStyles", 0x0002),
+    ("w:latentStyles", 0x0004),
+    ("w:stylesInUse", 0x0008),
+    ("w:headingStyles", 0x0020),
+    ("w:clearFormatting", 0x1000),
+    ("w:top3HeadingStyles", 0x2000),
+];
+
+/// `w:stylePaneFormatFilter/@w:val`: 1–4 hex digits, any case.
+fn pane_filter_hex(v: &str) -> Option<u16> {
+    let v = v.trim();
+    if v.is_empty() || v.len() > 4 {
+        return None;
+    }
+    u16::from_str_radix(v, 16).ok()
+}
+
+/// An ST_OnOff attribute value.
+fn attr_on_off(v: &str) -> Option<bool> {
+    match v.trim() {
+        "1" | "true" | "on" => Some(true),
+        "0" | "false" | "off" => Some(false),
+        _ => None,
+    }
+}
+
 impl Reader<'_> {
     pub(super) fn read_settings(&mut self, path: &str) -> Result<Option<u32>, DocxError> {
         let Some(root) = self.xml(path)? else { return Ok(None) };
@@ -27,6 +56,26 @@ impl Reader<'_> {
                         .filter(|t| !t.is_empty() && t.len() <= MAX_TEMPLATE_PATH);
                 }
                 "w:linkStyles" => s.link_styles = on_off(k),
+                "w:stylePaneFormatFilter" => {
+                    if let Some(filter) = k.attr("w:val").and_then(pane_filter_hex) {
+                        let mut pane = s.style_pane.take().unwrap_or_default();
+                        pane.filter = filter;
+                        pane.filter_attrs = false;
+                        // The Word 2010 attribute form wins for the bits it names.
+                        for (name, bit) in PANE_FILTER_ATTRS {
+                            if let Some(on) = k.attr(name).and_then(attr_on_off) {
+                                pane.filter_attrs = true;
+                                if on { pane.filter |= bit } else { pane.filter &= !bit }
+                            }
+                        }
+                        s.style_pane = Some(pane);
+                    }
+                }
+                "w:stylePaneSortMethod" => {
+                    let mut pane = s.style_pane.take().unwrap_or_default();
+                    pane.sort = k.attr("w:val").and_then(wordcraft_doc::StylePaneSort::parse);
+                    s.style_pane = Some(pane);
+                }
                 "w:removePersonalInformation" => s.remove_personal_info = on_off(k),
                 "w:removeDateAndTime" => s.remove_date_time = on_off(k),
                 "w:compat" => {

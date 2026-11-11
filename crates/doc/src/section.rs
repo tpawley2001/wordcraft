@@ -765,6 +765,9 @@ pub struct SectionProps {
     pub page_w: f32,
     pub page_h: f32,
     pub landscape: bool,
+    /// The printer's paper code (`w:pgSz/@w:code`, ECMA-376 §17.6.13); kept from the file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paper_code: Option<u32>,
     pub margin_top: f32,
     pub margin_bottom: f32,
     pub margin_left: f32,
@@ -786,6 +789,10 @@ pub struct SectionProps {
     #[serde(skip_serializing_if = "is_zero")]
     pub footer_gap: f32,
     pub gutter: f32,
+    /// The gutter is on the right side of the page (`w:rtlGutter`, ECMA-376 §17.6.16) rather than
+    /// the left. Mirror margins keep it on the inside.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub rtl_gutter: bool,
     /// Mirror margins (inside/outside) — set from the document settings.
     pub columns: Columns,
     pub headers: HeaderSet,
@@ -849,6 +856,7 @@ impl Default for SectionProps {
             page_w: 612.0,
             page_h: 792.0,
             landscape: false,
+            paper_code: None,
             margin_top: 72.0,
             margin_bottom: 72.0,
             margin_left: 72.0,
@@ -860,6 +868,7 @@ impl Default for SectionProps {
             header_gap: 0.0,
             footer_gap: 0.0,
             gutter: 0.0,
+            rtl_gutter: false,
             columns: Columns::default(),
             headers: HeaderSet::default(),
             footers: HeaderSet::default(),
@@ -911,6 +920,15 @@ impl SectionProps {
     /// Width of the text area, points.
     pub fn text_width(&self) -> f32 {
         (self.page_w - self.margin_left - self.margin_right - self.gutter).max(18.0)
+    }
+    /// How much of the gutter widens the left margin: all of it, or none when `rtl_gutter` puts
+    /// it on the right. With mirror margins (`mirror`) it stays on the inside, as the left margin.
+    pub fn left_gutter(&self, mirror: bool) -> f32 {
+        if self.rtl_gutter && !mirror { 0.0 } else { self.gutter }
+    }
+    /// The text area's left edge from the page's left edge, points (see [`Self::left_gutter`]).
+    pub fn text_left(&self, mirror: bool) -> f32 {
+        self.margin_left + self.left_gutter(mirror)
     }
     pub fn text_height(&self) -> f32 {
         (self.page_h - self.margin_top - self.margin_bottom).max(18.0)
