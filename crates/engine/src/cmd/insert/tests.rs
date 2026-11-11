@@ -432,3 +432,68 @@ fn local_civil_date_follows_the_utc_offset() {
         assert!(crate::cmd::local_offset_secs(unix).abs() <= 26 * 3600);
     }
 }
+
+/// The ScreenTip of every character of the body's first paragraph, with its link.
+fn link_tips(s: &Session) -> Vec<(Option<String>, Option<String>)> {
+    let para = s.doc.body.first().and_then(|b| b.as_para()).unwrap();
+    para.text.char_indices().map(|(i, _)| para.props_of_char(i)).map(|c| (c.link.clone(), c.link_tip.as_deref().map(str::to_string))).collect()
+}
+
+fn document_xml(s: &Session) -> String {
+    let bytes = wordcraft_docx::write(&s.doc).unwrap();
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    let mut xml = String::new();
+    std::io::Read::read_to_string(&mut zip.by_name("word/document.xml").unwrap(), &mut xml).unwrap();
+    xml
+}
+
+/// A session holding only "a link" to example.com with the ScreenTip "More about it", selected.
+fn tipped_link() -> Session {
+    let mut s = Session::new(wordcraft_doc::Document::new());
+    s.run("insert.link", &json!({"url": "https://example.com", "text": "a link", "screenTip": "More about it"})).unwrap();
+    s.run("select.all", &json!({})).unwrap();
+    s
+}
+
+#[test]
+fn insert_link_sets_the_screen_tip() {
+    let mut s = tipped_link();
+    let tips = link_tips(&s);
+    assert_eq!(tips.len(), "a link".len());
+    assert!(tips.iter().all(|(l, t)| l.as_deref() == Some("https://example.com") && t.as_deref() == Some("More about it")), "{tips:?}");
+    assert!(document_xml(&s).contains(r#"w:tooltip="More about it""#));
+    // Insert Hyperlink opened on the link shows its tip.
+    assert_eq!(s.run("link.targets", &json!({})).unwrap()["screenTip"], "More about it");
+}
+
+#[test]
+fn editing_the_address_keeps_the_screen_tip() {
+    let mut s = tipped_link();
+    s.run("insert.link", &json!({"url": "https://example.org"})).unwrap();
+    assert!(link_tips(&s).iter().all(|(l, t)| l.as_deref() == Some("https://example.org") && t.as_deref() == Some("More about it")));
+    s.run("insert.link", &json!({"url": "https://example.org", "screenTip": ""})).unwrap();
+    assert!(link_tips(&s).iter().all(|(l, t)| l.as_deref() == Some("https://example.org") && t.is_none()));
+    assert!(!document_xml(&s).contains("w:tooltip"));
+}
+
+#[test]
+fn a_screen_tip_over_255_characters_is_refused() {
+    let mut s = tipped_link();
+    let before = s.doc.clone();
+    assert!(s.run("insert.link", &json!({"url": "https://example.com", "screenTip": "a".repeat(256)})).is_err());
+    assert_eq!(s.doc, before);
+    for bad in [json!("tab\there"), json!(7)] {
+        assert!(s.run("insert.link", &json!({"url": "https://example.com", "screenTip": bad})).is_err());
+        assert_eq!(s.doc, before);
+    }
+    s.run("insert.link", &json!({"url": "https://example.com", "screenTip": "a".repeat(255)})).unwrap();
+    assert!(link_tips(&s).iter().all(|(_, t)| t.as_deref() == Some("a".repeat(255).as_str())));
+}
+
+/// Remove Hyperlink takes the ScreenTip with the link.
+#[test]
+fn removing_a_link_clears_its_screen_tip() {
+    let mut s = tipped_link();
+    s.run("insert.removeLink", &json!({})).unwrap();
+    assert!(link_tips(&s).iter().all(|(l, t)| l.is_none() && t.is_none()));
+}

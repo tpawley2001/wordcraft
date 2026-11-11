@@ -1,5 +1,5 @@
 use super::balloons::over_balloon;
-use super::links::{field_showing_code, follow_link, is_generated_bookmark_link, link_under};
+use super::links::{field_showing_code, follow_link, is_generated_bookmark_link, link_and_tip_under, link_hover_text, link_under};
 use super::navigation::page_at;
 use super::story::{enters_header_footer, in_text_box, part_kind, text_box_host};
 use super::{CanvasState, DocLayout, PartKind, Pos, Pos2, Rect, StoryRef, Ui, WordApp, json};
@@ -507,12 +507,13 @@ fn show_hover_link(app: &WordApp, pointer: &PagePointer<'_>) {
         && !app.canvas.context_menu_open
         && !resp.secondary_clicked()
         && !ui.input(|i| i.pointer.secondary_down())
-        && let Some(link) = crate::objects::link_at(app, layout, rects, *scale, *p)
-            .or_else(|| layout.hit(*page, *x, *y, *story).and_then(|pos| link_under(app, layout, *page, *x, *y, &pos)))
+        && let Some((link, screen_tip)) = crate::objects::link_at(app, layout, rects, *scale, *p)
+            .map(|link| (link, None))
+            .or_else(|| layout.hit(*page, *x, *y, *story).and_then(|pos| link_and_tip_under(app, layout, *page, *x, *y, &pos)))
     {
         let key = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl" };
         let target = if is_generated_bookmark_link(&link) { tl!("Current Document").to_string() } else { link };
-        let tip = format!("{target}\n{}", crate::i18n::fmt(tl!("{key}+Click to follow link"), &[("key", key)]));
+        let tip = link_hover_text(&target, screen_tip.as_deref(), &crate::i18n::fmt(tl!("{key}+Click to follow link"), &[("key", key)]));
         egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), egui::Id::unique("link_tip"), egui::PopupAnchor::Pointer).show(|ui| {
             ui.label(tip);
         });

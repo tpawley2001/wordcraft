@@ -938,6 +938,7 @@ impl Document {
             if to == para.len() && (from == 0 || p != a.path) {
                 let style = para.mark.style.clone();
                 f(&mut para.mark);
+                para.mark.link_tip = None;
                 if para.mark.link.take().is_some() {
                     para.mark.style = style.filter(|s| s != "Hyperlink");
                 }

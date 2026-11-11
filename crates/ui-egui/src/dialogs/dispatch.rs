@@ -875,15 +875,21 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 }
 
 fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::Link { url, text, kind, email, subject, targets, pick, focus } = d else {
+    let Dialog::Link { url, text, kind, email, subject, targets, pick, focus, tip, tip_edit } = d else {
         return false;
     };
+    // Enter and Escape belong to Set Hyperlink ScreenTip while it is open above this dialog.
+    let tip_open = tip_edit.is_some();
     // Read document targets once, when a choice first needs them.
     ui.horizontal(|ui| {
         ui.label(tl!("Link to:"));
         ui.selectable_value(kind, super::LinkKind::Web, tl!("Existing File or Web Page"));
         ui.selectable_value(kind, super::LinkKind::Place, tl!("Place in This Document"));
         ui.selectable_value(kind, super::LinkKind::Email, tl!("E-mail Address"));
+        ui.add_space(24.0);
+        if ui.button(tl!("ScreenTip…")).clicked() {
+            *tip_edit = Some(tip.clone());
+        }
     });
     if *kind != super::LinkKind::Web && targets.is_none() {
         *targets = app.run("link.targets", json!({})).ok();
@@ -988,24 +994,61 @@ fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     } else {
         buttons(ui, tl!("OK"))
     };
+    let (ok, cancel) = if tip_open { (false, false) } else { (ok, cancel) };
+    screen_tip_modal(ui, tip, tip_edit);
     if ok {
-        if *kind == super::LinkKind::Place {
+        // Sent also when empty, so OK clears a tip the link had.
+        let mut params = if *kind == super::LinkKind::Place {
             let Some((mut params, _)) = pick.clone() else { return false };
             if !text.is_empty() {
                 params["text"] = json!(text);
             }
-            let _ = app.run("insert.link", params);
+            params
         } else if *kind == super::LinkKind::Email {
             let mut params = json!({"email": email, "subject": subject});
             if !text.is_empty() {
                 params["text"] = json!(text);
             }
-            let _ = app.run("insert.link", params);
+            params
         } else {
-            let _ = app.run("insert.link", json!({"url": url, "text": text}));
-        }
+            json!({"url": url, "text": text})
+        };
+        params["screenTip"] = json!(tip);
+        let _ = app.run("insert.link", params);
     }
     ok || cancel
+}
+
+/// Insert Hyperlink › ScreenTip…: Set Hyperlink ScreenTip, open while `edit` holds the text being
+/// edited. OK keeps it in `tip`; Cancel (or Escape) leaves `tip` as it was.
+fn screen_tip_modal(ui: &mut Ui, tip: &mut String, edit: &mut Option<String>) {
+    let Some(text) = edit.as_mut() else { return };
+    let mut answer = None;
+    let modal = egui::Modal::new(egui::Id::unique("wordcraft.linkScreenTip")).show(ui.ctx(), |ui| {
+        ui.set_max_width(380.0);
+        ui.heading(tl!("Set Hyperlink ScreenTip"));
+        let label = ui.label(tl!("ScreenTip text:"));
+        let field = egui::TextEdit::singleline(text).char_limit(wordcraft_engine::cmd::insert::MAX_SCREEN_TIP).desired_width(f32::INFINITY);
+        ui.add(field).labelled_by(label.id);
+        ui.add_space(8.0);
+        ui.with_layout(crate::rtl::far_side(ui, egui::Align::Center), |ui| {
+            let (okb, cancelb) = crate::dialogs::ok_cancel_responses(ui, |ui| ui.add(crate::widgets::primary_button(ui, tl!("OK"))), tl!("Cancel"));
+            if okb.clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                answer = Some(true);
+            }
+            if cancelb.clicked() {
+                answer = Some(false);
+            }
+        });
+    });
+    if modal.should_close() {
+        answer = answer.or(Some(false));
+    }
+    match answer {
+        Some(true) => *tip = edit.take().unwrap_or_default(),
+        Some(false) => *edit = None,
+        None => {}
+    }
 }
 
 fn word_count_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
@@ -2115,6 +2158,46 @@ fn browse_object_text(name: &str) -> &'static str {
 mod email_link_tests {
     use super::*;
     use egui_kittest::kittest::{NodeT, Queryable};
+
+    #[test]
+    fn insert_hyperlink_screen_tip_is_sent_on_ok() {
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        app.run("ui.language", json!({"value": "en"})).unwrap();
+        app.run("ui.dialog", json!({"name": "link"})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                app.logic(&ui.ctx().clone());
+                app.ui(ui);
+            },
+            app,
+        );
+        h.run_steps(3);
+        // ScreenTip… opens Set Hyperlink ScreenTip; its Cancel leaves the tip as it was.
+        h.get_by_label("ScreenTip…").click();
+        h.run_steps(3);
+        let _ = h.get_by_label("ScreenTip text:");
+        let Some(Dialog::Link { tip_edit, .. }) = &mut h.state_mut().dialog else { panic!("no link dialog") };
+        *tip_edit = Some("Not kept".into());
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        let Some(Dialog::Link { url, text, tip, tip_edit, .. }) = &mut h.state_mut().dialog else { panic!("Escape closed the link dialog") };
+        assert_eq!((tip.as_str(), tip_edit.is_none()), ("", true));
+        *url = "https://example.com".into();
+        *text = "Example".into();
+        *tip = "More about it".into();
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert!(h.state().dialog.is_none());
+        let doc = &h.state().session.doc;
+        let para = doc.body.first().and_then(|b| b.as_para()).unwrap();
+        assert_eq!(para.text, "Example");
+        assert!(para.run_ranges().all(|(_, c)| c.link.as_deref() == Some("https://example.com") && c.link_tip.as_deref() == Some("More about it")));
+        // Opened again on the link, the dialog shows its tip.
+        h.state_mut().run("select.all", json!({})).unwrap();
+        h.state_mut().run("ui.dialog", json!({"name": "link"})).unwrap();
+        let Some(Dialog::Link { tip, .. }) = &h.state().dialog else { panic!("no link dialog") };
+        assert_eq!(tip, "More about it");
+    }
 
     #[test]
     fn email_choice_requires_an_address_and_reuses_subject() {
