@@ -252,6 +252,9 @@ fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
     if s.consecutive_hyphen_limit != d.consecutive_hyphen_limit {
         o.push_str(&format!("\\hyphconsec{}", s.consecutive_hyphen_limit.min(i32::MAX as u32)));
     }
+    if s.wrap_trail_spaces {
+        o.push_str("\\wraptrsp");
+    }
     o
 }
 

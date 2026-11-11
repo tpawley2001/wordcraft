@@ -443,6 +443,8 @@ pub(super) struct DocOpts {
     /// `\widowctrl`: widow and orphan control on for the paragraphs that don't say
     /// (`\widctlpar`/`\nowidctlpar`). Without it Word has it off for them.
     pub(super) widow_control: bool,
+    /// `\wraptrsp`: Wrap trailing spaces onto the next line.
+    pub(super) wrap_trail_spaces: Option<bool>,
 }
 
 impl DocOpts {
@@ -471,6 +473,7 @@ impl DocOpts {
                 }
             }
             "widowctrl" => self.widow_control = true,
+            "wraptrsp" => self.wrap_trail_spaces = Some(on),
             _ => return false,
         }
         true
@@ -498,6 +501,9 @@ impl DocOpts {
         }
         if let Some(v) = self.consecutive_hyphen_limit {
             s.consecutive_hyphen_limit = u32::try_from(v).unwrap_or(0);
+        }
+        if let Some(v) = self.wrap_trail_spaces {
+            s.wrap_trail_spaces = v;
         }
     }
 }

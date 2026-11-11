@@ -168,6 +168,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-11: P0228: in an RTF document with `\wraptrsp` (Wrap trailing spaces) a justified line keeps its overrunning word only when the word's first character overruns by less than half the space before it, and squeezed RTF lines leave runs of spaces at full width, as in Word; `w:wrapTrailSpaces` round-trips in DOCX. Readiness estimates unchanged.
 - 2026-11-08: P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged.
 - 2026-11-08: P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.
 - 2026-11-08 · P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.
