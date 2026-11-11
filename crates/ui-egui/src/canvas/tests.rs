@@ -2375,6 +2375,20 @@ fn right_click_on_a_shape_opens_the_format_shape_pane() {
     assert_eq!(picked, Some(pos), "the same shape stays selected");
 }
 
+/// In the Update Table of Contents dialog Update Field opens, Update entire table, then OK.
+fn update_entire_table(h: &mut egui_kittest::Harness<'_, WordApp>) {
+    use egui::accesskit::Role;
+    use egui_kittest::kittest::Queryable;
+    h.get_by_role_and_label(Role::Window, "Update Table of Contents");
+    h.get_by_label("Update entire table").click();
+    h.step();
+    h.get_all_by_role_and_label(Role::Button, "OK").last().expect("the dialog's OK").click();
+    for _ in 0..3 {
+        h.step();
+    }
+    assert!(h.state().dialog.is_none(), "OK closes the dialog");
+}
+
 /// #1197: the context menu on a table of contents entry offers Update Field, as in Word, and
 /// it brings the table up to date.
 #[test]
@@ -2413,6 +2427,8 @@ fn context_menu_on_a_toc_entry_updates_the_table() {
     for _ in 0..3 {
         h.step();
     }
+    // Update Table of Contents asks; the new heading needs the entire table (#2262).
+    update_entire_table(&mut h);
     let text = h.state().session.doc.plain_text(StoryRef::Body);
     assert_eq!(text.matches("Fresh heading").count(), 2, "the new heading is listed in the table: {text}");
 }
@@ -2500,6 +2516,7 @@ fn context_menu_on_a_toc_still_offers_update_field_after_an_update() {
         for _ in 0..3 {
             h.step();
         }
+        update_entire_table(&mut h);
         let text = h.state().session.doc.plain_text(StoryRef::Body);
         assert_eq!(text.matches(&name).count(), 2, "round {round}: the new heading is listed: {text}");
     }
