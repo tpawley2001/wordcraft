@@ -1935,6 +1935,7 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
             out.push_str(&format!("{{\\{k} {}}}", esc(v)));
         }
     }
+    out.push_str(&app_kept_info(doc));
     if core.revision > 0 {
         out.push_str(&format!("{{\\version{}}}", core.revision));
     }
@@ -1996,4 +1997,26 @@ fn pict_goal(img: &model::Img) -> String {
         }
     }
     s
+}
+
+/// Manager, Company and Hyperlink base from the kept extended properties (`wordcraft:app.kept`,
+/// `name\tvalue` lines, as the DOCX reader stores `docProps/app.xml`) as `{\manager …}`,
+/// `{\company …}` and `{\hlinkbase …}` (RTF 1.9.1, information group). Remove personal
+/// information leaves out Manager and Company, as the DOCX writer does.
+fn app_kept_info(doc: &Document) -> String {
+    let mut out = String::new();
+    let Some(kept) = doc.passthrough.get(wordcraft_doc::APP_KEPT) else { return out };
+    for line in String::from_utf8_lossy(kept).lines().take(64) {
+        let Some((name, value)) = line.split_once('\t') else { continue };
+        let word = match name {
+            "Manager" if !doc.settings.remove_personal_info => "manager",
+            "Company" if !doc.settings.remove_personal_info => "company",
+            "HyperlinkBase" => "hlinkbase",
+            _ => continue,
+        };
+        if !value.is_empty() {
+            out.push_str(&format!("{{\\{word} {}}}", esc(value)));
+        }
+    }
+    out
 }
