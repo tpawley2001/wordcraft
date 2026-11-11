@@ -58,7 +58,10 @@ use state::MAX_SECTIONS;
 #[cfg(test)]
 use word::hyperlink;
 
+// The RTF tests keep their acceptance files exactly as committed (long fixture lines included),
+// so rustfmt leaves them as written.
 #[cfg(test)]
+#[rustfmt::skip]
 mod tests;
 
 #[cfg(test)]
