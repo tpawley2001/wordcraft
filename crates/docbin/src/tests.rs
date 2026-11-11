@@ -46,6 +46,7 @@ mod table_float;
 mod table_width;
 mod text_box_margins;
 mod toggle_para_style;
+mod tracked_format_changes;
 mod word6;
 mod wrap_polygon;
 
