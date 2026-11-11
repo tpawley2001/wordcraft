@@ -265,6 +265,9 @@ pub enum Inline {
         fmt: Fmt,
         /// Its result is kept, not worked out again (Word's locked field, ODF's `text:fixed`).
         locked: bool,
+        /// A legacy form field's definition, as the raw `<w:ffData>` XML the document model
+        /// keeps (empty for other fields).
+        form: String,
     },
     /// A footnote or endnote: its custom mark (empty: numbered) and its content, without the
     /// note's own mark. Only flows asked for notes ([`FlowOpts::notes`]) hold them; formats

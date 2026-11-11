@@ -301,9 +301,7 @@ impl Reader {
                 let link = self.st.field.and_then(|i| self.fields.get(i)).and_then(|s| hyperlink(s));
                 if link.is_some() {
                     self.st.fmt.link = link.as_deref().and_then(model::kept_link);
-                } else if !self.shapes.is_empty()
-                    && let Some(instr) = self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty())
-                {
+                } else if let Some(instr) = self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty()) {
                     // Each result starts its own field, even when it is empty or follows the
                     // same instruction without intervening text.
                     self.para.inlines.push(super::Inline::Field {
@@ -311,6 +309,7 @@ impl Reader {
                         result: String::new(),
                         fmt: self.st.fmt.clone(),
                         locked: false,
+                        form: self.st.field.and_then(|i| self.forms.get(&i)).map(|ff| ff.to_xml()).unwrap_or_default(),
                     });
                     self.para_has = true;
                 }
@@ -374,6 +373,16 @@ impl Reader {
             "oldsprops" => Some(Dest::OldSect),
             "listoverridetable" => Some(Dest::ListOverride),
             "fldinst" => Some(Dest::FldInst),
+            "formfield" if self.st.dest == Dest::FldInst => {
+                let i = self.st.field?;
+                self.forms.entry(i).or_default();
+                Some(Dest::FormField)
+            }
+            _ if self.st.dest == Dest::FormField => {
+                let slot = super::form_field::FfSlot::for_word(w)?;
+                let open = self.st.field.and_then(|i| self.forms.get_mut(&i)).is_some_and(|f| f.open(slot));
+                Some(if open { Dest::FfText(slot) } else { Dest::Skip })
+            }
             // Transparent wrapper: read the nested pict without changing the destination.
             "pict" => Some(Dest::Pict),
             // An object's `{\result …}` is what Word shows for it; the rest of the object is
@@ -584,8 +593,14 @@ impl Reader {
                 }
                 !matches!(word, "u" | "uc")
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator if !matches!(word, "u" | "uc") => true,
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator => false,
+            Dest::FormField => {
+                if let Some(f) = self.st.field.and_then(|i| self.forms.get_mut(&i)) {
+                    f.word(word, param);
+                }
+                true
+            }
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator | Dest::FfText(_) if !matches!(word, "u" | "uc") => true,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator | Dest::FfText(_) => false,
             Dest::OldProps(false) if matches!(word, "crauth" | "crdate") => {
                 if word == "crauth" {
                     self.st.old_rev.0 = Some(value);

@@ -11,7 +11,8 @@ const CHECK_EXACT: &[u8] = br"{\rtf1\ansi {\field{\*\fldinst {FORMCHECKBOX {\*\f
 const DROP: &[u8] = br"{\rtf1\ansi {\field{\*\fldinst {FORMDROPDOWN {\*\formfield{\fftype2\ffres1\fftypetxt0\ffhaslistbox{\*\ffname Dropdown1}{\*\ffl Red}{\*\ffl Green}{\*\ffl Blue}}}}}{\fldrslt }}\par}";
 const DROP_DEFAULT: &[u8] = br"{\rtf1\ansi {\field{\*\fldinst {FORMDROPDOWN {\*\formfield{\fftype2\ffres25\ffdefres2\fftypetxt0\ffhaslistbox{\*\ffname Dropdown2}{\*\ffl Red}{\*\ffl Green}{\*\ffl Blue}}}}}{\fldrslt }}\par}";
 const TEXT: &[u8] = br"{\rtf1\ansi Value {\field{\*\fldinst {FORMTEXT {\*\formfield{\fftype0\ffownhelp\ffownstat\fftypetxt1\ffmaxlen5{\*\ffname Text1}{\*\ffdeftext 12}{\*\ffformat 0.00}{\*\ffhelptext Help me}{\*\ffstattext Status}}}}}{\fldrslt {12}}}\par}";
-const TEXT_PROT: &[u8] = br"{\rtf1\ansi {\field{\*\fldinst {FORMTEXT {\*\formfield{\fftype0\ffprot\fftypetxt0{\*\ffname Locked}}}}}{\fldrslt {x}}}\par}";
+const TEXT_PROT: &[u8] =
+    br"{\rtf1\ansi {\field{\*\fldinst {FORMTEXT {\*\formfield{\fftype0\ffprot\fftypetxt0{\*\ffname Locked}}}}}{\fldrslt {x}}}\par}";
 
 /// Every field in the body: (instr, result, form).
 fn fields(d: &wordcraft_doc::Document) -> Vec<(String, String, String)> {
@@ -58,9 +59,15 @@ fn check_box_exact_size_and_own_result() {
 fn drop_down_entries_and_selection() {
     let (instr, _, form) = only_form(DROP);
     assert_eq!(instr.trim(), "FORMDROPDOWN");
-    assert_eq!(parsed(&form), LegacyForm::DropDown { name: "Dropdown1".into(), entries: vec!["Red".into(), "Green".into(), "Blue".into()], selected: 1 });
+    assert_eq!(
+        parsed(&form),
+        LegacyForm::DropDown { name: "Dropdown1".into(), entries: vec!["Red".into(), "Green".into(), "Blue".into()], selected: 1 }
+    );
     let (_, _, form) = only_form(DROP_DEFAULT);
-    assert_eq!(parsed(&form), LegacyForm::DropDown { name: "Dropdown2".into(), entries: vec!["Red".into(), "Green".into(), "Blue".into()], selected: 2 });
+    assert_eq!(
+        parsed(&form),
+        LegacyForm::DropDown { name: "Dropdown2".into(), entries: vec!["Red".into(), "Green".into(), "Blue".into()], selected: 2 }
+    );
     assert!(!form.contains("<w:result"), "\\ffres25 means none: {form}");
 }
 

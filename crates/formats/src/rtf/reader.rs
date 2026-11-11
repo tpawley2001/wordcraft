@@ -82,6 +82,8 @@ pub(super) struct Reader {
     pub(super) ov_list: i32,
     pub(super) ov_ls: i32,
     pub(super) fields: Vec<String>,
+    /// The legacy form field definitions read, by index in `fields`.
+    pub(super) forms: HashMap<usize, super::form_field::FormField>,
     // Picture being read.
     pub(super) pict_depth: Option<usize>,
     pub(super) pict_hex: Vec<u8>,

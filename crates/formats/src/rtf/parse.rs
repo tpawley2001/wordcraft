@@ -194,7 +194,14 @@ fn parse_full(bytes: &[u8], marks: bool) -> Result<Parsed, String> {
                     if r.skip_chars > 0
                         && matches!(
                             r.st.dest,
-                            Dest::Body | Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::FontTbl | Dest::RevTbl | Dest::Atn(_)
+                            Dest::Body
+                                | Dest::Info(_)
+                                | Dest::FldInst
+                                | Dest::FfText(_)
+                                | Dest::Bookmark
+                                | Dest::FontTbl
+                                | Dest::RevTbl
+                                | Dest::Atn(_)
                         )
                     {
                         r.skip_chars -= 1;

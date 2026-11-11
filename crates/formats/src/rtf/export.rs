@@ -1147,8 +1147,12 @@ impl Writer {
                 Inline::Ruby { base, fmt, .. } => self.run(base, fmt, out),
                 // ASK and SET show nothing (see `model::shows_nothing`).
                 Inline::Field { instr, .. } if model::shows_nothing(instr) => {}
-                Inline::Field { instr, result, fmt, .. } => {
-                    out.push_str(&format!("{{\\field{{\\*\\fldinst {}}}{{\\fldrslt ", esc(instr)));
+                Inline::Field { instr, result, fmt, form, .. } => {
+                    // A legacy form field's definition goes in its instruction, as Word writes it.
+                    match super::form_field::rtf_group(form) {
+                        Some(group) => out.push_str(&format!("{{\\field{{\\*\\fldinst {{{} {group}}}}}{{\\fldrslt ", esc(instr.trim()))),
+                        None => out.push_str(&format!("{{\\field{{\\*\\fldinst {}}}{{\\fldrslt ", esc(instr))),
+                    }
                     self.run(result, fmt, out);
                     out.push_str("}}");
                 }
