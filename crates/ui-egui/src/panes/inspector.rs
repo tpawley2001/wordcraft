@@ -150,6 +150,8 @@ fn describe(prop: &str, v: &Value) -> String {
         "lineSpacing" => "Line spacing",
         "contextualSpacing" => "Don't add space between paragraphs of the same style",
         "mirrorIndents" => "Mirror indents",
+        "adjustRightIndent" => "Automatically adjust right indent when document grid is defined",
+        "snapToGrid" => "Snap to grid when document grid is defined",
         "keepNext" => "Keep with next",
         "keepLines" => "Keep lines together",
         "pageBreakBefore" => "Page break before",
