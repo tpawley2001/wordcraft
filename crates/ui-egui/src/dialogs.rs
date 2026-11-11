@@ -132,6 +132,10 @@ pub enum Dialog {
         keep_lines: bool,
         page_break: bool,
         widow: bool,
+        /// The Outline level box: 0..8 = Level 1..9, 9 = Body Text (`w:outlineLvl`).
+        outline: u8,
+        /// The box is greyed: the paragraph's style is a built-in heading, whose level it keeps.
+        outline_fixed: bool,
         /// Page: 0 Indents and Spacing, 1 Line and Page Breaks, 2 Asian Typography.
         tab: u8,
         /// Asian Typography as the model has it (`para.asianTypography`): kinsoku, word wrap,
@@ -783,7 +787,7 @@ impl Dialog {
                 let tab = if name == "asianTypography" { 2 } else { 0 };
                 let s = &app.session;
                 let story = s.sel.focus.story;
-                let of = |props: &wordcraft_doc::props::ParaProps| paragraph_dialog(&s.doc.styles.resolve_para(props), tab);
+                let of = |props: &wordcraft_doc::props::ParaProps| paragraph_dialog(&s.doc.styles.resolve_para(props), props.style.as_deref(), tab);
                 // Every selected paragraph as the dialog would show it: what they all share is
                 // shown, and what OK compares with; the rest shows blank (#1346).
                 let mut each = wordcraft_engine::cmd::selected_paths(s).into_iter().filter_map(|path| s.doc.para(story, &path)).map(|p| of(&p.props));
@@ -1138,5 +1142,7 @@ mod tests_insert_table;
 mod tests_page_layout;
 #[cfg(test)]
 mod tests_para_line;
+#[cfg(test)]
+mod tests_para_outline;
 #[cfg(test)]
 mod tests_zoom;
