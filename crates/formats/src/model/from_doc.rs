@@ -184,6 +184,8 @@ fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
         italic_cs: e.italic_cs,
         lang_bidi: e.lang_bidi.clone().filter(|l| !l.is_empty()),
         lang_ea: e.lang_ea.clone().filter(|l| !l.is_empty()),
+        no_proof: set(e.no_proof),
+        east_asian_layout: e.east_asian_layout.clone().filter(|l| *l != Default::default()),
         ..Default::default()
     };
     (x != CharProps::default()).then(|| Box::new(x))
@@ -1268,11 +1270,18 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             .collect::<Vec<_>>()
     };
     let keep_rows = || t.rows.iter().map(|r| r.props.cant_split).collect::<Vec<_>>();
-    // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one.
+    // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one,
+    // and the table's style and look, when it has a style.
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
-        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true))
-        .map(|(heights, keep_rows)| super::types::TableExtra { heights, keep_rows, ..Default::default() });
+        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some())
+        .map(|(heights, keep_rows)| super::types::TableExtra {
+            heights,
+            keep_rows,
+            style: t.props.style.clone(),
+            look: t.props.style.is_some().then_some(t.props.look),
+            ..Default::default()
+        });
     let extra = tracked.paras.then(|| {
         let heights = heights();
         super::types::TableExtra {
@@ -1284,6 +1293,8 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             fixed: t.props.fixed,
             space: [t.props.space_before, t.props.space_after],
             header_rows: t.rows.iter().take_while(|r| r.props.header).count(),
+            style: None,
+            look: None,
         }
     });
     // Kept whole for formats that ask for it: its header rows count even without the rest.

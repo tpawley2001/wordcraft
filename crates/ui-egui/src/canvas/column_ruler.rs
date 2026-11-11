@@ -66,7 +66,8 @@ pub(super) fn column_gaps(app: &WordApp, layout: &DocLayout, pi: usize) -> Optio
     // margin, moved as the page's text area is (on an even page of a mirrored layout, #2914).
     let sections = app.session.doc.sections();
     let (_, page_sect) = sections.get(page.section)?;
-    let origin = page.body.x + sect.margin_left + sect.gutter - page_sect.margin_left - page_sect.gutter;
+    let mirror = app.session.doc.settings.mirror_margins;
+    let origin = page.body.x + sect.text_left(mirror) - page_sect.text_left(mirror);
     let gaps = gaps_of(&sect).into_iter().map(|(l, r)| (origin + l, origin + r)).collect();
     Some(ColumnGaps { sect, origin, gaps })
 }

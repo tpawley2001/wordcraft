@@ -74,6 +74,8 @@ pub(crate) struct PageBuilder<'a> {
     pub(crate) balance: Option<(usize, f32)>,
     /// The page with the last explicit column break.
     pub(crate) col_break_page: Option<usize>,
+    /// Mirror margins are on ([`super::ctx::Ctx::mirror`]): the gutter stays on the inside.
+    pub(crate) mirror: bool,
     /// The section's footnotes go right below its text, not at the page bottom ...
     pub(crate) sect_beneath: bool,
     /// ... and so do the current page's (set as the page starts).
@@ -152,7 +154,7 @@ impl PageBuilder<'_> {
             return;
         }
         let total = self.notes_h();
-        let x = self.sect.margin_left + self.sect.gutter;
+        let x = self.sect.text_left(self.mirror);
         // The note area starts below the text (a page of continued notes alone: at its top).
         let area = self.bottom.max(self.body_floor());
         let fits = total <= self.orig_bottom - area + 0.01;
@@ -325,7 +327,7 @@ impl PageBuilder<'_> {
         self.number = self.restart_at.take().unwrap_or_else(|| self.number.saturating_add(1));
         let (w, h) = if self.web { (s.page_w, f32::MAX / 4.0) } else { (s.page_w, s.page_h) };
         let bottom = self.body_bottom(body_top);
-        let body = Rect::new(s.margin_left + s.gutter, body_top, s.text_width(), (bottom - body_top).max(36.0));
+        let body = Rect::new(s.text_left(self.mirror), body_top, s.text_width(), (bottom - body_top).max(36.0));
         let mut decor = Vec::new();
         if !self.web {
             decor = page_border_rules(s);
@@ -365,7 +367,7 @@ impl PageBuilder<'_> {
             .windows(2)
             .filter_map(|w| match w {
                 // Midway across the space between neighbours (leftwards in an RTL section).
-                [(ax, aw), (bx, bw)] => Some(s.margin_left + s.gutter + if bx >= ax { (ax + aw + bx) / 2.0 } else { (bx + bw + ax) / 2.0 }),
+                [(ax, aw), (bx, bw)] => Some(s.text_left(self.mirror) + if bx >= ax { (ax + aw + bx) / 2.0 } else { (bx + bw + ax) / 2.0 }),
                 _ => None,
             })
             .collect();
@@ -430,7 +432,7 @@ impl PageBuilder<'_> {
         self.max_y.max(self.y)
     }
     pub(crate) fn col_x(&self) -> f32 {
-        self.sect.margin_left + self.sect.gutter + self.cols.get(self.col).map(|c| c.0).unwrap_or(0.0)
+        self.sect.text_left(self.mirror) + self.cols.get(self.col).map(|c| c.0).unwrap_or(0.0)
     }
     pub(crate) fn col_w(&self) -> f32 {
         self.cols.get(self.col).map(|c| c.1).unwrap_or_else(|| self.sect.text_width())
@@ -496,7 +498,7 @@ pub(crate) fn body_top_for(ctx: &mut Ctx, sect: &SectionProps, header: Option<u3
     let Some(part) = ctx.doc.parts.get(&id) else { return sect.margin_top };
     let blocks = part.blocks.clone();
     // Placed as `headers_footers` draws it, so page-relative floats wrap the same way.
-    let frame = PageFrame { sect, margin_top: None, origin: (sect.margin_left + sect.gutter, sect.header), number: 1, mirror: ctx.mirror };
+    let frame = PageFrame { sect, margin_top: None, origin: (sect.text_left(ctx.mirror), sect.header), number: 1, mirror: ctx.mirror };
     let track = std::mem::replace(&mut ctx.track_totals, false);
     let (h, ..) = with_pin(ctx, id, sect, 1, None, |ctx| {
         let laid = layout_box(ctx, BoxInput::other(StoryRef::Part(id), &blocks, sect.text_width(), 0, Some(frame)));
@@ -619,10 +621,13 @@ impl PageFrame<'_> {
         self.number.is_multiple_of(2)
     }
 
-    /// The widths of the page's left and right margins (the gutter is on the inside), and how
+    /// The widths of the page's left and right margins (the gutter is on the inside, or on the
+    /// right with `rtl_gutter`), and how
     /// far [`mirror_even_pages`] moves what is laid out on it.
     pub(crate) fn sides(&self) -> (f32, f32, f32) {
-        let (inside, outside) = (self.sect.margin_left + self.sect.gutter, self.sect.margin_right);
+        let s = self.sect;
+        // A gutter `w:rtlGutter` puts on the right widens the right margin instead.
+        let (inside, outside) = (s.text_left(self.mirror), s.margin_right + (s.gutter - s.left_gutter(self.mirror)));
         let shift = outside - inside;
         if self.mirror && self.even() && shift.is_finite() { (outside, inside, shift) } else { (inside, outside, 0.0) }
     }
