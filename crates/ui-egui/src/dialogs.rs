@@ -237,6 +237,9 @@ pub enum Dialog {
         header: f32,
         footer: f32,
         start: wordcraft_doc::section::SectionStart,
+        /// The section's Suppress endnotes (`layout.suppressEndnotes`, `w:noEndnote`), changeable
+        /// only while its endnotes go at the end of each section, applied only if changed.
+        suppress_endnotes: bool,
     },
     Link {
         url: String,
@@ -901,6 +904,7 @@ impl Dialog {
                     header: sp.header / crate::options::unit().pt_per_unit(),
                     footer: sp.footer / crate::options::unit().pt_per_unit(),
                     start: sp.start,
+                    suppress_endnotes: sp.no_endnote == Some(true),
                 }
             }
             "link" => Dialog::Link {
@@ -1158,6 +1162,8 @@ mod tests_insert_table;
 mod tests_note_formats;
 #[cfg(test)]
 mod tests_page_layout;
+#[cfg(test)]
+mod tests_page_suppress_endnotes;
 #[cfg(test)]
 // The acceptance tests pick a check box with `iter_mut().nth(i)`, which clippy prefers as `get_mut`.
 #[allow(clippy::iter_nth)]

@@ -8,8 +8,8 @@ use super::font::{
 use super::forms::{cell_margins_dialog, custom_properties, table_properties};
 use super::mailings::{ADDRESS_PARTS, recipient_list, rule_params};
 use super::page_setup::{
-    page_layout_commands, page_paper_group, page_paper_source_group, page_section_start_combo, page_section_start_value, page_valign_combo,
-    page_valign_value, run_as_one_step,
+    page_endnotes_at_section_end, page_layout_commands, page_paper_group, page_paper_source_group, page_section_start_combo,
+    page_section_start_value, page_valign_combo, page_valign_value, run_as_one_step,
 };
 use super::paragraph::{OUTLINE_LEVELS, ParaNumber, apply_paragraph, line_spacing_boxes, outline_entry, para_check, para_number};
 use super::styles::manage_styles;
@@ -755,6 +755,7 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         header,
         footer,
         start,
+        suppress_endnotes,
     } = d
     else {
         return false;
@@ -812,6 +813,9 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     }
     page_valign_combo(ui, valign);
     page_section_start_combo(ui, start);
+    // Greyed while the section's endnotes go at the end of the document, as in Word.
+    let endnotes_at_section_end = page_endnotes_at_section_end(app);
+    ui.add_enabled(endnotes_at_section_end, egui::Checkbox::new(suppress_endnotes, tl!("Suppress endnotes")));
     // Word's Page Setup › Layout: a title page without the page number (#1230).
     ui.label(egui::RichText::new(tl!("Headers and footers")).font(semibold(12.5)));
     ui.checkbox(odd_even, tl!("Different Odd & Even Pages"));
@@ -836,6 +840,9 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
                 if *start != wordcraft_engine::cmd::page::sect(&app.session).start {
                     commands.push(("layout.sectionStart", json!({"value": page_section_start_value(*start)})));
+                }
+                if endnotes_at_section_end && *suppress_endnotes != (wordcraft_engine::cmd::page::sect(&app.session).no_endnote == Some(true)) {
+                    commands.push(("layout.suppressEndnotes", json!({"value": *suppress_endnotes})));
                 }
                 if grid != grid_was {
                     let kind = ["none", "lines", "linesAndChars", "snapToChars"].get(grid.0 as usize).copied().unwrap_or("none");

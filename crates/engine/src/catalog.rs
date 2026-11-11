@@ -233,6 +233,7 @@ Layout|Page Setup|Line Numbers|layout.lineNumbers
 Layout|Page Setup|Hyphenation|layout.hyphenation
 Layout|Page Setup|Page Setup Dialog|layout.pageSetup
 Layout|Page Setup|Vertical Alignment|layout.verticalAlign
+Layout|Page Setup|Suppress Endnotes|layout.suppressEndnotes
 Layout|Page Setup|Paper Source|layout.paperSource
 Layout|Page Setup|Document Grid|layout.documentGrid
 Layout|Page Setup|Section Direction|layout.sectionRtl
