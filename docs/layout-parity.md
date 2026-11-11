@@ -1,5 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
+> **Last updated:** 2026-11-11 · **Change:** trivial (P0233: header and footer text doesn't wrap around a Top and Bottom object anchored in it. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-10 · **Change:** trivial (P0204: a missing Univers keeps Word's single line height, 1.24 em, and Univers' own advance widths, so its lines wrap where Word's do. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-10 · **Change:** trivial (P0195: a missing Verdana, Georgia, Trebuchet MS, Century Gothic, Consolas, Garamond or Comic Sans MS keeps Word's single line height. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-09 · **Change:** trivial (P0172: justified lines of a document opened from RTF squeeze their spaces by up to half to keep the overrunning word. Readiness estimates unchanged.)
@@ -581,6 +582,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 | 2026-11-02 | trivial | For ODT documents, LibreOffice's layout: a line holding only in-line pictures is as tall as they are, without its font's ascent and descent (`Settings::odf_layout`, set when an ODT opens; Word keeps the font's, so other documents are unchanged). Measured in LibreOffice: a 3.6 pt rule's line is 3.6 pt; WordCraft's had been 15.5 pt (`tests::a_line_of_only_pictures_fits_them_in_odt_documents`) |
 | 2026-11-02 | trivial | Beyond Word, for ODT documents: a table's own space above and below (`TableProps::space_before`/`space_after`) moves the text around it, and a header (footer) taller than its margin keeps its spacing between it and the body (`SectionProps::header_gap`/`footer_gap`; Word keeps none, so DOCX documents are unchanged) (`tests::a_tables_own_space_above_and_below_moves_the_text`, `tests::body_starts_right_below_a_tall_header`) |
 | 2026-11-02 | trivial | A page break before the paragraph in a table's first row moves the whole table to the next page, as in Word (it was ignored); emphasis marks (Font › Emphasis mark) are drawn over or under each character and make the line taller |
+| 2026-11-11 | trivial | A Top and Bottom object anchored in a header or footer no longer pushes that header's or footer's own lines of text below it, as in Word; the body still starts below it, and a paragraph of only pictures still goes below it (`tests::hf_top_bottom_wrap`, `tests::header_extent`) |
 
 Maintenance on 2026-10-12 retains current tracked-deletion, endnote, footer-total, text-box
 and balloon layout while supplying explicit cell identity at every box call. The native Word
