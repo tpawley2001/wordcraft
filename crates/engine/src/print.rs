@@ -567,6 +567,13 @@ impl Session {
         Ok(Some((doc, lay)))
     }
 
+    /// Print Selection (`range: "selectedText"`): the selected content as the document that
+    /// prints instead, with its print layout; `None` for any other range.
+    /// TODO(P05-115): not built yet (see the task spec).
+    pub fn print_selection(&self, _v: &Value) -> Result<Option<(wordcraft_doc::Document, std::sync::Arc<DocLayout>)>, CmdError> {
+        Ok(None)
+    }
+
     /// Render a shared sheet plan for a saved PDF or an annotation-free printer job.
     fn print_pdf_with(&self, v: &Value, links: bool) -> Result<(Vec<u8>, PrintPlan), CmdError> {
         if !v.is_object() {
