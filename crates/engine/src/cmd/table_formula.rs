@@ -36,17 +36,32 @@ pub fn evaluate_with(
     c: usize,
     formula: &str,
 ) -> Result<f64, CmdError> {
+    evaluate_in(Some(t), doc, default_lang, r, c, formula)
+}
+
+/// Evaluate `formula` for the cell in row `r`, cell index `c` of `t`, or with no table (`t` is
+/// `None`) for a formula field in an ordinary paragraph, where cell references, ranges and
+/// ABOVE/LEFT/RIGHT/BELOW are errors and every bare name is a bookmark.
+fn evaluate_in(
+    t: Option<&Table>,
+    doc: Option<&wordcraft_doc::Document>,
+    default_lang: Option<&str>,
+    r: usize,
+    c: usize,
+    formula: &str,
+) -> Result<f64, CmdError> {
     if formula.len() > MAX_FORMULA {
         return Err(syntax(format!("the formula is longer than {MAX_FORMULA} characters")));
     }
     let body = formula.trim();
     let body = body.strip_prefix('=').unwrap_or(body);
-    let mut parser = Parser { toks: tokenize(body)?, pos: 0, depth: 0 };
+    let mut parser = Parser { toks: tokenize(body)?, pos: 0, depth: 0, in_table: t.is_some() };
     let expr = parser.compare()?;
     if parser.pos != parser.toks.len() {
         return Err(syntax("unexpected text after the formula".into()));
     }
-    let here = Here { t, doc, default_lang, r, c, g: t.grid_col(r, c), visits: std::cell::Cell::new(0) };
+    let g = t.map_or(0, |t| t.grid_col(r, c));
+    let here = Here { t, doc, default_lang, r, c, g, visits: std::cell::Cell::new(0) };
     match eval(&expr, &here)? {
         Val::Num(x) => finite(x),
         Val::List(_) => Err(syntax("a range or ABOVE/LEFT/RIGHT/BELOW needs a function, such as SUM".into())),
@@ -108,8 +123,16 @@ pub fn evaluate_field_with(
 /// The text a formula field outside a table shows: as [`evaluate_field_with`], with no cells to
 /// read. A bookmark name is an operand that reads the number the bookmark marks.
 pub fn evaluate_text_field(doc: &wordcraft_doc::Document, default_lang: Option<&str>, instr: &str) -> Result<String, CmdError> {
-    let _ = (doc, default_lang, instr);
-    Err(CmdError::Failed("formula fields outside a table are not worked out yet".into()))
+    let (formula, switch) = split_switch(instr);
+    let value = evaluate_in(None, Some(doc), default_lang, 0, 0, formula)?;
+    let text = match switch.and_then(picture_of) {
+        Some(picture) => format_picture(value, &picture),
+        None => wordcraft_doc::locale_number::format_number(value, default_lang),
+    };
+    Ok(match switch {
+        Some(switch) => format_switches(switch, value, text),
+        None => text,
+    })
 }
 
 /// The text of a formula result under the field's `\*` switches, where `text` is `value` formatted
@@ -271,7 +294,8 @@ fn finite(x: f64) -> Result<f64, CmdError> {
 #[derive(Clone, Debug, PartialEq)]
 enum Tok {
     Num(f64),
-    /// A name: a function, a keyword or a cell reference (letters then digits), upper-cased.
+    /// A name: a function, a keyword, a cell reference (letters then digits) or a bookmark,
+    /// upper-cased.
     Name(String),
     Op(char),
     /// A comparison: `=`, `<>`, `<`, `<=`, `>` or `>=`.
@@ -295,7 +319,8 @@ fn parse_num_token(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Resu
 fn parse_name_token(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Tok {
     let mut name = String::new();
     while let Some(&d) = chars.peek() {
-        if d.is_ascii_alphanumeric() {
+        // Bookmark names (`Net_Total`) may hold `_` after their first letter.
+        if d.is_ascii_alphanumeric() || d == '_' {
             name.push(d.to_ascii_uppercase());
             chars.next();
         } else {
@@ -366,12 +391,16 @@ enum Expr {
     /// A comparison: 1 when it holds, 0 when it doesn't.
     Cmp(&'static str, Box<Expr>, Box<Expr>),
     Call(String, Vec<Expr>),
+    /// A bookmark: the number the bookmark of this name (upper-cased, matched ignoring case) marks.
+    Bookmark(String),
 }
 
 struct Parser {
     toks: Vec<Tok>,
     pos: usize,
     depth: usize,
+    /// Whether the formula sits in a table cell: outside one, every bare name is a bookmark.
+    in_table: bool,
 }
 
 impl Parser {
@@ -511,7 +540,10 @@ impl Parser {
                 if matches!(name.as_str(), "TRUE" | "FALSE") {
                     return Ok(Expr::Call(name, Vec::new()));
                 }
-                let (row, col) = cell_ref(&name).ok_or_else(|| syntax(format!("`{name}` isn't a cell reference or a function")))?;
+                // Any other name is a bookmark, unless it is shaped like a cell reference in a table.
+                let Some((row, col)) = cell_ref(&name).filter(|_| self.in_table) else {
+                    return Ok(Expr::Bookmark(name));
+                };
                 if self.eat_op(':') {
                     let Some(Tok::Name(other)) = self.toks.get(self.pos).cloned() else {
                         return Err(syntax("a range ends with a cell reference, such as B4".into()));
@@ -542,7 +574,8 @@ fn cell_ref(name: &str) -> Option<(usize, usize)> {
 
 /// Where the formula's cell sits.
 struct Here<'a> {
-    t: &'a Table,
+    /// The formula's table, or `None` for a formula field in an ordinary paragraph.
+    t: Option<&'a Table>,
     doc: Option<&'a wordcraft_doc::Document>,
     default_lang: Option<&'a str>,
     r: usize,
@@ -558,6 +591,22 @@ impl Here<'_> {
         let total = self.visits.get().saturating_add(n);
         self.visits.set(total);
         if total > MAX_CELL_VISITS { Err(CmdError::Failed("Formula too complex".into())) } else { Ok(()) }
+    }
+
+    /// The formula's table, or an error when the formula is not in one.
+    fn table(&self) -> Result<&Table, CmdError> {
+        self.t.ok_or_else(|| CmdError::Failed("cell references, ranges and ABOVE/LEFT/RIGHT/BELOW need a table".into()))
+    }
+
+    /// The number the bookmark `name` marks (its name matched ignoring ASCII case, first in
+    /// document order), counted against the budget; text that is not a number counts as 0.
+    fn bookmark_number(&self, name: &str) -> Result<f64, CmdError> {
+        self.visit(1)?;
+        let undefined = || CmdError::Failed(format!("Undefined Bookmark, {name}"));
+        let doc = self.doc.ok_or_else(undefined)?;
+        let (real, _) = doc.bookmarks().into_iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).ok_or_else(undefined)?;
+        let text = super::references::bookmark_text(doc, &real).unwrap_or_default();
+        Ok(parse_number(&text, self.default_lang).unwrap_or(0.0))
     }
 
     fn cell_lang(&self, c: &Cell) -> Option<String> {
@@ -576,11 +625,12 @@ impl Here<'_> {
     /// The number in the cell covering grid column `g` of row `r`, counted against the budget.
     fn number_at(&self, r: usize, g: usize) -> Result<Option<f64>, CmdError> {
         self.visit(1)?;
-        let ci = match self.t.cell_at_grid(r, g) {
+        let t = self.table()?;
+        let ci = match t.cell_at_grid(r, g) {
             Some(ci) => ci,
             None => return Ok(None),
         };
-        let c = match self.t.rows.get(r).and_then(|row| row.cells.get(ci)) {
+        let c = match t.rows.get(r).and_then(|row| row.cells.get(ci)) {
             Some(c) => c,
             None => return Ok(None),
         };
@@ -602,12 +652,13 @@ fn eval(e: &Expr, here: &Here) -> Result<Val, CmdError> {
         }
         Expr::Range(r0, g0, r1, g1) => {
             // Only the part of the range inside the table holds cells.
+            let t = here.table()?;
             let mut v = Vec::new();
-            let (r_end, g_end) = (here.t.rows.len().min(r1.saturating_add(1)), here.t.cols().min(g1.saturating_add(1)));
+            let (r_end, g_end) = (t.rows.len().min(r1.saturating_add(1)), t.cols().min(g1.saturating_add(1)));
             for row in *r0..r_end {
                 let mut last_ci = None;
                 for g in *g0..g_end {
-                    let ci = here.t.cell_at_grid(row, g);
+                    let ci = t.cell_at_grid(row, g);
                     if ci.is_some() && ci == last_ci {
                         continue;
                     }
@@ -650,6 +701,7 @@ fn eval(e: &Expr, here: &Here) -> Result<Val, CmdError> {
             Val::Num(truth(holds))
         }
         Expr::Call(name, args) => Val::Num(call(name, args, here)?),
+        Expr::Bookmark(name) => Val::Num(here.bookmark_number(name)?),
     })
 }
 
@@ -669,6 +721,7 @@ fn scalar(v: Val) -> Result<f64, CmdError> {
 /// The first run of numbers next to the formula's cell on one side (see the module note): the
 /// cells are skipped while they hold no number, then summed while they do.
 fn side_numbers(here: &Here, side: Side) -> Result<Vec<f64>, CmdError> {
+    let t = here.table()?;
     let mut out = Vec::new();
     let mut started = false;
     let mut take = |value: Option<f64>| -> bool {
@@ -690,14 +743,14 @@ fn side_numbers(here: &Here, side: Side) -> Result<Vec<f64>, CmdError> {
             }
         }
         Side::Below => {
-            for row in (here.r + 1)..here.t.rows.len() {
+            for row in (here.r + 1)..t.rows.len() {
                 if !take(here.number_at(row, here.g)?) {
                     break;
                 }
             }
         }
         Side::Left | Side::Right => {
-            let Some(row) = here.t.rows.get(here.r) else { return Ok(out) };
+            let Some(row) = t.rows.get(here.r) else { return Ok(out) };
             here.visit(row.cells.len())?;
             let cells: Vec<Option<f64>> = row.cells.iter().map(|c| here.cell_number(c)).collect();
             let order: Vec<usize> = if side == Side::Left { (0..here.c).rev().collect() } else { ((here.c + 1)..cells.len()).collect() };
@@ -1103,5 +1156,66 @@ mod tests {
             let err = ev(&t, 0, 0, &f).unwrap_err();
             assert!(err.to_string().contains("nested too deeply"), "{f}: {err}");
         }
+    }
+
+    /// A body of one paragraph per (bookmark name, text), each wrapped in its bookmark.
+    fn marked(marks: &[(&str, &str)]) -> wordcraft_doc::Document {
+        use wordcraft_doc::{CharProps, InlineObject, StoryRef};
+        let text: Vec<&str> = marks.iter().map(|m| m.1).collect();
+        let mut doc = wordcraft_doc::Document::from_text(&text.join("\n"));
+        for (path, (name, _)) in doc.para_paths(StoryRef::Body).into_iter().zip(marks) {
+            let p = doc.para_mut(StoryRef::Body, &path).unwrap();
+            p.insert_object(p.len(), InlineObject::BookmarkEnd { name: (*name).into() }, &CharProps::default()).unwrap();
+            p.insert_object(0, InlineObject::BookmarkStart { name: (*name).into() }, &CharProps::default()).unwrap();
+        }
+        doc
+    }
+
+    #[test]
+    fn a_bookmark_that_is_not_a_number_counts_as_zero() {
+        // Not measured: Word's documented behaviour, from memory.
+        let doc = marked(&[("Word", "abc"), ("Blank", "x")]);
+        assert_eq!(evaluate_text_field(&doc, None, "= Word + 3").as_deref(), Ok("3"));
+        assert_eq!(evaluate_text_field(&doc, None, "= Blank * 2 + 1").as_deref(), Ok("1"));
+    }
+
+    #[test]
+    fn a_bookmark_name_may_hold_underscores() {
+        assert_eq!(tokenize("Net_Total*2").unwrap().first(), Some(&Tok::Name("NET_TOTAL".into())));
+        let doc = marked(&[("Net_Total", "7.5"), ("a_b_c", "2")]);
+        assert_eq!(evaluate_text_field(&doc, None, "= Net_Total * 2").as_deref(), Ok("15"));
+        assert_eq!(evaluate_text_field(&doc, None, "= A_B_C + net_total").as_deref(), Ok("9.50"));
+    }
+
+    #[test]
+    fn a_formula_outside_a_table_reads_no_cells() {
+        let doc = marked(&[("A1", "4")]);
+        assert!(evaluate_text_field(&doc, None, "=SUM(ABOVE)").is_err());
+        assert!(evaluate_text_field(&doc, None, "=LEFT").is_err());
+        assert!(evaluate_text_field(&doc, None, "=SUM(A1:B2)").is_err());
+        let empty = wordcraft_doc::Document::from_text("x");
+        assert_eq!(evaluate_text_field(&empty, None, "=A1").map_err(|e| e.to_string()), Err("Undefined Bookmark, A1".to_string()));
+        assert_eq!(evaluate_text_field(&empty, None, r#"= 2 + 3 \# "0.0""#).as_deref(), Ok("5.0"));
+    }
+
+    #[test]
+    fn table_formulas_work_out_as_before() {
+        let t = table(&[&["1", "2"], &["3", "4"], &["", ""]]);
+        assert_eq!(ev(&t, 2, 0, "=SUM(ABOVE)"), Ok(4.0));
+        assert_eq!(ev(&t, 2, 1, "=SUM(A1:B2)*2"), Ok(20.0));
+        assert_eq!(evaluate_field(&t, 2, 1, "=B1+B2").as_deref(), Ok("6"));
+        // A name shaped like a cell reference stays one in a table, even with a bookmark so named.
+        let doc = marked(&[("B1", "100"), ("Extra", "10")]);
+        assert_eq!(evaluate_with(&t, Some(&doc), None, 2, 1, "=B1 + Extra"), Ok(12.0));
+        assert!(ev(&t, 2, 1, "=Extra").is_err(), "no document, so no bookmarks");
+    }
+
+    #[test]
+    fn bookmark_operands_count_against_the_visit_budget() {
+        let doc = marked(&[("N", "1")]);
+        let here = Here { t: None, doc: Some(&doc), default_lang: None, r: 0, c: 0, g: 0, visits: std::cell::Cell::new(MAX_CELL_VISITS - 1) };
+        assert_eq!(eval(&Expr::Bookmark("N".into()), &here).ok().map(|v| scalar(v).ok()), Some(Some(1.0)));
+        assert_eq!(here.visits.get(), MAX_CELL_VISITS);
+        assert!(eval(&Expr::Bookmark("N".into()), &here).is_err(), "past the budget");
     }
 }
