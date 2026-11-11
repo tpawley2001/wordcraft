@@ -128,6 +128,8 @@ pub(super) fn font_props(d: &Dialog) -> serde_json::Map<String, Value> {
         hidden,
         color,
         spacing,
+        scale,
+        position,
         kern,
         kern_at,
         ..
@@ -164,6 +166,8 @@ pub(super) fn font_props(d: &Dialog) -> serde_json::Map<String, Value> {
     props.insert("caps".into(), json!(*caps));
     props.insert("hidden".into(), json!(*hidden));
     props.insert("spacing".into(), json!(*spacing));
+    props.insert("scale".into(), json!(*scale));
+    props.insert("position".into(), json!(*position));
     match kern {
         Some(true) => {
             props.insert("kern".into(), json!(kern_at.clamp(1.0, 1638.0)));
@@ -257,4 +261,79 @@ pub(super) fn apply_font(app: &mut WordApp, d: &Dialog) {
         let _ = app.run("format.underlineColor", json!({"color": "auto"}));
         app.session.merge_undo_since(mark);
     }
+}
+
+/// The Scale box's list, percent, in Word's order; any whole percent in `SCALE_RANGE` can be typed.
+pub(super) const SCALES: [f32; 8] = [200.0, 150.0, 100.0, 90.0, 80.0, 66.0, 50.0, 33.0];
+
+/// The percentages the Scale box accepts (`w:w`).
+pub(super) const SCALE_RANGE: std::ops::RangeInclusive<f32> = 1.0..=600.0;
+
+/// The largest Spacing or Position By value, points.
+pub(super) const BY_MAX: f32 = 1584.0;
+
+/// The Scale row: a typed percent and the list of common ones.
+pub(super) fn scale_box(ui: &mut Ui, scale: &mut f32, label: &egui::Response) {
+    if !scale.is_finite() {
+        *scale = 100.0;
+    }
+    ui.horizontal(|ui| {
+        let field = egui::DragValue::new(scale).speed(1.0).range(SCALE_RANGE).max_decimals(0).suffix("%");
+        ui.add(field).labelled_by(label.id);
+        let shown = format!("{scale}%");
+        let combo = craft_ui::ComboBox::from_id_salt("fontdlg_scale").width(70.0).selected_text(shown).show_ui(ui, |ui| {
+            for v in SCALES {
+                if ui.selectable_label(*scale == v, format!("{v}%")).clicked() {
+                    *scale = v;
+                }
+            }
+        });
+        combo.response.labelled_by(label.id);
+    });
+}
+
+/// The Spacing or Position row: a list of Normal and the two directions (their translated names),
+/// then a By box in points.
+/// `value` stays signed (`up` positive, `down` negative); choosing a direction from Normal puts
+/// `first_by` in By, and Normal empties and disables it.
+pub(super) fn signed_by_box(ui: &mut Ui, id: &str, value: &mut f32, (up, down): (&str, &str), first_by: f32, label: &egui::Response) {
+    if !value.is_finite() {
+        *value = 0.0;
+    }
+    ui.horizontal(|ui| {
+        // 0 = Normal, 1 = `up`, -1 = `down`.
+        let mode: i8 = if *value > 0.0 {
+            1
+        } else if *value < 0.0 {
+            -1
+        } else {
+            0
+        };
+        let entries: [(i8, &str); 3] = [(0, tl!("Normal")), (1, up), (-1, down)];
+        let shown = entries.iter().find(|(m, _)| *m == mode).map_or("", |(_, l)| l);
+        let combo = craft_ui::ComboBox::from_id_salt(id).width(110.0).selected_text(shown).show_ui(ui, |ui| {
+            for (m, l) in entries {
+                if ui.selectable_label(mode == m, l).clicked() && m != mode {
+                    let by = if mode == 0 { first_by } else { value.abs() };
+                    *value = f32::from(m) * by;
+                }
+            }
+        });
+        combo.response.labelled_by(label.id);
+        let by_label = ui.label(tl!("By:"));
+        ui.add_enabled_ui(mode != 0, |ui| {
+            if mode == 0 {
+                // Empty while Normal.
+                let mut blank = String::new();
+                ui.add_sized(vec2(70.0, ui.spacing().interact_size.y), egui::TextEdit::singleline(&mut blank)).labelled_by(by_label.id);
+            } else {
+                let mut by = value.abs();
+                let field = egui::DragValue::new(&mut by).speed(0.1).range(0.0..=BY_MAX).max_decimals(2).suffix(" pt");
+                if ui.add(field).labelled_by(by_label.id).changed() {
+                    // A By of nothing is Normal: the list keeps in step.
+                    *value = f32::from(mode) * by;
+                }
+            }
+        });
+    });
 }

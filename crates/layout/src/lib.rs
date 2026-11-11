@@ -58,6 +58,7 @@ mod ctx;
 mod floats;
 mod flow;
 mod headers;
+mod list_stories;
 mod missing;
 mod notes;
 mod page;
@@ -84,9 +85,11 @@ use headers::MAX_HEADER_ITEMS;
 #[cfg(test)]
 use headers::placed_cost;
 use headers::placed_cost_by;
-pub use missing::{MAX_MISSING_GLYPHS, MissingGlyphs, metafile_text_run, missing_watermark_glyphs, watermark_run};
-pub use notes::DECOR_STORY;
+pub use missing::{
+    MAX_MISSING_GLYPHS, MissingGlyphs, metafile_drawn_run, metafile_drawn_text, metafile_text_run, missing_watermark_glyphs, watermark_run,
+};
 pub(crate) use notes::NOTE_SEP_W;
+pub use notes::{DECOR_STORY, note_marks};
 use notes::{MAX_NOTE_PASSES, footnote_pages};
 #[cfg(test)]
 use notes::{NOTE_SEP, note_numbers};

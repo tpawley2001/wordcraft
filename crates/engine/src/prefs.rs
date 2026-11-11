@@ -33,6 +33,8 @@ pub struct Prefs {
     /// File › Options › Advanced › Print on back of the sheet for duplex printing (off): a manual
     /// duplex job prints the backs in reverse order.
     pub print_duplex_back: bool,
+    /// File › Options › Advanced › Save › Always create backup copy (off).
+    pub always_create_backup: bool,
     /// Language › Detect language automatically (per user, as in Word).
     pub detect_language: bool,
     /// Set Proofing Language › Set As Default: overrides the interface language for future
@@ -140,6 +142,7 @@ impl Default for Prefs {
             print_properties: false,
             print_duplex_front: false,
             print_duplex_back: false,
+            always_create_backup: false,
             typing_replaces_selection: true,
             insert_key_overtype: false,
             overtype: false,

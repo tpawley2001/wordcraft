@@ -13,7 +13,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 pub const LEVELS: [&str; 4] = ["paragraphStyle", "paragraphFormatting", "characterStyle", "characterFormatting"];
 
 /// Direct character properties that aren't formatting (links, revisions, proofing, direction).
-const CHAR_SKIP: [&str; 8] = ["style", "link", "ins", "del", "fmtChange", "lang", "noProof", "rtl"];
+const CHAR_SKIP: [&str; 9] = ["style", "link", "linkTip", "ins", "del", "fmtChange", "lang", "noProof", "rtl"];
 /// Direct paragraph properties the inspector doesn't list (lists have their own UI).
 const PARA_SKIP: [&str; 4] = ["style", "numbering", "numChange", "fmtChange"];
 

@@ -165,7 +165,7 @@ pub(super) fn outline_step(s: &mut Session, promote: bool) -> CmdResult {
 
 /// Sort the selected paragraphs (same container) alphabetically.
 pub(super) fn sort(s: &mut Session, v: &Value) -> CmdResult {
-    use crate::cmd::sort_keys::{SortType, compare, para_key};
+    use crate::cmd::sort_keys::{CellKey, SortType, compare, para_key};
     let separator = match v.get("separator") {
         None => '\t',
         Some(Value::String(t)) => match t.as_str() {
@@ -208,6 +208,7 @@ pub(super) fn sort(s: &mut Session, v: &Value) -> CmdResult {
         })
         .transpose()?;
     let desc = p::bool(v, "descending").unwrap_or(false);
+    let case_sensitive = p::bool(v, "caseSensitive").unwrap_or(false);
     let (a, b) = s.sel.ordered();
     if a.path.parent() != b.path.parent() {
         return Err(CmdError::Failed("select paragraphs in one place to sort".into()));
@@ -233,22 +234,42 @@ pub(super) fn sort(s: &mut Session, v: &Value) -> CmdResult {
                     .iter()
                     .map(|(field, ty, _)| {
                         let text = field.map_or(text.as_str(), |n| text.split(separator).nth(n).unwrap_or(""));
-                        para_key(text, *ty, lang.as_deref())
+                        (para_key(text, *ty, lang.as_deref()), text.trim().to_string())
                     })
                     .collect();
                 (keys, b)
             })
             .collect();
-        keyed.sort_by(|(a, _), (b, _)| compare(a, b, &order));
-        blocks = keyed.into_iter().map(|(_, b)| b).collect();
-    } else {
-        let mut keyed: Vec<_> =
-            blocks.into_iter().map(|b| (natural_key(&b.as_para().map(|p| p.plain_text()).unwrap_or_default(), lang.as_deref()), b)).collect();
-        keyed.sort_by(|(x, _), (y, _)| {
-            let o = natural_cmp(x, y);
-            if desc { o.reverse() } else { o }
+        keyed.sort_by(|(a, _), (b, _)| {
+            for (((x, xt), (y, yt)), &desc) in a.iter().zip(b).zip(&order) {
+                let mut o = compare(std::slice::from_ref(x), std::slice::from_ref(y), &[false]);
+                if o.is_eq() && case_sensitive && matches!((x, y), (CellKey::Text(_), CellKey::Text(_))) {
+                    o = case_cmp(xt, yt);
+                }
+                let o = if desc { o.reverse() } else { o };
+                if o.is_ne() {
+                    return o;
+                }
+            }
+            std::cmp::Ordering::Equal
         });
         blocks = keyed.into_iter().map(|(_, b)| b).collect();
+    } else {
+        let mut keyed: Vec<_> = blocks
+            .into_iter()
+            .map(|b| {
+                let text = b.as_para().map(|p| p.plain_text()).unwrap_or_default();
+                (natural_key(&text, lang.as_deref()), text, b)
+            })
+            .collect();
+        keyed.sort_by(|(x, xt, _), (y, yt, _)| {
+            let mut o = natural_cmp(x, y);
+            if o.is_eq() && case_sensitive {
+                o = case_cmp(xt, yt);
+            }
+            if desc { o.reverse() } else { o }
+        });
+        blocks = keyed.into_iter().map(|(_, _, b)| b).collect();
     }
     let bl = s.doc.container_mut(a.story, &a.path)?;
     let Some(slice) = bl.get_mut(i0..=i1) else { return Err(CmdError::Failed("bad range".into())) };
@@ -258,6 +279,17 @@ pub(super) fn sort(s: &mut Session, v: &Value) -> CmdResult {
     // Keep a section break on the last paragraph of the range where it was.
     s.sel = crate::Selection { anchor: Pos { off: 0, ..a }, focus: b };
     sel_result(s)
+}
+
+/// Sort Options › Case sensitive's tie-break between two texts that collate equal: at the first
+/// character where they differ, the lowercase one sorts first. Otherwise still equal.
+fn case_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering::{Equal, Greater, Less};
+    match a.chars().zip(b.chars()).find(|(x, y)| x != y) {
+        Some((x, y)) if x.is_lowercase() && !y.is_lowercase() => Less,
+        Some((x, y)) if y.is_lowercase() && !x.is_lowercase() => Greater,
+        _ => Equal,
+    }
 }
 
 /// A paragraph's sort key: the number it starts with, then its text in its language's order.

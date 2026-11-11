@@ -22,6 +22,7 @@ mod notes;
 mod officeart;
 mod ole;
 mod piece;
+mod revision;
 mod sections;
 mod sprm;
 mod stsh;
@@ -310,6 +311,9 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     // many times can, so the walk is held to twice the stream's size — generous for real files,
     // tight against aliasing — and never past the absolute ceiling.
     let budget = std::cell::Cell::new((word.len() as u64).saturating_mul(2).min(MAX_TOTAL_CHARS));
+    // Tracked changes: author names now, the revisions themselves as the walks find them.
+    let authors = fib.pair(fib::pair::STTBF_RMARK).and_then(|(f, l)| notes::sttb_strings_max(&table, f, l, 256)).unwrap_or_default();
+    let revs = std::cell::RefCell::new(revision::Revisions::new(authors));
     let work = Work::new(MAX_WORK);
     let paragraphs = ParaBudget { left: std::cell::Cell::new(max_paragraphs), exceeded: std::cell::Cell::new(false) };
 
@@ -331,6 +335,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
         prints: &prints,
         kept: &kept,
         budget: &budget,
+        revs: &revs,
         paragraphs: &paragraphs,
         work: &work,
     };
@@ -353,6 +358,17 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
             }
             let blocks = story_blocks(&ctx, a, b, &mut pics, max_paragraphs)?;
             tb_stories.insert(spid, doc.add_part(PartKind::TextBox, blocks));
+        }
+    }
+    // Each story's box: its internal margins and vertical alignment ([MS-ODRAW] §2.3.21).
+    let mut nodes: Vec<&officeart::Node> = art.main.values().chain(art.header.values()).collect();
+    while let Some(node) = nodes.pop() {
+        if let officeart::Node::Group(_, members) = node {
+            nodes.extend(members);
+        }
+        let sp = node.sp();
+        if let Some(part) = tb_stories.get(&sp.spid).and_then(|id| doc.parts.get_mut(id)) {
+            part.body = sp.props.text_body(part.body);
         }
     }
     let build = drawing::Build { bstore: &art.bstore, delay: &word, stories: &tb_stories };
@@ -439,6 +455,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     doc.media.extend(pics.media);
     doc.linked_media.extend(pics.links);
     kept.into_inner().finish(&mut doc.passthrough);
+    doc.revisions = revs.into_inner().into_list();
     doc.body = table::assemble(paras);
     doc.ensure_nonempty();
     work.log();
@@ -569,6 +586,8 @@ struct WalkCtx<'a> {
     /// footnotes, text boxes) are hostile and can each span a whole subdocument, so thousands of
     /// them could otherwise materialise the same text thousands of times; this bounds the total.
     budget: &'a std::cell::Cell<u64>,
+    /// The document's tracked changes, shared by every story walk.
+    revs: &'a std::cell::RefCell<revision::Revisions>,
     /// Paragraph and cell marks still allowed across every story walk ([`MAX_PARAGRAPHS`]).
     paragraphs: &'a ParaBudget,
     /// Repeated-work bytes left ([`MAX_WORK`]), and what they left out.
@@ -759,8 +778,11 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     _ => None,
                 };
                 let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
+                let chpx = ctx.chpx_bins.chpx(ctx.word, fc);
                 let base = pb.props.style.as_deref().and_then(|id| ctx.sheet.get(id)).map(|style| style.chr.clone()).unwrap_or_default();
-                pb.mark = char_props(ctx.chpx_bins.chpx(ctx.word, fc), ctx.fonts, &base, ctx.raw_styles, ctx.style_ids);
+                pb.mark = char_props(chpx, ctx.fonts, &base, ctx.raw_styles, ctx.style_ids);
+                // A tracked paragraph mark: inserted, or deleted (joining the next paragraph).
+                revise(ctx, &mut pb.mark, chpx, ctx.pieces.piece_prm(cp));
                 let done = std::mem::take(&mut pb);
                 head = None;
                 out.push(ParaOut {
@@ -781,8 +803,11 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 let props = || {
                     let base = pb.props.style.as_deref().and_then(|id| ctx.sheet.get(id)).map(|style| style.chr.clone()).unwrap_or_default();
                     let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
-                    let mut props = char_props(ctx.chpx_bins.chpx(ctx.word, fc), ctx.fonts, &base, ctx.raw_styles, ctx.style_ids);
+                    let chpx = ctx.chpx_bins.chpx(ctx.word, fc);
+                    let mut props = char_props(chpx, ctx.fonts, &base, ctx.raw_styles, ctx.style_ids);
                     apply_prm(&mut props, ctx.pieces.piece_prm(cp), ctx.fonts, &base, ctx.work);
+                    // The field's revision marks, from its begin character.
+                    revise(ctx, &mut props, chpx, ctx.pieces.piece_prm(cp));
                     props
                 };
                 if field_begin(&mut fields, props) {
@@ -823,7 +848,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     if !ctx.work.charge(object_cost(obj), Cost::FloatingObject) {
                         continue;
                     }
-                    pb.push('\u{FFFC}', CharProps::default());
+                    pb.push('\u{FFFC}', revised(ctx, cp));
                     pb.objects.push(obj.clone());
                 }
             }
@@ -833,7 +858,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 let at = ctx.notes.partition_point(|(c, _, _)| *c < cp);
                 let note = ctx.notes.get(at).filter(|(c, _, _)| *c == cp).map(|&(_, kind, id)| (kind, id)).or(ctx.own_note);
                 if let Some((kind, id)) = note {
-                    pb.push('\u{FFFC}', CharProps::default());
+                    pb.push('\u{FFFC}', revised(ctx, cp));
                     pb.objects.push(InlineObject::NoteRef { kind, id, custom: String::new() });
                 }
             }
@@ -938,6 +963,7 @@ fn inline_picture(
     let base = pb.props.style.as_deref().and_then(|id| ctx.sheet.get(id)).map(|style| style.chr.clone()).unwrap_or_default();
     let mut props = char_props(chpx, ctx.fonts, &base, ctx.raw_styles, ctx.style_ids);
     apply_prm(&mut props, ctx.pieces.piece_prm(cp), ctx.fonts, &base, ctx.work);
+    revise(ctx, &mut props, chpx, ctx.pieces.piece_prm(cp));
     let mut object = None;
     match open {
         Some(false) => {
@@ -1011,6 +1037,7 @@ struct FieldBuild {
     depth: u32,
     instr: String,
     sep: Option<FieldResult>,
+    /// The field's formatting at its begin character, with its revision marks (`revise`).
     props: CharProps,
     /// An `EMBED` field whose object is kept whole: the object replaces the field.
     object: bool,
@@ -1177,8 +1204,9 @@ fn object_cost(obj: &InlineObject) -> u64 {
     }
 }
 
-/// Emit a finished field: HYPERLINK keeps its result text as a linked run; every other
-/// field becomes one inline object with its cached result.
+/// Emit a finished field: HYPERLINK keeps its result text as a linked run; one whose result
+/// holds its own revisions becomes a range field; every other field becomes one inline object
+/// with its cached result.
 ///
 /// The target is copied once per run of equally formatted result text, not per character,
 /// and each copy is charged to `work` ([`MAX_WORK`]); once that is spent the rest of the
@@ -1207,6 +1235,27 @@ fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &Work) {
                 left = left.saturating_sub(c.len_utf8());
             }
         }
+        return;
+    }
+    // A tracked insertion or deletion inside the result (one the field itself isn't in) keeps
+    // the field a range, as the DOCX reader does (#1037): each piece stays an ordinary run with
+    // its own revision, so Accept and Reject reach it.
+    if result.runs.iter().any(|(_, p)| (p.ins, p.del) != (f.props.ins, f.props.del)) {
+        pb.push('\u{FFFC}', f.props.clone());
+        pb.objects.push(InlineObject::FieldStart { instr, locked: false, dirty: false });
+        let mut chars = result.text.chars();
+        for (len, props) in result.runs {
+            let Some(first) = chars.next() else { break };
+            pb.push(first, props);
+            let mut left = len.saturating_sub(first.len_utf8());
+            while left > 0 {
+                let Some(c) = chars.next() else { break };
+                pb.extend(c);
+                left = left.saturating_sub(c.len_utf8());
+            }
+        }
+        pb.push('\u{FFFC}', f.props);
+        pb.objects.push(InlineObject::FieldEnd);
         return;
     }
     // The visible result owns the formatting; an empty result keeps the begin's.
@@ -1309,6 +1358,7 @@ fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, f
         };
         let mut props = char_props(grpprl, ctx.fonts, base, ctx.raw_styles, ctx.style_ids);
         apply_prm(&mut props, ctx.pieces.piece_prm(cp), ctx.fonts, base, ctx.work);
+        revise(ctx, &mut props, grpprl, ctx.pieces.piece_prm(cp));
         st.memo = Some(FmtMemo { chpx: grpprl, prm, style: style.map(str::to_owned), props });
         st.generation += 1;
     }
@@ -1339,6 +1389,40 @@ fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, f
         },
         None => pb.push(c, props),
     }
+}
+
+/// Set the tracked insertion / deletion of `props` from the revision marks of a CHPX grpprl
+/// and the piece's Prm (which applies after it). A Prm1 grpprl is charged to the work budget,
+/// as in [`apply_prm`]; once that is spent its marks are skipped.
+fn revise(ctx: &WalkCtx, props: &mut CharProps, grpprl: &[u8], prm: PrmRef<'_>) {
+    let mut marks = revision::Marks::of(grpprl);
+    match prm {
+        // Only the insertion and deletion flags fit a Prm0; author and date need a Prc.
+        PrmRef::Sprm0 { isprm, val } => {
+            if let Some(op) = sprm::from_prm0(isprm) {
+                marks.apply(&Prl { op, operand: &[val] });
+            }
+        }
+        PrmRef::Grpprl(Some(g)) if ctx.work.charge(g.len() as u64, Cost::Formatting) => {
+            for prl in sprm::iter(g) {
+                marks.apply(&prl);
+            }
+        }
+        PrmRef::Grpprl(_) | PrmRef::None => {}
+    }
+    // Never contended (walks are sequential); a failed borrow only loses the marks.
+    if let Ok(mut revs) = ctx.revs.try_borrow_mut() {
+        revs.mark(props, &marks);
+    }
+}
+
+/// Plain character properties carrying only the revision marks of the character at `cp`: for
+/// inline objects (pictures, shapes, note references, fields), which take no direct formatting.
+fn revised(ctx: &WalkCtx, cp: u32) -> CharProps {
+    let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
+    let mut props = CharProps::default();
+    revise(ctx, &mut props, ctx.chpx_bins.chpx(ctx.word, fc), ctx.pieces.piece_prm(cp));
+    props
 }
 
 /// What the walk carries from one character to the next while it resolves formatting: the piece

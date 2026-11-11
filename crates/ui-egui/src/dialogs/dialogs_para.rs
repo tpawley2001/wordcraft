@@ -370,7 +370,12 @@ pub struct LineForm {
     pub width: f32,
     /// Top, bottom, left, right, between.
     pub sides: [bool; 5],
+    /// Options… › From text: top, bottom, left, right, in points (0 to 31).
+    pub space: [f32; 4],
 }
+
+/// Word's From text distances for a new border: top, bottom, left, right, in points.
+const DEFAULT_SPACE: [f32; 4] = [1.0, 1.0, 4.0, 4.0];
 
 const TOP: usize = 0;
 const BOTTOM: usize = 1;
@@ -422,6 +427,10 @@ impl LineForm {
             color: first.and_then(|f| f.color).map(Rgb::hex).unwrap_or_default(),
             width: if width > 0.0 { width } else { 0.5 },
             sides: on,
+            space: [TOP, BOTTOM, LEFT, RIGHT].map(|i| {
+                let d = DEFAULT_SPACE.get(i).copied().unwrap_or(1.0);
+                s.get(i).copied().flatten().map(|x| x.space).filter(|x| x.is_finite()).unwrap_or(d)
+            }),
         }
     }
 
@@ -457,14 +466,18 @@ impl LineForm {
         Border { style: self.style, width: self.side_width(side), color: Rgb::parse(&self.color), space: 0.0 }
     }
 
-    /// The `sides` parameter of `para.borders` / `design.pageBorders`.
-    fn sides_param(&self) -> Value {
+    /// The `sides` parameter of `para.borders` / `design.pageBorders`. With `space`, the top,
+    /// bottom, left and right sides carry their From text distances.
+    fn sides_param(&self, space: bool) -> Value {
         let mut m = serde_json::Map::new();
         for (i, k) in ["top", "bottom", "left", "right", "between"].into_iter().enumerate() {
             if self.sides.get(i).copied().unwrap_or(false) {
                 let mut side = json!({"style": self.style.ooxml(), "width": self.side_width(i)});
                 if Rgb::parse(&self.color).is_some() {
                     side["color"] = json!(self.color);
+                }
+                if space && let Some(d) = self.space.get(i) {
+                    side["space"] = json!(d.clamp(0.0, 31.0));
                 }
                 m.insert(k.into(), side);
             }
@@ -488,6 +501,9 @@ pub struct BordersForm {
     /// Fill `RRGGBB`, empty for none.
     pub fill: String,
     pub fill_to_text: bool,
+    /// The Border and Shading Options panel (From text) is showing.
+    #[serde(skip)]
+    pub show_options: bool,
     #[serde(skip)]
     basis: Option<Box<BordersForm>>,
 }
@@ -505,6 +521,7 @@ impl BordersForm {
             whole_doc: true,
             fill: rp.shading.map(Rgb::hex).unwrap_or_default(),
             fill_to_text: false,
+            show_options: false,
             basis: None,
         };
         f.page.sides[BETWEEN] = false;
@@ -525,12 +542,12 @@ impl BordersForm {
                 };
                 out.push(("format.set", json!({"props": {"border": border}})));
             } else {
-                out.push(("para.borders", json!({"sides": self.para.sides_param()})));
+                out.push(("para.borders", json!({"sides": self.para.sides_param(true)})));
             }
         }
         if self.page != b.page || self.whole_doc != b.whole_doc {
             let apply = if self.whole_doc { "document" } else { "section" };
-            out.push(("design.pageBorders", json!({"sides": self.page.sides_param(), "applyTo": apply})));
+            out.push(("design.pageBorders", json!({"sides": self.page.sides_param(false), "applyTo": apply})));
         }
         if self.fill != b.fill || self.fill_to_text != b.fill_to_text {
             let color = Rgb::parse(&self.fill).map(|c| json!(c.hex())).unwrap_or(Value::Null);
@@ -572,6 +589,14 @@ pub fn borders(app: &mut WordApp, ui: &mut Ui, f: &mut BordersForm) -> bool {
                 ui.radio_value(&mut f.to_text, false, tl!("Paragraph"));
                 ui.radio_value(&mut f.to_text, true, tl!("Text"));
             });
+            // Options… shows the From text distances of a paragraph border.
+            let options = ui.add_enabled(!f.to_text, egui::Button::new(tl!("Options…")));
+            if options.clicked() {
+                f.show_options = !f.show_options;
+            }
+            if f.show_options && !f.to_text {
+                border_options(ui, &mut f.para);
+            }
         }
         1 => {
             lines(ui, "page", &mut f.page, &theme, None, Target::Page);
@@ -599,6 +624,27 @@ pub fn borders(app: &mut WordApp, ui: &mut Ui, f: &mut BordersForm) -> bool {
         f.apply(app);
     }
     ok || cancel
+}
+
+/// Border and Shading Options: the paragraph border's From text distances, in points.
+fn border_options(ui: &mut Ui, l: &mut LineForm) {
+    ui.group(|ui| {
+        ui.label(egui::RichText::new(tl!("Border and Shading Options")).font(semibold(12.5)));
+        ui.label(tl!("From text"));
+        egui::Grid::new("border_from_text").num_columns(4).show(ui, |ui| {
+            for (row, pair) in [[(TOP, "Top:"), (LEFT, "Left:")], [(BOTTOM, "Bottom:"), (RIGHT, "Right:")]].into_iter().enumerate() {
+                for (i, label) in pair {
+                    let name = ui.label(tl!(label));
+                    if let Some(v) = l.space.get_mut(i) {
+                        ui.add(egui::DragValue::new(v).speed(1.0).range(0.0..=31.0).suffix(tl!(" pt"))).labelled_by(name.id);
+                    }
+                }
+                if row == 0 {
+                    ui.end_row();
+                }
+            }
+        });
+    });
 }
 
 /// What the borders in a preview go around.
@@ -824,6 +870,23 @@ mod tests {
         // Unchanged, OK runs nothing.
         let f = BordersForm::read(&app, 0).unwrap_or_else(|| panic!("form"));
         assert!(f.commands().is_empty());
+    }
+
+    /// Options… › From text: distances set in the form go to a new box, in one undo step.
+    #[test]
+    fn borders_dialog_from_text_distances_apply_to_a_new_box() {
+        let mut app = app_with("Boxed paragraph");
+        let mut f = BordersForm::read(&app, 0).unwrap_or_else(|| panic!("form"));
+        f.para.space = [2.0, 3.0, 5.0, 7.0];
+        f.para.apply_setting(Setting::Box);
+        let undo_before = app.session.undo_labels().len();
+        f.apply(&mut app);
+        let b = app.session.doc.para_at(&app.session.sel.focus).and_then(|p| p.props.borders).unwrap_or_default();
+        assert_eq!([b.top, b.bottom, b.left, b.right].map(|x| x.map(|x| x.space)), [Some(2.0), Some(3.0), Some(5.0), Some(7.0)]);
+        assert!(b.between.is_none());
+        assert_eq!(app.session.undo_labels().len(), undo_before + 1, "one undo step");
+        // Reopened, the form shows the same distances.
+        assert_eq!(BordersForm::read(&app, 0).map(|f| f.para.space), Some([2.0, 3.0, 5.0, 7.0]));
     }
 
     /// #320: the Tabs dialog opens from the Paragraph dialog's command path, and the table's

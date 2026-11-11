@@ -102,6 +102,9 @@ pub enum Dialog {
         hidden: bool,
         color: String,
         spacing: f32,
+        /// Scale, percent (100 = normal), and Position, points (raised above zero, lowered below).
+        scale: f32,
+        position: f32,
         /// Kerning for fonts (`w:kern`), from the Advanced tab: `None` while the selected text
         /// differs, shown neither on nor off; `kern_at` is its Points and above size.
         kern: Option<bool>,
@@ -247,6 +250,10 @@ pub enum Dialog {
         targets: Option<Value>,
         /// The chosen place: the `insert.link` parameters, and the name it shows.
         pick: Option<(Value, String)>,
+        /// The ScreenTip (shown on hover instead of the address), sent as `screenTip` on OK.
+        tip: String,
+        /// The ScreenTip being edited while Set Hyperlink ScreenTip is open.
+        tip_edit: Option<String>,
     },
     Bookmark {
         name: String,
@@ -774,6 +781,8 @@ impl Dialog {
                     hidden: b("hidden"),
                     color: s("color"),
                     spacing: st.get("spacing").and_then(Value::as_f64).unwrap_or(0.0) as f32,
+                    scale: st.get("scale").and_then(Value::as_f64).unwrap_or(100.0) as f32,
+                    position: st.get("position").and_then(Value::as_f64).unwrap_or(0.0) as f32,
                     kern: kern.map(|k| k > 0.0),
                     kern_at: kern.filter(|k| *k > 0.0).unwrap_or(12.0) as f32,
                     start: serde_json::Map::new(),
@@ -902,6 +911,8 @@ impl Dialog {
                 subject: String::new(),
                 targets: None,
                 pick: None,
+                tip: wordcraft_engine::cmd::insert::selected_link_tip(&app.session),
+                tip_edit: None,
                 focus: true,
             },
             "bookmark" => Dialog::Bookmark { name: bookmark_at_caret(&app.session), by_location: false, hidden: false, deleted: false },
@@ -1136,9 +1147,15 @@ pub mod dialogs_templates;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_border_options;
+#[cfg(test)]
+mod tests_font_spacing;
+#[cfg(test)]
 mod tests_font_underline;
 #[cfg(test)]
 mod tests_insert_table;
+#[cfg(test)]
+mod tests_note_formats;
 #[cfg(test)]
 mod tests_page_layout;
 #[cfg(test)]
@@ -1149,5 +1166,7 @@ mod tests_para_grid;
 mod tests_para_line;
 #[cfg(test)]
 mod tests_para_outline;
+#[cfg(test)]
+mod tests_table_props;
 #[cfg(test)]
 mod tests_zoom;
