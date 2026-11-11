@@ -156,15 +156,11 @@ fn without_wraptrsp_the_rtf_rule_is_unchanged() {
         let edge = RIGHT - p.indent_right;
         assert!((end - edge).abs() < 0.05, "{}: the line ends at {end}, the edge is {edge}", p.name);
     }
-    // The probes that wrap with `\wraptrsp` stay on the line without it, when they overrun by
-    // less than ten half-spaces (Word wraps 20 spaces overrunning by 36 or 54 pt: see
-    // `rtf_squeeze_any_align`).
+    // The probes that wrap with `\wraptrsp` stay on the line without it.
     for p in PROBES.iter().filter(|p| p.wraptrsp && !p.kept && (p.size - p.word_size).abs() < 0.01) {
         let (shown, _, _) = probe_line(p, false);
         let kept_before = (LEFT + p.before.len() as f32 * 0.6 * p.size - 0.6 * p.size) < RIGHT - p.indent_right;
-        let overrun = LEFT + (p.before.len() + p.word.len()) as f32 * 0.6 * p.size - (RIGHT - p.indent_right);
-        let cap = p.before.matches(' ').count().min(10) as f32 * 0.3 * p.size;
-        if kept_before && overrun < cap {
+        if kept_before {
             assert_eq!(shown, format!("{}{}", p.before, p.word), "{}: kept without wraptrsp", p.name);
         }
     }

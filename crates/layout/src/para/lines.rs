@@ -112,12 +112,11 @@ struct Scan {
     space_w: f32,
     /// The width of the spaces before the line's first character.
     lead_space_w: f32,
-    /// The width and number of the line's single inner spaces so far (a run of two or more
-    /// spaces doesn't count: in RTF it keeps its width), how many of them are in a font that
-    /// isn't fixed-pitch, and the length, first space's width and whether that space is in a
-    /// proportional font, of the run of spaces just placed.
+    /// The width of the line's single inner spaces so far (a run of two or more spaces doesn't
+    /// count: in RTF it keeps its width), how many of them are in a font that isn't fixed-pitch,
+    /// and the length, first space's width and whether that space is in a proportional font, of
+    /// the run of spaces just placed.
     single_space_w: f32,
-    single_spaces: usize,
     proportional_spaces: usize,
     space_run: (usize, f32, bool),
     /// Whether anything but spaces and markers is on the line yet.
@@ -329,7 +328,6 @@ impl<'e> Breaker<'e> {
             space_w: 0.0,
             lead_space_w: 0.0,
             single_space_w: 0.0,
-            single_spaces: 0,
             proportional_spaces: 0,
             space_run: (0, 0.0, false),
             text_seen: false,
@@ -967,7 +965,7 @@ impl Scan {
                 None => f32::NEG_INFINITY,
             };
             let first = bk.wrap_trail_spaces.then_some((first_end - self.right_edge, self.word_space));
-            rtf_space_room((self.single_space_w, self.single_spaces), word_end - self.right_edge, self.word_from, self.right_edge, first)
+            rtf_space_room(self.single_space_w, word_end - self.right_edge, self.word_from, self.right_edge, first)
         } else if bk.shrink_spaces && !self.has_tab {
             space_room(self.space_w, self.x + advance - pl.auto_space_after(j) - self.word_from)
         } else {
@@ -992,14 +990,12 @@ impl Scan {
                     0 => {
                         let proportional = bk.rtf_squeeze && !bk.fixed_pitch.get(c.style as usize).copied().unwrap_or(false);
                         self.single_space_w += c.adv;
-                        self.single_spaces = self.single_spaces.saturating_add(1);
                         self.proportional_spaces = self.proportional_spaces.saturating_add(usize::from(proportional));
                         self.space_run.1 = c.adv;
                         self.space_run.2 = proportional;
                     }
                     1 => {
                         self.single_space_w -= self.space_run.1;
-                        self.single_spaces = self.single_spaces.saturating_sub(1);
                         self.proportional_spaces = self.proportional_spaces.saturating_sub(usize::from(self.space_run.2));
                     }
                     _ => {}
