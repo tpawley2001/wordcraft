@@ -516,7 +516,11 @@ fn position_or_note(
     bookmark_at: &std::collections::HashMap<String, Pos>,
     note_marks: &mut Option<std::collections::HashMap<u32, String>>,
 ) -> Option<Option<String>> {
+    // `\p` with a number switch (`\r \p`: "1 above") keeps its result.
     if name != "PAGEREF" && has_switch(instr, 'p') {
+        if ['w', 'r', 'n'].iter().any(|&c| has_switch(instr, c)) {
+            return Some(None);
+        }
         let at = bookmark_at.get(target);
         return Some(match (at, here) {
             (Some(at), Some(here)) if here.story == StoryRef::Body => Some(if *at < here { "above" } else { "below" }.to_string()),
