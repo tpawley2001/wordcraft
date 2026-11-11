@@ -169,6 +169,8 @@ Insert Hyperlink › E-mail Address accepts an address and subject and lists rec
 
 ## Revision history
 
+> 2026-11-11 · trivial · Footnote and Endnote dialog: the Number format list ends with the symbol sequence (*, †, ‡, §, …; OOXML `chicago`), and the Start at box shows its value in the chosen format (a, iv, *) while still taking a typed number. Format Page Numbers keeps its own list. Readiness estimates unchanged.
+
 > 2026-11-11 · trivial · P0241: Home › Paragraph › Paragraph… Indents and Spacing: Automatically adjust right indent when document grid is defined and Snap to grid when document grid is defined check boxes; mixed selections show them blank and OK sends only a changed box. Readiness estimates unchanged.
 
 > 2026-11-11 · trivial · P0229: Lock aspect ratio is a property of each picture and shape: the Size dialog starts from it and stores it (`picture.size` `aspectLocked`), one-sided `picture.size` and corner drags keep proportions only when it is on (Shift flips it); inserted pictures are locked, inserted shapes not.

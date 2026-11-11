@@ -748,6 +748,44 @@ fn note_options_round_trip_per_section() {
     );
 }
 
+/// Word's symbol note numbering (`chicago`: *, †, ‡, §) in `w:settings` loads and saves back.
+#[test]
+fn symbol_note_number_format_round_trips_in_settings() {
+    let w = r#"xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main""#;
+    let settings = format!(
+        r#"<w:settings {w}><w:footnotePr><w:numFmt w:val="chicago"/></w:footnotePr><w:endnotePr><w:numFmt w:val="chicago"/><w:numStart w:val="3"/></w:endnotePr></w:settings>"#
+    );
+    let mut d = Document::new();
+    d.body = vec![para_block(Paragraph::with_text("Text", CharProps::default()))];
+    let bytes = wordcraft_docx::write(&d).unwrap();
+    let mut src = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
+    let mut out = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for i in 0..src.len() {
+        let mut f = src.by_index(i).unwrap();
+        let name = f.name().to_string();
+        let mut data = Vec::new();
+        std::io::Read::read_to_end(&mut f, &mut data).unwrap();
+        if name == "word/settings.xml" {
+            data = settings.clone().into_bytes();
+        }
+        out.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+        std::io::Write::write_all(&mut out, &data).unwrap();
+    }
+    let bytes = out.finish().unwrap().into_inner();
+    let r = wordcraft_docx::read(&bytes).unwrap();
+    // The document's number format is `Settings::footnote_format` / `endnote_format`.
+    assert_eq!((r.settings.footnote_format, r.settings.endnote_format), (NumFormat::Chicago, NumFormat::Chicago));
+    assert_eq!(r.settings.endnote_pr.num_start, Some(3));
+    let saved = wordcraft_docx::write(&r).unwrap();
+    let mut z = zip::ZipArchive::new(std::io::Cursor::new(&saved)).unwrap();
+    let mut xml = String::new();
+    std::io::Read::read_to_string(&mut z.by_name("word/settings.xml").unwrap(), &mut xml).unwrap();
+    let foot = xml.find("<w:footnotePr>").expect("footnotePr written");
+    let end = xml.find("<w:endnotePr>").expect("endnotePr written");
+    assert!(xml[foot..].find("<w:numFmt w:val=\"chicago\"/>").is_some_and(|i| foot + i < end), "{xml}");
+    assert!(xml[end..].contains("<w:numFmt w:val=\"chicago\"/>"), "{xml}");
+}
+
 /// `references.footnote` starts the note's own text with a reference to the note, so the editor shows
 /// its number. In the file that is the `w:footnoteRef` mark; a `w:footnoteReference` there would make
 /// the note cite itself, which LibreOffice refuses to open.
