@@ -157,7 +157,7 @@ fn a_vml_group_survives_being_saved() {
     let d = read_body(&body);
     let InlineObject::Group { children, .. } = &objects(&d)[0] else { panic!("{:?}", objects(&d)) };
     assert_eq!(children.len(), 2, "read with both its members to begin with");
-    let back = wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap();
+    let back = super::roundtrip::unsaid_locks(wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap());
     assert_eq!(objects(&back), objects(&d), "saved as DrawingML and read again, it is the same group");
 }
 

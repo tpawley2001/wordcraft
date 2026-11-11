@@ -35,6 +35,25 @@ fn unstacked(mut doc: Document) -> Document {
             }
         }
     }
+    unsaid_locks(doc)
+}
+
+/// A file always says whether a drawing's aspect ratio is locked, so an object built without
+/// saying (`lock_aspect: None`) reads back with its kind's default said; that default is cleared
+/// again here for tests about other things (`lock_aspect.rs` checks the lock itself).
+pub(crate) fn unsaid_locks(mut doc: Document) -> Document {
+    for b in &mut doc.body {
+        if let Block::Para(p) = std::sync::Arc::make_mut(b) {
+            for o in &mut p.objects {
+                let picture = matches!(o, InlineObject::Image { .. });
+                if let Some(f) = o.float_mut()
+                    && f.lock_aspect == Some(picture)
+                {
+                    f.lock_aspect = None;
+                }
+            }
+        }
+    }
     doc
 }
 
@@ -1165,7 +1184,7 @@ fn shapes_textboxes_equations_dropcaps_round_trip() {
     dc.props.drop_cap = Some(3);
     dc.props.space_after = Some(4.0);
     d.body = vec![para_block(p.clone()), para_block(dc.clone())];
-    let r = rt(&d);
+    let r = unsaid_locks(rt(&d));
     let got = paras(&r);
     assert_eq!(got[0].objects.len(), 3);
     match &got[0].objects[0] {
