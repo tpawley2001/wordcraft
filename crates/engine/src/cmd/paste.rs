@@ -33,6 +33,11 @@ pub const FORMATS: [(&str, &str); 5] = [
     ("text", "Unformatted Text"),
 ];
 
+/// What OK does with a format, as the Paste Special dialog's Result box says it.
+pub fn result_text(_id: &str) -> &'static str {
+    "" // stub: see the task spec
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("edit.pasteSpecial", "Paste Special", "Home › Clipboard › Paste", paste_special)

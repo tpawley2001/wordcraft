@@ -45,6 +45,7 @@ mod move_text_keys;
 mod negative_margins;
 mod rtl_gutter;
 mod para_sort_keys;
+mod paste_special_results;
 mod manual_duplex;
 mod print_document_properties;
 mod print_forms_data;
@@ -1641,7 +1642,7 @@ fn paste_special_lists_formats_and_pastes_text_without_formatting() {
     // No format: the formats are listed (and a front end is asked to show the dialog).
     let r = run(&mut s, "edit.pasteSpecial", json!({}));
     let ids: Vec<&str> = r["formats"].as_array().unwrap().iter().map(|f| f["id"].as_str().unwrap()).collect();
-    assert_eq!(ids, ["formatted", "text"]);
+    assert_eq!(ids, ["formatted", "text", "unicode"]);
     assert_eq!(s.ui_requests.last().unwrap()["open"], "pasteSpecial");
     run(&mut s, "caret.docEnd", json!({}));
     let r = run(&mut s, "edit.pasteSpecial", json!({"as": "text"}));
@@ -1655,7 +1656,7 @@ fn paste_special_lists_formats_and_pastes_text_without_formatting() {
     assert!(bold_at(&s, 0, 15));
     // Text that someone else copied since: our rich copy is no longer offered.
     let r = run(&mut s, "edit.pasteSpecial", json!({"text": "elsewhere"}));
-    assert_eq!(r["formats"].as_array().unwrap().len(), 1);
+    assert_eq!(r["formats"].as_array().unwrap().len(), 2);
     assert!(s.run("edit.pasteSpecial", &json!({"as": "formatted", "text": "elsewhere"})).is_err());
 }
 
