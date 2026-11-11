@@ -520,8 +520,12 @@ pub struct FlowOpts {
     pub tabs_spacing: bool,
     /// The paragraph's own widow/orphan control in [`Para::extra`], also without `paras`.
     pub widow: bool,
+    /// Without [`FlowOpts::chars`]: hidden text kept, marked [`Fmt::hidden`] (otherwise left
+    /// out), for formats that write it (RTF `\v`).
+    pub hidden: bool,
     /// The paragraph's own contextual spacing, mirror indents, automatic space before/after,
-    /// hyphenation and line-grid snapping in [`Para::extra`], also without `paras`.
+    /// hyphenation, line-grid snapping, keep lines together and suppress line numbers in
+    /// [`Para::extra`], also without `paras`.
     pub para_flags: bool,
     /// The paragraph's own shading in [`Para::extra`], also without `paras`.
     pub shading: bool,
@@ -545,7 +549,8 @@ pub struct FlowOpts {
 }
 
 impl FlowOpts {
-    /// What RTF keeps: tracked changes, the paragraph's own tab stops and character spacing
+    /// What RTF keeps: tracked changes, hidden text ([`FlowOpts::hidden`]), the paragraph's own
+    /// tab stops and character spacing
     /// ([`FlowOpts::tabs_spacing`]), widow/orphan control ([`FlowOpts::widow`]), shading
     /// ([`FlowOpts::shading`]), indents in characters ([`FlowOpts::indent_chars`]), the other
     /// paragraph flags ([`FlowOpts::para_flags`]), table row heights and keeps
@@ -554,6 +559,7 @@ impl FlowOpts {
     pub fn tracked() -> Self {
         FlowOpts {
             tracked: true,
+            hidden: true,
             tabs_spacing: true,
             widow: true,
             shading: true,

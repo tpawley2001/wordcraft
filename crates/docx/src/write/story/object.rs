@@ -4,6 +4,7 @@ use super::section::comment_reference_style;
 use super::{CharProps, Fill, InlineObject, NoteKind, PartRels, TextColor, W, Wrap, Writer, emu, n, rpr};
 
 impl Writer<'_> {
+    /// Write an inline object (`Bookmark`, `Comment`, `Equation`, `Field`, `Shape`, etc.).
     pub(super) fn object(&mut self, w: &mut W, o: &InlineObject, props: &CharProps, rels: &mut PartRels, depth: usize) {
         match o {
             // Written by `para_content` (inline) or `blocks` (around paragraphs).
@@ -47,10 +48,12 @@ impl Writer<'_> {
                     Some(TextColor::Rgb(c)) => Some(c),
                     _ => None,
                 };
+                self.rev_open(w, props);
                 match crate::write::math::resolve_numbers(math, *display, &mut self.eq_number) {
                     Some(m) => crate::write::math::write_equation(w, linear, *display, &m, color),
                     None => crate::write::math::write_equation(w, linear, *display, math, color),
                 }
+                self.rev_close(w, props);
             }
             InlineObject::Field { instr, result, locked, dirty, form, .. } => {
                 self.field(w, FieldData { instr, result, locked: *locked, dirty: *dirty, form }, props)
@@ -276,7 +279,7 @@ impl Writer<'_> {
         let link = Self::drawing_link(props, rels);
         let name = format!("Picture {docpr}");
         self.drawing_open(w, DrawingInfo { float, size: (*iw, *ih), docpr: &docpr, name: &name, alt, link: link.as_deref() });
-        w.empty("wp:cNvGraphicFramePr", &[]);
+        super::drawing::frame_pr(w, float, true);
         w.open("a:graphic", &[]);
         w.open("a:graphicData", &[("uri", "http://schemas.openxmlformats.org/drawingml/2006/picture")]);
         self.pic(w, o, &file, (0.0, 0.0), rels);
@@ -379,7 +382,7 @@ impl Writer<'_> {
         }
         let float = &float;
         self.drawing_open(w, DrawingInfo { float, size: (*sw, *sh), docpr: &docpr, name: &name, alt: o.alt_text(), link: link.as_deref() });
-        w.empty("wp:cNvGraphicFramePr", &[]);
+        super::drawing::frame_pr(w, float, false);
         w.open("a:graphic", &[]);
         w.open("a:graphicData", &[("uri", "http://schemas.microsoft.com/office/word/2010/wordprocessingShape")]);
         self.wsp(w, o, None, (0.0, 0.0), rels, depth);
@@ -401,7 +404,7 @@ impl Writer<'_> {
         let link = Self::drawing_link(props, rels);
         let name = format!("{} {docpr}", if canvas.is_some() { "Canvas" } else { "Group" });
         self.drawing_open(w, DrawingInfo { float, size: (*gw, *gh), docpr: &docpr, name: &name, alt: o.alt_text(), link: link.as_deref() });
-        w.empty("wp:cNvGraphicFramePr", &[]);
+        super::drawing::frame_pr(w, float, false);
         w.open("a:graphic", &[]);
         let outer = match canvas {
             Some(c) => {

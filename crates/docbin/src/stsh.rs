@@ -6,10 +6,13 @@ use crate::DocbinError;
 /// Largest stylesheet we accept (styles are 0x0FFE max by the spec; stay stricter).
 const MAX_STYLES: usize = 4096;
 
+/// `istiUser`: the `sti` of a style the user made; lower values are Word's built-in styles.
+pub(crate) const STI_USER: u16 = 0x0FFE;
+
 /// One raw style record (`STD`).
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RawStyle {
-    /// Built-in style identifier; 0x0FFE and 0x0FFF identify user styles.
+    /// Built-in style index ([MS-DOC] §2.9.260): Word's own styles are below [`STI_USER`].
     pub(crate) sti: u16,
     /// 1 paragraph, 2 character, 3 table, 4 numbering.
     pub(crate) stk: u8,
@@ -97,7 +100,7 @@ pub(crate) fn parse(table: &[u8], fc: u32, lcb: u32) -> Result<Vec<RawStyle>, Do
         // StdfBase ([MS-DOC] §2.9.260, 10 bytes): sti(12)+flags(4); stk(4)+istdBase(12);
         // cupx(4)+istdNext(12); bchUpe(16) (= cbStd); grfstd(16). istdBase is a zero-based
         // index into the stylesheet, 0x0FFF meaning "no parent".
-        let sti = stdf.get(..2).map_or(0x0FFF, |b| u16::from_le_bytes([b[0], b[1]]) & 0x0FFF);
+        let sti = stdf.get(0..2).map(|b| u16::from_le_bytes([b[0], b[1]]) & 0x0FFF).unwrap_or(STI_USER);
         let stk = (stdf.get(2).copied().unwrap_or(1) & 0x0F).max(1);
         let w1 = stdf.get(2..4).map(|b| u16::from_le_bytes([b[0], b[1]])).unwrap_or(0xFFF1);
         let istd_base = w1 >> 4;

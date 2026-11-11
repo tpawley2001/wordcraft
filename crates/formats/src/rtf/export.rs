@@ -252,6 +252,9 @@ fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
     if s.consecutive_hyphen_limit != d.consecutive_hyphen_limit {
         o.push_str(&format!("\\hyphconsec{}", s.consecutive_hyphen_limit.min(i32::MAX as u32)));
     }
+    if s.wrap_trail_spaces {
+        o.push_str("\\wraptrsp");
+    }
     o
 }
 
@@ -429,7 +432,8 @@ fn doc_note_words(set: &wordcraft_doc::Settings) -> String {
 }
 
 /// The document settings that differ from a new document's: view zoom, drawing grid, Restrict
-/// Editing (never a password hash), linked styles, privacy options and Shift+Return expansion.
+/// Editing (never a password hash), linked styles, privacy options, Shift+Return expansion,
+/// Track Changes on and print only the data from a form.
 fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
     use wordcraft_doc::ZoomFit;
     let def = wordcraft_doc::Settings::default();
@@ -466,10 +470,13 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
         o.push_str(&format!("\\enforceprot1\\protlevel{n}"));
     }
     for (on, w) in [
+        (!set.sum_paragraph_spacing, "\\htmautsp"),
         (set.link_styles, "\\linkstyles"),
         (set.remove_personal_info, "\\rempersonalinfo"),
         (set.remove_date_time, "\\remdttm"),
         (set.do_not_expand_shift_return, "\\expshrtn"),
+        (set.track_changes, "\\revisions"),
+        (set.print_forms_data, "\\printdata"),
     ] {
         if on {
             o.push_str(w);
@@ -649,6 +656,7 @@ fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
                     None => {}
                 }
             }
+            style_tab_and_char_indent_words(p, &mut out);
         }
         let c = &s.chr;
         for (word, v) in [("b", c.bold), ("i", c.italic)] {
@@ -669,9 +677,34 @@ fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
             Some(wordcraft_doc::TextColor::Auto) => out.push_str("\\cf0"),
             None => {}
         }
+        style_char_spacing_words(c.spacing, &mut out);
         out.push_str(&format!(" {};}}", esc_font(&s.name)));
     }
     out
+}
+
+/// A style entry's tab stops in position order, then its indents in hundredths of a character
+/// (`\\cufi`, `\\culi`, `\\curi`).
+fn style_tab_and_char_indent_words(p: &wordcraft_doc::props::ParaProps, out: &mut String) {
+    let mut tabs: Vec<_> = p.tabs.iter().flatten().filter(|t| t.pos.is_finite()).collect();
+    tabs.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+    for t in tabs {
+        out.push_str(&tab_words(t));
+    }
+    for (word, v) in [("\\cufi", p.indent_first_chars), ("\\culi", p.indent_left_chars), ("\\curi", p.indent_right_chars)] {
+        if let Some(v) = v.filter(|v| v.is_finite()) {
+            out.push_str(&format!("{word}{}", (v.clamp(-1584.0, 1584.0) * 100.0).round() as i64));
+        }
+    }
+}
+
+/// A style entry's expanded or condensed spacing, as the text writes it: quarter points, then
+/// the exact twips.
+fn style_char_spacing_words(spacing: Option<f32>, out: &mut String) {
+    if let Some(pt) = spacing.filter(|v| v.is_finite() && *v != 0.0) {
+        let pt = pt.clamp(-1584.0, 1584.0);
+        out.push_str(&format!("\\expnd{}\\expndtw{}", (pt * 4.0).round() as i32, (pt * 20.0).round() as i32));
+    }
 }
 
 fn style_num(k: Kind) -> Option<u32> {
@@ -958,6 +991,13 @@ impl Writer {
             let i = old.background.map_or(0, |c| self.t.color(c));
             ctl.push_str(&format!("\\chcbpat{i}"));
         }
+        if old.hidden != cur.hidden {
+            ctl.push_str(if old.hidden { "\\v" } else { "\\v0" });
+        }
+        let old_pos = position_word(old);
+        if old_pos != position_word(cur) {
+            ctl.push_str(old_pos.as_deref().unwrap_or("\\up0"));
+        }
         ctl
     }
 
@@ -1034,6 +1074,12 @@ impl Writer {
             if let Some(k) = x.kern.filter(|v| v.is_finite() && *v > 0.0).map(|v| (v * 2.0).round().clamp(1.0, 3276.0) as i32) {
                 ctl.push_str(&format!("\\kerning{k}"));
             }
+        }
+        if let Some(w) = position_word(f) {
+            ctl.push_str(&w);
+        }
+        if f.hidden {
+            ctl.push_str("\\v");
         }
         ctl
     }
@@ -1207,7 +1253,11 @@ impl Writer {
         }
         if let (Some(li), Some((n, label))) = (p.list, &ls) {
             let lv = li.level.min(8);
-            out.push_str(&format!("\\ls{n}\\ilvl{lv}\\fi-360\\li{}", 720 * (u32::from(lv) + 1)));
+            out.push_str(&format!("\\ls{n}\\ilvl{lv}"));
+            // The level's indents, unless the paragraph states its own (written by `para_ctl`).
+            if p.spacing.left.is_none() && p.spacing.first.is_none() {
+                out.push_str(&format!("\\fi-360\\li{}", 720 * (u32::from(lv) + 1)));
+            }
             // The closing brace ends the label; a space after it would be text.
             out.push_str(&format!(" {{\\listtext\\pard\\plain {}\\tab}}", esc(label)));
         } else {
@@ -1302,6 +1352,19 @@ impl Writer {
             }
             Kind::Title => out.push_str("\\sa80\\fs56"),
             Kind::Normal => {}
+        }
+        // The paragraph's own spacing, indents and keeps, after its kind's (the later word wins).
+        out.push_str(&spacing_words(&p.spacing));
+        if p.keep_next && !matches!(p.kind, Kind::Heading(_)) {
+            out.push_str("\\keepn");
+        }
+        if let Some(x) = p.extra.as_deref() {
+            if x.keep_lines == Some(true) {
+                out.push_str("\\keep");
+            }
+            if x.suppress_line_numbers == Some(true) {
+                out.push_str("\\noline");
+            }
         }
         out
     }
@@ -1521,6 +1584,40 @@ impl Writer {
     }
 }
 
+/// The paragraph spacing and indent words of `s` (RTF 1.9.1), in twips: only what it states.
+fn spacing_words(s: &model::Spacing) -> String {
+    use wordcraft_doc::props::LineSpacing;
+    let tw = |pt: f32, lo: f32| (pt.clamp(lo, 1584.0) * 20.0).round() as i32;
+    let mut out = String::new();
+    for (word, v, lo) in [("sb", s.before, 0.0), ("sa", s.after, 0.0), ("li", s.left, -1584.0), ("ri", s.right, -1584.0), ("fi", s.first, -1584.0)] {
+        if let Some(v) = v.filter(|v| v.is_finite()) {
+            out.push_str(&format!("\\{word}{}", tw(v, lo)));
+        }
+    }
+    match s.line {
+        // 240 is single spacing.
+        Some(LineSpacing::Multiple(m)) if m.is_finite() => {
+            out.push_str(&format!("\\sl{}\\slmult1", (m.clamp(0.06, 132.0) * 240.0).round() as i32));
+        }
+        // Twips: positive at least, negative exactly.
+        Some(LineSpacing::AtLeast(pt)) if pt.is_finite() && pt > 0.0 => out.push_str(&format!("\\sl{}\\slmult0", tw(pt, 0.0))),
+        Some(LineSpacing::Exactly(pt)) if pt.is_finite() && pt > 0.0 => out.push_str(&format!("\\sl-{}\\slmult0", tw(pt, 0.0))),
+        _ => {}
+    }
+    out
+}
+
+/// The raised or lowered position of `f` in half-points: `\upN` or `\dnN`; `None` at the baseline.
+fn position_word(f: &Fmt) -> Option<String> {
+    let pt = f.extra.as_ref().and_then(|x| x.position).filter(|v| v.is_finite())?;
+    let half = (pt.clamp(-1584.0, 1584.0) * 2.0).round() as i32;
+    match half {
+        0 => None,
+        h if h > 0 => Some(format!("\\up{h}")),
+        h => Some(format!("\\dn{}", h.unsigned_abs())),
+    }
+}
+
 /// The table words of a paragraph at table depth `itap`: `\intbl`, with `\itapN` in a nested
 /// table.
 fn in_table(itap: usize) -> String {
@@ -1646,11 +1743,34 @@ pub fn export(doc: &Document) -> String {
     w.blocks(&flow.blocks, 0, "\\par", &mut body, 0);
     let own_entries = own_style_entries(doc, &mut w.t);
     set_own_styles(before);
-    export_with(&flow.meta, &w, &own_entries, &body, &doc.last_section, &doc.settings)
+    export_with(&flow.meta, doc, &w, &own_entries, &body)
+}
+
+/// `{\*\userprops …}` (RTF 1.9.1 "User Properties") for the custom properties RTF has a type
+/// for, in document order; empty when there are none.
+fn user_props(props: &[wordcraft_doc::CustomProp]) -> String {
+    let mut out = String::new();
+    for p in props {
+        let (ptype, value) = match p.kind.as_str() {
+            "lpwstr" => (30, p.value.as_str()),
+            "i4" => (3, p.value.as_str()),
+            "r8" => (5, p.value.as_str()),
+            "bool" => (11, if p.value.eq_ignore_ascii_case("true") || p.value == "1" { "1" } else { "0" }),
+            "filetime" => (64, p.value.as_str()),
+            // `raw` vectors and blobs, and kinds RTF has no type for.
+            _ => continue,
+        };
+        out.push_str(&format!("{{\\propname {}}}\\proptype{ptype}{{\\staticval {}}}", esc(&p.name), esc(value)));
+        if let Some(link) = &p.link_target {
+            out.push_str(&format!("{{\\linkval {}}}", esc(link)));
+        }
+    }
+    if out.is_empty() { out } else { format!("{{\\*\\userprops {out}}}\n") }
 }
 
 /// The RTF file: its header (`own_styles`: the document's own stylesheet entries) and `body`.
-fn export_with(m: &Meta, w: &Writer, own_styles: &str, body: &str, sec: &wordcraft_doc::SectionProps, settings: &wordcraft_doc::Settings) -> String {
+fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &str) -> String {
+    let (sec, settings, core) = (&doc.last_section, &doc.settings, &doc.core);
     let mut out = String::from("{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\\uc1\n{\\fonttbl");
     for (i, f) in w.t.fonts.iter().enumerate() {
         let fam = if model::is_mono(f) { "\\fmodern" } else { "\\fswiss" };
@@ -1697,10 +1817,21 @@ fn export_with(m: &Meta, w: &Writer, own_styles: &str, body: &str, sec: &wordcra
             out.push_str(&format!("{{\\{k} {}}}", esc(v)));
         }
     }
-    if let Some(d) = rtf_date(&m.created) {
-        out.push_str(&format!("{{\\creatim{d}}}"));
+    for (k, v) in [("operator", &core.last_modified_by), ("category", &core.category)] {
+        if !v.is_empty() {
+            out.push_str(&format!("{{\\{k} {}}}", esc(v)));
+        }
+    }
+    if core.revision > 0 {
+        out.push_str(&format!("{{\\version{}}}", core.revision));
+    }
+    for (k, v) in [("creatim", &m.created), ("revtim", &core.modified), ("printim", &core.last_printed)] {
+        if let Some(d) = rtf_date(v) {
+            out.push_str(&format!("{{\\{k}{d}}}"));
+        }
     }
     out.push_str("}\n");
+    out.push_str(&user_props(&doc.custom_props));
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
     let notes = doc_note_words(settings);

@@ -135,6 +135,32 @@ pub fn rpr_inner(w: &mut W, c: &CharProps) {
     if let Some(l) = c.ligatures {
         w.empty("w14:ligatures", &[("w14:val", &l.ooxml())]);
     }
+    opentype_features(w, c);
+}
+
+/// The OpenType number and alternate settings ([MS-DOCX] 2.6.1), in its sequence after
+/// `w14:ligatures`: numForm, numSpacing, stylisticSets, cntxtAlts.
+fn opentype_features(w: &mut W, c: &CharProps) {
+    if let Some(f) = c.num_form {
+        w.empty("w14:numForm", &[("w14:val", f.ooxml())]);
+    }
+    if let Some(s) = c.num_spacing {
+        w.empty("w14:numSpacing", &[("w14:val", s.ooxml())]);
+    }
+    if let Some(sets) = &c.stylistic_sets {
+        if sets.is_empty() {
+            w.empty("w14:stylisticSets", &[]);
+        } else {
+            w.open("w14:stylisticSets", &[]);
+            for s in sets.iter().filter(|s| (1..=wordcraft_doc::props::StyleSet::MAX_ID).contains(&s.id)) {
+                w.empty("w14:styleSet", &[("w14:id", &s.id.to_string()), ("w14:val", if s.on { "true" } else { "false" })]);
+            }
+            w.close("w14:stylisticSets");
+        }
+    }
+    if let Some(on) = c.contextual_alternates {
+        w.empty("w14:cntxtAlts", &[("w14:val", if on { "true" } else { "false" })]);
+    }
 }
 
 /// `w:eastAsianLayout` with the attributes that are set (ISO/IEC 29500-1 §17.3.2.10).

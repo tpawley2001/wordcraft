@@ -272,12 +272,21 @@ fn section_tops(ctx: &mut Ctx, hf: &HfLinks, (si, sect): (usize, &SectionProps),
     Tops { body, first, foot, first_foot }
 }
 
-/// Set up the walk state for a section: its grid, field values and footnote separators.
-fn begin_section_state<'p>(ctx: &mut Ctx, pb: &mut PageBuilder<'p>, sec: &Sec<'p>, totals: &Totals, web: bool) {
-    let (doc, sect, si) = (ctx.doc, sec.sect, sec.si);
+/// Set up the walk state for a section before its header and footer room is measured: no grid yet
+/// (the previous section's must not leak into headers, footers and separators), the field values
+/// and the footnote separators.
+fn begin_section_state<'p>(
+    ctx: &mut Ctx,
+    pb: &mut PageBuilder<'p>,
+    (si, sect, page_format): (usize, &'p SectionProps, wordcraft_doc::section::NumFormat),
+    totals: &Totals,
+    web: bool,
+) {
+    let doc = ctx.doc;
+    ctx.grid = para::Grid::default();
     pb.sect = sect;
-    pb.page_format = sec.page_format;
-    ctx.fields.page_format = sec.page_format;
+    pb.page_format = page_format;
+    ctx.fields.page_format = page_format;
     pb.sect_idx = si;
     pb.sect_beneath = doc.note_options(sect, false).pos == wordcraft_doc::section::NotePos::BeneathText;
     if !web && !doc.footnote_separators.is_empty() {
@@ -285,7 +294,11 @@ fn begin_section_state<'p>(ctx: &mut Ctx, pb: &mut PageBuilder<'p>, sec: &Sec<'p
     }
     ctx.fields.section = u32::try_from(si).unwrap_or(u32::MAX).saturating_add(1);
     ctx.fields.section_pages = totals.section(si);
-    ctx.grid = para::Grid::of(doc, sect);
+}
+
+/// The section's own grid and line numbering, once its header and footer room is known.
+fn apply_section_grid(ctx: &mut Ctx, pb: &mut PageBuilder<'_>, sect: &SectionProps) {
+    ctx.grid = para::Grid::of(ctx.doc, sect);
     if sect.line_numbers.as_ref().is_some_and(|l| l.restart == wordcraft_doc::section::LineNumberRestart::Section) {
         pb.line_no = 0;
     }
@@ -337,6 +350,38 @@ fn continue_page(pb: &mut PageBuilder, sect: &SectionProps, block: usize) {
     pb.top = pb.text_bottom();
     pb.y = pb.top;
     pb.max_y = pb.top;
+    pb.open_column_lines(block);
+}
+
+/// Whether a section starting with a next column break (`start`) goes on in the next column of
+/// the current page, as in Word: when the section before (still `pb.sect`) has as many columns on
+/// the same page geometry and did not end in its last column. Otherwise it starts a new page, as
+/// Next Page does.
+fn starts_next_column(pb: &PageBuilder, sect: &SectionProps, start: SectionStart) -> bool {
+    let prev = pb.sect;
+    let same_page = prev.page_w == sect.page_w
+        && prev.page_h == sect.page_h
+        && prev.margin_left == sect.margin_left
+        && prev.margin_right == sect.margin_right
+        && prev.margin_top == sect.margin_top
+        && prev.margin_bottom == sect.margin_bottom
+        && prev.gutter == sect.gutter;
+    start == SectionStart::NextColumn
+        && !pb.pages.is_empty()
+        && same_page
+        && prev.columns.count == sect.columns.count
+        && pb.cols.len() == sect.column_boxes().len()
+        && pb.col + 1 < pb.cols.len()
+}
+
+/// Next column: the section's text starts at the top of the column after the one the section
+/// before ended in, on the same page (as a column break moves on).
+fn next_column(pb: &mut PageBuilder, sect: &SectionProps, block: usize) {
+    pb.close_column_lines();
+    pb.max_y = pb.max_y.max(pb.y);
+    pb.cols = sect.column_boxes();
+    pb.col = pb.col.saturating_add(1);
+    pb.y = pb.top;
     pb.open_column_lines(block);
 }
 
@@ -551,19 +596,27 @@ pub(crate) fn layout_pass(
             _ if mode.reflow => sect_ref,
             _ => sect,
         };
-        ctx.fields.page_format = page_format;
-        let tops = section_tops(&mut ctx, &hf, (si, sect), mode.reflow || turn.is_turned());
         let start = if si == 0 { SectionStart::NextPage } else { sect.start };
-        let sec = Sec { si, sect, page_format, start, tops };
-        if !mode.web && !pb.pages.is_empty() && (start != SectionStart::Continuous || turn != prev_turn) {
+        let next_col = !mode.web && turn == prev_turn && starts_next_column(&pb, sect, start);
+        if !mode.web && !pb.pages.is_empty() && !next_col && (start != SectionStart::Continuous || turn != prev_turn) {
             // The page the section before ends on is finished with its own margins and footnote
             // separators, before this section's replace them: the footnotes pending on it
             // belong to the section whose page it is (#5289).
             pb.finish_page();
         }
-        begin_section_state(&mut ctx, &mut pb, &sec, totals, mode.web);
+        // This section's fields and separators, without the previous section's grid, before its
+        // header and footer room is measured; its own grid once that room is known (#4501).
+        begin_section_state(&mut ctx, &mut pb, (si, sect, page_format), totals, mode.web);
+        let tops = section_tops(&mut ctx, &hf, (si, sect), mode.reflow || turn.is_turned());
+        // Measuring the room took the (reflow) section's own number format; the body keeps the
+        // document section's.
+        ctx.fields.page_format = page_format;
+        apply_section_grid(&mut ctx, &mut pb, sect);
+        let sec = Sec { si, sect, page_format, start, tops };
         if mode.web && si > 0 {
             // one long page
+        } else if next_col {
+            next_column(&mut pb, sect, block);
         } else if pb.pages.is_empty() || start != SectionStart::Continuous || turn != prev_turn {
             start_section_page(&mut ctx, &mut pb, &hf, &sec, (mode, block));
         } else {

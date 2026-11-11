@@ -200,6 +200,11 @@ pub struct Float {
     /// the turned object overhang it (see [`Float::line_pad`]). Cleared by [`Float::set_spin`].
     #[serde(skip_serializing_if = "is_false")]
     pub bare_turn: bool,
+    /// Lock aspect ratio (Layout › Size; DOCX `wp:cNvGraphicFramePr/a:graphicFrameLocks/@noChangeAspect`,
+    /// ECMA-376 §20.1.2.2.19): `Some` = what the file or the user said, `None` = not said (see
+    /// [`Float::locks_aspect`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lock_aspect: Option<bool>,
 }
 
 /// Longest alternative text kept (characters): hostile files and commands are capped.
@@ -246,6 +251,11 @@ fn is_zero_u32(v: &u32) -> bool {
 }
 
 impl Float {
+    /// Is the aspect ratio locked? A picture that doesn't say is (Word locks the pictures it
+    /// inserts); any other drawing that doesn't say isn't.
+    pub fn locks_aspect(&self, picture: bool) -> bool {
+        self.lock_aspect.unwrap_or(picture)
+    }
     /// The rotation and flips, the angle normalised to `0..360` (a NaN angle is no rotation).
     pub fn spin(&self) -> wordcraft_geom::Spin {
         wordcraft_geom::Spin::new(self.rot, self.flip_h, self.flip_v)

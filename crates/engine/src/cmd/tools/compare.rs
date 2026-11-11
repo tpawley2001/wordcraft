@@ -349,6 +349,11 @@ fn obj_key(doc: &Document, o: &InlineObject) -> Key {
     for story in o.text_box_slots() {
         *story = None;
     }
+    // Lock aspect ratio as it acts: an object that doesn't say matches one saying its default.
+    let picture = matches!(o, InlineObject::Image { .. });
+    if let Some(f) = o.float_mut() {
+        f.lock_aspect = Some(f.locks_aspect(picture));
+    }
     Key::Obj(Box::new(o), texts)
 }
 

@@ -41,3 +41,5 @@ pub use specs::specs;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_lock_aspect;
