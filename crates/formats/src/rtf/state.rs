@@ -670,6 +670,8 @@ pub(super) struct SecFmt {
     pub(super) line_grid: Option<i32>,
     /// `\pgbrdrt` … `\pgbrdrr` with their border words: the page borders.
     pub(super) page_borders: wordcraft_doc::props::Borders,
+    /// `\endnhere`: the section includes its endnotes (when they go at each section's end).
+    pub(super) endnhere: bool,
 }
 
 impl SecFmt {
