@@ -79,6 +79,7 @@ fn new_ctx<'a>(
         opts,
         hide_deleted: opts.hides_deleted(StoryRef::Body),
         counters: Counters::default(),
+        part_starts: Arc::new(crate::list_stories::part_starts(doc)),
         fields: FieldCtx {
             page: 1,
             pages: totals.pages,
