@@ -1781,7 +1781,7 @@ fn paste_special_html_and_rtf_keep_bold() {
     let html = "<p>plain <b>strong</b></p>";
     let r = run(&mut s, "edit.pasteSpecial", json!({"html": html, "text": "plain strong"}));
     let ids: Vec<&str> = r["formats"].as_array().unwrap().iter().map(|f| f["id"].as_str().unwrap()).collect();
-    assert_eq!(ids, ["html", "text"]);
+    assert_eq!(ids, ["html", "text", "unicode"]);
     run(&mut s, "edit.pasteSpecial", json!({"as": "html", "html": html}));
     assert_eq!(text(&s), "xplain strong");
     assert!(!bold_at(&s, 0, 2));
