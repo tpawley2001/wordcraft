@@ -308,6 +308,13 @@ impl Reader {
                 }
             }
             "field" => self.start_field(),
+            // A locked field keeps its stored result (RTF 1.9.1 "Fields"); the lock belongs to
+            // this `\field` group's own field, not to fields nested in it.
+            "fldlock" if self.st.dest == Dest::Body => {
+                if let Some(i) = self.st.field {
+                    self.locked_fields.insert(i);
+                }
+            }
             "fldrslt" => {
                 let link = self.st.field.and_then(|i| self.fields.get(i)).and_then(|s| hyperlink(s));
                 if link.is_some() {
@@ -324,7 +331,7 @@ impl Reader {
                         instr: instr.clone(),
                         result: String::new(),
                         fmt: self.st.fmt.clone(),
-                        locked: false,
+                        locked: self.st.field.is_some_and(|i| self.locked_fields.contains(&i)),
                         form: self.st.field.and_then(|i| self.forms.get(&i)).map(|ff| ff.to_xml()).unwrap_or_default(),
                     });
                     self.para_has = true;
@@ -337,8 +344,9 @@ impl Reader {
     /// Enters destination `d`, setting up what it collects.
     fn enter_destination(&mut self, d: Dest) {
         match d {
-            Dest::Bookmark => {
+            Dest::Bookmark(end) => {
                 self.bkmk = Some((self.depth(), String::new()));
+                self.bkmk_end = end;
             }
             Dest::Pict => {
                 self.pict_depth = Some(self.depth());
@@ -420,7 +428,8 @@ impl Reader {
             // control data, skipped below.
             "object" => Some(Dest::Object),
             "result" if self.st.dest == Dest::Object => Some(Dest::Body),
-            "bkmkstart" => Some(Dest::Bookmark),
+            "bkmkstart" => Some(Dest::Bookmark(false)),
+            "bkmkend" => Some(Dest::Bookmark(true)),
             "atrfstart" | "atrfend" | "atnid" | "atnauthor" | "atndate" | "atntime" | "atnref"
                 if self.marks_on
                     && self.hf.is_none()
@@ -438,7 +447,7 @@ impl Reader {
                 }))
             }
             "header" | "footer" | "headerl" | "headerr" | "headerf" | "footerl" | "footerr" | "footerf" | "footnote" | "annotation" | "pntext"
-            | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "bkmkend" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
+            | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
             | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb" | "fontfile"
@@ -509,7 +518,7 @@ impl Reader {
     fn skip_ignorable_destination(&mut self, word: &str, starred: bool, first_in_group: bool) -> bool {
         // A character style's stylesheet entry is `{\*\csN …}`, a table style's `{\*\tsN …}`.
         let char_style = matches!(word, "cs" | "ts") && self.st.dest == Dest::StyleSheet;
-        if !starred || !first_in_group || char_style || matches!(word, "fldinst" | "bkmkstart") {
+        if !starred || !first_in_group || char_style || matches!(word, "fldinst" | "bkmkstart" | "bkmkend") {
             return false;
         }
         self.st.dest = Dest::Skip;
@@ -648,8 +657,8 @@ impl Reader {
                 }
                 true
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator | Dest::FfText(_) if !matches!(word, "u" | "uc") => true,
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator | Dest::FfText(_) => false,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) if !matches!(word, "u" | "uc") => true,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) => false,
             Dest::OldProps(false) if matches!(word, "crauth" | "crdate") => {
                 if word == "crauth" {
                     self.st.old_rev.0 = Some(value);

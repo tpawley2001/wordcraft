@@ -40,7 +40,8 @@ pub(super) enum Dest {
     /// An embedded object (`\object`): its control data is skipped, its `{\result …}` group is
     /// read as body content, which is what Word shows for the object.
     Object,
-    Bookmark,
+    /// A bookmark's name: its start (`\bkmkstart`, `false`) or its end (`\bkmkend`, `true`).
+    Bookmark(bool),
     /// A comment's text-valued word: 1 `\atrfstart`, 2 `\atrfend`, 3 `\atnid`, 4 `\atnauthor`,
     /// 5 `\atndate`/`\atntime`, 6 `\atnref`.
     Atn(u8),

@@ -237,7 +237,8 @@ impl Reader {
                 result.push_str(s);
             } else {
                 let form = self.st.field.and_then(|i| self.forms.get(&i)).map(|ff| ff.to_xml()).unwrap_or_default();
-                self.para.inlines.push(Inline::Field { instr: instr.clone(), result: s.to_string(), fmt: f, locked: false, form });
+                let locked = self.st.field.is_some_and(|i| self.locked_fields.contains(&i));
+                self.para.inlines.push(Inline::Field { instr: instr.clone(), result: s.to_string(), fmt: f, locked, form });
             }
         } else {
             self.para.push_text(s, &f);
@@ -334,11 +335,15 @@ impl Reader {
                     }
                 }
             }
-            Dest::Bookmark => {
-                if let Some((_, n)) = &mut self.bkmk
-                    && n.len() < 256
-                {
-                    n.push_str(s);
+            Dest::Bookmark(_) => {
+                // At most 256 bytes of a name are kept, cut at a character boundary.
+                if let Some((_, n)) = &mut self.bkmk {
+                    for c in s.chars() {
+                        if n.len() + c.len_utf8() > 256 {
+                            break;
+                        }
+                        n.push(c);
+                    }
                 }
             }
             Dest::RevTbl => {
