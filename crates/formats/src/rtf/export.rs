@@ -260,17 +260,18 @@ fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
 
 /// `\sectd` and a section's formatting, in the words the reader reads back, then its formatting
 /// before a tracked change (`{\*\oldsprops …}`) when it has one.
-fn sect_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
-    let mut o = sect_props_words(s, t);
+/// `doc_gutter` is the document's `\gutterN` (points), which `\sectd` resets a section to.
+fn sect_words(s: &wordcraft_doc::SectionProps, doc_gutter: f32, t: &mut Tables) -> String {
+    let mut o = sect_props_words(s, doc_gutter, t);
     if let Some(c) = &s.fmt_change {
-        o.push_str(&format!("{{\\*\\oldsprops {}}}", sect_props_words(&c.old, t)));
+        o.push_str(&format!("{{\\*\\oldsprops {}}}", sect_props_words(&c.old, doc_gutter, t)));
     }
     o.push('\n');
     o
 }
 
 /// `\sectd` and a section's own formatting words; page border colours go into `t`.
-fn sect_props_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
+fn sect_props_words(s: &wordcraft_doc::SectionProps, doc_gutter: f32, t: &mut Tables) -> String {
     use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NotePos, NumFormat, PageVAlign, SectionStart};
     let tw = |v: f32| if v.is_finite() { ((v * 20.0).round() as i64).max(0) } else { 0 };
     let mut o = String::from("\\sectd");
@@ -313,6 +314,9 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
         tw(s.header),
         tw(s.footer)
     ));
+    if tw(s.gutter) != tw(doc_gutter) {
+        o.push_str(&format!("\\guttersxn{}", tw(s.gutter)));
+    }
     if s.columns.count > 1 {
         o.push_str(&format!("\\cols{}\\colsx{}", s.columns.count, tw(s.columns.space)));
         if s.columns.separator {
@@ -1379,7 +1383,9 @@ impl Writer {
                     // A paragraph that ends a section ends it with `\sect`; the next one begins.
                     if p.section.is_some() && itap == 0 && depth == 0 && self.sect_i + 1 < self.sections.len() {
                         self.sect_i += 1;
-                        end = format!("\\sect\n{}", self.sections.get(self.sect_i).map(|s| sect_words(s, &mut self.t)).unwrap_or_default());
+                        let doc_gutter = self.sections.first().map_or(0.0, |f| f.gutter);
+                        end =
+                            format!("\\sect\n{}", self.sections.get(self.sect_i).map(|s| sect_words(s, doc_gutter, &mut self.t)).unwrap_or_default());
                         // A body that ends on the break keeps its last section: an empty paragraph holds it.
                         if i + 1 == n {
                             end.push_str("\\pard\\plain \\par");
@@ -1721,7 +1727,7 @@ pub fn export(doc: &Document) -> String {
     // Every section starts with its own `\sectd`; `\sect` breaks only where there are several.
     let secs: Vec<wordcraft_doc::SectionProps> = doc.sections().into_iter().map(|(_, s)| s.clone()).collect();
     if let Some(first) = secs.first() {
-        body.push_str(&sect_words(first, &mut w.t));
+        body.push_str(&sect_words(first, first.gutter, &mut w.t));
         for (set, prefix) in [(&first.headers, "header"), (&first.footers, "footer")] {
             for (id, suffix) in [(set.default, ""), (set.first, "f"), (set.even, "l")] {
                 if let Some(part) = id.and_then(|id| doc.parts.get(&id)) {
@@ -1832,8 +1838,19 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     let landscape = if sec.landscape { "\\landscape" } else { "" };
     let notes = doc_note_words(settings);
     let opts = doc_opts_words(settings) + &doc_setting_words(settings);
+    // The gutter and its side, from the first section (sections that differ say `\guttersxn`).
+    let mut gutter = String::new();
+    if let Some((_, first)) = doc.sections().first() {
+        let g = if first.gutter.is_finite() { ((first.gutter * 20.0).round() as i64).max(0) } else { 0 };
+        if g != 0 {
+            gutter.push_str(&format!("\\gutter{g}"));
+        }
+        if first.rtl_gutter {
+            gutter.push_str("\\rtlgutter");
+        }
+    }
     out.push_str(&format!(
-        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{landscape}{notes}{opts}\\viewkind4\n",
+        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{gutter}{landscape}{notes}{opts}\\viewkind4\n",
         tw(sec.page_w),
         tw(sec.page_h),
         tw(sec.margin_left),

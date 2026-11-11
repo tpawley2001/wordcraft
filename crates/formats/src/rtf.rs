@@ -61,6 +61,8 @@ use word::hyperlink;
 mod tests;
 
 #[cfg(test)]
+mod gutter_edges;
+#[cfg(test)]
 mod info_edges;
 #[cfg(test)]
 mod own_style_edges;

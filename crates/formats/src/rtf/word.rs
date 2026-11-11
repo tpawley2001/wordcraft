@@ -296,6 +296,8 @@ impl Reader {
             "margr" => self.page.right = Some(pv),
             "margt" => self.page.top = Some(pv),
             "margb" => self.page.bottom = Some(pv),
+            "gutter" => self.page.gutter = Some(pv),
+            "rtlgutter" => self.page.rtl_gutter = on,
             "landscape" => self.page.landscape = on,
             _ if self.doc_note_word(w, p) || self.doc_opts.word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
             _ if self.section_word(w, p) => {}

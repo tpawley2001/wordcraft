@@ -496,6 +496,10 @@ pub(super) struct PageGeom {
     pub(super) bottom: Option<i32>,
     pub(super) header: Option<i32>,
     pub(super) footer: Option<i32>,
+    /// The gutter (`\gutterN`, `\guttersxnN`).
+    pub(super) gutter: Option<i32>,
+    /// `\rtlgutter`: the gutter is on the right (document-wide).
+    pub(super) rtl_gutter: bool,
     pub(super) landscape: bool,
 }
 
@@ -527,6 +531,12 @@ impl PageGeom {
                 *f = v;
             }
         }
+        // The gutter: negative counts as none; capped like the margins.
+        if let Some(g) = self.gutter {
+            let g = g.max(0) as f32 / 20.0;
+            s.gutter = if g.is_finite() { g.min(720.0) } else { 0.0 };
+        }
+        s.rtl_gutter = self.rtl_gutter;
         // Margins that leave no room for text fall back to Word's.
         let d = wordcraft_doc::SectionProps::default();
         if s.page_w - s.margin_left - s.margin_right < 72.0 {
@@ -685,6 +695,8 @@ impl SecFmt {
             bottom: p.bottom.or(doc.bottom),
             header: p.header.or(doc.header),
             footer: p.footer.or(doc.footer),
+            gutter: p.gutter.or(doc.gutter),
+            rtl_gutter: doc.rtl_gutter,
             // A section that gives its own page size or orientation has its own orientation;
             // the document's `\landscape` only applies to sections that give neither.
             landscape: if p.w.is_some() || p.h.is_some() || p.landscape { p.landscape } else { doc.landscape },
