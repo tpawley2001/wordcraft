@@ -73,11 +73,15 @@ pub enum NumForm {
 impl NumForm {
     /// The `w14:val` name.
     pub fn ooxml(self) -> &'static str {
-        todo!("P03-110")
+        match self {
+            NumForm::Default => "default",
+            NumForm::Lining => "lining",
+            NumForm::OldStyle => "oldStyle",
+        }
     }
     /// `None` for a name [MS-DOCX] doesn't define.
-    pub fn from_ooxml(_s: &str) -> Option<NumForm> {
-        todo!("P03-110")
+    pub fn from_ooxml(s: &str) -> Option<NumForm> {
+        [NumForm::Default, NumForm::Lining, NumForm::OldStyle].into_iter().find(|v| v.ooxml() == s)
     }
 }
 
@@ -93,11 +97,15 @@ pub enum NumSpacing {
 impl NumSpacing {
     /// The `w14:val` name.
     pub fn ooxml(self) -> &'static str {
-        todo!("P03-110")
+        match self {
+            NumSpacing::Default => "default",
+            NumSpacing::Proportional => "proportional",
+            NumSpacing::Tabular => "tabular",
+        }
     }
     /// `None` for a name [MS-DOCX] doesn't define.
-    pub fn from_ooxml(_s: &str) -> Option<NumSpacing> {
-        todo!("P03-110")
+    pub fn from_ooxml(s: &str) -> Option<NumSpacing> {
+        [NumSpacing::Default, NumSpacing::Proportional, NumSpacing::Tabular].into_iter().find(|v| v.ooxml() == s)
     }
 }
 
@@ -106,6 +114,11 @@ impl NumSpacing {
 pub struct StyleSet {
     pub id: u8,
     pub on: bool,
+}
+
+impl StyleSet {
+    /// The highest stylistic set OpenType defines (`ss20`).
+    pub const MAX_ID: u8 = 20;
 }
 
 /// The OpenType ligatures a run asks for ([MS-DOCX] `w14:ligatures`): standard (`liga`),
@@ -346,16 +359,17 @@ pub struct CharProps {
     /// contextual ligatures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ligatures: Option<Ligatures>,
-    /// OpenType number forms (`w14:numForm`, [MS-DOCX]). Stub: not read, written or drawn yet.
+    /// OpenType number forms (`w14:numForm`, [MS-DOCX]); `None` = the font's own figures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub num_form: Option<NumForm>,
-    /// OpenType number spacing (`w14:numSpacing`, [MS-DOCX]). Stub: not read, written or drawn yet.
+    /// OpenType number spacing (`w14:numSpacing`, [MS-DOCX]); `None` = the font's own spacing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub num_spacing: Option<NumSpacing>,
-    /// OpenType stylistic sets (`w14:stylisticSets`, [MS-DOCX]), sorted by id. Stub.
+    /// OpenType stylistic sets (`w14:stylisticSets`, [MS-DOCX]): sorted by id, one entry per id
+    /// in 1..=20. A run's list replaces its style's as a whole.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stylistic_sets: Option<Vec<StyleSet>>,
-    /// Use Contextual Alternates (`w14:cntxtAlts`, [MS-DOCX]). Stub.
+    /// Use Contextual Alternates (`w14:cntxtAlts`, [MS-DOCX]); `None` = the shaper's default (`calt` on).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contextual_alternates: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -572,7 +586,7 @@ impl CharProps {
     }
 
     fn minus_document_marks(&mut self, base: &CharProps) {
-        drop_same_fields!(self, base; link, ins, del, ligatures);
+        drop_same_fields!(self, base; link, ins, del, ligatures, num_form, num_spacing, stylistic_sets, contextual_alternates);
     }
 
     /// Apply every `Some` field of `patch` on top of `self`.
@@ -603,7 +617,7 @@ impl CharProps {
     }
 
     fn overlay_document_marks(&mut self, patch: &CharProps) {
-        overlay_fields!(self, patch; link, ins, del, fmt_change, ligatures);
+        overlay_fields!(self, patch; link, ins, del, fmt_change, ligatures, num_form, num_spacing, stylistic_sets, contextual_alternates);
     }
     pub fn overlaid(mut self, patch: &CharProps) -> CharProps {
         self.overlay(patch);
