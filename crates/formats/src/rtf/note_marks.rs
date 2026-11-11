@@ -159,7 +159,8 @@ mod tests {
     use wordcraft_doc::para::{InlineObject, NoteKind};
 
     fn refs(rtf: &str) -> (String, Vec<(NoteKind, String)>) {
-        let d = import(format!(r"{{\rtf1\ansi\pard {rtf}}}").as_bytes()).unwrap();
+        // `\ftnbj` states the footnote position, so `{\footnote}` without `\ftnalt` is a footnote.
+        let d = import(format!(r"{{\rtf1\ansi\ftnbj\pard {rtf}}}").as_bytes()).unwrap();
         let p = d.body.iter().find_map(|b| b.as_para()).unwrap();
         let r = p
             .objects

@@ -1308,11 +1308,14 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     };
     let keep_rows = || t.rows.iter().map(|r| r.props.cant_split).collect::<Vec<_>>();
     // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one,
-    // and the table's style and look, when it has a style.
+    // and the table's style and look, when it has a style, and its alignment and left edge.
+    let placed = t.props.align.is_some() || t.props.indent.is_some();
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
-        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some())
+        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed)
         .map(|(heights, keep_rows)| super::types::TableExtra {
+            align: t.props.align,
+            indent: t.props.indent,
             heights,
             keep_rows,
             style: t.props.style.clone(),
@@ -1323,6 +1326,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
         let heights = heights();
         super::types::TableExtra {
             align: t.props.align,
+            indent: None,
             width: t.props.width,
             width_pct: t.props.width_pct,
             heights,

@@ -94,7 +94,7 @@ pub fn specs() -> Vec<CommandSpec> {
             .pure(),
         CommandSpec::new("file.save", "Save", "File", save)
             .key("Mod+S / Shift+F12 / Alt+Shift+F2")
-            .params(r#"{"path"?: string, "password"?: string (encrypt this and later saves with it, as file.encrypt does), "markup"?: bool (Print Markup for a PDF, PNG, HTML, Markdown or text copy: comments shown; default file.printMarkup), "format"?: "wordml2003" (an .xml file as a Word 2003 XML Document) | "flatopc" (as a Word XML Document, the default; saving over a Word 2003 XML file keeps that format), "strict"?: bool (a .pdf or .png only: refuse, writing nothing, if a character can't be drawn or a picture is missing; see file.strictReport)}"#)
+            .params(r#"{"path"?: string, "password"?: string (encrypt this and later saves with it, as file.encrypt does), "markup"?: bool (Print Markup for a PDF, PNG, HTML, Markdown or text copy: comments shown; default file.printMarkup), "format"?: "wordml2003" (an .xml file as a Word 2003 XML Document) | "flatopc" (as a Word XML Document, the default; saving over a Word 2003 XML file keeps that format), "strict"?: bool (a .pdf or .png only: refuse, writing nothing, if a character can't be drawn or a picture is missing; see file.strictReport), "backup"?: bool (false: don't make the backup copy for this save (AutoSave))}"#)
             .pure(),
         CommandSpec::new("file.saveAs", "Save As", "File", save_as).key(super::mac_or("F12 / Mod+Shift+S", "F12 / Alt+F2")).params(r#"{"path": string, "password"?: string, "markup"?: bool, "format"?: string (as file.save), "strict"?: bool (as file.save)}"#).pure(),
         // Pure: the password must not land in Repeat or a recorded macro, and it isn't an edit
@@ -502,6 +502,10 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
     let password = s.password.as_ref().map(crate::io::Password::as_str);
     // A header/footer just made and left empty isn't saved (#960).
     let copy = super::insert::saved_copy(s);
+    // Always create backup copy: a save over the document's own file keeps its previous version.
+    // A backup that can't be made doesn't stop the save; the result reports why.
+    let backup = (s.prefs.always_create_backup && s.path.as_deref() == Some(path.as_path()) && p::bool(v, "backup") != Some(false))
+        .then(|| crate::io::backup_existing(&path));
     if let Err(e) = crate::io::save_path_with(&path, copy.as_ref().unwrap_or(&s.doc), password, &opts) {
         (s.doc.settings.zoom, s.doc.core.last_modified_by, s.doc.core.created, s.doc.core.modified, s.doc.core.revision) = before_stamp;
         return Err(CmdError::Failed(e));
@@ -519,7 +523,13 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
     if s.read_only && !own_file {
         s.read_only = false;
     }
-    Ok(json!({"saved": true, "path": path.to_string_lossy(), "encrypted": encrypted}))
+    let mut out = json!({"saved": true, "path": path.to_string_lossy(), "encrypted": encrypted});
+    match backup {
+        Some(Ok(Some(b))) => out["backup"] = json!(b.to_string_lossy()),
+        Some(Err(e)) => out["backupError"] = json!(e),
+        Some(Ok(None)) | None => {}
+    }
+    Ok(out)
 }
 
 /// Does `path` hold a Word 2003 XML Document already (so a plain save keeps that format)?

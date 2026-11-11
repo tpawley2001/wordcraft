@@ -830,6 +830,34 @@ fn only_case_differs(source: &std::path::Path, destination: &std::path::Path) ->
     std::fs::read_dir(dir).is_ok_and(|entries| entries.filter_map(Result::ok).all(|entry| entry.file_name() != to))
 }
 
+/// Where File › Options › Advanced › Save › Always create backup copy keeps the previous version
+/// of `path`: the same folder, named `Backup of <file name without its last extension>.wbk`.
+pub fn backup_path_for(path: &std::path::Path) -> std::path::PathBuf {
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    path.with_file_name(format!("Backup of {stem}.wbk"))
+}
+
+/// Before a save over `path`, copies the file there now to [`backup_path_for`], replacing any
+/// previous backup (atomically: a half-written backup never replaces a good one). Returns the
+/// backup's path, or `None` when no regular file is at `path` (nothing to keep).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn backup_existing(path: &std::path::Path) -> Result<Option<std::path::PathBuf>, String> {
+    if !std::fs::metadata(path).is_ok_and(|m| m.is_file()) {
+        return Ok(None);
+    }
+    let backup = backup_path_for(path);
+    crate::file_access::check_write(&backup.to_string_lossy())?;
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    safe_save::write(&backup, &bytes).map_err(|e| format!("{}: {e}", backup.display()))?;
+    Ok(Some(backup))
+}
+
+/// The web saves through the browser: there is no previous file to keep.
+#[cfg(target_arch = "wasm32")]
+pub fn backup_existing(_path: &std::path::Path) -> Result<Option<std::path::PathBuf>, String> {
+    Ok(None)
+}
+
 /// Write `bytes` to the file at `path`, inside the automation write root when there is one.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn write_file(path: &str, bytes: &[u8]) -> Result<(), String> {
@@ -875,4 +903,31 @@ pub fn save_path_with(path: &std::path::Path, _doc: &Document, _password: Option
 /// [`wordcraft_formats::txt::decode`]).
 pub fn decode_text(b: &[u8]) -> String {
     wordcraft_formats::txt::decode(b)
+}
+
+#[cfg(test)]
+mod backup_tests {
+    use super::{backup_existing, backup_path_for};
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn the_backup_is_named_after_the_file_without_its_last_extension() {
+        assert_eq!(backup_path_for(Path::new("/d/Report.docx")), PathBuf::from("/d/Backup of Report.wbk"));
+        assert_eq!(backup_path_for(Path::new("/d/My.Notes.v2.rtf")), PathBuf::from("/d/Backup of My.Notes.v2.wbk"));
+        assert_eq!(backup_path_for(Path::new("Report.docx")), PathBuf::from("Backup of Report.wbk"));
+        assert_eq!(backup_path_for(Path::new("/d/noext")), PathBuf::from("/d/Backup of noext.wbk"));
+    }
+
+    #[test]
+    fn nothing_to_back_up_writes_nothing() {
+        let dir = std::env::temp_dir().join(format!("wordcraft-engine-backup-missing-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(backup_existing(&dir.join("Missing.docx")), Ok(None));
+        // A folder is not a document to keep.
+        std::fs::create_dir(dir.join("Folder.docx")).unwrap();
+        assert_eq!(backup_existing(&dir.join("Folder.docx")), Ok(None));
+        assert!(!dir.join("Backup of Missing.wbk").exists() && !dir.join("Backup of Folder.wbk").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
