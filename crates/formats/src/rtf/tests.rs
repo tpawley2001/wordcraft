@@ -1837,6 +1837,7 @@ mod doc_grid;
 mod doc_page_options;
 mod doc_settings;
 mod doc_widow_control;
+mod endnote_here;
 mod foreign_styles;
 mod frames;
 mod html_auto_spacing;
