@@ -132,3 +132,30 @@ fn dop_running_past_the_table_stream_keeps_defaults() {
         assert_eq!(s.compat_mode, 11);
     }
 }
+
+/// `Copts80.f2ptExtLeadingOnly` ([MS-DOC] §2.7.3): bit G of the u16 at Dop offset 86.
+#[test]
+fn ext_leading_2pt_only_flag_is_read() {
+    let mut d = dop(DOP2003, false, true, false);
+    d[86] |= 0x40;
+    assert!(doc_with_dop(Some(&d)).settings.ext_leading_2pt_only);
+    // A Dop95-sized DOP already holds Copts80.
+    let mut d = dop(DOP95, false, false, false);
+    d[86] |= 0x40;
+    assert!(doc_with_dop(Some(&d)).settings.ext_leading_2pt_only);
+    assert!(!doc_with_dop(None).settings.ext_leading_2pt_only);
+}
+
+#[test]
+fn ext_leading_2pt_only_needs_its_own_bit() {
+    // fDontMakeSpaceForUL (E, 0x0010), fTruncFontHeight (H, 0x0080) and fUsePrinterMetrics (P, 0x8000)
+    // set, G clear: Word keeps the font's own line height in these files.
+    let mut d = dop(DOP2003, false, true, false);
+    d[86] |= 0x10 | 0x80;
+    d[87] |= 0x80;
+    assert!(!doc_with_dop(Some(&d)).settings.ext_leading_2pt_only);
+    // A DOP too short for Copts80 leaves it off.
+    let mut d = vec![0u8; 86];
+    d[84] = 0xff;
+    assert!(!doc_with_dop(Some(&d)).settings.ext_leading_2pt_only);
+}
