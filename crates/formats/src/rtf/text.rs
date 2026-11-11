@@ -208,9 +208,6 @@ impl Reader {
 
     /// Document text: a run in the current formatting, or a shape field's result.
     fn body_text(&mut self, s: &str) {
-        if self.st.hidden {
-            return;
-        }
         let mut f = self.st.fmt.clone();
         if s.contains([MARK_OPEN, MARK_CLOSE]) {
             self.para.push_text(&s.replace([MARK_OPEN, MARK_CLOSE], "\u{FFFD}"), &f);
@@ -230,7 +227,7 @@ impl Reader {
             let old = self.old_fmt(&words);
             f.fmt_change = Some(Box::new(model::FmtChange { mark, old }));
         }
-        if !self.shapes.is_empty()
+        if self.field_inline()
             && let Some(instr) =
                 self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty() && super::word::hyperlink(s).is_none())
         {
@@ -239,7 +236,8 @@ impl Reader {
             {
                 result.push_str(s);
             } else {
-                self.para.inlines.push(Inline::Field { instr: instr.clone(), result: s.to_string(), fmt: f, locked: false });
+                let form = self.st.field.and_then(|i| self.forms.get(&i)).map(|ff| ff.to_xml()).unwrap_or_default();
+                self.para.inlines.push(Inline::Field { instr: instr.clone(), result: s.to_string(), fmt: f, locked: false, form });
             }
         } else {
             self.para.push_text(s, &f);
@@ -303,6 +301,12 @@ impl Reader {
             Dest::Atn(_) => {
                 if self.atn_text.len() < 256 {
                     self.atn_text.push_str(s);
+                }
+            }
+            Dest::FormField => {}
+            Dest::FfText(slot) => {
+                if let Some(f) = self.st.field.and_then(|i| self.forms.get_mut(&i)) {
+                    f.text(slot, s);
                 }
             }
             Dest::FldInst => {

@@ -164,7 +164,7 @@ mod platform {
     use std::io::Read;
 
     use wl_clipboard_rs::paste::{ClipboardType, MimeType, Seat, get_contents, get_mime_types_ordered};
-    use wordcraft_ui_egui::paste_picture::{self, ClipboardPicture};
+    use wordcraft_ui_egui::paste_picture::ClipboardPicture;
 
     fn wayland() -> bool {
         std::env::var_os("WAYLAND_DISPLAY").is_some()
@@ -248,7 +248,7 @@ mod platform {
         }
         let offered = formats();
         let mime = super::PICTURE_MIMES.into_iter().find(|m| offered.iter().any(|o| o == m))?;
-        read(mime, paste_picture::MAX_FILE_BYTES)
+        read(mime, wordcraft_ui_egui::paste_picture::MAX_FILE_BYTES)
     }
 
     /// Whether a property read of `len` bytes, with `bytes_after` left unread, is the whole value
@@ -358,8 +358,8 @@ mod platform {
         }
         let offered = formats();
         let mime = super::PICTURE_MIMES.into_iter().find(|m| offered.iter().any(|o| o == m))?;
-        Some(match read(mime, paste_picture::MAX_FILE_BYTES) {
-            Some(bytes) => paste_picture::encoded_picture(bytes),
+        Some(match read(mime, wordcraft_ui_egui::paste_picture::MAX_FILE_BYTES) {
+            Some(bytes) => wordcraft_ui_egui::paste_picture::encoded_picture(bytes),
             None => ClipboardPicture::Unreadable("the clipboard picture is larger than 200 MB, or couldn't be read".into()),
         })
     }

@@ -13,7 +13,7 @@ pub(super) fn view_key(app: &WordApp, dim_body: bool, hidden: Option<&Pos>, hint
     (v.read_mode, v.read_page_color, app.session.prefs.paper_color).hash(&mut h);
     app.ui.picture_placeholders.hash(&mut h);
     app.session.prefs.markup.hash(&mut h);
-    dim_body.hash(&mut h);
+    (dim_body, v.show_document_text).hash(&mut h);
     format!("{:?}{:?}{:?}", app.session.doc.settings.page_color, app.session.doc.settings.page_picture, app.session.doc.settings.watermark)
         .hash(&mut h);
     app.session.doc.media.len().hash(&mut h);
@@ -327,6 +327,8 @@ pub(super) fn page_render_options(app: &WordApp, dim_body: bool) -> wordcraft_re
     }
     opts.display.dim_header = !dim_body;
     opts.display.dim_body = dim_body;
+    // Header & Footer › Show Document Text off: the body isn't drawn while a header or footer is edited.
+    opts.display.hide_body = dim_body && !app.session.view.show_document_text;
     opts.display.picture_placeholders = app.ui.picture_placeholders;
     opts
 }

@@ -393,6 +393,7 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 });
             });
             para_check(ui, &mut opts[0], tl!("Mirror indents"), "mirrorIndents", mixed);
+            para_check(ui, &mut opts[4], tl!("Automatically adjust right indent when document grid is defined"), "adjustRightIndent", mixed);
             ui.label(egui::RichText::new(tl!("Spacing")).font(semibold(12.5)));
             crate::rtl::Table::new("sp").columns(4).show(ui, |t| {
                 t.row(|r| {
@@ -407,6 +408,7 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 });
             });
             para_check(ui, &mut opts[1], tl!("Don't add space between paragraphs of the same style"), "contextualSpacing", mixed);
+            para_check(ui, &mut opts[5], tl!("Snap to grid when document grid is defined"), "snapToGrid", mixed);
         }
         1 => {
             ui.label(egui::RichText::new(tl!("Line and Page Breaks")).font(semibold(12.5)));
