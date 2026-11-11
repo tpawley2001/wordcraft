@@ -283,6 +283,24 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
 
+/// `extra` with the outline level of `p`, a paragraph of `kind`, when it is apart from a heading
+/// style and `opts` keeps it so ([`FlowOpts::outline_apart`]).
+fn outline_apart(
+    doc: &Document,
+    p: &wordcraft_doc::props::ParaProps,
+    kind: Kind,
+    opts: FlowOpts,
+    mut extra: Option<Box<wordcraft_doc::props::ParaProps>>,
+) -> Option<Box<wordcraft_doc::props::ParaProps>> {
+    if opts.outline_apart
+        && !matches!(kind, Kind::Heading(_))
+        && let Some(l) = doc.styles.resolve_para(p).outline_level.filter(|l| *l < 9)
+    {
+        extra.get_or_insert_with(Default::default).outline_level = Some(l);
+    }
+    extra
+}
+
 /// The paragraph formatting only [`Para::extra`] holds that `p` sets itself; `None` when none.
 fn para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps) -> Option<Box<wordcraft_doc::props::ParaProps>> {
     let tabs = p.tabs.clone().filter(|t| !t.is_empty()).map(|mut tabs| {
@@ -619,14 +637,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
         index: None,
         group: None,
     };
-    out.extra = flow_para_extra(doc, &p.props, opts);
-    // An outline level apart from a heading style, as the paragraph's own.
-    if opts.outline_apart
-        && !matches!(kind, Kind::Heading(_))
-        && let Some(l) = doc.styles.resolve_para(&p.props).outline_level.filter(|l| *l < 9)
-    {
-        out.extra.get_or_insert_with(Default::default).outline_level = Some(l);
-    }
+    out.extra = outline_apart(doc, &p.props, kind, opts, flow_para_extra(doc, &p.props, opts));
     let in_code = kind == Kind::Code;
     let mut k = 0usize;
     let mut control = OpenControl::default();
