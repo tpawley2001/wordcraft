@@ -1859,6 +1859,7 @@ mod section_text_flow;
 mod shape_text;
 mod style_entry_extras;
 mod surrogate_boundaries;
+mod table_position;
 mod table_rows;
 mod table_styles;
 mod tabs_spacing;
