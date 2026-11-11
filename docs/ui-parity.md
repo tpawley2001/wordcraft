@@ -173,6 +173,7 @@ Insert Hyperlink › E-mail Address accepts an address and subject and lists rec
 
 ## Revision history
 
+> 2026-11-11 · trivial · P0261: Home › Paragraph › Sort › Options… has a Case sensitive check box; `para.sort` `caseSensitive` breaks ties between keys that differ only in case, lowercase first. Readiness estimates unchanged.
 > 2026-11-11 · trivial · P0241: Home › Paragraph › Paragraph… Indents and Spacing: Automatically adjust right indent when document grid is defined and Snap to grid when document grid is defined check boxes; mixed selections show them blank and OK sends only a changed box. Readiness estimates unchanged.
 
 > 2026-11-11 · trivial · P0229: Lock aspect ratio is a property of each picture and shape: the Size dialog starts from it and stores it (`picture.size` `aspectLocked`), one-sided `picture.size` and corner drags keep proportions only when it is on (Shift flips it); inserted pictures are locked, inserted shapes not.
