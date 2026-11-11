@@ -1796,6 +1796,13 @@ pub fn export(doc: &Document) -> String {
             if sect_end && s.no_endnote != Some(true) {
                 s.no_endnote = Some(false);
             }
+            // The same for the formatting before a tracked change (`{\*\oldsprops …}`).
+            if sect_end
+                && let Some(c) = s.fmt_change.as_deref_mut()
+                && c.old.no_endnote != Some(true)
+            {
+                c.old.no_endnote = Some(false);
+            }
             s
         })
         .collect();
