@@ -545,6 +545,21 @@ impl Reader {
                     "qr" => def.align = Some(Align::Right),
                     "qj" => def.align = Some(Align::Justify),
                     "qd" => def.align = Some(Align::Distribute),
+                    // Tab stops, character-unit indents and character spacing, as in the body.
+                    "tqr" => def.tab_align = TabAlign::Right,
+                    "tqc" => def.tab_align = TabAlign::Center,
+                    "tqdec" => def.tab_align = TabAlign::Decimal,
+                    "tldot" => def.tab_leader = TabLeader::Dot,
+                    "tlmdot" => def.tab_leader = TabLeader::MiddleDot,
+                    "tlhyph" => def.tab_leader = TabLeader::Hyphen,
+                    "tlul" | "tlth" => def.tab_leader = TabLeader::Underscore,
+                    "tleq" => def.tab_leader = TabLeader::None,
+                    "tx" | "tb" => push_tab_stop(&mut def.tabs, (&mut def.tab_align, &mut def.tab_leader), value, word == "tb"),
+                    "cufi" => def.cufi = Some(value.clamp(-158400, 158400)),
+                    "culi" => def.culi = Some(value.clamp(-158400, 158400)),
+                    "curi" => def.curi = Some(value.clamp(-158400, 158400)),
+                    "expnd" => def.spacing = (value != 0).then_some(value as f32 / 4.0),
+                    "expndtw" => def.spacing = (value != 0).then_some(value as f32 / 20.0),
                     _ => {}
                 }
                 true
@@ -748,14 +763,7 @@ impl Reader {
     /// A tab stop at `twips` from the indent (`\tx`, or a bar tab `\tb`), with the alignment and
     /// leader words read before it. A stop at a position already set replaces it.
     fn tab_stop(&mut self, twips: i32, bar: bool) {
-        let align = if bar { TabAlign::Bar } else { self.st.tab_align };
-        let stop = TabStop { pos: twips as f32 / 20.0, align, leader: self.st.tab_leader };
-        (self.st.tab_align, self.st.tab_leader) = (TabAlign::Left, TabLeader::None);
-        if let Some(t) = self.st.tabs.iter_mut().find(|t| t.pos == stop.pos) {
-            *t = stop;
-        } else if self.st.tabs.len() < MAX_TABS {
-            self.st.tabs.push(stop);
-        }
+        push_tab_stop(&mut self.st.tabs, (&mut self.st.tab_align, &mut self.st.tab_leader), twips, bar);
     }
 
     /// A character effect word (Font › Effects, Scale, Kerning) into the run's own properties.
@@ -872,6 +880,20 @@ fn underline_style(w: &str) -> Option<Underline> {
 /// The target of a `HYPERLINK` field instruction; `%22` is a quote, as the writer stores one.
 pub(super) fn hyperlink(instr: &str) -> Option<String> {
     wordcraft_doc::link::hyperlink_target(instr).map(|t| t.replace("%22", "\""))
+}
+
+/// Adds a tab stop at `twips` (`\tx`, or a bar tab `\tb`) to `tabs`, with the pending alignment
+/// and leader words read before it, which it then clears. A stop at a position already set
+/// replaces it; at most [`MAX_TABS`] are kept.
+pub(super) fn push_tab_stop(tabs: &mut Vec<TabStop>, pending: (&mut TabAlign, &mut TabLeader), twips: i32, bar: bool) {
+    let (align, leader) = pending;
+    let stop = TabStop { pos: twips as f32 / 20.0, align: if bar { TabAlign::Bar } else { *align }, leader: *leader };
+    (*align, *leader) = (TabAlign::Left, TabLeader::None);
+    if let Some(t) = tabs.iter_mut().find(|t| t.pos == stop.pos) {
+        *t = stop;
+    } else if tabs.len() < MAX_TABS {
+        tabs.push(stop);
+    }
 }
 
 #[cfg(test)]
