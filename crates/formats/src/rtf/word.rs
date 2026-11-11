@@ -867,6 +867,20 @@ pub(super) fn hyperlink(instr: &str) -> Option<String> {
     wordcraft_doc::link::hyperlink_target(instr).map(|t| t.replace("%22", "\""))
 }
 
+/// Adds a tab stop at `twips` (`\tx`, or a bar tab `\tb`) to `tabs`, with the pending alignment
+/// and leader words read before it, which it then clears. A stop at a position already set
+/// replaces it; at most [`MAX_TABS`] are kept.
+pub(super) fn push_tab_stop(tabs: &mut Vec<TabStop>, pending: (&mut TabAlign, &mut TabLeader), twips: i32, bar: bool) {
+    let (align, leader) = pending;
+    let stop = TabStop { pos: twips as f32 / 20.0, align: if bar { TabAlign::Bar } else { *align }, leader: *leader };
+    (*align, *leader) = (TabAlign::Left, TabLeader::None);
+    if let Some(t) = tabs.iter_mut().find(|t| t.pos == stop.pos) {
+        *t = stop;
+    } else if tabs.len() < MAX_TABS {
+        tabs.push(stop);
+    }
+}
+
 #[cfg(test)]
 mod object_result_tests {
     use super::super::{FBlock, Inline, parse};
@@ -889,19 +903,5 @@ mod object_result_tests {
             })
             .collect();
         assert_eq!(text, "BeforevisibleAfter");
-    }
-}
-
-/// Adds a tab stop at `twips` (`\tx`, or a bar tab `\tb`) to `tabs`, with the pending alignment
-/// and leader words read before it, which it then clears. A stop at a position already set
-/// replaces it; at most [`MAX_TABS`] are kept.
-pub(super) fn push_tab_stop(tabs: &mut Vec<TabStop>, pending: (&mut TabAlign, &mut TabLeader), twips: i32, bar: bool) {
-    let (align, leader) = pending;
-    let stop = TabStop { pos: twips as f32 / 20.0, align: if bar { TabAlign::Bar } else { *align }, leader: *leader };
-    (*align, *leader) = (TabAlign::Left, TabLeader::None);
-    if let Some(t) = tabs.iter_mut().find(|t| t.pos == stop.pos) {
-        *t = stop;
-    } else if tabs.len() < MAX_TABS {
-        tabs.push(stop);
     }
 }
