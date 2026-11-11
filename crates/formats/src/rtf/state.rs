@@ -1,4 +1,4 @@
-use super::{Align, Cell, FBlock, Fmt, Para, Rgb, VAlign};
+use super::{Align, Arc, Cell, FBlock, Fmt, Para, Rgb, VAlign};
 use wordcraft_doc::props::{TabAlign, TabLeader, TabStop};
 
 /// Deepest group nesting we track; deeper groups share the innermost state.
@@ -188,6 +188,8 @@ pub(super) struct Output {
     pub(super) table_rights: Vec<Vec<i32>>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
+    pub(super) row_style: RowStyle,
+    pub(super) table_style: RowStyle,
     pub(super) nest: Vec<TableLevel>,
 }
 
@@ -206,12 +208,25 @@ pub(super) struct TableLevel {
     pub(super) table_rights: Vec<Vec<i32>>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
+    pub(super) row_style: RowStyle,
+    pub(super) table_style: RowStyle,
+}
+
+/// A row's table style (`\tsN`, as its document style id) and look (`\tbllk*`), reset by
+/// `\trowd`; a table's are its first row's.
+#[derive(Clone, Debug, Default)]
+pub(super) struct RowStyle {
+    pub(super) style: Option<String>,
+    pub(super) look: Option<wordcraft_doc::props::TableLook>,
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct St {
     pub(super) dest: Dest,
     pub(super) fmt: Fmt,
+    /// The name of the monospaced font `\f` selected, which [`Fmt::code`] stands for in the
+    /// text: a paragraph mark keeps it by name.
+    pub(super) mono: Option<Arc<str>>,
     pub(super) rev: RevSt,
     /// Tracked change of the character formatting (reset by `\plain`). Its old formatting is
     /// the `\oldcprops` words, applied on top of the run's formatting when text is read: Word
@@ -289,6 +304,7 @@ impl Default for St {
         St {
             dest: Dest::Body,
             fmt: Fmt::default(),
+            mono: None,
             rev: RevSt::default(),
             chg_c: FmtRevSt::default(),
             chg_p: FmtRevSt::default(),
@@ -406,7 +422,8 @@ impl PageGeom {
 }
 
 /// Document formatting words that go into the document's settings, as read: `None` where the
-/// file doesn't give one (the setting keeps its default).
+/// file doesn't give one (the setting keeps its default). `\widowctrl` is the document's widow
+/// control default for paragraphs that don't set their own.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct DocOpts {
     /// `\deftabN`, twips (1..=31680).
@@ -423,6 +440,9 @@ pub(super) struct DocOpts {
     pub(super) hyphenate_caps: Option<bool>,
     /// `\hyphconsecN` (>= 0; 0 is no limit).
     pub(super) consecutive_hyphen_limit: Option<i32>,
+    /// `\widowctrl`: widow and orphan control on for the paragraphs that don't say
+    /// (`\widctlpar`/`\nowidctlpar`). Without it Word has it off for them.
+    pub(super) widow_control: bool,
 }
 
 impl DocOpts {
@@ -450,6 +470,7 @@ impl DocOpts {
                     self.consecutive_hyphen_limit = Some(pv);
                 }
             }
+            "widowctrl" => self.widow_control = true,
             _ => return false,
         }
         true

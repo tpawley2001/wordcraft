@@ -1,11 +1,14 @@
 use super::bookmarks::{bookmark, enclose_preview, icons_body, macros};
 use super::chrome::{buttons, color_field};
 use super::find::{FindTab, SEARCH_SUGGESTIONS, command_matches, find_in_navigation_pane, goto_body, special_menu, swallow_shortcut_text};
-use super::font::{apply_font, font_box, font_sample_box, font_sample_props, sample_paper};
+use super::font::{UNDERLINE_STYLES, apply_font, font_box, font_sample_box, font_sample_lines, font_sample_props, sample_paper, underline_style};
 use super::forms::{cell_margins_dialog, custom_properties, table_properties};
 use super::mailings::{ADDRESS_PARTS, recipient_list, rule_params};
-use super::page_setup::{page_layout_commands, page_paper_group, page_paper_source_group, page_valign_combo, page_valign_value, run_as_one_step};
-use super::paragraph::{ParaNumber, apply_paragraph, para_check, para_number};
+use super::page_setup::{
+    page_layout_commands, page_paper_group, page_paper_source_group, page_section_start_combo, page_section_start_value, page_valign_combo,
+    page_valign_value, run_as_one_step,
+};
+use super::paragraph::{ParaNumber, apply_paragraph, line_spacing_boxes, para_check, para_number};
 use super::styles::manage_styles;
 use super::{Dialog, MeasureExt, Tokens, Ui, Value, WordApp, json, semibold, vec2};
 
@@ -65,6 +68,7 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::NoteOptions { form } => crate::dialogs_notes::note_options(app, ui, form),
         Dialog::Templates { form } => crate::dialogs_templates::templates(app, ui, form),
         Dialog::Organizer { form } => crate::dialogs_templates::organizer(app, ui, form),
+        Dialog::StylePaneOptions { form } => super::style_pane_options::style_pane_options(app, ui, form),
         Dialog::CustomProperties(form) => custom_properties(app, ui, form),
         Dialog::Layout(d) => crate::dialogs_layout::body(app, ui, d),
         Dialog::FindRecipient { .. } => find_recipient_dialog(app, ui, d),
@@ -116,7 +120,9 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         bold,
         italic,
         underline,
+        underline_color,
         strike,
+        double_strike,
         sup,
         sub,
         small_caps,
@@ -131,8 +137,10 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     else {
         return false;
     };
-    let sample_props =
-        font_sample_props(app, sample_paper(app), font, size, color, (*bold, *italic, *underline, *strike), (*small_caps, *caps, *hidden), *spacing);
+    let lined = underline_style(underline).is_some_and(|u| u != wordcraft_doc::props::Underline::None);
+    let mut sample_props =
+        font_sample_props(app, sample_paper(app), font, size, color, (*bold, *italic, lined, *strike), (*small_caps, *caps, *hidden), *spacing);
+    font_sample_lines(&mut sample_props, underline, underline_color, *double_strike);
     crate::rtl::Table::new("fontdlg").columns(2).spacing(vec2(10.0, 6.0)).show(ui, |t| {
         // Word's two font boxes when East Asian text is in use: the Latin text font and
         // the Asian text font, each with its own list (type to find a font).
@@ -186,6 +194,28 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             });
         });
         t.row(|r| {
+            let label = r.cell(|ui| ui.label(tl!("Underline style:")));
+            r.cell(|ui| {
+                let shown = UNDERLINE_STYLES.iter().find(|(v, _)| v == underline).map_or("", |(_, l)| tl!(l));
+                let combo = craft_ui::ComboBox::from_id_salt("fontdlg_underline").width(160.0).height(400.0).selected_text(shown).show_ui(ui, |ui| {
+                    for (v, l) in UNDERLINE_STYLES {
+                        if ui.selectable_label(underline == v, tl!(l)).clicked() {
+                            *underline = v.to_string();
+                        }
+                    }
+                });
+                combo.response.labelled_by(label.id);
+            });
+        });
+        t.row(|r| {
+            r.cell(|ui| ui.label(tl!("Underline color:")));
+            r.cell(|ui| {
+                // Nothing to colour while there is no underline.
+                let theme = app.session.doc.settings.theme_colors.clone();
+                ui.add_enabled_ui(underline != "none", |ui| color_field(ui, &theme, underline_color, "Automatic", "auto"));
+            });
+        });
+        t.row(|r| {
             let spacing_label = r.cell(|ui| ui.label(tl!("Spacing (pt):")));
             r.cell(|ui| ui.add(egui::DragValue::new(spacing).speed(0.1).range(-20.0..=20.0)).labelled_by(spacing_label.id));
         });
@@ -227,8 +257,17 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             r.cell(|ui| ui.checkbox(italic, tl!("Italic")));
         });
         t.row(|r| {
-            r.cell(|ui| ui.checkbox(underline, tl!("Underline")));
+            // Strikethrough and Double strikethrough exclude each other: the one just ticked wins.
+            let was_strike = *strike;
             r.cell(|ui| ui.checkbox(strike, tl!("Strikethrough")));
+            r.cell(|ui| ui.checkbox(double_strike, tl!("Double strikethrough")));
+            if *strike && *double_strike {
+                if was_strike {
+                    *strike = false;
+                } else {
+                    *double_strike = false;
+                }
+            }
         });
         t.row(|r| {
             // Superscript and Subscript exclude each other: the one just ticked wins.
@@ -271,7 +310,8 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         first,
         before,
         after,
-        line,
+        line_rule,
+        line_at,
         keep_next,
         keep_lines,
         page_break,
@@ -340,7 +380,7 @@ fn paragraph_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     let before_label = r.cell(|ui| ui.label(tl!("Before:")));
                     r.cell(|ui| para_number(ui, before, ParaNumber::Points, "spaceBefore", mixed, &before_label));
                     let line_label = r.cell(|ui| ui.label(tl!("Line spacing:")));
-                    r.cell(|ui| para_number(ui, line, ParaNumber::Lines, "lineSpacing", mixed, &line_label));
+                    r.cell(|ui| ui.horizontal(|ui| line_spacing_boxes(ui, line_rule, line_at, mixed, &line_label)));
                 });
                 t.row(|r| {
                     let after_label = r.cell(|ui| ui.label(tl!("After:")));
@@ -580,24 +620,61 @@ fn cell_margins_arm(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 }
 
 fn insert_table_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::InsertTable { rows, cols } = d else {
+    let Dialog::InsertTable { rows, cols, autofit, col_width, remember, error } = d else {
         return false;
     };
+    ui.label(egui::RichText::new(tl!("Table size")).font(semibold(12.5)));
     crate::rtl::Table::new("it").columns(2).show(ui, |t| {
         t.row(|r| {
-            r.cell(|ui| ui.label(tl!("Number of columns:")));
-            r.cell(|ui| ui.add(egui::DragValue::new(cols).range(1..=63)));
+            let label = r.cell(|ui| ui.label(tl!("Number of columns:")));
+            r.cell(|ui| ui.add(egui::DragValue::new(cols).range(1..=63)).labelled_by(label.id));
         });
         t.row(|r| {
-            r.cell(|ui| ui.label(tl!("Number of rows:")));
-            r.cell(|ui| ui.add(egui::DragValue::new(rows).range(1..=1000)));
+            let label = r.cell(|ui| ui.label(tl!("Number of rows:")));
+            r.cell(|ui| ui.add(egui::DragValue::new(rows).range(1..=1000)).labelled_by(label.id));
         });
     });
+    ui.label(egui::RichText::new(tl!("AutoFit behavior")).font(semibold(12.5)));
+    ui.horizontal(|ui| {
+        let radio = ui.radio_value(autofit, "fixed".to_string(), tl!("Fixed column width:"));
+        ui.add_enabled(autofit == "fixed", egui::TextEdit::singleline(col_width).desired_width(72.0)).labelled_by(radio.id);
+    });
+    ui.radio_value(autofit, "contents".to_string(), tl!("AutoFit to contents"));
+    ui.radio_value(autofit, "window".to_string(), tl!("AutoFit to window"));
+    ui.checkbox(remember, tl!("Remember dimensions for new tables"));
+    if let Some(e) = error.as_deref() {
+        ui.colored_label(ui.visuals().error_fg_color, e);
+    }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok {
-        let _ = app.run("insert.table", json!({"rows": *rows, "cols": *cols}));
+        let mut v = json!({"rows": *rows, "cols": *cols, "autofit": autofit.as_str(), "remember": *remember});
+        if autofit == "fixed" {
+            match insert_table_width(col_width) {
+                Some(w) => v["colWidth"] = json!(w),
+                None => {
+                    // Out of range: Word's message, and the dialog stays open.
+                    let sep = crate::options::decimal();
+                    let unit = crate::options::unit();
+                    let (min, max) = (unit.format_with(0.0, sep), unit.format_with(22.0 * 72.0, sep));
+                    *error = Some(crate::i18n::fmt(tl!("The measurement must be between {min} and {max}."), &[("min", &min), ("max", &max)]));
+                    return false;
+                }
+            }
+        }
+        let _ = app.run("insert.table", v);
     }
     ok || cancel
+}
+
+/// Insert Table's Fixed column width in points: 0 for Auto, `None` when it isn't a measurement
+/// from 0 to 22 in.
+fn insert_table_width(text: &str) -> Option<f32> {
+    let text = text.trim();
+    if text.is_empty() || text.eq_ignore_ascii_case("auto") || text == tl!("Auto") {
+        return Some(0.0);
+    }
+    let unit = crate::options::unit();
+    crate::options::parse_length(text, unit).map(|n| n as f32 * unit.pt_per_unit()).filter(|pt| (0.0..=22.0 * 72.0).contains(pt))
 }
 
 /// A margin's number box, in the unit the interface measures in.
@@ -637,6 +714,10 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         paper_src_was,
         odd_even,
         first_page,
+        gutter,
+        header,
+        footer,
+        start,
     } = d
     else {
         return false;
@@ -654,6 +735,10 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             r.cell(|ui| ui.add(margin(left)).labelled_by(left_label.id));
             let right_label = r.cell(|ui| ui.label(if *mirror { tl!("Outside:") } else { tl!("Right:") }));
             r.cell(|ui| ui.add(margin(right)).labelled_by(right_label.id));
+        });
+        t.row(|r| {
+            let gutter_label = r.cell(|ui| ui.label(tl!("Gutter:")));
+            r.cell(|ui| ui.add(margin(gutter)).labelled_by(gutter_label.id));
         });
     });
     ui.label(egui::RichText::new(tl!("Orientation")).font(semibold(12.5)));
@@ -689,19 +774,31 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         ui.label(egui::RichText::new(message.as_str()).small().color(ui.visuals().error_fg_color));
     }
     page_valign_combo(ui, valign);
+    page_section_start_combo(ui, start);
     // Word's Page Setup › Layout: a title page without the page number (#1230).
     ui.label(egui::RichText::new(tl!("Headers and footers")).font(semibold(12.5)));
     ui.checkbox(odd_even, tl!("Different Odd & Even Pages"));
     ui.checkbox(first_page, tl!("Different First Page"));
+    crate::rtl::Table::new("ps_hf").columns(4).show(ui, |t| {
+        t.row(|r| {
+            let header_label = r.cell(|ui| ui.label(tl!("Header:")));
+            r.cell(|ui| ui.add(margin(header)).labelled_by(header_label.id));
+            let footer_label = r.cell(|ui| ui.label(tl!("Footer:")));
+            r.cell(|ui| ui.add(margin(footer)).labelled_by(footer_label.id));
+        });
+    });
     let (mut ok, cancel) = buttons(ui, tl!("OK"));
     if ok {
         // Everything OK changes is one undo step; a refused command applies nothing.
-        let result = page_layout_commands(app, (*paper, *paper_was), *landscape, (*top, *bottom, *left, *right))
+        let result = page_layout_commands(app, (*paper, *paper_was), *landscape, (*top, *bottom, *left, *right), (*gutter, *header, *footer))
             .map_err(|e| tl!(e).to_string())
             .and_then(|mut commands| {
                 // Mirror margins go with the margins (#1181).
                 if let Some((_, v)) = commands.iter_mut().rev().find(|(id, _)| *id == "layout.margins") {
                     v["mirror"] = json!(*mirror);
+                }
+                if *start != wordcraft_engine::cmd::page::sect(&app.session).start {
+                    commands.push(("layout.sectionStart", json!({"value": page_section_start_value(*start)})));
                 }
                 if grid != grid_was {
                     let kind = ["none", "lines", "linesAndChars", "snapToChars"].get(grid.0 as usize).copied().unwrap_or("none");
@@ -904,37 +1001,62 @@ fn word_count_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 }
 
 fn zoom_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::Zoom { percent } = d else {
+    let Dialog::Zoom { percent, fit } = d else {
         return false;
     };
-    ui.horizontal(|ui| {
-        for p in [200.0, 100.0, 75.0] {
-            ui.radio_value(percent, p, format!("{p}%"));
+    // Word's "Zoom to" group: one set of radios for the three percentages and the four fits.
+    // Nothing applies until OK.
+    ui.label(tl!("Zoom to"));
+    let percents = [(200.0, tl!("200%")), (100.0, tl!("100%")), (75.0, tl!("75%"))];
+    let fits =
+        [("pageWidth", tl!("Page width")), ("textWidth", tl!("Text width")), ("onePage", tl!("Whole page")), ("multiplePages", tl!("Many pages"))];
+    crate::rtl::Table::new("zoom_to").columns(2).spacing(vec2(16.0, 4.0)).show(ui, |t| {
+        for row in 0..fits.len() {
+            t.row(|r| {
+                r.cell(|ui| {
+                    if let Some((p, label)) = percents.get(row)
+                        && ui.radio(fit.is_empty() && *percent == *p, *label).clicked()
+                    {
+                        *percent = *p;
+                        fit.clear();
+                    }
+                });
+                r.cell(|ui| {
+                    if let Some((f, label)) = fits.get(row)
+                        && ui.radio(fit.as_str() == *f, *label).clicked()
+                    {
+                        *fit = (*f).to_string();
+                    }
+                });
+            });
         }
     });
+    let percent_label = ui
+        .horizontal(|ui| {
+            let label = ui.label(tl!("Percent:"));
+            let before = *percent;
+            let r = ui.add(egui::DragValue::new(percent).range(10.0..=500.0).speed(1.0).suffix("%")).labelled_by(label.id);
+            // Typing a percentage replaces a fit choice.
+            if r.changed() && *percent != before {
+                fit.clear();
+            }
+            label.id
+        })
+        .inner;
     // Logarithmic like the status bar slider, and wide enough to aim: the default 100 pt
     // linear slider jumped from 100% to 480% within a short drag (issue #67).
     ui.spacing_mut().slider_width = 220.0;
-    crate::rtl::island(ui, |ui| ui.add(egui::Slider::new(percent, 10.0..=500.0).logarithmic(true).step_by(1.0).suffix("%")));
-    let mut fit = None;
-    ui.horizontal(|ui| {
-        if ui.button(tl!("Page width")).clicked() {
-            fit = Some("pageWidth");
-        }
-        if ui.button(tl!("Whole page")).clicked() {
-            fit = Some("onePage");
-        }
-        if ui.button(tl!("Many pages")).clicked() {
-            fit = Some("multiplePages");
-        }
+    let before = *percent;
+    let slider = crate::rtl::island(ui, |ui| {
+        ui.add(egui::Slider::new(percent, 10.0..=500.0).logarithmic(true).step_by(1.0).suffix("%").show_value(false)).labelled_by(percent_label)
     });
-    if let Some(f) = fit {
-        let _ = app.run("view.zoom", json!({"value": f}));
-        return true;
+    if slider.changed() && *percent != before {
+        fit.clear();
     }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok {
-        let _ = app.run("view.zoom", json!({"value": *percent}));
+        let value = if fit.is_empty() { json!(*percent) } else { json!(fit.as_str()) };
+        let _ = app.run("view.zoom", json!({"value": value}));
     }
     ok || cancel
 }

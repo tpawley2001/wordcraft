@@ -224,11 +224,13 @@ impl Marker<'_> {
 }
 
 /// The document formatting words for the settings that differ from the defaults: default tab
-/// stop, facing pages, mirror margins and the automatic hyphenation options.
+/// stop, facing pages, mirror margins and the automatic hyphenation options. Word writes
+/// `\widowctrl` in every document, so a paragraph that doesn't say has widow control on, as
+/// `None` means here.
 fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
     let d = wordcraft_doc::Settings::default();
     let tw = |v: f32| if v.is_finite() { (v * 20.0).round().clamp(0.0, 31_680.0) as i64 } else { 0 };
-    let mut o = String::new();
+    let mut o = String::from("\\widowctrl");
     if s.default_tab != d.default_tab && tw(s.default_tab) >= 1 {
         o.push_str(&format!("\\deftab{}", tw(s.default_tab)));
     }
@@ -508,24 +510,97 @@ fn style_ref_num(id: &str) -> Option<u32> {
     }
 }
 
+/// The row words of a table style's stylesheet entry (RTF 1.9.1, "Table styles"): its borders,
+/// shading and cell padding (in twips).
+fn table_style_words(parts: &wordcraft_doc::styles::TableStyleParts, t: &mut Tables, out: &mut String) {
+    if let Some(b) = &parts.borders {
+        for (side, opt) in [('t', b.top), ('l', b.left), ('b', b.bottom), ('r', b.right), ('h', b.between), ('v', b.inside_v)] {
+            if let Some(border) = opt.filter(|x| x.is_visible() && x.width.is_finite()) {
+                border_words("trbrdr", side, border, false, t, out);
+            }
+        }
+    }
+    if let Some(c) = parts.fill {
+        out.push_str(&format!("\\trcbpat{}", t.color(c)));
+    }
+    if let Some([top, left, bottom, right]) = parts.cell_margins {
+        for (side, v) in [('l', left), ('t', top), ('b', bottom), ('r', right)] {
+            let tw = if v.is_finite() { (v.clamp(0.0, 1584.0) * 20.0).round() as i32 } else { 0 };
+            out.push_str(&format!("\\trpadd{side}{tw}\\trpaddf{side}3"));
+        }
+    }
+}
+
+/// The table styles `doc`'s tables use, in the order they are first used, then the styles those
+/// are based on: the ones its stylesheet writes.
+fn used_table_styles(doc: &Document) -> Vec<String> {
+    use wordcraft_doc::styles::StyleKind;
+    fn walk(blocks: &Blocks, depth: usize, out: &mut Vec<String>) {
+        for b in blocks.iter() {
+            if let Block::Table(t) = &**b {
+                if let Some(id) = &t.props.style
+                    && !out.contains(id)
+                    && out.len() < 256
+                {
+                    out.push(id.clone());
+                }
+                if depth < model::MAX_DEPTH {
+                    for c in t.rows.iter().flat_map(|r| &r.cells) {
+                        walk(&c.blocks, depth + 1, out);
+                    }
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(&doc.body, 0, &mut out);
+    for part in doc.parts.values() {
+        walk(&part.blocks, 0, &mut out);
+    }
+    let is_table = |id: &str| doc.styles.get(id).is_some_and(|s| s.kind == StyleKind::Table);
+    out.retain(|id| is_table(id));
+    let mut bases: Vec<String> = Vec::new();
+    for id in &out {
+        let mut cur = doc.styles.get(id).and_then(|s| s.based_on.clone());
+        for _ in 0..16 {
+            let Some(b) = cur.filter(|b| is_table(b) && !out.contains(b) && !bases.contains(b)) else { break };
+            cur = doc.styles.get(&b).and_then(|s| s.based_on.clone());
+            bases.push(b);
+        }
+    }
+    out.extend(bases);
+    out
+}
+
 /// The `\stylesheet` entries of `doc`'s own paragraph and character styles, numbered as
 /// [`own_style_num`] gives them; their fonts and colours go into `t`.
 fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
     use wordcraft_doc::styles::StyleKind;
     let tw = |v: f32| (v.clamp(-1584.0, 1584.0) * 20.0).round() as i32;
     let mut out = String::new();
-    for s in &doc.styles.styles {
+    // In their numbers' order: a table's own style before the styles it is based on.
+    let mut styles: Vec<(u32, &wordcraft_doc::styles::Style)> = doc.styles.styles.iter().filter_map(|s| Some((own_style_num(&s.id)?, s))).collect();
+    styles.sort_by_key(|(n, _)| *n);
+    for (n, s) in styles {
         let char = s.kind == StyleKind::Character;
-        let Some(n) = own_style_num(&s.id) else { continue };
+        let table = s.kind == StyleKind::Table;
         if char {
             out.push_str(&format!("{{\\*\\cs{n}\\additive"));
+        } else if table {
+            out.push_str(&format!("{{\\*\\ts{n}\\tsrowd"));
+            if let Some(parts) = &s.table {
+                table_style_words(parts, t, &mut out);
+            }
         } else {
             out.push_str(&format!("{{\\s{n}"));
         }
         if let Some(b) = s.based_on.as_deref().and_then(style_ref_num) {
             out.push_str(&format!("\\sbasedon{b}"));
         }
-        if !char && let Some(k) = s.next.as_deref().and_then(style_ref_num) {
+        if !char
+            && !table
+            && let Some(k) = s.next.as_deref().and_then(style_ref_num)
+        {
             out.push_str(&format!("\\snext{k}"));
         }
         if let Some(l) = s.linked.as_deref().and_then(own_style_num) {
@@ -1137,9 +1212,16 @@ impl Writer {
         self.inlines(&p.inlines, out);
         self.base = Fmt::default();
         // A tracked paragraph mark is the `\par` inside the revision's group.
-        let marks = self.rev_ctl(p.mark_ins.as_deref(), p.mark_del.as_deref());
+        let mut marks = self.rev_ctl(p.mark_ins.as_deref(), p.mark_del.as_deref());
+        // An empty paragraph's mark formatting: the character formatting at its `\par`.
+        if let Some(m) = p.mark.as_deref().filter(|_| p.textless()) {
+            let f = mark_fmt(m);
+            marks.push_str(&self.char_ctl(&f));
+        }
         if end == "\\par" && !marks.is_empty() {
             out.push_str(&format!("{{{marks} {end}}}"));
+        } else if !marks.is_empty() {
+            out.push_str(&format!("{marks} {end}"));
         } else {
             out.push_str(end);
         }
@@ -1316,10 +1398,28 @@ impl Writer {
         let mut props = String::new();
         let out = &mut props;
         out.push_str("\\trowd\\trgaph108\\trleft0");
+        let extra = t.extra.as_deref();
+        // The table's style and its look.
+        if let Some(n) = extra.and_then(|x| x.style.as_deref()).and_then(own_style_num) {
+            out.push_str(&format!("\\ts{n}"));
+        }
+        if let Some(l) = extra.and_then(|x| x.look) {
+            for (on, word) in [
+                (l.header_row, "\\tbllkhdrrows"),
+                (l.total_row, "\\tbllklastrow"),
+                (l.first_column, "\\tbllkhdrcols"),
+                (l.last_column, "\\tbllklastcol"),
+                (!l.banded_rows, "\\tbllknorowband"),
+                (!l.banded_columns, "\\tbllknocolband"),
+            ] {
+                if on {
+                    out.push_str(word);
+                }
+            }
+        }
         if !row.is_empty() && row.iter().all(|c| c.header) {
             out.push_str("\\trhdr");
         }
-        let extra = t.extra.as_deref();
         // Row height in twips: negative for exactly, positive for at least.
         if let Some(&Some((h, exact))) = extra.and_then(|x| x.heights.get(ri))
             && h.is_finite()
@@ -1465,6 +1565,26 @@ fn tab_words(t: &wordcraft_doc::props::TabStop) -> String {
     format!("{align}{leader}\\tx{at}")
 }
 
+/// The character formatting RTF writes for a paragraph mark `m` (its font by name, monospaced
+/// or not).
+fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
+    Fmt {
+        bold: m.bold == Some(true),
+        italic: m.italic == Some(true),
+        underline: m.underline.is_some_and(|u| u != wordcraft_doc::props::Underline::None),
+        strike: m.strike == Some(true),
+        sup: m.vert_align == Some(wordcraft_doc::props::VertAlign::Superscript),
+        sub: m.vert_align == Some(wordcraft_doc::props::VertAlign::Subscript),
+        color: match m.color {
+            Some(wordcraft_doc::props::TextColor::Rgb(c)) => Some(c),
+            _ => None,
+        },
+        size: m.size,
+        font: m.font.as_deref().map(Arc::from),
+        ..Fmt::default()
+    }
+}
+
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
     let (marked, marks) = match mark_doc(doc) {
@@ -1473,17 +1593,21 @@ pub fn export(doc: &Document) -> String {
     };
     let doc = marked.as_ref().unwrap_or(doc);
     // The document's own styles are numbered after the fixed entries.
+    // Then the table styles its tables use.
+    let tables = used_table_styles(doc);
     let own: HashMap<String, u32> = doc
         .styles
         .styles
         .iter()
         .filter(|s| model::is_custom_style(doc, &s.id) || model::is_custom_char_style(doc, &s.id))
+        .chain(tables.iter().filter_map(|id| doc.styles.get(id)))
         .take(4096)
         .zip(FIRST_OWN_STYLE..)
         .map(|(s, n)| (s.id.clone(), n))
         .collect();
     let before = set_own_styles(own);
-    let opts = model::FlowOpts::tracked();
+    // An empty paragraph's mark formatting sets its height.
+    let opts = model::FlowOpts { marks: true, ..model::FlowOpts::tracked() };
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {

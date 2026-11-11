@@ -504,6 +504,8 @@ pub struct FlowOpts {
     pub indent_chars: bool,
     /// Table row heights and rows kept from breaking ([`FTable::extra`]), also without `paras`.
     pub rows: bool,
+    /// The mark formatting of a paragraph without text ([`Para::mark`]), also without `paras`.
+    pub marks: bool,
     /// The paragraph's own text frame and drop cap in [`Para::extra`], also without `paras`.
     pub frames: bool,
     /// Without [`FlowOpts::chars`] and [`FlowOpts::paras`]: the document's own paragraph style
@@ -1035,6 +1037,10 @@ pub struct TableExtra {
     /// ODT's `table:table-header-rows`). Its header cells ([`FCell::header`]) may be more: a
     /// table style's header row is one too.
     pub header_rows: usize,
+    /// Its table style's document id and its style options ("look"), for formats that write
+    /// them by row (RTF's `\\tsN` and `\\tbllk*`); `None` leaves the table's own.
+    pub style: Option<String>,
+    pub look: Option<wordcraft_doc::props::TableLook>,
 }
 
 impl FTable {

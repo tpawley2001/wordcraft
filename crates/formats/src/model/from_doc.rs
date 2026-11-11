@@ -184,6 +184,8 @@ fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
         italic_cs: e.italic_cs,
         lang_bidi: e.lang_bidi.clone().filter(|l| !l.is_empty()),
         lang_ea: e.lang_ea.clone().filter(|l| !l.is_empty()),
+        no_proof: set(e.no_proof),
+        east_asian_layout: e.east_asian_layout.clone().filter(|l| *l != Default::default()),
         ..Default::default()
     };
     (x != CharProps::default()).then(|| Box::new(x))
@@ -243,6 +245,11 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         x.space_after_auto = p.space_after_auto;
         x.suppress_hyphens = p.suppress_hyphens;
         x.snap_to_grid = p.snap_to_grid;
+        x.kinsoku = p.kinsoku;
+        x.overflow_punct = p.overflow_punct;
+        x.auto_space_de = p.auto_space_de;
+        x.auto_space_dn = p.auto_space_dn;
+        x.text_alignment = p.text_alignment;
     }
     x.shading = p.shading.filter(|_| opts.shading);
     if opts.indent_chars {
@@ -288,6 +295,13 @@ fn para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps) -> Option<Box
         widow_control: p.widow_control.filter(|w| !*w),
         // Hyphenated (the document hyphenates and the paragraph doesn't opt out): `Some(false)`.
         suppress_hyphens: (doc.settings.auto_hyphenation && p.suppress_hyphens != Some(true)).then_some(false),
+        // East Asian typography and font alignment, as stated.
+        snap_to_grid: p.snap_to_grid,
+        kinsoku: p.kinsoku,
+        overflow_punct: p.overflow_punct,
+        auto_space_de: p.auto_space_de,
+        auto_space_dn: p.auto_space_dn,
+        text_alignment: p.text_alignment,
         ..Default::default()
     };
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
@@ -882,10 +896,10 @@ fn graphic_group(
 
 /// The mark formatting of `out`, the last piece of `p`, when it holds no text (its height, its
 /// drawings' formatting), for
-/// formats that keep it (flows asked for paragraph formatting).
+/// formats that keep it (flows asked for paragraph formatting or for marks).
 fn empty_mark(out: &Para, p: &Paragraph, opts: FlowOpts) -> Option<Box<CharProps>> {
     let m = CharProps { ins: None, del: None, fmt_change: None, ..p.mark.clone() };
-    (opts.paras && out.textless() && !m.is_empty()).then(|| Box::new(m))
+    ((opts.paras || opts.marks) && out.textless() && !m.is_empty()).then(|| Box::new(m))
 }
 
 /// The drawings from `from` on (just added) raised by their run's position `raise` (points): a
@@ -1221,11 +1235,18 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             .collect::<Vec<_>>()
     };
     let keep_rows = || t.rows.iter().map(|r| r.props.cant_split).collect::<Vec<_>>();
-    // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one.
+    // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one,
+    // and the table's style and look, when it has a style.
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
-        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true))
-        .map(|(heights, keep_rows)| super::types::TableExtra { heights, keep_rows, ..Default::default() });
+        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some())
+        .map(|(heights, keep_rows)| super::types::TableExtra {
+            heights,
+            keep_rows,
+            style: t.props.style.clone(),
+            look: t.props.style.is_some().then_some(t.props.look),
+            ..Default::default()
+        });
     let extra = tracked.paras.then(|| {
         let heights = heights();
         super::types::TableExtra {
@@ -1237,6 +1258,8 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             fixed: t.props.fixed,
             space: [t.props.space_before, t.props.space_after],
             header_rows: t.rows.iter().take_while(|r| r.props.header).count(),
+            style: None,
+            look: None,
         }
     });
     // Kept whole for formats that ask for it: its header rows count even without the rest.

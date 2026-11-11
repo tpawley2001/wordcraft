@@ -913,6 +913,13 @@ impl Body<'_> {
         if let Some(c) = look.contextual {
             p.extra.get_or_insert_with(Default::default).contextual_spacing = Some(c);
         }
+        let asian = look.asian;
+        if asian != Default::default() {
+            let x = p.extra.get_or_insert_with(Default::default);
+            (x.kinsoku, x.overflow_punct, x.snap_to_grid, x.text_alignment) =
+                (asian.kinsoku, asian.overflow_punct, asian.snap_to_grid, asian.text_alignment);
+            (x.auto_space_de, x.auto_space_dn) = (asian.auto_space, asian.auto_space);
+        }
         if look.rtl == Some(true) {
             p.extra.get_or_insert_with(Default::default).bidi = Some(true);
         }
@@ -1409,8 +1416,18 @@ impl Body<'_> {
         // keeps it; else its part of the text width.
         let room = width.filter(|_| align.is_some() && rel.is_none()).or_else(|| width_pct.map(|p| self.sec.text_width() * p / 100.0));
         let contained = !self.tables.is_empty() || self.containers.len() > 1 || self.sec.columns.count > 1;
-        let extra =
-            model::TableExtra { align, width: None, width_pct, heights: Vec::new(), keep_rows: Vec::new(), fixed: true, space, header_rows: 0 };
+        let extra = model::TableExtra {
+            align,
+            width: None,
+            width_pct,
+            heights: Vec::new(),
+            keep_rows: Vec::new(),
+            fixed: true,
+            space,
+            header_rows: 0,
+            style: None,
+            look: None,
+        };
         let background = get(a, "table:style-name").and_then(|s| self.styles.table_background(s));
         self.tables.push(TableB {
             rows: Vec::new(),

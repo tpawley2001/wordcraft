@@ -218,6 +218,7 @@ fn new_page_builder<'p>(
         content_bottom: 0.0,
         balance: None,
         col_break_page: None,
+        mirror: false,
         sect_beneath: false,
         beneath: false,
         foot_top: f32::MAX,
@@ -535,6 +536,7 @@ pub(crate) fn layout_pass(
     let web_sect = mode.reflow.then(|| reflow_sect(first_sect, opts));
     let sect_ref = web_sect.as_ref().unwrap_or(first_sect);
     let mut pb = new_page_builder(sect_ref, first_sect.page_num_format, early, mode.web, !may_rewrap && !mode.reflow);
+    pb.mirror = ctx.mirror;
     let mut endnotes = endnote_queue(&ctx);
     // Text boxes laid out in balancing attempts that were thrown away.
     let mut boxes_discarded = 0usize;

@@ -96,6 +96,8 @@ impl WithExtra for CharProps {
         self.italic_cs = x.italic_cs;
         self.lang_bidi = name(&x.lang_bidi, 64);
         self.lang_ea = name(&x.lang_ea, 64);
+        self.no_proof = x.no_proof.filter(|b| *b);
+        self.east_asian_layout = x.east_asian_layout.clone().filter(|l| *l != Default::default());
         self
     }
 }
@@ -204,6 +206,11 @@ fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
         out.space_before_auto = x.space_before_auto.or(out.space_before_auto);
         out.space_after_auto = x.space_after_auto.or(out.space_after_auto);
         out.snap_to_grid = x.snap_to_grid.or(out.snap_to_grid);
+        out.kinsoku = x.kinsoku.or(out.kinsoku);
+        out.overflow_punct = x.overflow_punct.or(out.overflow_punct);
+        out.auto_space_de = x.auto_space_de.or(out.auto_space_de);
+        out.auto_space_dn = x.auto_space_dn.or(out.auto_space_dn);
+        out.text_alignment = x.text_alignment.or(out.text_alignment);
         // An outline level apart from its heading style's.
         out.outline_level = x.outline_level.map(|l| l.min(8)).or(out.outline_level);
         // Indents in characters, beside the twips ones.
@@ -886,6 +893,12 @@ impl<'a> Builder<'a> {
             tb.props.fixed |= x.fixed;
             let space = |v: Option<f32>| v.filter(|v| v.is_finite() && *v > 0.0).map(|v| v.min(1584.0));
             (tb.props.space_before, tb.props.space_after) = (space(x.space[0]), space(x.space[1]));
+            if let Some(id) = &x.style {
+                tb.props.style = Some(id.clone());
+            }
+            if let Some(look) = x.look {
+                tb.props.look = look;
+            }
         }
         for (ri, r) in rows {
             let mut row = wordcraft_doc::Row { props: RowProps::default(), cells: Vec::new(), controls: Default::default() };

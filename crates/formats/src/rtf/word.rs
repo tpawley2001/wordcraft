@@ -91,6 +91,7 @@ impl Reader {
             "uc" => self.st.uc = pv.max(0) as usize,
             "plain" => {
                 self.st.fmt = Fmt { link: self.st.fmt.link.clone(), ..Default::default() };
+                self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
                 self.st.hidden = false;
@@ -100,7 +101,8 @@ impl Reader {
                 // Revision marks are character formatting, which `\pard` leaves alone.
                 let (dest, fmt, rev, uc, hidden) = (self.st.dest, self.st.fmt.clone(), self.st.rev, self.st.uc, self.st.hidden);
                 let chg_c = std::mem::take(&mut self.st.chg_c);
-                self.st = St { dest, fmt, rev, chg_c, uc, hidden, field, ..Default::default() };
+                let mono = self.st.mono.take();
+                self.st = St { dest, fmt, mono, rev, chg_c, uc, hidden, field, ..Default::default() };
                 self.page_side = None;
             }
             "revised" => self.st.rev.ins = on,
@@ -145,13 +147,22 @@ impl Reader {
                 self.st.cp = self.font_cps.get(&pv).copied();
                 let name = self.fonts.get(&pv).cloned();
                 match name {
+                    // The default font (`\deff`), monospaced or not, is the document's: text in
+                    // it is plain text, as after `\plain`.
+                    Some(n) if model::is_mono(&n) && pv == self.deff => {
+                        self.st.fmt.code = false;
+                        self.st.fmt.font = None;
+                        self.st.mono = None;
+                    }
                     Some(n) if model::is_mono(&n) => {
                         self.st.fmt.code = true;
                         self.st.fmt.font = None;
+                        self.st.mono = Some(n);
                     }
                     Some(n) => {
                         self.st.fmt.code = false;
                         self.st.fmt.font = Some(n);
+                        self.st.mono = None;
                     }
                     None => {}
                 }
@@ -192,7 +203,11 @@ impl Reader {
                 self.row_header = false;
                 self.row_height = None;
                 self.row_keep = false;
+                self.row_style = Default::default();
             }
+            // The row's table style: the document style its stylesheet entry became, if one did.
+            "ts" => self.row_style.style = self.table_style_id(pv),
+            "tbllkhdrrows" | "tbllklastrow" | "tbllkhdrcols" | "tbllklastcol" | "tbllknorowband" | "tbllknocolband" => self.look_word(w, on),
             "trhdr" => self.row_header = true,
             // Twips: positive at least, negative exactly, 0 auto; beyond 22 inches ignored.
             "trrh" => {
@@ -244,26 +259,7 @@ impl Reader {
                 if self.border_open() =>
             {
                 use wordcraft_doc::props::{Border, BorderStyle};
-                let style = match w {
-                    "brdrnone" | "brdrnil" | "brdrtbl" => BorderStyle::None,
-                    "brdrth" => BorderStyle::Thick,
-                    "brdrdb" | "brdrwavydb" => BorderStyle::Double,
-                    "brdrtnthsg" => BorderStyle::ThinThickSmallGap,
-                    "brdrthtnsg" => BorderStyle::ThickThinSmallGap,
-                    "brdrtnthtnsg" => BorderStyle::ThinThickThinSmallGap,
-                    "brdrtnthmg" => BorderStyle::ThinThickMediumGap,
-                    "brdrthtnmg" => BorderStyle::ThickThinMediumGap,
-                    "brdrtnthtnmg" => BorderStyle::ThinThickThinMediumGap,
-                    "brdrtnthlg" => BorderStyle::ThinThickLargeGap,
-                    "brdrthtnlg" => BorderStyle::ThickThinLargeGap,
-                    "brdrtnthtnlg" => BorderStyle::ThinThickThinLargeGap,
-                    "brdrdot" => BorderStyle::Dotted,
-                    "brdrdash" | "brdrdashsm" => BorderStyle::Dashed,
-                    "brdrdashd" | "brdrdashdd" => BorderStyle::DotDash,
-                    "brdrtriple" => BorderStyle::Triple,
-                    "brdrwavy" => BorderStyle::Wave,
-                    _ => BorderStyle::Single,
-                };
+                let style = border_style(w).unwrap_or(BorderStyle::Single);
                 let b = (style != BorderStyle::None).then_some(Border { style, ..Border::single(0.5) });
                 self.each_border_slot(|slot| *slot = b);
             }
@@ -472,8 +468,8 @@ impl Reader {
     }
 
     fn skip_ignorable_destination(&mut self, word: &str, starred: bool, first_in_group: bool) -> bool {
-        // A character style's stylesheet entry is `{\*\csN …}`.
-        let char_style = word == "cs" && self.st.dest == Dest::StyleSheet;
+        // A character style's stylesheet entry is `{\*\csN …}`, a table style's `{\*\tsN …}`.
+        let char_style = matches!(word, "cs" | "ts") && self.st.dest == Dest::StyleSheet;
         if !starred || !first_in_group || char_style || matches!(word, "fldinst" | "bkmkstart") {
             return false;
         }
@@ -507,6 +503,9 @@ impl Reader {
             }
             // Style names take Unicode escapes (with fallback skipping) like the body.
             Dest::StyleSheet if !matches!(word, "u" | "uc") => {
+                if self.style_def_cur.entry == StyleEntry::Table && self.table_style_word(word, value) {
+                    return true;
+                }
                 let def = &mut self.style_def_cur;
                 match word {
                     "s" | "cs" | "ds" | "ts" => {
@@ -515,6 +514,7 @@ impl Reader {
                         let entry = match word {
                             "s" => StyleEntry::Para,
                             "cs" => StyleEntry::Char,
+                            "ts" => StyleEntry::Table,
                             _ => StyleEntry::Other,
                         };
                         *def = StyleDef { entry, ..Default::default() };
@@ -823,6 +823,32 @@ impl Reader {
     fn in_info(&self) -> bool {
         self.info_depth.is_some_and(|d| self.depth() > d)
     }
+}
+
+/// The border style border word `w` (`\brdrs`, `\brdrdb`…) names; `None` when `w` isn't one.
+pub(super) fn border_style(w: &str) -> Option<wordcraft_doc::props::BorderStyle> {
+    use wordcraft_doc::props::BorderStyle;
+    Some(match w {
+        "brdrnone" | "brdrnil" | "brdrtbl" => BorderStyle::None,
+        "brdrs" | "brdrsh" | "brdrhair" => BorderStyle::Single,
+        "brdrth" => BorderStyle::Thick,
+        "brdrdb" | "brdrwavydb" => BorderStyle::Double,
+        "brdrtnthsg" => BorderStyle::ThinThickSmallGap,
+        "brdrthtnsg" => BorderStyle::ThickThinSmallGap,
+        "brdrtnthtnsg" => BorderStyle::ThinThickThinSmallGap,
+        "brdrtnthmg" => BorderStyle::ThinThickMediumGap,
+        "brdrthtnmg" => BorderStyle::ThickThinMediumGap,
+        "brdrtnthtnmg" => BorderStyle::ThinThickThinMediumGap,
+        "brdrtnthlg" => BorderStyle::ThinThickLargeGap,
+        "brdrthtnlg" => BorderStyle::ThickThinLargeGap,
+        "brdrtnthtnlg" => BorderStyle::ThinThickThinLargeGap,
+        "brdrdot" => BorderStyle::Dotted,
+        "brdrdash" | "brdrdashsm" => BorderStyle::Dashed,
+        "brdrdashd" | "brdrdashdd" => BorderStyle::DotDash,
+        "brdrtriple" => BorderStyle::Triple,
+        "brdrwavy" => BorderStyle::Wave,
+        _ => return None,
+    })
 }
 
 /// The underline an underline control word turns on (RTF 1.9.1); the heavy and long forms

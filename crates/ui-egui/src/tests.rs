@@ -1281,7 +1281,7 @@ fn view_tab_zoom_steps_from_the_shown_zoom_in_fit_modes() {
         a.run(fit, json!({})).unwrap();
         frame(&mut a);
         a.run("ui.dialog", json!({"name": "zoom"})).unwrap();
-        assert!(matches!(a.dialog, Some(dialogs::Dialog::Zoom { percent }) if (percent - (fitted * 100.0).round()).abs() < 1.0));
+        assert!(matches!(a.dialog, Some(dialogs::Dialog::Zoom { percent, .. }) if (percent - (fitted * 100.0).round()).abs() < 1.0));
         a.dialog = None;
     }
     a.run("view.zoom100", json!({})).unwrap();

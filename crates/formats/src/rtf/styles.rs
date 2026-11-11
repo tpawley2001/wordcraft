@@ -37,6 +37,10 @@ impl Reader {
     /// Code, Default Paragraph Font…), or `None` when it is one of the document's own.
     fn fixed_entry_id(&self, key: i32, kind: StyleKind, builtin: &StyleSheet) -> Option<String> {
         let name = self.entry_name(key);
+        // A built-in table style (Normal Table, Table Grid…) keeps WordCraft's definition.
+        if kind == StyleKind::Table {
+            return builtin_id(builtin, name, kind);
+        }
         if kind == StyleKind::Paragraph {
             if key == 0 {
                 return Some("Normal".into());
@@ -67,6 +71,7 @@ impl Reader {
             .filter_map(|k| match self.style_defs.get(k).map(|d| d.entry) {
                 Some(StyleEntry::Para) => Some((*k, StyleKind::Paragraph)),
                 Some(StyleEntry::Char) => Some((*k, StyleKind::Character)),
+                Some(StyleEntry::Table) => Some((*k, StyleKind::Table)),
                 _ => None,
             })
             .collect();
@@ -118,6 +123,89 @@ impl Reader {
         self.style_ids().ids.get(&n).filter(|(_, own)| *own).map(|(id, _)| id.clone())
     }
 
+    /// The document style id of the table style `\tsN` names: its stylesheet entry's, if
+    /// there is one.
+    pub(super) fn table_style_id(&self, n: i32) -> Option<String> {
+        let key = -1 - n.saturating_abs();
+        self.style_defs.get(&key).filter(|d| d.entry == StyleEntry::Table)?;
+        self.style_ids().ids.get(&key).map(|(id, _)| id.clone())
+    }
+
+    /// A table look word of a row (`\tbllkhdrrows`…, RTF 1.9.1, "Table row definitions"). The
+    /// first one sets the look to what the row's words say: no header, total row or first or
+    /// last column unless named, and banded rows and columns unless turned off.
+    pub(super) fn look_word(&mut self, w: &str, on: bool) {
+        use wordcraft_doc::props::TableLook;
+        let l = self.row_style.look.get_or_insert(TableLook {
+            header_row: false,
+            total_row: false,
+            banded_rows: true,
+            first_column: false,
+            last_column: false,
+            banded_columns: true,
+        });
+        match w {
+            "tbllkhdrrows" => l.header_row = on,
+            "tbllklastrow" => l.total_row = on,
+            "tbllkhdrcols" => l.first_column = on,
+            "tbllklastcol" => l.last_column = on,
+            "tbllknorowband" => l.banded_rows = !on,
+            "tbllknocolband" => l.banded_columns = !on,
+            _ => {}
+        }
+    }
+
+    /// A row formatting word in a table style's stylesheet entry; false when `word` isn't one,
+    /// for the entry's other words (based on, flags, paragraph and character formatting).
+    pub(super) fn table_style_word(&mut self, word: &str, value: i32) -> bool {
+        let color = |i: i32| usize::try_from(i).ok().and_then(|i| self.colors.get(i).copied().flatten());
+        let t = &mut self.style_def_cur.table;
+        match word {
+            "tsrowd" => t.side = None,
+            "trbrdrt" | "trbrdrl" | "trbrdrb" | "trbrdrr" | "trbrdrh" | "trbrdrv" => t.side = word.chars().last(),
+            // A cell-level default border: not kept.
+            _ if word.starts_with("tsbrdr") => t.side = None,
+            "brdrw" => {
+                let width = (value as f32 / 20.0).clamp(0.25, 6.0);
+                if let Some(Some(b)) = t.slot() {
+                    b.width = width;
+                }
+            }
+            "brdrcf" => {
+                let c = color(value);
+                if let Some(Some(b)) = t.slot() {
+                    b.color = c;
+                }
+            }
+            "trcbpat" => t.fill = color(value),
+            "trpaddl" | "trpaddt" | "trpaddb" | "trpaddr" | "trpaddfl" | "trpaddft" | "trpaddfb" | "trpaddfr" => {
+                let i = match word.chars().last() {
+                    Some('l') => 0,
+                    Some('t') => 1,
+                    Some('b') => 2,
+                    _ => 3,
+                };
+                if let Some(p) = t.pad.get_mut(i) {
+                    if word.starts_with("trpaddf") {
+                        p.1 = Some(value);
+                    } else {
+                        p.0 = Some(value);
+                    }
+                }
+            }
+            _ => {
+                let Some(style) = super::word::border_style(word) else { return false };
+                let b = (style != wordcraft_doc::props::BorderStyle::None)
+                    .then_some(wordcraft_doc::props::Border { style, ..wordcraft_doc::props::Border::single(0.5) });
+                match t.slot() {
+                    Some(slot) => *slot = b,
+                    None => return false,
+                }
+            }
+        }
+        true
+    }
+
     /// The document's own character style that `\csN` names, if entry `n` became one.
     pub(super) fn own_char_style(&self, n: i32) -> Option<String> {
         let key = -1 - n.saturating_abs();
@@ -134,14 +222,17 @@ impl Reader {
         for &(key, kind) in &ids.own {
             let (Some(d), Some((id, _))) = (self.style_defs.get(&key), ids.ids.get(&key)) else { continue };
             let char = kind == StyleKind::Character;
+            let table = kind == StyleKind::Table;
             let (para, chr) = self.def_props(d);
             out.push(Style {
                 id: id.clone(),
                 name: self.entry_name(key).to_string(),
                 kind,
-                based_on: self.style_ref(d.based_on, char),
-                next: self.style_ref(d.next, false),
-                linked: self.style_ref(d.link, !char),
+                // A table style's `\sbasedon` names a table entry, numbered as a character one.
+                based_on: self.style_ref(d.based_on, char || table),
+                next: if table { None } else { self.style_ref(d.next, false) },
+                linked: if table { None } else { self.style_ref(d.link, !char) },
+                table: if table { d.table.parts() } else { None },
                 para: if char { ParaProps::default() } else { para },
                 chr,
                 priority: d.priority,
@@ -487,7 +578,9 @@ pub(super) enum StyleEntry {
     Para,
     /// A character style (`\*\csN`).
     Char,
-    /// A table or section style (`\*\tsN`, `\dsN`).
+    /// A table style (`\*\tsN`).
+    Table,
+    /// A section style (`\dsN`).
     Other,
 }
 
@@ -523,6 +616,53 @@ pub(super) struct StyleDef {
     pub(super) keep_next: Option<bool>,
     pub(super) keep_lines: Option<bool>,
     pub(super) align: Option<Align>,
+    /// A table style's row formatting (after `\tsrowd`).
+    pub(super) table: TableDef,
+}
+
+/// The row formatting a table style's stylesheet entry sets (RTF 1.9.1, "Table styles"): its
+/// borders (`\trbrdr*`), shading (`\trcbpat`) and cell padding (`\trpadd*`, `\trpaddf*`).
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct TableDef {
+    /// The border side (`t`, `l`, `b`, `r`, `h`, `v`) the border words describe.
+    side: Option<char>,
+    borders: wordcraft_doc::props::Borders,
+    fill: Option<wordcraft_doc::Rgb>,
+    /// Cell padding by side (left, top, bottom, right): the value and its unit (3: twips).
+    pad: [(Option<i32>, Option<i32>); 4],
+}
+
+impl TableDef {
+    fn slot(&mut self) -> Option<&mut Option<wordcraft_doc::props::Border>> {
+        let b = &mut self.borders;
+        Some(match self.side? {
+            't' => &mut b.top,
+            'l' => &mut b.left,
+            'b' => &mut b.bottom,
+            'r' => &mut b.right,
+            'h' => &mut b.between,
+            'v' => &mut b.inside_v,
+            _ => return None,
+        })
+    }
+
+    /// The table style parts these words give, `None` when they give none.
+    fn parts(&self) -> Option<wordcraft_doc::styles::TableStyleParts> {
+        let borders = [self.borders.top, self.borders.left, self.borders.bottom, self.borders.right, self.borders.between, self.borders.inside_v]
+            .iter()
+            .any(Option::is_some)
+            .then_some(self.borders);
+        // Only twips count; another unit (or none) leaves the side unset.
+        let twips = self.pad.map(|(v, unit)| v.filter(|_| unit == Some(3)).map(|v| (v as f32 / 20.0).clamp(0.0, 1584.0)));
+        let [l, t, b, r] = twips;
+        let cell_margins = twips.iter().any(Option::is_some).then(|| [t, l, b, r].map(|v| v.unwrap_or(0.0)));
+        (borders.is_some() || self.fill.is_some() || cell_margins.is_some()).then(|| wordcraft_doc::styles::TableStyleParts {
+            borders,
+            fill: self.fill,
+            cell_margins,
+            ..Default::default()
+        })
+    }
 }
 
 /// Clear from `f` the formatting a paragraph of kind `kind` gets from its style, whose

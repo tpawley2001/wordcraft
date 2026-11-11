@@ -126,6 +126,9 @@ pub(super) struct Reader {
     /// The row's height (`\trrh`: points, exact) and `\trkeep`, reset by `\trowd`.
     pub(super) row_height: Option<(f32, bool)>,
     pub(super) row_keep: bool,
+    pub(super) row_style: super::state::RowStyle,
+    /// The table's style and look: its first row's.
+    table_style: super::state::RowStyle,
     /// The tables enclosing the one being read, outermost first (nested tables: the current
     /// table's fields above are the innermost open table's).
     nest: Vec<TableLevel>,
@@ -174,6 +177,8 @@ impl Reader {
         std::mem::swap(&mut o.row_keep, &mut self.row_keep);
         std::mem::swap(&mut o.table_heights, &mut self.table_heights);
         std::mem::swap(&mut o.table_keeps, &mut self.table_keeps);
+        std::mem::swap(&mut o.row_style, &mut self.row_style);
+        std::mem::swap(&mut o.table_style, &mut self.table_style);
         std::mem::swap(&mut o.nest, &mut self.nest);
         o
     }
@@ -191,6 +196,8 @@ impl Reader {
         std::mem::swap(&mut l.table_rights, &mut self.table_rights);
         std::mem::swap(&mut l.table_heights, &mut self.table_heights);
         std::mem::swap(&mut l.table_keeps, &mut self.table_keeps);
+        std::mem::swap(&mut l.row_style, &mut self.row_style);
+        std::mem::swap(&mut l.table_style, &mut self.table_style);
     }
 
     /// The table depth of the table being read: 1 the outermost, 2 a table in its cell…
@@ -649,6 +656,7 @@ impl Reader {
         let read = std::mem::take(&mut self.para);
         let props = self.para_props(&self.st);
         let mut p = Para { inlines: read.inlines, mark_ins: read.mark_ins, mark_del: read.mark_del, ..props };
+        p.mark = self.empty_mark(&p);
         if p.kind == Kind::Normal && p.inlines.is_empty() && self.rule_pending {
             p.kind = Kind::Rule;
         }
@@ -685,6 +693,24 @@ impl Reader {
             self.enter_depth(d);
             self.cell.push(FBlock::Para(p));
         }
+    }
+
+    /// The paragraph mark's formatting of `p` when it holds no text: the character formatting in
+    /// effect at its end (RTF 1.9.1, Paragraph Text), which sets an empty line's height. A
+    /// monospaced font keeps its name.
+    fn empty_mark(&self, p: &Para) -> Option<Box<wordcraft_doc::props::CharProps>> {
+        if !p.textless() {
+            return None;
+        }
+        let f = &self.st.fmt;
+        let plain = Fmt { link: None, ins: None, del: None, fmt_change: None, ..f.clone() };
+        let mut m = model::char_props(&plain);
+        if f.code
+            && let Some(n) = &self.st.mono
+        {
+            m.font = Some(n.to_string());
+        }
+        (!m.is_empty()).then(|| Box::new(m))
     }
 
     /// `\cell`: the end of a cell of the outermost table.
@@ -778,6 +804,9 @@ impl Reader {
         }
         if !out.is_empty() && self.table.len() < wordcraft_doc::table::MAX_ROWS {
             rights.truncate(out.len());
+            if self.table.is_empty() {
+                self.table_style = self.row_style.clone();
+            }
             self.table.push(out);
             self.table_rights.push(rights);
             self.table_heights.push(self.row_height);
@@ -811,8 +840,14 @@ impl Reader {
         let heights = std::mem::take(&mut self.table_heights);
         let keep_rows = std::mem::take(&mut self.table_keeps);
         // Only a table whose rows give a height or keep gets them, so others stay as before.
-        let extra = (heights.iter().any(Option::is_some) || keep_rows.contains(&true))
+        let mut extra = (heights.iter().any(Option::is_some) || keep_rows.contains(&true))
             .then(|| Box::new(model::TableExtra { heights, keep_rows, ..Default::default() }));
+        // Its first row's table style and look.
+        let ts = std::mem::take(&mut self.table_style);
+        if ts.style.is_some() || ts.look.is_some() {
+            let x = extra.get_or_insert_with(Default::default);
+            (x.style, x.look) = (ts.style, ts.look);
+        }
         // Word draws only the borders the cells name: no grid style, each cell its own.
         Some(FTable { rows, widths, borderless: true, extra, kept: None, wrap: None })
     }
