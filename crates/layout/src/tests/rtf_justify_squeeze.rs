@@ -1,6 +1,6 @@
 //! A justified line in a document opened from RTF (`Settings::rtf_justification`) keeps the word
 //! that overruns its right edge when the space before that word starts inside the line and the
-//! line's spaces keep more than half their width; the spaces then shrink alike so the line ends at
+//! line's spaces keep more than half their width (at most ten half-spaces' worth); the spaces then shrink alike so the line ends at
 //! the edge. Measured in Microsoft 365 Word: each probe below is a paragraph Word opened from a
 //! synthetic RTF file (Courier New, `\qj`, the same words, size and text width), and `kept` is
 //! whether Word's first line ended with the probe's last word. The same paragraphs saved as DOCX
@@ -24,6 +24,9 @@ struct Probe {
     kept: bool,
 }
 
+// U2-U8 and U13 were kept in the first measurements, which the later ones (`rtf_squeeze_any_align`:
+// 20 and 30 spaces overrunning by 36 pt or more wrap, in every alignment) contradict; they follow
+// the later rule (overrun < min(spaces, 10) half-spaces).
 #[rustfmt::skip]
 const PROBES: &[Probe] = &[
     Probe { name: "T1", size: 12.0, indent_right: 84.25, line: "abcdefghijk defghijklmn ghijklmnopq jklmnopqrs mnopqrst", kept: true }, // squeeze 0.4253, (O - word) / space -6.299; mode 15 keeps: False
@@ -36,18 +39,18 @@ const PROBES: &[Probe] = &[
     Probe { name: "T9", size: 12.0, indent_right: 84.25, line: "efghijkl hijklmno klmnopqr nopqrstu qrstuvwx tuvwxyz wx", kept: true }, // squeeze 0.2836, (O - word) / space -0.299; mode 15 keeps: False
     Probe { name: "T10", size: 12.0, indent_right: 84.25, line: "lmn opq rst uvw xyz abc de gh jk mn pq st vw yz bc ef hij", kept: true }, // squeeze 0.2313, (O - word) / space 0.701; mode 15 keeps: False
     Probe { name: "U1", size: 12.0, indent_right: 66.0, line: "ab de gh jk mn pq st vw yz bc ef hi kl no qr t w z c f ijklm", kept: true }, // squeeze 0.2083, (O - word) / space -0.833; mode 15 keeps: False
-    Probe { name: "U2", size: 12.0, indent_right: 72.0, line: "hi kl no qr tu wx za cd fg ij lm op rs uv xy a d g j m pqrst", kept: true }, // squeeze 0.25, (O - word) / space 0.0; mode 15 keeps: False
-    Probe { name: "U3", size: 12.0, indent_right: 75.0, line: "op rs uv xy ab de gh jk mn pq st vw yz bc ef h k n q t wxyza", kept: true }, // squeeze 0.2708, (O - word) / space 0.417; mode 15 keeps: False
-    Probe { name: "U4", size: 12.0, indent_right: 75.0, line: "vw yz bc ef hi kl no q t w z c f i l o r u x a d g j m pqrst", kept: true }, // squeeze 0.2257, (O - word) / space 0.417; mode 15 keeps: False
-    Probe { name: "U5", size: 12.0, indent_right: 78.0, line: "cd fg ij lm op rs uv x a d g j m p s v y b e h k n q t wxyza", kept: true }, // squeeze 0.2431, (O - word) / space 0.833; mode 15 keeps: False
-    Probe { name: "U6", size: 12.0, indent_right: 75.0, line: "jkl mno pqr stu vwx yza bcd efg hij klm nop qrs tuv wx zabcd", kept: true }, // squeeze 0.3869, (O - word) / space 0.417; mode 15 keeps: False
-    Probe { name: "U7", size: 12.0, indent_right: 78.0, line: "qrs tuv wxy zab cde fgh ijk lmn opq rst uvw xyz abc de ghijk", kept: true }, // squeeze 0.4167, (O - word) / space 0.833; mode 15 keeps: False
-    Probe { name: "U8", size: 12.0, indent_right: 76.5, line: "xy ab de gh jk mn pq st vw yz bc ef hi kl no q t w z c fghij", kept: true }, // squeeze 0.2812, (O - word) / space 0.625; mode 15 keeps: False
+    Probe { name: "U2", size: 12.0, indent_right: 72.0, line: "hi kl no qr tu wx za cd fg ij lm op rs uv xy a d g j m pqrst", kept: false }, // squeeze 0.25, (O - word) / space 0.0; mode 15 keeps: False. Overrun 36 pt = 10 half-spaces: wraps, as Word wrapped 20 spaces overrunning by 36 pt (rtf_squeeze_any_align s20-qj-72)
+    Probe { name: "U3", size: 12.0, indent_right: 75.0, line: "op rs uv xy ab de gh jk mn pq st vw yz bc ef h k n q t wxyza", kept: false }, // squeeze 0.2708, (O - word) / space 0.417; mode 15 keeps: False. Overrun of 10 half-spaces or more (more than 10 spaces): wraps, as in rtf_squeeze_any_align
+    Probe { name: "U4", size: 12.0, indent_right: 75.0, line: "vw yz bc ef hi kl no q t w z c f i l o r u x a d g j m pqrst", kept: false }, // squeeze 0.2257, (O - word) / space 0.417; mode 15 keeps: False. Overrun of 10 half-spaces or more (more than 10 spaces): wraps, as in rtf_squeeze_any_align
+    Probe { name: "U5", size: 12.0, indent_right: 78.0, line: "cd fg ij lm op rs uv x a d g j m p s v y b e h k n q t wxyza", kept: false }, // squeeze 0.2431, (O - word) / space 0.833; mode 15 keeps: False. Overrun of 10 half-spaces or more (more than 10 spaces): wraps, as in rtf_squeeze_any_align
+    Probe { name: "U6", size: 12.0, indent_right: 75.0, line: "jkl mno pqr stu vwx yza bcd efg hij klm nop qrs tuv wx zabcd", kept: false }, // squeeze 0.3869, (O - word) / space 0.417; mode 15 keeps: False. Overrun of 10 half-spaces or more (more than 10 spaces): wraps, as in rtf_squeeze_any_align
+    Probe { name: "U7", size: 12.0, indent_right: 78.0, line: "qrs tuv wxy zab cde fgh ijk lmn opq rst uvw xyz abc de ghijk", kept: false }, // squeeze 0.4167, (O - word) / space 0.833; mode 15 keeps: False. Overrun of 10 half-spaces or more (more than 10 spaces): wraps, as in rtf_squeeze_any_align
+    Probe { name: "U8", size: 12.0, indent_right: 76.5, line: "xy ab de gh jk mn pq st vw yz bc ef hi kl no q t w z c fghij", kept: false }, // squeeze 0.2812, (O - word) / space 0.625; mode 15 keeps: False. Overrun of 10 half-spaces or more (more than 10 spaces): wraps, as in rtf_squeeze_any_align
     Probe { name: "U9", size: 20.0, indent_right: 75.0, line: "efg hi kl no qr tu wx za cd fg ijklm", kept: true }, // squeeze 0.325, (O - word) / space -1.75; mode 15 keeps: False
     Probe { name: "U10", size: 20.0, indent_right: 84.0, line: "lmn op rs uv xy ab de gh jk mn pqrst", kept: true }, // squeeze 0.4, (O - word) / space -1.0; mode 15 keeps: False
     Probe { name: "U11", size: 8.0, indent_right: 75.0, line: "stuv vwxy yzab bcde efgh hij klm nop qrs tuv wxy zab cde fgh ijk lmn opq rst uvw xyz abcde", kept: false }, // squeeze 0.4062, (O - word) / space 3.125; mode 15 keeps: False
     Probe { name: "U12", size: 8.0, indent_right: 66.0, line: "za cd fg ij lm op rs uv xy ab de gh jk mn pq st vw yz bc ef hi kl no qr tu w z c f i lmnop", kept: false }, // squeeze 0.2083, (O - word) / space 1.25; mode 15 keeps: False
-    Probe { name: "U13", size: 12.0, indent_right: 72.0, line: "gh jk mn p s v y b e h k n q t w z c f i l o r u x a d ghijk", kept: true }, // squeeze 0.1923, (O - word) / space 0.0; mode 15 keeps: False
+    Probe { name: "U13", size: 12.0, indent_right: 72.0, line: "gh jk mn p s v y b e h k n q t w z c f i l o r u x a d ghijk", kept: false }, // squeeze 0.1923, (O - word) / space 0.0; mode 15 keeps: False. Overrun of 10 half-spaces or more (more than 10 spaces): wraps, as in rtf_squeeze_any_align
     Probe { name: "U14", size: 12.0, indent_right: 66.0, line: "nopqrs qrstuv tuvwxy wxyzab zabcde cdefgh fghijk ijklm lmnop", kept: false }, // squeeze 0.5208, (O - word) / space -0.833; mode 15 keeps: False
 ];
 

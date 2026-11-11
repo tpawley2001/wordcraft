@@ -9,9 +9,18 @@ pub(super) const HYPHENATION_ZONE: f32 = wordcraft_doc::DEFAULT_HYPHENATION_ZONE
 /// 2013+, compatibility mode 15).
 pub(super) const MAX_SPACE_SHRINK: f32 = 0.25;
 
-/// How much of their width the spaces of a justified line may give up in a document opened from
-/// RTF: just under half (Word keeps the word at 49.2% and wraps it at 50%).
+/// How much of their width the single spaces of a line may give up in a document opened from
+/// RTF: just under half (Word keeps the word at 49.2% and wraps it at 50%). Without `\wraptrsp`
+/// at most [`RTF_MAX_SQUEEZED_SPACES`] spaces' worth is given up, however many the line has.
 pub(super) const RTF_MAX_SPACE_SHRINK: f32 = 0.5;
+
+/// How many half-spaces a line of a document opened from RTF may give up at most (without
+/// `\wraptrsp`): Word keeps a Courier New 12 pt line with 20 or 30 spaces overrunning by 34 pt and
+/// wraps it at 36 pt (10 x 3.6 pt).
+pub(super) const RTF_MAX_SQUEEZED_SPACES: usize = 10;
+
+/// Points below the cap an overrun must stay to be squeezed, for widths summed in `f32`.
+const RTF_CAP_TOLERANCE: f32 = 0.01;
 
 /// How far a word (with the space before it) may overrun a justified line and still be fitted
 /// onto it by shrinking the line's spaces, as a share of its own width.
@@ -26,20 +35,30 @@ pub(super) fn space_room(spaces: f32, word: f32) -> f32 {
     (spaces * MAX_SPACE_SHRINK).min(word.max(0.0) * MAX_WORD_OVERRUN)
 }
 
-/// How far a justified line of a document opened from RTF may run past its right edge, its
-/// inner spaces (`spaces` wide in all, up to and including the one before the word) shrinking to
-/// make room, when the word ending the line ends `overrun` past the edge and the space before it
-/// starts at `space_from`. Measured in Word (synthetic RTF files, Courier New 8 to 20 pt): the
-/// word stays when the space before it starts inside the line and the spaces keep more than half
-/// their width; the word's own width doesn't limit it. Otherwise nothing (the word wraps).
-/// Only single spaces count in `spaces`: a run of two or more keeps its width.
+/// How far a line of a document opened from RTF may run past its right edge, its inner single
+/// spaces (`count` of them, `spaces` wide in all, up to and including the one before the word)
+/// shrinking to make room, when the word ending the line ends `overrun` past the edge and the
+/// space before it starts at `space_from`. Measured in Word (synthetic RTF files, Courier New 8 to
+/// 20 pt, left, right, centred and justified alike): the word stays when the space before it
+/// starts inside the line and the overrun is less than min(`count`, 10) half-spaces; the word's
+/// own width doesn't limit it. Otherwise nothing (the word wraps). Only single spaces count: a
+/// run of two or more keeps its width. The caller squeezes only lines whose spaces are all in
+/// fixed-pitch fonts: in Times New Roman an overrun of 0.125 pt already wraps.
 ///
-/// With `\wraptrsp` (`Settings::wrap_trail_spaces`) `first` is how far the word's first character
-/// ends past the edge and the width of the space before the word: Word keeps the word only when
-/// that character overruns by less than half that space.
-pub(super) fn rtf_space_room(spaces: f32, overrun: f32, space_from: f32, right_edge: f32, first: Option<(f32, f32)>) -> f32 {
-    let first_ok = first.is_none_or(|(over, space)| over < space * 0.5);
-    if first_ok && space_from < right_edge && overrun > 0.0 && overrun < spaces * RTF_MAX_SPACE_SHRINK { overrun } else { 0.0 }
+/// With `\wraptrsp` (`Settings::wrap_trail_spaces`, measured for justified lines only) `first` is
+/// how far the word's first character ends past the edge and the width of the space before the
+/// word: Word keeps the word only when that character overruns by less than half that space, and
+/// the spaces may give up half their width, uncapped.
+pub(super) fn rtf_space_room((spaces, count): (f32, usize), overrun: f32, space_from: f32, right_edge: f32, first: Option<(f32, f32)>) -> f32 {
+    let room = match first {
+        Some((over, space)) if over >= space * 0.5 => 0.0,
+        Some(_) => spaces * RTF_MAX_SPACE_SHRINK,
+        None if count == 0 => 0.0,
+        // An overrun of exactly the cap wraps (Courier New 18 pt: 54 pt of 15 spaces), however
+        // the widths summed round.
+        None => spaces * RTF_MAX_SPACE_SHRINK * count.min(RTF_MAX_SQUEEZED_SPACES) as f32 / count as f32 - RTF_CAP_TOLERANCE,
+    };
+    if space_from < right_edge && overrun > 0.0 && overrun < room { overrun } else { 0.0 }
 }
 
 /// Whether the space cluster `k` stands alone: no space next to it (markers between don't
