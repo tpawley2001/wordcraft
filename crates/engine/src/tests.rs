@@ -24,6 +24,7 @@ mod custom_prop_types;
 mod documents;
 mod email_links;
 mod document_dates;
+mod docvariable_field;
 mod envelope_options;
 mod find_apostrophes;
 mod find_format;

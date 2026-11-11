@@ -33,6 +33,15 @@ pub struct Source {
     pub doi: String,
 }
 
+/// A document variable (`w:docVar`, ECMA-376 Part 1 §17.15.1.31; RTF `{\\*\\docvar {name}{value}}`):
+/// a named string macros and add-ins set and a `DOCVARIABLE name` field prints.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct DocVar {
+    pub name: String,
+    pub value: String,
+}
+
 /// A custom document property (File › Info › Properties › Custom). Citation managers keep
 /// their per-document preferences here (Zotero: `ZOTERO_PREF_1`, `ZOTERO_PREF_2`…).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -366,6 +375,9 @@ pub struct Settings {
     /// Caption labels of the document's own and AutoCaption (`w:captions`, ECMA-376 §17.15.1.18).
     #[serde(skip_serializing_if = "Captions::is_empty")]
     pub captions: Captions,
+    /// Document variables (`w:docVars`, ECMA-376 §17.15.1.32), in file order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub doc_vars: Vec<DocVar>,
 }
 
 /// Most caption labels, and most AutoCaption entries, a document keeps.
@@ -682,6 +694,7 @@ impl Default for Settings {
             remove_date_time: false,
             odf: None,
             captions: Captions::default(),
+            doc_vars: Vec::new(),
         }
     }
 }

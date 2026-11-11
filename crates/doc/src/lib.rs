@@ -91,7 +91,7 @@ pub use parts::{MAX_LINKED_BOXES, MAX_TEXT_BOX_INSET, NoteSeparators, Part, Part
 pub use position::{Path, Pos, StoryRef};
 pub use settings::{
     AutoCaption, BUILTIN_CAPTION_LABELS, CAPTION_NUM_FORMATS, COMPAT_MODE_CURRENT, CaptionLabel, CaptionSep, Captions, CoreProps, CustomProp,
-    DEFAULT_GRID, DEFAULT_HYPHENATION_ZONE, LEGACY_COMPAT_MODE, MAX_CAPTION_ENTRIES, MAX_DIV_DEPTH, OdfLayout, PANE_ALL_STYLES, PANE_IN_USE,
+    DEFAULT_GRID, DEFAULT_HYPHENATION_ZONE, DocVar, LEGACY_COMPAT_MODE, MAX_CAPTION_ENTRIES, MAX_DIV_DEPTH, OdfLayout, PANE_ALL_STYLES, PANE_IN_USE,
     PagePicture, Settings, Source, StylePaneOptions, StylePaneSort, THEME_COLORS, WORD2003_COMPAT_MODE, Watermark, WebDiv, WriteProtection, Zoom,
     ZoomFit, div_margins,
 };

@@ -1837,6 +1837,7 @@ mod custom_note_marks;
 mod doc_grid;
 mod doc_page_options;
 mod doc_settings;
+mod doc_vars;
 mod doc_widow_control;
 mod endnote_here;
 mod foreign_styles;
