@@ -20,6 +20,9 @@ pub(crate) struct Exporter<'a> {
     pub(crate) doc: &'a Document,
     pub(crate) lay: &'a DocLayout,
     pub(crate) opts: &'a PdfOptions,
+    /// [`PdfOptions::forms_data_only`] for the sheets being drawn: on only for the main
+    /// document's pages, so an appendix (the properties page) prints in full.
+    pub(crate) forms_data_only: bool,
     /// Layout page index to the first output sheet side and its placement transform.
     pub(crate) out_index: HashMap<usize, (usize, Fit)>,
     /// Embedded fonts by face id (`None`: krilla can't read it).
@@ -222,7 +225,7 @@ impl Exporter<'_> {
 
     pub(crate) fn page(&mut self, s: &mut Surface, page: &Page, w: f32, h: f32) {
         // Only the form data: the page's background and watermark aren't drawn either.
-        let data_only = self.opts.forms_data_only;
+        let data_only = self.forms_data_only;
         if let Some(c) = self.doc.settings.page_color.filter(|_| !data_only)
             && let Some(p) = rect_path(&Rect::new(0.0, 0.0, w, h))
         {
@@ -243,7 +246,8 @@ impl Exporter<'_> {
             let area = page.body;
             self.tagged(s, Role::Artifact(ArtifactType::Watermark), None, |me, s| me.watermark(s, &wm, w, h, area));
         }
-        let dopts = self.opts.display_options();
+        let mut dopts = self.opts.display_options();
+        dopts.forms_data_only = data_only;
         // What the items share (the authors' colours, the clipped cells) is worked out once per page.
         let shown = ItemDisplay::new(self.doc, page);
         for it in page.header.iter().chain(page.footer.iter()) {
