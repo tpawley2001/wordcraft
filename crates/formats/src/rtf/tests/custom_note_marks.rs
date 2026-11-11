@@ -11,8 +11,10 @@ fn doc(rtf: &str) -> Document {
     import(rtf.as_bytes()).unwrap()
 }
 
+/// `\ftnbj` states the footnote position (as Word writes it), so `{\footnote}` without `\ftnalt`
+/// stays a footnote; without any position word Word opens such notes as endnotes.
 fn wrap(body: &str) -> String {
-    format!(r"{{\rtf1\ansi{{\fonttbl{{\f0 Times New Roman;}}}}\pard {body}}}")
+    format!(r"{{\rtf1\ansi\ftnbj{{\fonttbl{{\f0 Times New Roman;}}}}\pard {body}}}")
 }
 
 /// The body's first paragraph text and its note references as `(kind, custom)`.
@@ -50,6 +52,16 @@ fn group_before_footnote_is_its_custom_mark() {
     let d = doc(&wrap(r"Alpha{\super *}{\footnote\pard {\super *} Star note.}\par"));
     assert_eq!(body_refs(&d), ("Alpha".to_string(), vec![(NoteKind::Footnote, "*".to_string())]));
     assert_eq!(notes(&d), [("Star note.".to_string(), Some("*".to_string()))]);
+}
+
+#[test]
+fn custom_mark_on_a_footnote_without_a_position_opens_as_an_endnote_with_it() {
+    // No footnote position word: Word opens the note as an endnote; the custom mark is kept.
+    let rtf = format!(r"{{\rtf1\ansi{{\fonttbl{{\f0 Times New Roman;}}}}\pard {}}}", r"Alpha{\super *}{\footnote\pard {\super *} Star note.}\par");
+    let d = doc(&rtf);
+    assert_eq!(body_refs(&d), ("Alpha".to_string(), vec![(NoteKind::Endnote, "*".to_string())]));
+    assert_eq!(notes(&d), [("Star note.".to_string(), Some("*".to_string()))]);
+    assert!(d.parts.values().any(|p| p.kind == PartKind::Endnote));
 }
 
 #[test]

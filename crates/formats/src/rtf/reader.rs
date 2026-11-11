@@ -31,6 +31,8 @@ pub(super) struct Reader {
     /// The document's footnote and endnote options (`\ftnbj`, `\aftnstart`…); their `num_fmt`
     /// is the document's note number format.
     pub(super) doc_notes: (wordcraft_doc::section::NoteProps, wordcraft_doc::section::NoteProps),
+    /// The document's `\fetN` (0 footnotes only, 1 endnotes only, 2 both), when it names one.
+    pub(super) fet: Option<i32>,
     /// The document settings the header names (`\viewscale`, `\dghspace`, `\protlevel`…).
     pub(super) doc_set: DocSettingWords,
     /// The current section's formatting before a tracked change (`\oldsprops`), and the one
@@ -516,6 +518,10 @@ impl Reader {
         match w {
             "aendnotes" => end.pos = Some(NotePos::SectEnd),
             "aenddoc" => end.pos = Some(NotePos::DocEnd),
+            "fet" => self.fet = Some(p.unwrap_or(0)),
+            // Footnotes at the end of the section or document: no setting of their own; whether
+            // footnotes become endnotes is decided from `\ftnbj`/`\ftntj` and `\fet` alone.
+            "endnotes" | "enddoc" => {}
             _ => return apply_note_word(w, p, foot, end),
         }
         true
