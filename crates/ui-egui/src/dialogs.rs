@@ -1138,6 +1138,8 @@ mod tests_insert_table;
 #[cfg(test)]
 mod tests_page_layout;
 #[cfg(test)]
+// The acceptance tests pick a check box with `iter_mut().nth(i)`, which clippy prefers as `get_mut`.
+#[allow(clippy::iter_nth)]
 mod tests_para_grid;
 #[cfg(test)]
 mod tests_para_line;
