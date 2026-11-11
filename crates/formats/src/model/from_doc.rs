@@ -663,9 +663,6 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
             if (hidden_obj && !(marked && props.hidden != Some(true))) || obj.and_then(InlineObject::frame).is_some_and(|(_, _, f)| f.hidden) {
                 continue;
             }
-            if !buf.is_empty() && marked {
-                out.push_text(&std::mem::take(&mut buf), &f);
-            }
             let from = out.inlines.len();
             if let Some(items) = obj.and_then(|o| rich_inlines(doc, o, &f, opts)) {
                 if !buf.is_empty() {
@@ -673,9 +670,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
                 }
                 out.inlines.extend(items);
                 raise_drawings(&mut out.inlines, from, props.position.filter(|_| opts.paras));
-                if marked {
-                    mark_objects(&mut out.inlines, from, &f);
-                }
+                mark_objects(&mut out.inlines, from, &f, marked);
                 continue;
             }
             match obj {
@@ -735,9 +730,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
                 None => {}
             }
             raise_drawings(&mut out.inlines, from, props.position.filter(|_| opts.paras));
-            if marked {
-                mark_objects(&mut out.inlines, from, &f);
-            }
+            mark_objects(&mut out.inlines, from, &f, marked);
         }
         if !hidden_text {
             control.run_end(&buf, &mut out, &f);
@@ -925,9 +918,10 @@ fn revisable(o: &InlineObject) -> bool {
 }
 
 /// Put the run's tracked insertion and deletion (`f`) before each object from `from` on, as an
-/// [`Inline::ObjRev`]; nothing when the run has neither.
-fn mark_objects(inlines: &mut Vec<Inline>, from: usize, f: &Fmt) {
-    if f.ins.is_none() && f.del.is_none() {
+/// [`Inline::ObjRev`]; nothing when the run has neither or the flow keeps no object marks
+/// (`marked` false).
+fn mark_objects(inlines: &mut Vec<Inline>, from: usize, f: &Fmt, marked: bool) {
+    if !marked || (f.ins.is_none() && f.del.is_none()) {
         return;
     }
     let rev = crate::model::ObjRev { ins: f.ins.clone(), del: f.del.clone() };
