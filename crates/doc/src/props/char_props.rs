@@ -61,6 +61,53 @@ impl Underline {
     }
 }
 
+/// OpenType number forms a run asks for ([MS-DOCX] `w14:numForm`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NumForm {
+    Default,
+    Lining,
+    OldStyle,
+}
+
+impl NumForm {
+    /// The `w14:val` name.
+    pub fn ooxml(self) -> &'static str {
+        todo!("P03-110")
+    }
+    /// `None` for a name [MS-DOCX] doesn't define.
+    pub fn from_ooxml(_s: &str) -> Option<NumForm> {
+        todo!("P03-110")
+    }
+}
+
+/// OpenType number spacing a run asks for ([MS-DOCX] `w14:numSpacing`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NumSpacing {
+    Default,
+    Proportional,
+    Tabular,
+}
+
+impl NumSpacing {
+    /// The `w14:val` name.
+    pub fn ooxml(self) -> &'static str {
+        todo!("P03-110")
+    }
+    /// `None` for a name [MS-DOCX] doesn't define.
+    pub fn from_ooxml(_s: &str) -> Option<NumSpacing> {
+        todo!("P03-110")
+    }
+}
+
+/// One stylistic set (`w14:styleSet`): set `id` (1..=20, feature `ssNN`) on or off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct StyleSet {
+    pub id: u8,
+    pub on: bool,
+}
+
 /// The OpenType ligatures a run asks for ([MS-DOCX] `w14:ligatures`): standard (`liga`),
 /// contextual (`clig`), historical (`hlig`) and discretional (`dlig`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -299,6 +346,18 @@ pub struct CharProps {
     /// contextual ligatures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ligatures: Option<Ligatures>,
+    /// OpenType number forms (`w14:numForm`, [MS-DOCX]). Stub: not read, written or drawn yet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_form: Option<NumForm>,
+    /// OpenType number spacing (`w14:numSpacing`, [MS-DOCX]). Stub: not read, written or drawn yet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_spacing: Option<NumSpacing>,
+    /// OpenType stylistic sets (`w14:stylisticSets`, [MS-DOCX]), sorted by id. Stub.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stylistic_sets: Option<Vec<StyleSet>>,
+    /// Use Contextual Alternates (`w14:cntxtAlts`, [MS-DOCX]). Stub.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contextual_alternates: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outline: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]

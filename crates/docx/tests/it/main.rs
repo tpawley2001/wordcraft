@@ -35,6 +35,7 @@ mod missing_pictures;
 mod nested_block_controls;
 mod nested_txbx;
 mod note_comments;
+mod opentype_features;
 mod passthrough;
 mod picture_links;
 mod positional_tabs;
