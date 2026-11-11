@@ -27,6 +27,7 @@ mod legacy_forms;
 mod level_and_section_extras;
 mod ligatures;
 mod linked_pictures;
+mod lock_aspect;
 mod list_items;
 mod malformed;
 mod missing_doc_defaults;
