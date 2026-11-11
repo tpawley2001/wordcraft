@@ -64,6 +64,7 @@ mod table_sort_keys;
 mod symbol_field_update;
 mod accent_compose;
 mod alignment_tab;
+mod cross_ref_notes;
 mod typing;
 mod view_split;
 mod word_window_keys;
