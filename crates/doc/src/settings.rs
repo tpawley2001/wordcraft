@@ -224,7 +224,8 @@ pub struct Settings {
     /// spaces by up to half their width (see the layout crate's `para::justify`). Not saved.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rtf_justification: bool,
-    /// Stub (P02-093): `Copts80.f2ptExtLeadingOnly` of a Word 97-2003 file. Not saved.
+    /// `Copts80.f2ptExtLeadingOnly` of a Word 97-2003 file: Word adds at most 2 pt of external
+    /// leading; a Courier New line is one em tall. Not saved.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ext_leading_2pt_only: bool,
     /// Keep contextual paragraph spacing inside legacy table cells (`allowSpaceOfSameStyleInTable`).

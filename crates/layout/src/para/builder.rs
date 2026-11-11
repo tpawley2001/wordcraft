@@ -139,7 +139,14 @@ impl<'a> Builder<'a> {
         // Keep these heights independent of the fallback face drawing each glyph: its taller
         // ascent or descent must not enlarge a symbol run. Other known missing-font lines use
         // the same override; installed fonts otherwise keep their real face metrics.
-        let (ascent, descent) = match wordcraft_fonts::word::missing_font_line(&rc.font, &r) {
+        // A Word 97-2003 file with "add only 2 pt of external leading" lays a Courier New line
+        // out one em tall.
+        let line = if self.env.doc.settings.ext_leading_2pt_only && is_courier_new(&rc.font) {
+            Some(one_em_line(&r.face))
+        } else {
+            wordcraft_fonts::word::missing_font_line(&rc.font, &r)
+        };
+        let (ascent, descent) = match line {
             Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
             None => {
                 let (a, d) = wordcraft_fonts::word::line_metrics(&face);
@@ -758,4 +765,16 @@ impl Builder<'_> {
 /// tracked deletions in the final text. It takes no room, draws nothing and is no place to break.
 pub(crate) fn left_out(doc: &Document, rc: &ResolvedChar, show_hidden: bool, hide_deleted: crate::HideDeleted) -> bool {
     (rc.hidden && !show_hidden) || hide_deleted.hides(doc, rc.del)
+}
+
+/// `font` names Courier New (its first non-empty family).
+fn is_courier_new(font: &str) -> bool {
+    font.split(';').map(str::trim).find(|f| !f.is_empty()).is_some_and(|f| f.eq_ignore_ascii_case("courier new"))
+}
+
+/// (ascent, descent) in em of a line one em tall, split in `face`'s own ascent:descent ratio.
+fn one_em_line(face: &wordcraft_fonts::FontFace) -> (f64, f64) {
+    let (a, d) = wordcraft_fonts::word::line_metrics(face);
+    let total = a + d;
+    if total.is_finite() && total > 0.0 { (a / total, d / total) } else { (0.8, 0.2) }
 }
