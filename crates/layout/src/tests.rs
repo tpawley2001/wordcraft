@@ -32,6 +32,7 @@ mod item_display_warp;
 mod keep_next_long_chain;
 mod ligature;
 pub(crate) mod linear;
+mod list_numbers_merged_cells;
 mod list_numbers_per_story;
 mod metafile_symbol_text;
 mod missing_font_line;
