@@ -42,6 +42,7 @@ mod section_page_borders;
 mod section_page_numbers;
 mod section_rtl_gutter;
 mod style_name_case;
+mod style_own_para_props;
 mod table_float;
 mod table_width;
 mod toggle_para_style;
