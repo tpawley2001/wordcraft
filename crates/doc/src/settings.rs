@@ -297,6 +297,11 @@ pub struct Settings {
     /// spaces by up to half their width (see the layout crate's `para::justify`). Not saved.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub rtf_justification: bool,
+    /// `w:wrapTrailSpaces` / RTF `\wraptrsp` (Wrap trailing spaces onto the next line). In a
+    /// document opened from RTF it makes Word stricter about squeezing a justified line (see the
+    /// layout crate's `para::justify`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub wrap_trail_spaces: bool,
     /// `Copts80.f2ptExtLeadingOnly` of a Word 97-2003 file: Word adds at most 2 pt of external
     /// leading; a Courier New line is one em tall. Not saved.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -656,6 +661,7 @@ impl Default for Settings {
             sum_paragraph_spacing: false,
             do_not_expand_shift_return: false,
             rtf_justification: false,
+            wrap_trail_spaces: false,
             ext_leading_2pt_only: false,
             allow_space_of_same_style_in_table: false,
             grid_h: DEFAULT_GRID,

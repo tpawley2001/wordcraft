@@ -73,7 +73,7 @@ impl WithExtra for CharProps {
         self.style = x.style.as_deref().map(clean_text).filter(|s| !s.is_empty());
         self.caps = x.caps;
         self.small_caps = x.small_caps;
-        self.hidden = x.hidden;
+        self.hidden = x.hidden.or(self.hidden);
         self.spacing = finite(x.spacing, -1584.0, 1584.0);
         self.scale = finite(x.scale, 1.0, 600.0);
         self.kern = finite(x.kern, 0.0, 1638.0);
@@ -200,6 +200,7 @@ fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
     }
     if let Some(x) = &p.extra {
         out.keep_lines = x.keep_lines.or(out.keep_lines);
+        out.suppress_line_numbers = x.suppress_line_numbers.or(out.suppress_line_numbers);
         out.widow_control = x.widow_control.or(out.widow_control);
         out.suppress_hyphens = x.suppress_hyphens.or(out.suppress_hyphens);
         out.mirror_indents = x.mirror_indents.or(out.mirror_indents);
@@ -661,13 +662,13 @@ impl<'a> Builder<'a> {
                         append(&mut out, "", &cp, Some(obj));
                     }
                 }
-                Inline::Field { instr, result, fmt, locked } => {
+                Inline::Field { instr, result, fmt, locked, form } => {
                     let cp = self.budget(char_props(fmt));
                     let (instr, result) = (clean_text(instr), clean_text(result));
                     if instr.trim().is_empty() {
                         append(&mut out, &result, &cp, None);
                     } else {
-                        let obj = InlineObject::Field { instr, result, locked: *locked, dirty: false, code: false, form: String::new() };
+                        let obj = InlineObject::Field { instr, result, locked: *locked, dirty: false, code: false, form: form.clone() };
                         append(&mut out, "", &cp, Some(obj));
                     }
                 }

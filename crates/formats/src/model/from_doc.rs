@@ -76,6 +76,20 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
     }
 }
 
+/// The flow formatting before a tracked formatting change, `old` its properties: with
+/// [`FlowOpts::hidden`] and [`FlowOpts::tabs_spacing`], its hidden text and position too, so
+/// a format writing only what the change altered sees those.
+fn old_fmt(doc: &Document, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fmt {
+    let mut f = fmt_of(doc, old, in_code);
+    if !opts.chars {
+        f.hidden = opts.hidden && effective(doc, old).hidden == Some(true);
+        if let Some(pt) = effective(doc, old).position.filter(|v| *v != 0.0 && v.is_finite()).filter(|_| opts.tabs_spacing) {
+            f.extra = Some(Box::new(CharProps { position: Some(pt), ..Default::default() }));
+        }
+    }
+    f
+}
+
 /// The flow formatting of a run with properties `props`: with `opts.chars`, its extra formatting,
 /// its custom character style by name (only its direct formatting then its own) and a
 /// monospaced font by its name.
@@ -98,6 +112,7 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
                 double_strike: set(e.double_strike),
                 scale: e.scale.filter(|v| *v != 100.0 && v.is_finite()),
                 kern: e.kern.filter(|v| *v > 0.0 && v.is_finite()),
+                position: e.position.filter(|v| *v != 0.0 && v.is_finite()),
                 underline: e.underline.filter(|u| f.underline && *u != Underline::Single),
                 underline_color: e.underline_color,
                 ..Default::default()
@@ -245,6 +260,8 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         x.space_after_auto = p.space_after_auto;
         x.suppress_hyphens = p.suppress_hyphens;
         x.snap_to_grid = p.snap_to_grid;
+        x.keep_lines = p.keep_lines;
+        x.suppress_line_numbers = p.suppress_line_numbers;
         x.kinsoku = p.kinsoku;
         x.overflow_punct = p.overflow_punct;
         x.auto_space_de = p.auto_space_de;
@@ -426,8 +443,8 @@ fn rich_inlines(doc: &Document, o: &InlineObject, f: &Fmt, opts: FlowOpts) -> Op
         InlineObject::FieldEnd if opts.fields => vec![Inline::FieldEnd],
         // Where a bookmark ends, so it covers its text (Word's `_GoBack` is the last edit's spot).
         InlineObject::BookmarkEnd { name } if opts.fields && name != "_GoBack" => vec![Inline::AnchorEnd(name.clone())],
-        InlineObject::Field { instr, result, locked, .. } if opts.fields => {
-            vec![Inline::Field { instr: instr.clone(), result: result.clone(), fmt: f.clone(), locked: *locked }]
+        InlineObject::Field { instr, result, locked, form, .. } if opts.fields => {
+            vec![Inline::Field { instr: instr.clone(), result: result.clone(), fmt: f.clone(), locked: *locked, form: form.clone() }]
         }
         _ => return None,
     })
@@ -609,12 +626,14 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
         // Deleted objects and page breaks stay out even when tracking: the flow has no marks for them.
         let hidden = props.hidden.unwrap_or(false) || props.del.is_some();
         // Formats that keep hidden text get it, marked hidden.
-        let hidden_text = (props.hidden.unwrap_or(false) && !opts.chars) || (props.del.is_some() && !tracked);
+        let hidden_text = (props.hidden.unwrap_or(false) && !opts.chars && !opts.hidden) || (props.del.is_some() && !tracked);
         let hidden_obj = (props.hidden.unwrap_or(false) && !opts.chars) || props.del.is_some();
         let mut f = run_fmt(doc, p.props.style.as_deref(), props, in_code, opts);
+        f.hidden = opts.hidden && !opts.chars && props.hidden == Some(true);
         if tracked {
             (f.ins, f.del) = rev_marks(doc, props);
-            f.fmt_change = props.fmt_change.as_deref().map(|c| Box::new(FmtChange { mark: rev_mark(doc, c.rev), old: fmt_of(doc, &c.old, in_code) }));
+            f.fmt_change =
+                props.fmt_change.as_deref().map(|c| Box::new(FmtChange { mark: rev_mark(doc, c.rev), old: old_fmt(doc, &c.old, in_code, opts) }));
         }
         let mut buf = String::new();
         for c in text.chars() {

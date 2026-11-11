@@ -1995,3 +1995,5 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
 mod show_content_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_rtl_gutter;

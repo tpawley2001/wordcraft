@@ -1749,7 +1749,8 @@ impl Styles {
 
     /// The text properties of `style:default-style` for paragraphs.
     fn read_default_text(&mut self, a: &Attrs) {
-        self.default_font = default_font(a, &self.faces);
+        // A later default style without a (usable) font keeps the earlier one (#4501).
+        self.default_font = default_font(a, &self.faces).or(self.default_font.take());
         if let Some(sz) = get(a, "fo:font-size").and_then(length).filter(|v| v.is_finite() && *v >= 1.0) {
             self.default_size = Some(sz.min(1638.0));
         }

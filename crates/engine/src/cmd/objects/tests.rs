@@ -1097,10 +1097,10 @@ fn picture_size_keeps_the_side_it_leaves() {
         let cases = [
             (json!({"width": 200.0, "lockAspect": false}), (200.0, h0)),
             (json!({"height": 200.0, "lockAspect": false}), (w0, 200.0)),
-            (json!({"width": 200.0}), follow(0, (200.0, h0))),
-            (json!({"height": 200.0}), follow(1, (w0, 200.0))),
+            (json!({"width": 200.0, "lockAspect": true}), follow(0, (200.0, h0))),
+            (json!({"height": 200.0, "lockAspect": true}), follow(1, (w0, 200.0))),
             (json!({"scale": 50}), follow(2, (scaled(w0, 0.5), scaled(h0, 0.5)))),
-            (json!({"scale": 200, "width": 200.0}), follow(3, (200.0, scaled(h0, 2.0)))),
+            (json!({"scale": 200, "width": 200.0, "lockAspect": true}), follow(3, (200.0, scaled(h0, 2.0)))),
             (json!({"scale": 100}), (w0, h0)),
             (json!({}), (w0, h0)),
             // The Size dialog: both sides sent, the height as it was.

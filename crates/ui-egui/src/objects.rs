@@ -54,6 +54,8 @@ pub struct ObjectDrag {
     /// Smallest size it can be resized to, points.
     min: f32,
     picture: bool,
+    /// Lock aspect ratio is on: a corner drag keeps the proportions (Shift flips it).
+    locked: bool,
     /// A selected Behind Text picture overlaps text; wait for a drag threshold before taking the
     /// gesture so a simple click can still put the caret in that text.
     pending_behind: bool,
@@ -262,7 +264,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
                 return false;
             }
             let shift = ui.input(|i| i.modifiers.shift);
-            d.drag.update(at, pages, scale, d.min, d.picture != shift);
+            d.drag.update(at, pages, scale, d.min, d.locked != shift);
             if !d.drag.moved {
                 app.canvas.obj_drag = Some(d);
                 return false;
@@ -300,7 +302,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
                     Some(if horizontal { guides::Axis::Y } else { guides::Axis::X })
                 } else {
                     // Pictures keep their proportions from a corner unless Shift; shapes only with Shift.
-                    d.drag.update(at, pages, scale, d.min, d.picture != shift);
+                    d.drag.update(at, pages, scale, d.min, d.locked != shift);
                     None
                 };
                 // Alignment guides: a move snaps to the page, the margins and the other objects
@@ -345,6 +347,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
             object,
             min: 0.0,
             picture: false,
+            locked: false,
             pending_behind: false,
             end: Some((which, (0.0, 0.0))),
             guides: Vec::new(),
@@ -417,8 +420,8 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         return true;
     }
     if pressed && grab == Grab::Move && object.behind() && behind_draggable(app, &object) {
-        let (min, picture) = match app.session.doc.para_at(&object.pos()).and_then(|p| p.object_at(object.pos().off)) {
-            Some(o) => (wordcraft_engine::cmd::objects::min_size(o), matches!(o, InlineObject::Image { .. })),
+        let (min, picture, locked) = match app.session.doc.para_at(&object.pos()).and_then(|p| p.object_at(object.pos().off)) {
+            Some(o) => (wordcraft_engine::cmd::objects::min_size(o), matches!(o, InlineObject::Image { .. }), locks_aspect(o)),
             None => return false,
         };
         app.canvas.obj_drag = Some(ObjectDrag {
@@ -427,6 +430,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
             object,
             min,
             picture,
+            locked,
             pending_behind: true,
             end: None,
             guides: Vec::new(),
@@ -440,8 +444,8 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         let pos = object.pos();
         let end = Pos { off: pos.off + OBJ.len_utf8(), ..pos.clone() };
         let _ = app.run("select.range", json!({"anchor": pos, "focus": end}));
-        let (min, picture) = match selected(app) {
-            Some((_, o)) => (wordcraft_engine::cmd::objects::min_size(o), matches!(o, InlineObject::Image { .. })),
+        let (min, picture, locked) = match selected(app) {
+            Some((_, o)) => (wordcraft_engine::cmd::objects::min_size(o), matches!(o, InlineObject::Image { .. }), locks_aspect(o)),
             None => return true,
         };
         // Objects in table cells can be selected and resized, not moved; charts neither.
@@ -454,6 +458,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
                 object,
                 min,
                 picture,
+                locked,
                 pending_behind: false,
                 end: None,
                 guides: Vec::new(),
@@ -490,13 +495,14 @@ fn press_member(app: &mut WordApp, layout: &DocLayout, pages: &[Rect], scale: f3
         return true;
     }
     let Some(o) = hit_object(app, &object) else { return true };
-    let (min, picture) = (wordcraft_engine::cmd::objects::min_size(o), matches!(o, InlineObject::Image { .. }));
+    let (min, picture, locked) = (wordcraft_engine::cmd::objects::min_size(o), matches!(o, InlineObject::Image { .. }), locks_aspect(o));
     app.canvas.obj_drag = Some(ObjectDrag {
         drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at),
         press_origin: pages.get(object.page).map_or(at, |p| p.min),
         object,
         min,
         picture,
+        locked,
         pending_behind: false,
         end: None,
         guides: Vec::new(),
@@ -719,6 +725,11 @@ fn behind_drag_at(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32,
                 && o.rect.expand(edge).contains(o.unspin(x, y))
         })
         .map(|o| (o, Grab::Move))
+}
+
+/// Whether the object's Lock aspect ratio is on (a picture that doesn't say is locked).
+fn locks_aspect(o: &InlineObject) -> bool {
+    o.frame().is_some_and(|(_, _, f)| f.locks_aspect(matches!(o, InlineObject::Image { .. })))
 }
 
 /// Whether a drag shows the object's pixels rather than an outline. Resizing reflows a text

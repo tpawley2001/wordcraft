@@ -82,6 +82,13 @@ pub(super) struct Reader {
     pub(super) ov_list: i32,
     pub(super) ov_ls: i32,
     pub(super) fields: Vec<String>,
+    /// The legacy form field definitions read, by index in `fields`.
+    pub(super) forms: HashMap<usize, super::form_field::FormField>,
+    /// Where each field's result started in the paragraph being read, by index in `fields`.
+    pub(super) field_at: HashMap<usize, usize>,
+    /// Fields whose result runs over a paragraph mark (a table of contents, an index): their
+    /// result is read as plain text, so one field never turns into one field per paragraph.
+    pub(super) plain_fields: HashSet<usize>,
     // Picture being read.
     pub(super) pict_depth: Option<usize>,
     pub(super) pict_hex: Vec<u8>,
@@ -497,7 +504,8 @@ impl Reader {
     }
 
     /// Records document setting word `w` (view zoom, drawing grid, Restrict Editing, privacy
-    /// options, linked styles, Shift+Return expansion). False when `w` isn't one.
+    /// options, linked styles, Shift+Return expansion, HTML paragraph auto spacing, Track Changes on,
+    /// print form data only). False when `w` isn't one.
     pub(super) fn doc_setting_word(&mut self, w: &str, p: Option<i32>) -> bool {
         use wordcraft_doc::ZoomFit;
         let on = p != Some(0);
@@ -515,11 +523,14 @@ impl Reader {
             "enforceprot" => d.enforce = Some(on),
             "expshrtn" => d.expand_shift_return = Some(on),
             "formprot" => d.old_prot = on.then_some("forms"),
+            "htmautsp" => d.html_auto_spacing = on,
             "linkstyles" => d.link_styles = Some(on),
+            "printdata" => d.print_forms_data = Some(on),
             "protlevel" => d.level = u8::try_from(pv).ok().filter(|&n| n <= 3).or(d.level),
             "readprot" => d.old_prot = on.then_some("readOnly"),
             "remdttm" => d.remove_date_time = Some(on),
             "rempersonalinfo" => d.remove_personal_info = Some(on),
+            "revisions" => d.track_changes = Some(on),
             "revprot" => d.old_prot = on.then_some("trackedChanges"),
             "viewscale" => d.percent = u32::try_from(pv).ok().filter(|n| (10..=500).contains(n)).or(d.percent),
             "viewzk" => match pv {
@@ -661,9 +672,35 @@ impl Reader {
         self.end_para(false);
     }
 
+    /// Whether text in the current field's result is read as an [`Inline::Field`]: always beside
+    /// shapes and for legacy form fields, otherwise while the result stays in one paragraph.
+    pub(super) fn field_inline(&self) -> bool {
+        !self.shapes.is_empty() || self.st.field.is_some_and(|i| self.forms.contains_key(&i) || !self.plain_fields.contains(&i))
+    }
+
+    /// A paragraph mark inside a field's result (other than beside shapes or in a legacy form
+    /// field): the result read so far in this paragraph goes back to plain text, and so does the
+    /// rest of it.
+    fn plain_field_result(&mut self) {
+        let Some(i) = self.st.field else { return };
+        if !self.shapes.is_empty() || self.forms.contains_key(&i) || !self.plain_fields.insert(i) {
+            return;
+        }
+        let (Some(at), Some(instr)) = (self.field_at.remove(&i), self.fields.get(i)) else { return };
+        let Some(tail) = self.para.inlines.get(at..).map(<[Inline]>::to_vec) else { return };
+        self.para.inlines.truncate(at);
+        for inline in tail {
+            match inline {
+                Inline::Field { instr: x, result, fmt, .. } if &x == instr => self.para.push_text(&result, &fmt),
+                other => self.para.inlines.push(other),
+            }
+        }
+    }
+
     /// End the current paragraph (`\par`, `\cell`).
     pub(super) fn end_para(&mut self, in_cell: bool) {
         self.flush_high_surrogate();
+        self.plain_field_result();
         let read = std::mem::take(&mut self.para);
         let props = self.para_props(&self.st);
         let mut p = Para { inlines: read.inlines, mark_ins: read.mark_ins, mark_del: read.mark_del, ..props };
@@ -980,10 +1017,17 @@ pub(super) struct DocSettingWords {
     remove_personal_info: Option<bool>,
     remove_date_time: Option<bool>,
     expand_shift_return: Option<bool>,
+    /// `\htmautsp` (Use HTML paragraph auto spacing): the space between two paragraphs is the
+    /// larger of space after and space before. Without it Word adds the two.
+    html_auto_spacing: bool,
+    /// `\revisions` (Track Changes on) and `\printdata` (print only the data from a form).
+    track_changes: Option<bool>,
+    print_forms_data: Option<bool>,
 }
 
 impl DocSettingWords {
     pub(super) fn apply(&self, s: &mut wordcraft_doc::Settings) {
+        s.sum_paragraph_spacing = !self.html_auto_spacing;
         if self.percent.is_some() || self.fit.is_some() {
             let (percent, fit) = (self.percent.unwrap_or(100), self.fit.flatten());
             // 100% with no fit mode is the model's "no saved zoom".
@@ -1027,6 +1071,8 @@ impl DocSettingWords {
             (self.remove_personal_info, &mut s.remove_personal_info),
             (self.remove_date_time, &mut s.remove_date_time),
             (self.expand_shift_return, &mut s.do_not_expand_shift_return),
+            (self.track_changes, &mut s.track_changes),
+            (self.print_forms_data, &mut s.print_forms_data),
         ] {
             if let Some(v) = v {
                 *field = v;
