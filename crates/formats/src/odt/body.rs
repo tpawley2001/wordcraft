@@ -1021,7 +1021,7 @@ impl Body<'_> {
         let tracked = self.del.is_some()
             || p.mark_ins.is_some()
             || p.mark_del.is_some()
-            || p.inlines.iter().any(|i| matches!(i, Inline::Text(_, f) if f.ins.is_some() || f.del.is_some()));
+            || p.inlines.iter().any(|i| matches!(i, Inline::Text(_, f) if f.ins.is_some() || f.del.is_some()) || matches!(i, Inline::ObjRev(_)));
         // Leading XML whitespace is never read (see `text`); a trailing one is trimmed here.
         // Explicit `text:s` spaces and tabs stay.
         let xml_space_end = std::mem::take(&mut self.xml_space_end);
@@ -1255,7 +1255,7 @@ impl Body<'_> {
             }
             // Drawing shapes (ODF 1.3 §10.3) anchored in the text, with their text.
             "rect" | "ellipse" | "circle" | "line" | "custom-shape" | "polygon" | "polyline" | "path" | "regular-polygon" | "connector"
-                if q.starts_with("draw:") && self.frame.is_none() && self.note.is_none() && self.del.is_none() && !self.in_tc =>
+                if q.starts_with("draw:") && self.frame.is_none() && self.note.is_none() && (!self.in_tc || self.del.is_some()) =>
             {
                 self.start_shape(q, a);
             }
@@ -1263,7 +1263,7 @@ impl Body<'_> {
             // their members its own.
             "g" if q == "draw:g" && self.group_at.is_none() => {
                 self.group_at = Some(self.depth);
-                if self.frame.is_none() && self.note.is_none() && self.del.is_none() && !self.in_tc {
+                if self.frame.is_none() && self.note.is_none() && (!self.in_tc || self.del.is_some()) {
                     self.group = Some(OpenGroup {
                         anchor: get(a, "text:anchor-type").map(String::from),
                         page: get(a, "text:anchor-page-number").map(String::from),

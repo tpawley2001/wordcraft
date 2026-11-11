@@ -658,8 +658,13 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
             control.interrupt(obj, &mut out, &f);
             // Hidden text a format leaves out, a deleted object, or a hidden drawing: not in the
             // copy (a format keeping hidden text keeps its objects too, as it keeps the text).
-            if hidden_obj || obj.and_then(InlineObject::frame).is_some_and(|(_, _, f)| f.hidden) {
+            // A flow keeping objects' revisions keeps a deleted drawing or equation, marked.
+            let marked = tracked && opts.obj_revs && obj.is_some_and(revisable);
+            if (hidden_obj && !(marked && props.hidden != Some(true))) || obj.and_then(InlineObject::frame).is_some_and(|(_, _, f)| f.hidden) {
                 continue;
+            }
+            if !buf.is_empty() && marked {
+                out.push_text(&std::mem::take(&mut buf), &f);
             }
             let from = out.inlines.len();
             if let Some(items) = obj.and_then(|o| rich_inlines(doc, o, &f, opts)) {
@@ -668,6 +673,9 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
                 }
                 out.inlines.extend(items);
                 raise_drawings(&mut out.inlines, from, props.position.filter(|_| opts.paras));
+                if marked {
+                    mark_objects(&mut out.inlines, from, &f);
+                }
                 continue;
             }
             match obj {
@@ -727,6 +735,9 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
                 None => {}
             }
             raise_drawings(&mut out.inlines, from, props.position.filter(|_| opts.paras));
+            if marked {
+                mark_objects(&mut out.inlines, from, &f);
+            }
         }
         if !hidden_text {
             control.run_end(&buf, &mut out, &f);
@@ -898,6 +909,36 @@ fn graphic_group(
 fn empty_mark(out: &Para, p: &Paragraph, opts: FlowOpts) -> Option<Box<CharProps>> {
     let m = CharProps { ins: None, del: None, fmt_change: None, ..p.mark.clone() };
     ((opts.paras || opts.marks) && out.textless() && !m.is_empty()).then(|| Box::new(m))
+}
+
+/// A drawing or equation: the objects a flow keeping objects' revisions marks
+/// ([`FlowOpts::obj_revs`]).
+fn revisable(o: &InlineObject) -> bool {
+    matches!(
+        o,
+        InlineObject::Image { .. }
+            | InlineObject::Graphic { .. }
+            | InlineObject::Equation { .. }
+            | InlineObject::Shape { .. }
+            | InlineObject::Group { .. }
+    )
+}
+
+/// Put the run's tracked insertion and deletion (`f`) before each object from `from` on, as an
+/// [`Inline::ObjRev`]; nothing when the run has neither.
+fn mark_objects(inlines: &mut Vec<Inline>, from: usize, f: &Fmt) {
+    if f.ins.is_none() && f.del.is_none() {
+        return;
+    }
+    let rev = crate::model::ObjRev { ins: f.ins.clone(), del: f.del.clone() };
+    let mut k = from;
+    while k < inlines.len() {
+        if inlines.get(k).is_some_and(Inline::is_object) {
+            inlines.insert(k, Inline::ObjRev(Box::new(rev.clone())));
+            k += 1;
+        }
+        k += 1;
+    }
 }
 
 /// The drawings from `from` on (just added) raised by their run's position `raise` (points): a

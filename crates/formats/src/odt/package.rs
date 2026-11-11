@@ -1042,6 +1042,7 @@ fn export_as(doc: &Document, mime: &str) -> Result<Vec<u8>, String> {
             paras: true,
             boxes: true,
             widow: true,
+            obj_revs: true,
             ..Default::default()
         },
     );
