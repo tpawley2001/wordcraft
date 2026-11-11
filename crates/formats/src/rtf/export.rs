@@ -991,6 +991,13 @@ impl Writer {
             let i = old.background.map_or(0, |c| self.t.color(c));
             ctl.push_str(&format!("\\chcbpat{i}"));
         }
+        if old.hidden != cur.hidden {
+            ctl.push_str(if old.hidden { "\\v" } else { "\\v0" });
+        }
+        let old_pos = position_word(old);
+        if old_pos != position_word(cur) {
+            ctl.push_str(old_pos.as_deref().unwrap_or("\\up0"));
+        }
         ctl
     }
 
@@ -1067,6 +1074,12 @@ impl Writer {
             if let Some(k) = x.kern.filter(|v| v.is_finite() && *v > 0.0).map(|v| (v * 2.0).round().clamp(1.0, 3276.0) as i32) {
                 ctl.push_str(&format!("\\kerning{k}"));
             }
+        }
+        if let Some(w) = position_word(f) {
+            ctl.push_str(&w);
+        }
+        if f.hidden {
+            ctl.push_str("\\v");
         }
         ctl
     }
@@ -1236,7 +1249,11 @@ impl Writer {
         }
         if let (Some(li), Some((n, label))) = (p.list, &ls) {
             let lv = li.level.min(8);
-            out.push_str(&format!("\\ls{n}\\ilvl{lv}\\fi-360\\li{}", 720 * (u32::from(lv) + 1)));
+            out.push_str(&format!("\\ls{n}\\ilvl{lv}"));
+            // The level's indents, unless the paragraph states its own (written by `para_ctl`).
+            if p.spacing.left.is_none() && p.spacing.first.is_none() {
+                out.push_str(&format!("\\fi-360\\li{}", 720 * (u32::from(lv) + 1)));
+            }
             // The closing brace ends the label; a space after it would be text.
             out.push_str(&format!(" {{\\listtext\\pard\\plain {}\\tab}}", esc(label)));
         } else {
@@ -1331,6 +1348,19 @@ impl Writer {
             }
             Kind::Title => out.push_str("\\sa80\\fs56"),
             Kind::Normal => {}
+        }
+        // The paragraph's own spacing, indents and keeps, after its kind's (the later word wins).
+        out.push_str(&spacing_words(&p.spacing));
+        if p.keep_next && !matches!(p.kind, Kind::Heading(_)) {
+            out.push_str("\\keepn");
+        }
+        if let Some(x) = p.extra.as_deref() {
+            if x.keep_lines == Some(true) {
+                out.push_str("\\keep");
+            }
+            if x.suppress_line_numbers == Some(true) {
+                out.push_str("\\noline");
+            }
         }
         out
     }
@@ -1547,6 +1577,40 @@ impl Writer {
                 out.push_str("\\row\n");
             }
         }
+    }
+}
+
+/// The paragraph spacing and indent words of `s` (RTF 1.9.1), in twips: only what it states.
+fn spacing_words(s: &model::Spacing) -> String {
+    use wordcraft_doc::props::LineSpacing;
+    let tw = |pt: f32, lo: f32| (pt.clamp(lo, 1584.0) * 20.0).round() as i32;
+    let mut out = String::new();
+    for (word, v, lo) in [("sb", s.before, 0.0), ("sa", s.after, 0.0), ("li", s.left, -1584.0), ("ri", s.right, -1584.0), ("fi", s.first, -1584.0)] {
+        if let Some(v) = v.filter(|v| v.is_finite()) {
+            out.push_str(&format!("\\{word}{}", tw(v, lo)));
+        }
+    }
+    match s.line {
+        // 240 is single spacing.
+        Some(LineSpacing::Multiple(m)) if m.is_finite() => {
+            out.push_str(&format!("\\sl{}\\slmult1", (m.clamp(0.06, 132.0) * 240.0).round() as i32));
+        }
+        // Twips: positive at least, negative exactly.
+        Some(LineSpacing::AtLeast(pt)) if pt.is_finite() && pt > 0.0 => out.push_str(&format!("\\sl{}\\slmult0", tw(pt, 0.0))),
+        Some(LineSpacing::Exactly(pt)) if pt.is_finite() && pt > 0.0 => out.push_str(&format!("\\sl-{}\\slmult0", tw(pt, 0.0))),
+        _ => {}
+    }
+    out
+}
+
+/// The raised or lowered position of `f` in half-points: `\upN` or `\dnN`; `None` at the baseline.
+fn position_word(f: &Fmt) -> Option<String> {
+    let pt = f.extra.as_ref().and_then(|x| x.position).filter(|v| v.is_finite())?;
+    let half = (pt.clamp(-1584.0, 1584.0) * 2.0).round() as i32;
+    match half {
+        0 => None,
+        h if h > 0 => Some(format!("\\up{h}")),
+        h => Some(format!("\\dn{}", h.unsigned_abs())),
     }
 }
 

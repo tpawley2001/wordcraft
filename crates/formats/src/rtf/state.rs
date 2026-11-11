@@ -351,7 +351,6 @@ pub(super) struct St {
     /// Tracked change of the paragraph formatting (reset by `\pard`).
     pub(super) chg_p: FmtRevSt<Para>,
     pub(super) uc: usize,
-    pub(super) hidden: bool,
     // Paragraph properties.
     pub(super) align: Option<Align>,
     pub(super) style: i32,
@@ -363,6 +362,11 @@ pub(super) struct St {
     pub(super) ilvl: u8,
     pub(super) outline: Option<u8>,
     pub(super) pagebb: bool,
+    /// Keep with next (`\keepn`), keep lines together (`\keep`) and suppress line numbers
+    /// (`\noline`); cleared by `\pard`.
+    pub(super) keepn: bool,
+    pub(super) keep: bool,
+    pub(super) noline: bool,
     /// Widow/orphan control (`\widctlpar`, `\nowidctlpar`); `None` until the paragraph says.
     pub(super) widow: Option<bool>,
     /// Contextual spacing (`\contextualspace`), mirror indents (`\mirrorindents`), automatic
@@ -423,7 +427,6 @@ impl Default for St {
             old_words: Vec::new(),
             old_rev: (None, None),
             uc: 1,
-            hidden: false,
             align: None,
             style: 0,
             intbl: false,
@@ -432,6 +435,9 @@ impl Default for St {
             ilvl: 0,
             outline: None,
             pagebb: false,
+            keepn: false,
+            keep: false,
+            noline: false,
             widow: None,
             contextual: None,
             mirror: None,
