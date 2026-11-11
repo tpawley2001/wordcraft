@@ -35,6 +35,8 @@ struct Parsed {
     comments: Vec<CommentData>,
     /// The document's footnote and endnote options; `num_fmt` is the number format.
     doc_notes: (wordcraft_doc::section::NoteProps, wordcraft_doc::section::NoteProps),
+    /// The document's `\fetN`, when it names one.
+    fet: Option<i32>,
     /// The document settings the header names.
     doc_set: super::reader::DocSettingWords,
 }
@@ -402,6 +404,7 @@ fn finalize(mut r: Reader) -> Parsed {
         notes: r.notes,
         comments: r.comments,
         doc_notes: r.doc_notes,
+        fet: r.fet,
         doc_set: r.doc_set,
     }
 }
@@ -486,9 +489,10 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
         headers_footers,
         foreign_styles,
         own_styles,
-        notes,
+        mut notes,
         comments,
         doc_notes,
+        fet,
         doc_opts,
         doc_set,
         ..
@@ -503,6 +507,15 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     }
     if let Some(f) = end.num_fmt.take() {
         doc.settings.endnote_format = f;
+    }
+    // Word reads a file that never says where footnotes go (no `\ftnbj` or `\ftntj` in the
+    // document formatting, `\fet` absent or 0) as holding endnotes: every `{\footnote}` without
+    // `\ftnalt` is an endnote then, numbered i, ii… whatever `\aftnn…` says.
+    if foot.pos.is_none() && fet.unwrap_or(0) == 0 && notes.iter().any(|n| !n.endnote) {
+        for n in &mut notes {
+            n.endnote = true;
+        }
+        doc.settings.endnote_format = wordcraft_doc::section::NumFormat::LowerRoman;
     }
     (doc.settings.footnote_pr, doc.settings.endnote_pr) = (foot, end);
     // Word fits justified lines of an RTF document more tightly than a DOCX one; RTF has no

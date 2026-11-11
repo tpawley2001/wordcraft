@@ -1848,6 +1848,7 @@ mod legacy_pn;
 mod mark_and_default_font;
 mod nested_tables;
 mod note_options;
+mod note_position;
 mod object_result;
 mod own_styles;
 mod page_borders;

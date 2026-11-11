@@ -422,23 +422,61 @@ fn note_words(prefix: &str, n: &wordcraft_doc::section::NoteProps, fmt: Option<w
     o
 }
 
+/// Whether `bl` (and the tables in it) holds a footnote reference and an endnote reference.
+fn note_kinds(bl: &Blocks, depth: usize, found: &mut (bool, bool)) {
+    use wordcraft_doc::para::NoteKind;
+    for b in bl.iter() {
+        match &**b {
+            Block::Para(p) => {
+                for o in &p.objects {
+                    match o {
+                        InlineObject::NoteRef { kind: NoteKind::Endnote, .. } => found.1 = true,
+                        InlineObject::NoteRef { .. } => found.0 = true,
+                        _ => {}
+                    }
+                }
+            }
+            Block::Table(t) if depth < 8 => {
+                for c in t.rows.iter().flat_map(|r| r.cells.iter()) {
+                    note_kinds(&c.blocks, depth + 1, found);
+                }
+            }
+            Block::Table(_) => {}
+        }
+    }
+}
+
 /// The document's footnote and endnote options: each word only when the option is set, the
 /// number formats only when they aren't the defaults (decimal footnotes, lower Roman endnotes).
-fn doc_note_words(set: &wordcraft_doc::Settings) -> String {
+/// A document with notes always states where footnotes and endnotes go and which it has
+/// (`\fet`): a reader takes footnotes in a file that never says where they go for endnotes.
+fn doc_note_words(doc: &Document) -> String {
     use wordcraft_doc::section::{NotePos, NumFormat};
+    let set = &doc.settings;
+    let mut found = (false, false);
+    note_kinds(&doc.body, 0, &mut found);
+    for part in doc.parts.values() {
+        note_kinds(&part.blocks, 0, &mut found);
+    }
+    let (has_notes, has_endnotes) = (found.0 || found.1, found.1);
     let mut o = String::new();
     o.push_str(match set.footnote_pr.pos {
         Some(NotePos::PageBottom) => "\\ftnbj",
         Some(NotePos::BeneathText) => "\\ftntj",
+        _ if has_notes => "\\ftnbj",
         _ => "",
     });
     o.push_str(match set.endnote_pr.pos {
         Some(NotePos::SectEnd) => "\\aendnotes",
         Some(NotePos::DocEnd) => "\\aenddoc",
+        _ if has_notes => "\\aenddoc",
         _ => "",
     });
     o.push_str(&note_words("\\ftn", &set.footnote_pr, Some(set.footnote_format).filter(|&f| f != NumFormat::Decimal)));
     o.push_str(&note_words("\\aftn", &set.endnote_pr, Some(set.endnote_format).filter(|&f| f != NumFormat::LowerRoman)));
+    if has_notes {
+        o.push_str(if has_endnotes { "\\fet2" } else { "\\fet0" });
+    }
     o
 }
 
@@ -1847,7 +1885,7 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     out.push_str(&user_props(&doc.custom_props));
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
-    let notes = doc_note_words(settings);
+    let notes = doc_note_words(doc);
     let opts = doc_opts_words(settings) + &doc_setting_words(settings);
     out.push_str(&format!(
         "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{landscape}{notes}{opts}\\viewkind4\n",
