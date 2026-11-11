@@ -13,6 +13,7 @@ mod cfb_tolerance;
 mod char_spacing;
 mod char_styles;
 mod compat_mode;
+mod dop_base;
 mod dop_options;
 mod drawing;
 mod emf_font_faces;
@@ -1179,6 +1180,58 @@ fn header_story_becomes_part() {
     let id = doc.last_section.headers.default.expect("odd header part");
     let part = doc.parts.get(&id).expect("part");
     assert!(part.blocks.iter().any(|b| b.as_para().is_some_and(|p| p.text.contains("Header text"))));
+}
+
+/// The odd header's blocks for a one-section document whose header story is `story`, with
+/// `papx_entries` over the whole stream (the header story starts at CP 5, after `body\r`):
+/// paragraph texts, a table as `<table>`; `None` when the slot has no part.
+fn odd_header_blocks(story: &'static str, papx_entries: Vec<(u32, u16, Vec<u8>)>) -> Option<Vec<String>> {
+    let spec = StructSpec {
+        text: "body\r",
+        header_stories: vec![story],
+        sections: vec![(5, Vec::new())],
+        chpx_runs: vec![(0, Vec::new())],
+        papx_entries,
+        plf_lst: Vec::new(),
+        plf_lfo: Vec::new(),
+        note_stories: vec![],
+        endnote_stories: vec![],
+        extra_pairs: Vec::new(),
+        data_stream: Vec::new(),
+    };
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    let id = doc.last_section.headers.default?;
+    let part = doc.parts.get(&id).expect("part");
+    Some(part.blocks.iter().map(|b| b.as_para().map_or_else(|| "<table>".to_string(), |p| p.text.clone())).collect())
+}
+
+/// #5922: [MS-DOC] 2.3.3 ends every non-empty header story with a guard paragraph mark that
+/// is not part of its contents. Read as a paragraph, it put an empty line under every header
+/// and pushed the first body line down when the header reached past the top margin.
+#[test]
+fn header_story_guard_mark_is_not_a_paragraph() {
+    let plain = || vec![(0, 0, Vec::new())];
+    // One line typed into the header: content "Header\r" + guard.
+    assert_eq!(odd_header_blocks("Header\r\r", plain()), Some(vec!["Header".to_string()]));
+    // Enter pressed after it: the empty paragraph is content and stays, only the guard goes.
+    assert_eq!(odd_header_blocks("Header\r\r\r", plain()), Some(vec!["Header".to_string(), String::new()]));
+    // An empty header (one empty content paragraph + guard) is still a header of its own.
+    assert_eq!(odd_header_blocks("\r\r", plain()), Some(vec![String::new()]));
+    // A story that is only a mark (no guard) keeps its paragraph and its part.
+    assert_eq!(odd_header_blocks("\r", plain()), Some(vec![String::new()]));
+    // A story without a guard keeps its last paragraph.
+    assert_eq!(odd_header_blocks("Header\r", plain()), Some(vec!["Header".to_string()]));
+}
+
+/// #5922: a mark right after a table row in a header story is kept: it is the paragraph that
+/// closes the table, not a guard to drop.
+#[test]
+fn header_story_mark_after_a_table_row_is_kept() {
+    let in_tbl = grpprl(&[(0x2416, &[0x01])]);
+    let ttp: Vec<u8> = [grpprl(&[(0x2416, &[0x01]), (0x2417, &[0x01])]), t_def_table(&[0, 2880])].concat();
+    // Stream: "body\r" (CPs 0-4), then the header story "a\x07" (5-6), row end "\x07" (7), "\r" (8).
+    let papx = vec![(0, 0, Vec::new()), (5, 0, in_tbl), (7, 0, ttp), (8, 0, Vec::new())];
+    assert_eq!(odd_header_blocks("a\u{7}\u{7}\r", papx), Some(vec!["<table>".to_string(), String::new()]));
 }
 
 /// A `sprmTDefTable` Prl for `edges` twip boundaries and TC80s of 20 bytes per column,
@@ -3113,4 +3166,67 @@ fn formatting_runs_break_where_the_chpx_changes() {
     // "aaaa" bold, "bbbb" plain, the field's anchor (3 bytes, formatted as its bold result "12")
     // with "ccd" bold (the run from the field to CP 20), "d(ee" italic.
     assert_eq!(shape, [(4, Some(true), None), (4, None, None), (6, Some(true), None), (4, None, Some(true))], "{shape:?}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Range fields: a TOC or ADDIN field's result is ordinary paragraphs, as Word shows it (P03-102).
+
+/// Paragraph texts of the body without the U+FFFC object anchors.
+fn range_field_texts(doc: &wordcraft_doc::Document) -> Vec<String> {
+    doc.body.iter().filter_map(|b| b.as_para()).map(|p| p.text.replace('\u{FFFC}', "")).collect()
+}
+
+/// An EndNote bibliography (`ADDIN EN.REFLIST`) keeps one paragraph per reference.
+#[test]
+fn an_addin_bibliography_keeps_one_paragraph_per_reference() {
+    use wordcraft_doc::para::InlineObject;
+    let text = "\u{13} ADDIN EN.REFLIST \u{14}Ref one\rRef two\u{15}\rBody\r";
+    let spec = structured_spec(text, text.chars().count() as u32);
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    assert_eq!(range_field_texts(&doc), ["Ref one", "Ref two", "Body"]);
+    let paras: Vec<_> = doc.body.iter().filter_map(|b| b.as_para()).collect();
+    let first = paras.first().expect("first reference");
+    assert!(
+        matches!(first.objects.first(), Some(InlineObject::FieldStart { instr, .. }) if instr.trim_start().starts_with("ADDIN EN.REFLIST")),
+        "{:?}",
+        first.objects
+    );
+    let second = paras.get(1).expect("second reference");
+    assert!(second.objects.iter().any(|o| matches!(o, InlineObject::FieldEnd)), "{:?}", second.objects);
+    let all: Vec<&InlineObject> = paras.iter().flat_map(|p| &p.objects).collect();
+    let starts = all.iter().filter(|o| matches!(o, InlineObject::FieldStart { .. })).count();
+    let ends = all.iter().filter(|o| matches!(o, InlineObject::FieldEnd)).count();
+    assert_eq!((starts, ends), (1, 1), "{all:?}");
+}
+
+/// An inline EndNote citation (`ADDIN EN.CITE`) shows its result in the paragraph, not its code.
+#[test]
+fn an_addin_citation_shows_its_result_in_the_paragraph() {
+    use wordcraft_doc::para::InlineObject;
+    let text = "Text \u{13} ADDIN EN.CITE <EndNote/>\u{14}(Smith 1999)\u{15} more\r";
+    let spec = structured_spec(text, text.chars().count() as u32);
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    assert_eq!(range_field_texts(&doc), ["Text (Smith 1999) more"]);
+    let p = doc.body.iter().find_map(|b| b.as_para()).expect("para");
+    assert!(!p.objects.iter().any(|o| matches!(o, InlineObject::Field { .. })), "{:?}", p.objects);
+    let starts = p.objects.iter().filter(|o| matches!(o, InlineObject::FieldStart { .. })).count();
+    let ends = p.objects.iter().filter(|o| matches!(o, InlineObject::FieldEnd)).count();
+    assert_eq!((starts, ends), (1, 1), "{:?}", p.objects);
+}
+
+/// TOC entries built from nested HYPERLINK and PAGEREF fields never show those codes as text.
+#[test]
+fn toc_entries_never_show_nested_field_codes() {
+    let entry = |bm: &str, title: &str, page: &str| {
+        format!("\u{13} HYPERLINK \\l \"{bm}\" \u{14}{title}\t\u{13} PAGEREF {bm} \\h \u{14}{page}\u{15}\u{15}")
+    };
+    let text = format!("\u{13} TOC \\o \"1-3\" \\h \\z \\u \u{14}{}\r{}\r{}\u{15}\rBody\r", entry("_Toc1", "Goal", "3"), entry("_Toc2", "Overview", "3"), entry("_Toc3", "Issues", "7"));
+    let text: &'static str = Box::leak(text.into_boxed_str());
+    let spec = structured_spec(text, text.chars().count() as u32);
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    let texts = range_field_texts(&doc);
+    assert_eq!(texts, ["Goal\t3", "Overview\t3", "Issues\t7", "Body"]);
+    for t in &texts {
+        assert!(!t.contains("HYPERLINK") && !t.contains("PAGEREF"), "{t:?}");
+    }
 }

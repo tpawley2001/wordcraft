@@ -94,15 +94,14 @@ impl Reader {
                 self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
-                self.st.hidden = false;
             }
             "pard" => {
                 let field = self.st.field;
                 // Revision marks are character formatting, which `\pard` leaves alone.
-                let (dest, fmt, rev, uc, hidden) = (self.st.dest, self.st.fmt.clone(), self.st.rev, self.st.uc, self.st.hidden);
+                let (dest, fmt, rev, uc) = (self.st.dest, self.st.fmt.clone(), self.st.rev, self.st.uc);
                 let chg_c = std::mem::take(&mut self.st.chg_c);
                 let mono = self.st.mono.take();
-                self.st = St { dest, fmt, mono, rev, chg_c, uc, hidden, field, ..Default::default() };
+                self.st = St { dest, fmt, mono, rev, chg_c, uc, field, ..Default::default() };
                 self.page_side = None;
             }
             "revised" => self.st.rev.ins = on,
@@ -119,11 +118,19 @@ impl Reader {
             "b" => self.st.fmt.bold = on,
             "i" => self.st.fmt.italic = on,
             "strike" => self.st.fmt.strike = on,
-            "super" | "up" => {
+            "super" => {
                 self.st.fmt.sup = on;
                 self.st.fmt.sub = false;
             }
-            "sub" | "dn" => {
+            // Raised or lowered by N half-points, at full size (RTF 1.9.1; `w:position`): a
+            // position, not superscript or subscript (no N: 6). `\up0`/`\dn0` clear it.
+            "up" | "dn" => {
+                let n = p.unwrap_or(6);
+                let half = if w == "up" { n } else { n.saturating_neg() };
+                let pt = (half as f32 / 2.0).clamp(-1584.0, 1584.0);
+                self.set_extra(|x| x.position = (pt != 0.0).then_some(pt));
+            }
+            "sub" => {
                 self.st.fmt.sub = on;
                 self.st.fmt.sup = false;
             }
@@ -169,7 +176,8 @@ impl Reader {
             }
             "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
             "highlight" | "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
-            "v" => self.st.hidden = on,
+            // Hidden text: kept, as hidden text.
+            "v" => self.st.fmt.hidden = on,
             "ql" => self.st.align = Some(Align::Left),
             "qc" => self.st.align = Some(Align::Center),
             "qr" => self.st.align = Some(Align::Right),
@@ -180,6 +188,9 @@ impl Reader {
             "cs" => self.char_style(pv),
             "outlinelevel" => self.st.outline = Some(pv.clamp(0, 9) as u8),
             "pagebb" => self.st.pagebb = on,
+            "keepn" => self.st.keepn = on,
+            "keep" => self.st.keep = on,
+            "noline" => self.st.noline = on,
             "widctlpar" => self.st.widow = Some(true),
             "nowidctlpar" => self.st.widow = Some(false),
             "contextualspace" => self.st.contextual = Some(true),
@@ -367,6 +378,21 @@ impl Reader {
             "subject" if self.in_info() => Some(Dest::Info(3)),
             "keywords" if self.in_info() => Some(Dest::Info(4)),
             "doccomm" if self.in_info() => Some(Dest::Info(5)),
+            "operator" if self.in_info() => Some(Dest::Info(6)),
+            "category" if self.in_info() => Some(Dest::Info(7)),
+            "creatim" | "revtim" | "printim" if self.in_info() => {
+                let which = match w {
+                    "creatim" => 0,
+                    "revtim" => 1,
+                    _ => 2,
+                };
+                self.in_date = Some((which, self.depth()));
+                Some(Dest::Skip)
+            }
+            "userprops" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => Some(Dest::UserProps),
+            "propname" if self.st.dest == Dest::UserProps => Some(Dest::Info(8)),
+            "staticval" if self.st.dest == Dest::UserProps => Some(Dest::Info(9)),
+            "linkval" if self.st.dest == Dest::UserProps => Some(Dest::Info(10)),
             "listtable" => Some(Dest::ListTable),
             "revtbl" => Some(Dest::RevTbl),
             "oldcprops" => Some(Dest::OldProps(false)),
@@ -414,10 +440,6 @@ impl Reader {
             "pntxtb" | "pntxta" if self.pn_depth.is_some() => {
                 self.pn_txt.clear();
                 Some(if w == "pntxtb" { Dest::PnTxtB } else { Dest::PnTxtA })
-            }
-            "creatim" if self.in_info() => {
-                self.in_creatim = true;
-                Some(Dest::Skip)
             }
             _ => None,
         }
@@ -481,8 +503,12 @@ impl Reader {
         match self.st.dest {
             Dest::ShapeInst | Dest::ShapeName | Dest::ShapeValue => true,
             Dest::Skip | Dest::Object => {
-                if self.in_creatim {
-                    self.record_created_part(word, value);
+                self.record_date_part(word, value);
+                true
+            }
+            Dest::UserProps => {
+                if word == "proptype" {
+                    self.info_more.set_prop_type(value);
                 }
                 true
             }
@@ -545,6 +571,21 @@ impl Reader {
                     "qr" => def.align = Some(Align::Right),
                     "qj" => def.align = Some(Align::Justify),
                     "qd" => def.align = Some(Align::Distribute),
+                    // Tab stops, character-unit indents and character spacing, as in the body.
+                    "tqr" => def.tab_align = TabAlign::Right,
+                    "tqc" => def.tab_align = TabAlign::Center,
+                    "tqdec" => def.tab_align = TabAlign::Decimal,
+                    "tldot" => def.tab_leader = TabLeader::Dot,
+                    "tlmdot" => def.tab_leader = TabLeader::MiddleDot,
+                    "tlhyph" => def.tab_leader = TabLeader::Hyphen,
+                    "tlul" | "tlth" => def.tab_leader = TabLeader::Underscore,
+                    "tleq" => def.tab_leader = TabLeader::None,
+                    "tx" | "tb" => push_tab_stop(&mut def.tabs, (&mut def.tab_align, &mut def.tab_leader), value, word == "tb"),
+                    "cufi" => def.cufi = Some(value.clamp(-158400, 158400)),
+                    "culi" => def.culi = Some(value.clamp(-158400, 158400)),
+                    "curi" => def.curi = Some(value.clamp(-158400, 158400)),
+                    "expnd" => def.spacing = (value != 0).then_some(value as f32 / 4.0),
+                    "expndtw" => def.spacing = (value != 0).then_some(value as f32 / 20.0),
                     _ => {}
                 }
                 true
@@ -706,7 +747,13 @@ impl Reader {
     }
 
     fn skip_destination_word(&mut self, word: &str, value: i32, first_in_group: bool) -> bool {
-        let kept_info = self.in_info() && matches!(word, "title" | "author" | "subject" | "keywords" | "doccomm" | "creatim");
+        // `{\version N}` is a value, not a destination with text.
+        if word == "version" && self.st.dest == Dest::Skip && self.in_info() {
+            self.info_more.revision = value.max(0).unsigned_abs();
+            return true;
+        }
+        let kept_info = self.in_info()
+            && matches!(word, "title" | "author" | "subject" | "keywords" | "doccomm" | "operator" | "category" | "creatim" | "revtim" | "printim");
         if !matches!(self.st.dest, Dest::Skip | Dest::Object) || kept_info {
             return false;
         }
@@ -719,15 +766,16 @@ impl Reader {
             // Give them their own skipped destination so a nested result stays hidden.
             self.st.dest = Dest::Skip;
         }
-        if self.in_creatim {
-            self.record_created_part(word, value);
-        }
+        self.record_date_part(word, value);
         true
     }
 
-    fn record_created_part(&mut self, word: &str, value: i32) {
+    /// A `\yr \mo \dy \hr \min` word inside `\creatim`, `\revtim` or `\printim`.
+    fn record_date_part(&mut self, word: &str, value: i32) {
+        let Some((which, _)) = self.in_date else { return };
+        let Some(date) = self.dates.get_mut(which) else { return };
         let value = value.clamp(0, 9999) as u32;
-        let created = self.created.get_or_insert((0, 1, 1, 0, 0));
+        let created = date.get_or_insert((0, 1, 1, 0, 0));
         match word {
             "yr" => created.0 = value,
             "mo" => created.1 = value,
@@ -748,14 +796,7 @@ impl Reader {
     /// A tab stop at `twips` from the indent (`\tx`, or a bar tab `\tb`), with the alignment and
     /// leader words read before it. A stop at a position already set replaces it.
     fn tab_stop(&mut self, twips: i32, bar: bool) {
-        let align = if bar { TabAlign::Bar } else { self.st.tab_align };
-        let stop = TabStop { pos: twips as f32 / 20.0, align, leader: self.st.tab_leader };
-        (self.st.tab_align, self.st.tab_leader) = (TabAlign::Left, TabLeader::None);
-        if let Some(t) = self.st.tabs.iter_mut().find(|t| t.pos == stop.pos) {
-            *t = stop;
-        } else if self.st.tabs.len() < MAX_TABS {
-            self.st.tabs.push(stop);
-        }
+        push_tab_stop(&mut self.st.tabs, (&mut self.st.tab_align, &mut self.st.tab_leader), twips, bar);
     }
 
     /// A character effect word (Font › Effects, Scale, Kerning) into the run's own properties.
@@ -872,6 +913,20 @@ fn underline_style(w: &str) -> Option<Underline> {
 /// The target of a `HYPERLINK` field instruction; `%22` is a quote, as the writer stores one.
 pub(super) fn hyperlink(instr: &str) -> Option<String> {
     wordcraft_doc::link::hyperlink_target(instr).map(|t| t.replace("%22", "\""))
+}
+
+/// Adds a tab stop at `twips` (`\tx`, or a bar tab `\tb`) to `tabs`, with the pending alignment
+/// and leader words read before it, which it then clears. A stop at a position already set
+/// replaces it; at most [`MAX_TABS`] are kept.
+pub(super) fn push_tab_stop(tabs: &mut Vec<TabStop>, pending: (&mut TabAlign, &mut TabLeader), twips: i32, bar: bool) {
+    let (align, leader) = pending;
+    let stop = TabStop { pos: twips as f32 / 20.0, align: if bar { TabAlign::Bar } else { *align }, leader: *leader };
+    (*align, *leader) = (TabAlign::Left, TabLeader::None);
+    if let Some(t) = tabs.iter_mut().find(|t| t.pos == stop.pos) {
+        *t = stop;
+    } else if tabs.len() < MAX_TABS {
+        tabs.push(stop);
+    }
 }
 
 #[cfg(test)]

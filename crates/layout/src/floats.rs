@@ -504,6 +504,18 @@ fn anchor_floats_but(
             let outline = ctx.wrap_outline(o);
             let outline = outline.as_deref().map(Vec::as_slice);
             let mut area = wrap_area(r, float, outline);
+            let seed = early.and_then(|v| v.iter().take(pb.seeded).find(|(b, k, _)| (*b, *k) == (block, oi))).map(|(_, _, a)| a);
+            // A float the page started with keeps the place found for it when its paragraph moved
+            // down below it (pushed by the room it was given): Word places it once, from where its
+            // paragraph was laid out without it, and doesn't move it again with the text it pushes.
+            if let (true, Some(s), Some(a)) = (text_before, seed, area.as_ref())
+                && a.0.y > s.0.y + 0.5
+            {
+                let back = Rect { y: r.y - (a.0.y - s.0.y), ..r };
+                if let Some(b) = wrap_area(back, float, outline).filter(|b| covers(s, b)) {
+                    (r, area) = (back, Some(b));
+                }
+            }
             if pb.settle && text_before {
                 let seed = early.and_then(|v| v.iter().find(|(b, k, _)| (*b, *k) == (block, oi))).map(|(_, _, a)| a);
                 (r, area) = settle_early(r, area, seed, top, |r| wrap_area(r, float, outline));

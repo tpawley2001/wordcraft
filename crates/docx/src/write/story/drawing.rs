@@ -260,8 +260,9 @@ impl Writer<'_> {
     pub(super) fn graphic_frame(&mut self, w: &mut W, info: DrawingInfo<'_>, graphic: &crate::xml::El) {
         let inline = info.float.wrap == Wrap::Inline;
         w.open("w:drawing", &[]);
+        let float = info.float;
         self.drawing_open(w, info);
-        w.empty("wp:cNvGraphicFramePr", &[]);
+        frame_pr(w, float, false);
         w.raw(&graphic.to_xml());
         w.close(if inline { "wp:inline" } else { "wp:anchor" });
         w.close("w:drawing");
@@ -639,4 +640,16 @@ pub(super) fn write_fill(w: &mut W, f: Option<&Fill>) {
 fn link_target(path: &str) -> String {
     let drive = matches!(path.as_bytes(), [d, b':', ..] if d.is_ascii_alphabetic());
     if drive || path.starts_with("\\\\") { format!("file:///{path}") } else { path.to_string() }
+}
+
+/// `wp:cNvGraphicFramePr`, with Lock aspect ratio (`a:graphicFrameLocks/@noChangeAspect`, ECMA-376
+/// Part 1 §20.1.2.2.19) when the object keeps its proportions. `a` is declared on the part's root.
+pub(super) fn frame_pr(w: &mut W, float: &Float, picture: bool) {
+    if float.locks_aspect(picture) {
+        w.open("wp:cNvGraphicFramePr", &[]);
+        w.empty("a:graphicFrameLocks", &[("noChangeAspect", "1")]);
+        w.close("wp:cNvGraphicFramePr");
+    } else {
+        w.empty("wp:cNvGraphicFramePr", &[]);
+    }
 }

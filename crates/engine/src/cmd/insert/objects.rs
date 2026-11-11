@@ -199,7 +199,8 @@ fn place_picture(s: &mut Session, bytes: Vec<u8>, width: Option<f32>, alt: &str)
         w,
         h,
         alt: alt.to_string(),
-        float: Float::default(),
+        // Word locks the aspect ratio of a picture it inserts.
+        float: Float { lock_aspect: Some(true), ..Float::default() },
         crop: [0.0; 4],
         fx: Default::default(),
         ole: None,

@@ -24,6 +24,9 @@ impl Reader<'_> {
         float.alt = meta;
         float.hidden = c.child("wp:docPr").is_some_and(|p| on_off_attr(p, "hidden"));
         float.name = c.child("wp:docPr").map(docpr_name).unwrap_or_default();
+        // Lock aspect ratio (ECMA-376 Part 1 §20.1.2.2.19): absent means unlocked.
+        let locks = c.child("wp:cNvGraphicFramePr").and_then(|p| p.child("a:graphicFrameLocks"));
+        float.lock_aspect = Some(locks.is_some_and(|l| on_off_attr(l, "noChangeAspect")));
         if let Some(e) = c.child("wp:effectExtent") {
             for (slot, n) in float.effect.iter_mut().zip(["l", "t", "r", "b"]) {
                 // Negative for a rotated object narrower than its frame; settled below.
