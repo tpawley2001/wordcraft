@@ -362,7 +362,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-11 | trivial | List numbers count separately in each story, as in Word: the body, all headers and footers together (in each section the even and default headers, the even and default footers, then the first-page header and footer), all text boxes, all footnotes and all endnotes; a header shows the same numbers on every page (`layout::tests::list_numbers_per_story`) |
+| 2026-11-11 | trivial | List numbers count separately in each story, as in Word: the body, all headers and footers together (in each section the even and default headers, the even and default footers, then the first-page header and footer), all text boxes, all footnotes and all endnotes; a header shows the same numbers on every page (`layout::tests::list_numbers_per_story`, `layout::list_stories::tests`) |
 | 2026-11-11 | trivial | A Top and Bottom object placed above its anchor paragraph stays where it is first placed; the lines it covers go just below it instead of a growing blank band further down |
 | 2026-11-07 | trivial | P0117: In margin moves first-line and hanging indents to the cap frame and restores them on None or Dropped; DOCX preserves the separate frame indent (#4173). Layout unchanged; readiness estimates unchanged. |
 | 2026-11-08 | trivial | Turned inline pictures with no recorded effect extent keep their line to the frame (exchanged near a quarter turn in Word 2013+ layout) and overhang it, cut at the line's top and bottom, as in Word |
