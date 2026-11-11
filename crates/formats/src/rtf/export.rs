@@ -649,17 +649,7 @@ fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
                     None => {}
                 }
             }
-            // Tab stops in position order, then indents in hundredths of a character.
-            let mut tabs: Vec<_> = p.tabs.iter().flatten().filter(|t| t.pos.is_finite()).collect();
-            tabs.sort_by(|a, b| a.pos.total_cmp(&b.pos));
-            for t in tabs {
-                out.push_str(&tab_words(t));
-            }
-            for (word, v) in [("\\cufi", p.indent_first_chars), ("\\culi", p.indent_left_chars), ("\\curi", p.indent_right_chars)] {
-                if let Some(v) = v.filter(|v| v.is_finite()) {
-                    out.push_str(&format!("{word}{}", (v.clamp(-1584.0, 1584.0) * 100.0).round() as i64));
-                }
-            }
+            style_tab_and_char_indent_words(p, &mut out);
         }
         let c = &s.chr;
         for (word, v) in [("b", c.bold), ("i", c.italic)] {
@@ -680,14 +670,34 @@ fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
             Some(wordcraft_doc::TextColor::Auto) => out.push_str("\\cf0"),
             None => {}
         }
-        // Expanded or condensed, as the text writes it: quarter points, then the exact twips.
-        if let Some(pt) = c.spacing.filter(|v| v.is_finite() && *v != 0.0) {
-            let pt = pt.clamp(-1584.0, 1584.0);
-            out.push_str(&format!("\\expnd{}\\expndtw{}", (pt * 4.0).round() as i32, (pt * 20.0).round() as i32));
-        }
+        style_char_spacing_words(c.spacing, &mut out);
         out.push_str(&format!(" {};}}", esc_font(&s.name)));
     }
     out
+}
+
+/// A style entry's tab stops in position order, then its indents in hundredths of a character
+/// (`\\cufi`, `\\culi`, `\\curi`).
+fn style_tab_and_char_indent_words(p: &wordcraft_doc::props::ParaProps, out: &mut String) {
+    let mut tabs: Vec<_> = p.tabs.iter().flatten().filter(|t| t.pos.is_finite()).collect();
+    tabs.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+    for t in tabs {
+        out.push_str(&tab_words(t));
+    }
+    for (word, v) in [("\\cufi", p.indent_first_chars), ("\\culi", p.indent_left_chars), ("\\curi", p.indent_right_chars)] {
+        if let Some(v) = v.filter(|v| v.is_finite()) {
+            out.push_str(&format!("{word}{}", (v.clamp(-1584.0, 1584.0) * 100.0).round() as i64));
+        }
+    }
+}
+
+/// A style entry's expanded or condensed spacing, as the text writes it: quarter points, then
+/// the exact twips.
+fn style_char_spacing_words(spacing: Option<f32>, out: &mut String) {
+    if let Some(pt) = spacing.filter(|v| v.is_finite() && *v != 0.0) {
+        let pt = pt.clamp(-1584.0, 1584.0);
+        out.push_str(&format!("\\expnd{}\\expndtw{}", (pt * 4.0).round() as i32, (pt * 20.0).round() as i32));
+    }
 }
 
 fn style_num(k: Kind) -> Option<u32> {
