@@ -355,6 +355,17 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
             tb_stories.insert(spid, doc.add_part(PartKind::TextBox, blocks));
         }
     }
+    // Each story's box: its internal margins and vertical alignment ([MS-ODRAW] §2.3.21).
+    let mut nodes: Vec<&officeart::Node> = art.main.values().chain(art.header.values()).collect();
+    while let Some(node) = nodes.pop() {
+        if let officeart::Node::Group(_, members) = node {
+            nodes.extend(members);
+        }
+        let sp = node.sp();
+        if let Some(part) = tb_stories.get(&sp.spid).and_then(|id| doc.parts.get_mut(id)) {
+            part.body = sp.props.text_body(part.body);
+        }
+    }
     let build = drawing::Build { bstore: &art.bstore, delay: &word, stories: &tb_stories };
     let mut drawn = drawing::anchors(&table, fib.pair(fib::pair::PLC_SPA_MOM), 0, &art.main, &build, &mut pics);
     drawn.extend(drawing::anchors(&table, fib.pair(fib::pair::PLC_SPA_HDR), hdd_base, &art.header, &build, &mut pics));
