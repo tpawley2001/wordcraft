@@ -1842,6 +1842,7 @@ mod endnote_here;
 mod foreign_styles;
 mod form_fields;
 mod frames;
+mod highlight_proof_emphasis;
 mod html_auto_spacing;
 mod info_props;
 mod justification_flag;
