@@ -1133,11 +1133,7 @@ impl Writer {
             "\\emfblip" | "\\wmetafile8" => hundredths,
             _ => model::image_px(&data).map(|(a, b)| (i64::from(a), i64::from(b))).unwrap_or((1, 1)),
         };
-        out.push_str(&format!(
-            "{{\\pict{blip}\\picw{pw}\\pich{ph}\\picwgoal{}\\pichgoal{}\n",
-            (img.w * 20.0).round() as i64,
-            (img.h * 20.0).round() as i64
-        ));
+        out.push_str(&format!("{{\\pict{blip}\\picw{pw}\\pich{ph}{}\n", pict_goal(img)));
         for chunk in data.chunks(64) {
             for b in chunk {
                 out.push_str(&format!("{b:02x}"));
@@ -1877,4 +1873,28 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     out.push_str(body);
     out.push_str("}\n");
     out
+}
+
+/// A picture's `\picwgoal`/`\pichgoal` and, when it is cropped, its `\piccrop*` words: the goal is
+/// the uncropped size and each crop the twips cut off that side (only the non-zero ones). A crop
+/// leaving under 1 % of an axis, or an uncropped goal over 31,680 twips, writes no crop.
+fn pict_goal(img: &model::Img) -> String {
+    let plain = format!("\\picwgoal{}\\pichgoal{}", (img.w * 20.0).round() as i64, (img.h * 20.0).round() as i64);
+    let [l, t, r, b] = img.crop.map(|c| if c.is_finite() && c > 0.0 { c } else { 0.0 });
+    if l + t + r + b <= 0.0 || l + r >= 0.99 || t + b >= 0.99 {
+        return plain;
+    }
+    let gw = (img.w * 20.0 / (1.0 - l - r)).round();
+    let gh = (img.h * 20.0 / (1.0 - t - b)).round();
+    if !(gw.is_finite() && gh.is_finite()) || gw > 31_680.0 || gh > 31_680.0 {
+        return plain;
+    }
+    let mut s = format!("\\picwgoal{}\\pichgoal{}", gw as i64, gh as i64);
+    for (word, frac, goal) in [("l", l, gw), ("t", t, gh), ("r", r, gw), ("b", b, gh)] {
+        let n = (frac * goal).round() as i64;
+        if n != 0 {
+            s.push_str(&format!("\\piccrop{word}{n}"));
+        }
+    }
+    s
 }

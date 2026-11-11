@@ -1,5 +1,6 @@
 # File-format parity with Microsoft Word
 
+> **Last updated:** 2026-11-11 · **Change:** trivial (P0253: RTF picture crop read and written, `\piccropl`/`t`/`r`/`b` against the goal size, as in Word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0250: RTF reads and writes `\endnhere`, Suppress endnotes. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0243: RTF footnotes and endnotes with a custom reference mark keep it, read and written. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0246: `.doc` toggle formatting stored as "the style's value" or "the opposite of the style's value" (bold, italic, strike, caps, small caps, hidden) resolves against the style of the paragraph the character is in, as in Word. Readiness estimates unchanged.)
@@ -917,6 +918,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 | 2026-11-11 | trivial | `.doc`: sprmSFRTLGutter (0x322A) puts the section's gutter on the right of the page, as `w:rtlGutter` does (P0237) |
 | 2026-11-10 | trivial | DOCX: list levels keep `w:tplc`, `w:tentative` and `w:legacy`, `w:numbering` keeps `w:numIdMacAtCleanup`, sections keep `w:rtlGutter` and `w:pgSz/@w:code`; an RTL gutter widens the right margin instead of the left (P0207) |
 | 2026-11-10 | trivial | DOCX: a style's `w:semiHidden`, `w:unhideWhenUsed` and `w:hidden` are written back as read instead of all as `w:semiHidden` + `w:unhideWhenUsed`; `w:aliases`, `w:autoRedefine`, `w:personal`, `w:personalCompose`, `w:personalReply` and `w:rsid` are kept (P0206) |
+| 2026-11-11 | trivial | P0253: RTF picture crop read and written: `\piccropl`/`\piccropt`/`\piccropr`/`\piccropb` (twips against `\picwgoal`/`\pichgoal`, scale applied after) open as the picture's crop at Word's displayed size, and a cropped picture saves with its uncropped goal and the non-zero crop words; negative and whole-axis crops are not modelled |
 | 2026-11-11 | trivial | P0250: RTF reads and writes a section's `\endnhere` when endnotes go at each section's end (`\aendnotes`); a section without it suppresses its endnotes, as Word reads it |
 | 2026-11-11 | trivial | P0243: RTF footnotes and endnotes with a custom reference mark (`Alpha{\super *}{\footnote …}`, no `\chftn`) keep it on import and export; the mark's text leaves the body text |
 | 2026-11-11 | trivial | P0246: `.doc` toggle sprms with operand 0x80/0x81 ([MS-DOC] §2.9.326) resolve against the character's own paragraph style, looked up from the paragraph mark before its characters are read; before, they resolved against no style, so 0x81 in a bold paragraph style drew bold text where Word draws regular |

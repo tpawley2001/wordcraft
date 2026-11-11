@@ -98,6 +98,9 @@ pub(super) struct Reader {
     pub(super) pict_h: Option<f32>,
     pub(super) pict_sx: f32,
     pub(super) pict_sy: f32,
+    /// `\piccropl`/`t`/`r`/`b` as written: twips cut off the left, top, right and bottom,
+    /// measured against the goal size (0 when absent).
+    pub(super) pict_crop: [i32; 4],
     /// `\picw`/`\pich` as written, read for metafiles (0 when absent).
     pub(super) pict_nat: (i32, i32),
     /// The mapping mode `N` of `\wmetafileN`.

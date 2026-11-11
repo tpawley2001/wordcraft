@@ -505,7 +505,7 @@ fn drawing_inline(doc: &Document, o: &InlineObject, opts: FlowOpts, depth: usize
                 alt: alt.to_string(),
                 float: kept_float(float),
                 object: ole.as_deref().filter(|_| opts.boxes).and_then(|e| super::odf_object::load(doc, e)),
-                crop: if opts.paras { *crop } else { [0.0; 4] },
+                crop: if opts.paras || opts.crop { *crop } else { [0.0; 4] },
             }))
         }
         InlineObject::Group { w, h, float, ch_w, ch_h, children, .. } if depth < MAX_GROUP_DEPTH => {
@@ -711,7 +711,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
                             alt: alt.to_string(),
                             float: kept_float(float).filter(|_| opts.paras),
                             object: ole.as_deref().filter(|_| opts.boxes).and_then(|e| super::odf_object::load(doc, e)),
-                            crop: if opts.paras { *crop } else { [0.0; 4] },
+                            crop: if opts.paras || opts.crop { *crop } else { [0.0; 4] },
                         })),
                         None if !alt.is_empty() => buf.push_str(alt),
                         None => {}

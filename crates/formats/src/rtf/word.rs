@@ -349,6 +349,7 @@ impl Reader {
                 self.pict_h = None;
                 self.pict_sx = 0.0;
                 self.pict_sy = 0.0;
+                self.pict_crop = [0; 4];
                 self.pict_nat = (0, 0);
                 self.pict_mm = 0;
             }
@@ -765,6 +766,10 @@ impl Reader {
             "pichgoal" => self.pict_h = Some(value.clamp(1, 31_680) as f32 / 20.0),
             "picscalex" => self.pict_sx = value.clamp(1, 1000) as f32,
             "picscaley" => self.pict_sy = value.clamp(1, 1000) as f32,
+            "piccropl" => self.pict_crop[0] = value.clamp(-31_680, 31_680),
+            "piccropt" => self.pict_crop[1] = value.clamp(-31_680, 31_680),
+            "piccropr" => self.pict_crop[2] = value.clamp(-31_680, 31_680),
+            "piccropb" => self.pict_crop[3] = value.clamp(-31_680, 31_680),
             _ => {}
         }
     }
