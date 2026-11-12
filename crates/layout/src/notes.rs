@@ -35,7 +35,7 @@ pub(crate) fn note_info(doc: &Document, hide_deleted: HideDeleted, pages: &HashM
         if cur.as_ref().is_some_and(|(_, gone)| gone.get(k).copied().unwrap_or(false)) {
             return false;
         }
-        if let Some(InlineObject::NoteRef { kind, id, .. }) = p.objects.get(k) {
+        if let Some(InlineObject::NoteRef { kind, id, custom }) = p.objects.get(k) {
             while sections.get(si).is_some_and(|(end, _)| block > *end) && si + 1 < sections.len() {
                 si += 1;
             }
@@ -54,7 +54,11 @@ pub(crate) fn note_info(doc: &Document, hide_deleted: HideDeleted, pages: &HashM
                     if again { o.num_start } else { prev.saturating_add(1) }
                 }
             };
-            *slot = Some((n, si, page));
+            // A custom mark (ECMA-376 §17.11.14 `w:customMarkFollows`) shows its own text and takes
+            // no number: the next automatic note goes on from the one before it.
+            if custom.is_empty() {
+                *slot = Some((n, si, page));
+            }
             let ord = order.get_mut(ki).map(|c| {
                 *c = c.saturating_add(1);
                 *c
@@ -410,7 +414,7 @@ pub(crate) fn table_notes(ctx: &mut Ctx, pb: &mut PageBuilder, items: &[Placed])
     for id in ids {
         let Some(part) = ctx.doc.parts.get(&id).filter(|p| p.kind == wordcraft_doc::PartKind::Footnote) else { continue };
         let blocks = part.blocks.clone();
-        let BoxLayout { items, height: h, .. } = layout_box(ctx, BoxInput::other(StoryRef::Part(id), &blocks, pb.sect.text_width(), 0, None));
+        let BoxLayout { items, height: h, .. } = layout_box(ctx, BoxInput::other(StoryRef::Part(id), &blocks, pb.note_w(), 0, None));
         pb.notes.push(NoteBox { id, items, h, cont: false });
     }
     pb.bottom -= pb.notes_h() - before;

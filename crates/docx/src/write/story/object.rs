@@ -104,6 +104,7 @@ impl Writer<'_> {
                 if custom.is_empty() {
                     w.empty(tag, &[("w:id", &nid)]);
                 } else {
+                    self.custom_notes.insert((foot, *id));
                     w.empty(tag, &[("w:customMarkFollows", "1"), ("w:id", &nid)]);
                     w.leaf("w:t", &[("xml:space", "preserve")], custom);
                 }

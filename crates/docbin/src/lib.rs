@@ -445,14 +445,14 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
         (fib::pair::PLCF_FND_REF, fib::pair::PLCF_FND_TXT, ftn_base, fib.ccp.ftn, NoteKind::Footnote, PartKind::Footnote),
         (fib::pair::PLCF_END_REF, fib::pair::PLCF_END_TXT, edn_base, fib.ccp.edn, NoteKind::Endnote, PartKind::Endnote),
     ];
-    let mut note_links: Vec<(u32, NoteKind, u32)> = Vec::new();
+    let mut note_links: Vec<NoteLink> = Vec::new();
     for (ref_pair, txt_pair, base, len, kind, part_kind) in note_kinds {
         let found = notes::parse_notes(&table, &fib, ref_pair, txt_pair);
-        let stories = found.into_iter().filter_map(|(cp, ab)| Some((cp, story(base, len, ab)?)));
+        let stories = found.into_iter().filter_map(|(cp, auto, ab)| Some((cp, auto, story(base, len, ab)?)));
         note_parts(&mut doc, &ctx, stories, (kind, part_kind), (&mut pics, max_paragraphs), &mut note_links)?;
     }
     // Sorted so the main walk finds each reference by binary search.
-    note_links.sort_by_key(|(cp, _, _)| *cp);
+    note_links.sort_by_key(|n| n.cp);
     let marks = notes::parse_bookmarks(&table, &fib);
     let mut sect_ends: Vec<u32> = sects.iter().map(|s| s.end_cp).collect();
     sect_ends.sort_unstable();
@@ -510,12 +510,12 @@ fn paragraph_limit(max_paragraphs: usize) -> DocbinError {
 fn note_parts(
     doc: &mut Document,
     ctx: &WalkCtx<'_>,
-    stories: impl Iterator<Item = (u32, (u32, u32))>,
+    stories: impl Iterator<Item = (u32, bool, (u32, u32))>,
     (kind, part_kind): (NoteKind, PartKind),
     (pics, max_paragraphs): (&mut media::Pictures, usize),
-    links: &mut Vec<(u32, NoteKind, u32)>,
+    links: &mut Vec<NoteLink>,
 ) -> Result<(), DocbinError> {
-    for (cp, (a, b)) in stories {
+    for (cp, auto, (a, b)) in stories {
         if doc.parts.len() >= MAX_PARTS {
             continue;
         }
@@ -529,7 +529,7 @@ fn note_parts(
         if let Some(part) = doc.parts.get_mut(&id) {
             part.blocks = blocks;
         }
-        links.push((cp, kind, id));
+        links.push(NoteLink { cp, kind, id, auto });
     }
     Ok(())
 }
@@ -620,8 +620,8 @@ struct WalkCtx<'a> {
     raw_styles: &'a [stsh::RawStyle],
     style_ids: &'a [String],
     sheet: &'a StyleSheet,
-    /// (reference CP in the main document, kind, part id) for notes.
-    notes: &'a [(u32, NoteKind, u32)],
+    /// The notes' references in the main document, sorted by CP.
+    notes: &'a [NoteLink],
     /// The note whose text is being walked: its reference character is the note's own number.
     own_note: Option<(NoteKind, u32)>,
     /// Bookmark boundaries (main-document CPs), sorted for a sequential walk.
@@ -669,6 +669,21 @@ impl ParaBudget {
         }
     }
 }
+
+/// A footnote or endnote reference: where it is in the main document and the part it links to.
+#[derive(Clone, Copy)]
+struct NoteLink {
+    cp: u32,
+    kind: NoteKind,
+    id: u32,
+    /// Auto-numbered (the reference character is 0x02), or a custom mark (the characters at
+    /// `cp` are the mark).
+    auto: bool,
+}
+
+/// Most characters a custom note mark is read with. [MS-DOC] does not state the mark's extent;
+/// Word's Footnote and Endnote dialog takes at most ten characters for a custom mark.
+const MAX_CUSTOM_MARK: usize = 10;
 
 /// State while assembling one paragraph from per-CP formatting.
 #[derive(Default)]
@@ -777,6 +792,21 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
             head = Some(found);
         }
         ctx.budget.set(ctx.budget.get() - 1);
+        // A custom-mark note reference: no 0x02 here, the characters at its CP are the mark
+        // (outside a field's code or a result collected for the field object).
+        if c != '\u{2}'
+            && fields.iter().all(|f| f.range)
+            && let Some(note) = custom_note_at(ctx, cp)
+        {
+            let (custom, next) = custom_mark(ctx, cp, cp_end);
+            push_formatted(&mut pb, cp, '\u{FFFC}', ctx, None, &mut fmt);
+            pb.objects.push(InlineObject::NoteRef { kind: note.kind, id: note.id, custom });
+            if next > cp {
+                cp = next;
+                continue;
+            }
+            // Nothing usable at the CP (a paragraph mark, a special character): it is read as usual.
+        }
         // A section mark (0x0C) at a section's end is that section's last paragraph mark.
         let section_mark = c == '\u{C}' && ctx.sect_ends.binary_search(&cp.saturating_add(1)).is_ok();
         match c {
@@ -917,8 +947,8 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
             '\u{2}' => {
                 // Footnote or endnote reference; custom symbols share the same character. In a
                 // note's own text it is that note's number, as `w:footnoteRef` is in DOCX.
-                let at = ctx.notes.partition_point(|(c, _, _)| *c < cp);
-                let note = ctx.notes.get(at).filter(|(c, _, _)| *c == cp).map(|&(_, kind, id)| (kind, id)).or(ctx.own_note);
+                let at = ctx.notes.partition_point(|n| n.cp < cp);
+                let note = ctx.notes.get(at).filter(|n| n.cp == cp).map(|n| (n.kind, n.id)).or(ctx.own_note);
                 if let Some((kind, id)) = note {
                     pb.push('\u{FFFC}', revised(ctx, cp));
                     pb.objects.push(InlineObject::NoteRef { kind, id, custom: String::new() });
@@ -952,6 +982,47 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
         });
     }
     out
+}
+
+/// The custom-mark note (data element 0) whose reference is at `cp`, if any.
+fn custom_note_at(ctx: &WalkCtx, cp: u32) -> Option<NoteLink> {
+    let at = ctx.notes.partition_point(|n| n.cp < cp);
+    ctx.notes.get(at).filter(|n| n.cp == cp && !n.auto).copied()
+}
+
+/// The custom note mark starting at `cp` and the CP just past it: the characters of the same
+/// piece and character run (CHPX), stopping before whitespace, a paragraph or cell mark, a field
+/// character or any other special character, and at most [`MAX_CUSTOM_MARK`] of them. A symbol
+/// (sprmCSymbol) is read as its character. Empty (and `cp` back) when nothing usable is there.
+/// Each character read past the first is charged to the walk's character budget.
+fn custom_mark(ctx: &WalkCtx, cp: u32, cp_end: u32) -> (String, u32) {
+    let mut mark = String::new();
+    let Some(span) = ctx.pieces.span(cp) else { return (mark, cp) };
+    let Some(fc0) = span.fc_at(cp) else { return (mark, cp) };
+    let run = ctx.chpx_bins.chpx_run(ctx.word, fc0);
+    let mut at = cp;
+    let mut count = 0usize;
+    while at < cp_end && count < MAX_CUSTOM_MARK {
+        if !span.contains(at) || !span.fc_at(at).is_some_and(|fc| run.contains(fc)) {
+            break;
+        }
+        let Ok((c, units)) = ctx.pieces.char_at(ctx.word, at) else { break };
+        if (c as u32) < 0x20 || c.is_whitespace() || units == 0 {
+            break;
+        }
+        // The first character was charged by the walk.
+        if count > 0 {
+            match ctx.budget.get().checked_sub(1) {
+                Some(left) => ctx.budget.set(left),
+                None => break,
+            }
+        }
+        let symbol = if c == '(' { symbol_operand(run.grpprl).and_then(|(_, x)| char::from_u32(u32::from(x))) } else { None };
+        mark.push(symbol.unwrap_or(c));
+        count += 1;
+        at = at.saturating_add(units);
+    }
+    (mark, at)
 }
 
 /// A paragraph's mark, found before its characters are walked: its CP and the istd and grpprl
