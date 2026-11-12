@@ -108,7 +108,15 @@ fn drawn_with_field_in(instr: &str, font: &str) -> String {
     use super::*;
     let mut d = Document::from_text("ab");
     let props = wordcraft_doc::props::CharProps { font: Some(font.into()), ..Default::default() };
-    let field = InlineObject::Field { instr: instr.into(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
+    let field = InlineObject::Field {
+        instr: instr.into(),
+        result: String::new(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    };
     d.insert_object(&Pos::body(0, 1), field, &props).unwrap();
     let end = Pos::body(0, 1 + wordcraft_doc::para::OBJ.len_utf8());
     d.format_range(&Pos::body(0, 1), &end, &|c| c.font = Some(font.into())).unwrap();

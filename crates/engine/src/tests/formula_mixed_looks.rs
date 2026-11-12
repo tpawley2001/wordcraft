@@ -97,6 +97,7 @@ fn session(rows: &[(&str, &str)]) -> Session {
             dirty: false,
             code: false,
             form: String::new(),
+            code_paras: None,
         };
         p.insert_object(p.len(), field, &CharProps::default()).unwrap();
     }

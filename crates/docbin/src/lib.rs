@@ -1323,7 +1323,15 @@ fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &Work) {
         return;
     }
     pb.push('\u{FFFC}', props);
-    pb.objects.push(InlineObject::Field { instr, result: result.text, locked: false, dirty: false, code: false, form: String::new() });
+    pb.objects.push(InlineObject::Field {
+        instr,
+        result: result.text,
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    });
 }
 
 /// The ruby object for a Phonetic Guide field whose object character has `props`. The ruby text
