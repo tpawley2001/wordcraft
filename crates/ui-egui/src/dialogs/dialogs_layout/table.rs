@@ -6,6 +6,9 @@ use super::{Serialize, Ui, Value, WordApp, buttons, heading, json, run, unit};
 /// The functions `table.formula` works out, offered by Paste function.
 pub const FORMULA_FUNCTIONS: [&str; 6] = ["AVERAGE", "COUNT", "MAX", "MIN", "PRODUCT", "SUM"];
 
+/// The numeric pictures the Formula dialog's Number format list offers, in Word's order.
+pub const FORMULA_NUMBER_FORMATS: [&str; 7] = ["#,##0", "#,##0.00", "$#,##0.00;($#,##0.00)", "0", "0%", "0.00", "0.00%"];
+
 /// The table Formula dialog's fields: the formula, suggested as Word does from the numbers next
 /// to the caret's cell (`=SUM(ABOVE)`, else `=SUM(LEFT)`, else a bare `=`), and the bookmark
 /// names Paste bookmark offers.
@@ -13,6 +16,8 @@ pub const FORMULA_FUNCTIONS: [&str; 6] = ["AVERAGE", "COUNT", "MAX", "MIN", "PRO
 #[serde(rename_all = "camelCase")]
 pub struct FormulaForm {
     pub formula: String,
+    /// The Number format box: a numeric picture for the field's `\#` switch, empty for none.
+    pub number_format: String,
     pub bookmarks: Vec<String>,
 }
 
@@ -36,7 +41,7 @@ impl FormulaForm {
             "="
         };
         let bookmarks = wordcraft_engine::cmd::table_formula::paste_bookmark_names(&s.doc);
-        Some(FormulaForm { formula: formula.into(), bookmarks })
+        Some(FormulaForm { formula: formula.into(), number_format: String::new(), bookmarks })
     }
 
     /// Paste function: `NAME()` at the end of the formula.
@@ -48,6 +53,11 @@ impl FormulaForm {
     /// Paste bookmark: the bookmark's name, as it is, at the end of the formula.
     pub fn paste_bookmark(&mut self, name: &str) {
         self.formula.push_str(name);
+    }
+
+    /// Number format's list: the box takes the picked picture.
+    pub fn pick_number_format(&mut self, _picture: &str) {
+        // Stub: the task makes the picked picture the box's text.
     }
 
     /// `table.formula` parameters for OK.

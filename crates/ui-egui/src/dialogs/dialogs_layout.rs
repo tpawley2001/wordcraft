@@ -45,7 +45,7 @@ pub(crate) use print::envelope_label;
 use print::product_label;
 pub use print::{EnvelopeForm, LabelsForm};
 use print::{envelopes_ui, labels_ui};
-pub use table::{CellsForm, FORMULA_FUNCTIONS, FormulaForm, SortForm, SplitCellsForm, TableToTextForm, TextToTableForm};
+pub use table::{CellsForm, FORMULA_FUNCTIONS, FORMULA_NUMBER_FORMATS, FormulaForm, SortForm, SplitCellsForm, TableToTextForm, TextToTableForm};
 use table::{DELETE_CELLS, INSERT_CELLS, cells_ui, formula_ui, sort_ui, split_cells_ui, table_to_text_ui, text_to_table_ui};
 #[cfg(test)]
 use text::language_name;
