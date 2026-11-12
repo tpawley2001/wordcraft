@@ -45,6 +45,10 @@ pub struct NumberForm {
     pub italic: bool,
     /// The number's colour, `RRGGBB`; empty for Automatic.
     pub color: String,
+    /// The number's size in points as the Size box shows it (`20`, `10.5`); empty for not set.
+    pub size: String,
+    /// The number's underline, a `w:u` name (`none` is a choice of its own); empty for not set.
+    pub underline: String,
     /// Font… was clicked: the font controls are showing.
     #[serde(skip)]
     pub show_font: bool,
@@ -61,6 +65,8 @@ impl Default for NumberForm {
             bold: false,
             italic: false,
             color: String::new(),
+            size: String::new(),
+            underline: String::new(),
             show_font: false,
         }
     }
@@ -128,6 +134,8 @@ impl NumberForm {
             bold,
             italic,
             color,
+            size: String::new(),
+            underline: String::new(),
             show_font,
         }
     }
