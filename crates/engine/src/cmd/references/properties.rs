@@ -78,6 +78,48 @@ pub(super) fn doc_property(doc: &wordcraft_doc::Document, core: &wordcraft_doc::
     })
 }
 
+/// Word's text for a DOCPROPERTY field whose name is neither a custom property nor a built-in one.
+pub const UNKNOWN_DOC_PROPERTY: &str = "Error! Unknown document property name.";
+
+/// Built-in property names Word's DOCPROPERTY field knows but this application cannot compute
+/// yet. A field naming one keeps its stored result on Update Field: the name is valid in Word, so
+/// showing [`UNKNOWN_DOC_PROPERTY`] for it would be wrong.
+const UNCOMPUTED_BUILT_IN_PROPERTIES: [&str; 18] = [
+    "Bytes",
+    "Characters",
+    "CharactersWithSpaces",
+    "Company",
+    "CreateTime",
+    "HyperlinkBase",
+    "LastPrinted",
+    "LastSavedTime",
+    "Lines",
+    "Manager",
+    "NameofApplication",
+    "ODMADocId",
+    "Pages",
+    "Paragraphs",
+    "Security",
+    "Template",
+    "TotalEditingTime",
+    "Words",
+];
+
+/// The new result of a DOCPROPERTY field on Update Field; `None` keeps the stored result. A name
+/// that is neither a custom property nor a built-in one gives [`UNKNOWN_DOC_PROPERTY`], stored as
+/// is: Word does not apply the `\*` capitalization switches to an error text.
+pub(super) fn doc_property_result(doc: &wordcraft_doc::Document, core: &wordcraft_doc::CoreProps, instr: &str) -> Option<String> {
+    let name = doc_property_arg(instr)?;
+    if let Some(v) = doc_property(doc, core, &name) {
+        return Some(text_result(instr, v));
+    }
+    let key = name.trim();
+    if UNCOMPUTED_BUILT_IN_PROPERTIES.iter().any(|n| n.eq_ignore_ascii_case(key)) {
+        return None;
+    }
+    Some(UNKNOWN_DOC_PROPERTY.to_string())
+}
+
 /// A field's `\@` date picture: the quoted text after it (switches may follow), or one word.
 pub fn date_picture(instr: &str) -> Option<String> {
     let rest = instr.split_once("\\@")?.1.trim_start();

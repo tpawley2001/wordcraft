@@ -1124,3 +1124,15 @@ fn document_date_fields_accept_offsets_and_fractions_and_keep_locked_results() {
     s.run("references.updateFields", &json!({})).unwrap();
     assert!(fields(&s).iter().all(|(_, result)| result == "locked"));
 }
+
+/// A header's DOCPROPERTY field naming a property nobody defined shows Word's error text on
+/// Update Field (not re-capitalized), while a built-in name this application cannot compute
+/// keeps its stored result.
+#[test]
+fn header_docproperty_unknown_name_shows_the_error() {
+    let doc = wordcraft_doc::Document::from_text("one two three");
+    let (mut s, hdr) = header_fields_session(doc, &[r"DOCPROPERTY Nope \* Upper", "DOCPROPERTY Company"]);
+    s.run("references.updateFields", &json!({})).unwrap();
+    let got: Vec<String> = story_fields(&s, StoryRef::Part(hdr)).into_iter().map(|(_, r)| r).collect();
+    assert_eq!(got, [UNKNOWN_DOC_PROPERTY, "stale"]);
+}
