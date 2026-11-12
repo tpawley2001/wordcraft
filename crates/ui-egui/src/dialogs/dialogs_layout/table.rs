@@ -6,12 +6,14 @@ use super::{Serialize, Ui, Value, WordApp, buttons, heading, json, run, unit};
 /// The functions `table.formula` works out, offered by Paste function.
 pub const FORMULA_FUNCTIONS: [&str; 6] = ["AVERAGE", "COUNT", "MAX", "MIN", "PRODUCT", "SUM"];
 
-/// The table Formula dialog's field: the formula, suggested as Word does from the numbers next
-/// to the caret's cell (`=SUM(ABOVE)`, else `=SUM(LEFT)`, else a bare `=`).
+/// The table Formula dialog's fields: the formula, suggested as Word does from the numbers next
+/// to the caret's cell (`=SUM(ABOVE)`, else `=SUM(LEFT)`, else a bare `=`), and the bookmark
+/// names Paste bookmark offers.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FormulaForm {
     pub formula: String,
+    pub bookmarks: Vec<String>,
 }
 
 impl FormulaForm {
@@ -33,13 +35,19 @@ impl FormulaForm {
         } else {
             "="
         };
-        Some(FormulaForm { formula: formula.into() })
+        let bookmarks = wordcraft_engine::cmd::table_formula::paste_bookmark_names(&s.doc);
+        Some(FormulaForm { formula: formula.into(), bookmarks })
     }
 
     /// Paste function: `NAME()` at the end of the formula.
     pub fn paste(&mut self, name: &str) {
         self.formula.push_str(name);
         self.formula.push_str("()");
+    }
+
+    /// Paste bookmark: the bookmark's name, as it is, at the end of the formula.
+    pub fn paste_bookmark(&mut self, name: &str) {
+        self.formula.push_str(name);
     }
 
     /// `table.formula` parameters for OK.
@@ -65,6 +73,23 @@ pub(super) fn formula_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FormulaForm) ->
         if let Some(name) = picked {
             f.paste(name);
         }
+    });
+    // Greyed out, as in Word, when the document has no bookmarks to offer.
+    ui.add_enabled_ui(!f.bookmarks.is_empty(), |ui| {
+        ui.horizontal(|ui| {
+            ui.label(tl!("Paste bookmark:"));
+            let mut picked = None;
+            craft_ui::ComboBox::from_id_salt("formula_paste_bookmark").selected_text("").width(140.0).show_ui(ui, |ui| {
+                for name in &f.bookmarks {
+                    if ui.selectable_label(false, name.as_str()).clicked() {
+                        picked = Some(name.clone());
+                    }
+                }
+            });
+            if let Some(name) = picked {
+                f.paste_bookmark(&name);
+            }
+        });
     });
     let ready = f.formula.trim().starts_with('=') && f.formula.trim().len() > 1;
     let (ok, cancel) = buttons(ui, "OK", ready);
