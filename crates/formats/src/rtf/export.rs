@@ -1008,7 +1008,14 @@ impl Writer {
             Some(l) => {
                 // In a field's quotes `\\` is one backslash; a quote is stored as `%22`.
                 let target = l.replace('\\', "\\\\").replace('"', "%22");
-                out.push_str(&format!("{{\\field{{\\*\\fldinst{{HYPERLINK \"{}\"}}}}{{\\fldrslt{{{}}}}}}}", esc(&target), body));
+                // A ScreenTip is the `\o` switch; in its quotes a backslash escapes the next
+                // character, and the RTF escaping keeps it text.
+                let tip = f
+                    .link_tip
+                    .as_deref()
+                    .filter(|t| !t.is_empty())
+                    .map_or_else(String::new, |t| format!(" \\\\o \"{}\"", esc(&t.replace('\\', "\\\\").replace('"', "\\\""))));
+                out.push_str(&format!("{{\\field{{\\*\\fldinst{{HYPERLINK \"{}\"{}}}}}{{\\fldrslt{{{}}}}}}}", esc(&target), tip, body));
             }
             None => out.push_str(&body),
         }

@@ -129,6 +129,8 @@ pub struct Fmt {
     pub sub: bool,
     /// Shared: every span of a link holds the same target.
     pub link: Option<Arc<str>>,
+    /// The link's ScreenTip (a HYPERLINK field's `\o` switch); only meaningful with `link`.
+    pub link_tip: Option<Arc<str>>,
     pub color: Option<Rgb>,
     /// Points.
     pub size: Option<f32>,

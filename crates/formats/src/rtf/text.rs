@@ -377,13 +377,13 @@ impl Reader {
     /// The formatting before a tracked character change: the current run's, with the
     /// `\oldcprops` words applied (a `\plain` among them starts from none).
     fn old_fmt(&mut self, words: &[(String, Option<i32>)]) -> Fmt {
-        let fmt = Fmt { link: None, ins: None, del: None, fmt_change: None, ..self.st.fmt.clone() };
+        let fmt = Fmt { link: None, link_tip: None, ins: None, del: None, fmt_change: None, ..self.st.fmt.clone() };
         let saved = std::mem::replace(&mut self.st, St { dest: Dest::OldProps(false), fmt, ..Default::default() });
         for (w, p) in words {
             self.word(w, *p, false, false);
         }
         let old = std::mem::replace(&mut self.st, saved).fmt;
-        Fmt { link: None, ..old }
+        Fmt { link: None, link_tip: None, ..old }
     }
 
     pub(super) fn ch(&mut self, c: char) {

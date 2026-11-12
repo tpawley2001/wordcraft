@@ -785,7 +785,7 @@ impl Reader {
             return None;
         }
         let f = &self.st.fmt;
-        let plain = Fmt { link: None, ins: None, del: None, fmt_change: None, ..f.clone() };
+        let plain = Fmt { link: None, link_tip: None, ins: None, del: None, fmt_change: None, ..f.clone() };
         let mut m = model::char_props(&plain);
         if f.code
             && let Some(n) = &self.st.mono
