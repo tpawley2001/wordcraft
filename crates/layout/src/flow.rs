@@ -495,7 +495,7 @@ impl<'a> Flow<'a> {
             }
             fit.notes.extend(line_notes);
             fit.l1 += 1;
-            if self.ends_page(pb, l, &mut fit) || split {
+            if self.ends_page(pb, l, &ctx.doc.settings, &mut fit) || split {
                 break;
             }
         }
@@ -517,13 +517,16 @@ impl<'a> Flow<'a> {
     }
 
     /// Whether the line (just taken, `fit.l1` is after it) forces a break, noted in `fit`.
-    fn ends_page(&self, pb: &PageBuilder, l: &para::Line, fit: &mut Fit) -> bool {
+    fn ends_page(&self, pb: &PageBuilder, l: &para::Line, settings: &wordcraft_doc::Settings, fit: &mut Fit) -> bool {
         if !matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak) || pb.web {
             return false;
         }
         fit.forced = Some(l.end);
         let mark_follows = self.pl.lines.get(fit.l1).is_some_and(|m| only_markers(self.p, m.start..m.stop));
-        if l.end == LineEnd::PageBreak && fit.l1 + 1 == self.n() && mark_follows {
+        // A Word 97-2003 document (`splitPgBreakAndParaMark`, below mode 15) puts the mark on the
+        // new page instead: an empty line there with the paragraph's spacing (measured in Word).
+        let split = settings.split_pg_break_and_para_mark && settings.compat_mode < 15;
+        if l.end == LineEnd::PageBreak && fit.l1 + 1 == self.n() && mark_follows && !split {
             fit.l1 += 1;
             fit.mark_with_break = true;
         }

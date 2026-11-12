@@ -145,7 +145,7 @@ fn replace_bookmark(doc: &mut Document, name: &str, text: &str) -> Result<(), Cm
 /// The local file the field's path names: `raw` as the field code gives it (a quoted path's
 /// doubled backslashes already single), relative to the document's folder. `None` for an empty path, a network path, a URL, or a relative path with no document
 /// folder: none of them is looked at on disk.
-fn local_path(s: &Session, raw: &str) -> Option<PathBuf> {
+pub(super) fn local_path(s: &Session, raw: &str) -> Option<PathBuf> {
     let text = raw.trim();
     if text.is_empty() || text.starts_with("\\\\") || text.starts_with("//") || has_scheme(text) {
         return None;

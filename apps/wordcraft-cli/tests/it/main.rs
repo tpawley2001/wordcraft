@@ -1,6 +1,7 @@
 #[cfg(unix)]
 mod closed_stdout;
 mod convert_fields;
+mod convert_fields_stories;
 mod convert_region;
 mod help;
 #[cfg(all(unix, not(target_os = "macos")))]

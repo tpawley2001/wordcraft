@@ -27,7 +27,7 @@ fn session(instr: &str, locked: bool) -> Session {
     let mut doc = wordcraft_doc::Document::from_text("Here: ");
     let path = doc.para_paths(StoryRef::Body).remove(0);
     let p = doc.para_mut(StoryRef::Body, &path).unwrap();
-    let field = InlineObject::Field { instr: instr.into(), result: "OLD".into(), locked, dirty: false, code: false, form: String::new() };
+    let field = InlineObject::Field { instr: instr.into(), result: "OLD".into(), locked, dirty: false, code: false, form: String::new(), code_paras: None };
     p.insert_object(p.len(), field, &CharProps::default()).unwrap();
     Session::new(doc)
 }
