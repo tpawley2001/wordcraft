@@ -4,6 +4,7 @@ use super::{
     placeholder_of, sectpr, tcpr, trpr,
 };
 use wordcraft_doc::para::{COLUMN_BREAK, LINE_BREAK, PAGE_BREAK};
+use wordcraft_doc::props::ParaProps;
 
 impl Reader<'_> {
     /// Read a story's blocks from a container element (`w:body`, `w:hdr`, `w:tc`, `w:txbxContent`…).
@@ -22,7 +23,10 @@ impl Reader<'_> {
         // Stray story-level breaks belong to this container's next paragraph.
         // The XML element limit also bounds this buffer.
         let mut pending_breaks = String::new();
-        for e in parent.els() {
+        let els: Vec<&El> = parent.els().collect();
+        let mut i = 0usize;
+        while let Some(&e) = els.get(i) {
+            i += 1;
             match e.name.as_str() {
                 "w:br" => pending_breaks.push(match e.attr("w:type") {
                     Some("page") => PAGE_BREAK,
@@ -30,7 +34,8 @@ impl Reader<'_> {
                     _ => LINE_BREAK,
                 }),
                 "w:p" => {
-                    let mut p = self.read_para(sc, e, rels, depth);
+                    let (mut p, taken) = self.read_para(sc, e, els.get(i..).unwrap_or(&[]), rels, depth);
+                    i = i.saturating_add(taken);
                     if !pending_breaks.is_empty() {
                         let props = p.runs.first().map(|r| r.props.clone()).unwrap_or_default();
                         // Offset zero is always a valid character boundary.
@@ -84,7 +89,7 @@ impl Reader<'_> {
                 // which takes EG_MathContent): it gets a paragraph of its own (#1273).
                 "m:oMathPara" | "m:oMath" => {
                     let wrapped = El { name: "w:p".into(), attrs: Vec::new(), kids: vec![Node::El(e.clone())] };
-                    let p = self.read_para(sc, &wrapped, rels, depth);
+                    let (p, _) = self.read_para(sc, &wrapped, &[], rels, depth);
                     out.push(para_block(p));
                 }
                 "mc:AlternateContent" => {
@@ -229,7 +234,54 @@ impl Reader<'_> {
         }
     }
 
-    fn read_para(&mut self, sc: &mut StoryCtx, e: &El, rels: &Rels, depth: usize) -> Paragraph {
+    /// A paragraph's own properties and mark formatting from its `w:pPr` (not its section), with
+    /// the mark's move elements (read after the content).
+    fn para_ppr<'e>(&mut self, ppr: &'e El) -> (ParaProps, CharProps, [Option<&'e El>; 2]) {
+        let mut mark_moves: [Option<&El>; 2] = [None, None];
+        let (mut props, mut mark) = self.pc.ppr(ppr);
+        crate::read::props::resolve_level_only(&self.doc.styles, &mut props, "Normal");
+        // A tracked paragraph mark (ECMA-376 §17.13.5.16 / §17.13.5.15): `w:ins` / `w:del`
+        // in the mark's `w:rPr`.
+        if let Some(rpr) = ppr.child("w:rPr") {
+            for k in rpr.els() {
+                match k.name.as_str() {
+                    "w:ins" => mark.ins = Some(self.revision(RevisionKind::Insert, k)),
+                    "w:del" => mark.del = Some(self.revision(RevisionKind::Delete, k)),
+                    // A moved paragraph mark (§17.13.5.21, §17.13.5.24): its move range
+                    // usually starts in the paragraph's content, so it is read after that.
+                    "w:moveTo" => mark_moves[1] = Some(k),
+                    "w:moveFrom" => mark_moves[0] = Some(k),
+                    _ => {}
+                }
+            }
+            mark.fmt_change = self.rpr_change(rpr);
+        }
+        // Tracked formatting changes (§17.13.5.29, §17.13.5.19): the paragraph properties
+        // before the change, and a change of the list numbering.
+        if let Some(ch) = ppr.child("w:pPrChange") {
+            let old = ch
+                .child("w:pPr")
+                .map(|o| {
+                    let mut old = self.pc.ppr(o).0;
+                    crate::read::props::resolve_level_only(&self.doc.styles, &mut old, "Normal");
+                    old.formatting()
+                })
+                .unwrap_or_default();
+            props.fmt_change = PropChange::boxed(self.revision(RevisionKind::Format, ch), old);
+        }
+        if props.numbering.is_some()
+            && let Some(ch) = ppr.child("w:numPr").and_then(|n| n.child("w:numberingChange"))
+        {
+            let original = ch.attr("w:original").unwrap_or("").chars().take(256).collect();
+            props.num_change = Some(Box::new(NumChange { rev: self.revision(RevisionKind::Format, ch), original }));
+        }
+        (props, mark, mark_moves)
+    }
+
+    /// Read paragraph `e`. A field whose code runs on into the following paragraphs `next` (Word
+    /// hides those paragraph marks with the code) makes them one paragraph: the first one's
+    /// properties with the last one's space after. Returns how many of `next` were taken.
+    fn read_para(&mut self, sc: &mut StoryCtx, e: &El, next: &[&El], rels: &Rels, depth: usize) -> (Paragraph, usize) {
         let mut pb = PB::default();
         let mut para = Paragraph::new();
         let mut mark_moves: [Option<&El>; 2] = [None, None];
@@ -238,51 +290,34 @@ impl Reader<'_> {
             pb.push_obj(o, &CharProps::default());
         }
         if let Some(ppr) = e.child("w:pPr") {
-            let (mut props, mark) = self.pc.ppr(ppr);
-            crate::read::props::resolve_level_only(&self.doc.styles, &mut props, "Normal");
-            para.props = props;
-            para.mark = mark;
-            // A tracked paragraph mark (ECMA-376 §17.13.5.16 / §17.13.5.15): `w:ins` / `w:del`
-            // in the mark's `w:rPr`.
-            if let Some(rpr) = ppr.child("w:rPr") {
-                for k in rpr.els() {
-                    match k.name.as_str() {
-                        "w:ins" => para.mark.ins = Some(self.revision(RevisionKind::Insert, k)),
-                        "w:del" => para.mark.del = Some(self.revision(RevisionKind::Delete, k)),
-                        // A moved paragraph mark (§17.13.5.21, §17.13.5.24): its move range
-                        // usually starts in the paragraph's content, so it is read after that.
-                        "w:moveTo" => mark_moves[1] = Some(k),
-                        "w:moveFrom" => mark_moves[0] = Some(k),
-                        _ => {}
-                    }
-                }
-                para.mark.fmt_change = self.rpr_change(rpr);
-            }
-            // Tracked formatting changes (§17.13.5.29, §17.13.5.19): the paragraph properties
-            // before the change, and a change of the list numbering.
-            if let Some(ch) = ppr.child("w:pPrChange") {
-                let old = ch
-                    .child("w:pPr")
-                    .map(|o| {
-                        let mut old = self.pc.ppr(o).0;
-                        crate::read::props::resolve_level_only(&self.doc.styles, &mut old, "Normal");
-                        old.formatting()
-                    })
-                    .unwrap_or_default();
-                para.props.fmt_change = PropChange::boxed(self.revision(RevisionKind::Format, ch), old);
-            }
-            if para.props.numbering.is_some()
-                && let Some(ch) = ppr.child("w:numPr").and_then(|n| n.child("w:numberingChange"))
-            {
-                let original = ch.attr("w:original").unwrap_or("").chars().take(256).collect();
-                para.props.num_change = Some(Box::new(NumChange { rev: self.revision(RevisionKind::Format, ch), original }));
-            }
+            (para.props, para.mark, mark_moves) = self.para_ppr(ppr);
             if let Some(s) = ppr.child("w:sectPr") {
                 para.section = Some(Box::new(self.read_section(s, rels)));
             }
         }
         let ctx = RunCtx::default();
         self.read_inline_children(sc, &mut pb, e, rels, &ctx, depth + 1);
+        // Paragraphs a field's code runs on into.
+        let mut taken = 0usize;
+        while para.section.is_none() && Self::code_open_at_mark(sc) {
+            let rest = next.get(taken..).unwrap_or(&[]);
+            let Some(n) = super::fields::code_paragraphs(rest) else { break };
+            for q in rest.iter().take(n) {
+                let (props, mark) = match q.child("w:pPr") {
+                    Some(ppr) => {
+                        let (props, mark, _) = self.para_ppr(ppr);
+                        (props, mark)
+                    }
+                    None => Default::default(),
+                };
+                let after = (para.props.space_after, para.props.space_after_auto);
+                para.props.space_after = props.space_after;
+                para.props.space_after_auto = props.space_after_auto;
+                Self::code_mark(sc, props, mark, after);
+                self.read_inline_children(sc, &mut pb, q, rels, &ctx, depth + 1);
+            }
+            taken += n;
+        }
         self.spill_fields(sc, &mut pb);
         if let Some(k) = mark_moves[0] {
             para.mark.del = Some(self.move_revision(false, k, true));
@@ -299,7 +334,7 @@ impl Reader<'_> {
             para.mark.hidden = Some(true);
         }
         para.normalize();
-        para
+        (para, taken)
     }
 
     /// A tracked run formatting change in `rpr` (`w:rPrChange`, §17.13.5.31): the formatting

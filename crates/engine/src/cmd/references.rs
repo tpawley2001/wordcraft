@@ -13,6 +13,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 mod captions;
 mod fields;
 mod includetext;
+mod link;
 mod notes;
 mod numbers;
 mod properties;
@@ -31,7 +32,7 @@ pub(crate) use includetext::update_source;
 pub(super) use notes::note_options;
 use notes::{note, note_refs};
 pub(crate) use properties::bookmark_text_at;
-pub use properties::{UNKNOWN_DOC_PROPERTY, bookmark_text, date_picture};
+pub use properties::{NO_DOC_PROPERTY_NAME, UNKNOWN_DOC_PROPERTY, bookmark_text, date_picture};
 #[cfg(test)]
 use toc::cached_toc_tabs;
 pub(crate) use toc::{bookmark_heading, headings, toc_bookmark};
@@ -140,7 +141,7 @@ fn mark_toc_entry(s: &mut Session, v: &Value) -> CmdResult {
     };
     let instr = format!("TC \"{text}\" \\f {identifier} \\l {level}");
     let hidden = CharProps { hidden: Some(true), ..Default::default() };
-    let field = InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
+    let field = InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new(), code_paras: None };
     let (_, b) = s.sel.ordered();
     s.doc.insert_object(&b, field, &hidden)?;
     Ok(json!({"text": text, "identifier": identifier, "level": level}))

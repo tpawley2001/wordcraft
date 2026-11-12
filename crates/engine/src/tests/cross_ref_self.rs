@@ -13,7 +13,7 @@ const SELF_ERROR: &str = "Error! Not a valid bookmark self-reference.";
 const NO_NAME: &str = "Error! No bookmark name given.";
 
 fn field(instr: &str, locked: bool) -> InlineObject {
-    InlineObject::Field { instr: instr.into(), result: "stale".into(), locked, dirty: false, code: false, form: String::new() }
+    InlineObject::Field { instr: instr.into(), result: "stale".into(), locked, dirty: false, code: false, form: String::new(), code_paras: None }
 }
 
 /// Puts `obj` at offset `off` of the body's paragraph number `para`.

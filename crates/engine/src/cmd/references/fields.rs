@@ -1,7 +1,7 @@
 use super::numbers::{body_bookmark_paths, para_numbers, ref_number};
 use super::properties::{
-    bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property_arg, doc_property_result,
-    new_property_value, set_summary_property, summary_property, text_result,
+    BodyCounts, bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property_arg,
+    doc_property_names_pages, doc_property_result, new_property_value, set_summary_property, summary_property, text_result,
 };
 use super::toc::{heading_style_level, update_toc, update_toc_pages};
 use super::{
@@ -10,11 +10,29 @@ use super::{
 };
 
 /// Core date fields keep their cached result when the property cannot identify an instant.
-fn document_date_result(instr: &str, value: &str) -> Option<String> {
+/// `default_picture` is used when the field has no `\@` picture.
+fn document_date_result(instr: &str, value: &str, default_picture: &str) -> Option<String> {
     let date = chrono::DateTime::parse_from_rfc3339(value).ok()?;
     let unix = u64::try_from(date.timestamp()).ok()?;
-    let picture = date_picture(instr).unwrap_or_else(|| "M/d/yyyy".into());
+    let picture = date_picture(instr).unwrap_or_else(|| default_picture.into());
     Some(text_result(instr, crate::cmd::insert::format_date_at(&picture, unix, crate::cmd::local_offset_secs(unix))))
+}
+
+/// The body counts DOCPROPERTY fields show, when a field among `paths` is a DOCPROPERTY field;
+/// the layout is taken only when one names `Pages`.
+fn doc_property_counts(s: &mut Session, paths: &[(StoryRef, Path)]) -> BodyCounts {
+    let instrs = || {
+        paths.iter().filter_map(|(st, p)| s.doc.para(*st, p)).flat_map(|p| p.objects.iter()).filter_map(|o| match o {
+            InlineObject::Field { instr, locked: false, .. } => Some(instr.as_str()),
+            _ => None,
+        })
+    };
+    if !instrs().any(|i| wordcraft_layout::fields::field_name(i) == "DOCPROPERTY") {
+        return BodyCounts::default();
+    }
+    let needs_pages = instrs().any(doc_property_names_pages);
+    let pages = needs_pages.then(|| s.layout().pages.len());
+    BodyCounts::of(&s.doc, pages)
 }
 
 /// The `\*` format switch value for a caption's number format (OOXML names work too).
@@ -49,7 +67,15 @@ pub(super) fn caption(s: &mut Session, v: &Value) -> CmdResult {
     let chapter = p::u64(v, "chapter").filter(|l| (1..=9).contains(l));
     let sep = p::str(v, "separator").and_then(|x| CHAPTER_SEPARATORS.iter().find(|s| **s == x)).copied().unwrap_or("-");
     let mut para = Paragraph::new().styled("Caption");
-    let field = |instr: String| InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
+    let field = |instr: String| InlineObject::Field {
+        instr,
+        result: String::new(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    };
     if !p::bool(v, "excludeLabel").unwrap_or(false) {
         para.insert_text(0, &format!("{label} "), &CharProps::default())?;
     }
@@ -756,10 +782,14 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
     // SET <name> "<text>" (ECMA-376 §17.16.5.58): the values it gives, which REF <name> shows; a
     // REF before the SET shows the last value set, as Word's bookmark does after an update.
     let last_set = set_values(s, &paths);
+    // DOCPROPERTY's counts (Words, Pages ...) of the body as it is before this pass changes it.
+    let counts = doc_property_counts(s, &paths);
     let mut set: std::collections::HashMap<String, String> = Default::default();
     // A REF inside its own bookmark gets its error first, so a REF to that bookmark elsewhere
     // shows the bookmark's text with the error in it, wherever it stands.
     let mut ranges = mark_self_references(&mut s.doc, &paths)?;
+    // LINK sources read during this update, each file once.
+    let mut sources = super::link::Sources::default();
     for (story, path) in paths {
         let Some(p) = s.doc.para(story, &path) else { continue };
         if !p.objects.iter().any(|o| matches!(o, InlineObject::Field { .. })) {
@@ -794,7 +824,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 }
                 "CREATEDATE" | "PRINTDATE" => {
                     let value = if name == "CREATEDATE" { &core.created } else { &core.last_printed };
-                    updates.extend(document_date_result(instr, value).map(|text| (k, text)));
+                    updates.extend(document_date_result(instr, value, "M/d/yyyy").map(|text| (k, text)));
                 }
                 "REF" | "PAGEREF" | "NOTEREF" => {
                     let f = FieldCode::parse(instr);
@@ -872,7 +902,10 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 }
                 "REVNUM" => updates.push((k, count_text(instr, core.revision as usize))),
                 // DOCPROPERTY <name>: a custom property first, then a built-in one (#1798).
-                "DOCPROPERTY" => updates.extend(doc_property_result(&s.doc, &core, instr).map(|v| (k, v))),
+                "DOCPROPERTY" => {
+                    let date = |value: &str, pic: &str| document_date_result(instr, value, pic);
+                    updates.extend(doc_property_result(&s.doc, &core, &counts, date, instr).map(|v| (k, v)));
+                }
                 // DOCVARIABLE <name>: the document variable (names ignore case), or Word's error text.
                 "DOCVARIABLE" => updates.extend(doc_vars.then(|| (k, doc_variable_result(&s.doc, instr)))),
                 "FILENAME" => {
@@ -882,6 +915,9 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 }
                 // The text of another local file, read only here, on an explicit update.
                 "INCLUDETEXT" => updates.push((k, super::includetext::include_text(s, instr))),
+                // A link to a saved Word document: its source as it is now. A link that can't be
+                // followed keeps its stored result; an equal result is not touched.
+                "LINK" => updates.extend(super::link::new_simple_result(s, &mut sources, o).map(|r| (k, r))),
                 // GOTOBUTTON and MACROBUTTON store the text their code shows.
                 "GOTOBUTTON" | "MACROBUTTON" => {
                     if let Some(text) = wordcraft_layout::fields::button_display_text(instr) {
@@ -908,6 +944,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
         para.touch();
     }
     update_button_ranges(s, &range_stories)?;
+    super::link::update_link_ranges(s, &mut sources, &range_stories)?;
     if !in_body {
         return Ok(());
     }
@@ -1040,7 +1077,15 @@ mod listnum_tests {
         for locked in [false, true, false] {
             para.insert_object(
                 para.len(),
-                InlineObject::Field { instr: "LISTNUM".into(), result: "stale".into(), locked, dirty: true, code: false, form: String::new() },
+                InlineObject::Field {
+                    instr: "LISTNUM".into(),
+                    result: "stale".into(),
+                    locked,
+                    dirty: true,
+                    code: false,
+                    form: String::new(),
+                    code_paras: None,
+                },
                 &CharProps::default(),
             )
             .unwrap();

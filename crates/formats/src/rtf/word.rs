@@ -339,7 +339,7 @@ impl Reader {
             "gutter" => self.page.gutter = Some(pv),
             "rtlgutter" => self.page.rtl_gutter = on,
             "landscape" => self.page.landscape = on,
-            _ if self.doc_note_word(w, p) || self.doc_opts.word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
+            _ if self.doc_note_word(w, p) || self.doc_opts_word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
             _ if self.section_word(w, p) => {}
             "cellx" => {
                 self.cell_side = None;
@@ -383,6 +383,16 @@ impl Reader {
     }
 
     /// Enters destination `d`, setting up what it collects.
+    /// A document formatting word read into `doc_opts`. `\jexpand` and `\jcompress` only count
+    /// among the document's own formatting words: in a style, a header or a note they are
+    /// swallowed, so they can't change how the whole document justifies.
+    fn doc_opts_word(&mut self, w: &str, p: Option<i32>) -> bool {
+        if matches!(w, "jexpand" | "jcompress") && (self.st.dest != Dest::Body || self.sub.is_some() || self.hf.is_some()) {
+            return true;
+        }
+        self.doc_opts.word(w, p)
+    }
+
     fn enter_destination(&mut self, d: Dest) {
         match d {
             Dest::Bookmark(end) => {
@@ -463,7 +473,8 @@ impl Reader {
             "oldpprops" => Some(Dest::OldProps(true)),
             "oldsprops" => Some(Dest::OldSect),
             // Note separator and continuation stories (RTF 1.9.1 "Footnotes"), also written
-            // without `\*` by older writers: not body text, and no custom separators are kept.
+            // without `\*` by older writers: read as the document's own separators only where
+            // a header or footer could start ([`Self::start_note_word`]); anywhere else skipped.
             "ftnsep" | "ftnsepc" | "ftncn" | "aftnsep" | "aftnsepc" | "aftncn" => Some(Dest::Skip),
             "listoverridetable" => Some(Dest::ListOverride),
             "fldinst" => Some(Dest::FldInst),
@@ -537,13 +548,31 @@ impl Reader {
                     }
                     return true;
                 }
-                "chftn" if self.sub.as_ref().is_some_and(|s| !s.comment) => {
+                // A page break has no place in a note separator story.
+                "page" | "softpage" if self.in_sep() => return true,
+                // The separator lines, only in a separator story (elsewhere nothing).
+                "chftnsep" | "chftnsepc" if self.in_sep() => {
+                    let f = self.st.fmt.clone();
+                    self.push_mark('L', i64::from(word == "chftnsepc"), f);
+                    return true;
+                }
+                "chftn" if self.sub.as_ref().is_some_and(|s| !s.comment && s.sep.is_none()) => {
                     let f = self.st.fmt.clone();
                     self.push_mark('S', 0, f);
                     return true;
                 }
                 _ => {}
             }
+        }
+        // A separator story is read where a header or footer group would be: at body level, not
+        // in a table cell, note, comment, header, footer, shape or another separator story
+        // (Word was not measured elsewhere).
+        if let Some(k) = super::state::SEP_WORDS.iter().position(|w| *w == word) {
+            if !self.marks_on || self.hf.is_some() || self.sub.is_some() || !self.shapes.is_empty() || self.st.dest != Dest::Body || self.st.intbl {
+                return false;
+            }
+            self.start_sep(k);
+            return true;
         }
         if !matches!(word, "footnote" | "annotation") || !self.marks_on || self.hf.is_some() || self.sub.is_some() || self.st.dest != Dest::Body {
             return false;
@@ -1246,5 +1275,22 @@ mod link_tip_tests {
         let rtf = br#"{\rtf1\ansi{\field{\*\fldinst{HYPERLINK "javascript:alert(1)" \\o "tip"}}{\fldrslt{link}}}\par}"#;
         let out = export(&import(rtf).unwrap());
         assert!(!out.contains("HYPERLINK") && !out.contains("tip"), "{out}");
+    }
+}
+
+#[cfg(test)]
+mod jexpand_scope_tests {
+    use super::super::import;
+
+    /// `\jexpand` in a style, a header or a footnote is not the document's own word.
+    #[test]
+    fn jexpand_outside_the_document_formatting_does_not_count() {
+        for rtf in [
+            r"{\rtf1\ansi{\stylesheet{\s0\jexpand Normal;}}\pard Text.\par}",
+            r"{\rtf1\ansi{\header\jexpand\pard Head\par}\pard Text.\par}",
+            r"{\rtf1\ansi\pard Text{\footnote\jexpand\pard Note\par}.\par}",
+        ] {
+            assert!(import(rtf.as_bytes()).unwrap().settings.rtf_justification, "{rtf}");
+        }
     }
 }

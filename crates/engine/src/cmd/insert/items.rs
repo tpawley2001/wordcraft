@@ -36,7 +36,15 @@ fn story_has_page_field(doc: &wordcraft_doc::Document, story: StoryRef, except: 
 }
 
 fn page_number_paragraph(style: &str, align: Align, x_of_y: bool) -> Result<Paragraph, CmdError> {
-    let field = InlineObject::Field { instr: "PAGE".into(), result: "1".into(), locked: false, dirty: false, code: false, form: String::new() };
+    let field = InlineObject::Field {
+        instr: "PAGE".into(),
+        result: "1".into(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    };
     let mut para = Paragraph::new().styled(style);
     para.props.align = Some(align);
     para.props.tabs = Some(vec![TabStop { pos: 0.0, align: TabAlign::Clear, leader: Default::default() }]);
@@ -46,7 +54,15 @@ fn page_number_paragraph(style: &str, align: Align, x_of_y: bool) -> Result<Para
         let end = para.len();
         para.insert_object(
             end,
-            InlineObject::Field { instr: "NUMPAGES".into(), result: "1".into(), locked: false, dirty: false, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: "NUMPAGES".into(),
+                result: "1".into(),
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &CharProps { bold: Some(true), ..Default::default() },
         )?;
     } else {
@@ -76,7 +92,15 @@ pub(super) fn page_number(s: &mut Session, v: &Value) -> CmdResult {
         _ => Align::Center,
     };
     let x_of_y = p::str(v, "format").is_some_and(|f| f.contains("of"));
-    let field = InlineObject::Field { instr: "PAGE".into(), result: "1".into(), locked: false, dirty: false, code: false, form: String::new() };
+    let field = InlineObject::Field {
+        instr: "PAGE".into(),
+        result: "1".into(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    };
     if position == "current" {
         let props = s.typing_props();
         let at = delete_selection(s)?;
@@ -169,7 +193,15 @@ pub(super) fn date_time(s: &mut Session, v: &Value) -> CmdResult {
         let at = delete_selection(s)?;
         let end = s.doc.insert_object(
             &at,
-            InlineObject::Field { instr: format!("DATE \\@ \"{fmt}\""), result: text, locked: false, dirty: false, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: format!("DATE \\@ \"{fmt}\""),
+                result: text,
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &props,
         )?;
         s.sel = Selection::caret(end);
@@ -374,8 +406,11 @@ pub(super) fn field(s: &mut Session, v: &Value) -> CmdResult {
     let result = p::str(v, "result").unwrap_or("").to_string();
     let props = s.typing_props();
     let at = delete_selection(s)?;
-    let end =
-        s.doc.insert_object(&at, InlineObject::Field { instr, result, locked: false, dirty: false, code: false, form: String::new() }, &props)?;
+    let end = s.doc.insert_object(
+        &at,
+        InlineObject::Field { instr, result, locked: false, dirty: false, code: false, form: String::new(), code_paras: None },
+        &props,
+    )?;
     s.sel = Selection::caret(end);
     let _ = crate::cmd::references::update_fields_after_insert(s);
     sel_result(s)

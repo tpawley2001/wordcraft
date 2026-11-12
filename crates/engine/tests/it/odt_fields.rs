@@ -127,7 +127,8 @@ fn a_table_formula_updates_as_a_word_formula() {
     };
     assert_eq!(shown(&s), [("=SUM(A1:A2)".to_string(), "99".to_string())]);
     s.run("references.updateFields", &json!({"all": true})).unwrap();
-    assert_eq!(shown(&s), [("=SUM(A1:A2)".to_string(), "4.50".to_string())]);
+    // The range carries its cells' look: `1.5` keeps one decimal, as `2.50 + 1` shows `3.5` in Word.
+    assert_eq!(shown(&s), [("=SUM(A1:A2)".to_string(), "4.5".to_string())]);
 }
 
 #[test]
