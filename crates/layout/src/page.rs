@@ -503,7 +503,8 @@ pub(crate) fn body_top_for(ctx: &mut Ctx, sect: &SectionProps, header: Option<u3
     let track = std::mem::replace(&mut ctx.track_totals, false);
     let (h, ..) = with_pin(ctx, id, sect, 1, None, |ctx| {
         let laid = layout_box(ctx, BoxInput::other(StoryRef::Part(id), &blocks, sect.text_width(), 0, Some(frame)));
-        drawn_extent(&laid.items, StoryRef::Part(id)).unwrap_or(laid.height)
+        let drawn = drawn_extent(&laid.items, StoryRef::Part(id));
+        drawn.map_or(laid.height, |d| d.max(last_space_after_bottom(&laid.items, StoryRef::Part(id), blocks.len()).unwrap_or(0.0)))
     });
     ctx.track_totals = track;
     // Word starts the body right below a header that reaches past the top margin, no gap;
@@ -512,12 +513,31 @@ pub(crate) fn body_top_for(ctx: &mut Ctx, sect: &SectionProps, header: Option<u3
     sect.margin_top.max(sect.header + h + gap)
 }
 
+/// Where the space after a header's last block ends, when that block is an in-flow paragraph (a
+/// top-level paragraph that isn't in a text frame): Word counts that space in the header's height
+/// when it starts the body below the header (ECMA-376 §17.3.1.33, §17.6.11; measured from PDFs
+/// Word exported). `None` when the last block is a table or a framed paragraph, or isn't drawn.
+fn last_space_after_bottom(items: &[Placed], story: StoryRef, blocks: usize) -> Option<f32> {
+    let last = wordcraft_doc::Path::top(blocks.checked_sub(1)?);
+    items.iter().rev().find_map(|it| match it {
+        Placed::Lines { story: s, path, para, l0, l1, y, turn, .. }
+            if *s == story && *path == last && *l1 == para.lines.len() && para.rp.frame.is_none() && !turn.is_turned() =>
+        {
+            let first = para.lines.get(*l0)?;
+            let end = para.lines.get(l1.checked_sub(1)?)?;
+            let after = if para.rp.space_after.is_finite() { para.rp.space_after.max(0.0) } else { 0.0 };
+            Some(y + end.top - first.top + end.height + after)
+        }
+        _ => None,
+    })
+}
+
 /// How far down a header's in-flow content reaches, as Word measures it to start the body below
 /// it (measured from PDFs Word exported): its lines, and table cells down to their shading and
 /// borders, while the empty paragraphs in cells (a cell's paragraph after a nested table) and
 /// the rest of a borderless cell don't count. Empty paragraphs outside tables do (pressing Enter
 /// in a header pushes the body down), and a line of only inline pictures that a float moved down
-/// reaches down to its baseline. Floating objects only count through the lines they move down,
+/// reaches down to its baseline. Text frames don't count. Floating objects only count through the lines they move down,
 /// except a Top and Bottom one anchored in the header itself (not in its table cells): it moves
 /// no header lines, but the body starts below it. `None` for turned text, which this doesn't
 /// measure.
@@ -529,8 +549,13 @@ pub(crate) fn drawn_extent(items: &[Placed], story: StoryRef) -> Option<f32> {
                 if turn.is_turned() {
                     return None;
                 }
-                let first = para.lines.get(*l0)?;
                 let in_cell = path.0.len() > 1;
+                // A text frame adds nothing to the header's height, in every mode (Word's PDF
+                // export); its part below the top margin is an obstacle for the body instead.
+                if !in_cell && para.rp.frame.is_some() {
+                    continue;
+                }
+                let first = para.lines.get(*l0)?;
                 for (k, line) in para.lines.iter().enumerate().take(*l1).skip(*l0) {
                     let clusters = para.clusters.get(line.c0..line.c1).unwrap_or_default();
                     let text = clusters.iter().any(|c| c.kind == ClKind::Text);

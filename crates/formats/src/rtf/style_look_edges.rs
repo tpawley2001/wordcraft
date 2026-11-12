@@ -8,7 +8,9 @@ use wordcraft_doc::props::Align;
 
 fn open(stylesheet: &str, body: &str) -> Document {
     let head = r"{\rtf1\ansi\deff0{\fonttbl{\f0 Times New Roman;}}{\colortbl;\red255\green0\blue0;}";
-    import(format!(r"{head}{{\stylesheet{{\s0 Normal;}}{stylesheet}}}{body}}}").as_bytes()).unwrap()
+    // A file WordCraft wrote: its paragraphs state nothing of their style's look, which they
+    // have all the same (a file from another program has only what its text states).
+    import(format!(r"{head}{{\*\generator WordCraft;}}{{\stylesheet{{\s0 Normal;}}{stylesheet}}}{body}}}").as_bytes()).unwrap()
 }
 
 fn line<'a>(rtf: &'a str, text: &str) -> &'a str {
