@@ -173,6 +173,13 @@ pub(super) fn page_section_start_combo(ui: &mut egui::Ui, start: &mut wordcraft_
     });
 }
 
+/// Whether Page Setup's "Suppress endnotes" box is available: the caret section's endnotes go at
+/// the end of each section (Word greys the box while they go at the end of the document).
+pub(super) fn page_endnotes_at_section_end(app: &super::WordApp) -> bool {
+    let sect = wordcraft_engine::cmd::page::sect(&app.session);
+    app.session.doc.note_options(&sect, true).pos == wordcraft_doc::section::NotePos::SectEnd
+}
+
 /// `layout.sectionStart`'s name for a value.
 pub(super) fn page_section_start_value(v: wordcraft_doc::section::SectionStart) -> &'static str {
     use wordcraft_doc::section::SectionStart;

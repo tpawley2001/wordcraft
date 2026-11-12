@@ -901,7 +901,7 @@ fn rtf_notes(d: &Document) -> (Vec<String>, Vec<String>) {
 #[test]
 fn rtf_footnote_and_endnote_round_trip() {
     use wordcraft_doc::para::NoteKind;
-    let rtf = br"{\rtf1\ansi{\fonttbl{\f0 Arial;}}
+    let rtf = br"{\rtf1\ansi{\fonttbl{\f0 Arial;}}\ftnbj
 \pard Alpha{\super\chftn}{\footnote \pard\plain {\super\chftn} First {\b note}\par} beta 
 gamma{\super\chftn}{\footnote\ftnalt \pard\plain {\super\chftn} The end\par\pard second line\par} delta.\par}";
     let d = import("rtf", rtf).unwrap().unwrap();

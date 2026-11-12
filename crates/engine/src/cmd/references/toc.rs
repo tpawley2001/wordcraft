@@ -182,6 +182,14 @@ pub(super) fn toc_range(s: &Session) -> Option<(usize, usize)> {
     Some((start, end))
 }
 
+/// The body blocks of the table of contents, first and last: the engine's (the field's paragraph
+/// and its entries), or one still held as a range field that Update Table would refresh.
+pub fn toc_blocks(s: &Session) -> Option<(usize, usize)> {
+    toc_range(s).or_else(|| {
+        s.doc.field_ranges(StoryRef::Body).into_iter().find(|r| convertible_toc_range(s, r)).map(|r| (r.start.path.last(), r.end.path.last()))
+    })
+}
+
 /// The TOC title Word's table keeps above a section break (#4041): the TOC field's paragraph at
 /// `start` holds nothing but the field (Word's blank paragraph ending the title's one-column
 /// section, which the field moves into), and a TOC Heading paragraph of its own sits just above
@@ -500,6 +508,203 @@ pub(crate) fn bookmark_heading(s: &mut Session, path: &Path, lead: usize) -> Res
 pub fn update_toc(s: &mut Session) -> Result<(), CmdError> {
     let tabs = cached_toc_tabs(s);
     regenerate_toc(s, None, &tabs)
+}
+
+/// Each bookmark's page (its first position, as `PAGEREF` reads it): number, the section's page
+/// number format and the chapter text. Bookmarks no page holds are left out.
+type BookmarkPages = std::collections::HashMap<String, (u32, NumFormat, String)>;
+
+fn bookmark_pages(s: &mut Session) -> BookmarkPages {
+    let formats = page_formats(s);
+    let marks = s.doc.bookmarks();
+    let l = s.layout();
+    let mut pages = BookmarkPages::new();
+    for (name, pos) in marks {
+        if pages.contains_key(&name) {
+            continue;
+        }
+        let pos = super::fields::bookmark_page_pos(&s.doc, &name, pos);
+        if let Some((_, n, fmt, chapter)) = page_at(&l, &formats, &pos) {
+            pages.insert(name, (n, fmt, chapter.to_string()));
+        }
+    }
+    pages
+}
+
+/// A `PAGEREF` field Update page numbers only refreshes: unlocked, without `\p`. Its new result,
+/// in its own `\*` format if it has one; `None` when its bookmark is unknown.
+fn pageref_page(instr: &str, pages: &BookmarkPages) -> Option<Option<String>> {
+    let f = FieldCode::parse(instr);
+    if f.name != "PAGEREF" || f.has('p') || super::fields::has_switch(instr, 'p') {
+        return None;
+    }
+    let target = f.args.first().map(|a| a.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
+    Some(pages.get(target).map(|(n, page_fmt, chapter)| {
+        let fmt = wordcraft_layout::fields::format_switch(instr).unwrap_or(*page_fmt);
+        wordcraft_layout::fields::page_label(instr, fmt, *n, chapter)
+    }))
+}
+
+/// Refreshes the `PAGEREF` fields [`pageref_page`] takes in the body paragraphs at `paths`; the
+/// bookmark of the first one found, or `None` when the paragraphs have none.
+fn update_pagerefs(s: &mut Session, paths: &[Path], pages: &BookmarkPages) -> Result<Option<String>, CmdError> {
+    let mut first: Option<String> = None;
+    for path in paths {
+        let Some(p) = s.doc.para(StoryRef::Body, path) else { continue };
+        let mut updates: Vec<(usize, String)> = Vec::new();
+        for (k, o) in p.objects.iter().enumerate() {
+            let InlineObject::Field { instr, result, locked: false, dirty, .. } = o else { continue };
+            let Some(page) = pageref_page(instr, pages) else { continue };
+            if first.is_none() {
+                first = Some(FieldCode::parse(instr).args.first().cloned().unwrap_or_default());
+            }
+            if let Some(page) = page
+                && (page != *result || *dirty)
+            {
+                updates.push((k, page));
+            }
+        }
+        if updates.is_empty() {
+            continue;
+        }
+        let para = s.doc.para_mut(StoryRef::Body, path)?;
+        for (k, page) in updates {
+            if let Some(InlineObject::Field { result, dirty, .. }) = para.objects.get_mut(k) {
+                *result = page;
+                *dirty = false;
+            }
+        }
+        para.touch();
+    }
+    Ok(first)
+}
+
+/// Update Table › Update page numbers only: every entry stays as it is (text typed into it, its
+/// formatting, entries of headings since removed) and only its page number follows its heading.
+/// An entry's `PAGEREF` fields read their bookmarks' pages; a plain-text number after the
+/// separator is replaced with the page of the entry's linked heading, or else of the next heading
+/// (after the one the entry before matched) with the entry's text. Text deleted with Track
+/// Changes on is not part of an entry. Headings added since are not listed: no entry is added,
+/// removed or reordered.
+pub fn update_toc_pages(s: &mut Session) -> Result<(), CmdError> {
+    let Some((start, end)) = toc_range(s) else {
+        // A TOC still held as a range field: its `PAGEREF` fields, or else a full update.
+        let Some(r) = s.doc.field_ranges(StoryRef::Body).into_iter().find(|r| convertible_toc_range(s, r)) else { return Ok(()) };
+        let (a, b) = (r.start.path.last(), r.end.path.last());
+        let paths: Vec<Path> =
+            s.doc.para_paths(StoryRef::Body).into_iter().filter(|p| p.0.first().is_some_and(|t| (a..=b).contains(&(*t as usize)))).collect();
+        let pages = bookmark_pages(s);
+        if update_pagerefs(s, &paths, &pages)?.is_none() {
+            return update_toc(s);
+        }
+        return Ok(());
+    };
+    let Some(instr) = s.doc.body.get(start).and_then(|b| b.as_para()).and_then(toc_field) else { return Ok(()) };
+    let f = FieldCode::parse(&instr);
+    let pages = bookmark_pages(s);
+    let marks: std::collections::HashMap<String, Path> = s.doc.bookmarks().into_iter().rev().map(|(n, p)| (n, p.path)).collect();
+    let formats = page_formats(s);
+    let l = s.layout();
+    // The headings in document order: their path, text and page.
+    let heads: Vec<(Path, String, Option<String>)> = toc_entries(s, &f)
+        .into_iter()
+        .map(|e| {
+            let page = page_at(&l, &formats, &Pos { story: StoryRef::Body, path: e.path.clone(), off: e.lead })
+                .map(|(_, n, fmt, chapter)| page_text(n, fmt, chapter));
+            (e.path, e.text, page)
+        })
+        .collect();
+    drop(l);
+    let no_pages = f.has('n').then(|| f.arg('n').and_then(level_range).unwrap_or((1, 9)));
+    let sep: Vec<char> = f.arg('p').unwrap_or("\t").chars().collect();
+    let page_of_mark = |name: &str| pages.get(name).map(|(n, fmt, chapter)| page_text(*n, *fmt, chapter));
+    let head_of_mark = |name: &str| marks.get(name).and_then(|path| heads.iter().position(|h| &h.0 == path));
+    // Where matching by text goes on from: just after the heading the entry before matched.
+    let mut cursor = 0usize;
+    for i in start + 1..=end {
+        let path = Path::top(i);
+        if let Some(mark) = update_pagerefs(s, std::slice::from_ref(&path), &pages)? {
+            if let Some(h) = head_of_mark(&mark) {
+                cursor = h.saturating_add(1);
+            }
+            continue;
+        }
+        let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
+        let level = p.props.style.as_deref().and_then(|st| st.strip_prefix("TOC")).and_then(|l| l.parse::<u8>().ok()).unwrap_or(1);
+        if no_pages.is_some_and(|(a, b)| (a..=b).contains(&level)) || sep.is_empty() {
+            continue;
+        }
+        // The entry as it reads with tracked deletions left out: each character's offset in the
+        // paragraph and whether it is a field's result rather than text.
+        let deleted = p.deleted_ranges();
+        let mut live: Vec<(usize, char, bool)> = Vec::new();
+        let mut k = 0usize;
+        for (off, c) in p.text.char_indices() {
+            let gone = deleted.iter().any(|r| r.contains(&off));
+            if c == OBJ {
+                let o = p.objects.get(k);
+                k = k.saturating_add(1);
+                if let (false, Some(o)) = (gone, o) {
+                    live.extend(o.plain_text().chars().map(|ch| (off, ch, true)));
+                }
+            } else if !gone {
+                live.push((off, c, false));
+            }
+        }
+        let n = sep.len();
+        let Some(j) = (0..=live.len().saturating_sub(n))
+            .rev()
+            .find(|&j| live.get(j..j.saturating_add(n)).is_some_and(|w| w.iter().map(|x| x.1).eq(sep.iter().copied())))
+        else {
+            continue;
+        };
+        let Some(number) = live.get(j.saturating_add(n)..) else { continue };
+        if number.is_empty() || !number.iter().all(|(_, c, obj)| !obj && c.is_ascii_alphanumeric()) {
+            continue;
+        }
+        let label: String = live.get(..j).unwrap_or_default().iter().map(|x| x.1).collect();
+        let old: String = number.iter().map(|x| x.1).collect();
+        let link = p.run_ranges().find_map(|(_, c)| c.link.as_deref().and_then(|l| l.strip_prefix('#')).filter(|m| pages.contains_key(*m)));
+        let page = if let Some(mark) = link {
+            if let Some(h) = head_of_mark(mark) {
+                cursor = h.saturating_add(1);
+            }
+            page_of_mark(mark)
+        } else {
+            match heads.iter().enumerate().skip(cursor).find(|(_, h)| h.1 == label) {
+                Some((h, head)) => {
+                    cursor = h.saturating_add(1);
+                    head.2.clone()
+                }
+                None => None,
+            }
+        };
+        let Some(page) = page.filter(|page| *page != old) else { continue };
+        // The number's characters (tracked deletions between them stay), and the formatting of
+        // the separator before it, without any revision.
+        let mut ranges: Vec<std::ops::Range<usize>> = Vec::new();
+        for (off, c, _) in number {
+            let r = *off..off.saturating_add(c.len_utf8());
+            match ranges.last_mut() {
+                Some(last) if last.end == r.start => last.end = r.end,
+                _ => ranges.push(r),
+            }
+        }
+        let Some(at) = ranges.first().map(|r| r.start) else { continue };
+        let before = j.saturating_add(n).checked_sub(1).and_then(|b| live.get(b)).map_or(at, |x| x.0);
+        let mut props = p.props_of_char(before).clone();
+        props.ins = None;
+        props.del = None;
+        props.fmt_change = None;
+        let para = s.doc.para_mut(StoryRef::Body, &path)?;
+        for r in ranges.iter().rev() {
+            para.delete(r.start, r.end)?;
+        }
+        para.insert_text(at, &page, &props)?;
+        para.touch();
+    }
+    s.clamp_selection();
+    Ok(())
 }
 
 /// Rebuild the entries the TOC field's switches ask for. The tab leader is `leader`, or the one

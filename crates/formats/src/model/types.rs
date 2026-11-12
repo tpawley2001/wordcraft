@@ -1067,6 +1067,9 @@ pub struct FTable {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TableExtra {
     pub align: Option<wordcraft_doc::Align>,
+    /// The table's left edge from the left margin, points (negative: into the margin), for
+    /// formats that keep it.
+    pub indent: Option<f32>,
     /// Width, points.
     pub width: Option<f32>,
     /// Width, percent of the text width.

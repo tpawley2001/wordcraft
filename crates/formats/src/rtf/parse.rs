@@ -35,6 +35,8 @@ struct Parsed {
     comments: Vec<CommentData>,
     /// The document's footnote and endnote options; `num_fmt` is the number format.
     doc_notes: (wordcraft_doc::section::NoteProps, wordcraft_doc::section::NoteProps),
+    /// The document's `\fetN`, when it names one.
+    fet: Option<i32>,
     /// The document settings the header names.
     doc_set: super::reader::DocSettingWords,
 }
@@ -58,7 +60,31 @@ impl Info {
         c.modified = self.modified;
         c.last_printed = self.printed;
         doc.custom_props = self.more.props;
+        let mut kept = String::new();
+        for (name, value) in [("Manager", self.more.manager), ("Company", self.more.company), ("HyperlinkBase", self.more.hyperlink_base)] {
+            if let Some(v) = app_kept_value(value) {
+                kept.push_str(name);
+                kept.push('\t');
+                kept.push_str(&v);
+                kept.push('\n');
+            }
+        }
+        if !kept.is_empty() {
+            doc.passthrough.insert(wordcraft_doc::APP_KEPT.into(), Arc::new(kept.into_bytes()));
+        }
     }
+}
+
+/// The longest value the kept extended properties hold (as the DOCX reader keeps them).
+const MAX_APP_KEPT_VALUE: usize = 2048;
+
+/// An information-group value as the line-based `wordcraft:app.kept` store holds it: trimmed, tabs
+/// and line ends turned into spaces (they would break the line), at most 2048 bytes; `None` when
+/// empty.
+fn app_kept_value(value: String) -> Option<String> {
+    let mut v: String = value.trim().chars().map(|c| if matches!(c, '\t' | '\n' | '\r') { ' ' } else { c }).collect();
+    super::state::truncate_chars(&mut v, MAX_APP_KEPT_VALUE);
+    (!v.is_empty()).then_some(v)
 }
 
 /// An information-group date read from `\yr \mo \dy \hr \min`, as `YYYY-MM-DDTHH:MM:00Z`; empty
@@ -233,7 +259,7 @@ fn parse_full(bytes: &[u8], marks: bool) -> Result<Parsed, String> {
                                 | Dest::Info(_)
                                 | Dest::FldInst
                                 | Dest::FfText(_)
-                                | Dest::Bookmark
+                                | Dest::Bookmark(_)
                                 | Dest::FontTbl
                                 | Dest::RevTbl
                                 | Dest::Atn(_)
@@ -403,6 +429,7 @@ fn finalize(mut r: Reader) -> Parsed {
         notes: r.notes,
         comments: r.comments,
         doc_notes: r.doc_notes,
+        fet: r.fet,
         doc_set: r.doc_set,
     }
 }
@@ -487,9 +514,10 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
         headers_footers,
         foreign_styles,
         own_styles,
-        notes,
+        mut notes,
         comments,
         doc_notes,
+        fet,
         doc_opts,
         doc_set,
         ..
@@ -504,6 +532,15 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     }
     if let Some(f) = end.num_fmt.take() {
         doc.settings.endnote_format = f;
+    }
+    // Word reads a file that never says where footnotes go (no `\ftnbj` or `\ftntj` in the
+    // document formatting, `\fet` absent or 0) as holding endnotes: every `{\footnote}` without
+    // `\ftnalt` is an endnote then, numbered i, ii… whatever `\aftnn…` says.
+    if foot.pos.is_none() && fet.unwrap_or(0) == 0 && notes.iter().any(|n| !n.endnote) {
+        for n in &mut notes {
+            n.endnote = true;
+        }
+        doc.settings.endnote_format = wordcraft_doc::section::NumFormat::LowerRoman;
     }
     (doc.settings.footnote_pr, doc.settings.endnote_pr) = (foot, end);
     // Word fits justified lines of an RTF document more tightly than a DOCX one; RTF has no

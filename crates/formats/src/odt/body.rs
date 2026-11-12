@@ -1418,6 +1418,7 @@ impl Body<'_> {
         let contained = !self.tables.is_empty() || self.containers.len() > 1 || self.sec.columns.count > 1;
         let extra = model::TableExtra {
             align,
+            indent: None,
             width: None,
             width_pct,
             heights: Vec::new(),
