@@ -596,6 +596,7 @@ pub(crate) fn below(excl: &[WrapArea], mut y: f32, x0: f32, x1: f32) -> f32 {
     y
 }
 
+#[cfg(test)]
 #[path = "tests/keep_next_table_chain_more.rs"]
 mod keep_next_table_chain_more;
 #[cfg(test)]
