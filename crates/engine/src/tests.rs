@@ -10721,8 +10721,9 @@ fn table_formula_reads_and_writes_decimal_comma_in_polish() {
     assert_eq!(run(&mut s, "table.formula", json!({"formula": "=SUM(ABOVE)"}))["result"], "1350");
     let mut s = column_table("pl-PL", &["1\u{a0}250,50 zł", "100", ""]);
     assert_eq!(run(&mut s, "table.formula", json!({"formula": "=SUM(ABOVE)"}))["result"], "1350,50");
+    // Word gives the sum the look of the cells above: `$` and the thousands separator.
     let mut s = column_table("en-US", &["$1,250.50", "3.25", ""]);
-    assert_eq!(run(&mut s, "table.formula", json!({"formula": "=SUM(ABOVE)"}))["result"], "1253.75");
+    assert_eq!(run(&mut s, "table.formula", json!({"formula": "=SUM(ABOVE)"}))["result"], "$1,253.75");
 }
 
 /// #837: text sorts follow the language's alphabet: Polish `ł` after `l`, `ć` after `c`.
