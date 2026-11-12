@@ -129,6 +129,8 @@ pub struct Fmt {
     pub sub: bool,
     /// Shared: every span of a link holds the same target.
     pub link: Option<Arc<str>>,
+    /// The link's ScreenTip (a HYPERLINK field's `\o` switch); only meaningful with `link`.
+    pub link_tip: Option<Arc<str>>,
     pub color: Option<Rgb>,
     /// Points.
     pub size: Option<f32>,
@@ -548,6 +550,10 @@ pub struct FlowOpts {
     pub obj_revs: bool,
     /// A picture's crop ([`Img::crop`]), also without `paras`.
     pub crop: bool,
+    /// An outline level apart from a heading style: the paragraph keeps the kind its style
+    /// gives and the level goes in [`Para::extra`] (otherwise the level alone makes it a
+    /// heading), for formats that write the level on its own (RTF `\outlinelevelN`).
+    pub outline_apart: bool,
 }
 
 impl FlowOpts {
@@ -991,6 +997,11 @@ pub struct Cell {
     pub valign: Option<VAlign>,
     /// The cell's padding (top, left, bottom, right), points, when the source gives it.
     pub margins: Option<[f32; 4]>,
+    /// The sides of its padding the cell sets itself (top, left, bottom, right), points; `None`
+    /// for a side it takes from its table. Read when `margins` is `None`.
+    pub own_margins: [Option<f32>; 4],
+    /// Wrap text off: its text stays on one line.
+    pub no_wrap: bool,
     /// Which way its text runs (turned down or up).
     pub direction: wordcraft_doc::props::TextDirection,
     /// A picture behind its content (ODT).
@@ -1021,6 +1032,8 @@ impl Default for Cell {
             borders: None,
             valign: None,
             margins: None,
+            own_margins: [None; 4],
+            no_wrap: false,
             direction: Default::default(),
             picture: None,
             width: None,
@@ -1087,6 +1100,9 @@ pub struct TableExtra {
     /// them by row (RTF's `\\tsN` and `\\tbllk*`); `None` leaves the table's own.
     pub style: Option<String>,
     pub look: Option<wordcraft_doc::props::TableLook>,
+    /// The table's default cell padding (top, left, bottom, right), points, for formats that
+    /// state it by row (RTF).
+    pub cell_margins: Option<[f32; 4]>,
 }
 
 impl FTable {

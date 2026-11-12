@@ -132,6 +132,11 @@ pub(super) fn font_props(d: &Dialog) -> serde_json::Map<String, Value> {
         position,
         kern,
         kern_at,
+        ligatures,
+        num_spacing,
+        num_form,
+        stylistic_set,
+        contextual_alternates,
         ..
     } = d
     else {
@@ -176,6 +181,31 @@ pub(super) fn font_props(d: &Dialog) -> serde_json::Map<String, Value> {
             props.insert("kern".into(), json!(0.0));
         }
         None => {}
+    }
+    // OpenType Features: a box showing nothing (the selected text differs) sends nothing.
+    if let Some(l) = ligatures.as_deref().and_then(wordcraft_doc::props::Ligatures::from_ooxml) {
+        props.insert(
+            "ligatures".into(),
+            json!({"standard": l.standard, "contextual": l.contextual, "historical": l.historical, "discretional": l.discretional}),
+        );
+    }
+    if let Some(v) = num_spacing.as_deref().and_then(wordcraft_doc::props::NumSpacing::from_ooxml) {
+        props.insert("numSpacing".into(), json!(v.ooxml()));
+    }
+    if let Some(v) = num_form.as_deref().and_then(wordcraft_doc::props::NumForm::from_ooxml) {
+        props.insert("numForm".into(), json!(v.ooxml()));
+    }
+    match stylistic_set {
+        Some(0) => {
+            props.insert("stylisticSets".into(), json!([]));
+        }
+        Some(n) if *n <= STYLISTIC_SET_MAX => {
+            props.insert("stylisticSets".into(), json!([{"id": n, "on": true}]));
+        }
+        _ => {}
+    }
+    if let Some(on) = contextual_alternates {
+        props.insert("contextualAlternates".into(), json!(*on));
     }
     if !font.trim().is_empty() {
         props.insert("font".into(), json!(font.trim()));
@@ -272,24 +302,106 @@ pub(super) const SCALE_RANGE: std::ops::RangeInclusive<f32> = 1.0..=600.0;
 /// The largest Spacing or Position By value, points.
 pub(super) const BY_MAX: f32 = 1584.0;
 
-/// The Scale row: a typed percent and the list of common ones.
+/// What a typed Scale means: a whole percent in 1..=600, with or without `%`; `None` = not a scale.
+pub(super) fn parse_scale(text: &str) -> Option<f32> {
+    let digits = text.trim().strip_suffix('%').unwrap_or(text.trim()).trim();
+    // Plain decimals only: "1e2", "NaN" and "inf" parse as floats but aren't percentages.
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit() || c == '.') {
+        return None;
+    }
+    let v = digits.parse::<f32>().ok()?.round();
+    SCALE_RANGE.contains(&v).then_some(v)
+}
+
+/// The Scale box: one editable combo box, a field showing the percent with the list of common
+/// ones under its arrow. Typed text is taken on Enter or when the field loses the focus; text
+/// that isn't a scale gives way to the old value again. A list entry is taken at once.
 pub(super) fn scale_box(ui: &mut Ui, scale: &mut f32, label: &egui::Response) {
     if !scale.is_finite() {
         *scale = 100.0;
     }
+    let shown = format!("{scale}%");
+    let text_id = ui.make_persistent_id("fontdlg_scale_text");
+    let mut text = ui.data(|d| d.get_temp::<String>(text_id)).unwrap_or_else(|| shown.clone());
+    let t = crate::theme::Tokens::get(ui.ctx());
     ui.horizontal(|ui| {
-        let field = egui::DragValue::new(scale).speed(1.0).range(SCALE_RANGE).max_decimals(0).suffix("%");
-        ui.add(field).labelled_by(label.id);
-        let shown = format!("{scale}%");
-        let combo = craft_ui::ComboBox::from_id_salt("fontdlg_scale").width(70.0).selected_text(shown).show_ui(ui, |ui| {
+        ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+        let field = ui.add(egui::TextEdit::singleline(&mut text).desired_width(70.0)).labelled_by(label.id);
+        if field.has_focus() {
+            ui.data_mut(|d| d.insert_temp(text_id, text.clone()));
+        } else {
+            if field.lost_focus()
+                && let Some(v) = parse_scale(&text)
+            {
+                *scale = v;
+            }
+            ui.data_mut(|d| d.remove::<String>(text_id));
+        }
+        let (arrow, arrow_resp) = ui.allocate_exact_size(vec2(16.0, field.rect.height()), egui::Sense::click());
+        let arrow_resp = arrow_resp.labelled_by(label.id);
+        let fill = if arrow_resp.hovered() { t.hover } else { t.input };
+        ui.painter().rect(arrow, 0.0, fill, egui::Stroke::new(1.0, t.input_border), egui::StrokeKind::Inside);
+        let size = crate::widgets::DROPDOWN;
+        crate::icons::paint(ui.painter(), egui::Rect::from_center_size(arrow.center(), vec2(size, size)), "dropdown", t.icon, t.accent);
+        // The list drops from the field's left edge, under the whole box.
+        let mut menu_field = arrow_resp.clone();
+        menu_field.rect = field.rect.union(arrow);
+        craft_ui::combo::Menu::new(ui, &menu_field).show_ui(|ui| {
             for v in SCALES {
                 if ui.selectable_label(*scale == v, format!("{v}%")).clicked() {
                     *scale = v;
+                    ui.data_mut(|d| d.remove::<String>(text_id));
+                    ui.close();
                 }
             }
         });
-        combo.response.labelled_by(label.id);
     });
+}
+
+/// The Ligatures box's entries, in Word's order: (`w14:ligatures` name, label).
+pub(super) const LIGATURES: [(&str, &str); 5] = [
+    ("none", "None"),
+    ("standard", "Standard Only"),
+    ("standardContextual", "Standard and Contextual"),
+    ("historicalDiscretional", "Historical and Discretionary"),
+    ("all", "All"),
+];
+
+/// The Number spacing box's entries: (`w14:numSpacing` name, label).
+pub(super) const NUM_SPACINGS: [(&str, &str); 3] = [("default", "Default"), ("proportional", "Proportional"), ("tabular", "Tabular")];
+
+/// The Number forms box's entries: (`w14:numForm` name, label).
+pub(super) const NUM_FORMS: [(&str, &str); 3] = [("default", "Default"), ("lining", "Lining"), ("oldStyle", "Old-style")];
+
+/// The highest stylistic set the Stylistic sets box lists (`w14:stylisticSets` ids are 1..=20).
+pub(super) const STYLISTIC_SET_MAX: u8 = 20;
+
+/// One of the OpenType Features lists: `value` is the entry's name, `None` (or a name not in
+/// `entries`) shows no entry chosen. Labels are translated.
+pub(super) fn name_box(ui: &mut Ui, id: &str, value: &mut Option<String>, entries: &[(&str, &str)], label: &egui::Response) {
+    let shown = entries.iter().find(|(v, _)| value.as_deref() == Some(*v)).map_or("", |(_, l)| tl!(l));
+    let combo = craft_ui::ComboBox::from_id_salt(id).width(220.0).selected_text(shown).show_ui(ui, |ui| {
+        for (v, l) in entries {
+            if ui.selectable_label(value.as_deref() == Some(*v), tl!(l)).clicked() {
+                *value = Some((*v).to_string());
+            }
+        }
+    });
+    combo.response.labelled_by(label.id);
+}
+
+/// The Stylistic sets list: Default (0) and the sets 1 to 20; `None` shows no entry chosen.
+pub(super) fn stylistic_set_box(ui: &mut Ui, value: &mut Option<u8>, label: &egui::Response) {
+    let name = |n: u8| if n == 0 { tl!("Default").to_string() } else { n.to_string() };
+    let shown = value.map(name).unwrap_or_default();
+    let combo = craft_ui::ComboBox::from_id_salt("fontdlg_stylistic_sets").width(220.0).height(400.0).selected_text(shown).show_ui(ui, |ui| {
+        for n in 0..=STYLISTIC_SET_MAX {
+            if ui.selectable_label(*value == Some(n), name(n)).clicked() {
+                *value = Some(n);
+            }
+        }
+    });
+    combo.response.labelled_by(label.id);
 }
 
 /// The Spacing or Position row: a list of Normal and the two directions (their translated names),

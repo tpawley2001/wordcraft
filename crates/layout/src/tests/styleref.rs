@@ -53,7 +53,7 @@ const CHAPTERS: &[(&str, &str, bool)] = &[
 #[test]
 fn each_page_s_header_shows_its_chapter() {
     crate::test_fonts();
-    let d = doc(CHAPTERS, &[r#"STYLEREF "Heading 1" \* MERGEFORMAT"#, "STYLEREF 1", "STYLEREF heading1 \\l"]);
+    let d = doc(CHAPTERS, &[r#"STYLEREF "Heading 1" \* MERGEFORMAT"#, "STYLEREF 1", r#"STYLEREF "heading 1" \l"#]);
     let h = headers(&d);
     assert_eq!(h.len(), 4);
     for (page, want) in ["Beginnings", "Middles", "Middles", "Endings"].iter().enumerate() {

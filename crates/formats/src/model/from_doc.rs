@@ -62,6 +62,7 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
         sup: e.vert_align == Some(VertAlign::Superscript),
         sub: e.vert_align == Some(VertAlign::Subscript),
         link: e.link.as_deref().map(Arc::from),
+        link_tip: e.link.as_ref().and(e.link_tip.as_deref()).map(Arc::from),
         color: match e.color {
             Some(TextColor::Rgb(c)) => Some(c),
             _ => None,
@@ -83,8 +84,11 @@ fn old_fmt(doc: &Document, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fm
     let mut f = fmt_of(doc, old, in_code);
     if !opts.chars {
         f.hidden = opts.hidden && effective(doc, old).hidden == Some(true);
-        if let Some(pt) = effective(doc, old).position.filter(|v| *v != 0.0 && v.is_finite()).filter(|_| opts.tabs_spacing) {
-            f.extra = Some(Box::new(CharProps { position: Some(pt), ..Default::default() }));
+        let e = effective(doc, old);
+        if opts.tabs_spacing {
+            let (highlight, shading) = highlight_of(&e);
+            let x = CharProps { position: e.position.filter(|v| *v != 0.0 && v.is_finite()), highlight, shading, ..Default::default() };
+            f.extra = (x != CharProps::default()).then(|| Box::new(x));
         }
     }
     f
@@ -101,6 +105,7 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
             // its own word there, not single strikethrough.
             let e = effective(doc, props);
             let set = |v: Option<bool>| v.filter(|b| *b);
+            let (highlight, shading) = highlight_of(&e);
             let x = CharProps {
                 spacing: e.spacing.filter(|v| *v != 0.0 && v.is_finite()),
                 caps: set(e.caps),
@@ -115,6 +120,10 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
                 position: e.position.filter(|v| *v != 0.0 && v.is_finite()),
                 underline: e.underline.filter(|u| f.underline && *u != Underline::Single),
                 underline_color: e.underline_color,
+                no_proof: set(e.no_proof),
+                emphasis: e.emphasis.filter(|m| *m != wordcraft_doc::props::EmphasisMark::None),
+                highlight,
+                shading,
                 ..Default::default()
             };
             if x.double_strike.is_some() {
@@ -167,10 +176,18 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
     f
 }
 
+/// The highlight in `e` (effective character properties) and, with one, the shading under it;
+/// without a highlight the shading is [`Fmt::background`] alone.
+fn highlight_of(e: &CharProps) -> (Option<wordcraft_doc::props::Highlight>, Option<wordcraft_doc::props::Rgb>) {
+    let highlight = e.highlight.filter(|h| h.rgb().is_some());
+    (highlight, highlight.and(e.shading))
+}
+
 /// The formatting in `e` (effective character properties) that only [`Fmt::extra`] holds;
 /// `None` when it sets none of it.
 fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
     let set = |v: Option<bool>| v.filter(|b| *b);
+    let (highlight, shading) = highlight_of(e);
     let x = CharProps {
         // What it turns off, over what the style of its paragraph or span turns on, too.
         bold: e.bold.filter(|b| !*b),
@@ -201,6 +218,8 @@ fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
         lang_ea: e.lang_ea.clone().filter(|l| !l.is_empty()),
         no_proof: set(e.no_proof),
         east_asian_layout: e.east_asian_layout.clone().filter(|l| *l != Default::default()),
+        highlight,
+        shading,
         ..Default::default()
     };
     (x != CharProps::default()).then(|| Box::new(x))
@@ -283,6 +302,24 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
 
+/// `extra` with the outline level of `p`, a paragraph of `kind`, when it is apart from a heading
+/// style and `opts` keeps it so ([`FlowOpts::outline_apart`]).
+fn outline_apart(
+    doc: &Document,
+    p: &wordcraft_doc::props::ParaProps,
+    kind: Kind,
+    opts: FlowOpts,
+    mut extra: Option<Box<wordcraft_doc::props::ParaProps>>,
+) -> Option<Box<wordcraft_doc::props::ParaProps>> {
+    if opts.outline_apart
+        && !matches!(kind, Kind::Heading(_))
+        && let Some(l) = doc.styles.resolve_para(p).outline_level.filter(|l| *l < 9)
+    {
+        extra.get_or_insert_with(Default::default).outline_level = Some(l);
+    }
+    extra
+}
+
 /// The paragraph formatting only [`Para::extra`] holds that `p` sets itself; `None` when none.
 fn para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps) -> Option<Box<wordcraft_doc::props::ParaProps>> {
     let tabs = p.tabs.clone().filter(|t| !t.is_empty()).map(|mut tabs| {
@@ -337,12 +374,13 @@ fn rev_marks(doc: &Document, cp: &CharProps) -> (Option<RevMark>, Option<RevMark
 /// Paragraph kind and list membership of a document paragraph.
 pub fn para_kind(doc: &Document, p: &Paragraph) -> (Kind, Option<ListInfo>) {
     let blank = p.plain_text().trim().is_empty() && p.objects.iter().all(|o| o.is_marker());
-    props_kind(doc, &p.props, blank)
+    props_kind(doc, &p.props, blank, false)
 }
 
 /// Paragraph kind and list membership of paragraph properties; `blank` = the paragraph shows
-/// nothing (a bottom border then makes it a rule).
-fn props_kind(doc: &Document, props: &ParaProps, blank: bool) -> (Kind, Option<ListInfo>) {
+/// nothing (a bottom border then makes it a rule); with `outline_apart` an outline level alone
+/// doesn't make a heading ([`FlowOpts::outline_apart`]).
+fn props_kind(doc: &Document, props: &ParaProps, blank: bool, outline_apart: bool) -> (Kind, Option<ListInfo>) {
     let rp = doc.styles.resolve_para(props);
     let style = props.style.as_deref().unwrap_or("Normal");
     // A heading's kind is its style's (Heading 2 looks as Heading 2 whatever its outline level,
@@ -351,7 +389,7 @@ fn props_kind(doc: &Document, props: &ParaProps, blank: bool) -> (Kind, Option<L
         doc.styles.chain(style).iter().find_map(|s| s.id.strip_prefix("Heading").and_then(|n| n.parse::<u8>().ok()).filter(|n| (1..=9).contains(n)));
     let kind = if let Some(l) = style_level.filter(|_| rp.outline_level.is_some()) {
         Kind::Heading(l.min(6))
-    } else if let Some(l) = rp.outline_level {
+    } else if let Some(l) = rp.outline_level.filter(|_| !outline_apart) {
         Kind::Heading((l + 1).min(6))
     } else if doc.styles.chain(style).iter().any(|s| s.id == "Title") {
         Kind::Title
@@ -593,7 +631,8 @@ pub fn flow_paras(doc: &Document, p: &Paragraph) -> Vec<Para> {
 /// insertion and deletion marks.
 fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
     let tracked = opts.tracked;
-    let (kind, list) = para_kind(doc, p);
+    let blank = p.plain_text().trim().is_empty() && p.objects.iter().all(|o| o.is_marker());
+    let (kind, list) = props_kind(doc, &p.props, blank, opts.outline_apart);
     let list = flow_list(doc, kind, list, p, opts);
     let mut done: Vec<Para> = Vec::new();
     let borders = if kind == Kind::Rule { None } else { p.props.borders.filter(|b| b.takes_room()) };
@@ -617,7 +656,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
         index: None,
         group: None,
     };
-    out.extra = flow_para_extra(doc, &p.props, opts);
+    out.extra = outline_apart(doc, &p.props, kind, opts, flow_para_extra(doc, &p.props, opts));
     let in_code = kind == Kind::Code;
     let mut k = 0usize;
     let mut control = OpenControl::default();
@@ -764,7 +803,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
         // The formatting change belongs to the paragraph the mark ends.
         out.fmt_change = p.props.fmt_change.as_deref().map(|c| {
             let blank = out.inlines.is_empty();
-            let (kind, mut list) = props_kind(doc, &c.old, blank);
+            let (kind, mut list) = props_kind(doc, &c.old, blank, opts.outline_apart);
             if !opts.lists
                 && let Some(li) = &mut list
             {
@@ -1251,6 +1290,9 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
                 valign: c.props.valign.or(styled.as_ref().and_then(|s| s.v_align)),
                 // Formats that keep cell padding get each cell's, its table's or Word's default.
                 margins: tracked.paras.then(|| c.props.resolved_margins(t.props.cell_margins.unwrap_or(WORD_CELL_MARGINS))),
+                // The sides the cell sets itself, for formats that write only those (RTF).
+                own_margins: c.props.margins.map(|m| m.map(Some)).or(c.props.partial_margins).unwrap_or([None; 4]),
+                no_wrap: c.props.no_wrap,
                 direction: c.props.text_direction,
                 // Its background picture, for formats that keep cell formatting (ODT).
                 picture: c.props.picture.as_deref().filter(|_| tracked.paras).and_then(|p| {
@@ -1292,9 +1334,10 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one,
     // and the table's style and look, when it has a style, and its alignment and left edge.
     let placed = t.props.align.is_some() || t.props.indent.is_some();
+    let cell_margins = t.props.cell_margins.filter(|m| m.iter().all(|v| v.is_finite()));
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
-        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed)
+        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed || cell_margins.is_some())
         .map(|(heights, keep_rows)| super::types::TableExtra {
             align: t.props.align,
             indent: t.props.indent,
@@ -1302,6 +1345,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             keep_rows,
             style: t.props.style.clone(),
             look: t.props.style.is_some().then_some(t.props.look),
+            cell_margins,
             ..Default::default()
         });
     let extra = tracked.paras.then(|| {
@@ -1318,6 +1362,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             header_rows: t.rows.iter().take_while(|r| r.props.header).count(),
             style: None,
             look: None,
+            cell_margins: None,
         }
     });
     // Kept whole for formats that ask for it: its header rows count even without the rest.
