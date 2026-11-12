@@ -352,7 +352,15 @@ impl<'a> Flow<'a> {
         if !(rp.keep_lines || (keep_next && pb.y + height <= pb.bottom + 0.01)) {
             return before;
         }
-        let need = height + if keep_next { next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone()) } else { 0.0 };
+        let need = if keep_next {
+            // With the table rows a kept paragraph moves with; when those cannot fit on an empty
+            // column with it, the fixed start of the table, as before.
+            let room = pb.next_room(self.body_top);
+            let rows = height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), Some(room));
+            if rows <= room + 0.01 { rows } else { height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), None) }
+        } else {
+            height
+        };
         // (Against the whole column: balanced columns grow to hold it.)
         // With the 0.01 pt of slack the other fit checks take.
         if pb.y + need > pb.bottom + 0.01 && !pb.fresh() && need <= pb.next_room(self.body_top) {
@@ -403,7 +411,7 @@ impl<'a> Flow<'a> {
                 break true;
             }
             if !kept_para(ctx.doc, link + 1) {
-                total += next_first_line(ctx, link, self.width, 0, &mut counters);
+                total += next_first_line(ctx, link, self.width, 0, &mut counters, None);
                 break total > room + 0.01;
             }
             link += 1;
@@ -1055,8 +1063,10 @@ fn space_after_kept(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::Resolv
 /// of a three-line one under that control (two would leave a widow), or all
 /// of it under keep lines together — or all of it and what it keeps with in turn when it is
 /// kept with the next too (a chain moves together in Word). Word carries a kept heading over
-/// when the paragraph after it cannot start on the page (#966).
-fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counters: &mut Counters) -> f32 {
+/// when the paragraph after it cannot start on the page (#966). A table needs a fixed start, or
+/// with `page` (the height of an empty column) the rows the table flow moves on together with
+/// its first row: a paragraph kept with the table goes with them (Word).
+fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counters: &mut Counters, page: Option<f32>) -> f32 {
     match ctx.doc.body.get(block + 1).map(|b| &**b) {
         Some(Block::Para(p)) => {
             let pl = para_ahead(ctx, p, width, counters);
@@ -1065,7 +1075,7 @@ fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counte
             let top = if joined(ctx.doc, &ctx.doc.body, block + 1, Some(block), None) { 0.0 } else { own.top };
             if pl.rp.keep_next && depth < 8 {
                 let bottom = if joined(ctx.doc, &ctx.doc.body, block + 1, Some(block + 2), None) { 0.0 } else { own.bottom };
-                pl.rp.space_before + top + pl.height + bottom + pl.rp.space_after + next_first_line(ctx, block + 1, width, depth + 1, counters)
+                pl.rp.space_before + top + pl.height + bottom + pl.rp.space_after + next_first_line(ctx, block + 1, width, depth + 1, counters, page)
             } else {
                 // The room this one needs to start on the page with the kept paragraph before
                 // it (#966).
@@ -1085,7 +1095,7 @@ fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counte
                     }
             }
         }
-        Some(Block::Table(_)) => 24.0,
+        Some(Block::Table(t)) => page.and_then(|page| super::table_flow::kept_rows_room(ctx, t, block + 1, width, page, counters)).unwrap_or(24.0),
         None => 0.0,
     }
 }

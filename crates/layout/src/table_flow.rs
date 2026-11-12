@@ -6,7 +6,7 @@ use super::headers::{header_items_cap, header_table_areas, placed_cost};
 use super::notes::table_notes;
 use super::page::{PageBuilder, PageFrame, page_frame};
 use super::placed::Placed;
-use super::{Anchor, Arc, HeightRule, Path, Rect, StoryRef, TableFloat, ViewMode, WrapText, table};
+use super::{Anchor, Arc, Counters, HeightRule, Path, Rect, StoryRef, TableFloat, ViewMode, WrapText, table};
 
 /// Footer page tables wrap only the intersecting body lines, which resume below them.
 pub(crate) fn footer_table_wraps(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<WrapArea> {
@@ -160,6 +160,88 @@ fn row_can_start(doc: &wordcraft_doc::Document, row: &wordcraft_doc::Row, laid: 
         return false;
     }
     split_keeping_nested(doc, laid, room).is_some()
+}
+
+/// The most rows [`kept_rows_room`] walks through a chain of rows kept with the next, as
+/// [`super::flow`] bounds a chain of kept paragraphs.
+const MAX_KEPT_ROWS: usize = 8;
+
+/// The room table `t` (body block `block`) needs under a paragraph kept with it, for keep with
+/// next: the room under which [`place_table`] moves its first row on to the next page. That is
+/// its repeated header rows and the rows kept with the next after them (`row_keeps_next`, the
+/// same chain `place_table` resolves, walked at most [`MAX_KEPT_ROWS`] rows), then the start of
+/// the row after them as [`row_can_start`] decides it: the whole row when it can't split,
+/// otherwise the least that splits off. None when the first row is neither a header row nor
+/// kept with the next, when the table floats, or when the rows would not fit on a page of
+/// `page_height` (the table flow does not move them then): the caller's fixed start stands.
+pub(crate) fn kept_rows_room(
+    ctx: &mut Ctx,
+    t: &wordcraft_doc::Table,
+    block: usize,
+    width: f32,
+    page_height: f32,
+    counters: &Counters,
+) -> Option<f32> {
+    if t.props.float.is_some() || t.rows.len() < 2 {
+        return None;
+    }
+    let first = t.rows.iter().take_while(|row| row.props.header).count();
+    // Cheap check before laying the table out: Word takes a row's keep flag from the first
+    // paragraph of its first cell.
+    let opens_kept = |row: &wordcraft_doc::Row| {
+        row.cells.first().and_then(|c| c.blocks.first()).and_then(|b| b.as_para()).is_some_and(|p| ctx.doc.styles.resolve_para(&p.props).keep_next)
+    };
+    if first == 0 && !t.rows.first().is_some_and(opens_kept) {
+        return None;
+    }
+    // Laid out ahead of the flow without consuming its state (as `footer_table_wraps`).
+    let saved = (
+        std::mem::replace(&mut ctx.counters, counters.clone()),
+        std::mem::take(&mut ctx.boxes),
+        std::mem::take(&mut ctx.chains),
+        ctx.fields.clone(),
+        ctx.grid.clone(),
+        ctx.track_totals,
+    );
+    let tl = again(ctx, ctx.eq_count, |ctx| table::layout_table(ctx, StoryRef::Body, t, &[block as u32], width, 1));
+    (ctx.counters, ctx.boxes, ctx.chains, ctx.fields, ctx.grid, ctx.track_totals) = saved;
+    let mut height: f32 = tl.rows.iter().take(first).map(|r| r.height).sum();
+    let mut ri = first;
+    for _ in 0..MAX_KEPT_ROWS {
+        match tl.rows.get(ri) {
+            Some(row) if ri + 1 < tl.rows.len() && row_keeps_next(row) => {
+                height += row.height;
+                ri += 1;
+            }
+            _ => break,
+        }
+    }
+    if ri == 0 || height > page_height + 0.01 {
+        return None;
+    }
+    let (row, laid) = (t.rows.get(ri)?, tl.rows.get(ri)?);
+    Some(height + row_start(ctx.doc, row, laid, page_height - height))
+}
+
+/// The least room in which [`row_can_start`] lets `laid` start: its height when it can't split.
+fn row_start(doc: &wordcraft_doc::Document, row: &wordcraft_doc::Row, laid: &table::RowLayout, page_height: f32) -> f32 {
+    let (mut lo, mut hi) = (0.0f32, laid.height.max(0.0));
+    if !hi.is_finite() {
+        return 0.0;
+    }
+    // `row_can_start` is true from the row's height down to the least piece that splits off.
+    for _ in 0..24 {
+        if hi - lo < 0.01 {
+            break;
+        }
+        let mid = (lo + hi) / 2.0;
+        if row_can_start(doc, row, laid, mid, page_height) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    hi
 }
 
 pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc::Table, block: usize, body_top: f32) {
@@ -470,3 +552,7 @@ pub(crate) fn below(excl: &[WrapArea], mut y: f32, x0: f32, x1: f32) -> f32 {
     }
     y
 }
+
+#[cfg(test)]
+#[path = "tests/keep_next_table_chain_more.rs"]
+mod keep_next_table_chain_more;
