@@ -97,6 +97,7 @@ fn line_spacing_works_on_the_size_plus_2pt() {
 /// Times New Roman's own (ascent + descent with its line gap, descent) in points at `size`, from
 /// the face the layout resolves for it here (a metric-compatible or fallback face).
 fn times_own(size: f32) -> (f32, f32) {
+    crate::test_fonts();
     let face = wordcraft_fonts::word::resolve("Times New Roman", false, false).face;
     let (a, d) = wordcraft_fonts::word::line_metrics(&face);
     let (_, d0) = wordcraft_fonts::word::line_metrics_no_leading(&face);
