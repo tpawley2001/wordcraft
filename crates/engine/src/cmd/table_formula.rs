@@ -6,7 +6,8 @@
 //! ABOVE, LEFT, RIGHT and BELOW sum the first run of numbers in that direction, as Word does: the
 //! cells next to the formula's cell are skipped while they hold no number (empty or text), then
 //! the numbers are summed up to the next cell that holds none. A function needs its arguments:
-//! `=SUM()` is a syntax error, as it is in Word.
+//! `=SUM()` is a syntax error, as it is in Word. Errors carry Word's own texts (`Zero Divide`,
+//! `Syntax Error, )`, `The Formula Not In Table`, ...); the field shows them after a `!`.
 
 use std::collections::HashMap;
 
@@ -71,8 +72,8 @@ fn evaluate_look(
     let body = body.strip_prefix('=').unwrap_or(body);
     let mut parser = Parser { toks: tokenize(body)?, pos: 0, depth: 0, in_table: t.is_some() };
     let expr = parser.compare()?;
-    if parser.pos != parser.toks.len() {
-        return Err(syntax("unexpected text after the formula".into()));
+    if let Some(tok) = parser.toks.get(parser.pos) {
+        return Err(leftover(tok));
     }
     let g = t.map_or(0, |t| t.grid_col(r, c));
     let here = Here::new(t, doc, default_lang, r, c, g);
@@ -464,6 +465,41 @@ fn syntax(msg: String) -> CmdError {
     CmdError::Failed(format!("syntax error: {msg}"))
 }
 
+/// Word's error for a token where an operand is expected: `Syntax Error, ` and the token as typed.
+fn misplaced(tok: &Tok) -> CmdError {
+    let text = match tok {
+        Tok::Num(x) => format_result(*x),
+        Tok::Name(name) => name.clone(),
+        Tok::Op(c) => c.to_string(),
+        Tok::Cmp(op) => (*op).to_string(),
+    };
+    CmdError::Failed(format!("Syntax Error, {text}"))
+}
+
+/// Word's error for a token left over after a complete expression: a number or a name is
+/// `Missing Operator`, anything else is `Syntax Error, ` and the token.
+fn leftover(tok: &Tok) -> CmdError {
+    match tok {
+        Tok::Num(_) | Tok::Name(_) => CmdError::Failed("Missing Operator".into()),
+        _ => misplaced(tok),
+    }
+}
+
+/// Word's error for a formula that ends where an operand or a `)` is still expected.
+fn unexpected_end() -> CmdError {
+    CmdError::Failed("Unexpected End of Formula".into())
+}
+
+/// Word's error for cells, ranges and ABOVE/LEFT/RIGHT/BELOW in a formula outside a table.
+fn not_in_table() -> CmdError {
+    CmdError::Failed("The Formula Not In Table".into())
+}
+
+/// Word's error for an empty argument list or an `IF` closed too early: the `)` is misplaced.
+fn closed_too_soon() -> CmdError {
+    misplaced(&Tok::Op(')'))
+}
+
 fn finite(x: f64) -> Result<f64, CmdError> {
     if x.is_finite() { Ok(x) } else { Err(CmdError::Failed("the result is not a number".into())) }
 }
@@ -540,7 +576,7 @@ fn tokenize(s: &str) -> Result<Vec<Tok>, CmdError> {
         } else if matches!(ch, '<'..='>') {
             out.push(parse_cmp_token(ch, &mut chars));
         } else {
-            return Err(syntax(format!("`{ch}` isn't part of a formula")));
+            return Err(CmdError::Failed(format!("Syntax Error, {ch}")));
         }
     }
     Ok(out)
@@ -671,7 +707,7 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Expr, CmdError> {
         let Some(tok) = self.toks.get(self.pos).cloned() else {
-            return Err(syntax("the formula ends too soon".into()));
+            return Err(unexpected_end());
         };
         self.pos += 1;
         match tok {
@@ -680,7 +716,7 @@ impl Parser {
                 self.enter()?;
                 let inner = self.compare()?;
                 if !self.eat_op(')') {
-                    return Err(syntax("a `(` is missing its `)`".into()));
+                    return Err(self.toks.get(self.pos).map_or_else(unexpected_end, leftover));
                 }
                 self.leave();
                 Ok(inner)
@@ -694,6 +730,9 @@ impl Parser {
                             args.push(self.compare()?);
                             if self.eat_op(')') {
                                 break;
+                            }
+                            if self.pos >= self.toks.len() {
+                                return Err(unexpected_end());
                             }
                             if !self.eat_op(',') {
                                 return Err(syntax(format!("`{name}` needs `,` or `)` between its arguments")));
@@ -717,6 +756,10 @@ impl Parser {
                 if matches!(name.as_str(), "TRUE" | "FALSE") {
                     return Ok(Expr::Call(name, Vec::new()));
                 }
+                // A range outside a table, such as `A1:A2`, needs cells the formula doesn't have.
+                if !self.in_table && cell_ref(&name).is_some() && self.peek_op(':') {
+                    return Err(not_in_table());
+                }
                 // Any other name is a bookmark, unless it is shaped like a cell reference in a table.
                 let Some((row, col)) = cell_ref(&name).filter(|_| self.in_table) else {
                     return Ok(Expr::Bookmark(name));
@@ -731,8 +774,7 @@ impl Parser {
                 }
                 Ok(Expr::Cell(row, col, name))
             }
-            Tok::Op(c) => Err(syntax(format!("`{c}` is in the wrong place"))),
-            Tok::Cmp(op) => Err(syntax(format!("`{op}` is in the wrong place"))),
+            Tok::Op(_) | Tok::Cmp(_) => Err(misplaced(&tok)),
         }
     }
 }
@@ -791,7 +833,7 @@ impl<'a> Here<'a> {
 
     /// The formula's table, or an error when the formula is not in one.
     fn table(&self) -> Result<&Table, CmdError> {
-        self.t.ok_or_else(|| CmdError::Failed("cell references, ranges and ABOVE/LEFT/RIGHT/BELOW need a table".into()))
+        self.t.ok_or_else(not_in_table)
     }
 
     /// The number the bookmark `name` marks (its name matched ignoring ASCII case, first in
@@ -988,7 +1030,7 @@ fn eval(e: &Expr, here: &Here) -> Result<Val, CmdError> {
                 '*' => x * y,
                 '/' => {
                     if y == 0.0 {
-                        return Err(CmdError::Failed("division by zero".into()));
+                        return Err(CmdError::Failed("Zero Divide".into()));
                     }
                     x / y
                 }
@@ -1065,6 +1107,10 @@ fn side_numbers(here: &Here, side: Side) -> Result<(Vec<f64>, Option<Look>), Cmd
             None => !started,
         }
     };
+    // LEFT in a row's first cell and ABOVE in the first row have no cell at all on that side.
+    if (side == Side::Left && here.c == 0) || (side == Side::Above && here.r == 0) {
+        return Err(CmdError::Failed("Table Index Cannot be Zero".into()));
+    }
     match side {
         Side::Above => {
             for row in (0..here.r).rev() {
@@ -1160,7 +1206,7 @@ fn call_plain(name: &str, args: &[Expr], here: &Here) -> Result<f64, CmdError> {
         "SUM" | "COUNT" | "AVERAGE" | "MAX" | "MIN" | "PRODUCT" | "ABS" | "INT" | "SIGN" | "ROUND" | "MOD" | "AND" | "OR" | "NOT" | "IF" | "DEFINED"
     );
     if args.is_empty() && needs_one {
-        return Err(syntax(format!("{name}() needs an argument")));
+        return Err(closed_too_soon());
     }
     match name {
         "TRUE" | "FALSE" if args.is_empty() => Ok(truth(name == "TRUE")),
@@ -1182,6 +1228,7 @@ fn call_plain(name: &str, args: &[Expr], here: &Here) -> Result<f64, CmdError> {
                     scalar(eval(no, here)?)
                 }
             }
+            _ if args.len() < 3 => Err(closed_too_soon()),
             _ => Err(CmdError::Failed("IF takes three arguments: a condition, the value when it is true, and the value when it is false".into())),
         },
         // DEFINED(cell) is 1 when the cell holds a value the formula can read, 0 when it doesn't.
@@ -1311,6 +1358,7 @@ mod tests {
     fn a_function_needs_its_arguments() {
         let t = table(&[&["1"], &[""]]);
         assert!(ev(&t, 1, 0, "=SUM()").is_err(), "empty parentheses are a syntax error, as in Word");
+        assert_eq!(ev(&t, 1, 0, "=SUM()"), Err(CmdError::Failed("Syntax Error, )".into())));
         assert!(ev(&t, 1, 0, "=SUM").is_err());
     }
 
@@ -1356,8 +1404,11 @@ mod tests {
     fn division_by_zero_and_bad_syntax_are_errors() {
         let t = table(&[&["1"], &["0"]]);
         assert!(ev(&t, 1, 0, "=A1/A2").is_err());
+        assert_eq!(ev(&t, 1, 0, "=A1/A2"), Err(CmdError::Failed("Zero Divide".into())));
         assert!(ev(&t, 1, 0, "=SUM(A1").is_err());
+        assert_eq!(ev(&t, 1, 0, "=SUM(A1"), Err(CmdError::Failed("Unexpected End of Formula".into())));
         assert!(ev(&t, 1, 0, "=A1 A1").is_err());
+        assert_eq!(ev(&t, 1, 0, "=A1 A1"), Err(CmdError::Failed("Missing Operator".into())));
         assert!(ev(&t, 1, 0, "=A1:").is_err());
         assert!(ev(&t, 1, 0, &format!("={}", "(".repeat(64))).is_err(), "deep nesting is refused");
     }
@@ -1409,7 +1460,7 @@ mod tests {
         assert_eq!(ev(&t, 1, 0, "=A1<>A2"), Ok(1.0));
         assert_eq!(ev(&t, 1, 0, "=A2>=3"), Ok(1.0));
         assert_eq!(ev(&t, 1, 0, "=A1=5"), Ok(1.0));
-        assert_eq!(ev(&t, 1, 0, "=A1<A2<1"), Err(CmdError::Failed("syntax error: unexpected text after the formula".into())));
+        assert_eq!(ev(&t, 1, 0, "=A1<A2<1"), Err(CmdError::Failed("Syntax Error, <".into())));
     }
 
     #[test]
@@ -1576,9 +1627,35 @@ mod tests {
         assert!(evaluate_text_field(&doc, None, "=SUM(ABOVE)").is_err());
         assert!(evaluate_text_field(&doc, None, "=LEFT").is_err());
         assert!(evaluate_text_field(&doc, None, "=SUM(A1:B2)").is_err());
+        for f in ["=SUM(ABOVE)", "=LEFT", "=SUM(A1:B2)"] {
+            assert_eq!(evaluate_text_field(&doc, None, f).map_err(|e| e.to_string()), Err("The Formula Not In Table".to_string()), "{f}");
+        }
         let empty = wordcraft_doc::Document::from_text("x");
         assert_eq!(evaluate_text_field(&empty, None, "=A1").map_err(|e| e.to_string()), Err("Undefined Bookmark, A1".to_string()));
         assert_eq!(evaluate_text_field(&empty, None, r#"= 2 + 3 \# "0.0""#).as_deref(), Ok("5.0"));
+    }
+
+    #[test]
+    fn update_field_shows_zero_divide() {
+        let mut s = crate::Session::new(wordcraft_doc::Document::new());
+        s.run("insert.field", &serde_json::json!({"instr": "= 1 / 0", "result": "stale"})).unwrap();
+        s.run("references.updateFields", &serde_json::json!({})).unwrap();
+        let results: Vec<String> = s
+            .doc
+            .body
+            .first()
+            .and_then(|b| b.as_para())
+            .map(|p| {
+                p.objects
+                    .iter()
+                    .filter_map(|o| match o {
+                        wordcraft_doc::InlineObject::Field { result, .. } => Some(result.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(results, ["!Zero Divide"]);
     }
 
     #[test]
