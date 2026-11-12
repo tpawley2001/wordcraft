@@ -5454,6 +5454,26 @@ fn an_object_dropped_near_the_bottom_of_a_page_lands_there() {
     }
 }
 
+/// A Square object dropped where, below the paragraph under it, it would end past the bottom
+/// margin (which takes that paragraph to the next page) goes on the paragraph that starts the
+/// page instead: it lands where it was dropped and is still positioned from a paragraph.
+#[test]
+fn a_square_object_dropped_past_the_margin_stays_on_its_paragraph() {
+    use wordcraft_doc::para::{Anchor, Wrap};
+    let para = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.";
+    let mut s = Session::new(wordcraft_doc::Document::from_text(&vec![para; 20].join("\n")));
+    run(&mut s, "insert.textBox", json!({"text": "Box"}));
+    select_box(&mut s);
+    run(&mut s, "arrange.bounds", json!({"width": 450, "height": 300}));
+    select_box(&mut s);
+    run(&mut s, "arrange.bounds", json!({"page": 0, "x": 80, "y": 600}));
+    let o = box_area(&mut s);
+    assert_eq!(o.page, 0);
+    assert!((o.rect.y - 600.0).abs() < 0.01, "{:?}", o.rect);
+    let float = s.doc.para_at(&o.pos()).and_then(|p| p.object_at(o.off)).and_then(|ob| ob.frame()).map(|(_, _, f)| f.clone()).unwrap();
+    assert_eq!((float.wrap, float.v_rel, float.h_rel), (Wrap::Square, Anchor::Paragraph, Anchor::Column));
+}
+
 #[test]
 fn nudging_an_aligned_object_moves_it_from_where_it_is() {
     use wordcraft_doc::para::{Anchor, FloatAlign};
