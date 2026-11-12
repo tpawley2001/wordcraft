@@ -757,6 +757,7 @@ fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
             None => {}
         }
         style_char_spacing_words(c.spacing, &mut out);
+        style_char_line_words(c, t, &mut out);
         out.push_str(&format!(" {};}}", esc_font(&s.name)));
     }
     out
@@ -773,6 +774,30 @@ fn style_tab_and_char_indent_words(p: &wordcraft_doc::props::ParaProps, out: &mu
     for (word, v) in [("\\cufi", p.indent_first_chars), ("\\culi", p.indent_left_chars), ("\\curi", p.indent_right_chars)] {
         if let Some(v) = v.filter(|v| v.is_finite()) {
             out.push_str(&format!("{word}{}", (v.clamp(-1584.0, 1584.0) * 100.0).round() as i64));
+        }
+    }
+}
+
+/// A style entry's character border (`\\chbrdr`; `\\brdrnone` for a stated none), underline
+/// (`\\ulnone` for a stated none), strikethrough and double strikethrough, as the text writes them.
+fn style_char_line_words(c: &wordcraft_doc::props::CharProps, t: &mut Tables, out: &mut String) {
+    use wordcraft_doc::props::Underline;
+    match c.border {
+        Some(b) if b.is_visible() => border_words("chbrd", 'r', b, true, t, out),
+        Some(_) => out.push_str("\\chbrdr\\brdrnone"),
+        None => {}
+    }
+    match c.underline {
+        Some(Underline::None) => out.push_str("\\ulnone"),
+        Some(u) => out.push_str(underline_style_word(Some(u))),
+        None => {}
+    }
+    for (word, v) in [("strike", c.strike), ("striked", c.double_strike)] {
+        match v {
+            Some(true) if word == "striked" => out.push_str("\\striked1"),
+            Some(true) => out.push_str("\\strike"),
+            Some(false) => out.push_str(&format!("\\{word}0")),
+            None => {}
         }
     }
 }
@@ -799,11 +824,16 @@ fn style_num(k: Kind) -> Option<u32> {
 /// The control word for the underline of `f` (RTF 1.9.1), `None` when it has none; a link's
 /// text is underlined.
 fn underline_word(f: &Fmt) -> Option<&'static str> {
-    use wordcraft_doc::props::Underline;
     if !f.underline {
         return f.link.is_some().then_some("\\ul");
     }
-    Some(match f.extra.as_ref().and_then(|x| x.underline) {
+    Some(underline_style_word(f.extra.as_ref().and_then(|x| x.underline)))
+}
+
+/// The control word for an underline style; no stated style is a single underline.
+fn underline_style_word(u: Option<wordcraft_doc::props::Underline>) -> &'static str {
+    use wordcraft_doc::props::Underline;
+    match u {
         Some(Underline::Words) => "\\ulw",
         Some(Underline::Double) => "\\uldb",
         Some(Underline::Thick) => "\\ulth",
@@ -814,7 +844,7 @@ fn underline_word(f: &Fmt) -> Option<&'static str> {
         Some(Underline::Wave) => "\\ulwave",
         Some(Underline::DoubleWave) => "\\ululdbwave",
         Some(Underline::None | Underline::Single) | None => "\\ul",
-    })
+    }
 }
 
 /// The highlight colour (`\highlight`) and the character shading (`\chcbpat`) of `f`: with a
