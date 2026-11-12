@@ -226,20 +226,33 @@ pub fn symbol_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)> {
 /// here and its substitute's own line differs: Word measures the line with the real font.
 /// Symbol fonts follow [`symbol_line`].
 pub fn missing_font_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)> {
+    missing_font_line_leading(family, resolved, true)
+}
+
+/// [`missing_font_line`] under the compatibility option "Don't add leading (extra space) between
+/// rows of text": `leading` is false when the option applies. Word then takes the external
+/// leading off the top of Century Gothic's and Lucida Bright's lines; the other fonts' lines stay.
+pub fn missing_font_line_leading(family: &str, resolved: &Resolved, leading: bool) -> Option<(f64, f64)> {
     if let Some(m) = symbol_line(family, resolved) {
         return Some(m);
     }
     if !resolved.substituted {
         return None;
     }
+    if !leading && let Some(m) = missing_font_metrics_no_leading(family) {
+        return Some(m);
+    }
     missing_font_metrics(family)
 }
 
-/// [`missing_font_line`] under the compatibility option "Don't add leading (extra space) between
-/// rows of text": `leading` is false when the option applies.
-pub fn missing_font_line_leading(family: &str, resolved: &Resolved, leading: bool) -> Option<(f64, f64)> {
-    let _ = leading;
-    missing_font_line(family, resolved)
+/// Word's single line, (ascent, descent) in em, with "Don't add leading between rows of text",
+/// for the missing fonts whose line it changes (see [`missing_font_metrics`]).
+fn missing_font_metrics_no_leading(family: &str) -> Option<(f64, f64)> {
+    match family.trim().to_ascii_lowercase().as_str() {
+        "century gothic" => Some((0.9716, 0.220)),
+        "lucida bright" => Some((0.9336, 0.205)),
+        _ => None,
+    }
 }
 
 /// Word's single line, (ascent, descent) in em, for fonts whose substitute spaces lines
@@ -251,12 +264,16 @@ pub fn missing_font_line_leading(family: &str, resolved: &Resolved, leading: boo
 /// Franklin Gothic Book: 12 pt lines 13.56 pt apart (1.13 em); `/Ascent` 917, the descent is the
 /// rest of the line (its Carlito substitute is 1.2207 em).
 /// Tahoma: `/Ascent` 1000, `/Descent` -207; 12 pt lines 14.43 pt apart (1.207 em).
-/// Lucida Bright: `/Ascent` 967, `/Descent` -205; 18 pt lines 21.12 pt apart (1.172 em).
+/// Lucida Bright: `/Ascent` 967, `/Descent` -205; 18 pt lines 21.12 pt apart (1.172 em). With
+/// "Don't add leading between rows of text", 10, 20 and 36 pt lines 11.38, 22.77 and 41.00 pt apart
+/// (1.1386 em), the first line moved up as much: the leading comes off the ascent.
 /// Aptos and Aptos Display: `/Ascent` 939, `/Descent` -282; 11 pt at 1.1 lines is 14.76 pt apart.
 /// Verdana: `/Ascent` 1005, the descent the rest of the line; 10 pt lines 12.12 and 12.24 pt apart (1.215 em).
 /// Georgia: `/Ascent` 917, the descent the rest of the line; 11 pt lines 12.48 pt apart (1.136 em).
 /// Trebuchet MS: `/Ascent` 939, the descent the rest of the line; 24 pt lines 27.84 pt apart (1.161 em).
 /// Century Gothic: `/Ascent` 1006, the descent the rest of the line; 10 pt lines 12.24 and 12.36 pt apart (1.226 em).
+/// With "Don't add leading between rows of text", 10, 20 and 36 pt lines 11.91, 23.83 and 42.90 pt
+/// apart (1.1916 em), the first line moved up as much: the leading comes off the ascent.
 /// Consolas: `/Ascent` 743, the descent the rest of the line; 8 pt lines 9.36 pt apart (1.172 em).
 /// Garamond: `/Ascent` 862, the descent the rest of the line; 20 pt lines 22.44 to 22.58 pt apart (1.125 em).
 /// Comic Sans MS: `/Ascent` 1102, the descent the rest of the line; 11 pt lines 15.36 and 15.24 pt apart (1.394 em).
@@ -1006,10 +1023,20 @@ pub fn hhea_line_leading(ascender: i16, descender: i16, line_gap: i16, leading: 
 }
 
 /// [`hhea_line_leading`] for a face that also has OS/2 Windows metrics (`usWinAscent`,
-/// `usWinDescent`).
+/// `usWinDescent`). Without `leading`, only the external leading goes: what the hhea line
+/// (ascender + descender + gap) has on top of the Windows cell (win ascent + descent), never more
+/// than the gap, taken off the top. A font whose gap lies inside its Windows cell (Calibri,
+/// Consolas) keeps its line; Times New Roman loses its whole gap. A missing or empty Windows
+/// cell, or one smaller than ascender + descender, removes the whole gap.
 pub fn win_line_leading(ascender: i16, descender: i16, line_gap: i16, win_ascent: u16, win_descent: u16, leading: bool) -> (f64, f64) {
-    let _ = (win_ascent, win_descent);
-    hhea_line_leading(ascender, descender, line_gap, leading)
+    if leading {
+        return hhea_line_leading(ascender, descender, line_gap, true);
+    }
+    let gap = f64::from(line_gap.max(0));
+    let (asc, desc) = (f64::from(ascender), f64::from(descender).abs());
+    let cell = f64::from(win_ascent) + f64::from(win_descent);
+    let ext = if cell <= 0.0 { gap } else { (asc + desc + gap - cell).clamp(0.0, gap) };
+    (asc + gap - ext, desc)
 }
 
 /// The line (ascent, descent) in units of an `upem` em that Word gives the classic PostScript
@@ -1037,8 +1064,9 @@ pub fn line_metrics(face: &crate::FontFace) -> (f64, f64) {
 }
 
 /// [`line_metrics`] without the line gap: the line Word gives a face under the compatibility
-/// option "Don't add leading (extra space) between rows of text" (hhea ascender plus descender;
-/// Times borrows Times New Roman's without its gap). OS/2 win metrics have no gap and are the same.
+/// option "Don't add leading (extra space) between rows of text": the hhea line without the part of
+/// its gap outside the OS/2 Windows cell ([`win_line_leading`]); Times borrows Times New Roman's
+/// without its gap. OS/2 win metrics alone have no gap and are the same.
 pub fn line_metrics_no_leading(face: &crate::FontFace) -> (f64, f64) {
     face_line(face, false)
 }
@@ -1056,8 +1084,16 @@ fn face_line(face: &crate::FontFace, leading: bool) -> (f64, f64) {
     } else if let Some(f) = face.skrifa() {
         // hhea ascender + descender + line gap (Word on macOS), the gap above the ascent; OS/2
         // win metrics only when the hhea values are missing, and never more than twice the em.
-        let hhea = f.hhea().ok().map(|h| hhea_line_leading(h.ascender().to_i16(), h.descender().to_i16(), h.line_gap().to_i16(), leading));
-        let win = f.os2().ok().map(|o| (o.us_win_ascent() as f64, o.us_win_descent() as f64));
+        // Without leading, only the gap outside the OS/2 Windows cell goes (`win_line_leading`).
+        let os2 = f.os2().ok();
+        let hhea = f.hhea().ok().map(|h| {
+            let (a, d, g) = (h.ascender().to_i16(), h.descender().to_i16(), h.line_gap().to_i16());
+            match &os2 {
+                Some(o) if !leading => win_line_leading(a, d, g, o.us_win_ascent(), o.us_win_descent(), false),
+                _ => hhea_line_leading(a, d, g, leading),
+            }
+        });
+        let win = os2.map(|o| (o.us_win_ascent() as f64, o.us_win_descent() as f64));
         let ok = |m: &(f64, f64)| m.0 > 0.0 && m.0 + m.1 <= face.upem * 2.0;
         if let Some(m) = hhea.filter(ok) {
             v = m;
@@ -1090,6 +1126,45 @@ mod tests {
         // A negative gap adds nothing; the most negative descender doesn't overflow.
         assert_eq!(hhea_line(1000, -300, -50), (1000.0, 300.0));
         assert_eq!(hhea_line(1000, i16::MIN, 0), (1000.0, 32768.0));
+    }
+
+    #[test]
+    fn an_installed_font_with_its_gap_inside_the_windows_cell_keeps_its_line() {
+        // Carlito and Calibri have hhea 1536 / -512 / 452 and win 1950 + 550: the option leaves
+        // the line as it is. Skipped when neither is installed.
+        for family in ["Carlito", "Calibri"] {
+            let r = resolve(family, false, false);
+            if r.substituted {
+                continue;
+            }
+            let Some(f) = r.face.skrifa() else { continue };
+            let (Ok(h), Ok(o)) = (f.hhea(), f.os2()) else { continue };
+            let hhea = f64::from(h.ascender().to_i16()) + f64::from(h.descender().to_i16()).abs() + f64::from(h.line_gap().to_i16().max(0));
+            let win = f64::from(o.us_win_ascent()) + f64::from(o.us_win_descent());
+            if hhea != win {
+                continue;
+            }
+            assert_eq!(line_metrics_no_leading(&r.face), line_metrics(&r.face), "{family}");
+        }
+    }
+
+    #[test]
+    fn missing_century_gothic_and_lucida_bright_lose_their_leading() {
+        for (family, plain, option) in [("Century Gothic", 1.226, 1.1916), ("Lucida Bright", 1.172, 1.1386)] {
+            let r = resolve(family, false, false);
+            if !r.substituted {
+                continue;
+            }
+            let sum = |m: Option<(f64, f64)>| m.map(|(a, d)| a + d);
+            let p = sum(missing_font_line_leading(family, &r, true)).unwrap_or(0.0);
+            let o = sum(missing_font_line_leading(family, &r, false)).unwrap_or(0.0);
+            assert!((p - plain).abs() < 0.001 && (o - option).abs() < 0.001, "{family}: {p} {o}");
+        }
+        // The other table lines stay.
+        for family in ["Consolas", "Palatino Linotype", "Georgia"] {
+            let r = resolve(family, false, false);
+            assert_eq!(missing_font_line_leading(family, &r, false), missing_font_line(family, &r), "{family}");
+        }
     }
 
     #[test]
