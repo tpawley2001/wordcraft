@@ -14,6 +14,7 @@ mod button_fields;
 mod cell_floats;
 mod column_top_float;
 mod complex;
+mod custom_note_marks;
 mod display_hide_body;
 mod early_float_stays;
 mod endnote_suppress;

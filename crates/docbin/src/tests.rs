@@ -11,6 +11,7 @@ mod auto_spacing;
 mod cell_end_paragraph;
 mod cell_padding;
 mod cfb_tolerance;
+mod custom_note_marks;
 mod char_spacing;
 mod char_styles;
 mod compat_mode;
