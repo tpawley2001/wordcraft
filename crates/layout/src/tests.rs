@@ -12,6 +12,7 @@ mod border_band;
 mod budget;
 mod button_fields;
 mod cell_floats;
+mod column_top_float;
 mod complex;
 mod display_hide_body;
 mod early_float_stays;
