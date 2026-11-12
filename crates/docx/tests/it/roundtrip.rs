@@ -1670,7 +1670,9 @@ fn settings_core_theme_round_trip() {
     d.core.revision = 7;
     let r = rt(&d);
     assert_eq!(r.settings, d.settings);
-    assert_eq!(r.core, d.core);
+    // The five summary properties read back as present in the file (their elements are written).
+    let present = wordcraft_doc::SummaryInFile::all(wordcraft_doc::InFile::Present);
+    assert_eq!(r.core, wordcraft_doc::CoreProps { in_file: present, ..d.core.clone() });
     // #1290: the watermark is written as a VML text shape in the headers and read back.
     let mut w = d.clone();
     w.settings.watermark = Some(Watermark::default());

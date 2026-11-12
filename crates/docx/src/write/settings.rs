@@ -440,13 +440,14 @@ pub(super) fn core_xml(doc: &Document) -> Vec<u8> {
         ],
     );
     // An empty summary property the file had (or that was set) stays an empty element, so Word's
-    // DOCPROPERTY still shows nothing for it rather than its unknown-name error.
+    // DOCPROPERTY still shows nothing for it rather than its unknown-name error. The author is left
+    // out when personal information is removed.
     use wordcraft_doc::InFile::Present;
     let f = &c.in_file;
     for (tag, v, keep_empty) in [
         ("dc:title", &c.title, f.title == Present),
         ("dc:subject", &c.subject, f.subject == Present),
-        ("dc:creator", &creator, f.creator == Present),
+        ("dc:creator", &creator, f.creator == Present && !doc.settings.remove_personal_info),
         ("cp:keywords", &c.keywords, f.keywords == Present),
         ("dc:description", &c.description, f.description == Present),
         ("cp:lastModifiedBy", &last_modified_by, false),
