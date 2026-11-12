@@ -2,7 +2,7 @@ use super::boxes::{BoxInput, BoxLayout, Edges, joined, layout_box, push_para};
 use super::cache::has_page_number_fields;
 use super::ctx::Ctx;
 use super::floats::{
-    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, late_floats, place_late,
+    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, late_floats, place_late,
     place_objects,
 };
 use super::notes::{DECOR_STORY, NoteBox, para_notes};
@@ -10,7 +10,7 @@ use super::page::{PageBuilder, PageFrame, item_bottom};
 use super::placed::Placed;
 use super::{
     Arc, Block, Counters, Document, HashMap, InlineObject, Level, LineEnd, Page, ParaLayout, Paragraph, Path, Rect, StoryRef, TextDirection,
-    ViewMode, outline, para,
+    ViewMode, Wrap, outline, para,
 };
 #[cfg(test)]
 use crate::WRAP_RELAYS;
@@ -186,6 +186,9 @@ struct Flow<'a> {
     /// The space before it at the top of the piece being placed (a paragraph starting with a page
     /// break has it on the new page): late floats there are positioned from above it.
     space_here: f32,
+    /// The paragraph ended with a column break whose line took the anchors after it
+    /// ([`Flow::ends_page`]): its space after stays in the column it ended in.
+    ended_in_column: bool,
 }
 
 impl<'a> Flow<'a> {
@@ -226,6 +229,7 @@ impl<'a> Flow<'a> {
             rechecked: false,
             forced: Vec::new(),
             space_here: 0.0,
+            ended_in_column: false,
         }
     }
 
@@ -506,7 +510,11 @@ impl<'a> Flow<'a> {
             if over && fit.l1 > l0 && !split {
                 break;
             }
-            if over && fit.l1 == l0 && !pb.fresh() && !split && !self.stays_at_bottom(pb, l) {
+            // A paragraph's first line pushed down by a top-and-bottom object goes to the next
+            // page with it when the two don't fit, even if the line holds only a break: the
+            // object is drawn there, above it, instead of past the page's foot.
+            let pushed = fit.l1 == 0 && l.top > 0.01;
+            if over && fit.l1 == l0 && !pb.fresh() && !split && (pushed || !self.stays_at_bottom(pb, l)) {
                 break;
             }
             fit.notes.extend(line_notes);
@@ -538,11 +546,15 @@ impl<'a> Flow<'a> {
             return false;
         }
         fit.forced = Some(l.end);
-        let mark_follows = self.pl.lines.get(fit.l1).is_some_and(|m| only_markers(self.p, m.start..m.stop));
+        let last = self.pl.lines.get(fit.l1).filter(|_| fit.l1 + 1 == self.n());
+        let mark_follows = last.is_some_and(|m| only_markers(self.p, m.start..m.stop));
+        // Floating objects anchored (`wp:anchor`) after the break with nothing else but the mark
+        // belong to the break's line: they start no line on the next page or column (Word).
+        let anchors_follow = last.is_some_and(|m| only_anchors(self.p, m.start..m.stop));
         // A Word 97-2003 document (`splitPgBreakAndParaMark`, below mode 15) puts the mark on the
         // new page instead: an empty line there with the paragraph's spacing (measured in Word).
         let split = settings.split_pg_break_and_para_mark && settings.compat_mode < 15;
-        if l.end == LineEnd::PageBreak && fit.l1 + 1 == self.n() && mark_follows && !split {
+        if anchors_follow || (l.end == LineEnd::PageBreak && mark_follows && !split) {
             fit.l1 += 1;
             fit.mark_with_break = true;
         }
@@ -676,6 +688,7 @@ impl<'a> Flow<'a> {
             }
             Some(LineEnd::PageBreak) => pb.new_page(block, body_top),
             Some(LineEnd::ColumnBreak) => {
+                self.ended_in_column = mark_with_break;
                 pb.col_break_page = Some(pb.pages.len().saturating_sub(1));
                 pb.advance(block, body_top);
                 self.rewidth_after_column_break(ctx, pb);
@@ -723,6 +736,26 @@ impl<'a> Flow<'a> {
         for oi in self.late.due(self.p, &self.pl, lines) {
             place_late(ctx, pb, self.p, oi, top, &mut self.late);
         }
+    }
+
+    /// The room a top-and-bottom late float placed with this piece takes above its first line,
+    /// when the piece starts after a page or column break (`w:br`): the text after the break
+    /// starts below the object anchored there (Word). `height` is the first line's.
+    fn below_late(&self, pb: &PageBuilder, height: f32) -> f32 {
+        let after_break =
+            self.l0.checked_sub(1).and_then(|k| self.pl.lines.get(k)).is_some_and(|l| matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak));
+        if !after_break || pb.web {
+            return 0.0;
+        }
+        let spot = (pb.pages.len(), pb.col);
+        let top_and_bottom = |oi: usize| self.p.objects.get(oi).and_then(floating).is_some_and(|(_, _, f)| f.wrap == Wrap::TopAndBottom);
+        self.late
+            .placed
+            .iter()
+            .filter_map(|(oi, at)| at.filter(|a| a.spot == spot && !a.drawn && top_and_bottom(*oi)).and_then(|a| a.area))
+            .filter(|r| r.y < pb.y + height && r.bottom() > pb.y)
+            .map(|r| r.bottom() - pb.y)
+            .fold(0.0, f32::max)
     }
 
     /// Late floats placed for lines that went on after all (past `l1`) wait for the next piece;
@@ -778,7 +811,7 @@ impl<'a> Flow<'a> {
         // bottom border, drawn there: the next page starts with the next paragraph (Word,
         // compatibility modes 12 to 15).
         let rp = &self.pl.rp;
-        let (bottom_room, space_after) = if pb.after_break_mark { (0.0, 0.0) } else { (rooms.bottom, rp.space_after) };
+        let (bottom_room, space_after) = if pb.after_break_mark || self.ended_in_column { (0.0, 0.0) } else { (rooms.bottom, rp.space_after) };
         pb.y += bottom_room + space_after;
         pb.prev = Some((rp.style.clone(), rp.contextual_spacing, space_after, rp.after_auto, self.list));
     }
@@ -926,7 +959,7 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
         ctx.fields.page = pb.number;
         // A paragraph's first line may start below its top (pushed down by a floating object).
         let Some(first) = f.pl.lines.get(f.l0) else { break };
-        let lead = if f.l0 == 0 { first.top.max(0.0) + rooms.top } else { 0.0 };
+        let lead = if f.l0 == 0 { first.top.max(0.0) + rooms.top } else { f.below_late(pb, first.height) };
         let notes = para_notes(ctx.doc, p, &f.pl);
         let mut fit = f.fit_lines(ctx, pb, &notes, lead);
         fit.l1 = f.settled_end(pb, &fit);
@@ -963,6 +996,16 @@ fn same_lines(a: &ParaLayout, b: &ParaLayout, k: usize) -> bool {
 fn only_markers(p: &Paragraph, range: std::ops::Range<usize>) -> bool {
     let Some(text) = p.text.get(range.clone()) else { return false };
     text.char_indices().all(|(i, c)| c == wordcraft_doc::para::OBJ && p.object_at(range.start + i).is_some_and(InlineObject::is_marker))
+}
+
+/// Whether `range` of `p`'s text holds the anchor of at least one floating object and otherwise
+/// only zero-width markers: a line that takes no room of its own.
+fn only_anchors(p: &Paragraph, range: std::ops::Range<usize>) -> bool {
+    let Some(text) = p.text.get(range.clone()) else { return false };
+    let object = |i: usize| p.object_at(range.start + i);
+    let floating = |o: &InlineObject| floating(o).is_some();
+    text.char_indices().any(|(i, _)| object(i).is_some_and(floating))
+        && text.char_indices().all(|(i, c)| c == wordcraft_doc::para::OBJ && object(i).is_some_and(|o| o.is_marker() || floating(o)))
 }
 
 /// The outline of the body for an Outline view pass.
@@ -1169,3 +1212,7 @@ fn para_ahead(ctx: &mut Ctx, p: &Paragraph, width: f32, counters: &mut Counters)
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/break_then_float_more.rs"]
+mod break_then_float_more;
