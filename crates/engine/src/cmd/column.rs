@@ -234,6 +234,8 @@ fn copy(s: &mut Session, segs: &[(Pos, Pos)]) -> CmdResult {
     }
     s.clipboard_text = rows.join("\n");
     s.clipboard = Some(Fragment { blocks, parts });
+    // A column block is no single range: no Paste link.
+    s.clipboard_link = None;
     Ok(super::edit::copy_result(s))
 }
 

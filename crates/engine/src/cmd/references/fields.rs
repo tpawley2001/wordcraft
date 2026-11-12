@@ -330,6 +330,9 @@ fn styleref_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
 /// What Word prints for a `REF` to a bookmark the document doesn't have.
 pub const REFERENCE_NOT_FOUND: &str = "Error! Reference source not found.";
 
+/// What Word shows for a `PAGEREF` or `NOTEREF` to a bookmark the document doesn't have.
+pub const BOOKMARK_NOT_DEFINED: &str = "Error! Bookmark not defined.";
+
 /// The fresh results of the body's unlocked REF fields as output shows them: the bookmark's
 /// text, or Word's error when the document lacks the bookmark (measured in Word for Windows);
 /// `\p` ("above" or "below") and the paragraph number switches `\r`, `\n` and `\w` keep the
@@ -534,6 +537,26 @@ fn position_or_note(
     None
 }
 
+/// Word's error text for a REF, PAGEREF or NOTEREF whose bookmark `target` is in no story of the
+/// document (`names`), measured in Word: `None` when the field names no bookmark, when the
+/// bookmark exists, or when a SET field gave the REF's name a value (`set`, `last_set`, keyed by
+/// the lowercased name).
+fn missing_bookmark_error(
+    name: &str,
+    target: &str,
+    names: &std::collections::HashSet<String>,
+    (set, last_set): (&std::collections::HashMap<String, String>, &std::collections::HashMap<String, String>),
+) -> Option<&'static str> {
+    if target.is_empty() || names.contains(target) {
+        return None;
+    }
+    if name != "REF" {
+        return Some(BOOKMARK_NOT_DEFINED);
+    }
+    let key = target.to_lowercase();
+    (!set.contains_key(&key) && !last_set.contains_key(&key)).then_some(REFERENCE_NOT_FOUND)
+}
+
 /// The mark of the footnote or endnote whose reference starts the bookmark at `at` (NOTEREF's
 /// result): its custom mark, or its number as shown.
 fn noteref_mark(doc: &wordcraft_doc::Document, at: &Pos, marks: &std::collections::HashMap<u32, String>) -> Option<String> {
@@ -565,6 +588,9 @@ pub fn update_fields_in(s: &mut Session, all: bool, toc_pages_only: bool) -> Res
     let marks = s.doc.bookmarks();
     // Where each body bookmark starts, for `\p` (above/below) and NOTEREF.
     let bookmark_at = bookmark_starts(&marks);
+    // Every bookmark name in any story, for the error of a reference whose bookmark is gone.
+    let bookmark_names: std::collections::HashSet<String> =
+        marks.iter().map(|(n, _)| n.clone()).chain(part_bookmarks(&s.doc).into_iter().map(|(n, _)| n)).collect();
     let mut note_marks = None;
     for (name, pos) in marks {
         let pos = bookmark_page_pos(&s.doc, &name, pos);
@@ -626,6 +652,12 @@ pub fn update_fields_in(s: &mut Session, all: bool, toc_pages_only: bool) -> Res
                 "REF" | "PAGEREF" | "NOTEREF" => {
                     let f = FieldCode::parse(instr);
                     let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
+                    // A bookmark that is gone gives Word's error text whatever the switches, stored
+                    // as is (no `\*` format applied).
+                    if let Some(err) = missing_bookmark_error(&name, target, &bookmark_names, (&set, &last_set)) {
+                        updates.push((k, err.to_string()));
+                        continue;
+                    }
                     let here = offsets.get(k).map(|off| Pos { story, path: path.clone(), off: *off });
                     let r = if let Some(r) = position_or_note(&s.doc, (&name, instr, target), here, &bookmark_at, &mut note_marks) {
                         r
@@ -652,9 +684,7 @@ pub fn update_fields_in(s: &mut Session, all: bool, toc_pages_only: bool) -> Res
                     } else {
                         None
                     };
-                    if let Some(r) = r {
-                        updates.push((k, if name == "PAGEREF" { r } else { text_result(instr, r) }));
-                    }
+                    updates.extend(r.map(|r| (k, if name == "PAGEREF" { r } else { text_result(instr, r) })));
                 }
                 // A value given a name (the layout draws nothing for it; its result stays).
                 "SET" => {

@@ -161,3 +161,78 @@ fn ok_applies_table_settings_and_alt_text_as_one_undo_step() {
     assert_ne!(p.align, Some(Align::Center), "one Undo takes the alignment back");
     assert_eq!(p.caption, None, "and the alt text title with it");
 }
+
+/// The caret cell's properties.
+fn caret_cell(app: &WordApp) -> wordcraft_doc::props::CellProps {
+    let (tp, r, c) = app.session.sel.focus.path.cell().expect("the caret is in a table");
+    app.session.doc.table(app.session.sel.focus.story, &tp).expect("a table").rows[r].cells[c].props.clone()
+}
+
+#[test]
+fn a_plain_cell_opens_with_the_tables_margins_and_wrap_text() {
+    let mut a = app_with_table();
+    let (form, basis) = open(&mut a);
+    assert!(form.cell_margins_same, "Same as the whole table is ticked");
+    assert!(form.wrap_text, "Wrap text is ticked");
+    assert_eq!(form.cell_margins, form.table_margins, "the boxes show the table's margins");
+    assert_eq!(form.changes(&basis), json!({}));
+}
+
+#[test]
+fn a_cells_own_margins_are_set_and_shown_again() {
+    let mut a = app_with_table();
+    let (form, basis) = open(&mut a);
+    let k = crate::options::unit().pt_per_unit();
+    let d = form.table_margins.map(|m| m * k);
+    let mut f = form.clone();
+    f.cell_margins_same = false;
+    f.cell_margins[1] = 14.4 / k;
+    assert_eq!(f.changes(&basis), json!({"cellMargins": {"top": d[0], "left": f.cell_margins[1] * k, "bottom": d[2], "right": d[3]}}));
+    apply(&mut a, f.commands(&basis));
+    let m = caret_cell(&a).margins.expect("the cell has margins of its own");
+    assert!((m[1] - 14.4).abs() < 1e-3 && m[0] == d[0] && m[2] == d[2] && m[3] == d[3], "{m:?}");
+
+    let (again, basis) = open(&mut a);
+    assert!(!again.cell_margins_same, "Same as the whole table is unticked");
+    assert!((again.cell_margins[1] * k - 14.4).abs() < 1e-3, "Left shows 0.2 in, got {}", again.cell_margins[1]);
+    assert_eq!(again.changes(&basis), json!({}));
+
+    // Ticked again: back to the table's margins.
+    let mut f = again.clone();
+    f.cell_margins_same = true;
+    assert_eq!(f.changes(&basis), json!({"cellMargins": null}));
+    apply(&mut a, f.commands(&basis));
+    assert_eq!(caret_cell(&a).margins, None);
+}
+
+#[test]
+fn wrap_text_off_is_sent_and_shown_again() {
+    let mut a = app_with_table();
+    let (form, basis) = open(&mut a);
+    let mut f = form.clone();
+    f.wrap_text = false;
+    assert_eq!(f.changes(&basis), json!({"wrapText": false}));
+    apply(&mut a, f.commands(&basis));
+    assert!(caret_cell(&a).no_wrap);
+    let (again, basis) = open(&mut a);
+    assert!(!again.wrap_text, "reopened, Wrap text is unticked");
+    assert_eq!(again.changes(&basis), json!({}));
+}
+
+#[test]
+fn cell_options_and_vertical_alignment_are_one_undo_step() {
+    let mut a = app_with_table();
+    let (form, basis) = open(&mut a);
+    let mut f = form.clone();
+    f.cell_margins_same = false;
+    f.cell_margins[0] = 0.1;
+    f.wrap_text = false;
+    f.valign = "bottom".into();
+    super::page_setup::run_as_one_step(&mut a, f.commands(&basis)).unwrap();
+    let p = caret_cell(&a);
+    assert!(p.margins.is_some() && p.no_wrap && p.valign == Some(wordcraft_doc::props::VAlign::Bottom));
+
+    a.run("edit.undo", json!({})).unwrap();
+    let p = caret_cell(&a);
+    assert_eq!((p.margins, p.no_wrap, p.valign == Some(wordcraft_doc::props::VAlign::Bottom)), (None, false, false), "one Undo takes all three back");
+}

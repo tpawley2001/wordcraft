@@ -89,6 +89,7 @@ impl Session {
             // Whether the document was opened read-only: session state, not an edit.
             read_only: _,
             clipboard: _,
+            clipboard_link: _,
             // Like the clipboard: what the next paste can make a move of.
             pending_move: _,
             clipboard_text: _,

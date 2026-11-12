@@ -260,6 +260,7 @@ impl Session {
             composed_at: _,
             user_dict_path: _,
             clipboard: _,
+            clipboard_link: _,
             clipboard_text: _,
             clipboard_html: _,
             clipboard_rtf: _,
@@ -441,6 +442,15 @@ impl Session {
     /// Whether document `id` is open in this session (active or not).
     pub fn is_open(&self, id: u64) -> bool {
         id == self.document_id || self.others.iter().any(|d| d.document_id == id)
+    }
+
+    /// The open document `id` and the file it is saved in, if any: the active document or a
+    /// background one.
+    pub fn open_document(&self, id: u64) -> Option<(&Document, Option<&FsPath>)> {
+        if id == self.document_id {
+            return Some((&self.doc, self.path.as_deref()));
+        }
+        self.others.iter().find(|d| d.document_id == id).map(|d| (&d.doc, d.path.as_deref()))
     }
 
     /// Whether the open document `id` has changes that aren't written to a file yet: the

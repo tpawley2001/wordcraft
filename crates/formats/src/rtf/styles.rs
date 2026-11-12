@@ -437,13 +437,9 @@ impl Reader {
     }
 
     fn para_kind(&self, st: &St) -> Kind {
-        if let Some(k) = self.style_kind(st) {
-            return k;
-        }
-        if let Some(o) = st.outline.filter(|o| *o < 9) {
-            return Kind::Heading((o + 1).min(6));
-        }
-        Kind::Normal
+        // Only a style's name makes a heading: an outline level alone keeps the paragraph's own
+        // style and formatting (as Word reads `\outlinelevelN`).
+        self.style_kind(st).unwrap_or(Kind::Normal)
     }
 
     /// The paragraph formatting of `st` (kind, alignment, page break, spacing, borders, list).
@@ -498,6 +494,12 @@ impl Reader {
         }
         if let Some(c) = self.para_shading(st) {
             p.extra.get_or_insert_with(Default::default).shading = Some(c);
+        }
+        // An outline level apart from a heading style, the paragraph's own.
+        if !matches!(p.kind, Kind::Heading(_))
+            && let Some(o) = st.outline.filter(|o| *o < 9)
+        {
+            p.extra.get_or_insert_with(Default::default).outline_level = Some(o);
         }
         p
     }
@@ -757,6 +759,8 @@ pub(super) fn is_format_word(w: &str) -> bool {
             | "cf"
             | "highlight"
             | "chcbpat"
+            | "chbrdr"
+            | "brsp"
             | "cb"
             | "v"
             | "pard"
@@ -814,9 +818,12 @@ pub(super) fn is_char_format_word(w: &str) -> bool {
             | "cf"
             | "highlight"
             | "chcbpat"
+            | "chbrdr"
+            | "brsp"
             | "cb"
             | "v"
     ) || (w.starts_with("ul") && w.len() <= 8)
+        || w.starts_with("brdr")
 }
 
 /// The spacing and indents in points of the paragraph formatting `st`.

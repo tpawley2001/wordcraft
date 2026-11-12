@@ -5,6 +5,7 @@ use super::{
     Align, Arc, Block, Blocks, Document, FBlock, FTable, Fmt, HashMap, HashSet, Inline, InlineObject, Kind, Meta, Para, Paragraph, RevMark, Rgb,
     VAlign, model,
 };
+use wordcraft_doc::props::EmphasisMark;
 
 // ---------------------------------------------------------------------------------------------
 // Export
@@ -816,6 +817,15 @@ fn underline_word(f: &Fmt) -> Option<&'static str> {
     })
 }
 
+/// The highlight colour (`\highlight`) and the character shading (`\chcbpat`) of `f`: with a
+/// highlight its background is the highlight colour, and the shading under it is kept apart.
+fn highlight_and_shading(f: &Fmt) -> (Option<Rgb>, Option<Rgb>) {
+    match f.extra.as_deref().and_then(|x| x.highlight.and_then(|h| h.rgb()).map(|c| (c, x.shading))) {
+        Some((c, shading)) => (Some(c), shading),
+        None => (None, f.background),
+    }
+}
+
 /// The underline colour of `f` (`\ulc`).
 fn underline_color(f: &Fmt) -> Option<Rgb> {
     f.extra.as_ref().and_then(|x| x.underline_color)
@@ -1008,7 +1018,14 @@ impl Writer {
             Some(l) => {
                 // In a field's quotes `\\` is one backslash; a quote is stored as `%22`.
                 let target = l.replace('\\', "\\\\").replace('"', "%22");
-                out.push_str(&format!("{{\\field{{\\*\\fldinst{{HYPERLINK \"{}\"}}}}{{\\fldrslt{{{}}}}}}}", esc(&target), body));
+                // A ScreenTip is the `\o` switch; in its quotes a backslash escapes the next
+                // character, and the RTF escaping keeps it text.
+                let tip = f
+                    .link_tip
+                    .as_deref()
+                    .filter(|t| !t.is_empty())
+                    .map_or_else(String::new, |t| format!(" \\\\o \"{}\"", esc(&t.replace('\\', "\\\\").replace('"', "\\\""))));
+                out.push_str(&format!("{{\\field{{\\*\\fldinst{{HYPERLINK \"{}\"{}}}}}{{\\fldrslt{{{}}}}}}}", esc(&target), tip, body));
             }
             None => out.push_str(&body),
         }
@@ -1067,9 +1084,23 @@ impl Writer {
             let i = old_color.map_or(0, |c| self.t.color(c));
             ctl.push_str(&format!("\\cf{i}"));
         }
-        if old.background != cur.background {
-            let i = old.background.map_or(0, |c| self.t.color(c));
+        let (old_hl, old_shd) = highlight_and_shading(old);
+        let (cur_hl, cur_shd) = highlight_and_shading(cur);
+        if old_hl != cur_hl {
+            let i = old_hl.map_or(0, |c| self.t.color(c));
+            ctl.push_str(&format!("\\highlight{i}"));
+        }
+        if old_shd != cur_shd {
+            let i = old_shd.map_or(0, |c| self.t.color(c));
             ctl.push_str(&format!("\\chcbpat{i}"));
+        }
+        let border = |f: &Fmt| f.extra.as_ref().and_then(|x| x.border).filter(|b| b.is_visible());
+        let old_border = border(old);
+        if old_border != border(cur) {
+            match old_border {
+                Some(b) => border_words("chbrd", 'r', b, true, &mut self.t, &mut ctl),
+                None => ctl.push_str("\\chbrdr\\brdrnone"),
+            }
         }
         if old.hidden != cur.hidden {
             ctl.push_str(if old.hidden { "\\v" } else { "\\v0" });
@@ -1123,7 +1154,12 @@ impl Writer {
             let i = self.t.color(c);
             ctl.push_str(&format!("\\cf{i}"));
         }
-        if let Some(c) = f.background {
+        let (highlight, shading) = highlight_and_shading(f);
+        if let Some(c) = highlight {
+            let i = self.t.color(c);
+            ctl.push_str(&format!("\\highlight{i}"));
+        }
+        if let Some(c) = shading {
             let i = self.t.color(c);
             ctl.push_str(&format!("\\chcbpat{i}"));
         }
@@ -1141,6 +1177,7 @@ impl Writer {
                 (x.emboss, "\\embo"),
                 (x.engrave, "\\impr"),
                 (x.double_strike, "\\striked1"),
+                (x.no_proof, "\\noproof"),
             ];
             for (v, w) in effects {
                 if v == Some(true) {
@@ -1153,6 +1190,18 @@ impl Writer {
             }
             if let Some(k) = x.kern.filter(|v| v.is_finite() && *v > 0.0).map(|v| (v * 2.0).round().clamp(1.0, 3276.0) as i32) {
                 ctl.push_str(&format!("\\kerning{k}"));
+            }
+            let mark = match x.emphasis {
+                Some(EmphasisMark::Dot) => "\\accdot",
+                Some(EmphasisMark::Comma) => "\\acccomma",
+                Some(EmphasisMark::Circle) => "\\acccircle",
+                Some(EmphasisMark::UnderDot) => "\\accunderdot",
+                Some(EmphasisMark::None) | None => "",
+            };
+            ctl.push_str(mark);
+            // The border around the text (Borders and Shading, Apply to: Text).
+            if let Some(b) = x.border.filter(|b| b.is_visible()) {
+                border_words("chbrd", 'r', b, true, &mut self.t, &mut ctl);
             }
         }
         if let Some(w) = position_word(f) {
@@ -1375,6 +1424,9 @@ impl Writer {
         }
         if let Kind::Heading(n) = p.kind {
             out.push_str(&format!("\\outlinelevel{}", n.clamp(1, 6) - 1));
+        } else if let Some(l) = p.extra.as_ref().and_then(|x| x.outline_level).filter(|l| *l < 9) {
+            // An outline level apart from a heading style: the paragraph keeps its own style.
+            out.push_str(&format!("\\outlinelevel{l}"));
         }
         match p.align {
             Some(Align::Center) => out.push_str("\\qc"),
@@ -1562,7 +1614,17 @@ impl Writer {
             Some(Align::Center | Align::Right) => 0,
             _ => extra.and_then(|x| x.indent).filter(|i| i.is_finite()).map_or(0, |i| ((i * 20.0).round() as i64).clamp(-31_680, 31_680)),
         };
-        out.push_str(&format!("\\trgaph108\\trleft{left}"));
+        // Its default cell padding: the gap is the left padding, each side stated in twips.
+        let pad = extra.and_then(|x| x.cell_margins).filter(|m| m.iter().all(|v| v.is_finite()));
+        match pad {
+            Some(m) => {
+                let [t, l, b, r] = m.map(|v| ((v * 20.0).round() as i64).clamp(0, 31_680));
+                out.push_str(&format!(
+                    "\\trgaph{l}\\trleft{left}\\trpaddl{l}\\trpaddt{t}\\trpaddb{b}\\trpaddr{r}\\trpaddfl3\\trpaddft3\\trpaddfb3\\trpaddfr3"
+                ));
+            }
+            None => out.push_str(&format!("\\trgaph108\\trleft{left}")),
+        }
         // The table's style and its look.
         if let Some(n) = extra.and_then(|x| x.style.as_deref()).and_then(own_style_num) {
             out.push_str(&format!("\\ts{n}"));
@@ -1613,6 +1675,17 @@ impl Writer {
                 Some(VAlign::Center) => out.push_str("\\clvertalc"),
                 Some(VAlign::Bottom) => out.push_str("\\clvertalb"),
                 None => {}
+            }
+            // The padding sides the cell sets itself; Word writes the top as `\clpadl` and the
+            // left as `\clpadt`.
+            for (side, v) in ["l", "t", "b", "r"].iter().zip(c.own_margins) {
+                if let Some(v) = v.filter(|v| v.is_finite()) {
+                    let tw = (v * 20.0).round().clamp(0.0, 31_680.0) as i32;
+                    out.push_str(&format!("\\clpad{side}{tw}\\clpadf{side}3"));
+                }
+            }
+            if c.no_wrap {
+                out.push_str("\\clNoWrap");
             }
             match c.direction {
                 wordcraft_doc::props::TextDirection::Down => out.push_str("\\cltxtbrl"),
@@ -1785,6 +1858,9 @@ fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
 
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
+    // A drop cap is written as Word stores it: its letter in a paragraph of its own.
+    let split = super::frames::split_drop_caps(doc);
+    let doc = split.as_ref().unwrap_or(doc);
     let (marked, marks) = match mark_doc(doc) {
         Some((d, m)) => (Some(d), m),
         None => (None, Vec::new()),
@@ -1806,7 +1882,7 @@ pub fn export(doc: &Document) -> String {
     let before = set_own_styles(own);
     let ranged_before = set_ranged(HashSet::new());
     // An empty paragraph's mark formatting sets its height.
-    let opts = model::FlowOpts { marks: true, ..model::FlowOpts::tracked() };
+    let opts = model::FlowOpts { marks: true, outline_apart: true, ..model::FlowOpts::tracked() };
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
@@ -1830,6 +1906,13 @@ pub fn export(doc: &Document) -> String {
             let mut s = s.clone();
             if sect_end && s.no_endnote != Some(true) {
                 s.no_endnote = Some(false);
+            }
+            // The same for the formatting before a tracked change (`{\*\oldsprops …}`).
+            if sect_end
+                && let Some(c) = s.fmt_change.as_deref_mut()
+                && c.old.no_endnote != Some(true)
+            {
+                c.old.no_endnote = Some(false);
             }
             s
         })
@@ -1901,6 +1984,9 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     out.push_str("{\\s7\\sbasedon0\\snext0\\fs56 Title;}{\\s8\\sbasedon0\\snext0\\li720\\ri720\\i Quote;}{\\s9\\sbasedon0\\snext9\\sa0\\fs20 Code;}");
     out.push_str(own_styles);
     out.push_str("}\n");
+    if let Some(xml) = doc.styles.latent_styles.as_deref() {
+        out.push_str(&super::latent_styles::group(xml));
+    }
     if !w.lists.is_empty() {
         out.push_str("{\\*\\listtable");
         for (i, kinds) in w.lists.iter().enumerate() {
@@ -1935,6 +2021,7 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
             out.push_str(&format!("{{\\{k} {}}}", esc(v)));
         }
     }
+    out.push_str(&app_kept_info(doc));
     if core.revision > 0 {
         out.push_str(&format!("{{\\version{}}}", core.revision));
     }
@@ -1996,4 +2083,26 @@ fn pict_goal(img: &model::Img) -> String {
         }
     }
     s
+}
+
+/// Manager, Company and Hyperlink base from the kept extended properties (`wordcraft:app.kept`,
+/// `name\tvalue` lines, as the DOCX reader stores `docProps/app.xml`) as `{\manager …}`,
+/// `{\company …}` and `{\hlinkbase …}` (RTF 1.9.1, information group). Remove personal
+/// information leaves out Manager and Company, as the DOCX writer does.
+fn app_kept_info(doc: &Document) -> String {
+    let mut out = String::new();
+    let Some(kept) = doc.passthrough.get(wordcraft_doc::APP_KEPT) else { return out };
+    for line in String::from_utf8_lossy(kept).lines().take(64) {
+        let Some((name, value)) = line.split_once('\t') else { continue };
+        let word = match name {
+            "Manager" if !doc.settings.remove_personal_info => "manager",
+            "Company" if !doc.settings.remove_personal_info => "company",
+            "HyperlinkBase" => "hlinkbase",
+            _ => continue,
+        };
+        if !value.is_empty() {
+            out.push_str(&format!("{{\\{word} {}}}", esc(value)));
+        }
+    }
+    out
 }
