@@ -1865,6 +1865,7 @@ mod para_outline_borders;
 mod para_shading;
 mod para_spacing_hidden;
 mod picture_crop;
+mod script_fonts;
 mod section_extras;
 mod section_revisions;
 mod section_text_flow;
