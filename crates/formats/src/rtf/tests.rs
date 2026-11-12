@@ -1852,6 +1852,7 @@ mod html_auto_spacing;
 mod info_company;
 mod info_props;
 mod justification_flag;
+mod latent_styles;
 mod legacy_pn;
 mod link_screen_tip;
 mod mark_and_default_font;

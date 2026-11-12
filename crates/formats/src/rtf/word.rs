@@ -441,6 +441,11 @@ impl Reader {
             "propname" if self.st.dest == Dest::UserProps => Some(Dest::Info(8)),
             "staticval" if self.st.dest == Dest::UserProps => Some(Dest::Info(9)),
             "linkval" if self.st.dest == Dest::UserProps => Some(Dest::Info(10)),
+            "latentstyles" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => {
+                self.latent.begin();
+                Some(Dest::LatentStyles)
+            }
+            "lsdlockedexcept" if self.st.dest == Dest::LatentStyles => Some(Dest::LsdExcept),
             "listtable" => Some(Dest::ListTable),
             "revtbl" => Some(Dest::RevTbl),
             "oldcprops" => Some(Dest::OldProps(false)),
@@ -571,6 +576,7 @@ impl Reader {
                 self.record_date_part(word, value);
                 true
             }
+            Dest::LatentStyles | Dest::LsdExcept => self.latent_word(word, param),
             Dest::UserProps => {
                 if word == "proptype" {
                     self.info_more.set_prop_type(value);

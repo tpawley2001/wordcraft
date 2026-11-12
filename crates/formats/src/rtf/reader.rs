@@ -157,6 +157,8 @@ pub(super) struct Reader {
     pub(super) in_date: Option<(usize, usize)>,
     /// The information group's fields the flow model has no place for, and `{\*\userprops …}`.
     pub(super) info_more: super::state::InfoMore,
+    /// The latent-style table (`{\*\latentstyles …}`).
+    pub(super) latent: super::latent_styles::Latent,
     pub(super) rule_pending: bool,
     pub(super) info_depth: Option<usize>,
     // Notes and comments (only when the caller wants them).
@@ -639,6 +641,8 @@ impl Reader {
                 }
             }
             Dest::UserProps => self.info_more.commit_user_prop(),
+            Dest::LatentStyles => self.latent.end(),
+            Dest::LsdExcept => self.latent.end_exceptions(),
             Dest::Atn(k) => self.commit_atn(k),
             _ => {}
         }
