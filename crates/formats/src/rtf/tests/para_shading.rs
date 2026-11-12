@@ -35,9 +35,10 @@ fn background_pattern_colour_is_the_paragraph_shading() {
 }
 
 #[test]
-fn solid_shading_shows_the_pattern_colour_other_percentages_the_background() {
+fn solid_shading_shows_the_pattern_colour_other_percentages_the_blend() {
     let d = open(r"\pard\cfpat2\cbpat1\shading10000 solid\par\pard\cfpat2\cbpat1\shading2500 quarter\par\pard\cfpat2\shading10000 solid only\par");
-    assert_eq!(shading(&d), [Some(BLUE), Some(RED), Some(BLUE)]);
+    // 25 % blue over red, as Word paints it.
+    assert_eq!(shading(&d), [Some(BLUE), Some(Rgb(191, 0, 64)), Some(BLUE)]);
 }
 
 #[test]

@@ -33,6 +33,20 @@ fn body_styleref_finds_the_heading_before_it() {
     assert_eq!(results, ["below", wordcraft_layout::styleref::not_defined("No Such Style").as_str(), "Chapter One", "above"]);
 }
 
+/// Body STYLEREF fields take `\* Upper`, but an error message keeps its capitalization, as in Word.
+#[test]
+fn body_styleref_error_keeps_its_capitalization() {
+    let mut s = Session::new(wordcraft_doc::Document::from_text("Chapter One\ntext here"));
+    s.run("select.text", &json!({"text": "Chapter One"})).unwrap();
+    s.run("styles.apply", &json!({"style": "Heading 1"})).unwrap();
+    s.run("caret.docEnd", &json!({})).unwrap();
+    s.run("insert.field", &json!({"instr": r#"STYLEREF "No Such Style" \* Upper"#})).unwrap();
+    s.run("insert.field", &json!({"instr": r#"STYLEREF "Heading 1" \* Upper"#})).unwrap();
+    s.run("references.updateFields", &json!({})).unwrap();
+    let results: Vec<String> = fields(&s).into_iter().map(|f| f.1).collect();
+    assert_eq!(results, [wordcraft_layout::styleref::not_defined("No Such Style").as_str(), "CHAPTER ONE"]);
+}
+
 /// #775: a template's running header `STYLEREF "heading 1"` (a complex field, opened from
 /// DOCX) shows each page's chapter, and keeps its code through a save.
 #[test]

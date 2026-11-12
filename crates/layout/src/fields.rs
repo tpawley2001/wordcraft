@@ -326,7 +326,7 @@ pub fn field_text_on(instr: &str, result: &str, ctx: &FieldCtx, page: u32) -> (S
         // ASK and SET only assign text to a bookmark: they never show a result (ECMA-376 §17.16.5).
         "ASK" | "SET" => (String::new(), false),
         "STYLEREF" => match &ctx.styleref {
-            Some((ix, at)) => (apply_case_switch(instr, ix.eval(instr, *at)), true),
+            Some((ix, at)) => (ix.eval(instr, *at), true),
             None => (result.to_string(), false),
         },
         _ => (result.to_string(), false),
