@@ -291,7 +291,23 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     }
     doc.styles = Arc::new(styles);
     doc.numbering = Arc::new(list::parse(&table, &fib, &fonts));
-    let sheet: StyleSheet = StyleSheet::clone(&doc.styles);
+    // The walk's copy of the styles, each with its resolved character formatting (its chain
+    // overlaid, root first): a style keeps only its own, but runs' toggle operands (0x80, 0x81)
+    // invert or keep the value the paragraph style ends up with, inherited or not.
+    let mut sheet: StyleSheet = StyleSheet::clone(&doc.styles);
+    let resolved: Vec<CharProps> = sheet
+        .styles
+        .iter()
+        .map(|s| {
+            sheet.chain(&s.id).into_iter().fold(CharProps::default(), |mut c, st| {
+                c.overlay(&st.chr);
+                c
+            })
+        })
+        .collect();
+    for (style, chr) in sheet.styles.iter_mut().zip(resolved) {
+        style.chr = chr;
+    }
     let sects = sections::parse(&word, &table, &fib);
     let stories = sections::header_stories(&table, &fib);
     // Subdocument layout in the CP space: main document, footnotes, headers, comments,

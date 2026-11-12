@@ -1,5 +1,5 @@
 use super::reader::apply_section_word;
-use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pn, PnKind, RevSt, SecFmt, St};
+use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pattern, Pn, PnKind, RevSt, SecFmt, St};
 use super::styles::{StyleDef, StyleEntry, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
 use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline};
@@ -90,10 +90,14 @@ impl Reader {
             }
             "uc" => self.st.uc = pv.max(0) as usize,
             "plain" => {
-                self.st.fmt = Fmt { link: self.st.fmt.link.clone(), ..Default::default() };
+                self.st.fmt = Fmt { link: self.st.fmt.link.clone(), link_tip: self.st.fmt.link_tip.clone(), ..Default::default() };
                 self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
+                self.st.ch_pattern = Pattern::default();
+                if self.st.border_side == Some('c') {
+                    self.st.border_side = None;
+                }
             }
             "pard" => {
                 let field = self.st.field;
@@ -175,7 +179,14 @@ impl Reader {
                 }
             }
             "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
-            "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            // A character border: the border words that follow describe it, until another side
+            // starts, the group ends or `\plain`.
+            "chbrdr" => {
+                self.page_side = None;
+                self.cell_side = None;
+                self.st.border_side = Some('c');
+            }
+            "chcbpat" | "cb" | "chcfpat" | "chshdng" | "clcbpat" | "clcfpat" | "clshdng" => self.pattern_word(w, pv),
             "highlight" => self.highlight(pv),
             // Hidden text: kept, as hidden text.
             "v" => self.st.fmt.hidden = on,
@@ -194,6 +205,8 @@ impl Reader {
             "noline" => self.st.noline = on,
             "widctlpar" => self.st.widow = Some(true),
             "nowidctlpar" => self.st.widow = Some(false),
+            "aspalpha" => self.st.asp_alpha = on,
+            "aspnum" => self.st.asp_num = on,
             "contextualspace" => self.st.contextual = Some(true),
             "mirrorindents" => self.st.mirror = Some(true),
             "sbauto" => self.st.sb_auto = Some(on),
@@ -246,7 +259,16 @@ impl Reader {
             "cltxlrtb" | "cltxlrtbv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Horizontal,
             "cltxtbrl" | "cltxtbrlv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Down,
             "cltxbtlr" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Up,
-            "clcbpat" => self.def_cur.shading = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            // A cell's own padding: Word reads `\clpadl` as the top and `\clpadt` as the left.
+            "clpadl" => self.def_cur.pad[0] = Some(pv),
+            "clpadt" => self.def_cur.pad[1] = Some(pv),
+            "clpadb" => self.def_cur.pad[2] = Some(pv),
+            "clpadr" => self.def_cur.pad[3] = Some(pv),
+            "clpadfl" => self.def_cur.pad_unit[0] = Some(pv),
+            "clpadft" => self.def_cur.pad_unit[1] = Some(pv),
+            "clpadfb" => self.def_cur.pad_unit[2] = Some(pv),
+            "clpadfr" => self.def_cur.pad_unit[3] = Some(pv),
+            "clNoWrap" => self.def_cur.no_wrap = true,
             "sb" => self.st.sb = Some(pv),
             "sa" => self.st.sa = Some(pv),
             "sl" => self.st.sl = pv,
@@ -323,9 +345,14 @@ impl Reader {
             "field" => self.start_field(),
             "fldlock" => self.lock_field(),
             "fldrslt" => {
-                let link = self.st.field.and_then(|i| self.fields.get(i)).and_then(|s| hyperlink(s));
+                let instr = self.st.field.and_then(|i| self.fields.get(i));
+                let link = instr.and_then(|s| hyperlink(s));
                 if link.is_some() {
                     self.st.fmt.link = link.as_deref().and_then(model::kept_link);
+                    // The ScreenTip (`\o "text"`) goes with a kept link only; the result group's
+                    // end restores the formatting before it, so it never outlives its field.
+                    self.st.fmt.link_tip =
+                        self.st.fmt.link.as_ref().and(instr).and_then(|s| wordcraft_doc::link::hyperlink_tip(s)).map(std::sync::Arc::from);
                 } else if self.field_inline()
                     && let Some(instr) = self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty())
                 {
@@ -416,6 +443,11 @@ impl Reader {
             "propname" if self.st.dest == Dest::UserProps => Some(Dest::Info(8)),
             "staticval" if self.st.dest == Dest::UserProps => Some(Dest::Info(9)),
             "linkval" if self.st.dest == Dest::UserProps => Some(Dest::Info(10)),
+            "latentstyles" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => {
+                self.latent.begin();
+                Some(Dest::LatentStyles)
+            }
+            "lsdlockedexcept" if self.st.dest == Dest::LatentStyles => Some(Dest::LsdExcept),
             "listtable" => Some(Dest::ListTable),
             "revtbl" => Some(Dest::RevTbl),
             "oldcprops" => Some(Dest::OldProps(false)),
@@ -546,6 +578,7 @@ impl Reader {
                 self.record_date_part(word, value);
                 true
             }
+            Dest::LatentStyles | Dest::LsdExcept => self.latent_word(word, param),
             Dest::UserProps => {
                 if word == "proptype" {
                     self.info_more.set_prop_type(value);
@@ -899,6 +932,26 @@ impl Reader {
         true
     }
 
+    /// A character (`\chcbpat`/`\cb`, `\chcfpat`, `\chshdng`) or cell (`\clcbpat`, `\clcfpat`,
+    /// `\clshdng`) shading word: kept on its pattern, and the shading resolved again, so the
+    /// words may come in any order.
+    fn pattern_word(&mut self, w: &str, pv: i32) {
+        let c = self.colors.get(pv.max(0) as usize).copied().flatten();
+        let cell = w.starts_with("cl");
+        let pat = if cell { &mut self.def_cur.pattern } else { &mut self.st.ch_pattern };
+        match w {
+            "chcfpat" | "clcfpat" => pat.ink = c,
+            "chshdng" | "clshdng" => pat.pct = pv,
+            _ => pat.fill = c,
+        }
+        let colour = pat.colour();
+        if cell {
+            self.def_cur.shading = colour;
+        } else {
+            self.st.fmt.background = colour;
+        }
+    }
+
     /// `\highlightN`: colour entry `n` as the text's highlight when it is one of the highlight
     /// colours; any other colour stays character shading, and none (0, auto, missing) clears both.
     fn highlight(&mut self, n: i32) {
@@ -945,7 +998,7 @@ impl Reader {
     }
 
     /// Changes the run's character properties beyond the [`Fmt`] fields; none left is `None`.
-    fn set_extra(&mut self, f: impl FnOnce(&mut CharProps)) {
+    pub(super) fn set_extra(&mut self, f: impl FnOnce(&mut CharProps)) {
         let x = self.st.fmt.extra.get_or_insert_with(Default::default);
         f(x);
         if **x == CharProps::default() {
@@ -1043,5 +1096,46 @@ mod object_result_tests {
             })
             .collect();
         assert_eq!(text, "BeforevisibleAfter");
+    }
+}
+
+#[cfg(test)]
+mod link_tip_tests {
+    use super::super::{export, import};
+    use wordcraft_doc::Document;
+
+    /// The (text, link, ScreenTip) of each run in the first paragraph.
+    fn runs(d: &Document) -> Vec<(String, Option<String>, Option<String>)> {
+        let p = d.body.iter().find_map(|b| b.as_para()).expect("a paragraph");
+        p.run_ranges().map(|(r, c)| (p.text[r].to_string(), c.link.clone(), c.link_tip.as_deref().map(str::to_string))).collect()
+    }
+
+    #[test]
+    fn a_screen_tip_in_other_scripts_round_trips() {
+        // The two CJK characters as `\uN?` escapes, N = 26085 and 26412.
+        let cjk: String = [26085u32, 26412].iter().map(|n| format!("\\u{n}?")).collect();
+        let rtf = format!(
+            r#"{{\rtf1\ansi\uc1{{\field{{\*\fldinst{{HYPERLINK "http://example.com" \\o "Say \\"hi\\" a\{{b\}}\\\\c \u233? {cjk}"}}}}{{\fldrslt{{link}}}}}}\par}}"#
+        );
+        let want = "Say \"hi\" a{b}\\c \u{e9} \u{65e5}\u{672c}";
+        let d = import(rtf.as_bytes()).unwrap();
+        assert_eq!(runs(&d)[0].2.as_deref(), Some(want));
+        let out = export(&d);
+        assert!(out.contains(r#"\\o "Say \\"hi\\" a\{b\}\\\\c "#), "{out}");
+        assert_eq!(runs(&import(out.as_bytes()).unwrap())[0].2.as_deref(), Some(want));
+    }
+
+    #[test]
+    fn plain_inside_the_result_keeps_the_screen_tip() {
+        let rtf = br#"{\rtf1\ansi{\field{\*\fldinst{HYPERLINK "http://example.com" \\o "tip"}}{\fldrslt{\plain link}}}\par}"#;
+        let d = import(rtf).unwrap();
+        assert_eq!(runs(&d)[0], ("link".into(), Some("http://example.com".into()), Some("tip".into())));
+    }
+
+    #[test]
+    fn a_link_written_as_plain_text_has_no_screen_tip() {
+        let rtf = br#"{\rtf1\ansi{\field{\*\fldinst{HYPERLINK "javascript:alert(1)" \\o "tip"}}{\fldrslt{link}}}\par}"#;
+        let out = export(&import(rtf).unwrap());
+        assert!(!out.contains("HYPERLINK") && !out.contains("tip"), "{out}");
     }
 }

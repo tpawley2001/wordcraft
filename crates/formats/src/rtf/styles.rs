@@ -1,5 +1,5 @@
 use super::export::HEAD_SIZES;
-use super::state::{Pn, PnKind, St};
+use super::state::{Pn, PnKind, St, pattern_shading};
 use super::{Align, Fmt, Kind, ListInfo, Para, Reader, model};
 use model::Label;
 use std::collections::{HashMap, HashSet};
@@ -468,6 +468,11 @@ impl Reader {
             x.keep_lines = st.keep.then_some(true);
             x.suppress_line_numbers = st.noline.then_some(true);
         }
+        if !st.asp_alpha || !st.asp_num {
+            let x = p.extra.get_or_insert_with(Default::default);
+            x.auto_space_de = (!st.asp_alpha).then_some(false);
+            x.auto_space_dn = (!st.asp_num).then_some(false);
+        }
         let flags = [st.contextual, st.mirror, st.sb_auto, st.sa_auto, st.no_hyph, st.snap_grid];
         if flags.iter().any(Option::is_some) {
             let x = p.extra.get_or_insert_with(Default::default);
@@ -504,16 +509,11 @@ impl Reader {
         p
     }
 
-    /// The paragraph's shading colour (`\cbpat`, `\cfpat`, `\shading`): the background colour,
-    /// or the pattern colour when the pattern is solid (100%); `None` for auto or an unknown entry.
+    /// The paragraph's shading colour (`\cbpat`, `\cfpat`, `\shading`): the colour the pattern
+    /// averages to (see [`pattern_shading`]); `None` for no pattern over an automatic background.
     fn para_shading(&self, st: &St) -> Option<wordcraft_doc::props::Rgb> {
         let color = |i: Option<i32>| i.and_then(|i| usize::try_from(i).ok()).and_then(|i| self.colors.get(i).copied().flatten());
-        if st.shading >= 10000
-            && let Some(c) = color(st.cfpat)
-        {
-            return Some(c);
-        }
-        color(st.cbpat)
+        pattern_shading(st.shading, color(st.cfpat), color(st.cbpat))
     }
 
     /// A Word 6.0/95 `{\*\pn …}` group as the paragraph's list level. A continuation has the
@@ -759,6 +759,10 @@ pub(super) fn is_format_word(w: &str) -> bool {
             | "cf"
             | "highlight"
             | "chcbpat"
+            | "chcfpat"
+            | "chshdng"
+            | "chbrdr"
+            | "brsp"
             | "cb"
             | "v"
             | "pard"
@@ -816,9 +820,14 @@ pub(super) fn is_char_format_word(w: &str) -> bool {
             | "cf"
             | "highlight"
             | "chcbpat"
+            | "chcfpat"
+            | "chshdng"
+            | "chbrdr"
+            | "brsp"
             | "cb"
             | "v"
     ) || (w.starts_with("ul") && w.len() <= 8)
+        || w.starts_with("brdr")
 }
 
 /// The spacing and indents in points of the paragraph formatting `st`.

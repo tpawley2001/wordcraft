@@ -320,7 +320,7 @@ fn styleref_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
             }
             let ix = styles.get_or_insert_with(|| wordcraft_layout::styleref::StyleIndex::build(doc));
             if let Some(i) = ix.index_of(&path) {
-                out.push((StoryRef::Body, path.clone(), k, text_result(instr, ix.eval(instr, wordcraft_layout::styleref::At::Body(i)))));
+                out.push((StoryRef::Body, path.clone(), k, ix.eval(instr, wordcraft_layout::styleref::At::Body(i))));
             }
         }
     }

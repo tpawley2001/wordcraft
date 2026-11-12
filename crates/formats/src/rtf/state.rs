@@ -71,12 +71,19 @@ pub(super) enum Dest {
     /// User properties (`{\*\userprops …}`, RTF 1.9.1 "User Properties"): `\proptypeN` is read
     /// here, `\propname`, `\staticval` and `\linkval` are text groups (`Info(8..=10)`).
     UserProps,
+    /// The latent-style table (`{\*\latentstyles …}`): its words are read into
+    /// [`super::latent_styles::Latent`].
+    LatentStyles,
+    /// The exceptions of the latent-style table (`{\lsdlockedexcept …}`): words and names.
+    LsdExcept,
 }
 
 /// Longest text kept of one information-group field or user property name or value (bytes).
 pub(super) const MAX_INFO_TEXT: usize = 64 * 1024;
 /// Most user properties one file may bring in.
 pub(super) const MAX_USER_PROPS: usize = 1_000;
+/// Most latent-style exceptions kept (`{\lsdlockedexcept …}`); Word writes about 380.
+pub(super) const MAX_LATENT_EXCEPTIONS: usize = 2_000;
 
 /// Cut `s` to at most `max` bytes, at a character boundary.
 pub(super) fn truncate_chars(s: &mut String, max: usize) {
@@ -433,6 +440,8 @@ pub(super) struct St {
     /// the `\oldcprops` words, applied on top of the run's formatting when text is read: Word
     /// writes only the properties that changed there.
     pub(super) chg_c: FmtRevSt<OldWords>,
+    /// Character shading pattern (`\chcbpat`/`\cb`, `\chcfpat`, `\chshdng`); reset by `\plain`.
+    pub(super) ch_pattern: Pattern,
     /// While an `\oldcprops` group is read: its character formatting words, and the author and
     /// date of the change (`\crauth`/`\crdate`, which Word writes inside the group).
     pub(super) old_words: OldWords,
@@ -458,6 +467,10 @@ pub(super) struct St {
     pub(super) noline: bool,
     /// Widow/orphan control (`\widctlpar`, `\nowidctlpar`); `None` until the paragraph says.
     pub(super) widow: Option<bool>,
+    /// Automatic space between Asian and Latin text (`\aspalpha`) and between Asian text and
+    /// numbers (`\aspnum`); off unless the paragraph says, cleared by `\pard`.
+    pub(super) asp_alpha: bool,
+    pub(super) asp_num: bool,
     /// Contextual spacing (`\contextualspace`), mirror indents (`\mirrorindents`), automatic
     /// space before/after (`\sbautoN`, `\saautoN`), hyphenation suppressed (`\hyphpar0`) and
     /// line grid snapping (`\nosnaplinegrid`); `None` until the paragraph says.
@@ -512,6 +525,7 @@ impl Default for St {
             mono: None,
             rev: RevSt::default(),
             chg_c: FmtRevSt::default(),
+            ch_pattern: Pattern::default(),
             chg_p: FmtRevSt::default(),
             old_words: Vec::new(),
             old_rev: (None, None),
@@ -528,6 +542,8 @@ impl Default for St {
             keep: false,
             noline: false,
             widow: None,
+            asp_alpha: false,
+            asp_num: false,
             contextual: None,
             mirror: None,
             sb_auto: None,
@@ -560,11 +576,43 @@ impl Default for St {
     }
 }
 
+/// A shading pattern as read: the pattern (ink) and background (fill) colours, `None` for
+/// automatic, and the pattern's coverage in hundredths of a percent.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct Pattern {
+    pub(super) ink: Option<Rgb>,
+    pub(super) fill: Option<Rgb>,
+    pub(super) pct: i32,
+}
+
+impl Pattern {
+    /// The one colour the pattern paints: see [`pattern_shading`].
+    pub(super) fn colour(&self) -> Option<Rgb> {
+        pattern_shading(self.pct, self.ink, self.fill)
+    }
+}
+
+/// The colour a percent shading pattern averages to: `pct` hundredths of a percent of the pattern
+/// colour `ink` (automatic = black) over the background `fill` (automatic = white), exact halves
+/// rounding down. With no pattern (0) it is the background colour, or none when that is automatic.
+pub(super) fn pattern_shading(pct: i32, ink: Option<Rgb>, fill: Option<Rgb>) -> Option<Rgb> {
+    let n = u32::try_from(pct.clamp(0, 10_000)).unwrap_or(0);
+    if n == 0 {
+        return fill;
+    }
+    let ink = ink.unwrap_or(Rgb(0, 0, 0));
+    let fill = fill.unwrap_or(Rgb(255, 255, 255));
+    let mix = |i: u8, f: u8| u8::try_from((u32::from(i) * n + u32::from(f) * (10_000 - n) + 4_999) / 10_000).unwrap_or(u8::MAX);
+    Some(Rgb(mix(ink.0, fill.0), mix(ink.1, fill.1), mix(ink.2, fill.2)))
+}
+
 #[derive(Default, Clone)]
 pub(super) struct CellDef {
     pub(super) vmerge: u8,
     pub(super) hmerge: u8,
     pub(super) shading: Option<Rgb>,
+    /// The cell's shading pattern (`\clcbpat`, `\clcfpat`, `\clshdng`), `shading` resolved.
+    pub(super) pattern: Pattern,
     pub(super) right: i32,
     /// The borders the cell names (`\clbrdrt` … `\clbrdrr`, each with its line style, `\brdrw`
     /// width and `\brdrcf` colour).
@@ -572,6 +620,28 @@ pub(super) struct CellDef {
     pub(super) valign: Option<VAlign>,
     /// Turned text (`\cltxtbrl`, `\cltxbtlr`…).
     pub(super) direction: wordcraft_doc::props::TextDirection,
+    /// The cell's own padding, twips, per side (top, left, bottom, right): the value word
+    /// (`\clpadl` top, `\clpadt` left, `\clpadb`, `\clpadr`; Word reads the first two swapped)
+    /// and its unit word (`\clpadfl` … `\clpadfr`).
+    pub(super) pad: [Option<i32>; 4],
+    pub(super) pad_unit: [Option<i32>; 4],
+    /// Wrap text off (`\clNoWrap`).
+    pub(super) no_wrap: bool,
+}
+
+impl CellDef {
+    /// The sides of its padding the cell sets, points: a side is set only with unit 3 (twips),
+    /// and then a negative, missing or beyond-22-inch value is 0, as Word reads it.
+    pub(super) fn own_margins(&self) -> [Option<f32>; 4] {
+        let mut out = [None; 4];
+        for ((o, v), u) in out.iter_mut().zip(self.pad).zip(self.pad_unit) {
+            if u == Some(3) {
+                let tw = v.filter(|v| (0..=31_680).contains(v)).unwrap_or(0);
+                *o = Some(tw as f32 / 20.0);
+            }
+        }
+        out
+    }
 }
 
 /// Page size and margins in twips (`\paperw`, `\margl`… and their `…sxn` section forms).
