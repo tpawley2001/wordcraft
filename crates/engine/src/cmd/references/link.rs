@@ -9,13 +9,13 @@
 //! bookmark) also keeps its stored result, as Word keeps it when the source is missing. Fields in
 //! the source are inserted as they are, and the source file is never written.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use wordcraft_doc::edit::Fragment;
 use wordcraft_doc::para::OBJ;
-use wordcraft_doc::{Document, Pos, StoryRef};
+use wordcraft_doc::{Block, Comment, Document, InlineObject, PartKind, Pos, StoryRef};
 
 use super::FieldCode;
 use crate::{CmdError, Session};
@@ -122,7 +122,110 @@ fn adopted_range(s: &mut Session, sources: &mut Sources, link: &Link) -> Option<
     // and the cached source stays whole for other fields.
     let mut only = src.clone();
     only.body = frag.blocks.into_iter().map(Arc::new).collect();
+    keep_only_referred(&mut only);
     Some(crate::cmd::paste::adopt(s, only))
+}
+
+/// The comment ids (`CommentStart`/`CommentEnd`) and note story ids (`NoteRef`) the paragraphs of
+/// `blocks` refer to, tables and the text boxes their shapes show (each story once) included.
+fn references<'a>(doc: &'a Document, blocks: impl Iterator<Item = &'a Block>) -> (BTreeSet<u32>, BTreeSet<u32>) {
+    let (mut comments, mut notes) = (BTreeSet::new(), BTreeSet::new());
+    let mut boxes = BTreeSet::new();
+    let mut todo: Vec<&Block> = blocks.collect();
+    while let Some(b) = todo.pop() {
+        match b {
+            Block::Para(p) => {
+                for o in &p.objects {
+                    match o {
+                        InlineObject::CommentStart { id } | InlineObject::CommentEnd { id } => {
+                            comments.insert(*id);
+                        }
+                        InlineObject::NoteRef { id, .. } => {
+                            notes.insert(*id);
+                        }
+                        _ => {}
+                    }
+                    for id in o.text_boxes() {
+                        // Each story once, so a box shown from itself can't loop.
+                        if boxes.insert(id)
+                            && let Some(part) = doc.parts.get(&id).filter(|p| p.kind == PartKind::TextBox)
+                        {
+                            todo.extend(part.blocks.iter().map(|b| &**b));
+                        }
+                    }
+                }
+            }
+            Block::Table(t) => todo.extend(t.rows.iter().flat_map(|r| r.cells.iter()).flat_map(|c| c.blocks.iter()).map(|b| &**b)),
+        }
+    }
+    (comments, notes)
+}
+
+/// The comments in `marked` and every reply whose thread reaches one of them.
+fn threads(comments: &BTreeMap<u32, Comment>, marked: &BTreeSet<u32>) -> BTreeSet<u32> {
+    comments
+        .iter()
+        .filter(|(id, c)| {
+            let mut at = (**id, c.parent);
+            // A parent chain is at most as long as there are comments (a cycle stops there).
+            for _ in 0..=comments.len() {
+                if marked.contains(&at.0) {
+                    return true;
+                }
+                let Some(parent) = at.1 else { return false };
+                at = (parent, comments.get(&parent).and_then(|c| c.parent));
+            }
+            false
+        })
+        .map(|(id, _)| *id)
+        .collect()
+}
+
+/// `doc` (a source whose body is just the linked range) without the comments and notes the range
+/// doesn't refer to, so they don't come into the host with it.
+fn keep_only_referred(doc: &mut Document) {
+    let (marked, notes) = references(doc, doc.body.iter().map(|b| &**b));
+    let kept = threads(&doc.comments, &marked);
+    let dropped: Vec<u32> = doc.comments.keys().filter(|id| !kept.contains(id)).copied().collect();
+    for id in dropped {
+        if let Some(c) = doc.comments.remove(&id)
+            && doc.parts.get(&c.part).is_some_and(|p| p.kind == PartKind::Comment)
+        {
+            doc.parts.remove(&c.part);
+        }
+    }
+    doc.parts.retain(|id, p| !matches!(p.kind, PartKind::Footnote | PartKind::Endnote) || notes.contains(id));
+}
+
+/// After a result that referred to the comments `comments` and notes `notes` was replaced: those
+/// (and their replies) that nothing in `doc` refers to any more go, with their stories.
+fn drop_unreferred(doc: &mut Document, comments: &BTreeSet<u32>, notes: &BTreeSet<u32>) {
+    if comments.is_empty() && notes.is_empty() {
+        return;
+    }
+    let (mut marked, mut referred) = references(doc, doc.body.iter().map(|b| &**b));
+    // Every story but text boxes (their shapes lead to them); a note's own story holds its mark,
+    // which doesn't keep it.
+    for (id, part) in doc.parts.iter().filter(|(_, p)| p.kind != PartKind::TextBox) {
+        let (c, mut n) = references(doc, part.blocks.iter().map(|b| &**b));
+        n.remove(id);
+        marked.extend(c);
+        referred.extend(n);
+    }
+    let kept = threads(&doc.comments, &marked);
+    let gone = threads(&doc.comments, comments);
+    for id in gone.difference(&kept) {
+        if let Some(c) = doc.comments.remove(id)
+            && doc.parts.get(&c.part).is_some_and(|p| p.kind == PartKind::Comment)
+        {
+            doc.parts.remove(&c.part);
+        }
+    }
+    for id in notes.difference(&referred) {
+        if doc.parts.get(id).is_some_and(|p| matches!(p.kind, PartKind::Footnote | PartKind::Endnote)) {
+            doc.parts.remove(id);
+        }
+    }
 }
 
 /// The new result of the simple LINK field `instr`: the linked text (paragraphs joined by `\r`),
@@ -175,8 +278,11 @@ pub(super) fn update_link_ranges(s: &mut Session, sources: &mut Sources, stories
                 }
                 Format::Formatted => {
                     let Some(frag) = adopted_range(s, sources, &link) else { continue };
+                    let old = s.doc.copy_range(&start, &r.end);
+                    let (comments, notes) = references(&s.doc, old.blocks.iter());
                     let at = s.doc.delete_range(&start, &r.end)?;
                     s.doc.insert_fragment(&at, &frag)?;
+                    drop_unreferred(&mut s.doc, &comments, &notes);
                 }
             }
         }
@@ -402,5 +508,100 @@ mod tests {
         update(&mut s);
         assert_eq!((s.doc.numbering.nums.len(), s.doc.media.len(), s.doc.parts.len()), (lists, media, parts));
         assert_eq!(range_result(&s), "OLD");
+    }
+
+    /// A source saved at `path`: "Outside", then "Linked" in the bookmark `OLE_LINK1`; with
+    /// `comments` a comment on each ("secret remark", "kept remark"), else a footnote in each
+    /// ("outside note", "inside note").
+    fn save_marked_source(path: &std::path::Path, comments: bool) {
+        let mut src = Session::new(Document::from_text("Outside\nLinked"));
+        src.run("select.text", &serde_json::json!({"text": "Linked"})).unwrap();
+        src.run("insert.bookmark", &serde_json::json!({"name": "OLE_LINK1"})).unwrap();
+        if comments {
+            for (word, remark) in [("Outside", "secret remark"), ("Linked", "kept remark")] {
+                src.run("select.text", &serde_json::json!({"text": word})).unwrap();
+                src.run("review.newComment", &serde_json::json!({"text": remark})).unwrap();
+            }
+        } else {
+            for (pos, note) in [(Pos::body(0, 3), "outside note"), (Pos::body(1, OBJ.len_utf8() + 3), "inside note")] {
+                src.run("caret.set", &serde_json::json!({"pos": pos})).unwrap();
+                src.run("references.footnote", &serde_json::json!({})).unwrap();
+                src.run("text.insert", &serde_json::json!({"text": note})).unwrap();
+            }
+        }
+        crate::io::save_path(path, &src.doc).unwrap();
+    }
+
+    /// The text of every story of `doc`.
+    fn all_text(doc: &Document) -> String {
+        let mut out = doc.plain_text(StoryRef::Body);
+        for id in doc.parts.keys() {
+            out.push_str(&note_text(doc, *id));
+        }
+        out
+    }
+
+    #[test]
+    fn a_formatted_link_brings_only_the_comments_in_its_range() {
+        let dir = scratch("comments");
+        let src = dir.join("source.docx");
+        save_marked_source(&src, true);
+        assert_eq!(crate::io::open_path(&src).unwrap().comments.len(), 2, "the source keeps both comments");
+        let mut s = host(&code(&src, r#""OLE_LINK1" \a \r"#), "OLD");
+        update(&mut s);
+        assert_eq!(range_result(&s), "Linked");
+        assert_eq!(s.doc.comments.len(), 1);
+        let (id, c) = s.doc.comments.iter().next().unwrap();
+        assert_eq!(note_text(&s.doc, c.part), "kept remark");
+        let objs = result_objects(&s);
+        assert!(objs.contains(&InlineObject::CommentStart { id: *id }) && objs.contains(&InlineObject::CommentEnd { id: *id }), "{objs:?}");
+        assert!(!all_text(&s.doc).contains("secret remark"));
+
+        // A second update replaces the first one's comment instead of adding another.
+        update(&mut s);
+        assert!(!all_text(&s.doc).contains("secret remark"));
+        assert_eq!(s.doc.comments.len(), 1);
+        let c = s.doc.comments.values().next().unwrap();
+        assert_eq!(note_text(&s.doc, c.part), "kept remark");
+        assert_eq!(s.doc.parts.values().filter(|p| p.kind == PartKind::Comment).count(), 1);
+    }
+
+    #[test]
+    fn a_formatted_link_brings_only_the_notes_in_its_range() {
+        let dir = scratch("notes");
+        let src = dir.join("source.docx");
+        save_marked_source(&src, false);
+        let mut s = host(&code(&src, r#""OLE_LINK1" \a \r"#), "OLD");
+        let footnotes = |d: &Document| d.parts.values().filter(|p| p.kind == PartKind::Footnote).count();
+        let before = footnotes(&s.doc);
+        update(&mut s);
+        assert_eq!(footnotes(&s.doc), before + 1);
+        let id = result_objects(&s)
+            .into_iter()
+            .find_map(|o| match o {
+                InlineObject::NoteRef { id, .. } => Some(id),
+                _ => None,
+            })
+            .unwrap();
+        assert!(note_text(&s.doc, id).contains("inside note"));
+        assert!(!all_text(&s.doc).contains("outside note"));
+        update(&mut s);
+        assert_eq!(footnotes(&s.doc), before + 1, "a second update replaces the note");
+    }
+
+    #[test]
+    fn a_whole_document_link_brings_its_comment_once() {
+        let dir = scratch("whole-comment");
+        let src = dir.join("source.docx");
+        let mut source = Session::new(Document::from_text("Only words"));
+        source.run("select.text", &serde_json::json!({"text": "words"})).unwrap();
+        source.run("review.newComment", &serde_json::json!({"text": "a remark"})).unwrap();
+        crate::io::save_path(&src, &source.doc).unwrap();
+        let mut s = host(&code(&src, r"\a \r"), "OLD");
+        update(&mut s);
+        assert_eq!(s.doc.comments.len(), 1);
+        assert_eq!(note_text(&s.doc, s.doc.comments.values().next().unwrap().part), "a remark");
+        update(&mut s);
+        assert_eq!(s.doc.comments.len(), 1);
     }
 }
