@@ -572,6 +572,28 @@ pub(super) struct CellDef {
     pub(super) valign: Option<VAlign>,
     /// Turned text (`\cltxtbrl`, `\cltxbtlr`…).
     pub(super) direction: wordcraft_doc::props::TextDirection,
+    /// The cell's own padding, twips, per side (top, left, bottom, right): the value word
+    /// (`\clpadl` top, `\clpadt` left, `\clpadb`, `\clpadr`; Word reads the first two swapped)
+    /// and its unit word (`\clpadfl` … `\clpadfr`).
+    pub(super) pad: [Option<i32>; 4],
+    pub(super) pad_unit: [Option<i32>; 4],
+    /// Wrap text off (`\clNoWrap`).
+    pub(super) no_wrap: bool,
+}
+
+impl CellDef {
+    /// The sides of its padding the cell sets, points: a side is set only with unit 3 (twips),
+    /// and then a negative, missing or beyond-22-inch value is 0, as Word reads it.
+    pub(super) fn own_margins(&self) -> [Option<f32>; 4] {
+        let mut out = [None; 4];
+        for ((o, v), u) in out.iter_mut().zip(self.pad).zip(self.pad_unit) {
+            if u == Some(3) {
+                let tw = v.filter(|v| (0..=31_680).contains(v)).unwrap_or(0);
+                *o = Some(tw as f32 / 20.0);
+            }
+        }
+        out
+    }
 }
 
 /// Page size and margins in twips (`\paperw`, `\margl`… and their `…sxn` section forms).

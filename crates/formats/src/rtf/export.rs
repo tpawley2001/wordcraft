@@ -1657,6 +1657,17 @@ impl Writer {
                 Some(VAlign::Bottom) => out.push_str("\\clvertalb"),
                 None => {}
             }
+            // The padding sides the cell sets itself; Word writes the top as `\clpadl` and the
+            // left as `\clpadt`.
+            for (side, v) in ["l", "t", "b", "r"].iter().zip(c.own_margins) {
+                if let Some(v) = v.filter(|v| v.is_finite()) {
+                    let tw = (v * 20.0).round().clamp(0.0, 31_680.0) as i32;
+                    out.push_str(&format!("\\clpad{side}{tw}\\clpadf{side}3"));
+                }
+            }
+            if c.no_wrap {
+                out.push_str("\\clNoWrap");
+            }
             match c.direction {
                 wordcraft_doc::props::TextDirection::Down => out.push_str("\\cltxtbrl"),
                 wordcraft_doc::props::TextDirection::Up => out.push_str("\\cltxbtlr"),
