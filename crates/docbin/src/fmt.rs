@@ -220,6 +220,28 @@ fn set(props: &mut Option<bool>, t: Toggle, base: Option<bool>) {
     });
 }
 
+/// The toggle base for a run in a paragraph style (`para`) that also names a character style
+/// whose own toggle values are `chr`: per property, a character style that says on inverts the
+/// paragraph style's value (unset counts as off), one that says off gives off, and one that
+/// says nothing keeps the paragraph style's value. Only the toggle fields are changed.
+pub(crate) fn combine_toggles(para: &CharProps, chr: &CharProps) -> CharProps {
+    fn one(para: Option<bool>, chr: Option<bool>) -> Option<bool> {
+        match chr {
+            Some(true) => Some(!para.unwrap_or(false)),
+            Some(false) => Some(false),
+            None => para,
+        }
+    }
+    let mut out = para.clone();
+    out.bold = one(para.bold, chr.bold);
+    out.italic = one(para.italic, chr.italic);
+    out.strike = one(para.strike, chr.strike);
+    out.small_caps = one(para.small_caps, chr.small_caps);
+    out.caps = one(para.caps, chr.caps);
+    out.hidden = one(para.hidden, chr.hidden);
+    out
+}
+
 /// Apply a character-property sprm. `base` carries the style-inherited values so toggle
 /// operands can invert them; `fonts` maps sprmCRgFtc0 indices to names.
 pub(crate) fn apply_char(p: &mut CharProps, prl: &Prl, base: &CharProps, fonts: &[String]) {

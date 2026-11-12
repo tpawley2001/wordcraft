@@ -1573,29 +1573,74 @@ fn apply_prm(props: &mut CharProps, prm: PrmRef<'_>, fonts: &[String], base: &Ch
 /// Character props from a CHPX grpprl: the direct formatting only. `base` is the paragraph
 /// style's character formatting, which toggle operands (0x80 keep, 0x81 invert, [MS-DOC]
 /// §2.9.326) resolve against; it is not copied into the result.
+///
+/// When the run names a character style (`sprmCIstd`), the toggle operands resolve against the
+/// value the paragraph style and the character style give together: a character style that
+/// turns a toggle on inverts the paragraph style's value, one that turns it off makes it off
+/// (ECMA-376 Part 1 §17.7.3, as Word draws `.doc` runs).
 fn char_props(grpprl: &[u8], fonts: &[String], base: &CharProps, raw_styles: &[stsh::RawStyle], style_ids: &[String]) -> CharProps {
-    let mut p = CharProps::default();
+    // The last sprmCIstd wins; find it first so the sprm order does not matter.
+    let mut char_style: Option<u16> = None;
     for prl in sprm::iter(grpprl) {
         if prl.op == fmt::C_ISTD {
             // sprmCIstd names a character style, not direct formatting. Index 10 is
             // Default Paragraph Font and means no character-style override.
-            p.style = match prl.operand {
+            char_style = match prl.operand {
                 [lo, hi] => {
                     let istd = u16::from_le_bytes([*lo, *hi]);
-                    raw_styles
-                        .get(usize::from(istd))
-                        .filter(|s| istd != 10 && s.stk == 2)
-                        .and_then(|_| style_ids.get(usize::from(istd)))
-                        .filter(|id| !id.is_empty())
-                        .cloned()
+                    raw_styles.get(usize::from(istd)).filter(|s| istd != 10 && s.stk == 2).map(|_| istd)
                 }
                 _ => None,
             };
-        } else if prl.sgc() == 2 {
-            fmt::apply_char(&mut p, &prl, base, fonts);
+        }
+    }
+    let mut p =
+        CharProps { style: char_style.and_then(|istd| style_ids.get(usize::from(istd))).filter(|id| !id.is_empty()).cloned(), ..Default::default() };
+    let combined;
+    let toggle_base = match char_style {
+        Some(istd) => {
+            combined = fmt::combine_toggles(base, &char_style_toggles(istd, raw_styles));
+            &combined
+        }
+        None => base,
+    };
+    for prl in sprm::iter(grpprl) {
+        if prl.op != fmt::C_ISTD && prl.sgc() == 2 {
+            fmt::apply_char(&mut p, &prl, toggle_base, fonts);
         }
     }
     p
+}
+
+/// Deepest chain of character styles followed for a run's character style.
+const MAX_CHAR_STYLE_DEPTH: usize = 16;
+
+/// A character style's own toggle values (bold, italic, …) from its character UPX and those of
+/// the character styles it is based on, parents first. Only the toggle fields are meaningful.
+fn char_style_toggles(istd: u16, raw_styles: &[stsh::RawStyle]) -> CharProps {
+    let mut chain: Vec<&stsh::RawStyle> = Vec::new();
+    let mut cur = Some(istd);
+    while let Some(i) = cur {
+        // The depth cap stops a cycle (a style based on itself or on a descendant).
+        if chain.len() >= MAX_CHAR_STYLE_DEPTH {
+            break;
+        }
+        let Some(s) = raw_styles.get(usize::from(i)).filter(|s| s.stk == 2) else {
+            break;
+        };
+        chain.push(s);
+        cur = Some(s.istd_base).filter(|&b| b != 0x0FFF && b != i);
+    }
+    let mut acc = CharProps::default();
+    for s in chain.iter().rev() {
+        let parent = acc.clone();
+        for prl in sprm::iter(&s.chpx) {
+            if prl.sgc() == 2 && prl.op != fmt::C_ISTD {
+                fmt::apply_char(&mut acc, &prl, &parent, &[]);
+            }
+        }
+    }
+    acc
 }
 
 /// Read a root-level stream fully, or `None` if it is absent.
