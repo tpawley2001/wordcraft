@@ -119,9 +119,9 @@ pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Setti
         }
     }
     // Word 97-2003 always split a page break from the paragraph mark after it; from Dop2007 on
-    // the option is a `Copts` flag.
+    // the option is a `Copts` flag. An empty DOP (`lcbDop` 0) is no DOP.
     settings.split_pg_break_and_para_mark =
-        if dop.len() < DOP2007_LEN { true } else { u32_at(dop, OFF_COPTS_FLAGS).is_some_and(|flags| flags & F_SPLIT_PG_BREAK_AND_PARA_MARK != 0) };
+        !dop.is_empty() && (dop.len() < DOP2007_LEN || u32_at(dop, OFF_COPTS_FLAGS).is_some_and(|flags| flags & F_SPLIT_PG_BREAK_AND_PARA_MARK != 0));
 }
 
 fn u16_at(b: &[u8], at: usize) -> Option<u16> {
