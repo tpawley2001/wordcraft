@@ -60,6 +60,7 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::LockTracking { .. } => lock_tracking_dialog(app, ui, d),
         Dialog::ReadOnlyRecommended { .. } => read_only_recommended_dialog(app, ui, d),
         Dialog::DefineList { form } => crate::dialogs_lists::define_list(app, ui, form),
+        Dialog::DefineNumber { form } => super::define_number::define_number(app, ui, form),
         Dialog::AdjustListIndents { form } => crate::dialogs_lists::adjust_list_indents(app, ui, form),
         Dialog::TrackOptions { form } => crate::dialogs_lists::track_options(app, ui, form),
         Dialog::Review(d) => crate::dialogs_review::body(app, ui, d),
@@ -918,7 +919,7 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 }
 
 fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::Link { url, text, kind, email, subject, targets, pick, focus, tip, tip_edit } = d else {
+    let Dialog::Link { url, text, kind, email, subject, targets, pick, focus, tip, tip_opened, tip_edit } = d else {
         return false;
     };
     // Enter and Escape belong to Set Hyperlink ScreenTip while it is open above this dialog.
@@ -1040,7 +1041,6 @@ fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     let (ok, cancel) = if tip_open { (false, false) } else { (ok, cancel) };
     screen_tip_modal(ui, tip, tip_edit);
     if ok {
-        // Sent also when empty, so OK clears a tip the link had.
         let mut params = if *kind == super::LinkKind::Place {
             let Some((mut params, _)) = pick.clone() else { return false };
             if !text.is_empty() {
@@ -1056,7 +1056,11 @@ fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         } else {
             json!({"url": url, "text": text})
         };
-        params["screenTip"] = json!(tip);
+        // Sent only when changed, so a stored tip is kept as it is; a tip cleared here is sent as
+        // empty and clears the link's tip.
+        if tip != tip_opened {
+            params["screenTip"] = json!(tip);
+        }
         let _ = app.run("insert.link", params);
     }
     ok || cancel
@@ -1436,9 +1440,21 @@ pub(crate) fn search_results(app: &mut WordApp, ui: &mut Ui, query: &str, enter:
 }
 
 fn paste_special_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::PasteSpecial { formats, choice, payload, note } = d else {
+    let Dialog::PasteSpecial { formats, choice, link, link_formats, payload, note } = d else {
         return false;
     };
+    // Paste or Paste link (a LINK field to the copy's saved source), as in Word.
+    ui.horizontal(|ui| {
+        ui.radio_value(link, false, tl!("Paste:"));
+        if ui.add_enabled(!link_formats.is_empty(), egui::RadioButton::new(*link, tl!("Paste link:"))).clicked() {
+            *link = true;
+        }
+    });
+    if link_formats.is_empty() {
+        *link = false;
+    }
+    let formats: &[String] = if *link { link_formats } else { formats };
+    *choice = (*choice).min(formats.len().saturating_sub(1));
     ui.label(egui::RichText::new(tl!("Paste as:")).font(semibold(12.5)));
     if formats.is_empty() {
         // The engine's wording, sentence-cased; the format names in it aren't translated.
@@ -1457,12 +1473,24 @@ fn paste_special_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool 
     if let Some(f) = formats.get(*choice) {
         ui.add_space(6.0);
         ui.label(egui::RichText::new(tl!("Result")).font(semibold(12.5)));
-        ui.label(egui::RichText::new(tl!(wordcraft_engine::cmd::paste::result_text(f))).weak());
+        let result = if *link {
+            let base = tl!(wordcraft_engine::cmd::paste::result_text(f));
+            format!(
+                "{base} {}",
+                tl!("Paste Link creates a shortcut to the source file. Changes to the source file will be reflected in your document.")
+            )
+        } else {
+            tl!(wordcraft_engine::cmd::paste::result_text(f)).to_string()
+        };
+        ui.label(egui::RichText::new(result).weak());
     }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok && let Some(f) = formats.get(*choice) {
         let mut params = payload.clone();
         params["as"] = json!(f);
+        if *link {
+            params["link"] = json!(true);
+        }
         let _ = app.run("edit.pasteSpecial", params);
     }
     ok || cancel
@@ -2233,6 +2261,76 @@ mod email_link_tests {
         h.state_mut().run("ui.dialog", json!({"name": "link"})).unwrap();
         let Some(Dialog::Link { tip, .. }) = &h.state().dialog else { panic!("no link dialog") };
         assert_eq!(tip, "More about it");
+    }
+
+    /// The Insert Hyperlink dialog opened on "a link" (to example.com) whose stored ScreenTip is `tip`.
+    fn link_dialog_on_stored_tip(tip: &str) -> egui_kittest::Harness<'static, WordApp> {
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        app.run("ui.language", json!({"value": "en"})).unwrap();
+        app.run("insert.link", json!({"url": "https://example.com", "text": "a link"})).unwrap();
+        app.run("select.all", json!({})).unwrap();
+        let (a, b) = app.session.sel.ordered();
+        app.session.doc.format_range(&a, &b, &|c| c.link_tip = Some(tip.into())).unwrap();
+        app.run("ui.dialog", json!({"name": "link"})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                app.logic(&ui.ctx().clone());
+                app.ui(ui);
+            },
+            app,
+        );
+        h.run_steps(3);
+        h
+    }
+
+    /// Each run of the first paragraph: (address, ScreenTip).
+    fn link_runs(h: &egui_kittest::Harness<'static, WordApp>) -> Vec<(Option<String>, Option<String>)> {
+        let para = h.state().session.doc.body.first().and_then(|b| b.as_para()).unwrap();
+        para.run_ranges().map(|(_, c)| (c.link.as_deref().map(str::to_string), c.link_tip.as_deref().map(str::to_string))).collect()
+    }
+
+    #[test]
+    fn editing_a_link_keeps_a_long_stored_screen_tip() {
+        let long = "t".repeat(300);
+        let mut h = link_dialog_on_stored_tip(&long);
+        let Some(Dialog::Link { url, tip, .. }) = &mut h.state_mut().dialog else { panic!("no link dialog") };
+        assert_eq!(tip, &long);
+        *url = "https://example.org".into();
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert!(h.state().dialog.is_none());
+        let runs = link_runs(&h);
+        assert!(!runs.is_empty());
+        assert!(runs.iter().all(|r| r == &(Some("https://example.org".into()), Some(long.clone()))), "{runs:?}");
+    }
+
+    #[test]
+    fn link_dialog_keeps_an_unchanged_tip_and_sets_a_changed_one() {
+        let mut h = link_dialog_on_stored_tip("More about it");
+        let Some(Dialog::Link { url, .. }) = &mut h.state_mut().dialog else { panic!("no link dialog") };
+        *url = "https://example.org".into();
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert!(link_runs(&h).iter().all(|r| r == &(Some("https://example.org".into()), Some("More about it".into()))), "{:?}", link_runs(&h));
+        h.state_mut().run("select.all", json!({})).unwrap();
+        h.state_mut().run("ui.dialog", json!({"name": "link"})).unwrap();
+        h.run_steps(3);
+        let Some(Dialog::Link { url, tip, .. }) = &mut h.state_mut().dialog else { panic!("no link dialog") };
+        assert_eq!(tip, "More about it");
+        *url = "https://example.org".into();
+        *tip = "Something else".into();
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert!(link_runs(&h).iter().all(|r| r == &(Some("https://example.org".into()), Some("Something else".into()))), "{:?}", link_runs(&h));
+        h.state_mut().run("select.all", json!({})).unwrap();
+        h.state_mut().run("ui.dialog", json!({"name": "link"})).unwrap();
+        h.run_steps(3);
+        let Some(Dialog::Link { url, tip, .. }) = &mut h.state_mut().dialog else { panic!("no link dialog") };
+        *url = "https://example.org".into();
+        tip.clear();
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert!(link_runs(&h).iter().all(|r| r == &(Some("https://example.org".into()), None)), "{:?}", link_runs(&h));
     }
 
     #[test]

@@ -291,6 +291,56 @@ fn define(s: &mut Session, v: &Value) -> CmdResult {
     Ok(r)
 }
 
+/// Define New Number Format: a new one-level numbered list whose first level has the given number
+/// style, number format text, alignment and number font, applied to the selection's paragraphs.
+pub fn define_number(s: &mut Session, v: &Value) -> CmdResult {
+    let format = NumFormat::from_ooxml(p::str(v, "format").unwrap_or("decimal"));
+    if format == NumFormat::Bullet {
+        return Err(CmdError::Params("a number format can't be a bullet; use Define New Bullet".into()));
+    }
+    let text: String = p::str(v, "text").unwrap_or("%1.").chars().take(64).collect();
+    if format != NumFormat::None {
+        if !text.contains("%1") {
+            return Err(CmdError::Params("`text` must contain %1 where the number goes".into()));
+        }
+        if (2..=9).any(|k| text.contains(&format!("%{k}"))) {
+            return Err(CmdError::Params("`text` can only show this level's number, %1".into()));
+        }
+    }
+    if let Some(a) = v.get("align")
+        && !matches!(a.as_str(), Some("left" | "center" | "right"))
+    {
+        return Err(CmdError::Params("`align` must be left, center or right".into()));
+    }
+    let start = p::u64(v, "start").map(|n| n.min(100_000) as u32);
+    // Only the number's own settings reach the level, read as `list.define` reads them.
+    let mut given = serde_json::Map::new();
+    given.insert("format".into(), json!(format.ooxml()));
+    given.insert("text".into(), json!(text));
+    for key in ["align", "font", "bold", "italic", "color"] {
+        if let Some(x) = v.get(key) {
+            given.insert(key.into(), x.clone());
+        }
+    }
+    let given = Value::Object(given);
+    let num = Arc::make_mut(&mut s.doc.numbering).try_add_list(ListKind::Numbered)?;
+    if let Some(a) = s.doc.numbering.abstract_of(num).map(|a| a.id)
+        && let Some(abs) = Arc::make_mut(&mut s.doc.numbering).abstracts.iter_mut().find(|x| x.id == a)
+        && let Some(l) = abs.levels.first_mut()
+    {
+        let mut level = level_from(std::mem::take(l), 0, &given);
+        level.start = start.unwrap_or(1);
+        *l = level;
+    }
+    super::para::fmt(s, &|pp| {
+        pp.numbering = Some(NumRef { num, level: 0 });
+        pp.style = Some("ListParagraph".into());
+    })?;
+    let mut r = sel_result(s)?;
+    r["num"] = json!(num);
+    Ok(r)
+}
+
 /// The heading-linked lists of the Multilevel List gallery's library, by preset id: level `i`
 /// is linked to Heading `i + 1`.
 fn preset_levels(preset: &str) -> Option<Vec<Level>> {

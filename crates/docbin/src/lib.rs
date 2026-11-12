@@ -291,7 +291,23 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     }
     doc.styles = Arc::new(styles);
     doc.numbering = Arc::new(list::parse(&table, &fib, &fonts));
-    let sheet: StyleSheet = StyleSheet::clone(&doc.styles);
+    // The walk's copy of the styles, each with its resolved character formatting (its chain
+    // overlaid, root first): a style keeps only its own, but runs' toggle operands (0x80, 0x81)
+    // invert or keep the value the paragraph style ends up with, inherited or not.
+    let mut sheet: StyleSheet = StyleSheet::clone(&doc.styles);
+    let resolved: Vec<CharProps> = sheet
+        .styles
+        .iter()
+        .map(|s| {
+            sheet.chain(&s.id).into_iter().fold(CharProps::default(), |mut c, st| {
+                c.overlay(&st.chr);
+                c
+            })
+        })
+        .collect();
+    for (style, chr) in sheet.styles.iter_mut().zip(resolved) {
+        style.chr = chr;
+    }
     let sects = sections::parse(&word, &table, &fib);
     let stories = sections::header_stories(&table, &fib);
     // Subdocument layout in the CP space: main document, footnotes, headers, comments,
@@ -777,6 +793,11 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     (None, Some(s)) => ilvl.map(|level| NumRef { num: s.num, level }),
                     _ => None,
                 };
+                // A tracked paragraph formatting change (sprmPPropRMark90 / sprmPPropRMark),
+                // read once the paragraph's formatting is resolved.
+                if let Ok(mut revs) = ctx.revs.try_borrow_mut() {
+                    revs.mark_para(&mut pb.props, revision::PropMark::of_para(papx));
+                }
                 let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
                 let chpx = ctx.chpx_bins.chpx(ctx.word, fc);
                 let base = pb.props.style.as_deref().and_then(|id| ctx.sheet.get(id)).map(|style| style.chr.clone()).unwrap_or_default();
@@ -1391,7 +1412,7 @@ fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, f
     }
 }
 
-/// Set the tracked insertion / deletion of `props` from the revision marks of a CHPX grpprl
+/// Set the tracked insertion / deletion / formatting change of `props` from the revision marks of a CHPX grpprl
 /// and the piece's Prm (which applies after it). A Prm1 grpprl is charged to the work budget,
 /// as in [`apply_prm`]; once that is spent its marks are skipped.
 fn revise(ctx: &WalkCtx, props: &mut CharProps, grpprl: &[u8], prm: PrmRef<'_>) {

@@ -22,6 +22,7 @@ use crate::theme::{Tokens, semibold};
 mod bookmarks;
 mod building_blocks;
 mod chrome;
+pub mod define_number;
 mod dispatch;
 mod find;
 mod font;
@@ -264,6 +265,9 @@ pub enum Dialog {
         pick: Option<(Value, String)>,
         /// The ScreenTip (shown on hover instead of the address), sent as `screenTip` on OK.
         tip: String,
+        /// The ScreenTip the dialog opened with: OK sends `screenTip` only when `tip` differs, so a
+        /// stored tip the dialog cannot send (longer than `MAX_SCREEN_TIP`) stays as it is.
+        tip_opened: String,
         /// The ScreenTip being edited while Set Hyperlink ScreenTip is open.
         tip_edit: Option<String>,
     },
@@ -395,6 +399,12 @@ pub enum Dialog {
     PasteSpecial {
         formats: Vec<String>,
         choice: usize,
+        /// Paste link: chosen instead of Paste.
+        #[serde(default)]
+        link: bool,
+        /// The formats Paste link offers; empty when the copy has no saved source to link to.
+        #[serde(default)]
+        link_formats: Vec<String>,
         #[serde(skip)]
         payload: Value,
         /// Shown when nothing can be pasted: what the clipboard holds, or that it is empty (#833).
@@ -560,6 +570,10 @@ pub enum Dialog {
     DefineList {
         form: Box<crate::dialogs_lists::ListForm>,
     },
+    /// Home › Paragraph › Numbering › Define New Number Format.
+    DefineNumber {
+        form: Box<define_number::NumberForm>,
+    },
     /// Right-click a list item › Adjust List Indents: the caret's level of the caret's list.
     AdjustListIndents {
         form: Box<crate::dialogs_lists::IndentsForm>,
@@ -697,6 +711,7 @@ impl Dialog {
             Dialog::LockTracking { .. } => "lockTracking",
             Dialog::ReadOnlyRecommended { .. } => "readOnlyRecommended",
             Dialog::DefineList { .. } => "defineList",
+            Dialog::DefineNumber { .. } => "defineNumber",
             Dialog::AdjustListIndents { .. } => "adjustListIndents",
             Dialog::TrackOptions { .. } => "trackChangesOptions",
             Dialog::Review(d) => d.name(),
@@ -930,6 +945,7 @@ impl Dialog {
                 targets: None,
                 pick: None,
                 tip: wordcraft_engine::cmd::insert::selected_link_tip(&app.session),
+                tip_opened: wordcraft_engine::cmd::insert::selected_link_tip(&app.session),
                 tip_edit: None,
                 focus: true,
             },
@@ -1070,6 +1086,7 @@ impl Dialog {
                 return Self::report(id, &app.session.run(id, &json!({})).unwrap_or_default());
             }
             "defineList" => Dialog::DefineList { form: Box::new(crate::dialogs_lists::ListForm::read(app)) },
+            "defineNumber" => Dialog::DefineNumber { form: Box::new(define_number::NumberForm::read(app)) },
             "trackChangesOptions" => Dialog::TrackOptions { form: Box::new(crate::dialogs_lists::TrackForm::read(app)) },
             "customizeKeyboard" => Dialog::CustomizeKeyboard { form: Box::new(crate::dialogs_keyboard::KeyboardForm::read(app)), resume: None },
             "customizeRibbon" => {
@@ -1115,8 +1132,9 @@ impl Dialog {
                 kept[k] = json!(t);
             }
         }
+        let link_formats = wordcraft_engine::cmd::paste::link_formats(&app.session, payload).into_iter().map(str::to_string).collect();
         let note = if formats.is_empty() { crate::system_clipboard::nothing_to_paste(app) } else { String::new() };
-        Dialog::PasteSpecial { formats, choice: 0, payload: kept, note }
+        Dialog::PasteSpecial { formats, choice: 0, link: false, link_formats, payload: kept, note }
     }
 
     pub fn modify_style(app: &WordApp, id: &str) -> Option<Dialog> {
@@ -1167,6 +1185,10 @@ mod tests;
 #[cfg(test)]
 mod tests_border_options;
 #[cfg(test)]
+mod tests_define_number;
+#[cfg(test)]
+mod tests_define_number_font;
+#[cfg(test)]
 mod tests_font_opentype;
 #[cfg(test)]
 mod tests_font_spacing;
@@ -1188,6 +1210,8 @@ mod tests_para_grid;
 mod tests_para_line;
 #[cfg(test)]
 mod tests_para_outline;
+#[cfg(test)]
+mod tests_paste_special_link;
 #[cfg(test)]
 mod tests_table_props;
 #[cfg(test)]

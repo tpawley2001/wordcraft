@@ -41,6 +41,7 @@ mod date;
 mod export;
 mod form_field;
 mod frames;
+mod latent_styles;
 mod note_marks;
 mod parse;
 mod reader;
@@ -66,6 +67,10 @@ use word::hyperlink;
 #[rustfmt::skip]
 mod tests;
 
+#[cfg(test)]
+mod cell_margin_edges;
+#[cfg(test)]
+mod char_border_edges;
 #[cfg(test)]
 mod gutter_edges;
 #[cfg(test)]
