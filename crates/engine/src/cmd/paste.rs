@@ -8,11 +8,13 @@
 //! program's HTML or RTF; Merge Formatting keeps only its emphasis (#687).
 //! Plain text has no formatting to keep, so Paste inserts it as Keep Text Only does.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde_json::{Value, json};
 use wordcraft_doc::edit::Fragment;
-use wordcraft_doc::{Block, Document, Paragraph};
+use wordcraft_doc::para::{InlineObject, OBJ};
+use wordcraft_doc::{Block, Document, Paragraph, Pos, StoryRef};
 
 use super::{delete_selection, sel_result};
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
@@ -45,24 +47,127 @@ pub fn result_text(id: &str) -> &'static str {
     }
 }
 
-/// The LINK field instruction Paste Special > Paste link inserts for a copy from `path` whose
-/// source range is the bookmark `bookmark`, pasted as format `fmt`; `None` for a format that
-/// can't be linked. Stub: see the task spec.
+/// Where the clipboard's copy was taken from, for Paste Special > Paste link: set by Copy of a
+/// plain text range ([`crate::Session::clipboard_link`]), cleared by anything else that fills the
+/// clipboard.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClipboardLink {
+    /// `Session::document_id()` of the document the copy was taken from.
+    pub doc: u64,
+    /// The copied range in that document (selection start and end, in document order).
+    pub start: Pos,
+    pub end: Pos,
+    /// The `OLE_LINK<n>` bookmark a Paste link of this copy added around the range, once there is one.
+    pub bookmark: Option<String>,
+}
+
+/// What the dialog's Result box adds for Paste link.
+const LINK_NOTE: &str = " Paste Link creates a shortcut to the source file. Changes to the source file will be reflected in your document.";
+
+/// Most `OLE_LINK<n>` names tried before giving up.
+const MAX_LINK_BOOKMARKS: u32 = 100_000;
+
+/// The LINK field instruction (ECMA-376 Part 1, 17.16.5.31) Paste Special > Paste link inserts
+/// for a copy from `path` whose source range is the bookmark `bookmark`, pasted as format `fmt`;
+/// `None` for a format that can't be linked.
 pub fn link_instr(path: &std::path::Path, bookmark: &str, fmt: &str) -> Option<String> {
-    let _ = (path, bookmark, fmt);
-    None
+    let switch = match fmt {
+        "formatted" | "rtf" => r"\r",
+        "html" => r"\h",
+        "text" => r"\t",
+        "unicode" => r"\u",
+        _ => return None,
+    };
+    let file = path.to_string_lossy();
+    let old_format = path.extension().and_then(|e| e.to_str()).is_some_and(|e| ["doc", "dot", "rtf"].iter().any(|x| e.eq_ignore_ascii_case(x)));
+    let class = if old_format { "Word.Document.8" } else { "Word.Document.12" };
+    let quote = |t: &str| format!("\"{}\"", t.replace('\\', r"\\").replace('"', r#"\""#));
+    Some(format!(r"LINK {class} {} {} \a {switch}", quote(&file), quote(bookmark)))
 }
 
 /// What OK does with a format when Paste link is chosen, as the dialog's Result box says it.
-/// Stub: see the task spec.
 pub fn link_result_text(id: &str) -> String {
-    let _ = id;
-    String::new()
+    let base = result_text(id);
+    if base.is_empty() || id == "picture" { String::new() } else { format!("{base}{LINK_NOTE}") }
+}
+
+/// The text of `a..b` in `doc`, or `None` when either end no longer exists there.
+fn range_text(doc: &Document, a: &Pos, b: &Pos) -> Option<String> {
+    let ok = |p: &Pos| doc.para_at(p).is_some_and(|para| para.text.is_char_boundary(p.off));
+    if !ok(a) || !ok(b) || a.story != b.story || a > b {
+        return None;
+    }
+    Some(doc.copy_range(a, b).plain_text())
+}
+
+/// Where bookmark `name`'s start mark is in `story`.
+fn find_bookmark(doc: &Document, story: StoryRef, name: &str) -> Option<Pos> {
+    doc.para_paths(story).into_iter().find_map(|path| {
+        let para = doc.para(story, &path)?;
+        let off =
+            para.objects_with_offsets().find_map(|(off, o)| matches!(o, InlineObject::BookmarkStart { name: n } if n == name).then_some(off))?;
+        Some(Pos { story, path, off })
+    })
+}
+
+/// Every bookmark name in `doc`, in any story.
+fn bookmark_names(doc: &Document) -> Vec<String> {
+    let stories = std::iter::once(StoryRef::Body).chain(doc.parts.keys().map(|k| StoryRef::Part(*k)));
+    let mut out = Vec::new();
+    for story in stories {
+        for path in doc.para_paths(story) {
+            if let Some(p) = doc.para(story, &path) {
+                out.extend(p.objects_with_offsets().filter_map(|(_, o)| match o {
+                    InlineObject::BookmarkStart { name } => Some(name.clone()),
+                    _ => None,
+                }));
+            }
+        }
+    }
+    out
+}
+
+/// The text the copy's source range reads now: between its bookmark's marks once Paste link
+/// added one, else `start..end`.
+fn source_text(doc: &Document, link: &ClipboardLink) -> Option<String> {
+    match &link.bookmark {
+        Some(name) => {
+            let start = find_bookmark(doc, link.start.story, name)?;
+            let (a, b) = super::insert::bookmark_span(doc, name, &start);
+            range_text(doc, &a, &b)
+        }
+        None => range_text(doc, &link.start, &link.end),
+    }
+}
+
+/// The file the clipboard's copy came from, when Paste link can point back at it: WordCraft's
+/// own copy (still on the system clipboard, when the params say what is there) of a range in a
+/// document that is still open, saved and unchanged there.
+pub fn link_source(s: &Session, v: &Value) -> Option<PathBuf> {
+    let frag = s.clipboard.as_ref()?;
+    let link = s.clipboard_link.as_ref()?;
+    if let Some(t) = p::str(v, "text")
+        && frag.clipboard_text() != t.replace("\r\n", "\n")
+    {
+        return None;
+    }
+    let (doc, path) = s.open_document(link.doc)?;
+    let path = path?;
+    (source_text(doc, link)? == frag.plain_text()).then(|| path.to_path_buf())
+}
+
+/// The formats Paste link offers: those of [`available`] but Picture, when [`link_source`] has a
+/// source; else none.
+pub fn link_formats(s: &Session, v: &Value) -> Vec<&'static str> {
+    if link_source(s, v).is_none() {
+        return Vec::new();
+    }
+    available(s, v).into_iter().filter(|id| *id != "picture").collect()
 }
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![CommandSpec::new("edit.pasteSpecial", "Paste Special", "Home › Clipboard › Paste", paste_special).key("Mod+Alt+V").params(
-        r#"{"as"?: "formatted"|"rtf"|"html"|"picture"|"text"|"unicode", "text"?: string, "html"?: string, "rtf"?: string, "picture"?: base64}"#,
+        r#"{"as"?: "formatted"|"rtf"|"html"|"picture"|"text"|"unicode", "text"?: string, "html"?: string, "rtf"?: string, "picture"?: base64, "link"?: bool (Paste link: a LINK field to the copy's saved source document)}"#,
     )]
 }
 
@@ -108,10 +213,10 @@ pub fn available(s: &Session, v: &Value) -> Vec<&'static str> {
     FORMATS.iter().map(|(id, _)| *id).filter(|id| source(s, v, id).is_some()).collect()
 }
 
-fn formats_json(ids: &[&str]) -> Value {
+fn formats_json(ids: &[&str], result: impl Fn(&str) -> String) -> Value {
     json!(
         ids.iter()
-            .map(|id| json!({"id": id, "label": FORMATS.iter().find(|(f, _)| f == id).map(|(_, l)| *l).unwrap_or(*id), "result": result_text(id)}))
+            .map(|id| json!({"id": id, "label": FORMATS.iter().find(|(f, _)| f == id).map(|(_, l)| *l).unwrap_or(*id), "result": result(id)}))
             .collect::<Vec<_>>()
     )
 }
@@ -128,7 +233,8 @@ fn paste_special(s: &mut Session, v: &Value) -> CmdResult {
     let ids = available(s, v);
     let Some(fmt) = p::str(v, "as") else {
         // No format chosen: list them and ask a front end (if any) to show the dialog.
-        let mut req = json!({"open": "pasteSpecial", "formats": ids});
+        let links = link_formats(s, v);
+        let mut req = json!({"open": "pasteSpecial", "formats": ids, "linkFormats": links});
         for k in ["text", "html", "rtf", "picture"] {
             if let Some(t) = p::str(v, k) {
                 req[k] = json!(t);
@@ -137,7 +243,10 @@ fn paste_special(s: &mut Session, v: &Value) -> CmdResult {
         // Only the newest dialog request matters; older ones would pin their payloads.
         s.ui_requests.retain(|r| r["open"] != "pasteSpecial");
         s.push_ui_request(req);
-        return Ok(json!({"formats": formats_json(&ids)}));
+        return Ok(json!({
+            "formats": formats_json(&ids, |id| result_text(id).to_string()),
+            "linkFormats": formats_json(&links, link_result_text),
+        }));
     };
     let fmt = match fmt.to_ascii_lowercase().as_str() {
         "formatted" | "keep" | "wordcraft" => "formatted",
@@ -148,6 +257,10 @@ fn paste_special(s: &mut Session, v: &Value) -> CmdResult {
         "unicode" => "unicode",
         other => return Err(CmdError::Params(format!("unknown format `{other}` (formatted, rtf, html, picture, text or unicode)"))),
     };
+    let link = p::bool(v, "link").unwrap_or(false);
+    if link && link_source(s, v).is_none() {
+        return Err(CmdError::Failed("Paste link needs text copied from a saved document that is still open".into()));
+    }
     let Some(src) = source(s, v, fmt) else {
         return Err(CmdError::Failed(if ids.is_empty() {
             "the clipboard is empty".into()
@@ -155,26 +268,140 @@ fn paste_special(s: &mut Session, v: &Value) -> CmdResult {
             format!("the clipboard has no {fmt} content (available: {})", ids.join(", "))
         }));
     };
-    let frag = match fmt {
-        "text" | "unicode" => {
-            super::paste_text(s, &src.replace("\r\n", "\r").replace('\n', "\r"))?;
-            let mut r = sel_result(s)?;
-            r["pastedAs"] = json!(fmt);
-            return Ok(r);
-        }
-        "picture" => {
-            let mut r = super::insert::picture(s, &json!({"data": src}))?;
-            r["pastedAs"] = json!(fmt);
-            return Ok(r);
-        }
-        "formatted" => s.clipboard.clone().ok_or_else(|| CmdError::Failed("the clipboard is empty".into()))?,
-        "html" => adopt(s, import_html(&src)),
-        _ => adopt(s, wordcraft_formats::rtf::import(src.as_bytes()).map_err(|e| CmdError::Failed(format!("bad RTF: {e}")))?),
-    };
-    insert(s, frag)?;
+    if link {
+        return paste_link(s, v, fmt, &src);
+    }
+    if fmt == "picture" {
+        let mut r = super::insert::picture(s, &json!({"data": src}))?;
+        r["pastedAs"] = json!(fmt);
+        return Ok(r);
+    }
+    paste_as(s, fmt, &src)?;
     let mut r = sel_result(s)?;
     r["pastedAs"] = json!(fmt);
     Ok(r)
+}
+
+/// Paste the clipboard's `src` for format `fmt` (not Picture) at the selection.
+fn paste_as(s: &mut Session, fmt: &str, src: &str) -> Result<(), CmdError> {
+    let frag = match fmt {
+        "text" | "unicode" => return super::paste_text(s, &src.replace("\r\n", "\r").replace('\n', "\r")),
+        "formatted" => s.clipboard.clone().ok_or_else(|| CmdError::Failed("the clipboard is empty".into()))?,
+        "html" => adopt(s, import_html(src)),
+        _ => adopt(s, wordcraft_formats::rtf::import(src.as_bytes()).map_err(|e| CmdError::Failed(format!("bad RTF: {e}")))?),
+    };
+    insert(s, frag)
+}
+
+/// Paste link: bookmark the copy's source range (once per copy) and paste the clipboard as format
+/// `fmt` as the result of a LINK field pointing at it.
+fn paste_link(s: &mut Session, v: &Value, fmt: &str, src: &str) -> CmdResult {
+    let Some(path) = link_source(s, v) else {
+        return Err(CmdError::Failed("Paste link needs text copied from a saved document that is still open".into()));
+    };
+    if !link_formats(s, v).contains(&fmt) {
+        return Err(CmdError::Failed(format!("Paste link can't paste as {fmt}")));
+    }
+    let Some(link) = s.clipboard_link.clone() else {
+        return Err(CmdError::Failed("Paste link needs text copied from a saved document that is still open".into()));
+    };
+    let name = match &link.bookmark {
+        Some(name) => name.clone(),
+        None => {
+            let name = add_link_bookmark(s, &link)?;
+            if let Some(l) = s.clipboard_link.as_mut() {
+                l.bookmark = Some(name.clone());
+            }
+            name
+        }
+    };
+    let instr = link_instr(&path, &name, fmt).ok_or_else(|| CmdError::Failed(format!("Paste link can't paste as {fmt}")))?;
+    // The field's start, then the content, then its end after the last pasted character.
+    super::controls::prepare_edit(s)?;
+    let at = delete_selection(s)?;
+    let at = s.doc.past_field_ends(&at);
+    let props = s.typing_props();
+    let after = s.doc.insert_object(&at, InlineObject::FieldStart { instr: instr.clone(), locked: false, dirty: false }, &props)?;
+    s.sel = Selection::caret(after.clone());
+    paste_as(s, fmt, src)?;
+    let (end, _) = s.sel.ordered();
+    // Content ending with a paragraph mark: the field ends with the last pasted paragraph's text.
+    let end_at = if end.off == 0 && end.path != after.path && end.path.last() > 0 {
+        let prev = end.path.with_last(end.path.last().saturating_sub(1));
+        match s.doc.para(end.story, &prev) {
+            Some(p) => Pos { story: end.story, path: prev, off: p.len() },
+            None => end.clone(),
+        }
+    } else {
+        end.clone()
+    };
+    let field_end = s.doc.insert_object(&end_at, InlineObject::FieldEnd, &props)?;
+    s.sel = Selection::caret(if end_at == end { field_end } else { end });
+    let mut r = sel_result(s)?;
+    r["pastedAs"] = json!(fmt);
+    r["linked"] = json!(true);
+    r["instr"] = json!(instr);
+    r["bookmark"] = json!(name);
+    Ok(r)
+}
+
+/// Add an `OLE_LINK<n>` bookmark around the copy's source range in its document: the smallest n
+/// that document doesn't use yet. In the active document it is part of this command's edit (and
+/// the selection keeps its place); in another open document it is that document's own undoable
+/// edit.
+fn add_link_bookmark(s: &mut Session, link: &ClipboardLink) -> Result<String, CmdError> {
+    let (doc, _) = s.open_document(link.doc).ok_or_else(|| CmdError::Failed("the copied text's document is closed".into()))?;
+    let taken = bookmark_names(doc);
+    let name = (1..=MAX_LINK_BOOKMARKS)
+        .map(|n| format!("OLE_LINK{n}"))
+        .find(|n| !taken.iter().any(|t| t.eq_ignore_ascii_case(n)))
+        .ok_or_else(|| CmdError::Failed("the source document has too many OLE_LINK bookmarks".into()))?;
+    if link.doc == s.document_id() {
+        mark_range(s, link, &name)?;
+        return Ok(name);
+    }
+    s.with_document(link.doc, |s| {
+        // A nested command so the source gets its own undo step and is marked changed; it isn't
+        // what the user ran, so Repeat and a macro being recorded don't see it.
+        let last = s.last_command.clone();
+        let recorded = s.recording.as_ref().map(|(_, steps)| steps.len());
+        let sel = s.sel.clone();
+        s.sel = Selection { anchor: link.start.clone(), focus: link.end.clone() };
+        let r = s.run("insert.bookmark", &json!({"name": name}));
+        s.sel = sel;
+        shift_for_marks(s, link);
+        s.clamp_selection();
+        s.last_command = last;
+        if let (Some(n), Some((_, steps))) = (recorded, s.recording.as_mut()) {
+            steps.truncate(n);
+        }
+        r
+    })??;
+    Ok(name)
+}
+
+/// Put bookmark `name`'s marks around the copy's range in the active document, keeping the
+/// selection on the same text.
+fn mark_range(s: &mut Session, link: &ClipboardLink, name: &str) -> Result<(), CmdError> {
+    let props = wordcraft_doc::props::CharProps::default();
+    s.doc.insert_object(&link.end, InlineObject::BookmarkEnd { name: name.to_string() }, &props)?;
+    s.doc.insert_object(&link.start, InlineObject::BookmarkStart { name: name.to_string() }, &props)?;
+    shift_for_marks(s, link);
+    Ok(())
+}
+
+/// Move the selection's ends past the bookmark marks just put at the copy's start and end.
+fn shift_for_marks(s: &mut Session, link: &ClipboardLink) {
+    let len = OBJ.len_utf8();
+    for at in [&mut s.sel.anchor, &mut s.sel.focus] {
+        let mut by = 0;
+        for (mark, inclusive) in [(&link.end, true), (&link.start, false)] {
+            if at.story == mark.story && at.path == mark.path && (at.off > mark.off || (inclusive && at.off == mark.off)) {
+                by += len;
+            }
+        }
+        at.off = at.off.saturating_add(by);
+    }
 }
 
 /// Indent each side of a pasted `<blockquote>` whose page gives it no margins, points.
@@ -456,4 +683,59 @@ fn adopt(s: &mut Session, src: Document) -> Fragment {
     }
     unlink_sections(&mut frag.blocks);
     frag
+}
+
+#[cfg(test)]
+mod link_tests {
+    use serde_json::json;
+    use wordcraft_doc::{Document, Pos, StoryRef};
+
+    use crate::Session;
+
+    fn saved(text: &str) -> Session {
+        let mut s = Session::new(Document::from_text(text));
+        s.path = Some("/home/ann/Report.docx".into());
+        s
+    }
+
+    /// Two whole paragraphs copied (ending with a paragraph mark): the field ends with the last
+    /// pasted paragraph's text, not in the paragraph after it.
+    #[test]
+    fn a_linked_copy_ending_with_a_paragraph_mark_ends_the_field_in_its_last_paragraph() {
+        let mut s = saved("One\nTwo\nThree");
+        s.run("select.range", &json!({"anchor": Pos::body(0, 0), "focus": Pos::body(2, 0)})).unwrap();
+        s.run("edit.copy", &json!({})).unwrap();
+        let src = s.document_id();
+        s.add_document(Document::from_text("Target"));
+        s.run("caret.set", &json!({"pos": Pos::body(0, 6)})).unwrap();
+        s.run("edit.pasteSpecial", &json!({"as": "formatted", "link": true})).unwrap();
+        let f = s.doc.field_ranges(StoryRef::Body);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].start.path, Pos::body(0, 0).path);
+        assert_eq!(f[0].end.path, Pos::body(1, 0).path, "{:?}", s.doc.plain_text(StoryRef::Body));
+        let last = s.doc.para(StoryRef::Body, &f[0].end.path).map(|p| p.len());
+        assert_eq!(Some(f[0].end.off.saturating_add(wordcraft_doc::para::OBJ.len_utf8())), last, "the end mark closes that paragraph");
+        // The source's bookmark spans the two paragraphs.
+        let marks = s.with_document(src, |s| s.doc.bookmarks()).unwrap();
+        assert_eq!(marks.len(), 1);
+    }
+
+    /// Picture can't be linked; a refused Paste link changes nothing, and Undo takes a Paste link
+    /// (bookmark and field together) out of the active document in one step.
+    #[test]
+    fn paste_link_refuses_picture_and_undoes_in_one_step() {
+        let mut s = saved("Alpha beta gamma");
+        s.run("select.range", &json!({"anchor": Pos::body(0, 0), "focus": Pos::body(0, 5)})).unwrap();
+        s.run("edit.copy", &json!({})).unwrap();
+        s.run("caret.set", &json!({"pos": Pos::body(0, 16)})).unwrap();
+        let before = s.doc.clone();
+        let e = s.run("edit.pasteSpecial", &json!({"as": "picture", "link": true, "picture": "AAAA"})).unwrap_err();
+        assert!(e.to_string().contains("picture"), "{e}");
+        assert_eq!(s.doc, before);
+        s.run("edit.pasteSpecial", &json!({"as": "text", "link": true})).unwrap();
+        assert_eq!(s.doc.field_ranges(StoryRef::Body).len(), 1);
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(s.doc.plain_text(StoryRef::Body), before.plain_text(StoryRef::Body));
+        assert!(s.doc.bookmarks().is_empty() && s.doc.field_ranges(StoryRef::Body).is_empty());
+    }
 }

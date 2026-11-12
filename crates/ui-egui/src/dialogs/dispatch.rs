@@ -1400,9 +1400,21 @@ pub(crate) fn search_results(app: &mut WordApp, ui: &mut Ui, query: &str, enter:
 }
 
 fn paste_special_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::PasteSpecial { formats, choice, payload, note } = d else {
+    let Dialog::PasteSpecial { formats, choice, link, link_formats, payload, note } = d else {
         return false;
     };
+    // Paste or Paste link (a LINK field to the copy's saved source), as in Word.
+    ui.horizontal(|ui| {
+        ui.radio_value(link, false, tl!("Paste:"));
+        if ui.add_enabled(!link_formats.is_empty(), egui::RadioButton::new(*link, tl!("Paste link:"))).clicked() {
+            *link = true;
+        }
+    });
+    if link_formats.is_empty() {
+        *link = false;
+    }
+    let formats: &[String] = if *link { link_formats } else { formats };
+    *choice = (*choice).min(formats.len().saturating_sub(1));
     ui.label(egui::RichText::new(tl!("Paste as:")).font(semibold(12.5)));
     if formats.is_empty() {
         // The engine's wording, sentence-cased; the format names in it aren't translated.
@@ -1421,12 +1433,24 @@ fn paste_special_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool 
     if let Some(f) = formats.get(*choice) {
         ui.add_space(6.0);
         ui.label(egui::RichText::new(tl!("Result")).font(semibold(12.5)));
-        ui.label(egui::RichText::new(tl!(wordcraft_engine::cmd::paste::result_text(f))).weak());
+        let result = if *link {
+            let base = tl!(wordcraft_engine::cmd::paste::result_text(f));
+            format!(
+                "{base} {}",
+                tl!("Paste Link creates a shortcut to the source file. Changes to the source file will be reflected in your document.")
+            )
+        } else {
+            tl!(wordcraft_engine::cmd::paste::result_text(f)).to_string()
+        };
+        ui.label(egui::RichText::new(result).weak());
     }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok && let Some(f) = formats.get(*choice) {
         let mut params = payload.clone();
         params["as"] = json!(f);
+        if *link {
+            params["link"] = json!(true);
+        }
         let _ = app.run("edit.pasteSpecial", params);
     }
     ok || cancel
