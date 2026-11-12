@@ -50,6 +50,7 @@ mod nested_cant_split;
 mod nested_tail_paragraph;
 mod next_column_section;
 mod no_leading;
+mod no_leading_missing_fonts;
 mod numeral;
 mod pages;
 mod picture_glue;
