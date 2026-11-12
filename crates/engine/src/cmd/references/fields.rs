@@ -563,6 +563,18 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
     update_fields_with(s, all, true)
 }
 
+/// A `DOCVARIABLE` field's result: the variable its first argument names (quoted, or the first
+/// word), with the field's case switch, or Word's error text, stored as is.
+fn doc_variable_result(doc: &wordcraft_doc::Document, instr: &str) -> String {
+    match doc_property_arg(instr) {
+        None => DOC_VARIABLE_NOT_DEFINED.to_string(),
+        Some(n) => match doc.doc_var(&n) {
+            Some(v) => text_result(instr, v.to_string()),
+            None => NO_DOC_VARIABLE.to_string(),
+        },
+    }
+}
+
 /// The refresh after Insert › Field: as [`update_fields`], except that `DOCVARIABLE` fields keep
 /// their stored result. Only Update Field recomputes a document variable's result (Word keeps it
 /// on open and on export too).
@@ -712,16 +724,7 @@ fn update_fields_with(s: &mut Session, all: bool, doc_vars: bool) -> Result<(), 
                     }
                 }
                 // DOCVARIABLE <name>: the document variable (names ignore case), or Word's error text.
-                "DOCVARIABLE" if doc_vars => {
-                    let r = match doc_property_arg(instr) {
-                        None => DOC_VARIABLE_NOT_DEFINED.to_string(),
-                        Some(n) => match s.doc.doc_var(&n) {
-                            Some(v) => text_result(instr, v.to_string()),
-                            None => NO_DOC_VARIABLE.to_string(),
-                        },
-                    };
-                    updates.push((k, r));
-                }
+                "DOCVARIABLE" => updates.extend(doc_vars.then(|| (k, doc_variable_result(&s.doc, instr)))),
                 "FILENAME" => {
                     let (fn_name, fn_path) = s.resolved_filenames();
                     let text = if has_switch(instr, 'p') { fn_path } else { fn_name };
