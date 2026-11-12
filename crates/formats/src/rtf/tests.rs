@@ -1831,6 +1831,7 @@ fn compound_borders_round_trip() {
 }
 
 mod bookmark_ranges;
+mod char_border;
 mod char_effects;
 mod char_unit_indents;
 mod column_widths;
