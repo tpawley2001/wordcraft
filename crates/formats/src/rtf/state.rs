@@ -70,12 +70,21 @@ pub(super) enum Dest {
     /// User properties (`{\*\userprops …}`, RTF 1.9.1 "User Properties"): `\proptypeN` is read
     /// here, `\propname`, `\staticval` and `\linkval` are text groups (`Info(8..=10)`).
     UserProps,
+    /// A document variable (`{\*\docvar {name}{value}}`, RTF 1.9.1 "Document Variables"): its
+    /// first nested group is the name, the second the value, both text groups (`Info(11)`).
+    DocVar,
 }
 
 /// Longest text kept of one information-group field or user property name or value (bytes).
 pub(super) const MAX_INFO_TEXT: usize = 64 * 1024;
 /// Most user properties one file may bring in.
 pub(super) const MAX_USER_PROPS: usize = 1_000;
+
+/// Most document variables one file may bring in.
+pub(super) const MAX_DOC_VARS: usize = 4096;
+/// Longest document variable name and value kept (characters); longer ones are dropped.
+pub(super) const MAX_DOC_VAR_NAME: usize = 255;
+pub(super) const MAX_DOC_VAR_VALUE: usize = 65_280;
 
 /// Cut `s` to at most `max` bytes, at a character boundary.
 pub(super) fn truncate_chars(s: &mut String, max: usize) {
@@ -98,6 +107,10 @@ pub(super) struct InfoMore {
     pub(super) props: Vec<wordcraft_doc::CustomProp>,
     /// The user property being read: its name, `\proptypeN`, value and linked bookmark.
     pub(super) cur: Option<UserProp>,
+    pub(super) doc_vars: Vec<wordcraft_doc::DocVar>,
+    /// The name and value groups read so far of the `{\*\docvar …}` group being read; `None`
+    /// for a part longer than the information-group text cap.
+    pub(super) var_parts: Vec<Option<String>>,
 }
 
 #[derive(Debug, Default)]
@@ -124,6 +137,22 @@ impl InfoMore {
                 p.link = Some(t);
             }
         }
+    }
+
+    /// Keep the document variable just read: it needs a name; a missing value is empty; a name
+    /// or value over the limits drops it.
+    pub(super) fn commit_doc_var(&mut self) {
+        let mut parts = std::mem::take(&mut self.var_parts).into_iter();
+        let Some(Some(name)) = parts.next() else { return };
+        let Some(value) = parts.next().unwrap_or(Some(String::new())) else { return };
+        if name.is_empty()
+            || name.chars().count() > MAX_DOC_VAR_NAME
+            || value.chars().count() > MAX_DOC_VAR_VALUE
+            || self.doc_vars.len() >= MAX_DOC_VARS
+        {
+            return;
+        }
+        self.doc_vars.push(wordcraft_doc::DocVar { name, value });
     }
 
     pub(super) fn set_prop_type(&mut self, n: i32) {

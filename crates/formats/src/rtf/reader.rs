@@ -575,6 +575,10 @@ impl Reader {
             return;
         }
         self.stack.push(self.st.clone());
+        // A `{\*\docvar …}` group's first two nested groups are its name and value; any more are skipped.
+        if self.st.dest == Dest::DocVar {
+            self.st.dest = if self.info_more.var_parts.len() < 2 { Dest::Info(11) } else { Dest::Skip };
+        }
         self.mark_group_open();
     }
 
@@ -597,6 +601,17 @@ impl Reader {
             Dest::FontTbl if !self.font_name.is_empty() => self.commit_font(),
             Dest::StyleSheet if !self.style_name.is_empty() => self.commit_style(),
             Dest::RevTbl if !self.rev_name.trim().is_empty() => self.commit_author(),
+            // A document variable's name or value: kept as written, not trimmed.
+            Dest::Info(11) => {
+                let t = std::mem::take(&mut self.info_text);
+                if self.stack.last().is_some_and(|p| p.dest == Dest::DocVar) {
+                    let part = Some(t).filter(|t| t.len() <= super::state::MAX_INFO_TEXT);
+                    self.info_more.var_parts.push(part);
+                } else {
+                    // A nested group inside the name or value: its text belongs to that part.
+                    self.info_text = t;
+                }
+            }
             Dest::Info(k) => {
                 let mut t = std::mem::take(&mut self.info_text).trim().to_string();
                 super::state::truncate_chars(&mut t, super::state::MAX_INFO_TEXT);
@@ -613,6 +628,7 @@ impl Reader {
                 }
             }
             Dest::UserProps => self.info_more.commit_user_prop(),
+            Dest::DocVar => self.info_more.commit_doc_var(),
             Dest::Atn(k) => self.commit_atn(k),
             _ => {}
         }

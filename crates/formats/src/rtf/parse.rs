@@ -60,6 +60,7 @@ impl Info {
         c.modified = self.modified;
         c.last_printed = self.printed;
         doc.custom_props = self.more.props;
+        doc.settings.doc_vars = self.more.doc_vars;
     }
 }
 

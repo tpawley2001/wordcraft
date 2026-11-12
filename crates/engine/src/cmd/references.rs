@@ -23,7 +23,8 @@ pub(crate) use captions::{add_auto_caption, below_caption};
 use captions::{auto_caption, caption_label};
 use fields::caption;
 pub use fields::{
-    CHAPTER_SEPARATORS, REFERENCE_NOT_FOUND, output_fields, refresh_date_fields, seq_format, update_fields, update_fields_in, update_seq,
+    CHAPTER_SEPARATORS, REFERENCE_NOT_FOUND, output_fields, refresh_date_fields, seq_format, update_fields, update_fields_after_insert,
+    update_fields_in, update_seq,
 };
 pub(crate) use fields::{page_at, page_formats, page_label, page_text};
 pub(crate) use includetext::update_source;

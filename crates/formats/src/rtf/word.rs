@@ -406,6 +406,12 @@ impl Reader {
             "propname" if self.st.dest == Dest::UserProps => Some(Dest::Info(8)),
             "staticval" if self.st.dest == Dest::UserProps => Some(Dest::Info(9)),
             "linkval" if self.st.dest == Dest::UserProps => Some(Dest::Info(10)),
+            "docvar" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() && self.st.field.is_none() && self.shapes.is_empty() => {
+                self.info_more.var_parts.clear();
+                Some(Dest::DocVar)
+            }
+            // Anywhere else (a header, note, field or shape) it is not a document variable.
+            "docvar" => Some(Dest::Skip),
             "listtable" => Some(Dest::ListTable),
             "revtbl" => Some(Dest::RevTbl),
             "oldcprops" => Some(Dest::OldProps(false)),
@@ -450,7 +456,7 @@ impl Reader {
             | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "bkmkend" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
-            | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb" | "fontfile"
+            | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "objdata" | "fontemb" | "fontfile"
             | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl"
             // The flat copy of nested tables, for readers without them.
             | "nonesttables" => Some(Dest::Skip),
@@ -532,6 +538,7 @@ impl Reader {
                 self.record_date_part(word, value);
                 true
             }
+            Dest::DocVar => true,
             Dest::UserProps => {
                 if word == "proptype" {
                     self.info_more.set_prop_type(value);

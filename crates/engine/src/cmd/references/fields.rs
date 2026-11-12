@@ -330,6 +330,12 @@ fn styleref_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
 /// What Word prints for a `REF` to a bookmark the document doesn't have.
 pub const REFERENCE_NOT_FOUND: &str = "Error! Reference source not found.";
 
+/// What Word prints for a `DOCVARIABLE` field without a variable name.
+pub const DOC_VARIABLE_NOT_DEFINED: &str = "Error! Document Variable not defined.";
+
+/// What Word prints for a `DOCVARIABLE` field whose variable is missing or empty.
+pub const NO_DOC_VARIABLE: &str = "Error! No document variable supplied.";
+
 /// The fresh results of the body's unlocked REF fields as output shows them: the bookmark's
 /// text, or Word's error when the document lacks the bookmark (measured in Word for Windows);
 /// `\p` ("above" or "below") and the paragraph number switches `\r`, `\n` and `\w` keep the
@@ -451,7 +457,7 @@ fn has_switch(instr: &str, sw: char) -> bool {
 
 /// Update fields of the story being edited, as Word's F9 does: dates, REF/PAGEREF, the document
 /// information fields (TITLE, SUBJECT, AUTHOR, KEYWORDS, COMMENTS, LASTSAVEDBY, REVNUM, NUMWORDS,
-/// NUMCHARS, FILENAME, DOCPROPERTY) in the body, or in the header, footer, note or text box the
+/// NUMCHARS, FILENAME, DOCPROPERTY, DOCVARIABLE) in the body, or in the header, footer, note or text box the
 /// caret is in (the body's fields stay as they are then). SEQ numbering, citations and TOC are
 /// body-only, so they run only when the caret is in the body.
 pub fn update_fields(s: &mut Session) -> Result<(), CmdError> {
@@ -554,6 +560,17 @@ fn noteref_mark(doc: &wordcraft_doc::Document, at: &Pos, marks: &std::collection
 /// [`update_fields`], or with `all` the whole document: the body (with SEQ, citations and TOC) and
 /// every part story, wherever the caret is (what printing needs).
 pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
+    update_fields_with(s, all, true)
+}
+
+/// The refresh after Insert › Field: as [`update_fields`], except that `DOCVARIABLE` fields keep
+/// their stored result. Only Update Field recomputes a document variable's result (Word keeps it
+/// on open and on export too).
+pub fn update_fields_after_insert(s: &mut Session) -> Result<(), CmdError> {
+    update_fields_with(s, false, false)
+}
+
+fn update_fields_with(s: &mut Session, all: bool, doc_vars: bool) -> Result<(), CmdError> {
     let caret_story = s.sel.focus.story;
     let in_body = all || caret_story == StoryRef::Body;
     if in_body {
@@ -693,6 +710,17 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
                     {
                         updates.push((k, text_result(instr, v)));
                     }
+                }
+                // DOCVARIABLE <name>: the document variable (names ignore case), or Word's error text.
+                "DOCVARIABLE" if doc_vars => {
+                    let r = match doc_property_arg(instr) {
+                        None => DOC_VARIABLE_NOT_DEFINED.to_string(),
+                        Some(n) => match s.doc.doc_var(&n) {
+                            Some(v) => text_result(instr, v.to_string()),
+                            None => NO_DOC_VARIABLE.to_string(),
+                        },
+                    };
+                    updates.push((k, r));
                 }
                 "FILENAME" => {
                     let (fn_name, fn_path) = s.resolved_filenames();

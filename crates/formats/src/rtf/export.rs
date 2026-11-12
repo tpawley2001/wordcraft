@@ -1821,6 +1821,16 @@ pub fn export(doc: &Document) -> String {
     export_with(&flow.meta, doc, &w, &own_entries, &body)
 }
 
+/// One `{\*\docvar {name}{value}}` (RTF 1.9.1 "Document Variables") per document variable, in
+/// order; empty when there are none.
+fn doc_vars(vars: &[wordcraft_doc::DocVar]) -> String {
+    let mut out = String::new();
+    for v in vars {
+        out.push_str(&format!("{{\\*\\docvar {{{}}}{{{}}}}}\n", esc(&v.name), esc(&v.value)));
+    }
+    out
+}
+
 /// `{\*\userprops …}` (RTF 1.9.1 "User Properties") for the custom properties RTF has a type
 /// for, in document order; empty when there are none.
 fn user_props(props: &[wordcraft_doc::CustomProp]) -> String {
@@ -1907,6 +1917,7 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     }
     out.push_str("}\n");
     out.push_str(&user_props(&doc.custom_props));
+    out.push_str(&doc_vars(&doc.settings.doc_vars));
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
     let notes = doc_note_words(doc);
