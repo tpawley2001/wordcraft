@@ -54,6 +54,9 @@ fn letter(d: &mut Document) {
 fn doc_with(header: Option<Vec<Paragraph>>, footer: Option<Vec<Paragraph>>, body: Vec<Paragraph>) -> Document {
     crate::test_fonts();
     let mut d = Document::new();
+    // The probes were DOCX files with no compatibilityMode setting, which Word opens in mode 12;
+    // from mode 15 a header's own text wraps the box as body text does (`hf_float_wrap_modes`).
+    d.settings.compat_mode = wordcraft_doc::LEGACY_COMPAT_MODE;
     letter(&mut d);
     if let Some(h) = header {
         let id = d.add_part(PartKind::Header, h.into_iter().map(para_block).collect());
