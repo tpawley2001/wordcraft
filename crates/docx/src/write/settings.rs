@@ -256,6 +256,9 @@ pub(crate) fn write_captions(w: &mut W, c: &wordcraft_doc::Captions) {
 fn write_compatibility_settings(w: &mut W, doc: &Document) {
     w.open("w:compat", &[]);
     // CT_Compat: the older switches come before the `w:compatSetting`s.
+    if doc.settings.wp_justification {
+        w.empty("w:wpJustification", &[]);
+    }
     if doc.settings.no_leading {
         w.empty("w:noLeading", &[]);
     }

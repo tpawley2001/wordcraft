@@ -412,3 +412,5 @@ thread_local! {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wp_justification_tests;

@@ -49,6 +49,92 @@ pub(super) fn rtf_space_room(spaces: f32, overrun: f32, space_from: f32, right_e
     if first_ok && starts_inside && overrun > 0.0 && overrun < spaces * RTF_MAX_SPACE_SHRINK { overrun } else { 0.0 }
 }
 
+/// How far past its right edge a line may run, as a share of its width, in a document with
+/// WordPerfect-style justification (`w:wpJustification`): measured in Word (compatibility mode
+/// 11, justified Times New Roman paragraphs), the word stays when it overruns by at most 0.03907
+/// to 0.03914 of the line's width, whatever the number of spaces or the word's width.
+const WP_LINE_SQUEEZE: f32 = 0.0391;
+
+/// What a WordPerfect-justified line squeezed out of its spaces has left over comes off each
+/// character in turn, from the line's end: 1/600 inch.
+const WP_CHAR_SQUEEZE: f32 = 0.12;
+
+/// At most this many passes over a squeezed line's characters (each pass takes
+/// [`WP_CHAR_SQUEEZE`] off every character).
+const WP_MAX_PASSES: usize = 64;
+
+/// How far a justified line from `left` to `right_edge` may run past its edge with
+/// WordPerfect-style justification ([`WP_LINE_SQUEEZE`] of its width).
+pub(super) fn wp_line_room(left: f32, right_edge: f32) -> f32 {
+    let w = right_edge - left;
+    if w.is_finite() && w > 0.0 { w * WP_LINE_SQUEEZE } else { 0.0 }
+}
+
+/// Squeeze a WordPerfect-justified line that overruns its edge by `-slack` (at most `room`) so
+/// that it ends at the edge: the inner spaces after the line's last tab (from `from`) shrink
+/// alike, by at most [`MAX_SPACE_SHRINK`] of their width, and what is still over comes off the
+/// characters after the tab, [`WP_CHAR_SQUEEZE`] each, from the line's last character leftwards,
+/// pass after pass. A line overrunning by more (a word longer than the line) is left alone.
+pub(super) fn wp_squeeze_line(pl: &ParaLayout, xs: &mut [f32], (c0, c1, from): (usize, usize, usize), (content_end, slack): (f32, f32), room: f32) {
+    let over = -slack;
+    if !over.is_finite() || over <= 0.0 || over > room + 0.05 || c1 < c0 {
+        return;
+    }
+    let from = from.clamp(c0, c1);
+    let inside = |k: usize| xs.get(k - c0).copied().unwrap_or(f32::MAX) < content_end - 0.01;
+    let text_from = (from..c1).find(|k| pl.clusters.get(*k).is_some_and(|c| c.kind != ClKind::Space && c.kind != ClKind::Marker)).unwrap_or(c1);
+    let mut take = vec![0.0f32; c1 - c0];
+    let spaces: f32 = (text_from..c1)
+        .filter(|k| pl.clusters.get(*k).is_some_and(|c| c.kind == ClKind::Space) && inside(*k))
+        .filter_map(|k| pl.clusters.get(k))
+        .map(|c| c.adv.max(0.0))
+        .sum();
+    let mut left = over;
+    if spaces > 0.0 {
+        let ratio = (over / spaces).min(MAX_SPACE_SHRINK);
+        for k in text_from..c1 {
+            if let Some(c) = pl.clusters.get(k).filter(|c| c.kind == ClKind::Space)
+                && inside(k)
+                && let Some(t) = take.get_mut(k - c0)
+            {
+                *t = c.adv.max(0.0) * ratio;
+            }
+        }
+        left -= spaces * ratio;
+    }
+    // The characters: letters and inner spaces, from the line's last one leftwards.
+    let chars: Vec<usize> =
+        (from..c1).rev().filter(|k| pl.clusters.get(*k).is_some_and(|c| matches!(c.kind, ClKind::Text | ClKind::Space)) && inside(*k)).collect();
+    for _ in 0..WP_MAX_PASSES {
+        if left <= 1e-4 {
+            break;
+        }
+        let mut took = false;
+        for &k in &chars {
+            if left <= 1e-4 {
+                break;
+            }
+            let adv = pl.clusters.get(k).map_or(0.0, |c| c.adv.max(0.0));
+            if let Some(t) = take.get_mut(k - c0) {
+                let d = WP_CHAR_SQUEEZE.min(left).min(adv - *t).max(0.0);
+                if d > 0.0 {
+                    *t += d;
+                    left -= d;
+                    took = true;
+                }
+            }
+        }
+        if !took {
+            break;
+        }
+    }
+    let mut shift = 0.0;
+    for (q, v) in xs.iter_mut().enumerate() {
+        *v -= shift;
+        shift += take.get(q).copied().unwrap_or(0.0);
+    }
+}
+
 /// Whether the space cluster `k` stands alone: no space next to it (markers between don't
 /// separate them).
 fn single_space(pl: &ParaLayout, k: usize) -> bool {
