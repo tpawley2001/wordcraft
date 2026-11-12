@@ -23,6 +23,7 @@ mod emf_header_repair;
 mod empty_inline_shape;
 mod encrypted;
 mod field_result_props;
+mod font_table;
 mod frames;
 mod header_guard;
 mod horizontal_rules;
