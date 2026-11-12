@@ -129,6 +129,12 @@ pub(crate) struct Writer<'d> {
     toc_end_here: bool,
     /// Byte offsets of the content control markers the next paragraph writes inline.
     inline_controls: Vec<usize>,
+    /// Fields of the paragraph being written whose code runs over several paragraphs: the
+    /// field's byte offset, and per paragraph mark in its code the offset in the code and the
+    /// next paragraph's `w:pPr`.
+    code_splits: Vec<(usize, Vec<(usize, String)>)>,
+    /// The paragraph marks of the field being written (taken from `code_splits`).
+    code_marks: Vec<(usize, String)>,
     /// Media keys actually referenced by a written drawing.
     used_media: std::collections::BTreeSet<String>,
     /// Bounds writing text boxes inside text boxes (as layout shows them).

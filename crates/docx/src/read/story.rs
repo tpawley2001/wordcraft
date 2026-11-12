@@ -86,6 +86,8 @@ struct FieldState {
     sizes: Vec<(usize, Option<f32>)>,
     /// A legacy form field's `w:ffData`, as raw XML.
     form: String,
+    /// Paragraph marks inside the code (offsets in the untrimmed `instr`).
+    marks: Vec<wordcraft_doc::para::CodeMark>,
 }
 
 /// The last paragraph of a block list: its last block, or inside a final table the last
@@ -126,6 +128,8 @@ struct PB {
     text: String,
     runs: Vec<Run>,
     objects: Vec<InlineObject>,
+    /// Paragraph marks inside the codes of the paragraph's fields.
+    code: Vec<wordcraft_doc::para::CodeSplit>,
 }
 
 impl PB {
