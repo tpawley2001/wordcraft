@@ -759,6 +759,8 @@ pub(super) fn is_format_word(w: &str) -> bool {
             | "cf"
             | "highlight"
             | "chcbpat"
+            | "chbrdr"
+            | "brsp"
             | "cb"
             | "v"
             | "pard"
@@ -816,9 +818,12 @@ pub(super) fn is_char_format_word(w: &str) -> bool {
             | "cf"
             | "highlight"
             | "chcbpat"
+            | "chbrdr"
+            | "brsp"
             | "cb"
             | "v"
     ) || (w.starts_with("ul") && w.len() <= 8)
+        || w.starts_with("brdr")
 }
 
 /// The spacing and indents in points of the paragraph formatting `st`.

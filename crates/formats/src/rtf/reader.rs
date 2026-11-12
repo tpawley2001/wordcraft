@@ -292,8 +292,16 @@ impl Reader {
 
     /// Applies `f` to the border of the page side being described, else of the cell side, else
     /// of the paragraph side: `h` is the border between paragraphs (`\brdrbtw`), `x` all four
-    /// sides (`\box`); any other side (the bar border's `v`) has no slot.
+    /// sides (`\box`), `c` the run's character border (`\chbrdr`); any other side (the bar
+    /// border's `v`) has no slot.
     pub(super) fn each_border_slot(&mut self, mut f: impl FnMut(&mut Option<wordcraft_doc::props::Border>)) {
+        // The character border (`\chbrdr`) is the current run's.
+        if (self.page_side, self.cell_side, self.st.border_side) == (None, None, Some('c')) {
+            let mut b = self.st.fmt.extra.as_ref().and_then(|x| x.border);
+            f(&mut b);
+            self.set_extra(|x| x.border = b);
+            return;
+        }
         let (b, side) = match (self.page_side, self.cell_side) {
             // A header or footer doesn't set the body's section.
             (Some(_), _) if self.hf.is_some() || self.sub.is_some() => return,
