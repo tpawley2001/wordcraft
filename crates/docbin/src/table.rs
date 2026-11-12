@@ -601,7 +601,12 @@ impl TableBuilder {
             row_end && para.text.is_empty() && self.cell.is_empty() && !info.edges.is_empty() && self.cells.len() + 1 >= info.edges.len();
         // ...but a row-end mark with no cells before it still makes a (one-cell) row.
         let row_end_only = row_end_only && !self.cells.is_empty();
-        if !para.text.is_empty() {
+        // The cell mark is the paragraph mark of the cell's last paragraph ([MS-DOC] 2.4.3), so
+        // an empty one is still a paragraph: a blank last line after the cell's text, or an
+        // empty cell's only paragraph with its own style and formatting. After a nested table
+        // that just closed into the cell an empty mark adds nothing (not measured in Word).
+        let after_table = self.cell.last().is_some_and(|b| b.as_table().is_some());
+        if !row_end_only && (!para.text.is_empty() || !after_table) {
             self.cell.push(para_block(para));
         }
         if !row_end_only {
