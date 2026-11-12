@@ -662,7 +662,7 @@ impl Reader {
                     "curi" => def.curi = Some(value.clamp(-158400, 158400)),
                     "expnd" => def.spacing = (value != 0).then_some(value as f32 / 4.0),
                     "expndtw" => def.spacing = (value != 0).then_some(value as f32 / 20.0),
-                    _ => {}
+                    _ => style_line_word(def, word, on, value),
                 }
                 true
             }
@@ -1023,6 +1023,44 @@ impl Reader {
             Dest::DocVar
         } else {
             Dest::Skip
+        }
+    }
+}
+
+/// A character border, underline or strikethrough word of a paragraph or character style's
+/// stylesheet entry, read as the run's are: `\chbrdr` starts the border, and the border words
+/// after it describe it until a paragraph border side (`\brdrt`, `\box`…) starts. A stated
+/// "no border" (`\brdrnone`) is kept as an invisible border: it undoes a base style's.
+fn style_line_word(def: &mut StyleDef, w: &str, on: bool, pv: i32) {
+    use wordcraft_doc::props::Border;
+    // A table or section entry's aren't read.
+    if !matches!(def.entry, StyleEntry::Para | StyleEntry::Char) {
+        return;
+    }
+    match w {
+        "chbrdr" => def.border_open = true,
+        "brdrt" | "brdrl" | "brdrb" | "brdrr" | "brdrbtw" | "brdrbar" | "box" => def.border_open = false,
+        "brdrw" if def.border_open => {
+            if let Some(b) = &mut def.border {
+                b.width = (pv as f32 / 20.0).clamp(0.25, 6.0);
+            }
+        }
+        "brdrcf" if def.border_open && def.border.is_some() => def.border_color = Some(pv),
+        "brsp" if def.border_open => {
+            if let Some(b) = &mut def.border {
+                b.space = (pv as f32 / 20.0).clamp(0.0, 31.0);
+            }
+        }
+        "strike" => def.strike = Some(on),
+        "striked" => def.double_strike = Some(on),
+        "ulnone" => def.underline = Some(Underline::None),
+        _ => {
+            if let Some(style) = border_style(w).filter(|_| def.border_open) {
+                def.border = Some(Border { style, ..Border::single(0.5) });
+                def.border_color = None;
+            } else if let Some(u) = underline_style(w) {
+                def.underline = Some(if on { u } else { Underline::None });
+            }
         }
     }
 }
