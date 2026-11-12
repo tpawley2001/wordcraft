@@ -13330,6 +13330,7 @@ mod backup_copy;
 mod formula_bookmarks;
 mod border_from_text;
 mod opentype_state;
+mod formula_error_texts;
 mod hyperlink_screen_tip_fixes;
 mod formula_mixed_looks;
 mod formula_operand_text;
