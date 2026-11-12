@@ -984,9 +984,18 @@ pub fn resolve(family: &str, bold: bool, italic: bool) -> Resolved {
     r
 }
 
+#[cfg(test)]
 /// A line's (ascent, descent) from hhea values, both positive: the line gap goes above the ascent.
 fn hhea_line(ascender: i16, descender: i16, line_gap: i16) -> (f64, f64) {
-    (f64::from(ascender) + f64::from(line_gap.max(0)), f64::from(descender).abs())
+    hhea_line_leading(ascender, descender, line_gap, true)
+}
+
+/// A line's (ascent, descent) from hhea values, both positive. With `leading` the line gap goes
+/// above the ascent; without it (the compatibility option "Don't add leading (extra space)
+/// between rows of text") the line is the ascender plus the descender only.
+pub fn hhea_line_leading(ascender: i16, descender: i16, line_gap: i16, leading: bool) -> (f64, f64) {
+    let gap = if leading { f64::from(line_gap.max(0)) } else { 0.0 };
+    (f64::from(ascender) + gap, f64::from(descender).abs())
 }
 
 /// The line (ascent, descent) in units of an `upem` em that Word gives the classic PostScript
@@ -995,10 +1004,10 @@ fn hhea_line(ascender: i16, descender: i16, line_gap: i16) -> (f64, f64) {
 /// spacing, 11 and 20 pt): Times lines lie exactly as far apart as Times New Roman's (hhea 1825 /
 /// -443, gap 87 per 2048), Courier's as Courier New's (1705 / -615, no gap). On Windows, Word
 /// draws a "Times" document in Times New Roman anyway.
-fn borrowed_line(family: &str, upem: f64) -> Option<(f64, f64)> {
+fn borrowed_line(family: &str, upem: f64, leading: bool) -> Option<(f64, f64)> {
     let (a, d) = match family.trim().to_ascii_lowercase().as_str() {
-        "times" => hhea_line(1825, -443, 87),
-        "courier" => hhea_line(1705, -615, 0),
+        "times" => hhea_line_leading(1825, -443, 87, leading),
+        "courier" => hhea_line_leading(1705, -615, 0, leading),
         _ => return None,
     };
     Some((a * upem / 2048.0, d * upem / 2048.0))
@@ -1010,18 +1019,30 @@ fn borrowed_line(family: &str, upem: f64) -> Option<(f64, f64)> {
 /// usWinAscent/usWinDescent; Times and Courier borrow their Windows counterparts' (see
 /// [`borrowed_line`]).
 pub fn line_metrics(face: &crate::FontFace) -> (f64, f64) {
-    static CACHE: OnceLock<Mutex<HashMap<u32, (f64, f64)>>> = OnceLock::new();
+    face_line(face, true)
+}
+
+/// [`line_metrics`] without the line gap: the line Word gives a face under the compatibility
+/// option "Don't add leading (extra space) between rows of text" (hhea ascender plus descender;
+/// Times borrows Times New Roman's without its gap). OS/2 win metrics have no gap and are the same.
+pub fn line_metrics_no_leading(face: &crate::FontFace) -> (f64, f64) {
+    face_line(face, false)
+}
+
+fn face_line(face: &crate::FontFace, leading: bool) -> (f64, f64) {
+    static CACHE: OnceLock<Mutex<HashMap<(u32, bool), (f64, f64)>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Some(v) = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&face.id()) {
+    let key = (face.id(), leading);
+    if let Some(v) = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&key) {
         return *v;
     }
     let mut v = (face.ascent.max(1.0), face.descent.abs());
-    if let Some(m) = borrowed_line(&face.family, face.upem) {
+    if let Some(m) = borrowed_line(&face.family, face.upem, leading) {
         v = m;
     } else if let Some(f) = face.skrifa() {
         // hhea ascender + descender + line gap (Word on macOS), the gap above the ascent; OS/2
         // win metrics only when the hhea values are missing, and never more than twice the em.
-        let hhea = f.hhea().ok().map(|h| hhea_line(h.ascender().to_i16(), h.descender().to_i16(), h.line_gap().to_i16()));
+        let hhea = f.hhea().ok().map(|h| hhea_line_leading(h.ascender().to_i16(), h.descender().to_i16(), h.line_gap().to_i16(), leading));
         let win = f.os2().ok().map(|o| (o.us_win_ascent() as f64, o.us_win_descent() as f64));
         let ok = |m: &(f64, f64)| m.0 > 0.0 && m.0 + m.1 <= face.upem * 2.0;
         if let Some(m) = hhea.filter(ok) {
@@ -1030,7 +1051,7 @@ pub fn line_metrics(face: &crate::FontFace) -> (f64, f64) {
             v = m;
         }
     }
-    cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(face.id(), v);
+    cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(key, v);
     v
 }
 
@@ -1060,13 +1081,35 @@ mod tests {
     #[test]
     fn times_and_courier_take_their_windows_counterparts_line() {
         // Apple's Times has 2048 units to the em, Times New Roman's line is 1.15 em.
-        assert_eq!(borrowed_line("Times", 2048.0), Some((1912.0, 443.0)));
-        assert_eq!(borrowed_line(" times ", 1000.0), Some((1912.0 / 2.048, 443.0 / 2.048)));
-        assert_eq!(borrowed_line("Courier", 2048.0), Some((1705.0, 615.0)));
+        assert_eq!(borrowed_line("Times", 2048.0, true), Some((1912.0, 443.0)));
+        assert_eq!(borrowed_line(" times ", 1000.0, true), Some((1912.0 / 2.048, 443.0 / 2.048)));
+        assert_eq!(borrowed_line("Courier", 2048.0, true), Some((1705.0, 615.0)));
         // Only those two: the Windows fonts themselves, and other Mac fonts, keep their own.
         for family in ["Times New Roman", "Courier New", "Helvetica", "Hoefler Text", "Palatino", ""] {
-            assert_eq!(borrowed_line(family, 2048.0), None, "{family}");
+            assert_eq!(borrowed_line(family, 2048.0, true), None, "{family}");
         }
+    }
+
+    #[test]
+    fn no_leading_lines_leave_out_the_line_gap() {
+        // Word's line pitch (pt) with "Don't add leading between rows of text" and without it:
+        // size x (ascender + descender [+ gap]) / 2048.
+        let pitch = |m: (f64, f64), size: f64| (m.0 + m.1) * size / 2048.0;
+        for ((asc, desc, gap), size, without_gap, with_gap) in [
+            ((1825, -443, 87), 14.0, 15.50, 16.10),
+            ((1825, -443, 87), 12.0, 13.29, 13.80),
+            ((1825, -443, 87), 10.0, 11.07, 11.50),
+            ((1854, -434, 67), 14.0, 15.64, 16.10),
+        ] {
+            let bare = pitch(hhea_line_leading(asc, desc, gap, false), size);
+            let full = pitch(hhea_line_leading(asc, desc, gap, true), size);
+            assert!((bare - without_gap).abs() <= 0.01, "{asc} {size}: {bare} vs {without_gap}");
+            assert!((full - with_gap).abs() <= 0.01, "{asc} {size}: {full} vs {with_gap}");
+        }
+        // The gap comes off the top: the descent is the same either way.
+        assert_eq!(hhea_line_leading(1825, -443, 87, false), (1825.0, 443.0));
+        // Times borrows Times New Roman's line, without the gap too.
+        assert_eq!(borrowed_line("Times", 2048.0, false), Some((1825.0, 443.0)));
     }
 
     #[test]
