@@ -378,7 +378,8 @@ impl Reader {
     /// `\oldcprops` words applied (a `\plain` among them starts from none).
     fn old_fmt(&mut self, words: &[(String, Option<i32>)]) -> Fmt {
         let fmt = Fmt { link: None, ins: None, del: None, fmt_change: None, ..self.st.fmt.clone() };
-        let saved = std::mem::replace(&mut self.st, St { dest: Dest::OldProps(false), fmt, ..Default::default() });
+        let ch_pattern = self.st.ch_pattern;
+        let saved = std::mem::replace(&mut self.st, St { dest: Dest::OldProps(false), fmt, ch_pattern, ..Default::default() });
         for (w, p) in words {
             self.word(w, *p, false, false);
         }

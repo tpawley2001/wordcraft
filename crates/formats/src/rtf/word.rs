@@ -1,5 +1,5 @@
 use super::reader::apply_section_word;
-use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pn, PnKind, RevSt, SecFmt, St};
+use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pattern, Pn, PnKind, RevSt, SecFmt, St};
 use super::styles::{StyleDef, StyleEntry, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
 use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline};
@@ -94,6 +94,7 @@ impl Reader {
                 self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
+                self.st.ch_pattern = Pattern::default();
             }
             "pard" => {
                 let field = self.st.field;
@@ -175,7 +176,16 @@ impl Reader {
                 }
             }
             "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
-            "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "chcbpat" | "cb" | "chcfpat" | "chshdng" => {
+                let c = self.colors.get(pv.max(0) as usize).copied().flatten();
+                let pat = &mut self.st.ch_pattern;
+                match w {
+                    "chcfpat" => pat.ink = c,
+                    "chshdng" => pat.pct = pv,
+                    _ => pat.fill = c,
+                }
+                self.st.fmt.background = pat.colour();
+            }
             "highlight" => self.highlight(pv),
             // Hidden text: kept, as hidden text.
             "v" => self.st.fmt.hidden = on,
@@ -244,7 +254,16 @@ impl Reader {
             "cltxlrtb" | "cltxlrtbv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Horizontal,
             "cltxtbrl" | "cltxtbrlv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Down,
             "cltxbtlr" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Up,
-            "clcbpat" => self.def_cur.shading = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "clcbpat" | "clcfpat" | "clshdng" => {
+                let c = self.colors.get(pv.max(0) as usize).copied().flatten();
+                let pat = &mut self.def_cur.pattern;
+                match w {
+                    "clcfpat" => pat.ink = c,
+                    "clshdng" => pat.pct = pv,
+                    _ => pat.fill = c,
+                }
+                self.def_cur.shading = pat.colour();
+            }
             "sb" => self.st.sb = Some(pv),
             "sa" => self.st.sa = Some(pv),
             "sl" => self.st.sl = pv,
