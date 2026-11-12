@@ -349,6 +349,12 @@ impl Package {
             // A Strict package's relationship types are read by their Transitional meaning, so they
             // are recognised, and kept parts are related with the Transitional type on save.
             let kind = crate::strict::transitional_rel_type(r.attr("Type").unwrap_or("")).into_owned();
+            // A hyperlink to a place in this document (`#Name`) is no part: keep it as written,
+            // since resolving it as a path loses the name.
+            let place = target.trim();
+            if !external && rel_is(&kind, rt::HYPERLINK) && place.len() > 1 && place.starts_with('#') && !rels.ids.contains_key(id) {
+                rels.places.insert(id.to_string(), place.to_string());
+            }
             rels.ids.entry(id.to_string()).or_insert(rels.list.len());
             rels.list.push(Rel { id: id.to_string(), kind, target: resolved, external });
         }
@@ -407,11 +413,18 @@ pub struct Rels {
     pub list: Vec<Rel>,
     /// Each id's first relationship in `list`, so a lookup doesn't scan every relationship.
     ids: HashMap<String, usize>,
+    /// The target of each internal hyperlink relationship to a place in the document (`#Name`,
+    /// as written), by id; [`Rel::target`] holds it resolved as a package path.
+    places: HashMap<String, String>,
 }
 
 impl Rels {
     pub fn by_id(&self, id: &str) -> Option<&Rel> {
         self.ids.get(id).and_then(|&i| self.list.get(i))
+    }
+    /// The place in the document (`#Name`) internal hyperlink relationship `id` links to.
+    pub fn place(&self, id: &str) -> Option<&str> {
+        self.places.get(id).map(String::as_str)
     }
     pub fn by_type(&self, full: &str) -> Option<&Rel> {
         self.list.iter().find(|r| rel_is(&r.kind, full))
