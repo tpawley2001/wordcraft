@@ -231,11 +231,14 @@ pub fn style_look(doc: &Document, para_style: Option<&str>) -> Fmt {
     f
 }
 
-/// `out`, a flow paragraph of document paragraph `p` whose formatting is stated
-/// ([`FlowOpts::style_look`]), with its effective alignment, spacing, indents and keeps: its own
+/// `out`, a flow paragraph of document paragraph `p`, when its formatting is stated (`look`, its
+/// style: [`FlowOpts::style_look`]), with its effective alignment, spacing, indents and keeps: its own
 /// where it sets them, else its style chain's where those differ from none. A list paragraph
 /// keeps its list level's left and first-line indents unless it sets its own.
-fn state_para_look(doc: &Document, p: &ParaProps, out: &mut Para) {
+fn state_para_look(doc: &Document, look: Option<&str>, p: &ParaProps, out: &mut Para) {
+    if look.is_none() {
+        return;
+    }
     use wordcraft_doc::props::{Align, LineSpacing};
     let rp = doc.styles.resolve_para(p);
     let some = |v: f32| (v != 0.0 && v.is_finite()).then_some(v);
@@ -743,9 +746,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
     };
     out.extra = outline_apart(doc, &p.props, kind, opts, flow_para_extra(doc, &p.props, opts));
     let look = look_style(doc, p.props.style.as_deref(), kind, opts);
-    if look.is_some() {
-        state_para_look(doc, &p.props, &mut out);
-    }
+    state_para_look(doc, look, &p.props, &mut out);
     let in_code = kind == Kind::Code;
     let mut k = 0usize;
     let mut control = OpenControl::default();
@@ -790,9 +791,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
                         index: None,
                         group: None,
                     };
-                    if look.is_some() {
-                        state_para_look(doc, &p.props, &mut next);
-                    }
+                    state_para_look(doc, look, &p.props, &mut next);
                     let prev = std::mem::replace(&mut out, next);
                     if prev.inlines.is_empty() {
                         out.page_break |= prev.page_break;
