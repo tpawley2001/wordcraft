@@ -213,12 +213,7 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
                 r.edges = def_table_edges(prl.operand);
                 edge0 = first_edge(prl.operand).map(Edge0::Center).or(edge0);
                 // The definition replaces each cell's alignment; a later sprmTVertAlign wins.
-                for (c, v) in def_table_valign(prl.operand) {
-                    match v {
-                        Some(v) => set(&mut r.valign, c, v),
-                        None => r.valign.retain(|(k, _)| *k != c),
-                    }
-                }
+                apply_def_table_valign(&mut r.valign, prl.operand);
             }
             T_TABLE_HEADER => r.header = prl.operand.first().copied().unwrap_or(0) != 0,
             T_CANT_SPLIT | T_CANT_SPLIT_90 => r.cant_split = prl.operand.first().copied().unwrap_or(0) != 0,
@@ -783,6 +778,17 @@ fn def_table_edges(operand: &[u8]) -> Vec<f32> {
         }
     }
     edges
+}
+
+/// Record the alignments a `sprmTDefTable` operand's TC80s give its cells, replacing earlier
+/// ones; a cell with none from the definition loses any earlier override.
+fn apply_def_table_valign(slots: &mut Vec<(u8, VAlign)>, operand: &[u8]) {
+    for (c, v) in def_table_valign(operand) {
+        match v {
+            Some(v) => set(slots, c, v),
+            None => slots.retain(|(k, _)| *k != c),
+        }
+    }
 }
 
 /// Each cell's vertical alignment from the TC80s of a `sprmTDefTable` operand: after the
