@@ -84,7 +84,7 @@ pub(crate) fn from_prm0(isprm: u8) -> Option<u16> {
         0x07 => 0x2405, // sprmPFKeep
         0x08 => 0x2406, // sprmPFKeepFollow
         0x09 => 0x2407, // sprmPFPageBreakBefore
-        0x33 => 0x2435, // sprmPWidowControl (low byte of the operand is the value)
+        0x33 => 0x2431, // sprmPFWidowControl
         0x78 => 0x2640, // sprmPOutLvl
         0x41 => 0x0800, // sprmCFRMarkDel
         0x42 => 0x0801, // sprmCFRMarkIns
