@@ -369,6 +369,10 @@ pub(crate) struct Props {
     pub(crate) text_inset: [Option<u32>; 4],
     /// `anchorText` (`MSOANCHOR`): where the text sits between the box's top and bottom.
     pub(crate) anchor_text: Option<u32>,
+    /// `txflTextFlow` (`MSOTXFL`): the direction the text runs in the box.
+    pub(crate) text_flow: Option<u32>,
+    /// `fFitShapeToText` (Text Boolean Properties): the box grows to its text.
+    pub(crate) fit_shape_to_text: Option<bool>,
 }
 
 impl Props {
@@ -438,6 +442,10 @@ impl Props {
                 }
                 0x0081..=0x0084 => self.text_inset[(pid - 0x0081) as usize] = Some(op),
                 0x0087 => self.anchor_text = Some(op),
+                0x0088 => self.text_flow = Some(op),
+                // fFitShapeToText (bit 1) is valid when fUsefFitShapeToText (bit 17) is set.
+                0x00BF if op & (1 << 17) != 0 => self.fit_shape_to_text = Some(op & (1 << 1) != 0),
+                0x00BF => {}
                 0x0384..=0x0387 => self.wrap_dist[(pid - 0x0384) as usize] = Some(op),
                 0x038F => self.posh = Some(op),
                 0x0390 => self.posrelh = Some(op),
@@ -470,6 +478,15 @@ impl Props {
             Some(2 | 5 | 7 | 9) => wordcraft_doc::props::VAlign::Bottom,
             _ => wordcraft_doc::props::VAlign::Top,
         };
+        // MSOTXFL: horizontal (0, 4), top to bottom (1, 3), bottom to top (2), and vertical
+        // with upright glyphs (5); values the enumeration does not define are horizontal.
+        body.vert = match self.text_flow {
+            Some(1 | 3) => wordcraft_doc::props::TextVert::Vert,
+            Some(2) => wordcraft_doc::props::TextVert::Vert270,
+            Some(5) => wordcraft_doc::props::TextVert::Stacked,
+            _ => wordcraft_doc::props::TextVert::Horz,
+        };
+        body.auto_fit = self.fit_shape_to_text.unwrap_or(false);
         body
     }
 
