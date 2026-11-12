@@ -58,6 +58,8 @@ const P_DYA_AFTER: u16 = 0xA414;
 // Automatic (HTML) space before/after, Bool8 (sprmPFDyaBeforeAuto, sprmPFDyaAfterAuto).
 const P_F_DYA_BEFORE_AUTO: u16 = 0x245B;
 const P_F_DYA_AFTER_AUTO: u16 = 0x245C;
+/// sprmPFContextualSpacing ([MS-DOC] §2.6.2): Don't add space between paragraphs of the same style.
+const P_F_CONTEXTUAL_SPACING: u16 = 0x246D;
 const P_DYA_LINE: u16 = 0x6412;
 const P_KEEP: u16 = 0x2405; // keep lines together
 const P_KEEP_FOLLOW: u16 = 0x2406; // keep with next
@@ -218,6 +220,28 @@ fn set(props: &mut Option<bool>, t: Toggle, base: Option<bool>) {
             None => return,
         },
     });
+}
+
+/// The toggle base for a run in a paragraph style (`para`) that also names a character style
+/// whose own toggle values are `chr`: per property, a character style that says on inverts the
+/// paragraph style's value (unset counts as off), one that says off gives off, and one that
+/// says nothing keeps the paragraph style's value. Only the toggle fields are changed.
+pub(crate) fn combine_toggles(para: &CharProps, chr: &CharProps) -> CharProps {
+    fn one(para: Option<bool>, chr: Option<bool>) -> Option<bool> {
+        match chr {
+            Some(true) => Some(!para.unwrap_or(false)),
+            Some(false) => Some(false),
+            None => para,
+        }
+    }
+    let mut out = para.clone();
+    out.bold = one(para.bold, chr.bold);
+    out.italic = one(para.italic, chr.italic);
+    out.strike = one(para.strike, chr.strike);
+    out.small_caps = one(para.small_caps, chr.small_caps);
+    out.caps = one(para.caps, chr.caps);
+    out.hidden = one(para.hidden, chr.hidden);
+    out
 }
 
 /// Apply a character-property sprm. `base` carries the style-inherited values so toggle
@@ -540,6 +564,12 @@ pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
                 } else {
                     p.space_after_auto = Some(b != 0);
                 }
+            }
+        }
+        // A Bool8: any non-zero byte turns it on; an empty operand changes nothing.
+        P_F_CONTEXTUAL_SPACING => {
+            if let Some(&b) = prl.operand.first() {
+                p.contextual_spacing = Some(b != 0);
             }
         }
         // LSPD ([MS-DOC] §2.9.150): a signed dyaLine, then fMultLinespace. In lines (240ths) when
@@ -958,7 +988,7 @@ mod style_list_indent_tests {
         pairs[2 * crate::fib::pair::PLF_LST + 1] = lfo_at;
         pairs[2 * crate::fib::pair::PLF_LFO] = lfo_at;
         pairs[2 * crate::fib::pair::PLF_LFO + 1] = table.len() as u32 - lfo_at;
-        let fib = crate::fib::Fib { which_tbl_stm: false, ccp: Default::default(), pairs, word6: None };
+        let fib = crate::fib::Fib { which_tbl_stm: false, ccp: Default::default(), pairs, word6: None, version: 0x00C1 };
         let mut d = Document::default();
         d.styles = std::sync::Arc::new(stylesheet(&raw, &ids, &fonts, Default::default()));
         d.numbering = std::sync::Arc::new(crate::list::parse(&table, &fib, &fonts));

@@ -2,7 +2,7 @@ use super::reader::apply_section_word;
 use super::state::{CellDef, Dest, FmtRevSt, FontSlot, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pattern, Pn, PnKind, RevSt, SecFmt, St};
 use super::styles::{StyleDef, StyleEntry, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
-use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline};
+use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline, VertAlign};
 
 impl Reader {
     pub(super) fn word(&mut self, w: &str, p: Option<i32>, starred: bool, first_in_group: bool) {
@@ -97,6 +97,7 @@ impl Reader {
                 self.st.dir = None;
                 self.st.slot = None;
                 self.st.ch_pattern = Pattern::default();
+                self.st.off = Default::default();
                 if self.st.border_side == Some('c') {
                     self.st.border_side = None;
                 }
@@ -108,8 +109,8 @@ impl Reader {
                 let chg_c = std::mem::take(&mut self.st.chg_c);
                 let mono = self.st.mono.take();
                 // The run direction and font slot are character formatting too.
-                let (dir, slot) = (self.st.dir, self.st.slot);
-                self.st = St { dest, fmt, mono, rev, chg_c, uc, field, dir, slot, ..Default::default() };
+                let (dir, slot, off) = (self.st.dir, self.st.slot, self.st.off);
+                self.st = St { dest, fmt, mono, rev, chg_c, uc, field, dir, slot, off, ..Default::default() };
                 self.page_side = None;
             }
             "revised" => self.st.rev.ins = on,
@@ -140,10 +141,16 @@ impl Reader {
             "hich" => self.st.slot = Some(FontSlot::High),
             "dbch" => self.st.slot = Some(FontSlot::DoubleByte),
             "af" => self.font_word(pv, true),
-            "strike" => self.st.fmt.strike = on,
+            // A property turned off with its own word is kept as stated off (`StatedOff`, laid over
+            // the text's style by `lay_own_words`): over a style that turns it on, it stays off.
+            "strike" => {
+                self.st.fmt.strike = on;
+                self.st.off.strike = !on;
+            }
             "super" => {
                 self.st.fmt.sup = on;
                 self.st.fmt.sub = false;
+                self.st.off.script = !on;
             }
             // Raised or lowered by N half-points, at full size (RTF 1.9.1; `w:position`): a
             // position, not superscript or subscript (no N: 6). `\up0`/`\dn0` clear it.
@@ -156,10 +163,12 @@ impl Reader {
             "sub" => {
                 self.st.fmt.sub = on;
                 self.st.fmt.sup = false;
+                self.st.off.script = !on;
             }
             "nosupersub" => {
                 self.st.fmt.sup = false;
                 self.st.fmt.sub = false;
+                self.st.off.script = true;
             }
             "fs" | "afs" => {
                 let size = if pv > 0 { Some((pv as f32 / 2.0).clamp(1.0, 1638.0)) } else { None };
@@ -185,7 +194,11 @@ impl Reader {
                 self.st.cp = self.font_cps.get(&pv).copied();
                 self.font_word(pv, false);
             }
-            "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "cf" => {
+                let c = self.colors.get(pv.max(0) as usize).copied().flatten();
+                self.st.fmt.color = c;
+                self.st.off.color = c.is_none();
+            }
             // A character border: the border words that follow describe it, until another side
             // starts, the group ends or `\plain`.
             "chbrdr" => {
@@ -196,7 +209,10 @@ impl Reader {
             "chcbpat" | "cb" | "chcfpat" | "chshdng" | "clcbpat" | "clcfpat" | "clshdng" => self.pattern_word(w, pv),
             "highlight" => self.highlight(pv),
             // Hidden text: kept, as hidden text.
-            "v" => self.st.fmt.hidden = on,
+            "v" => {
+                self.st.fmt.hidden = on;
+                self.st.off.hidden = !on;
+            }
             "ql" => self.st.align = Some(Align::Left),
             "qc" => self.st.align = Some(Align::Center),
             "qr" => self.st.align = Some(Align::Right),
@@ -952,9 +968,19 @@ impl Reader {
     fn char_effect_word(&mut self, w: &str, on: bool, pv: i32) -> bool {
         match w {
             // `\striked1` is double strikethrough; single strikethrough is `\strike`.
-            "striked" => self.set_extra(|x| x.double_strike = on.then_some(true)),
-            "caps" => self.set_extra(|x| x.caps = on.then_some(true)),
-            "scaps" => self.set_extra(|x| x.small_caps = on.then_some(true)),
+            // Turned off, each is kept as stated off (see `lay_own_words`).
+            "striked" => {
+                self.st.off.double_strike = !on;
+                self.set_extra(|x| x.double_strike = on.then_some(true));
+            }
+            "caps" => {
+                self.st.off.caps = !on;
+                self.set_extra(|x| x.caps = on.then_some(true));
+            }
+            "scaps" => {
+                self.st.off.small_caps = !on;
+                self.set_extra(|x| x.small_caps = on.then_some(true));
+            }
             "outl" => self.set_extra(|x| x.outline = on.then_some(true)),
             "shad" => self.set_extra(|x| x.shadow = on.then_some(true)),
             "embo" => self.set_extra(|x| x.emboss = on.then_some(true)),
@@ -1001,6 +1027,8 @@ impl Reader {
         if h.is_none() {
             self.st.fmt.background = c;
         }
+        // No colour at all (`\highlight0`) is the highlight stated off.
+        self.st.off.highlight = c.is_none();
         self.set_extra(|x| x.highlight = h);
     }
 
@@ -1035,6 +1063,7 @@ impl Reader {
     /// The run's underline turned on in `style`, or off (any underline word with parameter 0).
     fn underline(&mut self, style: Underline, on: bool) {
         self.st.fmt.underline = on;
+        self.st.off.underline = !on;
         self.set_extra(|x| x.underline = on.then_some(style));
     }
 
@@ -1046,8 +1075,14 @@ impl Reader {
             Some(true) if italic => self.set_extra(|x| x.italic_cs = Some(on)),
             Some(true) => self.set_extra(|x| x.bold_cs = Some(on)),
             None if assoc => {}
-            _ if italic => self.st.fmt.italic = on,
-            _ => self.st.fmt.bold = on,
+            _ if italic => {
+                self.st.fmt.italic = on;
+                self.st.off.italic = !on;
+            }
+            _ => {
+                self.st.fmt.bold = on;
+                self.st.off.bold = !on;
+            }
         }
     }
 
@@ -1122,8 +1157,42 @@ fn style_line_word(def: &mut StyleDef, w: &str, on: bool, pv: i32) {
         return;
     }
     match w {
-        "chbrdr" => def.border_open = true,
-        "brdrt" | "brdrl" | "brdrb" | "brdrr" | "brdrbtw" | "brdrbar" | "box" => def.border_open = false,
+        "chbrdr" => {
+            def.border_open = true;
+            def.para_side = None;
+        }
+        "brdrt" | "brdrl" | "brdrb" | "brdrr" | "brdrbtw" | "brdrbar" | "box" => {
+            def.border_open = false;
+            def.para_side = match w {
+                "brdrbtw" => Some('h'),
+                "box" => Some('x'),
+                "brdrbar" => Some('v'),
+                _ => w.chars().last(),
+            };
+        }
+        "caps" => def.caps = Some(on),
+        "scaps" => def.small_caps = Some(on),
+        "v" => def.hidden_text = Some(on),
+        "super" => def.vert_align = Some(if on { VertAlign::Superscript } else { VertAlign::Baseline }),
+        "sub" => def.vert_align = Some(if on { VertAlign::Subscript } else { VertAlign::Baseline }),
+        "nosupersub" => def.vert_align = Some(VertAlign::Baseline),
+        "highlight" => def.highlight = Some(pv),
+        "ulc" => def.underline_color = Some(pv),
+        "chcbpat" | "cb" => def.ch_fill = Some(pv),
+        "chcfpat" => def.ch_ink = Some(pv),
+        "chshdng" => def.ch_pct = Some(pv),
+        "cbpat" => def.para_fill = Some(pv),
+        "cfpat" => def.para_ink = Some(pv),
+        "shading" => def.para_pct = Some(pv),
+        "brdrw" if !def.border_open => {
+            let width = (pv as f32 / 20.0).clamp(0.25, 6.0);
+            each_para_side(def, |b, _| b.width = width);
+        }
+        "brdrcf" if !def.border_open => each_para_side(def, |_, c| *c = Some(pv)),
+        "brsp" if !def.border_open => {
+            let space = (pv as f32 / 20.0).clamp(0.0, 31.0);
+            each_para_side(def, |b, _| b.space = space);
+        }
         "brdrw" if def.border_open => {
             if let Some(b) = &mut def.border {
                 b.width = (pv as f32 / 20.0).clamp(0.25, 6.0);
@@ -1142,9 +1211,44 @@ fn style_line_word(def: &mut StyleDef, w: &str, on: bool, pv: i32) {
             if let Some(style) = border_style(w).filter(|_| def.border_open) {
                 def.border = Some(Border { style, ..Border::single(0.5) });
                 def.border_color = None;
+            } else if let Some(style) = border_style(w).filter(|_| def.para_side.is_some()) {
+                // A paragraph side's line: a stated none leaves the side without a border.
+                let b = (style != wordcraft_doc::props::BorderStyle::None).then_some(Border { style, ..Border::single(0.5) });
+                for i in para_side_slots(def.para_side) {
+                    if let Some(slot) = def.para_borders.get_mut(*i) {
+                        *slot = b;
+                    }
+                    if let Some(c) = def.para_border_colors.get_mut(*i) {
+                        *c = None;
+                    }
+                }
             } else if let Some(u) = underline_style(w) {
                 def.underline = Some(if on { u } else { Underline::None });
             }
+        }
+    }
+}
+
+/// The `StyleDef::para_borders` slots (top, left, bottom, right, between) paragraph border
+/// side `side` describes; none for the bar border, which has no model value.
+fn para_side_slots(side: Option<char>) -> &'static [usize] {
+    match side {
+        Some('t') => &[0],
+        Some('l') => &[1],
+        Some('b') => &[2],
+        Some('r') => &[3],
+        Some('h') => &[4],
+        Some('x') => &[0, 1, 2, 3],
+        _ => &[],
+    }
+}
+
+/// Applies `f` to each border (and its colour index) of the paragraph side a style entry's
+/// border words describe, where that side has a border.
+fn each_para_side(def: &mut StyleDef, mut f: impl FnMut(&mut wordcraft_doc::props::Border, &mut Option<i32>)) {
+    for i in para_side_slots(def.para_side) {
+        if let (Some(Some(b)), Some(c)) = (def.para_borders.get_mut(*i), def.para_border_colors.get_mut(*i)) {
+            f(b, c);
         }
     }
 }

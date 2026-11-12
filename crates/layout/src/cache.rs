@@ -153,9 +153,11 @@ impl Totals {
     }
     /// Count each section on every page containing its body, including a shared continuous
     /// start page. The page owner still selects headers and footers; empty sections count one.
+    /// A blank page inserted before an odd-page or even-page section counts in the document
+    /// total only, not in any section's count, as in Word.
     pub(crate) fn of(pages: &[Page], sections: &[(usize, &SectionProps)]) -> Totals {
         let mut per = vec![0u32; sections.len()];
-        for page in pages {
+        for page in pages.iter().filter(|page| !page.blank) {
             let mut present = HashSet::from([page.section]);
             for item in &page.items {
                 let path = match item {

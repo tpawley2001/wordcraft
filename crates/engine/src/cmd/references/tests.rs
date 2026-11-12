@@ -887,6 +887,49 @@ fn output_counts_locked_seq_fields_and_not_deleted_ones() {
     assert!(fields(&s).iter().all(|f| f.1 == "9" || f.1 == "7"), "the document keeps its results");
 }
 
+/// Printed or exported, a REF inside the bookmark it names shows Word's self-reference error
+/// (measured in Word), `\p` or not; the document keeps the stored result.
+#[test]
+fn output_shows_words_error_for_a_ref_inside_its_own_bookmark() {
+    let mut doc = wordcraft_doc::Document::from_text("inside  tail");
+    let top = wordcraft_doc::Path::top(0);
+    let p = doc.para_mut(StoryRef::Body, &top).unwrap();
+    let field = |instr: &str| InlineObject::Field {
+        instr: instr.into(),
+        result: "stale".into(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    };
+    p.insert_object(7, field(r"REF Self \p"), &CharProps::default()).unwrap();
+    p.insert_object(7, field("REF Self"), &CharProps::default()).unwrap();
+    let end = p.len();
+    p.insert_object(end, InlineObject::BookmarkEnd { name: "Self".into() }, &CharProps::default()).unwrap();
+    p.insert_object(0, InlineObject::BookmarkStart { name: "Self".into() }, &CharProps::default()).unwrap();
+    let out = output_fields(&doc).unwrap();
+    let shown: Vec<String> = out
+        .para(StoryRef::Body, &top)
+        .unwrap()
+        .objects
+        .iter()
+        .filter_map(|o| match o {
+            InlineObject::Field { result, .. } => Some(result.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(shown, [BOOKMARK_SELF_REFERENCE, BOOKMARK_SELF_REFERENCE]);
+    let kept = doc
+        .para(StoryRef::Body, &top)
+        .unwrap()
+        .objects
+        .iter()
+        .filter(|o| matches!(o, InlineObject::Field { result, .. } if result == "stale"))
+        .count();
+    assert_eq!(kept, 2, "the document keeps its results");
+}
+
 /// Printed or exported, a REF to a bookmark the document doesn't have shows Word's error
 /// (measured in Word for Windows: "Error! Reference source not found."); the editor and the
 /// document keep the stored result, and a REF showing "above" or "below" (`\p`) keeps it too.
@@ -1165,4 +1208,37 @@ fn header_docproperty_counts_the_body_and_keeps_a_date_that_is_not_one() {
     s.run("references.updateFields", &json!({})).unwrap();
     let got: Vec<String> = story_fields(&s, StoryRef::Part(hdr)).into_iter().map(|(_, r)| r).collect();
     assert_eq!(got, ["stale", "stale", "3", "I"]);
+}
+
+/// Only a DOCPROPERTY field naming one of the body's text counts makes Update Field count the
+/// body again before its paragraph; `Pages` and other names do not.
+#[test]
+fn only_text_count_names_are_counted_again() {
+    use super::properties::doc_property_names_text_count as counts_again;
+    for instr in ["DOCPROPERTY Words", r#"DOCPROPERTY "Characters" \* MERGEFORMAT"#, "DOCPROPERTY characterswithspaces", " DOCPROPERTY  Paragraphs "]
+    {
+        assert!(counts_again(instr), "{instr}");
+    }
+    for instr in ["DOCPROPERTY Pages", "DOCPROPERTY Title", "NUMWORDS", "DOCPROPERTY", "DOCVARIABLE Words"] {
+        assert!(!counts_again(instr), "{instr}");
+    }
+}
+
+/// A summary property the file did not carry stops showing the error once it is set, by its
+/// field or by File › Properties, even to an empty value.
+#[test]
+fn a_missing_summary_property_that_is_set_is_no_longer_missing() {
+    let mut s = Session::new(wordcraft_doc::Document::new());
+    s.doc.core.in_file = wordcraft_doc::SummaryInFile::all(wordcraft_doc::InFile::Missing);
+    for instr in ["DOCPROPERTY Title", "DOCPROPERTY Subject", r#"SUBJECT "Plan""#, "DOCPROPERTY Subject"] {
+        s.run("insert.field", &serde_json::json!({"instr": instr, "result": "stale"})).unwrap();
+    }
+    s.run("references.updateFields", &serde_json::json!({})).unwrap();
+    let got: Vec<String> = fields(&s).into_iter().map(|(_, r)| r).collect();
+    // The SUBJECT field set the subject when it was inserted, so every Subject shows it.
+    assert_eq!(got, [properties::UNKNOWN_DOC_PROPERTY, "Plan", "Plan", "Plan"]);
+    s.run("file.properties", &serde_json::json!({"title": ""})).unwrap();
+    s.run("references.updateFields", &serde_json::json!({})).unwrap();
+    assert_eq!(fields(&s).first().map(|(_, r)| r.as_str()), Some(""));
+    assert_eq!(s.doc.core.in_file.title, wordcraft_doc::InFile::Present);
 }
