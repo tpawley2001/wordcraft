@@ -387,21 +387,32 @@ impl RowStyle {
         }
     }
 
-    /// The row's default cell padding (top, left, bottom, right), points, when it is not Word's
-    /// default: a side in twips (unit 3) as stated, else left and right the gap and top and
-    /// bottom none. A row with a table style and neither a gap nor a side in twips keeps the
-    /// style's.
-    pub(super) fn cell_margins(&self) -> Option<[f32; 4]> {
+    /// Whether the row keeps its table style's cell padding: it has a table style and states
+    /// neither a gap nor a side in twips.
+    pub(super) fn keeps_style_padding(&self) -> bool {
+        self.style.is_some() && !self.has_gap && !self.pad_unit.contains(&3)
+    }
+
+    /// The row's cell padding (top, left, bottom, right), points: a side in twips (unit 3) as
+    /// stated (a negative value is 0), top and bottom else none, and left and right else the
+    /// gap while the row states neither its left nor its right side in twips (once it states
+    /// one, the other is 0).
+    pub(super) fn padding(&self) -> [f32; 4] {
         let twips = |i: usize| self.pad_unit.get(i) == Some(&3);
-        let stated = (0..4).any(twips);
-        if self.style.is_some() && !self.has_gap && !stated {
-            return None;
-        }
-        let gap = self.gap.clamp(0, 31_680) as f32 / 20.0;
+        let gap = if twips(1) || twips(3) { 0.0 } else { self.gap.clamp(0, 31_680) as f32 / 20.0 };
         let side = |i: usize, default: f32| {
             if twips(i) { self.pad.get(i).copied().unwrap_or(0).clamp(0, 31_680) as f32 / 20.0 } else { default }
         };
-        let m = [side(0, 0.0), side(1, gap), side(2, 0.0), side(3, gap)];
+        [side(0, 0.0), side(1, gap), side(2, 0.0), side(3, gap)]
+    }
+
+    /// The row's default cell padding (top, left, bottom, right), points, when it is not Word's
+    /// default (see [`RowStyle::padding`]). A row that keeps its table style's padding has none.
+    pub(super) fn cell_margins(&self) -> Option<[f32; 4]> {
+        if self.keeps_style_padding() {
+            return None;
+        }
+        let m = self.padding();
         let word = [0.0, 5.4, 0.0, 5.4];
         if m.iter().zip(word).all(|(v, w)| (v - w).abs() < 0.01) { None } else { Some(m) }
     }

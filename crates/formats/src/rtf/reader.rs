@@ -903,6 +903,18 @@ impl Reader {
             rights.truncate(out.len());
             if self.table.is_empty() {
                 self.table_style = self.row_style.clone();
+            } else if !self.row_style.keeps_style_padding() && !self.table_style.keeps_style_padding() {
+                // The table has one default padding, its first row's: the sides where this
+                // row's differs become its cells' own, unless a cell sets that side itself.
+                let row = self.row_style.padding();
+                let first = self.table_style.padding();
+                for c in &mut out {
+                    for ((own, r), t) in c.own_margins.iter_mut().zip(row).zip(first) {
+                        if own.is_none() && (r - t).abs() >= 0.01 {
+                            *own = Some(r);
+                        }
+                    }
+                }
             }
             self.table.push(out);
             self.table_rights.push(rights);
