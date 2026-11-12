@@ -5,6 +5,7 @@ use super::{
     Align, Arc, Block, Blocks, Document, FBlock, FTable, Fmt, HashMap, HashSet, Inline, InlineObject, Kind, Meta, Para, Paragraph, RevMark, Rgb,
     VAlign, model,
 };
+use wordcraft_doc::props::EmphasisMark;
 
 // ---------------------------------------------------------------------------------------------
 // Export
@@ -816,6 +817,15 @@ fn underline_word(f: &Fmt) -> Option<&'static str> {
     })
 }
 
+/// The highlight colour (`\highlight`) and the character shading (`\chcbpat`) of `f`: with a
+/// highlight its background is the highlight colour, and the shading under it is kept apart.
+fn highlight_and_shading(f: &Fmt) -> (Option<Rgb>, Option<Rgb>) {
+    match f.extra.as_deref().and_then(|x| x.highlight.and_then(|h| h.rgb()).map(|c| (c, x.shading))) {
+        Some((c, shading)) => (Some(c), shading),
+        None => (None, f.background),
+    }
+}
+
 /// The underline colour of `f` (`\ulc`).
 fn underline_color(f: &Fmt) -> Option<Rgb> {
     f.extra.as_ref().and_then(|x| x.underline_color)
@@ -1067,8 +1077,14 @@ impl Writer {
             let i = old_color.map_or(0, |c| self.t.color(c));
             ctl.push_str(&format!("\\cf{i}"));
         }
-        if old.background != cur.background {
-            let i = old.background.map_or(0, |c| self.t.color(c));
+        let (old_hl, old_shd) = highlight_and_shading(old);
+        let (cur_hl, cur_shd) = highlight_and_shading(cur);
+        if old_hl != cur_hl {
+            let i = old_hl.map_or(0, |c| self.t.color(c));
+            ctl.push_str(&format!("\\highlight{i}"));
+        }
+        if old_shd != cur_shd {
+            let i = old_shd.map_or(0, |c| self.t.color(c));
             ctl.push_str(&format!("\\chcbpat{i}"));
         }
         if old.hidden != cur.hidden {
@@ -1123,7 +1139,12 @@ impl Writer {
             let i = self.t.color(c);
             ctl.push_str(&format!("\\cf{i}"));
         }
-        if let Some(c) = f.background {
+        let (highlight, shading) = highlight_and_shading(f);
+        if let Some(c) = highlight {
+            let i = self.t.color(c);
+            ctl.push_str(&format!("\\highlight{i}"));
+        }
+        if let Some(c) = shading {
             let i = self.t.color(c);
             ctl.push_str(&format!("\\chcbpat{i}"));
         }
@@ -1141,6 +1162,7 @@ impl Writer {
                 (x.emboss, "\\embo"),
                 (x.engrave, "\\impr"),
                 (x.double_strike, "\\striked1"),
+                (x.no_proof, "\\noproof"),
             ];
             for (v, w) in effects {
                 if v == Some(true) {
@@ -1154,6 +1176,14 @@ impl Writer {
             if let Some(k) = x.kern.filter(|v| v.is_finite() && *v > 0.0).map(|v| (v * 2.0).round().clamp(1.0, 3276.0) as i32) {
                 ctl.push_str(&format!("\\kerning{k}"));
             }
+            let mark = match x.emphasis {
+                Some(EmphasisMark::Dot) => "\\accdot",
+                Some(EmphasisMark::Comma) => "\\acccomma",
+                Some(EmphasisMark::Circle) => "\\acccircle",
+                Some(EmphasisMark::UnderDot) => "\\accunderdot",
+                Some(EmphasisMark::None) | None => "",
+            };
+            ctl.push_str(mark);
         }
         if let Some(w) = position_word(f) {
             ctl.push_str(&w);

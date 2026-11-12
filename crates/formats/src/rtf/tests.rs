@@ -1844,6 +1844,7 @@ mod foreign_styles;
 mod form_fields;
 mod frames;
 mod gutter;
+mod highlight_proof_emphasis;
 mod html_auto_spacing;
 mod info_company;
 mod info_props;
