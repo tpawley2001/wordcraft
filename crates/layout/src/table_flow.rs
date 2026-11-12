@@ -71,27 +71,43 @@ pub(crate) fn footer_table_wraps(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<WrapAre
 }
 
 fn row_keeps_next(row: &table::RowLayout) -> bool {
-    let Some(items) = row.cells.first().and_then(|cell| row.items.get(cell.items.clone())) else { return false };
-    let Some((depth, story)) = items
+    kept_para_bottom(row).is_some()
+}
+
+/// When the row is kept with the next (Word takes the row's keep flag from the first paragraph
+/// of its first cell), how far below the row's top that paragraph ends.
+fn kept_para_bottom(row: &table::RowLayout) -> Option<f32> {
+    let items = row.cells.first().and_then(|cell| row.items.get(cell.items.clone()))?;
+    let (depth, story) = items
         .iter()
         .filter_map(|item| match item {
             Placed::Cell { table, story, .. } => Some((table.0.len() + 3, *story)),
             _ => None,
         })
-        .min_by_key(|(depth, _)| *depth)
-    else {
-        return false;
-    };
-    // Word takes the row's keep flag from the first paragraph of its first cell.
-    items
-        .iter()
-        .find_map(|item| match item {
-            Placed::Lines { path, story: own, para, .. } if path.0.len() == depth && path.0.last() == Some(&0) && *own == story => {
-                Some(para.rp.keep_next)
+        .min_by_key(|(depth, _)| *depth)?;
+    let first = || {
+        items.iter().filter_map(move |item| match item {
+            Placed::Lines { path, story: own, para, l0, l1, y, .. } if path.0.len() == depth && path.0.last() == Some(&0) && *own == story => {
+                Some((para, *l0, *l1, *y))
             }
             _ => None,
         })
-        .unwrap_or(false)
+    };
+    if !first().next().is_some_and(|(para, ..)| para.rp.keep_next) {
+        return None;
+    }
+    Some(first().fold(0.0f32, |bottom, (para, l0, l1, y)| {
+        let base = para.lines.get(l0).map_or(0.0, |l| l.top);
+        let end = para.lines.get(l0..l1).and_then(|ls| ls.last()).map_or(0.0, |l| l.top - base + l.height);
+        bottom.max(y + end)
+    }))
+}
+
+/// Measured in Word: a row kept with the next is not split while anything is above it on the
+/// page; it starts the next page whole. The paragraph that keeps it may still split when it is
+/// itself taller than the room (its last line then stays with what follows).
+fn keeps_whole(row: &table::RowLayout, room: f32) -> bool {
+    kept_para_bottom(row).is_some_and(|bottom| bottom <= room + 0.01)
 }
 
 /// The cut that leaves every row of a nested table marked "can't split" whole: just below the
@@ -153,7 +169,12 @@ fn row_can_start(doc: &wordcraft_doc::Document, row: &wordcraft_doc::Row, laid: 
     if laid.height <= room + 0.01 {
         return true;
     }
-    if row.props.header || row.props.cant_split || (row.props.height_rule == HeightRule::Exact && row.props.height.is_some_and(|h| h > 0.0)) {
+    // A kept row that does not fit whole starts the next page (see `place_table`).
+    if row.props.header
+        || row.props.cant_split
+        || keeps_whole(laid, room)
+        || (row.props.height_rule == HeightRule::Exact && row.props.height.is_some_and(|h| h > 0.0))
+    {
         return false;
     }
     if row.props.height_rule == HeightRule::AtLeast && row.props.height.is_some_and(|h| h > room + 0.01 && h <= page_height + 0.01) {
@@ -242,7 +263,9 @@ pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc
     {
         let room = pb.bottom - pb.y - tl.rows.iter().take(first).map(|r| r.height).sum::<f32>();
         let splittable = !t.rows.get(first).is_some_and(|r| r.props.cant_split);
-        if row.height + row.edge > room + 0.01 && (short_of_min(first, room) || !(splittable && split_keeping_nested(ctx.doc, row, room).is_some())) {
+        if row.height + row.edge > room + 0.01
+            && (short_of_min(first, room) || keeps_whole(row, room) || !(splittable && split_keeping_nested(ctx.doc, row, room).is_some()))
+        {
             pb.advance(block, body_top);
         }
     }
@@ -289,7 +312,9 @@ pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc
             // Its first part on a page that already holds something leaves no cell empty
             // (#4272): moving on can give the cell room there.
             let first_part = rest.is_none() && !pb.at_top() && !fresh && !under_top_headers;
-            let moves_on = first_part && short_of_min(ri, room);
+            // A kept row starts the next page whole, and splits there only when taller than it.
+            let kept_whole = ri >= header_rows.len() && keeps_whole(cur, room);
+            let moves_on = first_part && (short_of_min(ri, room) || kept_whole);
             let split = match (splittable && !moves_on && !defer_kept, first_part) {
                 (false, _) => None,
                 (true, true) => split_keeping_nested(ctx.doc, cur, room),
@@ -470,3 +495,7 @@ pub(crate) fn below(excl: &[WrapArea], mut y: f32, x0: f32, x1: f32) -> f32 {
     }
     y
 }
+
+#[cfg(test)]
+#[path = "tests/kept_row_not_split_more.rs"]
+mod kept_row_not_split_more;
