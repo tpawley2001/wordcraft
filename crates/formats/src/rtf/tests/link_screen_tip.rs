@@ -79,7 +79,7 @@ fn a_link_without_a_screen_tip_writes_no_o_switch() {
 fn quotes_backslashes_braces_and_other_scripts_round_trip_in_a_screen_tip() {
     // In the field's quotes a backslash escapes the next character; in RTF text `\\`, `\{`, `\}`
     // and `\uN?` are the escapes. So this instruction's tip is: Say "hi" a{b}\c é 日本
-    let d = open(r#"HYPERLINK "http://example.com" \\o "Say \\"hi\\" a\{b\}\\\\c \u233? ☈5?♁2?""#);
+    let d = open(r#"HYPERLINK "http://example.com" \\o "Say \\"hi\\" a\{b\}\\\\c \u233? \u26085?\u26412?""#);
     let want = "Say \"hi\" a{b}\\c \u{e9} \u{65e5}\u{672c}";
     assert_eq!(link_and_tip(&d), (Some("http://example.com".into()), Some(want.into())));
     let back = import(export(&d).as_bytes()).unwrap();
