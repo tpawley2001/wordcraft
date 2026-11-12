@@ -419,6 +419,9 @@ impl Reader {
             "oldcprops" => Some(Dest::OldProps(false)),
             "oldpprops" => Some(Dest::OldProps(true)),
             "oldsprops" => Some(Dest::OldSect),
+            // Note separator and continuation stories (RTF 1.9.1 "Footnotes"), also written
+            // without `\*` by older writers: not body text, and no custom separators are kept.
+            "ftnsep" | "ftnsepc" | "ftncn" | "aftnsep" | "aftnsepc" | "aftncn" => Some(Dest::Skip),
             "listoverridetable" => Some(Dest::ListOverride),
             "fldinst" => Some(Dest::FldInst),
             "formfield" if self.st.dest == Dest::FldInst => {
