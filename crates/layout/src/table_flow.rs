@@ -371,7 +371,15 @@ pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc
     }
     // For the move-on rule, the table's own header rows at the top of a page leave it empty.
     let table_at_top = pb.at_top();
+    // Whether the row before was split across a page break: its tail is above the next row.
+    let mut prev_split = false;
     for (ri, row) in tl.rows.iter().enumerate() {
+        // Measured in Word: only the first row of a run of rows kept with the next is checked
+        // against the room left (the first kept row, or the first after a split row's tail).
+        // Rows after it are placed like any row and split at the foot of a page.
+        let run_start = ri >= header_rows.len()
+            && row_keeps_next(row)
+            && (prev_split || ri.checked_sub(1).and_then(|prev| kept.get(prev)).is_none_or(|&(end, _)| end < ri));
         // Word never splits a row of an exact height: it moves on whole.
         let splittable = ri >= header_rows.len()
             && !t
@@ -388,19 +396,23 @@ pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc
             let cur = rest.as_ref().unwrap_or(row);
             // A fitting kept row follows the next row when that row cannot start below it.
             // Move only the prefix's start; an oversized follower cannot separate its kept rows.
-            let defer_kept = pb.y + cur.height <= pb.bottom + 0.01
+            // A run that does not fit moves on even when longer than a page: its rows then split
+            // from the top of the next page.
+            let defer_kept = run_start
+                && pb.y + cur.height <= pb.bottom + 0.01
                 && !pb.web
                 && !pb.at_top()
                 && !fresh
+                && !under_top_headers
                 && rest.is_none()
-                && ri.checked_sub(1).and_then(|prev| kept.get(prev)).is_none_or(|&(end, _)| end < ri)
                 && kept.get(ri).is_some_and(|&(end, height)| {
                     if end == ri {
                         return false;
                     }
                     let (Some(next), Some(laid)) = (t.rows.get(end), tl.rows.get(end)) else { return false };
                     let page_height = pb.bottom - body_top - repeated_height;
-                    height <= page_height + 0.01 && !row_can_start(ctx.doc, next, laid, pb.bottom - pb.y - height, page_height)
+                    let room = pb.bottom - pb.y - height;
+                    room < -0.01 || !row_can_start(ctx.doc, next, laid, room, page_height)
                 });
             // A row another row follows needs room for the border below it too (measured in Word).
             if pb.y + cur.height + cur.edge <= pb.bottom + 0.01 && !defer_kept {
@@ -413,7 +425,7 @@ pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc
             // (#4272): moving on can give the cell room there.
             let first_part = rest.is_none() && !pb.at_top() && !fresh && !under_top_headers;
             // A kept row starts the next page whole, and splits there only when taller than it.
-            let kept_whole = ri >= header_rows.len() && keeps_whole(cur, room);
+            let kept_whole = run_start && keeps_whole(cur, room);
             let moves_on = first_part && (short_of_min(ri, room) || kept_whole);
             let split = match (splittable && !moves_on && !defer_kept, first_part) {
                 (false, _) => None,
@@ -442,6 +454,7 @@ pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc
             }
             fresh = true;
         }
+        prev_split = rest.is_some();
         let last = rest.as_ref().unwrap_or(row);
         place(pb, last);
         table_notes(ctx, pb, &last.items);
