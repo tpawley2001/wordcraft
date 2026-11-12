@@ -54,6 +54,7 @@ mod rtf_wraptrsp_squeeze;
 mod rtl_gutter_vertical;
 mod styleref;
 mod styleref_args;
+mod styleref_case;
 mod styleref_errors;
 mod symbol_field;
 mod symbol_font_lines;
