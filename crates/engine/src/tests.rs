@@ -50,6 +50,7 @@ mod rtl_gutter;
 mod para_sort_case;
 mod para_sort_keys;
 mod paste_link;
+mod paste_link_failures;
 mod paste_special_results;
 mod manual_duplex;
 mod print_document_properties;
