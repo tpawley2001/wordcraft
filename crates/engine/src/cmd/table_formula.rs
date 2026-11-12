@@ -199,7 +199,7 @@ pub fn split_switch(instr: &str) -> (&str, Option<&str>) {
 
 /// The picture of the `\#` switch in a field's switch text: a quoted one (`"#,##0.00"`) or a
 /// single word.
-fn picture_of(switch: &str) -> Option<String> {
+pub(crate) fn picture_of(switch: &str) -> Option<String> {
     let rest = switch[switch.find("\\#")? + 2..].trim_start();
     let picture = match rest.strip_prefix('"') {
         Some(quoted) => quoted.split('"').next().unwrap_or_default(),
