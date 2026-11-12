@@ -287,6 +287,16 @@ pub struct TableForm {
     pub cell_width: f32,
     /// `top`, `center` or `bottom`.
     pub valign: String,
+    /// Cell Options › Same as the whole table: the cell has no margins of its own.
+    pub cell_margins_same: bool,
+    /// Cell Options › the cell's margins (top, left, bottom, right) as it shows them.
+    pub cell_margins: [f32; 4],
+    /// The table's default cell margins (top, left, bottom, right), which Same as the whole table
+    /// puts back in the boxes.
+    #[serde(skip)]
+    pub table_margins: [f32; 4],
+    /// Cell Options › Wrap text (off is `w:noWrap`).
+    pub wrap_text: bool,
     /// Measure in: the table's preferred width is a percentage of the text column, and `width`
     /// holds that percentage.
     pub width_percent: bool,
@@ -314,8 +324,7 @@ impl CellMarginsForm {
         let (tp, _, _) = app.session.sel.focus.path.cell()?;
         let table = app.session.doc.table(app.session.sel.focus.story, &tp)?;
         let scale = crate::options::unit().pt_per_unit();
-        let style = table.props.style.as_deref().and_then(|id| app.session.doc.styles.table_style(id));
-        let margins = table.props.cell_margins.or_else(|| style.and_then(|s| s.parts.cell_margins)).unwrap_or([0.0, 5.4, 0.0, 5.4]);
+        let margins = wordcraft_engine::cmd::table::table_cell_margins(&app.session.doc, table);
         let field = |value: f32, fallback: f32| if value.is_finite() { value.clamp(0.0, 144.0) / scale } else { fallback / scale };
         Some(Self { top: field(margins[0], 0.0), left: field(margins[1], 5.4), bottom: field(margins[2], 0.0), right: field(margins[3], 5.4) })
     }
@@ -355,12 +364,28 @@ impl TableForm {
         rows.dedup();
         let selected: Vec<&wordcraft_doc::props::RowProps> = rows.iter().filter_map(|&i| t.rows.get(i)).map(|x| &x.props).collect();
         let differ = |f: fn(&wordcraft_doc::props::RowProps) -> bool| selected.iter().any(|p| f(p) != f(&row));
-        let mixed = [("allowBreak", differ(|p| p.cant_split)), ("headerRow", differ(|p| p.header))]
-            .into_iter()
-            .filter(|(_, d)| *d)
-            .map(|(k, _)| k.to_string())
-            .collect();
         let cell = t.rows.get(r).and_then(|x| x.cells.get(c)).map(|x| x.props.clone()).unwrap_or_default();
+        // Cell Options: the caret cell's margins as it shows them, and whether they are its own.
+        let table_margins = wordcraft_engine::cmd::table::table_cell_margins(&s.doc, t);
+        let own = |p: &wordcraft_doc::props::CellProps| p.margins.is_some() || p.partial_margins.is_some();
+        let shown = |p: &wordcraft_doc::props::CellProps| wordcraft_engine::cmd::table::effective_cell_margins(p, table_margins);
+        let cells: Vec<&wordcraft_doc::props::CellProps> = wordcraft_engine::cmd::table::selected_cells(s)
+            .into_iter()
+            .filter_map(|(r, c)| t.rows.get(r).and_then(|x| x.cells.get(c)))
+            .map(|x| &x.props)
+            .collect();
+        let margins_differ = cells.iter().any(|p| own(p) != own(&cell) || shown(p) != shown(&cell));
+        let wrap_differs = cells.iter().any(|p| p.no_wrap != cell.no_wrap);
+        let mixed = [
+            ("allowBreak", differ(|p| p.cant_split)),
+            ("headerRow", differ(|p| p.header)),
+            ("cellMargins", margins_differ),
+            ("wrapText", wrap_differs),
+        ]
+        .into_iter()
+        .filter(|(_, d)| *d)
+        .map(|(k, _)| k.to_string())
+        .collect();
         let tw = wordcraft_engine::cmd::page::sect(s).text_width();
         let fin = |v: f32| if v.is_finite() { v } else { 0.0 };
         // A percentage of the text column shows as that percentage, measured in Percent.
@@ -395,6 +420,10 @@ impl TableForm {
                 _ => "top",
             }
             .into(),
+            cell_margins_same: !own(&cell),
+            cell_margins: shown(&cell).map(|m| fin(m) / k),
+            table_margins: table_margins.map(|m| fin(m) / k),
+            wrap_text: !cell.no_wrap,
             width_percent: pct.is_some(),
             alt_title: t.props.caption.clone().unwrap_or_default(),
             alt_description: t.props.description.clone().unwrap_or_default(),
@@ -471,6 +500,19 @@ impl TableForm {
         if self.valign != basis.valign {
             v.insert("valign".into(), json!(self.valign));
         }
+        // Cell Options: all four margins together, or null for Same as the whole table.
+        let margins_moved = self.cell_margins_same != basis.cell_margins_same
+            || (!self.cell_margins_same && self.cell_margins.iter().zip(basis.cell_margins).any(|(a, b)| moved(*a, b)));
+        if !self.mixed.contains("cellMargins") && (basis.mixed.contains("cellMargins") || margins_moved) {
+            let [top, left, bottom, right] = self.cell_margins.map(|m| if m.is_finite() { m * k } else { 0.0 });
+            v.insert(
+                "cellMargins".into(),
+                if self.cell_margins_same { Value::Null } else { json!({"top": top, "left": left, "bottom": bottom, "right": right}) },
+            );
+        }
+        if set("wrapText", self.wrap_text, basis.wrap_text) {
+            v.insert("wrapText".into(), json!(self.wrap_text));
+        }
         Value::Object(v)
     }
 }
@@ -521,6 +563,51 @@ pub fn table_grid_picker(ui: &mut Ui, app: &mut WordApp) {
         // Word's Live Preview: the page shows the hovered table until a square is clicked.
         app.canvas.table_preview = Some(new_hover);
     }
+}
+
+/// Table Properties › Cell › Options…: the cell's own margins and Wrap text, shown in the dialog
+/// below the button that opens them.
+fn cell_options(ui: &mut Ui, f: &mut TableForm) {
+    let open_id = ui.make_persistent_id("tp_cell_options");
+    let mut open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(false);
+    if ui.button(tl!("Options…")).clicked() {
+        open = !open;
+        ui.data_mut(|d| d.insert_temp(open_id, open));
+    }
+    if !open {
+        return;
+    }
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new(tl!("Cell Options")).font(semibold(12.5)));
+    ui.label(tl!("Cell margins"));
+    let was_same = f.cell_margins_same;
+    super::paragraph::para_check(ui, &mut f.cell_margins_same, tl!("Same as the whole table"), "cellMargins", &mut f.mixed);
+    if f.cell_margins_same && !was_same {
+        f.cell_margins = f.table_margins;
+    }
+    let enabled = !f.cell_margins_same;
+    let before = f.cell_margins;
+    let [top, left, bottom, right] = &mut f.cell_margins;
+    crate::rtl::Table::new("tp_cell_margins").columns(4).spacing(vec2(10.0, 6.0)).show(ui, |t| {
+        t.row(|r| {
+            let l = r.cell(|ui| ui.label(tl!("Top:")));
+            r.cell(|ui| ui.add_enabled_ui(enabled, |ui| ui.add(super::dispatch::margin(top)).labelled_by(l.id)));
+            let l = r.cell(|ui| ui.label(tl!("Left:")));
+            r.cell(|ui| ui.add_enabled_ui(enabled, |ui| ui.add(super::dispatch::margin(left)).labelled_by(l.id)));
+        });
+        t.row(|r| {
+            let l = r.cell(|ui| ui.label(tl!("Bottom:")));
+            r.cell(|ui| ui.add_enabled_ui(enabled, |ui| ui.add(super::dispatch::margin(bottom)).labelled_by(l.id)));
+            let l = r.cell(|ui| ui.label(tl!("Right:")));
+            r.cell(|ui| ui.add_enabled_ui(enabled, |ui| ui.add(super::dispatch::margin(right)).labelled_by(l.id)));
+        });
+    });
+    f.cell_margins = f.cell_margins.map(|m| if m.is_finite() { m.max(0.0) } else { 0.0 });
+    if f.cell_margins != before {
+        f.mixed.remove("cellMargins");
+    }
+    ui.label(tl!("Options"));
+    super::paragraph::para_check(ui, &mut f.wrap_text, tl!("Wrap text"), "wrapText", &mut f.mixed);
 }
 
 /// The Table Properties dialog's fields: Table, Row, Column and Cell sections.
@@ -636,6 +723,7 @@ pub(super) fn table_properties(ui: &mut Ui, f: &mut TableForm) {
             });
         });
     });
+    cell_options(ui, f);
     heading(ui, "Alt Text");
     crate::rtl::Table::new("tp_alt").columns(2).spacing(vec2(10.0, 6.0)).show(ui, |t| {
         t.row(|r| {

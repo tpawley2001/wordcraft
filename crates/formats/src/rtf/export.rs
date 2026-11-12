@@ -1405,6 +1405,9 @@ impl Writer {
         }
         if let Kind::Heading(n) = p.kind {
             out.push_str(&format!("\\outlinelevel{}", n.clamp(1, 6) - 1));
+        } else if let Some(l) = p.extra.as_ref().and_then(|x| x.outline_level).filter(|l| *l < 9) {
+            // An outline level apart from a heading style: the paragraph keeps its own style.
+            out.push_str(&format!("\\outlinelevel{l}"));
         }
         match p.align {
             Some(Align::Center) => out.push_str("\\qc"),
@@ -1836,7 +1839,7 @@ pub fn export(doc: &Document) -> String {
     let before = set_own_styles(own);
     let ranged_before = set_ranged(HashSet::new());
     // An empty paragraph's mark formatting sets its height.
-    let opts = model::FlowOpts { marks: true, ..model::FlowOpts::tracked() };
+    let opts = model::FlowOpts { marks: true, outline_apart: true, ..model::FlowOpts::tracked() };
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
@@ -1965,6 +1968,7 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
             out.push_str(&format!("{{\\{k} {}}}", esc(v)));
         }
     }
+    out.push_str(&app_kept_info(doc));
     if core.revision > 0 {
         out.push_str(&format!("{{\\version{}}}", core.revision));
     }
@@ -2026,4 +2030,26 @@ fn pict_goal(img: &model::Img) -> String {
         }
     }
     s
+}
+
+/// Manager, Company and Hyperlink base from the kept extended properties (`wordcraft:app.kept`,
+/// `name\tvalue` lines, as the DOCX reader stores `docProps/app.xml`) as `{\manager …}`,
+/// `{\company …}` and `{\hlinkbase …}` (RTF 1.9.1, information group). Remove personal
+/// information leaves out Manager and Company, as the DOCX writer does.
+fn app_kept_info(doc: &Document) -> String {
+    let mut out = String::new();
+    let Some(kept) = doc.passthrough.get(wordcraft_doc::APP_KEPT) else { return out };
+    for line in String::from_utf8_lossy(kept).lines().take(64) {
+        let Some((name, value)) = line.split_once('\t') else { continue };
+        let word = match name {
+            "Manager" if !doc.settings.remove_personal_info => "manager",
+            "Company" if !doc.settings.remove_personal_info => "company",
+            "HyperlinkBase" => "hlinkbase",
+            _ => continue,
+        };
+        if !value.is_empty() {
+            out.push_str(&format!("{{\\{word} {}}}", esc(value)));
+        }
+    }
+    out
 }

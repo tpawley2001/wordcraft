@@ -276,7 +276,8 @@ impl Reader {
                 self.st.border_side = None;
                 self.page_side = w.chars().last();
             }
-            "brsp" if self.page_side.is_some() => {
+            // A page side's, else a paragraph side's; nothing while a cell side is described.
+            "brsp" if self.page_side.is_some() || (self.cell_side.is_none() && self.st.border_side.is_some()) => {
                 let space = (pv as f32 / 20.0).clamp(0.0, 31.0);
                 self.each_border_slot(|slot| {
                     if let Some(b) = slot {
@@ -291,7 +292,7 @@ impl Reader {
 
     /// Applies `f` to the border of the page side being described, else of the cell side, else
     /// of the paragraph side: `h` is the border between paragraphs (`\brdrbtw`), `x` all four
-    /// sides (`\box`).
+    /// sides (`\box`); any other side (the bar border's `v`) has no slot.
     pub(super) fn each_border_slot(&mut self, mut f: impl FnMut(&mut Option<wordcraft_doc::props::Border>)) {
         let (b, side) = match (self.page_side, self.cell_side) {
             // A header or footer doesn't set the body's section.
@@ -500,6 +501,12 @@ impl Reader {
                 self.page_side = None;
                 self.st.border_side = Some('x');
             }
+            // A bar border has no model value: its side is described and dropped, leaving the
+            // other sides as they are.
+            "brdrbar" => {
+                self.page_side = None;
+                self.st.border_side = Some('v');
+            }
             "cbpat" => self.st.cbpat = Some(pv),
             "cfpat" => self.st.cfpat = Some(pv),
             "shading" => self.st.shading = pv,
@@ -614,6 +621,9 @@ impl Reader {
                     6 => self.info_more.last_modified_by = t,
                     7 => self.info_more.category = t,
                     8..=10 => self.info_more.user_prop_text(k, t),
+                    11 => self.info_more.manager = t,
+                    12 => self.info_more.company = t,
+                    13 => self.info_more.hyperlink_base = t,
                     _ => {}
                 }
             }

@@ -114,13 +114,8 @@ pub const CUSTOM_XML_ROOTS: &str = "wordcraft:customXml.roots";
 /// save by `write::settings_merge`). Not a package part: WordCraft's own bookkeeping.
 pub const SETTINGS_ORIG: &str = "wordcraft:settings.orig";
 /// Extended properties (`docProps/app.xml`) the model doesn't hold but a save keeps
-/// ([`APP_KEPT_PROPS`]): `name\tvalue` lines. Not a package part: WordCraft's own bookkeeping.
-pub const APP_KEPT: &str = "wordcraft:app.kept";
-/// The `docProps/app.xml` properties carried over from the file. Counts (pages, lines,
-/// characters, editing time) and the producing application's version are not: they describe
-/// the file Word saved, not the one WordCraft writes.
-pub const APP_KEPT_PROPS: &[&str] =
-    &["Template", "Manager", "Company", "HyperlinkBase", "ScaleCrop", "LinksUpToDate", "SharedDoc", "HyperlinksChanged"];
+/// ([`APP_KEPT_PROPS`]): `name\tvalue` lines. Defined in `wordcraft-doc` so the RTF code shares it.
+pub use wordcraft_doc::{APP_KEPT, APP_KEPT_PROPS};
 /// Parts WordCraft doesn't model, carried verbatim: `owner\ttype\tpart` lines (owner `P` for
 /// the package, `D` for the main document), with their bytes and relationships in the
 /// [`EmbeddedManifest`]. Not a package part: WordCraft's own bookkeeping.

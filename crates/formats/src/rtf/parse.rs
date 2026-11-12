@@ -60,7 +60,31 @@ impl Info {
         c.modified = self.modified;
         c.last_printed = self.printed;
         doc.custom_props = self.more.props;
+        let mut kept = String::new();
+        for (name, value) in [("Manager", self.more.manager), ("Company", self.more.company), ("HyperlinkBase", self.more.hyperlink_base)] {
+            if let Some(v) = app_kept_value(value) {
+                kept.push_str(name);
+                kept.push('\t');
+                kept.push_str(&v);
+                kept.push('\n');
+            }
+        }
+        if !kept.is_empty() {
+            doc.passthrough.insert(wordcraft_doc::APP_KEPT.into(), Arc::new(kept.into_bytes()));
+        }
     }
+}
+
+/// The longest value the kept extended properties hold (as the DOCX reader keeps them).
+const MAX_APP_KEPT_VALUE: usize = 2048;
+
+/// An information-group value as the line-based `wordcraft:app.kept` store holds it: trimmed, tabs
+/// and line ends turned into spaces (they would break the line), at most 2048 bytes; `None` when
+/// empty.
+fn app_kept_value(value: String) -> Option<String> {
+    let mut v: String = value.trim().chars().map(|c| if matches!(c, '\t' | '\n' | '\r') { ' ' } else { c }).collect();
+    super::state::truncate_chars(&mut v, MAX_APP_KEPT_VALUE);
+    (!v.is_empty()).then_some(v)
 }
 
 /// An information-group date read from `\yr \mo \dy \hr \min`, as `YYYY-MM-DDTHH:MM:00Z`; empty
