@@ -1858,6 +1858,7 @@ mod own_styles;
 mod page_borders;
 mod paper_source;
 mod para_extras;
+mod para_outline_borders;
 mod para_shading;
 mod para_spacing_hidden;
 mod picture_crop;
