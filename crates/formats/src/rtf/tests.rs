@@ -1830,6 +1830,7 @@ fn compound_borders_round_trip() {
     assert_eq!(tops(&back), want);
 }
 
+mod asian_auto_space;
 mod bookmark_ranges;
 mod cell_margins;
 mod char_border;

@@ -468,6 +468,11 @@ impl Reader {
             x.keep_lines = st.keep.then_some(true);
             x.suppress_line_numbers = st.noline.then_some(true);
         }
+        if !st.asp_alpha || !st.asp_num {
+            let x = p.extra.get_or_insert_with(Default::default);
+            x.auto_space_de = (!st.asp_alpha).then_some(false);
+            x.auto_space_dn = (!st.asp_num).then_some(false);
+        }
         let flags = [st.contextual, st.mirror, st.sb_auto, st.sa_auto, st.no_hyph, st.snap_grid];
         if flags.iter().any(Option::is_some) {
             let x = p.extra.get_or_insert_with(Default::default);
