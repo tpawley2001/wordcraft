@@ -1,5 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
+> **Last updated:** 2026-11-12 · **Change:** trivial (list numbers draw underline, strikethrough, highlight, shading and border as Word does, and are never small caps. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0304: formula fields whose operands look different, ranges, functions and ABOVE/LEFT give the result the union of the operands' $, thousands separator and parentheses looks, as in Word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0286: Update Field computes DOCVARIABLE fields. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (an inline picture too wide for its line that is a field's result, such as a `.doc` embedded object's picture, is followed by one more line, as in Word. Readiness estimates unchanged.)
@@ -383,6 +384,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-12 | trivial | List numbers draw their strikethrough, highlight and border from the paragraph mark or the level, and their underline and shading from the level only, as Word does; a list number is never small caps; readiness estimates unchanged |
 | 2026-11-11 | trivial | P0304: formula fields whose operands look different (`$5 + 3` is `$8.00`, `$5 - 10` is `($5.00)`), ranges, SUM/COUNT/AVERAGE/MAX/MIN/PRODUCT and ABOVE/LEFT carry the union of the operands' looks, and an ABOVE/LEFT run counts parenthesised cells it starts with as negatives (`(5)`, `(10)` above is `(15)`), as measured in Word; readiness estimates unchanged |
 | 2026-11-11 | trivial | Formula fields add up every number in a cell or bookmark operand's text (`3 apples 4` is 7) and keep the operand's `$`, thousands separator, parentheses and decimals in the result, as measured in Word; readiness estimates unchanged |
 | 2026-11-11 | trivial | P0281: STYLEREF takes one style name argument, found by name or alias and not by style id; a second argument shows Word's "not defined" error with no name |
