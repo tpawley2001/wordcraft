@@ -1,6 +1,7 @@
 # Layout and pagination parity with Microsoft Word
 
 > **Last updated:** 2026-11-12 · **Change:** trivial (P0335: formula fields show Word's own error texts, such as `!Zero Divide`, `!Syntax Error, )` and `!Table Index Cannot be Zero`. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-12 · **Change:** trivial (P0333: a formula field result with no `\#` picture and plain operands drops trailing zeros after rounding to two decimals (`= 10 / 4` is `2.5`, `SUM(ABOVE)` over 1.5 and 3 is `4.5`), as in Word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-12 · **Change:** trivial (P0329: an even-page first section starts at page 2 with no blank page, so later odd- and even-page breaks fall where Word puts them. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-12 · **Change:** trivial (P0330: in compatibility modes 11, 12 and 14 an empty header or footer paragraph holding only a Top and Bottom object keeps its line in place, so the body starts right below the object. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-12 · **Change:** trivial (in Word 97-2003 documents and DOCX with `w:splitPgBreakAndParaMark`, below compatibility mode 15, the paragraph mark after a page break is an empty line at the top of the new page. Readiness estimates unchanged.)

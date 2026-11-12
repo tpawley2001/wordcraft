@@ -83,9 +83,22 @@ fn evaluate_look(
     }
 }
 
-/// The text a formula result shows: a whole number as is, otherwise two decimals.
+/// The text a formula result shows: a whole number as is, otherwise rounded to two decimals with
+/// trailing zeros dropped (`= 10 / 4` is `2.5`, `= 1 / 3` is `0.33`), as Word shows it.
 pub fn format_result(v: f64) -> String {
-    wordcraft_doc::locale_number::format_number(v, None)
+    format_plain(v, None)
+}
+
+/// A result with no `\#` picture and no operand look, in `lang`: two decimals at most, trailing
+/// zeros and a bare decimal point dropped, for English or no language. Other languages keep their
+/// two decimals (`3,50`), as before (not measured).
+fn format_plain(v: f64, lang: Option<&str>) -> String {
+    let text = wordcraft_doc::locale_number::format_number(v, lang);
+    if !scans_text(lang) || !text.contains('.') {
+        return text;
+    }
+    let trimmed = text.trim_end_matches('0').trim_end_matches('.');
+    if trimmed == "-0" || trimmed.is_empty() { "0".to_string() } else { trimmed.to_string() }
 }
 
 /// The text a formula field shows: its result under its `\#` numeric picture when it has one (see
@@ -127,7 +140,7 @@ pub fn evaluate_field_with(
                     })
                 })
                 .or_else(|| default_lang.map(str::to_string));
-            wordcraft_doc::locale_number::format_number(value, out_lang.as_deref())
+            format_plain(value, out_lang.as_deref())
         }
     };
     Ok(match switch {
@@ -144,7 +157,7 @@ pub fn evaluate_text_field(doc: &wordcraft_doc::Document, default_lang: Option<&
     let text = match (switch.and_then(picture_of), look.filter(|l| *l != Look::default())) {
         (Some(picture), _) => format_picture(value, &picture),
         (None, Some(look)) => format_look(value, look),
-        (None, None) => wordcraft_doc::locale_number::format_number(value, default_lang),
+        (None, None) => format_plain(value, default_lang),
     };
     Ok(match switch {
         Some(switch) => format_switches(switch, value, text),
@@ -1277,6 +1290,18 @@ pub fn paste_bookmark_names(doc: &wordcraft_doc::Document) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plain_result_drops_trailing_zeros() {
+        assert_eq!(format_result(2.5), "2.5");
+        assert_eq!(format_result(4.375), "4.38");
+        assert_eq!(format_result(0.1 + 0.2), "0.3");
+        assert_eq!(format_result(5.0), "5");
+        assert_eq!(format_result(-2.5), "-2.5");
+        assert_eq!(format_result(-0.001), "0", "a result that rounds to zero is 0");
+        assert_eq!(format_plain(3.5, Some("en-GB")), "3.5");
+        assert_eq!(format_plain(3.5, Some("pl-PL")), "3,50", "other languages keep two decimals");
+    }
 
     fn table(rows: &[&[&str]]) -> Table {
         let cols = rows.iter().map(|r| r.len()).max().unwrap_or(1);
