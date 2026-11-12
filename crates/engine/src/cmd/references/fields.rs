@@ -567,8 +567,8 @@ fn position_or_note(
 }
 
 /// Word's error text for a REF, PAGEREF or NOTEREF whose bookmark `target` is in no story of the
-/// document (`names`), measured in Word: `None` when the field names no bookmark, when the
-/// bookmark exists, or when a SET field gave the REF's name a value (`set`, `last_set`, keyed by
+/// document (`names`), or that names no bookmark, measured in Word: `None` when the bookmark
+/// exists, or when a SET field gave the REF's name a value (`set`, `last_set`, keyed by
 /// the lowercased name).
 fn missing_bookmark_error(
     name: &str,
@@ -576,7 +576,10 @@ fn missing_bookmark_error(
     names: &std::collections::HashSet<String>,
     (set, last_set): (&std::collections::HashMap<String, String>, &std::collections::HashMap<String, String>),
 ) -> Option<&'static str> {
-    if target.is_empty() || names.contains(target) {
+    if target.is_empty() {
+        return Some(NO_BOOKMARK_NAME);
+    }
+    if names.contains(target) {
         return None;
     }
     if name != "REF" {
@@ -643,6 +646,36 @@ fn self_reference_error(name: &str, instr: &str, target: &str, here: (StoryRef, 
     }
     let at = (*ranges.order.get(&here.0)?.get(here.1)?, here.2);
     (*start < at && at < *end).then_some(BOOKMARK_SELF_REFERENCE)
+}
+
+/// Puts Word's self-reference error into every unlocked REF of `paths` that sits inside the
+/// bookmark it names, before any other field is updated: a REF to that bookmark elsewhere then
+/// shows the bookmark's text with the error in it, wherever it stands. Gives the bookmark ranges
+/// when it needed them.
+fn mark_self_references(doc: &mut wordcraft_doc::Document, paths: &[(StoryRef, Path)]) -> Result<Option<BookmarkRanges>, CmdError> {
+    let mut ranges = None;
+    let mut self_refs: Vec<FieldResult> = Vec::new();
+    for (story, path) in paths {
+        let Some(p) = doc.para(*story, path) else { continue };
+        for ((k, o), (off, _)) in p.objects.iter().enumerate().zip(p.objects_with_offsets()) {
+            let InlineObject::Field { instr, locked: false, .. } = o else { continue };
+            let name = wordcraft_layout::fields::field_name(instr);
+            if name != "REF" {
+                continue;
+            }
+            let f = FieldCode::parse(instr);
+            let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
+            if target.is_empty() {
+                continue;
+            }
+            let ranges = ranges.get_or_insert_with(|| BookmarkRanges::build(doc));
+            if let Some(err) = self_reference_error(&name, instr, target, (*story, path, off), ranges) {
+                self_refs.push((*story, path.clone(), k, err.to_string()));
+            }
+        }
+    }
+    apply_results(doc, self_refs)?;
+    Ok(ranges)
 }
 
 /// The mark of the footnote or endnote whose reference starts the bookmark at `at` (NOTEREF's
@@ -726,28 +759,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
     let mut set: std::collections::HashMap<String, String> = Default::default();
     // A REF inside its own bookmark gets its error first, so a REF to that bookmark elsewhere
     // shows the bookmark's text with the error in it, wherever it stands.
-    let mut ranges = None;
-    let mut self_refs: Vec<(StoryRef, Path, usize)> = Vec::new();
-    for (story, path) in &paths {
-        let Some(p) = s.doc.para(*story, path) else { continue };
-        for ((k, o), (off, _)) in p.objects.iter().enumerate().zip(p.objects_with_offsets()) {
-            let InlineObject::Field { instr, locked: false, .. } = o else { continue };
-            let name = wordcraft_layout::fields::field_name(instr);
-            if name != "REF" {
-                continue;
-            }
-            let f = FieldCode::parse(instr);
-            let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
-            if target.is_empty() {
-                continue;
-            }
-            let ranges = ranges.get_or_insert_with(|| BookmarkRanges::build(&s.doc));
-            if self_reference_error(&name, instr, target, (*story, path, off), ranges).is_some() {
-                self_refs.push((*story, path.clone(), k));
-            }
-        }
-    }
-    apply_results(&mut s.doc, self_refs.into_iter().map(|(st, p, k)| (st, p, k, BOOKMARK_SELF_REFERENCE.to_string())).collect())?;
+    let mut ranges = mark_self_references(&mut s.doc, &paths)?;
     for (story, path) in paths {
         let Some(p) = s.doc.para(story, &path) else { continue };
         if !p.objects.iter().any(|o| matches!(o, InlineObject::Field { .. })) {
@@ -787,23 +799,17 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 "REF" | "PAGEREF" | "NOTEREF" => {
                     let f = FieldCode::parse(instr);
                     let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
-                    if target.is_empty() {
-                        updates.push((k, NO_BOOKMARK_NAME.to_string()));
-                        continue;
-                    }
-                    // A bookmark that is gone gives Word's error text whatever the switches, stored
+                    // A bookmark that is gone, or no name, gives Word's error text whatever the switches, stored
                     // as is (no `\*` format applied).
                     if let Some(err) = missing_bookmark_error(&name, target, &bookmark_names, (&set, &last_set)) {
                         updates.push((k, err.to_string()));
                         continue;
                     }
                     // A REF inside the bookmark it names: Word's error, stored as is.
-                    if let Some(off) = offsets.get(k) {
-                        let ranges = ranges.get_or_insert_with(|| BookmarkRanges::build(&s.doc));
-                        if let Some(err) = self_reference_error(&name, instr, target, (story, &path, *off), ranges) {
-                            updates.push((k, err.to_string()));
-                            continue;
-                        }
+                    let ranges = ranges.get_or_insert_with(|| BookmarkRanges::build(&s.doc));
+                    if let Some(err) = offsets.get(k).and_then(|off| self_reference_error(&name, instr, target, (story, &path, *off), ranges)) {
+                        updates.push((k, err.to_string()));
+                        continue;
                     }
                     let here = offsets.get(k).map(|off| Pos { story, path: path.clone(), off: *off });
                     let r = if let Some(r) = position_or_note(&s.doc, (&name, instr, target), here, &bookmark_at, &mut note_marks) {
