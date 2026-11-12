@@ -145,6 +145,21 @@ impl Work {
     }
 }
 
+/// Most fonts of a font table listed in `Settings::roman_fonts` (as the DOCX reader caps it).
+const MAX_ROMAN_FONTS: usize = 2000;
+/// Longest font name, in bytes, listed in `Settings::roman_fonts`.
+const MAX_ROMAN_FONT_NAME: usize = 256;
+
+/// The names of the fonts whose FFN family class (`ff`, [MS-DOC] §2.9.82) is roman, in table
+/// order, from `(ff, name)` pairs.
+pub(crate) fn roman_fonts<'a>(fonts: impl Iterator<Item = (u8, &'a str)>) -> Vec<String> {
+    fonts
+        .filter(|&(ff, name)| ff == stsh::FF_ROMAN && !name.is_empty() && name.len() <= MAX_ROMAN_FONT_NAME)
+        .map(|(_, name)| name.to_string())
+        .take(MAX_ROMAN_FONTS)
+        .collect()
+}
+
 #[cfg(test)]
 thread_local! {
     /// What the last document read on this thread left out for the work budget ([`Work::log`]).
@@ -1664,19 +1679,4 @@ mod character_style_tests {
             assert_eq!(char_props(grpprl, &[], &CharProps::default(), &styles, &fmt::style_ids(&styles)).style, None);
         }
     }
-}
-
-/// Most fonts of a font table listed in `Settings::roman_fonts` (as the DOCX reader caps it).
-const MAX_ROMAN_FONTS: usize = 2000;
-/// Longest font name, in bytes, listed in `Settings::roman_fonts`.
-const MAX_ROMAN_FONT_NAME: usize = 256;
-
-/// The names of the fonts whose FFN family class (`ff`, [MS-DOC] §2.9.82) is roman, in table
-/// order, from `(ff, name)` pairs.
-pub(crate) fn roman_fonts<'a>(fonts: impl Iterator<Item = (u8, &'a str)>) -> Vec<String> {
-    fonts
-        .filter(|&(ff, name)| ff == stsh::FF_ROMAN && !name.is_empty() && name.len() <= MAX_ROMAN_FONT_NAME)
-        .map(|(_, name)| name.to_string())
-        .take(MAX_ROMAN_FONTS)
-        .collect()
 }
