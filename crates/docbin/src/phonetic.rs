@@ -115,14 +115,13 @@ fn general_switch(arg: &str, align: &mut RubyAlign, hps: &mut Option<u32>, font:
             4 => RubyAlign::Right,
             _ => return None,
         };
-    } else if let Some(n) = strip_ci(arg, "hps") {
-        let n = whole_number(n)?;
+    } else {
+        // Any other general switch: not a Phonetic Guide field.
+        let n = whole_number(strip_ci(arg, "hps")?)?;
         if !(1..=MAX_HPS).contains(&n) {
             return None;
         }
         *hps = Some(n);
-    } else {
-        return None;
     }
     Some(())
 }
