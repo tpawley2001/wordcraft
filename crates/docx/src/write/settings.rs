@@ -439,16 +439,20 @@ pub(super) fn core_xml(doc: &Document) -> Vec<u8> {
             ("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"),
         ],
     );
-    for (tag, v) in [
-        ("dc:title", &c.title),
-        ("dc:subject", &c.subject),
-        ("dc:creator", &creator),
-        ("cp:keywords", &c.keywords),
-        ("dc:description", &c.description),
-        ("cp:lastModifiedBy", &last_modified_by),
-        ("cp:category", &c.category),
+    // An empty summary property the file had (or that was set) stays an empty element, so Word's
+    // DOCPROPERTY still shows nothing for it rather than its unknown-name error.
+    use wordcraft_doc::InFile::Present;
+    let f = &c.in_file;
+    for (tag, v, keep_empty) in [
+        ("dc:title", &c.title, f.title == Present),
+        ("dc:subject", &c.subject, f.subject == Present),
+        ("dc:creator", &creator, f.creator == Present),
+        ("cp:keywords", &c.keywords, f.keywords == Present),
+        ("dc:description", &c.description, f.description == Present),
+        ("cp:lastModifiedBy", &last_modified_by, false),
+        ("cp:category", &c.category, false),
     ] {
-        if !v.is_empty() {
+        if !v.is_empty() || keep_empty {
             w.leaf(tag, &[], v);
         }
     }

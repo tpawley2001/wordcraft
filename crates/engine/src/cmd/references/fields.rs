@@ -1,7 +1,8 @@
 use super::numbers::{body_bookmark_paths, para_numbers, ref_number};
 use super::properties::{
     BodyCounts, bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property_arg,
-    doc_property_names_pages, doc_property_result, new_property_value, set_summary_property, summary_property, text_result,
+    doc_property_names_pages, doc_property_names_text_count, doc_property_result, new_property_value, set_summary_property, summary_property,
+    text_result,
 };
 use super::toc::{heading_style_level, update_toc, update_toc_pages};
 use super::{
@@ -33,6 +34,11 @@ fn doc_property_counts(s: &mut Session, paths: &[(StoryRef, Path)]) -> BodyCount
     let needs_pages = instrs().any(doc_property_names_pages);
     let pages = needs_pages.then(|| s.layout().pages.len());
     BodyCounts::of(&s.doc, pages)
+}
+
+/// Does the paragraph hold an unlocked DOCPROPERTY field naming one of the body's text counts?
+fn paragraph_has_text_count(p: &Paragraph) -> bool {
+    p.objects.iter().any(|o| matches!(o, InlineObject::Field { instr, locked: false, .. } if doc_property_names_text_count(instr)))
 }
 
 /// The `\*` format switch value for a caption's number format (OOXML names work too).
@@ -619,12 +625,14 @@ fn doc_variable_result(doc: &wordcraft_doc::Document, instr: &str) -> String {
 
 /// The refresh after Insert › Field: as [`update_fields`], except that `DOCVARIABLE` fields keep
 /// their stored result. Only Update Field recomputes a document variable's result (Word keeps it
-/// on open and on export too).
+/// on open and on export too). DOCPROPERTY fields naming a text count (`Words`, `Characters` ...)
+/// keep theirs too: a count includes the field's own shown result, so recounting on every insert
+/// would make it drift; Update Field takes it.
 pub fn update_fields_after_insert(s: &mut Session) -> Result<(), CmdError> {
     update_fields_with(s, false, false, false)
 }
 
-fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars: bool) -> Result<(), CmdError> {
+fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit: bool) -> Result<(), CmdError> {
     let caret_story = s.sel.focus.story;
     let in_body = all || caret_story == StoryRef::Body;
     if in_body {
@@ -659,13 +667,19 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
     // SET <name> "<text>" (ECMA-376 §17.16.5.58): the values it gives, which REF <name> shows; a
     // REF before the SET shows the last value set, as Word's bookmark does after an update.
     let last_set = set_values(s, &paths);
-    // DOCPROPERTY's counts (Words, Pages ...) of the body as it is before this pass changes it.
-    let counts = doc_property_counts(s, &paths);
+    // DOCPROPERTY's counts (Words, Pages ...) of the body as it is before this pass changes it;
+    // the text counts are taken again for each paragraph with a count field (below).
+    let mut counts = doc_property_counts(s, &paths);
     let mut set: std::collections::HashMap<String, String> = Default::default();
     for (story, path) in paths {
         let Some(p) = s.doc.para(story, &path) else { continue };
         if !p.objects.iter().any(|o| matches!(o, InlineObject::Field { .. })) {
             continue;
+        }
+        // Word takes a count when it updates the field: the fields before it already show their
+        // new results, this one and those after it their stored ones. `Pages` stays as taken.
+        if explicit && paragraph_has_text_count(p) {
+            counts = BodyCounts::of(&s.doc, counts.pages);
         }
         let mut updates: Vec<(usize, String)> = Vec::new();
         let offsets: Vec<usize> = p.objects_with_offsets().map(|(off, _)| off).collect();
@@ -768,12 +782,13 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 }
                 "REVNUM" => updates.push((k, count_text(instr, core.revision as usize))),
                 // DOCPROPERTY <name>: a custom property first, then a built-in one (#1798).
+                "DOCPROPERTY" if !explicit && doc_property_names_text_count(instr) => {}
                 "DOCPROPERTY" => {
                     let date = |value: &str, pic: &str| document_date_result(instr, value, pic);
                     updates.extend(doc_property_result(&s.doc, &core, &counts, date, instr).map(|v| (k, v)));
                 }
                 // DOCVARIABLE <name>: the document variable (names ignore case), or Word's error text.
-                "DOCVARIABLE" => updates.extend(doc_vars.then(|| (k, doc_variable_result(&s.doc, instr)))),
+                "DOCVARIABLE" => updates.extend(explicit.then(|| (k, doc_variable_result(&s.doc, instr)))),
                 "FILENAME" => {
                     let (fn_name, fn_path) = s.resolved_filenames();
                     let text = if has_switch(instr, 'p') { fn_path } else { fn_name };

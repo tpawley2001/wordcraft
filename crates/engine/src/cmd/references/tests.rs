@@ -1150,3 +1150,36 @@ fn header_docproperty_counts_the_body_and_keeps_a_date_that_is_not_one() {
     let got: Vec<String> = story_fields(&s, StoryRef::Part(hdr)).into_iter().map(|(_, r)| r).collect();
     assert_eq!(got, ["stale", "stale", "3", "I"]);
 }
+
+/// Only a DOCPROPERTY field naming one of the body's text counts makes Update Field count the
+/// body again before its paragraph; `Pages` and other names do not.
+#[test]
+fn only_text_count_names_are_counted_again() {
+    use super::properties::doc_property_names_text_count as counts_again;
+    for instr in ["DOCPROPERTY Words", r#"DOCPROPERTY "Characters" \* MERGEFORMAT"#, "DOCPROPERTY characterswithspaces", " DOCPROPERTY  Paragraphs "]
+    {
+        assert!(counts_again(instr), "{instr}");
+    }
+    for instr in ["DOCPROPERTY Pages", "DOCPROPERTY Title", "NUMWORDS", "DOCPROPERTY", "DOCVARIABLE Words"] {
+        assert!(!counts_again(instr), "{instr}");
+    }
+}
+
+/// A summary property the file did not carry stops showing the error once it is set, by its
+/// field or by File › Properties, even to an empty value.
+#[test]
+fn a_missing_summary_property_that_is_set_is_no_longer_missing() {
+    let mut s = Session::new(wordcraft_doc::Document::new());
+    s.doc.core.in_file = wordcraft_doc::SummaryInFile::all(wordcraft_doc::InFile::Missing);
+    for instr in ["DOCPROPERTY Title", "DOCPROPERTY Subject", r#"SUBJECT "Plan""#, "DOCPROPERTY Subject"] {
+        s.run("insert.field", &serde_json::json!({"instr": instr, "result": "stale"})).unwrap();
+    }
+    s.run("references.updateFields", &serde_json::json!({})).unwrap();
+    let got: Vec<String> = fields(&s).into_iter().map(|(_, r)| r).collect();
+    // The SUBJECT field set the subject when it was inserted, so every Subject shows it.
+    assert_eq!(got, [properties::UNKNOWN_DOC_PROPERTY, "Plan", "Plan", "Plan"]);
+    s.run("file.properties", &serde_json::json!({"title": ""})).unwrap();
+    s.run("references.updateFields", &serde_json::json!({})).unwrap();
+    assert_eq!(fields(&s).first().map(|(_, r)| r.as_str()), Some(""));
+    assert_eq!(s.doc.core.in_file.title, wordcraft_doc::InFile::Present);
+}
