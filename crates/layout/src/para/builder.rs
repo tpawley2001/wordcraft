@@ -142,26 +142,28 @@ impl<'a> Builder<'a> {
         // A Word 97-2003 file with "add only 2 pt of external leading" lays a Courier New line
         // out one em tall, and a line of any other font (installed or not) its size plus 2 pt:
         // the font's own descent below the baseline, the rest above it.
+        // "Don't add leading between rows of text" (below compatibility mode 15) drops a font's
+        // external leading.
+        let leading = {
+            let s = &self.env.doc.settings;
+            !(s.no_leading && s.compat_mode < 15)
+        };
         let ext_2pt = self.env.doc.settings.ext_leading_2pt_only;
         let line = if ext_2pt && is_courier_new(&rc.font) {
             Some(one_em_line(&r.face))
         } else if ext_2pt {
             None
         } else {
-            wordcraft_fonts::word::missing_font_line(&rc.font, &r)
+            wordcraft_fonts::word::missing_font_line_leading(&rc.font, &r, leading)
         };
         let (ascent, descent) = match line {
             Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
             None if ext_2pt => size_plus_2pt_line(&r.face, f64::from(size)),
             None => {
-                // "Don't add leading between rows of text" (below compatibility mode 15): the line
-                // is the font's ascent plus descent, without its line gap.
-                let s = &self.env.doc.settings;
-                let (a, d) = if s.no_leading && s.compat_mode < 15 {
-                    wordcraft_fonts::word::line_metrics_no_leading(&face)
-                } else {
-                    wordcraft_fonts::word::line_metrics(&face)
-                };
+                // Without leading, the line loses the part of its gap outside the font's Windows
+                // cell.
+                let (a, d) =
+                    if !leading { wordcraft_fonts::word::line_metrics_no_leading(&face) } else { wordcraft_fonts::word::line_metrics(&face) };
                 let k = f64::from(size) / face.upem.max(1.0);
                 (a * k, d * k)
             }

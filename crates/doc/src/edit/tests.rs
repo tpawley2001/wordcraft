@@ -911,3 +911,136 @@ fn an_adopted_notes_text_box_gets_a_story_of_its_own() {
     assert_eq!(part.kind, PartKind::TextBox);
     assert!(matches!(part.blocks.first().map(|b| &**b), Some(Block::Para(p)) if p.text == "their box"));
 }
+
+/// A story of one paragraph `text`, with `objects` at its start.
+fn story_with(d: &mut Document, kind: PartKind, text: &str, objects: Vec<InlineObject>) -> u32 {
+    let mut p = Paragraph::with_text(text, CharProps::default());
+    for o in objects.into_iter().rev() {
+        p.insert_object(0, o, &CharProps::default()).unwrap();
+    }
+    d.add_part(kind, vec![para_block(p)])
+}
+
+fn note_ref(id: u32) -> InlineObject {
+    InlineObject::NoteRef { kind: crate::para::NoteKind::Footnote, id, custom: String::new() }
+}
+
+/// The first-paragraph texts of `d`'s stories of `kind`, sorted.
+fn story_texts(d: &Document, kind: PartKind) -> Vec<String> {
+    let mut out: Vec<String> = d
+        .parts
+        .values()
+        .filter(|p| p.kind == kind)
+        .filter_map(|p| p.blocks.first().and_then(|b| if let Block::Para(p) = &**b { Some(p.text.replace('\u{FFFC}', "")) } else { None }))
+        .collect();
+    out.sort();
+    out
+}
+
+/// Gives body paragraph 0 of `d` the `objects`.
+fn mark_body(d: &mut Document, objects: Vec<InlineObject>) {
+    let p = d.para_mut(StoryRef::Body, &Path::top(0)).unwrap();
+    for o in objects {
+        let props = p.props_of_char(0).clone();
+        p.insert_object(0, o, &props).unwrap();
+    }
+}
+
+#[test]
+fn adopting_brings_a_note_referenced_only_from_a_kept_notes_text_box() {
+    let mut theirs = doc(&["theirs"]);
+    let deep = story_with(&mut theirs, PartKind::Footnote, "deep note", vec![]);
+    story_with(&mut theirs, PartKind::Footnote, "stray note", vec![]);
+    let boxed = story_with(&mut theirs, PartKind::TextBox, "box", vec![note_ref(deep)]);
+    let kept = story_with(&mut theirs, PartKind::Footnote, "kept note", vec![box_shape(Some(boxed))]);
+    mark_body(&mut theirs, vec![note_ref(kept)]);
+    let mut ours = doc(&["ours"]);
+    ours.adopt(theirs);
+    assert_eq!(story_texts(&ours, PartKind::Footnote), ["deep note", "kept note"]);
+}
+
+#[test]
+fn adopting_brings_a_comment_anchored_only_inside_a_kept_footnote() {
+    use crate::Comment;
+    let mut theirs = doc(&["theirs"]);
+    let said = story_with(&mut theirs, PartKind::Comment, "in the note", vec![]);
+    let stray = story_with(&mut theirs, PartKind::Comment, "elsewhere", vec![]);
+    theirs.comments.insert(4, Comment { part: said, ..Comment::default() });
+    theirs.comments.insert(5, Comment { part: stray, ..Comment::default() });
+    let note = story_with(&mut theirs, PartKind::Footnote, "note", vec![InlineObject::CommentStart { id: 4 }, InlineObject::CommentEnd { id: 4 }]);
+    mark_body(&mut theirs, vec![note_ref(note)]);
+    let mut ours = doc(&["ours"]);
+    ours.adopt(theirs);
+    assert_eq!(story_texts(&ours, PartKind::Comment), ["in the note"]);
+    assert_eq!(ours.comments.len(), 1);
+}
+
+#[test]
+fn adopting_brings_a_chain_of_replies_with_their_parents() {
+    use crate::Comment;
+    let mut theirs = doc(&["theirs"]);
+    let a = story_with(&mut theirs, PartKind::Comment, "a", vec![]);
+    let b = story_with(&mut theirs, PartKind::Comment, "b", vec![]);
+    let c = story_with(&mut theirs, PartKind::Comment, "c", vec![]);
+    theirs.comments.insert(0, Comment { part: a, ..Comment::default() });
+    theirs.comments.insert(1, Comment { part: b, parent: Some(0), ..Comment::default() });
+    theirs.comments.insert(2, Comment { part: c, parent: Some(1), ..Comment::default() });
+    mark_body(&mut theirs, vec![InlineObject::CommentStart { id: 0 }]);
+    let mut ours = doc(&["ours"]);
+    ours.adopt(theirs);
+    assert_eq!(story_texts(&ours, PartKind::Comment), ["a", "b", "c"]);
+    let id_of = |t: &str| {
+        ours.comments
+            .iter()
+            .find(|(_, c)| ours.parts.get(&c.part).and_then(|p| p.blocks.first()).is_some_and(|b| matches!(&**b, Block::Para(p) if p.text == t)))
+            .map(|(id, _)| *id)
+    };
+    let (a, b, c) = (id_of("a").unwrap(), id_of("b").unwrap(), id_of("c").unwrap());
+    assert_eq!(ours.comments[&a].parent, None);
+    assert_eq!(ours.comments[&b].parent, Some(a));
+    assert_eq!(ours.comments[&c].parent, Some(b));
+}
+
+#[test]
+fn adopting_skips_an_unanchored_reply_cycle_without_hanging() {
+    use crate::Comment;
+    let mut theirs = doc(&["theirs"]);
+    let a = story_with(&mut theirs, PartKind::Comment, "a", vec![]);
+    let b = story_with(&mut theirs, PartKind::Comment, "b", vec![]);
+    theirs.comments.insert(0, Comment { part: a, parent: Some(1), ..Comment::default() });
+    theirs.comments.insert(1, Comment { part: b, parent: Some(0), ..Comment::default() });
+    let mut ours = doc(&["ours"]);
+    ours.adopt(theirs);
+    assert!(ours.comments.is_empty());
+    assert!(story_texts(&ours, PartKind::Comment).is_empty());
+}
+
+#[test]
+fn adopting_an_anchored_reply_cycle_brings_each_comment_once() {
+    use crate::Comment;
+    let mut theirs = doc(&["theirs"]);
+    let a = story_with(&mut theirs, PartKind::Comment, "a", vec![]);
+    let b = story_with(&mut theirs, PartKind::Comment, "b", vec![]);
+    theirs.comments.insert(0, Comment { part: a, parent: Some(1), ..Comment::default() });
+    theirs.comments.insert(1, Comment { part: b, parent: Some(0), ..Comment::default() });
+    mark_body(&mut theirs, vec![InlineObject::CommentStart { id: 0 }]);
+    let mut ours = doc(&["ours"]);
+    ours.adopt(theirs);
+    assert_eq!(story_texts(&ours, PartKind::Comment), ["a", "b"]);
+}
+
+#[test]
+fn adopting_a_body_cut_to_an_unmarked_paragraph_brings_no_notes_or_comments() {
+    use crate::Comment;
+    let mut theirs = doc(&["marked", "plain"]);
+    let note = story_with(&mut theirs, PartKind::Footnote, "note", vec![]);
+    let said = story_with(&mut theirs, PartKind::Comment, "said", vec![]);
+    theirs.comments.insert(0, Comment { part: said, ..Comment::default() });
+    mark_body(&mut theirs, vec![note_ref(note), InlineObject::CommentStart { id: 0 }]);
+    theirs.body.remove(0);
+    let mut ours = doc(&["ours"]);
+    ours.adopt(theirs);
+    assert!(ours.comments.is_empty());
+    assert!(story_texts(&ours, PartKind::Footnote).is_empty());
+    assert!(story_texts(&ours, PartKind::Comment).is_empty());
+}

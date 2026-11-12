@@ -267,6 +267,8 @@ impl Reader {
             indent_first_chars: d.cufi.map(chars),
             indent_left_chars: d.culi.map(chars),
             indent_right_chars: d.curi.map(chars),
+            shading: self.def_para_shading(d),
+            borders: self.def_para_borders(d),
             ..Default::default()
         };
         let color = |i: i32| usize::try_from(i).ok().and_then(|i| self.colors.get(i).copied().flatten()).map_or(TextColor::Auto, TextColor::Rgb);
@@ -289,7 +291,60 @@ impl Reader {
             b.color = d.border_color.and_then(|i| self.colors.get(i.max(0) as usize).copied().flatten());
             b
         });
-        CharProps { border, underline: d.underline, strike: d.strike, double_strike: d.double_strike, ..Default::default() }
+        let (highlight, shading) = self.def_highlight_and_shading(d);
+        CharProps {
+            border,
+            underline: d.underline,
+            underline_color: d.underline_color.filter(|i| *i > 0).and_then(|i| self.color_at(i)),
+            strike: d.strike,
+            double_strike: d.double_strike,
+            caps: d.caps,
+            small_caps: d.small_caps,
+            hidden: d.hidden_text,
+            vert_align: d.vert_align,
+            highlight,
+            shading,
+            ..Default::default()
+        }
+    }
+
+    /// Colour table entry `i`; `None` for the automatic colour, a negative index or one past
+    /// the table.
+    fn color_at(&self, i: i32) -> Option<wordcraft_doc::Rgb> {
+        usize::try_from(i).ok().and_then(|i| self.colors.get(i).copied().flatten())
+    }
+
+    /// The highlight and character shading entry `d` states, as a run's words give them: a
+    /// highlight in one of the highlighter colours is the highlight, any other colour is
+    /// shading; a shading pattern (`\chcbpat`, `\chcfpat`, `\chshdng`) is the shading.
+    fn def_highlight_and_shading(&self, d: &StyleDef) -> (Option<wordcraft_doc::props::Highlight>, Option<wordcraft_doc::Rgb>) {
+        use wordcraft_doc::props::Highlight;
+        let marked = d.highlight.and_then(|i| self.color_at(i));
+        let highlight = marked.and_then(|c| Highlight::ALL.into_iter().find(|h| *h != Highlight::None && h.rgb() == Some(c)));
+        let pattern = d.ch_fill.is_some() || d.ch_ink.is_some() || d.ch_pct.is_some();
+        let shading = if pattern {
+            pattern_shading(d.ch_pct.unwrap_or(0), d.ch_ink.and_then(|i| self.color_at(i)), d.ch_fill.and_then(|i| self.color_at(i)))
+        } else {
+            marked.filter(|_| highlight.is_none())
+        };
+        (highlight, shading)
+    }
+
+    /// The paragraph shading entry `d` states (`\cbpat`, `\cfpat`, `\shading`), as a paragraph's.
+    fn def_para_shading(&self, d: &StyleDef) -> Option<wordcraft_doc::Rgb> {
+        pattern_shading(d.para_pct.unwrap_or(0), d.para_ink.and_then(|i| self.color_at(i)), d.para_fill.and_then(|i| self.color_at(i)))
+    }
+
+    /// The paragraph borders entry `d` states, their colours looked up; `None` when it states no side.
+    fn def_para_borders(&self, d: &StyleDef) -> Option<wordcraft_doc::props::Borders> {
+        let mut sides = d.para_borders;
+        for (b, c) in sides.iter_mut().zip(d.para_border_colors) {
+            if let Some(b) = b {
+                b.color = c.and_then(|i| self.color_at(i));
+            }
+        }
+        let [top, left, bottom, right, between] = sides;
+        sides.iter().any(Option::is_some).then_some(wordcraft_doc::props::Borders { top, left, bottom, right, between, ..Default::default() })
     }
 
     /// Whether another program wrote the file: its `{\*\generator …}` names one that isn't
@@ -341,6 +396,25 @@ impl Reader {
             out.underline = out.underline.or(d.underline);
             out.strike = out.strike.or(d.strike);
             out.double_strike = out.double_strike.or(d.double_strike);
+            out.caps = out.caps.or(d.caps);
+            out.small_caps = out.small_caps.or(d.small_caps);
+            out.hidden_text = out.hidden_text.or(d.hidden_text);
+            out.vert_align = out.vert_align.or(d.vert_align);
+            out.highlight = out.highlight.or(d.highlight);
+            out.underline_color = out.underline_color.or(d.underline_color);
+            out.ch_fill = out.ch_fill.or(d.ch_fill);
+            out.ch_ink = out.ch_ink.or(d.ch_ink);
+            out.ch_pct = out.ch_pct.or(d.ch_pct);
+            out.para_fill = out.para_fill.or(d.para_fill);
+            out.para_ink = out.para_ink.or(d.para_ink);
+            out.para_pct = out.para_pct.or(d.para_pct);
+            for ((o, oc), (b, c)) in
+                out.para_borders.iter_mut().zip(out.para_border_colors.iter_mut()).zip(d.para_borders.iter().zip(d.para_border_colors.iter()))
+            {
+                if o.is_none() {
+                    (*o, *oc) = (*b, *c);
+                }
+            }
             cur = d.based_on;
         }
         out
@@ -682,6 +756,30 @@ pub(super) struct StyleDef {
     pub(super) underline: Option<wordcraft_doc::props::Underline>,
     pub(super) strike: Option<bool>,
     pub(super) double_strike: Option<bool>,
+    /// All caps (`\caps`), small caps (`\scaps`), hidden (`\v`); a stated off is kept.
+    pub(super) caps: Option<bool>,
+    pub(super) small_caps: Option<bool>,
+    pub(super) hidden_text: Option<bool>,
+    /// Superscript or subscript (`\super`, `\sub`, `\nosupersub`; the later wins).
+    pub(super) vert_align: Option<wordcraft_doc::props::VertAlign>,
+    /// `\colortbl` indexes: the highlight (`\highlight`) and the underline colour (`\ulc`).
+    pub(super) highlight: Option<i32>,
+    pub(super) underline_color: Option<i32>,
+    /// Character shading (`\chcbpat`/`\cb`, `\chcfpat`, `\chshdng`): background and pattern
+    /// colour indexes and the pattern's coverage; `None` where the entry doesn't state it.
+    pub(super) ch_fill: Option<i32>,
+    pub(super) ch_ink: Option<i32>,
+    pub(super) ch_pct: Option<i32>,
+    /// Paragraph shading (`\cbpat`, `\cfpat`, `\shading`), as for characters.
+    pub(super) para_fill: Option<i32>,
+    pub(super) para_ink: Option<i32>,
+    pub(super) para_pct: Option<i32>,
+    /// The paragraph border side the border words describe (`t`, `l`, `b`, `r`, `h` between,
+    /// `x` all four, `v` the bar border, which has no model value), and the borders by side
+    /// (top, left, bottom, right, between) with their `\brdrcf` colour indexes.
+    pub(super) para_side: Option<char>,
+    pub(super) para_borders: [Option<wordcraft_doc::props::Border>; 5],
+    pub(super) para_border_colors: [Option<i32>; 5],
     /// A table style's row formatting (after `\tsrowd`).
     pub(super) table: TableDef,
 }

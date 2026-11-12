@@ -643,11 +643,19 @@ fn properties(s: &mut Session, v: &Value) -> CmdResult {
             *dst = x.to_string();
         }
     };
-    set(&mut c.title, "title");
-    set(&mut c.subject, "subject");
-    set(&mut c.creator, "author");
-    set(&mut c.keywords, "keywords");
-    set(&mut c.description, "comments");
+    // A summary property set here is in the file from now on (DOCPROPERTY shows it, even empty).
+    let set_summary = |dst: &mut String, state: &mut wordcraft_doc::InFile, k: &str| {
+        if let Some(x) = p::str(v, k) {
+            *dst = x.to_string();
+            *state = wordcraft_doc::InFile::Present;
+        }
+    };
+    let f = &mut c.in_file;
+    set_summary(&mut c.title, &mut f.title, "title");
+    set_summary(&mut c.subject, &mut f.subject, "subject");
+    set_summary(&mut c.creator, &mut f.creator, "author");
+    set_summary(&mut c.keywords, &mut f.keywords, "keywords");
+    set_summary(&mut c.description, &mut f.description, "comments");
     set(&mut c.category, "category");
     set(&mut c.content_status, "status");
     if let Some(custom) = v.get("custom") {

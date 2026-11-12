@@ -138,6 +138,47 @@ pub struct CoreProps {
     pub identifier: String,
     /// `cp:contentType`, kept as read.
     pub content_type: String,
+    /// Whether the file carried each of Title, Subject, Author, Keywords and Comments: Word's
+    /// DOCPROPERTY shows an error for one the file has no element for, and nothing for an empty
+    /// one. Only the DOCX reader sets it; left out of JSON while nothing is known.
+    #[serde(skip_serializing_if = "SummaryInFile::is_unknown")]
+    pub in_file: SummaryInFile,
+}
+
+/// What the file had for a summary property ([`CoreProps::in_file`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InFile {
+    /// Not read from a file that says (a new document, or a format not measured).
+    #[default]
+    Unknown,
+    /// The file has no element for the property.
+    Missing,
+    /// The file has the element, maybe empty, or the property was set since.
+    Present,
+}
+
+/// [`InFile`] for each of the five summary properties a DOCPROPERTY field can find missing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SummaryInFile {
+    pub title: InFile,
+    pub subject: InFile,
+    pub creator: InFile,
+    pub keywords: InFile,
+    pub description: InFile,
+}
+
+impl SummaryInFile {
+    /// All five [`InFile::Unknown`] (what serialization leaves out).
+    pub fn is_unknown(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// The same state for all five.
+    pub fn all(state: InFile) -> Self {
+        Self { title: state, subject: state, creator: state, keywords: state, description: state }
+    }
 }
 
 /// The Styles pane's options (Style Pane Options…), as the settings part keeps them
