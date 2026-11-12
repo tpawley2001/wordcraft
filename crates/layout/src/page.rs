@@ -60,6 +60,14 @@ pub(crate) struct PageBuilder<'a> {
     pub(crate) page_valign: wordcraft_doc::section::PageVAlign,
     /// The document's own footnote separators, laid out for the section's text width.
     pub(crate) seps: NoteSeps,
+    /// ... and for each column's width, when the notes go under their columns
+    /// ([`Self::col_notes`]).
+    pub(crate) col_seps: Vec<NoteSeps>,
+    /// The document is in a compatibility mode before 15 (`compatibilityMode`, ECMA-376 Part 1
+    /// §17.15.3.4): in a section with several columns each footnote goes under its column.
+    pub(crate) legacy_notes: bool,
+    /// The top of the highest column's note area placed on the current page (`f32::MAX`: none).
+    pub(crate) col_notes_top: f32,
     /// Where the last paragraph's lines ended: page count, column and y.
     pub(crate) para_end: Option<(usize, usize, f32)>,
     /// Per page: how many items were inserted at the front of its list (behind the text), so a
@@ -126,6 +134,80 @@ pub(crate) fn page_border_rules(s: &SectionProps) -> Vec<Placed> {
 }
 
 impl PageBuilder<'_> {
+    /// Footnotes go under the column whose text refers to them, as wide as the column, and only
+    /// that column's text ends above them: a section with two or more columns, notes at the page
+    /// bottom, before compatibility mode 15 (`compatibilityMode` < 15, every .doc). `notes` then
+    /// holds the current column's notes. From mode 15 the page keeps one note area.
+    pub(crate) fn col_notes(&self) -> bool {
+        self.legacy_notes && !self.web && !self.sect_beneath && self.cols.len() > 1
+    }
+    /// The width footnotes are laid out for: the current column's ([`Self::col_notes`]), else
+    /// the section's text width.
+    pub(crate) fn note_w(&self) -> f32 {
+        if self.col_notes() { self.col_w() } else { self.sect.text_width() }
+    }
+    /// The footnote separators for the current note area.
+    pub(crate) fn seps(&self) -> &NoteSeps {
+        if self.col_notes() { self.col_seps.get(self.col).unwrap_or(&self.seps) } else { &self.seps }
+    }
+    /// The lowest bottom of the text the current note area goes below: the page's body text
+    /// ([`Self::body_floor`]), or the current column's ([`Self::col_notes`]).
+    pub(crate) fn note_floor(&self) -> f32 {
+        if !self.col_notes() {
+            return self.body_floor();
+        }
+        let Some(pg) = self.pages.last() else { return self.top };
+        let left = self.sect.text_left(self.mirror);
+        // An item belongs to the column nearest its left edge.
+        let col_of = |x: f32| {
+            let gap = |(cx, cw): &(f32, f32)| {
+                let (a, b) = (left + cx, left + cx + cw);
+                if x < a {
+                    a - x
+                } else if x > b {
+                    x - b
+                } else {
+                    0.0
+                }
+            };
+            self.cols.iter().enumerate().min_by(|(_, a), (_, b)| gap(a).total_cmp(&gap(b))).map(|(i, _)| i)
+        };
+        pg.items
+            .iter()
+            .skip(self.page_items_start)
+            .filter_map(|it| match it {
+                Placed::Lines { story: StoryRef::Body, x, .. } if col_of(*x) == Some(self.col) => Some(v_span(it).1),
+                Placed::Cell { story: StoryRef::Body, rect, .. } if col_of(rect.x) == Some(self.col) => Some(v_span(it).1),
+                _ => None,
+            })
+            .fold(self.top, f32::max)
+    }
+    /// Leaving the current column for the next one on the page ([`Self::col_notes`]): its notes
+    /// go at its foot, and what of them doesn't fit there continues at the foot of the next
+    /// column, whose text ends above it.
+    fn leave_column_notes(&mut self) {
+        let before = self.carry.len();
+        self.flush_notes();
+        self.notes = self.carry.split_off(before.min(self.carry.len()));
+    }
+    /// A continuous section starts below the columns on this page ([`Self::col_notes`]): the
+    /// current column's notes go at its foot (what doesn't fit continues on the next page), and
+    /// the text and notes that follow on the page stay above the columns' note areas.
+    pub(crate) fn end_column_notes(&mut self) {
+        if !self.col_notes() {
+            return;
+        }
+        self.flush_notes();
+        self.orig_bottom = self.orig_bottom.min(self.col_notes_top);
+        self.cap_columns();
+    }
+    /// A section starting in the next column of the page ([`Self::col_notes`]): see
+    /// [`Self::leave_column_notes`].
+    pub(crate) fn next_column_notes(&mut self) {
+        if self.col_notes() {
+            self.leave_column_notes();
+        }
+    }
     /// Space footnotes take at the bottom of the page.
     pub(crate) fn notes_h(&self) -> f32 {
         self.stack_h(&self.notes)
@@ -134,7 +216,7 @@ impl PageBuilder<'_> {
     fn stack_h(&self, notes: &[NoteBox]) -> f32 {
         match notes.first() {
             None => 0.0,
-            Some(first) => self.seps.sep_h(first.cont) + notes.iter().map(|n| n.h).sum::<f32>(),
+            Some(first) => self.seps().sep_h(first.cont) + notes.iter().map(|n| n.h).sum::<f32>(),
         }
     }
     /// The lowest bottom of the body text and tables on the current page.
@@ -147,17 +229,20 @@ impl PageBuilder<'_> {
             .map(|it| v_span(it).1)
             .fold(self.top, f32::max)
     }
-    /// Place the collected footnotes at the bottom of the current page. When they don't all fit
-    /// below the body (`bottom`), the note that doesn't is split at a line and its rest, with
-    /// the notes after it, continues on the next page.
+    /// Place the collected footnotes at the bottom of the current page (under the current
+    /// column, [`Self::col_notes`]). When they don't all fit below the body (`bottom`), the note
+    /// that doesn't is split at a line and its rest, with the notes after it, continues on the
+    /// next page.
     pub(crate) fn flush_notes(&mut self) {
         if self.notes.is_empty() {
             return;
         }
         let total = self.notes_h();
-        let x = self.sect.text_left(self.mirror);
+        let in_col = self.col_notes();
+        let (x, width) = if in_col { (self.col_x(), self.col_w()) } else { (self.sect.text_left(self.mirror), self.sect.text_width()) };
+        let seps = self.seps().clone();
         // The note area starts below the text (a page of continued notes alone: at its top).
-        let area = self.bottom.max(self.body_floor());
+        let area = self.bottom.max(self.note_floor());
         let fits = total <= self.orig_bottom - area + 0.01;
         let top = match (fits, self.beneath) {
             (false, _) => area,
@@ -168,7 +253,10 @@ impl PageBuilder<'_> {
         let notes = std::mem::take(&mut self.notes);
         // A page that starts with a continued note gets the continuation separator.
         let cont = notes.first().is_some_and(|n| n.cont);
-        let mut y = top + self.seps.sep_h(cont);
+        if in_col {
+            self.col_notes_top = self.col_notes_top.min(top);
+        }
+        let mut y = top + seps.sep_h(cont);
         let mut placed = Vec::new();
         // Where the continuation notice goes, below a note that continues on the next page.
         let mut notice_y = None;
@@ -186,7 +274,7 @@ impl PageBuilder<'_> {
             // so continuing ends.
             let first = placed.is_empty();
             let cuts = n.cuts();
-            let room = room - self.seps.notice_h();
+            let room = room - seps.notice_h();
             match cuts.iter().rev().find(|&&c| c <= room + 0.01).or(cuts.first().filter(|_| first)).copied() {
                 Some(c) => {
                     let (head, tail) = n.split(c);
@@ -201,13 +289,13 @@ impl PageBuilder<'_> {
             break;
         }
         if let Some(pg) = self.pages.last_mut() {
-            match if cont { &self.seps.cont } else { &self.seps.sep } {
+            match if cont { &seps.cont } else { &seps.sep } {
                 Some((items, _)) => pg.items.extend(items.iter().cloned().map(|mut it| {
                     it.translate(x, top);
                     it
                 })),
                 None => {
-                    let len = if cont { self.sect.text_width() } else { NOTE_SEP_W };
+                    let len = if cont { width } else { NOTE_SEP_W.min(width) };
                     let sy = top + NOTE_SEP / 2.0;
                     pg.items.push(Placed::Rule { x0: x, y0: sy, x1: x + len, y1: sy, border: Border::single(0.5) });
                 }
@@ -218,7 +306,7 @@ impl PageBuilder<'_> {
                     pg.items.push(it);
                 }
             }
-            if let (Some(ny), Some((items, _))) = (notice_y, &self.seps.notice) {
+            if let (Some(ny), Some((items, _))) = (notice_y, &seps.notice) {
                 pg.items.extend(items.iter().cloned().map(|mut it| {
                     it.translate(x, ny);
                     it
@@ -352,6 +440,7 @@ impl PageBuilder<'_> {
         }
         self.max_y = self.top;
         self.content_bottom = self.top;
+        self.col_notes_top = f32::MAX;
         self.cap_columns();
         self.open_column_lines(first_block);
     }
@@ -417,7 +506,8 @@ impl PageBuilder<'_> {
     /// onto it (#3907 CodeRabbit: a different first page's header or footer doesn't shrink it).
     pub(crate) fn next_room(&self, body_top: f32) -> f32 {
         if self.col + 1 < self.cols.len() {
-            self.uncapped_bottom() - self.top
+            // Under their own columns the notes so far don't shorten the next one.
+            if self.col_notes() { self.orig_bottom - self.top } else { self.uncapped_bottom() - self.top }
         } else if self.web {
             f32::MAX / 8.0 - body_top
         } else {
@@ -451,8 +541,16 @@ impl PageBuilder<'_> {
     pub(crate) fn advance(&mut self, block: usize, body_top: f32) {
         if self.col + 1 < self.cols.len() {
             self.max_y = self.max_y.max(self.y);
+            let in_col = self.col_notes();
+            if in_col {
+                self.leave_column_notes();
+            }
             self.col += 1;
             self.y = self.top;
+            if in_col {
+                // This column ends above its own notes (those continued into it).
+                self.cap_columns();
+            }
         } else {
             self.new_page(block, body_top);
         }
@@ -678,3 +776,7 @@ impl PageFrame<'_> {
 pub(crate) fn page_frame<'a>(pb: &PageBuilder<'a>, mirror: bool) -> PageFrame<'a> {
     PageFrame { sect: pb.sect, margin_top: None, origin: (0.0, 0.0), number: pb.number, mirror }
 }
+
+#[cfg(test)]
+#[path = "tests/footnotes_in_columns_more.rs"]
+mod footnotes_in_columns_more;

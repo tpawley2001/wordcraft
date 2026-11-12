@@ -29,6 +29,7 @@ mod field_picture_overflow;
 mod float_table_bottom;
 mod float_table_notes;
 mod float_top;
+mod footnotes_in_columns;
 mod grid;
 mod header_extent;
 mod header_extent_fixtures;

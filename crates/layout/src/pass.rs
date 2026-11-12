@@ -215,6 +215,9 @@ fn new_page_builder<'p>(
         block_marks: Vec::new(),
         page_valign: wordcraft_doc::section::PageVAlign::Top,
         seps: NoteSeps::default(),
+        col_seps: Vec::new(),
+        legacy_notes: false,
+        col_notes_top: f32::MAX,
         para_end: None,
         behind: Vec::new(),
         max_y: 0.0,
@@ -292,8 +295,16 @@ fn begin_section_state<'p>(
     ctx.fields.page_format = page_format;
     pb.sect_idx = si;
     pb.sect_beneath = doc.note_options(sect, false).pos == wordcraft_doc::section::NotePos::BeneathText;
+    pb.legacy_notes = doc.settings.compat_mode < 15;
     if !web && !doc.footnote_separators.is_empty() {
         pb.seps = NoteSeps::new(ctx, &doc.footnote_separators, sect.text_width());
+    }
+    // Under their own columns (`PageBuilder::col_notes`) the notes take separators as wide as
+    // each column.
+    pb.col_seps = Vec::new();
+    let boxes = sect.column_boxes();
+    if !web && pb.legacy_notes && boxes.len() > 1 && !doc.footnote_separators.is_empty() {
+        pb.col_seps = boxes.iter().map(|&(_, w)| NoteSeps::new(ctx, &doc.footnote_separators, w)).collect();
     }
     ctx.fields.section = u32::try_from(si).unwrap_or(u32::MAX).saturating_add(1);
     ctx.fields.section_pages = totals.section(si);
@@ -389,6 +400,7 @@ fn next_column(pb: &mut PageBuilder, sect: &SectionProps, block: usize) {
     pb.cols = sect.column_boxes();
     pb.col = pb.col.saturating_add(1);
     pb.y = pb.top;
+    pb.cap_columns();
     pb.open_column_lines(block);
 }
 
@@ -618,6 +630,10 @@ pub(crate) fn layout_pass(
             // separators, before this section's replace them: the footnotes pending on it
             // belong to the section whose page it is (#5289).
             pb.finish_page();
+        } else if !mode.web && !pb.pages.is_empty() {
+            // Notes under the columns of the section before go at the foot of the column it
+            // ended in, with that section's separators (see `PageBuilder::col_notes`).
+            if next_col { pb.next_column_notes() } else { pb.end_column_notes() }
         }
         // This section's fields and separators, without the previous section's grid, before its
         // header and footer room is measured; its own grid once that room is known (#4501).
