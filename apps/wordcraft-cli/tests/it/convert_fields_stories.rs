@@ -7,7 +7,7 @@ use wordcraft_doc::para::{InlineObject, NoteKind};
 use wordcraft_doc::{Block, CharProps, Document, Paragraph, PartKind, Path, Pos, SectionProps, StoryRef};
 
 fn author_field(locked: bool) -> InlineObject {
-    InlineObject::Field { instr: "AUTHOR".into(), result: "stale".into(), locked, dirty: false, code: false, form: String::new() }
+    InlineObject::Field { instr: "AUTHOR".into(), result: "stale".into(), locked, dirty: false, code: false, form: String::new(), code_paras: None }
 }
 
 /// A new part of `kind` holding one paragraph with an `AUTHOR` field per entry of `locked`.
