@@ -252,6 +252,9 @@ pub enum Dialog {
         pick: Option<(Value, String)>,
         /// The ScreenTip (shown on hover instead of the address), sent as `screenTip` on OK.
         tip: String,
+        /// The ScreenTip the dialog opened with: OK sends `screenTip` only when `tip` differs, so a
+        /// stored tip the dialog cannot send (longer than `MAX_SCREEN_TIP`) stays as it is.
+        tip_opened: String,
         /// The ScreenTip being edited while Set Hyperlink ScreenTip is open.
         tip_edit: Option<String>,
     },
@@ -912,6 +915,7 @@ impl Dialog {
                 targets: None,
                 pick: None,
                 tip: wordcraft_engine::cmd::insert::selected_link_tip(&app.session),
+                tip_opened: wordcraft_engine::cmd::insert::selected_link_tip(&app.session),
                 tip_edit: None,
                 focus: true,
             },
