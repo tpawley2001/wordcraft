@@ -1212,7 +1212,7 @@ mod header_footer_output_tests {
     use wordcraft_doc::{Document, PartKind};
 
     fn field(instr: &str, result: &str) -> InlineObject {
-        InlineObject::Field { instr: instr.into(), result: result.into(), locked: false, dirty: false, code: false, form: String::new() }
+        InlineObject::Field { instr: instr.into(), result: result.into(), locked: false, dirty: false, code: false, form: String::new(), code_paras: None }
     }
 
     fn para_with(fields: &[(&str, &str)]) -> Paragraph {
