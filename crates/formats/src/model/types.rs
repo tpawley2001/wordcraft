@@ -554,6 +554,11 @@ pub struct FlowOpts {
     /// gives and the level goes in [`Para::extra`] (otherwise the level alone makes it a
     /// heading), for formats that write the level on its own (RTF `\outlinelevelN`).
     pub outline_apart: bool,
+    /// The paragraph's effective automatic space between Asian and Latin text and between Asian
+    /// text and numbers (its own, else its style chain's, else on) in [`Para::extra`]: `None` when
+    /// on, `Some(false)` when off, for formats where a missing setting means off (RTF
+    /// `\aspalpha`, `\aspnum`).
+    pub auto_space: bool,
 }
 
 impl FlowOpts {

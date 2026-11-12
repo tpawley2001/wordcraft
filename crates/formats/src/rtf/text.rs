@@ -370,6 +370,7 @@ impl Reader {
                     self.pn_txt.push(c);
                 }
             }
+            Dest::LsdExcept => self.latent.exception_text(s),
             Dest::Skip
             | Dest::Object
             | Dest::ListTable
@@ -378,7 +379,8 @@ impl Reader {
             | Dest::OldSect
             | Dest::Pn
             | Dest::UserProps
-            | Dest::DocVar => {}
+            | Dest::DocVar
+            | Dest::LatentStyles => {}
         }
     }
 
@@ -387,9 +389,12 @@ impl Reader {
     fn old_fmt(&mut self, words: &[(String, Option<i32>)]) -> Fmt {
         let fmt = Fmt { link: None, link_tip: None, ins: None, del: None, fmt_change: None, ..self.st.fmt.clone() };
         let saved = std::mem::replace(&mut self.st, St { dest: Dest::OldProps(false), fmt, ..Default::default() });
+        // Border words replayed here describe the old character border, never a page or cell side.
+        let sides = (self.page_side.take(), self.cell_side.take());
         for (w, p) in words {
             self.word(w, *p, false, false);
         }
+        (self.page_side, self.cell_side) = sides;
         let old = std::mem::replace(&mut self.st, saved).fmt;
         Fmt { link: None, link_tip: None, ..old }
     }

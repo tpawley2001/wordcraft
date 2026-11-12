@@ -94,6 +94,9 @@ impl Reader {
                 self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
+                if self.st.border_side == Some('c') {
+                    self.st.border_side = None;
+                }
             }
             "pard" => {
                 let field = self.st.field;
@@ -175,6 +178,13 @@ impl Reader {
                 }
             }
             "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            // A character border: the border words that follow describe it, until another side
+            // starts, the group ends or `\plain`.
+            "chbrdr" => {
+                self.page_side = None;
+                self.cell_side = None;
+                self.st.border_side = Some('c');
+            }
             "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
             "highlight" => self.highlight(pv),
             // Hidden text: kept, as hidden text.
@@ -194,6 +204,8 @@ impl Reader {
             "noline" => self.st.noline = on,
             "widctlpar" => self.st.widow = Some(true),
             "nowidctlpar" => self.st.widow = Some(false),
+            "aspalpha" => self.st.asp_alpha = on,
+            "aspnum" => self.st.asp_num = on,
             "contextualspace" => self.st.contextual = Some(true),
             "mirrorindents" => self.st.mirror = Some(true),
             "sbauto" => self.st.sb_auto = Some(on),
@@ -437,6 +449,11 @@ impl Reader {
             }
             // Anywhere else (a header, note, field or shape) it is not a document variable.
             "docvar" => Some(Dest::Skip),
+            "latentstyles" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => {
+                self.latent.begin();
+                Some(Dest::LatentStyles)
+            }
+            "lsdlockedexcept" if self.st.dest == Dest::LatentStyles => Some(Dest::LsdExcept),
             "listtable" => Some(Dest::ListTable),
             "revtbl" => Some(Dest::RevTbl),
             "oldcprops" => Some(Dest::OldProps(false)),
@@ -568,6 +585,7 @@ impl Reader {
                 true
             }
             Dest::DocVar => true,
+            Dest::LatentStyles | Dest::LsdExcept => self.latent_word(word, param),
             Dest::UserProps => {
                 if word == "proptype" {
                     self.info_more.set_prop_type(value);
@@ -967,7 +985,7 @@ impl Reader {
     }
 
     /// Changes the run's character properties beyond the [`Fmt`] fields; none left is `None`.
-    fn set_extra(&mut self, f: impl FnOnce(&mut CharProps)) {
+    pub(super) fn set_extra(&mut self, f: impl FnOnce(&mut CharProps)) {
         let x = self.st.fmt.extra.get_or_insert_with(Default::default);
         f(x);
         if **x == CharProps::default() {

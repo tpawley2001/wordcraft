@@ -157,6 +157,8 @@ pub(super) struct Reader {
     pub(super) in_date: Option<(usize, usize)>,
     /// The information group's fields the flow model has no place for, and `{\*\userprops …}`.
     pub(super) info_more: super::state::InfoMore,
+    /// The latent-style table (`{\*\latentstyles …}`).
+    pub(super) latent: super::latent_styles::Latent,
     pub(super) rule_pending: bool,
     pub(super) info_depth: Option<usize>,
     // Notes and comments (only when the caller wants them).
@@ -292,8 +294,16 @@ impl Reader {
 
     /// Applies `f` to the border of the page side being described, else of the cell side, else
     /// of the paragraph side: `h` is the border between paragraphs (`\brdrbtw`), `x` all four
-    /// sides (`\box`); any other side (the bar border's `v`) has no slot.
+    /// sides (`\box`), `c` the run's character border (`\chbrdr`); any other side (the bar
+    /// border's `v`) has no slot.
     pub(super) fn each_border_slot(&mut self, mut f: impl FnMut(&mut Option<wordcraft_doc::props::Border>)) {
+        // The character border (`\chbrdr`) is the current run's.
+        if (self.page_side, self.cell_side, self.st.border_side) == (None, None, Some('c')) {
+            let mut b = self.st.fmt.extra.as_ref().and_then(|x| x.border);
+            f(&mut b);
+            self.set_extra(|x| x.border = b);
+            return;
+        }
         let (b, side) = match (self.page_side, self.cell_side) {
             // A header or footer doesn't set the body's section.
             (Some(_), _) if self.hf.is_some() || self.sub.is_some() => return,
@@ -647,6 +657,8 @@ impl Reader {
             }
             Dest::UserProps => self.info_more.commit_user_prop(),
             Dest::DocVar => self.info_more.commit_doc_var(),
+            Dest::LatentStyles => self.latent.end(),
+            Dest::LsdExcept => self.latent.end_exceptions(),
             Dest::Atn(k) => self.commit_atn(k),
             _ => {}
         }

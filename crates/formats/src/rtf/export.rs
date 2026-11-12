@@ -1094,6 +1094,14 @@ impl Writer {
             let i = old_shd.map_or(0, |c| self.t.color(c));
             ctl.push_str(&format!("\\chcbpat{i}"));
         }
+        let border = |f: &Fmt| f.extra.as_ref().and_then(|x| x.border).filter(|b| b.is_visible());
+        let old_border = border(old);
+        if old_border != border(cur) {
+            match old_border {
+                Some(b) => border_words("chbrd", 'r', b, true, &mut self.t, &mut ctl),
+                None => ctl.push_str("\\chbrdr\\brdrnone"),
+            }
+        }
         if old.hidden != cur.hidden {
             ctl.push_str(if old.hidden { "\\v" } else { "\\v0" });
         }
@@ -1191,6 +1199,10 @@ impl Writer {
                 Some(EmphasisMark::None) | None => "",
             };
             ctl.push_str(mark);
+            // The border around the text (Borders and Shading, Apply to: Text).
+            if let Some(b) = x.border.filter(|b| b.is_visible()) {
+                border_words("chbrd", 'r', b, true, &mut self.t, &mut ctl);
+            }
         }
         if let Some(w) = position_word(f) {
             ctl.push_str(&w);
@@ -1433,6 +1445,15 @@ impl Writer {
             Some(true) => out.push_str("\\widctlpar"),
             Some(false) => out.push_str("\\nowidctlpar"),
             None => {}
+        }
+        // Automatic space between Asian and Latin text and numbers: off in RTF unless written
+        // (the flow model holds the effective value, unset when on).
+        let x = p.extra.as_deref();
+        if x.and_then(|x| x.auto_space_de) != Some(false) {
+            out.push_str("\\aspalpha");
+        }
+        if x.and_then(|x| x.auto_space_dn) != Some(false) {
+            out.push_str("\\aspnum");
         }
         if let Some(x) = p.extra.as_deref() {
             if x.contextual_spacing == Some(true) {
@@ -1870,7 +1891,7 @@ pub fn export(doc: &Document) -> String {
     let before = set_own_styles(own);
     let ranged_before = set_ranged(HashSet::new());
     // An empty paragraph's mark formatting sets its height.
-    let opts = model::FlowOpts { marks: true, outline_apart: true, ..model::FlowOpts::tracked() };
+    let opts = model::FlowOpts { marks: true, outline_apart: true, auto_space: true, ..model::FlowOpts::tracked() };
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
@@ -1982,6 +2003,9 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     out.push_str("{\\s7\\sbasedon0\\snext0\\fs56 Title;}{\\s8\\sbasedon0\\snext0\\li720\\ri720\\i Quote;}{\\s9\\sbasedon0\\snext9\\sa0\\fs20 Code;}");
     out.push_str(own_styles);
     out.push_str("}\n");
+    if let Some(xml) = doc.styles.latent_styles.as_deref() {
+        out.push_str(&super::latent_styles::group(xml));
+    }
     if !w.lists.is_empty() {
         out.push_str("{\\*\\listtable");
         for (i, kinds) in w.lists.iter().enumerate() {

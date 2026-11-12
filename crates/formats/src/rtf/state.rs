@@ -74,12 +74,19 @@ pub(super) enum Dest {
     /// A document variable (`{\*\docvar {name}{value}}`, RTF 1.9.1 "Document Variables"): its
     /// first nested group is the name, the second the value, both text groups (`Info(14)`).
     DocVar,
+    /// The latent-style table (`{\*\latentstyles …}`): its words are read into
+    /// [`super::latent_styles::Latent`].
+    LatentStyles,
+    /// The exceptions of the latent-style table (`{\lsdlockedexcept …}`): words and names.
+    LsdExcept,
 }
 
 /// Longest text kept of one information-group field or user property name or value (bytes).
 pub(super) const MAX_INFO_TEXT: usize = 64 * 1024;
 /// Most user properties one file may bring in.
 pub(super) const MAX_USER_PROPS: usize = 1_000;
+/// Most latent-style exceptions kept (`{\lsdlockedexcept …}`); Word writes about 380.
+pub(super) const MAX_LATENT_EXCEPTIONS: usize = 2_000;
 
 /// Most document variables one file may bring in.
 pub(super) const MAX_DOC_VARS: usize = 4096;
@@ -487,6 +494,10 @@ pub(super) struct St {
     pub(super) noline: bool,
     /// Widow/orphan control (`\widctlpar`, `\nowidctlpar`); `None` until the paragraph says.
     pub(super) widow: Option<bool>,
+    /// Automatic space between Asian and Latin text (`\aspalpha`) and between Asian text and
+    /// numbers (`\aspnum`); off unless the paragraph says, cleared by `\pard`.
+    pub(super) asp_alpha: bool,
+    pub(super) asp_num: bool,
     /// Contextual spacing (`\contextualspace`), mirror indents (`\mirrorindents`), automatic
     /// space before/after (`\sbautoN`, `\saautoN`), hyphenation suppressed (`\hyphpar0`) and
     /// line grid snapping (`\nosnaplinegrid`); `None` until the paragraph says.
@@ -557,6 +568,8 @@ impl Default for St {
             keep: false,
             noline: false,
             widow: None,
+            asp_alpha: false,
+            asp_num: false,
             contextual: None,
             mirror: None,
             sb_auto: None,

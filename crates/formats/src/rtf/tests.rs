@@ -1830,8 +1830,10 @@ fn compound_borders_round_trip() {
     assert_eq!(tops(&back), want);
 }
 
+mod asian_auto_space;
 mod bookmark_ranges;
 mod cell_margins;
+mod char_border;
 mod char_effects;
 mod char_unit_indents;
 mod column_widths;
@@ -1852,6 +1854,7 @@ mod html_auto_spacing;
 mod info_company;
 mod info_props;
 mod justification_flag;
+mod latent_styles;
 mod legacy_pn;
 mod link_screen_tip;
 mod mark_and_default_font;
