@@ -1,31 +1,24 @@
 //! Paragraph marks inside a field's code. Word lets a complex field's code run over several
 //! paragraphs (ECMA-376 Part 1, §17.16.18, §17.16.23): the marks are hidden with the code, so the
 //! paragraphs from the field's begin to its separator show as one. WordCraft reads them as one
-//! [`super::Paragraph`] and keeps here what is needed to save the paragraphs as they were.
+//! [`super::Paragraph`] and keeps on the field what is needed to save the paragraphs as they were.
 
 use serde::{Deserialize, Serialize};
 
 use crate::props::{CharProps, ParaProps};
 
-/// The paragraph marks inside the codes of a paragraph's fields, in field order.
+/// The paragraph marks inside a field's code.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct CodeParas {
+    /// [`code_hash`] of the field's code: a code edited since it was read no longer matches, and
+    /// the field is saved in one paragraph.
+    pub code: u64,
     /// The first paragraph's own space after (the joined paragraph has the last one's).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_after: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_after_auto: Option<bool>,
-    pub fields: Vec<CodeSplit>,
-}
-
-/// The paragraph marks inside one field's code.
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct CodeSplit {
-    /// [`code_hash`] of the field's code: a code edited since it was read no longer matches, and
-    /// the field is saved in one paragraph.
-    pub code: u64,
     pub marks: Vec<CodeMark>,
 }
 
@@ -46,7 +39,7 @@ pub fn code_hash(code: &str) -> u64 {
     code.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3))
 }
 
-impl CodeSplit {
+impl CodeParas {
     /// The parts of `code` between the marks, when the marks still fit it (in order, on
     /// character boundaries, within the code).
     pub fn parts<'a>(&self, code: &'a str) -> Option<Vec<&'a str>> {
@@ -68,8 +61,8 @@ impl CodeSplit {
 mod tests {
     use super::*;
 
-    fn split(code: &str, at: &[usize]) -> CodeSplit {
-        CodeSplit { code: code_hash(code), marks: at.iter().map(|&at| CodeMark { at, ..Default::default() }).collect() }
+    fn split(code: &str, at: &[usize]) -> CodeParas {
+        CodeParas { code: code_hash(code), marks: at.iter().map(|&at| CodeMark { at, ..Default::default() }).collect(), ..Default::default() }
     }
 
     #[test]

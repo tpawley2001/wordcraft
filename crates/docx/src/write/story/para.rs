@@ -1,5 +1,9 @@
 use wordcraft_doc::SectionProps;
-use wordcraft_doc::para::{CodeSplit, code_hash};
+use wordcraft_doc::para::CodeParas;
+
+/// Per field written over several paragraphs: its offset, and per paragraph mark in its code the
+/// offset in the code and the next paragraph's `w:pPr`.
+type CodeSplits = Vec<(usize, Vec<(usize, String)>)>;
 use wordcraft_doc::props::ParaProps;
 
 use super::{
@@ -72,12 +76,11 @@ impl Writer<'_> {
         let section = if top { p.section.as_deref() } else { None };
         // A field code that ran over several paragraphs is saved in them again: this paragraph
         // is the first, with its own space after.
-        self.code_splits = if framed { Vec::new() } else { self.plan_code_splits(p) };
-        if !self.code_splits.is_empty()
-            && let Some(cp) = p.code_paras.as_deref()
-        {
-            pp.space_after = cp.first_after;
-            pp.space_after_auto = cp.first_after_auto;
+        let first_after;
+        (self.code_splits, first_after) = if framed { (Vec::new(), None) } else { self.plan_code_splits(p) };
+        if let Some((after, auto)) = first_after {
+            pp.space_after = after;
+            pp.space_after_auto = auto;
         }
         self.write_ppr(w, &pp, &p.mark, section, rels, framed);
         // A note's first paragraph starts with its reference mark. When the paragraph holds the
@@ -156,17 +159,18 @@ impl Writer<'_> {
     }
 
     /// The fields of `p` whose code is saved over several paragraphs (see [`CodeParas`]), with
-    /// the `w:pPr` of each paragraph after the first. A field whose code changed since it was
-    /// read, or that is written inside a link, a tracked change, a content control or a
-    /// direction element (none of which may contain a paragraph end), is written in one.
-    fn plan_code_splits(&mut self, p: &Paragraph) -> Vec<(usize, Vec<(usize, String)>)> {
-        let Some(cp) = p.code_paras.as_deref() else { return Vec::new() };
-        if !self.inline_controls.is_empty() || p.text.chars().any(|c| ('\u{202A}'..='\u{202E}').contains(&c)) {
-            return Vec::new();
+    /// the `w:pPr` of each paragraph after the first, and the first paragraph's own space after.
+    /// A field whose code changed since it was read, or that is written inside a link, a tracked
+    /// change, a content control or a direction element (none of which may contain a paragraph
+    /// end), is written in one.
+    fn plan_code_splits(&mut self, p: &Paragraph) -> (CodeSplits, Option<(Option<f32>, Option<bool>)>) {
+        if !p.objects.iter().any(|o| matches!(o, InlineObject::Field { code_paras: Some(_), .. })) {
+            return (Vec::new(), None);
         }
-        // (field offset, split) in order: each split goes to the next field with its code.
-        let mut found: Vec<(usize, &CodeSplit)> = Vec::new();
-        let mut splits = cp.fields.iter().peekable();
+        if !self.inline_controls.is_empty() || p.text.chars().any(|c| ('\u{202A}'..='\u{202E}').contains(&c)) {
+            return (Vec::new(), None);
+        }
+        let mut found: Vec<(usize, &CodeParas)> = Vec::new();
         let mut k = 0usize;
         for (off, c) in p.text.char_indices() {
             if c != wordcraft_doc::para::OBJ {
@@ -174,17 +178,14 @@ impl Writer<'_> {
             }
             let o = p.objects.get(k);
             k += 1;
-            let (Some(InlineObject::Field { instr, .. }), Some(split)) = (o, splits.peek()) else { continue };
-            if code_hash(instr) != split.code {
-                continue;
-            }
+            let Some(InlineObject::Field { instr, code_paras: Some(split), .. }) = o else { continue };
             let props = p.props_of_char(off);
             let plain = props.link.is_none() && props.ins.is_none() && props.del.is_none();
             if plain && split.parts(instr).is_some() && wordcraft_doc::eq::Enclosure::parse(instr).is_none() && !super::toc::is_toc(instr) {
                 found.push((off, split));
             }
-            splits.next();
         }
+        let first_after = found.first().map(|(_, s)| (s.first_after, s.first_after_auto));
         let last = found.len().saturating_sub(1);
         let mut out = Vec::with_capacity(found.len());
         for (i, (off, split)) in found.into_iter().enumerate() {
@@ -205,7 +206,7 @@ impl Writer<'_> {
             }
             out.push((off, marks));
         }
-        out
+        (out, first_after)
     }
 
     fn para_content(&mut self, w: &mut W, p: &Paragraph, rels: &mut PartRels, depth: usize) {

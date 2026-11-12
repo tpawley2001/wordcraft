@@ -19,7 +19,7 @@ mod inline_kinds;
 mod inline_object;
 mod run;
 
-pub use code_paras::{CodeMark, CodeParas, CodeSplit, code_hash};
+pub use code_paras::{CodeMark, CodeParas, code_hash};
 pub use float::{AltText, Anchor, Float, FloatAlign, MAX_ALT_TEXT, Wrap, WrapText, cap_alt};
 pub use inline_kinds::{NoteKind, PTabAlign, PTabBase, RubyAlign, ShapeKind, ruby_offset, ruby_raise};
 pub use inline_object::{CanvasStyle, GroupChild, InlineObject, MAX_GROUP_CHILDREN};
@@ -40,10 +40,6 @@ pub struct Paragraph {
     /// Set when this paragraph ends a section (OOXML keeps `w:sectPr` on the last paragraph).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section: Option<Box<SectionProps>>,
-    /// Paragraph marks inside its fields' codes, from a file whose field code runs over several
-    /// paragraphs (they are saved as they were read).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub code_paras: Option<Box<CodeParas>>,
     /// Change counter for caches (not part of equality).
     #[serde(skip, default = "next_rev")]
     pub rev: u64,
@@ -57,7 +53,6 @@ impl PartialEq for Paragraph {
             && self.mark == o.mark
             && self.objects == o.objects
             && self.section == o.section
-            && self.code_paras == o.code_paras
     }
 }
 
@@ -76,7 +71,6 @@ impl Paragraph {
             mark: CharProps::default(),
             objects: Vec::new(),
             section: None,
-            code_paras: None,
             rev: next_rev(),
         }
     }
@@ -476,7 +470,6 @@ impl Paragraph {
             mark: if self.text.is_empty() && off == 0 { self.mark.clone() } else { carry },
             objects: tail_objs,
             section: self.section.take(),
-            code_paras: None,
             rev: next_rev(),
         };
         if tail.text.is_empty() {
@@ -653,7 +646,15 @@ mod tests {
         let mut p = Paragraph::with_text("añb€c", CharProps::default());
         p.insert_object(
             3,
-            InlineObject::Field { instr: "PAGE".into(), result: "7".into(), locked: false, dirty: false, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: "PAGE".into(),
+                result: "7".into(),
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &CharProps::default(),
         )
         .unwrap();
@@ -727,7 +728,15 @@ mod tests {
         let mut p = Paragraph::with_text("ab", CharProps::default());
         p.insert_object(
             1,
-            InlineObject::Field { instr: "PAGE".into(), result: "1".into(), locked: false, dirty: false, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: "PAGE".into(),
+                result: "1".into(),
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &CharProps::default(),
         )
         .unwrap();

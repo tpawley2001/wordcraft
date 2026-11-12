@@ -683,7 +683,8 @@ impl<'a> Builder<'a> {
                     if instr.trim().is_empty() {
                         append(&mut out, &result, &cp, None);
                     } else {
-                        let obj = InlineObject::Field { instr, result, locked: *locked, dirty: false, code: false, form: form.clone() };
+                        let obj =
+                            InlineObject::Field { instr, result, locked: *locked, dirty: false, code: false, form: form.clone(), code_paras: None };
                         append(&mut out, "", &cp, Some(obj));
                     }
                 }

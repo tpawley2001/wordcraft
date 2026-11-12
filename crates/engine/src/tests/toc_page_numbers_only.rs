@@ -16,7 +16,7 @@ fn run(s: &mut Session, id: &str, v: Value) {
 }
 
 fn field(instr: &str, result: &str, locked: bool) -> InlineObject {
-    InlineObject::Field { instr: instr.into(), result: result.into(), locked, dirty: false, code: false, form: String::new() }
+    InlineObject::Field { instr: instr.into(), result: result.into(), locked, dirty: false, code: false, form: String::new(), code_paras: None }
 }
 
 /// The `Field` results of body block `i`.

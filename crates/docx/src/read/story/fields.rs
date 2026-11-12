@@ -46,6 +46,7 @@ impl Reader<'_> {
             sizes: Vec::new(),
             form,
             marks: Vec::new(),
+            first_after: (None, None),
         });
     }
 
@@ -136,6 +137,7 @@ impl Reader<'_> {
                 Item::Obj(o) => result.push_str(o.plain_text()),
             }
         }
+        let mut code_paras = None;
         let (instr, result) = match enclosure(&f) {
             // Word writes no result for enclosed characters: the text is their plain text.
             Some(e) => (e.instr(), if result.is_empty() { e.text } else { result }),
@@ -152,7 +154,12 @@ impl Reader<'_> {
                             m
                         })
                         .collect();
-                    pb.code.push(wordcraft_doc::para::CodeSplit { code: wordcraft_doc::para::code_hash(&instr), marks });
+                    code_paras = Some(Box::new(wordcraft_doc::para::CodeParas {
+                        code: wordcraft_doc::para::code_hash(&instr),
+                        first_after: f.first_after.0,
+                        first_after_auto: f.first_after.1,
+                        marks,
+                    }));
                 }
                 (instr, result)
             }
@@ -168,7 +175,7 @@ impl Reader<'_> {
             })
             .unwrap_or(&f.props)
             .clone();
-        let obj = InlineObject::Field { instr, result, locked: f.locked, dirty: f.dirty, code: false, form: f.form };
+        let obj = InlineObject::Field { instr, result, locked: f.locked, dirty: f.dirty, code: false, form: f.form, code_paras };
         if let Some(parent) = sc.fields.last_mut()
             && !parent.spilled
             && parent.phase == Phase::Instr
@@ -189,7 +196,15 @@ impl Reader<'_> {
             f.spilled = true;
             let form = std::mem::take(&mut f.form);
             pb.push_obj(
-                InlineObject::Field { instr: f.instr.trim().to_string(), result: String::new(), locked: f.locked, dirty: f.dirty, code: false, form },
+                InlineObject::Field {
+                    instr: f.instr.trim().to_string(),
+                    result: String::new(),
+                    locked: f.locked,
+                    dirty: f.dirty,
+                    code: false,
+                    form,
+                    code_paras: None,
+                },
                 &f.props,
             );
             for (it, p) in f.buf.drain(..) {
@@ -252,9 +267,13 @@ impl Reader<'_> {
     }
 
     /// A paragraph mark inside the code of the innermost field: one space in the code where the
-    /// mark is (none after white space), and the next paragraph's properties.
-    pub(super) fn code_mark(sc: &mut StoryCtx, props: wordcraft_doc::props::ParaProps, mark: CharProps) {
+    /// mark is (none after white space), and the next paragraph's properties. `after` is the
+    /// space after of the paragraph the mark ends.
+    pub(super) fn code_mark(sc: &mut StoryCtx, props: wordcraft_doc::props::ParaProps, mark: CharProps, after: (Option<f32>, Option<bool>)) {
         let Some(f) = sc.fields.last_mut() else { return };
+        if f.marks.is_empty() {
+            f.first_after = after;
+        }
         if f.instr.len() < super::MAX_INSTR && !f.instr.is_empty() && !f.instr.ends_with(char::is_whitespace) {
             f.instr.push(' ');
         }

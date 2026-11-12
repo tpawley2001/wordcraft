@@ -399,7 +399,15 @@ impl Reader<'_> {
             "w:pgNum" => self.emit_obj(
                 sc,
                 pb,
-                InlineObject::Field { instr: "PAGE".into(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() },
+                InlineObject::Field {
+                    instr: "PAGE".into(),
+                    result: String::new(),
+                    locked: false,
+                    dirty: false,
+                    code: false,
+                    form: String::new(),
+                    code_paras: None,
+                },
                 props,
             ),
             "w:ruby" => self.read_ruby(sc, pb, k, props),

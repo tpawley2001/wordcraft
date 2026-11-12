@@ -3,7 +3,7 @@ use super::{
     Reader, Rels, RevisionKind, Row, Run, RunCtx, StoryCtx, Table, children_of_choice, clean_text, collect, last_para_mut, para_block,
     placeholder_of, sectpr, tcpr, trpr,
 };
-use wordcraft_doc::para::{COLUMN_BREAK, CodeParas, LINE_BREAK, PAGE_BREAK};
+use wordcraft_doc::para::{COLUMN_BREAK, LINE_BREAK, PAGE_BREAK};
 use wordcraft_doc::props::ParaProps;
 
 impl Reader<'_> {
@@ -299,7 +299,6 @@ impl Reader<'_> {
         self.read_inline_children(sc, &mut pb, e, rels, &ctx, depth + 1);
         // Paragraphs a field's code runs on into.
         let mut taken = 0usize;
-        let first_after = (para.props.space_after, para.props.space_after_auto);
         while para.section.is_none() && Self::code_open_at_mark(sc) {
             let rest = next.get(taken..).unwrap_or(&[]);
             let Some(n) = super::fields::code_paragraphs(rest) else { break };
@@ -311,9 +310,10 @@ impl Reader<'_> {
                     }
                     None => Default::default(),
                 };
+                let after = (para.props.space_after, para.props.space_after_auto);
                 para.props.space_after = props.space_after;
                 para.props.space_after_auto = props.space_after_auto;
-                Self::code_mark(sc, props, mark);
+                Self::code_mark(sc, props, mark, after);
                 self.read_inline_children(sc, &mut pb, q, rels, &ctx, depth + 1);
             }
             taken += n;
@@ -328,9 +328,6 @@ impl Reader<'_> {
         para.text = pb.text;
         para.runs = pb.runs;
         para.objects = pb.objects;
-        if !pb.code.is_empty() {
-            para.code_paras = Some(Box::new(CodeParas { first_after: first_after.0, first_after_auto: first_after.1, fields: pb.code }));
-        }
         // Paragraph boundaries inside an instruction are hidden with the field code.
         // The result paragraph still takes a line, even when its cached text is empty.
         if sc.fields.iter().any(|f| f.phase == Phase::Instr) && para.plain_text().is_empty() {

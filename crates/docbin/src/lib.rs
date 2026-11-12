@@ -1282,7 +1282,15 @@ fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &Work) {
     // The visible result owns the formatting; an empty result keeps the begin's.
     let props = result.runs.iter().find(|(len, _)| *len > 0).map(|(_, props)| props.clone()).unwrap_or(f.props);
     pb.push('\u{FFFC}', props);
-    pb.objects.push(InlineObject::Field { instr, result: result.text, locked: false, dirty: false, code: false, form: String::new() });
+    pb.objects.push(InlineObject::Field {
+        instr,
+        result: result.text,
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    });
 }
 
 /// `sprmCPicLocation` from a CHPX grpprl: the fc of the picture in the Data stream.

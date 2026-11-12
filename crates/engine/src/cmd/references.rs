@@ -139,7 +139,7 @@ fn mark_toc_entry(s: &mut Session, v: &Value) -> CmdResult {
     };
     let instr = format!("TC \"{text}\" \\f {identifier} \\l {level}");
     let hidden = CharProps { hidden: Some(true), ..Default::default() };
-    let field = InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
+    let field = InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new(), code_paras: None };
     let (_, b) = s.sel.ordered();
     s.doc.insert_object(&b, field, &hidden)?;
     Ok(json!({"text": text, "identifier": identifier, "level": level}))

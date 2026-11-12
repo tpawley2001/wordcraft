@@ -64,6 +64,10 @@ fn texts(doc: &Document) -> Vec<String> {
     paras(doc).iter().map(|p| p.plain_text()).collect()
 }
 
+fn has_split(p: &Paragraph) -> bool {
+    p.objects.iter().any(|o| matches!(o, InlineObject::Field { code_paras: Some(_), .. }))
+}
+
 fn fields(p: &Paragraph) -> Vec<(String, String)> {
     p.objects
         .iter()
@@ -99,7 +103,7 @@ fn a_code_completed_within_64_paragraphs_joins_and_one_further_does_not() {
     // 65 following paragraphs: the field ends at the first paragraph end, as before.
     let doc = read(&with_inner(64));
     assert_eq!(paras(&doc).len(), 67);
-    assert!(paras(&doc)[0].code_paras.is_none());
+    assert!(!has_split(paras(&doc)[0]));
     assert!(paras(&doc)[65].plain_text().ends_with(" tail"));
 }
 
@@ -122,7 +126,7 @@ fn a_paragraph_mark_inside_a_nested_fields_code_is_not_joined() {
         para("", &[mark("separate"), text("3"), mark("end"), code(r#" = 3 "a" "#), mark("separate"), text("a"), mark("end")]),
     ]);
     assert_eq!(paras(&doc).len(), 2);
-    assert!(paras(&doc).iter().all(|p| p.code_paras.is_none()));
+    assert!(paras(&doc).iter().all(|p| !has_split(p)));
 }
 
 #[test]
