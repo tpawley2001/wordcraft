@@ -131,6 +131,13 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
                 border: e.border.filter(|b| b.is_visible()),
                 highlight,
                 shading,
+                // The run's direction and its complex-script and East Asian formatting.
+                rtl: set(e.rtl),
+                font_cs: e.font_cs.clone().filter(|f| !f.is_empty()),
+                font_ea: e.font_ea.clone().filter(|f| !f.is_empty()),
+                size_cs: e.size_cs.filter(|s| s.is_finite()),
+                bold_cs: e.bold_cs,
+                italic_cs: e.italic_cs,
                 ..Default::default()
             };
             if x.double_strike.is_some() {
@@ -216,6 +223,7 @@ fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
         engrave: set(e.engrave),
         border: e.border.filter(|b| b.is_visible()),
         lang: e.lang.clone().filter(|l| !l.is_empty()),
+        rtl: set(e.rtl),
         font_cs: e.font_cs.clone().filter(|f| !f.is_empty()),
         font_ea: e.font_ea.clone().filter(|f| !f.is_empty()),
         size_cs: e.size_cs.filter(|s| s.is_finite()),
@@ -637,6 +645,12 @@ fn shown_text(o: &InlineObject) -> &str {
 
 pub fn flow_paras(doc: &Document, p: &Paragraph) -> Vec<Para> {
     flow_paras_in(doc, p, FlowOpts::default())
+}
+
+/// [`flow_paras`] with what `opts` keeps, for a story built apart from the body (a note's or
+/// comment's text) that must keep what the body keeps.
+pub fn flow_paras_with(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
+    flow_paras_in(doc, p, opts)
 }
 
 /// [`flow_paras`]; `tracked` keeps tracked changes: deleted text stays, and text carries its

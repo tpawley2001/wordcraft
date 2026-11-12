@@ -1131,8 +1131,22 @@ fn document_date_fields_accept_offsets_and_fractions_and_keep_locked_results() {
 #[test]
 fn header_docproperty_unknown_name_shows_the_error() {
     let doc = wordcraft_doc::Document::from_text("one two three");
-    let (mut s, hdr) = header_fields_session(doc, &[r"DOCPROPERTY Nope \* Upper", "DOCPROPERTY Company"]);
+    let (mut s, hdr) = header_fields_session(doc, &[r"DOCPROPERTY Nope \* Upper", "DOCPROPERTY Template"]);
     s.run("references.updateFields", &json!({})).unwrap();
     let got: Vec<String> = story_fields(&s, StoryRef::Part(hdr)).into_iter().map(|(_, r)| r).collect();
     assert_eq!(got, [UNKNOWN_DOC_PROPERTY, "stale"]);
+}
+
+/// A DOCPROPERTY date that isn't a date keeps its stored result (LastPrinted too, unless it is
+/// empty), and a header's DOCPROPERTY count counts the body only.
+#[test]
+fn header_docproperty_counts_the_body_and_keeps_a_date_that_is_not_one() {
+    let mut doc = wordcraft_doc::Document::from_text("one two three");
+    doc.core.created = "not a date".into();
+    doc.core.last_printed = "never".into();
+    let codes = ["DOCPROPERTY CreateTime", "DOCPROPERTY LastPrinted", "DOCPROPERTY Words", r"DOCPROPERTY Paragraphs \* Roman"];
+    let (mut s, hdr) = header_fields_session(doc, &codes);
+    s.run("references.updateFields", &json!({})).unwrap();
+    let got: Vec<String> = story_fields(&s, StoryRef::Part(hdr)).into_iter().map(|(_, r)| r).collect();
+    assert_eq!(got, ["stale", "stale", "3", "I"]);
 }

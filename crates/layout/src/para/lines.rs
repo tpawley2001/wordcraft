@@ -946,6 +946,10 @@ impl Scan {
     /// A text or object cluster. True when the line ends before or at it.
     fn cluster(&mut self, bk: &mut Breaker, pl: &mut ParaLayout, c: &Cluster) -> bool {
         let (j, c0) = (self.j, self.c0);
+        if self.overflowing_field_result_ends(pl, c) {
+            self.end = LineEnd::Wrap;
+            return true;
+        }
         // A display equation sits on a line of its own.
         let is_display = pl.displays.iter().any(|(ci, _)| *ci == j);
         if is_display && has_content(pl, c0, j) {
@@ -1020,6 +1024,19 @@ impl Scan {
         }
         self.j += 1;
         false
+    }
+
+    /// Whether `c`, at `j`, ends a field whose result's last item, just before it on this line, is
+    /// an inline object reaching past the line's right edge. Word starts a new line there (the
+    /// field's end and what follows go to it), though a bare picture as wide, or one followed by
+    /// an empty field, keeps its single line.
+    fn overflowing_field_result_ends(&self, pl: &ParaLayout, c: &Cluster) -> bool {
+        let j = self.j;
+        c.kind == ClKind::Marker
+            && j > self.c0
+            && pl.field_ends.binary_search(&j).is_ok()
+            && pl.clusters.get(j - 1).is_some_and(|p| matches!(p.kind, ClKind::Object(_)) && p.adv > 0.0)
+            && self.x > self.right_edge + 0.01
     }
 
     /// The width up to the first '.' of the text after the tab at `tj`, up to cluster `j`. The

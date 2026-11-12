@@ -1,3 +1,4 @@
+use super::drawing::DrawingLink;
 use super::{
     Anchor, Arc, CharProps, El, Float, FloatAlign, InlineObject, MAX_STORY_DEPTH, MAX_VML_GROUP_DEPTH, Paragraph, PartKind, Reader, Rels, Rgb,
     ShapeExtra, ShapeKind, StoryCtx, TextColor, TextWarp, Wrap, int, measure, para_block, vml_color, vml_fill, vml_fraction, vml_preset_kind,
@@ -15,6 +16,13 @@ impl Reader<'_> {
     /// number of shapes (ECMA-376 Part 4, VML), and each one is its own object. A `v:group`
     /// becomes an [`InlineObject::Group`].
     pub(super) fn read_vml_all(&mut self, sc: &mut StoryCtx, pict: &El, rels: &Rels) -> Vec<InlineObject> {
+        self.read_vml_linked(sc, pict, rels).into_iter().map(|(o, _)| o).collect()
+    }
+
+    /// [`Self::read_vml_all`], each object with the `href` of the VML element it was read from
+    /// (trimmed; empty is no link). A group's link is its own, not its members'. VML has no
+    /// ScreenTip: `title` and `alt` are not one.
+    pub(super) fn read_vml_linked(&mut self, sc: &mut StoryCtx, pict: &El, rels: &Rels) -> Vec<(InlineObject, Option<DrawingLink>)> {
         let mut out = Vec::new();
         for e in pict.els().filter(|e| e.name.starts_with("v:") && e.local() != "shapetype") {
             if out.len() >= wordcraft_doc::para::MAX_GROUP_CHILDREN {
@@ -29,7 +37,8 @@ impl Reader<'_> {
                 continue;
             }
             let o = if e.local() == "group" { self.read_vml_group(sc, pict, e, rels) } else { self.read_vml_shape(sc, pict, e, rels, None) };
-            out.extend(o);
+            let link = e.attr("href").map(str::trim).filter(|h| !h.is_empty()).map(|h| (h.to_string(), None));
+            out.extend(o.map(|o| (o, link)));
         }
         out
     }
