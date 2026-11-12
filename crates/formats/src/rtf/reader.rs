@@ -93,6 +93,8 @@ pub(super) struct Reader {
     /// Fields whose result runs over a paragraph mark (a table of contents, an index): their
     /// result is read as plain text, so one field never turns into one field per paragraph.
     pub(super) plain_fields: HashSet<usize>,
+    /// Locked fields (`\fldlock`), by index in `fields`: their stored result is kept.
+    pub(super) locked_fields: HashSet<usize>,
     // Picture being read.
     pub(super) pict_depth: Option<usize>,
     pub(super) pict_hex: Vec<u8>,
@@ -109,7 +111,10 @@ pub(super) struct Reader {
     pub(super) pict_nat: (i32, i32),
     /// The mapping mode `N` of `\wmetafileN`.
     pub(super) pict_mm: i32,
+    /// The bookmark name being read and the depth its group started at.
     pub(super) bkmk: Option<(usize, String)>,
+    /// Whether that group is a bookmark's end (`\bkmkend`) rather than its start.
+    pub(super) bkmk_end: bool,
     /// Word 6.0/95 paragraph numbering (`{\*\pn …}`) being read, and the depth its group
     /// started at; the group's end keeps it as the paragraph's.
     pub(super) pn_cur: Pn,
@@ -271,7 +276,8 @@ impl Reader {
                 self.st.border_side = None;
                 self.page_side = w.chars().last();
             }
-            "brsp" if self.page_side.is_some() => {
+            // A page side's, else a paragraph side's; nothing while a cell side is described.
+            "brsp" if self.page_side.is_some() || (self.cell_side.is_none() && self.st.border_side.is_some()) => {
                 let space = (pv as f32 / 20.0).clamp(0.0, 31.0);
                 self.each_border_slot(|slot| {
                     if let Some(b) = slot {
@@ -286,7 +292,7 @@ impl Reader {
 
     /// Applies `f` to the border of the page side being described, else of the cell side, else
     /// of the paragraph side: `h` is the border between paragraphs (`\brdrbtw`), `x` all four
-    /// sides (`\box`).
+    /// sides (`\box`); any other side (the bar border's `v`) has no slot.
     pub(super) fn each_border_slot(&mut self, mut f: impl FnMut(&mut Option<wordcraft_doc::props::Border>)) {
         let (b, side) = match (self.page_side, self.cell_side) {
             // A header or footer doesn't set the body's section.
@@ -465,7 +471,10 @@ impl Reader {
     /// set when the document is built ([`super::parse`]), as RTF names no author or date for it.
     pub(super) fn section_change(&mut self) -> Option<Box<wordcraft_doc::props::PropChange<wordcraft_doc::SectionProps>>> {
         let old = self.sec_old.take()?;
-        wordcraft_doc::props::PropChange::boxed(0, old.props(&self.page))
+        let mut props = old.props(&self.page);
+        // Suppress endnotes before the change: the same rule as the current section's.
+        props.no_endnote = (self.doc_notes.1.pos == Some(wordcraft_doc::section::NotePos::SectEnd)).then_some(!old.endnhere);
+        wordcraft_doc::props::PropChange::boxed(0, props)
     }
 
     /// A section formatting word: applied to the current section, unless it's inside a header
@@ -494,6 +503,12 @@ impl Reader {
             "box" => {
                 self.page_side = None;
                 self.st.border_side = Some('x');
+            }
+            // A bar border has no model value: its side is described and dropped, leaving the
+            // other sides as they are.
+            "brdrbar" => {
+                self.page_side = None;
+                self.st.border_side = Some('v');
             }
             "cbpat" => self.st.cbpat = Some(pv),
             "cfpat" => self.st.cfpat = Some(pv),
@@ -609,6 +624,9 @@ impl Reader {
                     6 => self.info_more.last_modified_by = t,
                     7 => self.info_more.category = t,
                     8..=10 => self.info_more.user_prop_text(k, t),
+                    11 => self.info_more.manager = t,
+                    12 => self.info_more.company = t,
+                    13 => self.info_more.hyperlink_base = t,
                     _ => {}
                 }
             }
@@ -665,7 +683,9 @@ impl Reader {
         {
             let name = name.trim().to_string();
             if !name.is_empty() {
-                self.para.inlines.push(Inline::Anchor(name));
+                // RTF 1.9.1 "Bookmarks": the text between `\bkmkstart` and `\bkmkend` is the
+                // bookmark's range; the model pairs them by name.
+                self.para.inlines.push(if self.bkmk_end { Inline::AnchorEnd(name) } else { Inline::Anchor(name) });
                 self.para_has = true;
             }
         }
@@ -928,6 +948,10 @@ impl Reader {
             let x = extra.get_or_insert_with(Default::default);
             (x.align, x.indent) = (ts.align, indent);
         }
+        // Its first row's default cell padding, when not Word's.
+        if let Some(m) = ts.cell_margins() {
+            extra.get_or_insert_with(Default::default).cell_margins = Some(m);
+        }
         if ts.style.is_some() || ts.look.is_some() {
             let x = extra.get_or_insert_with(Default::default);
             (x.style, x.look) = (ts.style, ts.look);
@@ -978,6 +1002,7 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
         "margrsxn" => sec.page.right = Some(pv),
         "margtsxn" => sec.page.top = Some(pv),
         "margbsxn" => sec.page.bottom = Some(pv),
+        "guttersxn" => sec.page.gutter = Some(pv),
         "headery" => sec.page.header = Some(pv),
         "footery" => sec.page.footer = Some(pv),
         "lndscpsxn" => sec.page.landscape = on,
@@ -1142,5 +1167,68 @@ impl DocSettingWords {
                 *field = v;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod bookmark_end_tests {
+    use super::super::{FBlock, Inline, export, import, parse};
+
+    fn inlines(rtf: &str) -> Vec<Inline> {
+        let flow = parse(rtf.as_bytes()).unwrap();
+        flow.blocks
+            .into_iter()
+            .filter_map(|b| match b {
+                FBlock::Para(p) => Some(p.inlines),
+                FBlock::Table(_) => None,
+            })
+            .flatten()
+            .collect()
+    }
+
+    #[test]
+    fn many_stray_ends_are_read_one_each_without_a_bookmark() {
+        let body: String = (0..5000).map(|i| format!("{{\\*\\bkmkend n{}}}x", i % 7)).collect();
+        let rtf = format!("{{\\rtf1 {body}\\par}}");
+        let ends = inlines(&rtf).iter().filter(|i| matches!(i, Inline::AnchorEnd(_))).count();
+        assert_eq!(ends, 5000);
+        let d = import(rtf.as_bytes()).unwrap();
+        assert!(!export(&d).contains("bkmk"));
+    }
+
+    #[test]
+    fn an_end_name_is_capped_and_an_empty_one_pushes_nothing() {
+        let long = "n".repeat(10_000);
+        let got = inlines(&format!("{{\\rtf1 a{{\\*\\bkmkend {long}}}{{\\*\\bkmkend   }}b\\par}}"));
+        let names: Vec<usize> = got
+            .iter()
+            .filter_map(|i| match i {
+                Inline::AnchorEnd(n) => Some(n.len()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(names.len(), 1);
+        assert_eq!(names[0], 256);
+    }
+
+    #[test]
+    fn a_nested_field_does_not_take_the_outer_lock() {
+        let got = inlines(r"{\rtf1 {\field\fldlock{\*\fldinst IF 1 = 1 x}{\fldrslt {\field{\*\fldinst AUTHOR}{\fldrslt Ann}}}}\par}");
+        let locks: Vec<(String, bool)> = got
+            .iter()
+            .filter_map(|i| match i {
+                Inline::Field { instr, locked, .. } => Some((instr.trim().to_string(), *locked)),
+                _ => None,
+            })
+            .collect();
+        assert!(locks.iter().any(|(i, l)| i == "AUTHOR" && !l), "{locks:?}");
+    }
+
+    #[test]
+    fn a_header_bookmark_keeps_its_range_on_export() {
+        let rtf = r"{\rtf1{\header \pard {\*\bkmkstart h}HEAD{\*\bkmkend h} tail\par}\pard body\par}";
+        let out = export(&import(rtf.as_bytes()).unwrap());
+        let (s, t, e) = (out.find(r"{\*\bkmkstart h}").unwrap(), out.find("HEAD").unwrap(), out.find(r"{\*\bkmkend h}").unwrap());
+        assert!(s < t && t < e, "{out}");
     }
 }

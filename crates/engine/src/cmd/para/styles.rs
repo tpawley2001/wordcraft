@@ -129,6 +129,7 @@ pub(super) fn create_style(s: &mut Session, v: &Value) -> CmdResult {
         st.chr = para.props_at(s.sel.focus.off).clone().without_symbol();
         st.chr.style = None;
         st.chr.link = None;
+        st.chr.link_tip = None;
         st.chr.ins = None;
         st.chr.del = None;
         st.chr.fmt_change = None;
@@ -230,7 +231,7 @@ pub(super) fn update_to_match(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 /// Character properties Update to Match leaves alone: the character style, links and revisions.
-const CHAR_KEEP: &[&str] = &["style", "link", "ins", "del", "fmtChange"];
+const CHAR_KEEP: &[&str] = &["style", "link", "linkTip", "ins", "del", "fmtChange"];
 
 /// Paragraph properties Update to Match leaves alone: the style, its outline level (a heading
 /// stays a heading), list numbering and revisions.

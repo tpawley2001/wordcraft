@@ -280,8 +280,7 @@ pub fn specs() -> Vec<CommandSpec> {
             let story = s.sel.focus.story;
             let current = {
                 let table = s.doc.table(story, &tp).ok_or_else(|| CmdError::Failed("no table".into()))?;
-                let style = table.props.style.as_deref().and_then(|id| s.doc.styles.table_style(id));
-                table.props.cell_margins.or(style.and_then(|st| st.parts.cell_margins)).unwrap_or([0.0, 5.4, 0.0, 5.4])
+                crate::cmd::table::table_cell_margins(&s.doc, table)
             };
             let m = [
                 p::f32(v, "top").unwrap_or(current[0]),

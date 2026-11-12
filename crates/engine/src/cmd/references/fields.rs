@@ -3,7 +3,7 @@ use super::properties::{
     bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property, doc_property_arg, new_property_value,
     set_summary_property, summary_property, text_result,
 };
-use super::toc::{heading_style_level, update_toc};
+use super::toc::{heading_style_level, update_toc, update_toc_pages};
 use super::{
     Block, CharProps, CmdError, CmdResult, FieldCode, InlineObject, NumFormat, Paragraph, Path, Pos, Selection, Session, StoryRef, Value, p,
     sel_result,
@@ -330,6 +330,9 @@ fn styleref_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
 /// What Word prints for a `REF` to a bookmark the document doesn't have.
 pub const REFERENCE_NOT_FOUND: &str = "Error! Reference source not found.";
 
+/// What Word shows for a `PAGEREF` or `NOTEREF` to a bookmark the document doesn't have.
+pub const BOOKMARK_NOT_DEFINED: &str = "Error! Bookmark not defined.";
+
 /// The fresh results of the body's unlocked REF fields as output shows them: the bookmark's
 /// text, or Word's error when the document lacks the bookmark (measured in Word for Windows);
 /// `\p` ("above" or "below") and the paragraph number switches `\r`, `\n` and `\w` keep the
@@ -442,7 +445,7 @@ pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Doc
 }
 
 /// Whether `instr` has the one-letter switch `\sw`, also run together with another (`\p\h`).
-fn has_switch(instr: &str, sw: char) -> bool {
+pub(super) fn has_switch(instr: &str, sw: char) -> bool {
     instr.split('\\').skip(1).any(|s| {
         let mut chars = s.chars();
         chars.next().is_some_and(|c| c.eq_ignore_ascii_case(&sw)) && chars.next().is_none_or(|c| !c.is_alphanumeric())
@@ -455,7 +458,7 @@ fn has_switch(instr: &str, sw: char) -> bool {
 /// caret is in (the body's fields stay as they are then). SEQ numbering, citations and TOC are
 /// body-only, so they run only when the caret is in the body.
 pub fn update_fields(s: &mut Session) -> Result<(), CmdError> {
-    update_fields_in(s, false)
+    update_fields_in(s, false, false)
 }
 
 /// Each section's page number format (`w:pgNumType w:fmt`), by section index.
@@ -489,7 +492,7 @@ pub(crate) fn page_label(s: &mut Session, pos: &Pos) -> String {
 /// Where `PAGEREF` reads bookmark `name` (starting at `pos`): a hidden `_Ref` bookmark from the
 /// start of a heading that starts with page breaks reads the page its text is on, as when its
 /// cross-reference was inserted.
-fn bookmark_page_pos(doc: &wordcraft_doc::Document, name: &str, pos: Pos) -> Pos {
+pub(super) fn bookmark_page_pos(doc: &wordcraft_doc::Document, name: &str, pos: Pos) -> Pos {
     if pos.off == 0 && name.starts_with("_Ref") {
         let off = crate::cmd::citations::leading_breaks(doc, &pos);
         return Pos { off, ..pos };
@@ -534,6 +537,26 @@ fn position_or_note(
     None
 }
 
+/// Word's error text for a REF, PAGEREF or NOTEREF whose bookmark `target` is in no story of the
+/// document (`names`), measured in Word: `None` when the field names no bookmark, when the
+/// bookmark exists, or when a SET field gave the REF's name a value (`set`, `last_set`, keyed by
+/// the lowercased name).
+fn missing_bookmark_error(
+    name: &str,
+    target: &str,
+    names: &std::collections::HashSet<String>,
+    (set, last_set): (&std::collections::HashMap<String, String>, &std::collections::HashMap<String, String>),
+) -> Option<&'static str> {
+    if target.is_empty() || names.contains(target) {
+        return None;
+    }
+    if name != "REF" {
+        return Some(BOOKMARK_NOT_DEFINED);
+    }
+    let key = target.to_lowercase();
+    (!set.contains_key(&key) && !last_set.contains_key(&key)).then_some(REFERENCE_NOT_FOUND)
+}
+
 /// The mark of the footnote or endnote whose reference starts the bookmark at `at` (NOTEREF's
 /// result): its custom mark, or its number as shown.
 fn noteref_mark(doc: &wordcraft_doc::Document, at: &Pos, marks: &std::collections::HashMap<u32, String>) -> Option<String> {
@@ -552,8 +575,9 @@ fn noteref_mark(doc: &wordcraft_doc::Document, at: &Pos, marks: &std::collection
 }
 
 /// [`update_fields`], or with `all` the whole document: the body (with SEQ, citations and TOC) and
-/// every part story, wherever the caret is (what printing needs).
-pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
+/// every part story, wherever the caret is (what printing needs). With `toc_pages_only` the table
+/// of contents keeps its entries and only its page numbers are updated ([`update_toc_pages`]).
+pub fn update_fields_in(s: &mut Session, all: bool, toc_pages_only: bool) -> Result<(), CmdError> {
     let caret_story = s.sel.focus.story;
     let in_body = all || caret_story == StoryRef::Body;
     if in_body {
@@ -564,6 +588,9 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
     let marks = s.doc.bookmarks();
     // Where each body bookmark starts, for `\p` (above/below) and NOTEREF.
     let bookmark_at = bookmark_starts(&marks);
+    // Every bookmark name in any story, for the error of a reference whose bookmark is gone.
+    let bookmark_names: std::collections::HashSet<String> =
+        marks.iter().map(|(n, _)| n.clone()).chain(part_bookmarks(&s.doc).into_iter().map(|(n, _)| n)).collect();
     let mut note_marks = None;
     for (name, pos) in marks {
         let pos = bookmark_page_pos(&s.doc, &name, pos);
@@ -595,18 +622,19 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
         let offsets: Vec<usize> = p.objects_with_offsets().map(|(off, _)| off).collect();
         for (k, o) in p.objects.iter().enumerate() {
             let InlineObject::Field { instr, locked: false, .. } = o else { continue };
-            // A table formula reads the cells around its own cell again.
+            // A table formula reads the cells around its own cell again; a formula anywhere
+            // else reads numbers and bookmarks only.
             if instr.trim_start().starts_with('=') {
-                if let Some((tp, r, c)) = path.cell()
-                    && let Some(t) = s.doc.table(StoryRef::Body, &tp)
-                {
-                    let default_lang = crate::cmd::default_lang(s);
-                    let text = match crate::cmd::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, instr) {
-                        Ok(text) => text,
-                        Err(e) => format!("!{e}"),
-                    };
-                    updates.push((k, text));
-                }
+                let default_lang = crate::cmd::default_lang(s);
+                let result = match path.cell().and_then(|(tp, r, c)| s.doc.table(story, &tp).map(|t| (t, r, c))) {
+                    Some((t, r, c)) => crate::cmd::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, instr),
+                    None => crate::cmd::table_formula::evaluate_text_field(&s.doc, default_lang.as_deref(), instr),
+                };
+                let text = match result {
+                    Ok(text) => text,
+                    Err(e) => format!("!{e}"),
+                };
+                updates.push((k, text));
                 continue;
             }
             let name = wordcraft_layout::fields::field_name(instr);
@@ -624,6 +652,12 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
                 "REF" | "PAGEREF" | "NOTEREF" => {
                     let f = FieldCode::parse(instr);
                     let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
+                    // A bookmark that is gone gives Word's error text whatever the switches, stored
+                    // as is (no `\*` format applied).
+                    if let Some(err) = missing_bookmark_error(&name, target, &bookmark_names, (&set, &last_set)) {
+                        updates.push((k, err.to_string()));
+                        continue;
+                    }
                     let here = offsets.get(k).map(|off| Pos { story, path: path.clone(), off: *off });
                     let r = if let Some(r) = position_or_note(&s.doc, (&name, instr, target), here, &bookmark_at, &mut note_marks) {
                         r
@@ -650,9 +684,7 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
                     } else {
                         None
                     };
-                    if let Some(r) = r {
-                        updates.push((k, if name == "PAGEREF" { r } else { text_result(instr, r) }));
-                    }
+                    updates.extend(r.map(|r| (k, if name == "PAGEREF" { r } else { text_result(instr, r) })));
                 }
                 // A value given a name (the layout draws nothing for it; its result stays).
                 "SET" => {
@@ -731,7 +763,12 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
         return Ok(());
     }
     crate::cmd::citations::update_citations(s)?;
-    update_toc(s)
+    update_body_toc(s, toc_pages_only)
+}
+
+/// The table of contents at the end of a body update: its page numbers only, or rebuilt.
+fn update_body_toc(s: &mut Session, pages_only: bool) -> Result<(), CmdError> {
+    if pages_only { update_toc_pages(s) } else { update_toc(s) }
 }
 
 /// Refresh every unlocked `DATE` and `TIME` field to now, as Word does whenever it shows,

@@ -110,6 +110,15 @@ pub enum Dialog {
         /// differs, shown neither on nor off; `kern_at` is its Points and above size.
         kern: Option<bool>,
         kern_at: f32,
+        /// OpenType Features, as `format.state` names them: the `w14:ligatures`,
+        /// `w14:numSpacing` and `w14:numForm` names, the one stylistic set switched on (0 = none)
+        /// and Use Contextual Alternates. `None` while the selected text differs (or, for the
+        /// stylistic set, has several sets on); such a box shows nothing chosen.
+        ligatures: Option<String>,
+        num_spacing: Option<String>,
+        num_form: Option<String>,
+        stylistic_set: Option<u8>,
+        contextual_alternates: Option<bool>,
         /// The properties the fields stood for when the dialog opened: OK sends only what the
         /// user changed, so formatting the dialog can't show (a double underline) or left
         /// alone stays as it is.
@@ -238,6 +247,9 @@ pub enum Dialog {
         header: f32,
         footer: f32,
         start: wordcraft_doc::section::SectionStart,
+        /// The section's Suppress endnotes (`layout.suppressEndnotes`, `w:noEndnote`), changeable
+        /// only while its endnotes go at the end of each section, applied only if changed.
+        suppress_endnotes: bool,
     },
     Link {
         url: String,
@@ -251,6 +263,10 @@ pub enum Dialog {
         targets: Option<Value>,
         /// The chosen place: the `insert.link` parameters, and the name it shows.
         pick: Option<(Value, String)>,
+        /// The ScreenTip (shown on hover instead of the address), sent as `screenTip` on OK.
+        tip: String,
+        /// The ScreenTip being edited while Set Hyperlink ScreenTip is open.
+        tip_edit: Option<String>,
     },
     Bookmark {
         name: String,
@@ -787,6 +803,11 @@ impl Dialog {
                     position: st.get("position").and_then(Value::as_f64).unwrap_or(0.0) as f32,
                     kern: kern.map(|k| k > 0.0),
                     kern_at: kern.filter(|k| *k > 0.0).unwrap_or(12.0) as f32,
+                    ligatures: st.get("ligatures").and_then(Value::as_str).map(str::to_string),
+                    num_spacing: st.get("numSpacing").and_then(Value::as_str).map(str::to_string),
+                    num_form: st.get("numForm").and_then(Value::as_str).map(str::to_string),
+                    stylistic_set: st.get("stylisticSet").and_then(Value::as_u64).and_then(|n| u8::try_from(n).ok()),
+                    contextual_alternates: st.get("contextualAlternates").and_then(Value::as_bool),
                     start: serde_json::Map::new(),
                 };
                 let props = font_props(&d);
@@ -903,6 +924,7 @@ impl Dialog {
                     header: sp.header / crate::options::unit().pt_per_unit(),
                     footer: sp.footer / crate::options::unit().pt_per_unit(),
                     start: sp.start,
+                    suppress_endnotes: sp.no_endnote == Some(true),
                 }
             }
             "link" => Dialog::Link {
@@ -913,6 +935,8 @@ impl Dialog {
                 subject: String::new(),
                 targets: None,
                 pick: None,
+                tip: wordcraft_engine::cmd::insert::selected_link_tip(&app.session),
+                tip_edit: None,
                 focus: true,
             },
             "bookmark" => Dialog::Bookmark { name: bookmark_at_caret(&app.session), by_location: false, hidden: false, deleted: false },
@@ -1148,7 +1172,11 @@ pub mod dialogs_templates;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_border_options;
+#[cfg(test)]
 mod tests_define_number;
+#[cfg(test)]
+mod tests_font_opentype;
 #[cfg(test)]
 mod tests_font_spacing;
 #[cfg(test)]
@@ -1159,6 +1187,8 @@ mod tests_insert_table;
 mod tests_note_formats;
 #[cfg(test)]
 mod tests_page_layout;
+#[cfg(test)]
+mod tests_page_suppress_endnotes;
 #[cfg(test)]
 // The acceptance tests pick a check box with `iter_mut().nth(i)`, which clippy prefers as `get_mut`.
 #[allow(clippy::iter_nth)]

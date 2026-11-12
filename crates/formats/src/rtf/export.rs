@@ -5,6 +5,7 @@ use super::{
     Align, Arc, Block, Blocks, Document, FBlock, FTable, Fmt, HashMap, HashSet, Inline, InlineObject, Kind, Meta, Para, Paragraph, RevMark, Rgb,
     VAlign, model,
 };
+use wordcraft_doc::props::EmphasisMark;
 
 // ---------------------------------------------------------------------------------------------
 // Export
@@ -271,17 +272,18 @@ fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
 
 /// `\sectd` and a section's formatting, in the words the reader reads back, then its formatting
 /// before a tracked change (`{\*\oldsprops …}`) when it has one.
-fn sect_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
-    let mut o = sect_props_words(s, t);
+/// `doc_gutter` is the document's `\gutterN` (points), which `\sectd` resets a section to.
+fn sect_words(s: &wordcraft_doc::SectionProps, doc_gutter: f32, t: &mut Tables) -> String {
+    let mut o = sect_props_words(s, doc_gutter, t);
     if let Some(c) = &s.fmt_change {
-        o.push_str(&format!("{{\\*\\oldsprops {}}}", sect_props_words(&c.old, t)));
+        o.push_str(&format!("{{\\*\\oldsprops {}}}", sect_props_words(&c.old, doc_gutter, t)));
     }
     o.push('\n');
     o
 }
 
 /// `\sectd` and a section's own formatting words; page border colours go into `t`.
-fn sect_props_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
+fn sect_props_words(s: &wordcraft_doc::SectionProps, doc_gutter: f32, t: &mut Tables) -> String {
     use wordcraft_doc::section::{ChapterSep, LineNumberRestart, NotePos, NumFormat, PageVAlign, SectionStart};
     let tw = |v: f32| if v.is_finite() { ((v * 20.0).round() as i64).max(0) } else { 0 };
     let mut o = String::from("\\sectd");
@@ -327,6 +329,7 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
         tw(s.header),
         tw(s.footer)
     ));
+    o.push_str(&section_gutter_word(s.gutter, doc_gutter));
     if s.columns.count > 1 {
         o.push_str(&format!("\\cols{}\\colsx{}", s.columns.count, tw(s.columns.space)));
         if s.columns.separator {
@@ -402,6 +405,13 @@ fn sect_props_words(s: &wordcraft_doc::SectionProps, t: &mut Tables) -> String {
     o.push_str(&note_words("\\sftn", &s.footnote_pr, s.footnote_pr.num_fmt));
     o.push_str(&note_words("\\saftn", &s.endnote_pr, s.endnote_pr.num_fmt));
     o
+}
+
+/// The `\guttersxn` word of a section whose gutter (points) differs from the document's `\gutter`,
+/// else nothing: a section with the document's gutter needs no word of its own.
+fn section_gutter_word(gutter: f32, doc_gutter: f32) -> String {
+    let tw = |v: f32| if v.is_finite() { ((v * 20.0).round() as i64).max(0) } else { 0 };
+    if tw(gutter) == tw(doc_gutter) { String::new() } else { format!("\\guttersxn{}", tw(gutter)) }
 }
 
 /// The start, restart and number format words of footnote or endnote options `n` (`prefix`:
@@ -553,6 +563,23 @@ fn own_style_num(id: &str) -> Option<u32> {
 /// Set the numbers [`own_style_num`] gives, returning the ones it gave before.
 fn set_own_styles(nums: HashMap<String, u32>) -> HashMap<String, u32> {
     OWN_STYLES.with(|m| m.try_borrow_mut().map(|mut m| std::mem::replace(&mut *m, nums)).unwrap_or_default())
+}
+
+thread_local! {
+    /// The bookmarks of the story being written whose end follows their start
+    /// ([`model::ranged_anchors`]): their `\bkmkend` goes where the range ends, while every other
+    /// bookmark is written as a point, start and end together.
+    static RANGED: std::cell::RefCell<HashSet<String>> = std::cell::RefCell::new(HashSet::new());
+}
+
+/// Whether bookmark `name` covers text in the story being written.
+fn is_ranged(name: &str) -> bool {
+    RANGED.with(|r| r.try_borrow().is_ok_and(|r| r.contains(name)))
+}
+
+/// Set the bookmarks [`is_ranged`] knows, returning the ones it knew before.
+fn set_ranged(names: HashSet<String>) -> HashSet<String> {
+    RANGED.with(|r| r.try_borrow_mut().map(|mut r| std::mem::replace(&mut *r, names)).unwrap_or_default())
 }
 
 /// The first `\stylesheet` number of the document's own styles: 0-9 are the fixed entries.
@@ -788,6 +815,15 @@ fn underline_word(f: &Fmt) -> Option<&'static str> {
         Some(Underline::DoubleWave) => "\\ululdbwave",
         Some(Underline::None | Underline::Single) | None => "\\ul",
     })
+}
+
+/// The highlight colour (`\highlight`) and the character shading (`\chcbpat`) of `f`: with a
+/// highlight its background is the highlight colour, and the shading under it is kept apart.
+fn highlight_and_shading(f: &Fmt) -> (Option<Rgb>, Option<Rgb>) {
+    match f.extra.as_deref().and_then(|x| x.highlight.and_then(|h| h.rgb()).map(|c| (c, x.shading))) {
+        Some((c, shading)) => (Some(c), shading),
+        None => (None, f.background),
+    }
 }
 
 /// The underline colour of `f` (`\ulc`).
@@ -1041,8 +1077,14 @@ impl Writer {
             let i = old_color.map_or(0, |c| self.t.color(c));
             ctl.push_str(&format!("\\cf{i}"));
         }
-        if old.background != cur.background {
-            let i = old.background.map_or(0, |c| self.t.color(c));
+        let (old_hl, old_shd) = highlight_and_shading(old);
+        let (cur_hl, cur_shd) = highlight_and_shading(cur);
+        if old_hl != cur_hl {
+            let i = old_hl.map_or(0, |c| self.t.color(c));
+            ctl.push_str(&format!("\\highlight{i}"));
+        }
+        if old_shd != cur_shd {
+            let i = old_shd.map_or(0, |c| self.t.color(c));
             ctl.push_str(&format!("\\chcbpat{i}"));
         }
         if old.hidden != cur.hidden {
@@ -1097,7 +1139,12 @@ impl Writer {
             let i = self.t.color(c);
             ctl.push_str(&format!("\\cf{i}"));
         }
-        if let Some(c) = f.background {
+        let (highlight, shading) = highlight_and_shading(f);
+        if let Some(c) = highlight {
+            let i = self.t.color(c);
+            ctl.push_str(&format!("\\highlight{i}"));
+        }
+        if let Some(c) = shading {
             let i = self.t.color(c);
             ctl.push_str(&format!("\\chcbpat{i}"));
         }
@@ -1115,6 +1162,7 @@ impl Writer {
                 (x.emboss, "\\embo"),
                 (x.engrave, "\\impr"),
                 (x.double_strike, "\\striked1"),
+                (x.no_proof, "\\noproof"),
             ];
             for (v, w) in effects {
                 if v == Some(true) {
@@ -1128,6 +1176,14 @@ impl Writer {
             if let Some(k) = x.kern.filter(|v| v.is_finite() && *v > 0.0).map(|v| (v * 2.0).round().clamp(1.0, 3276.0) as i32) {
                 ctl.push_str(&format!("\\kerning{k}"));
             }
+            let mark = match x.emphasis {
+                Some(EmphasisMark::Dot) => "\\accdot",
+                Some(EmphasisMark::Comma) => "\\acccomma",
+                Some(EmphasisMark::Circle) => "\\acccircle",
+                Some(EmphasisMark::UnderDot) => "\\accunderdot",
+                Some(EmphasisMark::None) | None => "",
+            };
+            ctl.push_str(mark);
         }
         if let Some(w) = position_word(f) {
             ctl.push_str(&w);
@@ -1235,19 +1291,25 @@ impl Writer {
                     self.base = base;
                     out.push_str("}}}");
                 }
+                // RTF 1.9.1 "Bookmarks": a range's end is written where it ends; a point bookmark
+                // gets both marks together, as Word needs an end for each start.
+                Inline::Anchor(a) if is_ranged(a) => out.push_str(&format!("{{\\*\\bkmkstart {}}}", esc(a))),
                 Inline::Anchor(a) => {
                     let a = esc(a);
                     out.push_str(&format!("{{\\*\\bkmkstart {a}}}{{\\*\\bkmkend {a}}}"));
                 }
+                Inline::AnchorEnd(a) if is_ranged(a) => out.push_str(&format!("{{\\*\\bkmkend {}}}", esc(a))),
                 // RTF keeps no ruby yet: its base text, in the run's formatting.
                 Inline::Ruby { base, fmt, .. } => self.run(base, fmt, out),
                 // ASK and SET show nothing (see `model::shows_nothing`).
                 Inline::Field { instr, .. } if model::shows_nothing(instr) => {}
-                Inline::Field { instr, result, fmt, form, .. } => {
+                Inline::Field { instr, result, fmt, form, locked } => {
+                    // A locked field keeps its result (RTF 1.9.1 "Fields": `\fldlock`).
+                    let lock = if *locked { "\\fldlock" } else { "" };
                     // A legacy form field's definition goes in its instruction, as Word writes it.
                     match super::form_field::rtf_group(form) {
-                        Some(group) => out.push_str(&format!("{{\\field{{\\*\\fldinst {{{} {group}}}}}{{\\fldrslt ", esc(instr.trim()))),
-                        None => out.push_str(&format!("{{\\field{{\\*\\fldinst {}}}{{\\fldrslt ", esc(instr))),
+                        Some(group) => out.push_str(&format!("{{\\field{lock}{{\\*\\fldinst {{{} {group}}}}}{{\\fldrslt ", esc(instr.trim()))),
+                        None => out.push_str(&format!("{{\\field{lock}{{\\*\\fldinst {}}}{{\\fldrslt ", esc(instr))),
                     }
                     self.run(result, fmt, out);
                     out.push_str("}}");
@@ -1343,6 +1405,9 @@ impl Writer {
         }
         if let Kind::Heading(n) = p.kind {
             out.push_str(&format!("\\outlinelevel{}", n.clamp(1, 6) - 1));
+        } else if let Some(l) = p.extra.as_ref().and_then(|x| x.outline_level).filter(|l| *l < 9) {
+            // An outline level apart from a heading style: the paragraph keeps its own style.
+            out.push_str(&format!("\\outlinelevel{l}"));
         }
         match p.align {
             Some(Align::Center) => out.push_str("\\qc"),
@@ -1433,7 +1498,9 @@ impl Writer {
                     // A paragraph that ends a section ends it with `\sect`; the next one begins.
                     if p.section.is_some() && itap == 0 && depth == 0 && self.sect_i + 1 < self.sections.len() {
                         self.sect_i += 1;
-                        end = format!("\\sect\n{}", self.sections.get(self.sect_i).map(|s| sect_words(s, &mut self.t)).unwrap_or_default());
+                        let doc_gutter = self.sections.first().map_or(0.0, |f| f.gutter);
+                        end =
+                            format!("\\sect\n{}", self.sections.get(self.sect_i).map(|s| sect_words(s, doc_gutter, &mut self.t)).unwrap_or_default());
                         // A body that ends on the break keeps its last section: an empty paragraph holds it.
                         if i + 1 == n {
                             end.push_str("\\pard\\plain \\par");
@@ -1528,7 +1595,17 @@ impl Writer {
             Some(Align::Center | Align::Right) => 0,
             _ => extra.and_then(|x| x.indent).filter(|i| i.is_finite()).map_or(0, |i| ((i * 20.0).round() as i64).clamp(-31_680, 31_680)),
         };
-        out.push_str(&format!("\\trgaph108\\trleft{left}"));
+        // Its default cell padding: the gap is the left padding, each side stated in twips.
+        let pad = extra.and_then(|x| x.cell_margins).filter(|m| m.iter().all(|v| v.is_finite()));
+        match pad {
+            Some(m) => {
+                let [t, l, b, r] = m.map(|v| ((v * 20.0).round() as i64).clamp(0, 31_680));
+                out.push_str(&format!(
+                    "\\trgaph{l}\\trleft{left}\\trpaddl{l}\\trpaddt{t}\\trpaddb{b}\\trpaddr{r}\\trpaddfl3\\trpaddft3\\trpaddfb3\\trpaddfr3"
+                ));
+            }
+            None => out.push_str(&format!("\\trgaph108\\trleft{left}")),
+        }
         // The table's style and its look.
         if let Some(n) = extra.and_then(|x| x.style.as_deref()).and_then(own_style_num) {
             out.push_str(&format!("\\ts{n}"));
@@ -1751,6 +1828,9 @@ fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
 
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
+    // A drop cap is written as Word stores it: its letter in a paragraph of its own.
+    let split = super::frames::split_drop_caps(doc);
+    let doc = split.as_ref().unwrap_or(doc);
     let (marked, marks) = match mark_doc(doc) {
         Some((d, m)) => (Some(d), m),
         None => (None, Vec::new()),
@@ -1770,8 +1850,9 @@ pub fn export(doc: &Document) -> String {
         .map(|(s, n)| (s.id.clone(), n))
         .collect();
     let before = set_own_styles(own);
+    let ranged_before = set_ranged(HashSet::new());
     // An empty paragraph's mark formatting sets its height.
-    let opts = model::FlowOpts { marks: true, ..model::FlowOpts::tracked() };
+    let opts = model::FlowOpts { marks: true, outline_apart: true, ..model::FlowOpts::tracked() };
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
@@ -1796,16 +1877,24 @@ pub fn export(doc: &Document) -> String {
             if sect_end && s.no_endnote != Some(true) {
                 s.no_endnote = Some(false);
             }
+            // The same for the formatting before a tracked change (`{\*\oldsprops …}`).
+            if sect_end
+                && let Some(c) = s.fmt_change.as_deref_mut()
+                && c.old.no_endnote != Some(true)
+            {
+                c.old.no_endnote = Some(false);
+            }
             s
         })
         .collect();
     if let Some(first) = secs.first() {
-        body.push_str(&sect_words(first, &mut w.t));
+        body.push_str(&sect_words(first, first.gutter, &mut w.t));
         for (set, prefix) in [(&first.headers, "header"), (&first.footers, "footer")] {
             for (id, suffix) in [(set.default, ""), (set.first, "f"), (set.even, "l")] {
                 if let Some(part) = id.and_then(|id| doc.parts.get(&id)) {
                     body.push_str(&format!("{{\\{prefix}{suffix} "));
                     let blocks = model::part_flow(doc, &part.blocks, opts);
+                    set_ranged(model::ranged_anchors(&blocks));
                     w.blocks(&blocks, 0, "\\par", &mut body, 1);
                     body.push('}');
                 }
@@ -1815,9 +1904,11 @@ pub fn export(doc: &Document) -> String {
     if secs.len() > 1 {
         w.sections = secs;
     }
+    set_ranged(model::ranged_anchors(&flow.blocks));
     w.blocks(&flow.blocks, 0, "\\par", &mut body, 0);
     let own_entries = own_style_entries(doc, &mut w.t);
     set_own_styles(before);
+    set_ranged(ranged_before);
     export_with(&flow.meta, doc, &w, &own_entries, &body)
 }
 
@@ -1897,6 +1988,7 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
             out.push_str(&format!("{{\\{k} {}}}", esc(v)));
         }
     }
+    out.push_str(&app_kept_info(doc));
     if core.revision > 0 {
         out.push_str(&format!("{{\\version{}}}", core.revision));
     }
@@ -1911,8 +2003,19 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     let landscape = if sec.landscape { "\\landscape" } else { "" };
     let notes = doc_note_words(doc);
     let opts = doc_opts_words(settings) + &doc_setting_words(settings);
+    // The gutter and its side, from the first section (sections that differ say `\guttersxn`).
+    let mut gutter = String::new();
+    if let Some((_, first)) = doc.sections().first() {
+        let g = if first.gutter.is_finite() { ((first.gutter * 20.0).round() as i64).max(0) } else { 0 };
+        if g != 0 {
+            gutter.push_str(&format!("\\gutter{g}"));
+        }
+        if first.rtl_gutter {
+            gutter.push_str("\\rtlgutter");
+        }
+    }
     out.push_str(&format!(
-        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{landscape}{notes}{opts}\\viewkind4\n",
+        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{gutter}{landscape}{notes}{opts}\\viewkind4\n",
         tw(sec.page_w),
         tw(sec.page_h),
         tw(sec.margin_left),
@@ -1947,4 +2050,26 @@ fn pict_goal(img: &model::Img) -> String {
         }
     }
     s
+}
+
+/// Manager, Company and Hyperlink base from the kept extended properties (`wordcraft:app.kept`,
+/// `name\tvalue` lines, as the DOCX reader stores `docProps/app.xml`) as `{\manager …}`,
+/// `{\company …}` and `{\hlinkbase …}` (RTF 1.9.1, information group). Remove personal
+/// information leaves out Manager and Company, as the DOCX writer does.
+fn app_kept_info(doc: &Document) -> String {
+    let mut out = String::new();
+    let Some(kept) = doc.passthrough.get(wordcraft_doc::APP_KEPT) else { return out };
+    for line in String::from_utf8_lossy(kept).lines().take(64) {
+        let Some((name, value)) = line.split_once('\t') else { continue };
+        let word = match name {
+            "Manager" if !doc.settings.remove_personal_info => "manager",
+            "Company" if !doc.settings.remove_personal_info => "company",
+            "HyperlinkBase" => "hlinkbase",
+            _ => continue,
+        };
+        if !value.is_empty() {
+            out.push_str(&format!("{{\\{word} {}}}", esc(value)));
+        }
+    }
+    out
 }

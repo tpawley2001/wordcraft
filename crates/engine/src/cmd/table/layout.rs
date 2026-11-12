@@ -99,6 +99,8 @@ pub(super) fn properties(s: &mut Session, v: &Value) -> CmdResult {
         "columnWidth",
         "cellWidth",
         "valign",
+        "cellMargins",
+        "wrapText",
     ];
     if !keys.iter().any(|k| v.get(*k).is_some()) {
         let t = s.doc.table(s.sel.focus.story, &tp).cloned().unwrap_or_default();
@@ -148,6 +150,18 @@ pub(super) fn properties(s: &mut Session, v: &Value) -> CmdResult {
     let column_width = p::f32(v, "columnWidth").map(|x| x.clamp(6.0, 1584.0));
     let cell_width = size("cellWidth", 6.0, 1584.0);
     let rtl = p::bool(v, "rtl");
+    // Cell Options: `null` is Same as the whole table; an object gives the cell its own margins.
+    let cell_margins: Option<Option<[Option<f32>; 4]>> = match v.get("cellMargins") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(m @ Value::Object(_)) => {
+            let side = |k: &str| p::f32(m, k).map(|x| x.clamp(0.0, 144.0));
+            Some(Some([side("top"), side("left"), side("bottom"), side("right")]))
+        }
+        Some(x) => return Err(CmdError::Params(format!("cellMargins must be an object of margins or null, not {x}"))),
+    };
+    let wrap_text = p::bool(v, "wrapText");
+    let default_margins = s.doc.table(s.sel.focus.story, &tp).map(|t| super::table_cell_margins(&s.doc, t)).unwrap_or([0.0, 5.4, 0.0, 5.4]);
     // The selected cells (a whole table, rows, a column…), else the caret's.
     let cells = Some(selected_cells(s)).filter(|c| !c.is_empty()).unwrap_or_else(|| vec![(r, c)]);
     let mut rows: Vec<usize> = cells.iter().map(|&(r, _)| r).collect();
@@ -197,6 +211,22 @@ pub(super) fn properties(s: &mut Session, v: &Value) -> CmdResult {
             }
             if let Some(va) = valign {
                 cl.props.valign = Some(va);
+            }
+            if let Some(m) = cell_margins {
+                cl.props.margins = m.map(|sides| {
+                    // A side not passed keeps the margin the cell shows now.
+                    let mut out = super::effective_cell_margins(&cl.props, default_margins);
+                    for (o, side) in out.iter_mut().zip(sides) {
+                        if let Some(x) = side {
+                            *o = x;
+                        }
+                    }
+                    out
+                });
+                cl.props.partial_margins = None;
+            }
+            if let Some(w) = wrap_text {
+                cl.props.no_wrap = !w;
             }
         }
     })
