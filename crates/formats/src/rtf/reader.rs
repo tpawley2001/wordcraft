@@ -164,6 +164,9 @@ pub(super) struct Reader {
     // Notes and comments (only when the caller wants them).
     pub(super) marks_on: bool,
     pub(super) sub: Option<Sub>,
+    /// The note separator stories read, by slot in [`super::state::SEP_WORDS`]; a later group
+    /// of a kind replaces an earlier one.
+    pub(super) note_seps: [Option<Vec<FBlock>>; 6],
     pub(super) notes: Vec<NoteData>,
     pub(super) comments: Vec<CommentData>,
     pub(super) atn_text: String,
@@ -364,8 +367,33 @@ impl Reader {
         }
         let custom = if comment { String::new() } else { self.take_custom_mark() };
         let saved = self.swap_output(Output::default());
-        self.sub = Some(Sub { depth: self.depth(), comment, endnote: false, custom, own_mark_done: false, saved: Box::new(saved) });
+        self.sub = Some(Sub { depth: self.depth(), comment, endnote: false, custom, own_mark_done: false, sep: None, saved: Box::new(saved) });
         self.st.intbl = false;
+    }
+
+    /// A note separator story group starts (`\ftnsep`…, slot `k` of
+    /// [`super::state::SEP_WORDS`]): read like a note's text, into an output of its own.
+    pub(super) fn start_sep(&mut self, k: usize) {
+        if self.overflow > 0 {
+            self.st.dest = Dest::Skip;
+            return;
+        }
+        let saved = self.swap_output(Output::default());
+        self.sub = Some(Sub {
+            depth: self.depth(),
+            comment: false,
+            endnote: false,
+            custom: String::new(),
+            own_mark_done: false,
+            sep: Some(k),
+            saved: Box::new(saved),
+        });
+        self.st.intbl = false;
+    }
+
+    /// Inside a note separator story.
+    pub(super) fn in_sep(&self) -> bool {
+        self.sub.as_ref().is_some_and(|s| s.sep.is_some())
     }
 
     /// A place marker as text in the current paragraph.
@@ -389,6 +417,13 @@ impl Reader {
         let fmt = self.stack.last().map(|s| s.fmt.clone()).unwrap_or_default();
         let mut inner = self.swap_output(*sub.saved);
         inner.body.truncate(MAX_NOTE_BLOCKS);
+        if let Some(k) = sub.sep {
+            // A group with nothing in it (`{\ftnsep}`) stores nothing (not measured in Word).
+            if let Some(slot) = self.note_seps.get_mut(k) {
+                *slot = (!inner.body.is_empty()).then_some(inner.body);
+            }
+            return;
+        }
         if !sub.comment {
             self.push_mark('N', self.notes.len() as i64, fmt);
             self.notes.push(NoteData { endnote: sub.endnote, custom: sub.custom, blocks: inner.body });

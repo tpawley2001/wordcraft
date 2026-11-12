@@ -50,6 +50,8 @@ impl Reader {
             "nestrow" => self.end_nest_row(),
             "line" | "softline" => self.ch('\n'),
             "tab" => self.ch('\t'),
+            // A page break has no place in a note separator story.
+            "page" | "softpage" if self.in_sep() => {}
             "page" | "softpage" => self.ch('\u{000C}'),
             "column" => self.ch('\u{000E}'),
             "emdash" => self.ch('—'),
@@ -454,7 +456,8 @@ impl Reader {
             "oldpprops" => Some(Dest::OldProps(true)),
             "oldsprops" => Some(Dest::OldSect),
             // Note separator and continuation stories (RTF 1.9.1 "Footnotes"), also written
-            // without `\*` by older writers: not body text, and no custom separators are kept.
+            // without `\*` by older writers: read as the document's own separators only where
+            // a header or footer could start ([`Self::start_note_word`]); anywhere else skipped.
             "ftnsep" | "ftnsepc" | "ftncn" | "aftnsep" | "aftnsepc" | "aftncn" => Some(Dest::Skip),
             "listoverridetable" => Some(Dest::ListOverride),
             "fldinst" => Some(Dest::FldInst),
@@ -528,13 +531,29 @@ impl Reader {
                     }
                     return true;
                 }
-                "chftn" if self.sub.as_ref().is_some_and(|s| !s.comment) => {
+                // The separator lines, only in a separator story (elsewhere nothing).
+                "chftnsep" | "chftnsepc" if self.in_sep() => {
+                    let f = self.st.fmt.clone();
+                    self.push_mark('L', i64::from(word == "chftnsepc"), f);
+                    return true;
+                }
+                "chftn" if self.sub.as_ref().is_some_and(|s| !s.comment && s.sep.is_none()) => {
                     let f = self.st.fmt.clone();
                     self.push_mark('S', 0, f);
                     return true;
                 }
                 _ => {}
             }
+        }
+        // A separator story is read where a header or footer group would be: at body level, not
+        // in a table cell, note, comment, header, footer, shape or another separator story
+        // (Word was not measured elsewhere).
+        if let Some(k) = super::state::SEP_WORDS.iter().position(|w| *w == word) {
+            if !self.marks_on || self.hf.is_some() || self.sub.is_some() || !self.shapes.is_empty() || self.st.dest != Dest::Body || self.st.intbl {
+                return false;
+            }
+            self.start_sep(k);
+            return true;
         }
         if !matches!(word, "footnote" | "annotation") || !self.marks_on || self.hf.is_some() || self.sub.is_some() || self.st.dest != Dest::Body {
             return false;

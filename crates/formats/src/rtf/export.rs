@@ -92,6 +92,8 @@ pub(super) enum Mark {
         id: u32,
         ann: Option<Annotation>,
     },
+    /// A note separator line in a separator story (`true`: the continuation line).
+    SepLine(bool),
     Done,
 }
 
@@ -977,6 +979,7 @@ impl Writer {
                 out.push('}');
             }
             Mark::Own(custom) => out.push_str(&note_mark(&custom)),
+            Mark::SepLine(continuation) => out.push_str(if continuation { "\\chftnsepc " } else { "\\chftnsep " }),
             Mark::RangeStart(id) => out.push_str(&format!("{{\\*\\atrfstart {id}}}")),
             Mark::RangeEnd { id, ann } => {
                 out.push_str(&format!("{{\\*\\atrfend {id}}}"));
@@ -1926,6 +1929,7 @@ pub fn export(doc: &Document) -> String {
             s
         })
         .collect();
+    note_separator_groups(doc, &mut w, opts, &mut body);
     if let Some(first) = secs.first() {
         body.push_str(&sect_words(first, first.gutter, &mut w.t));
         for (set, prefix) in [(&first.headers, "header"), (&first.footers, "footer")] {
@@ -1949,6 +1953,53 @@ pub fn export(doc: &Document) -> String {
     set_own_styles(before);
     set_ranged(ranged_before);
     export_with(&flow.meta, doc, &w, &own_entries, &body)
+}
+
+/// The document's own note separator stories (RTF 1.9.1 "Footnotes"): `{\*\ftnsep …}`,
+/// `{\*\ftnsepc …}`, `{\*\ftncn …}`, then the endnote ones, each that the document has. Every
+/// paragraph ends with `\par`, the last too; a separator line is `\chftnsep` / `\chftnsepc`.
+fn note_separator_groups(doc: &Document, w: &mut Writer, opts: model::FlowOpts, out: &mut String) {
+    let (f, e) = (&doc.footnote_separators, &doc.endnote_separators);
+    let stories = [
+        ("ftnsep", &f.separator),
+        ("ftnsepc", &f.continuation_separator),
+        ("ftncn", &f.continuation_notice),
+        ("aftnsep", &e.separator),
+        ("aftnsepc", &e.continuation_separator),
+        ("aftncn", &e.continuation_notice),
+    ];
+    for (word, story) in stories {
+        let Some(blocks) = story else { continue };
+        let blocks: Blocks = blocks.iter().take(MAX_NOTE_BLOCKS).map(|b| sep_lines_as_marks(b, &mut w.marks)).collect();
+        let flow = model::part_flow(doc, &blocks, opts);
+        out.push_str(&format!("{{\\*\\{word} "));
+        set_ranged(model::ranged_anchors(&flow));
+        w.blocks(&flow, 0, "\\par", out, 1);
+        out.push_str("}\n");
+    }
+}
+
+/// `b` with its note separator lines replaced by place markers (see [`MARK_OPEN`]) for
+/// [`Mark::SepLine`]; tables are left as they are.
+fn sep_lines_as_marks(b: &Arc<Block>, marks: &mut Vec<Mark>) -> Arc<Block> {
+    let Block::Para(p) = &**b else { return b.clone() };
+    if !p.objects.iter().any(|o| o.as_note_separator().is_some()) {
+        return b.clone();
+    }
+    let mut q = p.clone();
+    for off in p.object_offsets().into_iter().rev() {
+        let Some(line) = q.object_at(off).and_then(InlineObject::as_note_separator) else { continue };
+        marks.push(Mark::SepLine(line));
+        let text = format!("{MARK_OPEN}{}{MARK_CLOSE}", marks.len().saturating_sub(1));
+        let end = off + wordcraft_doc::para::OBJ.len_utf8();
+        if q.delete(off, end).is_err() {
+            continue;
+        }
+        if q.insert_text(off, &text, &Default::default()).is_err() {
+            continue;
+        }
+    }
+    Arc::new(Block::Para(q))
 }
 
 /// `{\*\userprops …}` (RTF 1.9.1 "User Properties") for the custom properties RTF has a type
