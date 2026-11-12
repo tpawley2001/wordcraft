@@ -62,6 +62,7 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
         sup: e.vert_align == Some(VertAlign::Superscript),
         sub: e.vert_align == Some(VertAlign::Subscript),
         link: e.link.as_deref().map(Arc::from),
+        link_tip: e.link.as_ref().and(e.link_tip.as_deref()).map(Arc::from),
         color: match e.color {
             Some(TextColor::Rgb(c)) => Some(c),
             _ => None,
@@ -77,7 +78,7 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
 }
 
 /// The flow formatting before a tracked formatting change, `old` its properties: with
-/// [`FlowOpts::hidden`] and [`FlowOpts::tabs_spacing`], its hidden text and position too, so
+/// [`FlowOpts::hidden`] and [`FlowOpts::tabs_spacing`], its hidden text, position and border too, so
 /// a format writing only what the change altered sees those.
 fn old_fmt(doc: &Document, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fmt {
     let mut f = fmt_of(doc, old, in_code);
@@ -86,7 +87,13 @@ fn old_fmt(doc: &Document, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fm
         let e = effective(doc, old);
         if opts.tabs_spacing {
             let (highlight, shading) = highlight_of(&e);
-            let x = CharProps { position: e.position.filter(|v| *v != 0.0 && v.is_finite()), highlight, shading, ..Default::default() };
+            let x = CharProps {
+                position: e.position.filter(|v| *v != 0.0 && v.is_finite()),
+                border: e.border.filter(|b| b.is_visible()),
+                highlight,
+                shading,
+                ..Default::default()
+            };
             f.extra = (x != CharProps::default()).then(|| Box::new(x));
         }
     }
@@ -121,6 +128,7 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
                 underline_color: e.underline_color,
                 no_proof: set(e.no_proof),
                 emphasis: e.emphasis.filter(|m| *m != wordcraft_doc::props::EmphasisMark::None),
+                border: e.border.filter(|b| b.is_visible()),
                 highlight,
                 shading,
                 ..Default::default()
@@ -298,6 +306,11 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         x.frame = p.frame.clone().filter(|_| opts.frames);
     }
     x.style = p.style.clone().filter(|id| opts.styles && is_custom_style(doc, id));
+    if opts.auto_space {
+        let rp = doc.styles.resolve_para(p);
+        x.auto_space_de = (!rp.auto_space_de).then_some(false);
+        x.auto_space_dn = (!rp.auto_space_dn).then_some(false);
+    }
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
 
@@ -1289,6 +1302,9 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
                 valign: c.props.valign.or(styled.as_ref().and_then(|s| s.v_align)),
                 // Formats that keep cell padding get each cell's, its table's or Word's default.
                 margins: tracked.paras.then(|| c.props.resolved_margins(t.props.cell_margins.unwrap_or(WORD_CELL_MARGINS))),
+                // The sides the cell sets itself, for formats that write only those (RTF).
+                own_margins: c.props.margins.map(|m| m.map(Some)).or(c.props.partial_margins).unwrap_or([None; 4]),
+                no_wrap: c.props.no_wrap,
                 direction: c.props.text_direction,
                 // Its background picture, for formats that keep cell formatting (ODT).
                 picture: c.props.picture.as_deref().filter(|_| tracked.paras).and_then(|p| {

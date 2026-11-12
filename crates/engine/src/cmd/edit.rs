@@ -181,8 +181,14 @@ fn copy(s: &mut Session, _: &Value) -> CmdResult {
     // The same selection copied again with nothing changed in between: Ctrl+C pressed twice.
     let key = (s.sel.clone(), s.document_id(), s.rev());
     let twice = s.last_copy.as_ref() == Some(&key);
+    let plain_range = super::table::selected_table(s).is_none() && s.cell_range().is_none();
     let mut r = copy_with(s)?;
     s.last_copy = Some(key);
+    // A plain text range copied: Paste Special > Paste link can point back at it.
+    let (start, end) = s.sel.ordered();
+    if plain_range && start != end && start.story == end.story && s.clipboard.is_some() {
+        s.clipboard_link = Some(super::paste::ClipboardLink { doc: s.document_id(), start, end, bookmark: None });
+    }
     if twice && s.prefs.clipboard.show_on_copy_twice {
         s.view.clipboard_pane = true;
         r["pane"] = json!(true);
@@ -223,6 +229,8 @@ pub(crate) fn take_copy(s: &mut Session, f: Fragment) -> Value {
     let o = s.prefs.clipboard.clone();
     let collected = (s.view.clipboard_pane || o.collect_without_showing) && s.clip_history.push(&f, &s.clipboard_text);
     s.clipboard = Some(f);
+    // Only Copy of a plain text range says where it came from (see `copy`).
+    s.clipboard_link = None;
     let mut r = copy_result(s);
     if collected {
         let n = s.clip_history.len();
@@ -488,8 +496,10 @@ fn clip_index(s: &Session, v: &Value) -> Result<usize, CmdError> {
 /// Paste a collected item through the normal paste path. The clipboard itself stays as it was.
 fn paste_clip(s: &mut Session, f: Fragment) -> CmdResult {
     let saved = s.clipboard.replace(f);
+    let link = s.clipboard_link.take();
     let r = paste(s, &json!({}));
     s.clipboard = saved;
+    s.clipboard_link = link;
     r
 }
 

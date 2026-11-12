@@ -148,7 +148,7 @@ pub(super) fn bookmark_ends_in_its_paragraph(doc: &wordcraft_doc::Document, name
 
 /// [`bookmark_text`] for the bookmark `name` that starts at `start`, for a caller that has
 /// looked the document's bookmarks up once.
-pub(super) fn bookmark_text_at(doc: &wordcraft_doc::Document, name: &str, start: &Pos) -> Option<String> {
+pub(crate) fn bookmark_text_at(doc: &wordcraft_doc::Document, name: &str, start: &Pos) -> Option<String> {
     let para = doc.para(start.story, &start.path)?;
     let end = para
         .object_offsets()

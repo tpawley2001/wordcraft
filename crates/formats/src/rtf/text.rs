@@ -370,20 +370,32 @@ impl Reader {
                     self.pn_txt.push(c);
                 }
             }
-            Dest::Skip | Dest::Object | Dest::ListTable | Dest::ListOverride | Dest::OldProps(_) | Dest::OldSect | Dest::Pn | Dest::UserProps => {}
+            Dest::LsdExcept => self.latent.exception_text(s),
+            Dest::Skip
+            | Dest::Object
+            | Dest::ListTable
+            | Dest::ListOverride
+            | Dest::OldProps(_)
+            | Dest::OldSect
+            | Dest::Pn
+            | Dest::UserProps
+            | Dest::LatentStyles => {}
         }
     }
 
     /// The formatting before a tracked character change: the current run's, with the
     /// `\oldcprops` words applied (a `\plain` among them starts from none).
     fn old_fmt(&mut self, words: &[(String, Option<i32>)]) -> Fmt {
-        let fmt = Fmt { link: None, ins: None, del: None, fmt_change: None, ..self.st.fmt.clone() };
+        let fmt = Fmt { link: None, link_tip: None, ins: None, del: None, fmt_change: None, ..self.st.fmt.clone() };
         let saved = std::mem::replace(&mut self.st, St { dest: Dest::OldProps(false), fmt, ..Default::default() });
+        // Border words replayed here describe the old character border, never a page or cell side.
+        let sides = (self.page_side.take(), self.cell_side.take());
         for (w, p) in words {
             self.word(w, *p, false, false);
         }
+        (self.page_side, self.cell_side) = sides;
         let old = std::mem::replace(&mut self.st, saved).fmt;
-        Fmt { link: None, ..old }
+        Fmt { link: None, link_tip: None, ..old }
     }
 
     pub(super) fn ch(&mut self, c: char) {

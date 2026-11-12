@@ -71,12 +71,19 @@ pub(super) enum Dest {
     /// User properties (`{\*\userprops …}`, RTF 1.9.1 "User Properties"): `\proptypeN` is read
     /// here, `\propname`, `\staticval` and `\linkval` are text groups (`Info(8..=10)`).
     UserProps,
+    /// The latent-style table (`{\*\latentstyles …}`): its words are read into
+    /// [`super::latent_styles::Latent`].
+    LatentStyles,
+    /// The exceptions of the latent-style table (`{\lsdlockedexcept …}`): words and names.
+    LsdExcept,
 }
 
 /// Longest text kept of one information-group field or user property name or value (bytes).
 pub(super) const MAX_INFO_TEXT: usize = 64 * 1024;
 /// Most user properties one file may bring in.
 pub(super) const MAX_USER_PROPS: usize = 1_000;
+/// Most latent-style exceptions kept (`{\lsdlockedexcept …}`); Word writes about 380.
+pub(super) const MAX_LATENT_EXCEPTIONS: usize = 2_000;
 
 /// Cut `s` to at most `max` bytes, at a character boundary.
 pub(super) fn truncate_chars(s: &mut String, max: usize) {
@@ -458,6 +465,10 @@ pub(super) struct St {
     pub(super) noline: bool,
     /// Widow/orphan control (`\widctlpar`, `\nowidctlpar`); `None` until the paragraph says.
     pub(super) widow: Option<bool>,
+    /// Automatic space between Asian and Latin text (`\aspalpha`) and between Asian text and
+    /// numbers (`\aspnum`); off unless the paragraph says, cleared by `\pard`.
+    pub(super) asp_alpha: bool,
+    pub(super) asp_num: bool,
     /// Contextual spacing (`\contextualspace`), mirror indents (`\mirrorindents`), automatic
     /// space before/after (`\sbautoN`, `\saautoN`), hyphenation suppressed (`\hyphpar0`) and
     /// line grid snapping (`\nosnaplinegrid`); `None` until the paragraph says.
@@ -528,6 +539,8 @@ impl Default for St {
             keep: false,
             noline: false,
             widow: None,
+            asp_alpha: false,
+            asp_num: false,
             contextual: None,
             mirror: None,
             sb_auto: None,
@@ -572,6 +585,28 @@ pub(super) struct CellDef {
     pub(super) valign: Option<VAlign>,
     /// Turned text (`\cltxtbrl`, `\cltxbtlr`…).
     pub(super) direction: wordcraft_doc::props::TextDirection,
+    /// The cell's own padding, twips, per side (top, left, bottom, right): the value word
+    /// (`\clpadl` top, `\clpadt` left, `\clpadb`, `\clpadr`; Word reads the first two swapped)
+    /// and its unit word (`\clpadfl` … `\clpadfr`).
+    pub(super) pad: [Option<i32>; 4],
+    pub(super) pad_unit: [Option<i32>; 4],
+    /// Wrap text off (`\clNoWrap`).
+    pub(super) no_wrap: bool,
+}
+
+impl CellDef {
+    /// The sides of its padding the cell sets, points: a side is set only with unit 3 (twips),
+    /// and then a negative, missing or beyond-22-inch value is 0, as Word reads it.
+    pub(super) fn own_margins(&self) -> [Option<f32>; 4] {
+        let mut out = [None; 4];
+        for ((o, v), u) in out.iter_mut().zip(self.pad).zip(self.pad_unit) {
+            if u == Some(3) {
+                let tw = v.filter(|v| (0..=31_680).contains(v)).unwrap_or(0);
+                *o = Some(tw as f32 / 20.0);
+            }
+        }
+        out
+    }
 }
 
 /// Page size and margins in twips (`\paperw`, `\margl`… and their `…sxn` section forms).
