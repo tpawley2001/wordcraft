@@ -74,10 +74,10 @@ const NS_PASSWORD: &str = "http://schemas.microsoft.com/office/2006/keyEncryptor
 /// Is this an encrypted Office package (a compound file with `EncryptionInfo` and
 /// `EncryptedPackage` streams) rather than a zip?
 pub fn is_encrypted(bytes: &[u8]) -> bool {
-    if bytes.get(..8) != Some(&CFB_MAGIC[..]) || wordcraft_doc::cfb_guard::check(bytes).is_err() {
+    if bytes.get(..8) != Some(&CFB_MAGIC[..]) {
         return false;
     }
-    match cfb::CompoundFile::open(Cursor::new(bytes)) {
+    match open_compound(bytes) {
         Ok(comp) => comp.is_stream("/EncryptionInfo") && comp.is_stream("/EncryptedPackage"),
         Err(_) => false,
     }
@@ -87,8 +87,7 @@ pub fn is_encrypted(bytes: &[u8]) -> bool {
 /// [`DocxError::PasswordRequired`] once it knows the file is one it can decrypt; a password that
 /// doesn't fit gives [`DocxError::WrongPassword`].
 pub fn decrypt(bytes: &[u8], password: Option<&str>) -> Result<Vec<u8>, DocxError> {
-    wordcraft_doc::cfb_guard::check(bytes).map_err(|e| bad(format!("not a readable compound file ({e})")))?;
-    let mut comp = cfb::CompoundFile::open(Cursor::new(bytes)).map_err(|e| bad(format!("not a readable compound file ({e})")))?;
+    let mut comp = open_compound(bytes)?;
     let info = stream(&mut comp, "/EncryptionInfo", MAX_INFO)?;
     let package = stream(&mut comp, "/EncryptedPackage", bytes.len() as u64)?;
     if matches!(info.get(..4), Some([2..=4, 0, 2, 0])) {
@@ -540,6 +539,16 @@ fn iterate_appended(hash: Hash, salt: &[u8], password: &str, spin_count: u32) ->
         *h = hash.hash(&[&h, &i.to_le_bytes()]);
     }
     h
+}
+
+/// Open the compound file the way the `.doc` reader does: repair the defects other writers
+/// leave behind (stale end-of-chain FAT markers past the end of the file, junk in unused
+/// directory entries; borrowed when there is nothing to repair), then the hostile-input guard,
+/// then the reader.
+fn open_compound(bytes: &[u8]) -> Result<cfb::CompoundFile<Cursor<std::borrow::Cow<'_, [u8]>>>, DocxError> {
+    let bytes = wordcraft_doc::cfb_repair::repair(bytes);
+    wordcraft_doc::cfb_guard::check(&bytes).map_err(|e| bad(format!("not a readable compound file ({e})")))?;
+    cfb::CompoundFile::open(Cursor::new(bytes)).map_err(|e| bad(format!("not a readable compound file ({e})")))
 }
 
 fn bad(msg: impl Into<String>) -> DocxError {
