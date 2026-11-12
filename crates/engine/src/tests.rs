@@ -37,6 +37,7 @@ mod grid_settings;
 mod fonts;
 mod includetext;
 mod includetext_update_source;
+mod link_update;
 mod goto_what;
 mod goto_line;
 mod ime_noop;

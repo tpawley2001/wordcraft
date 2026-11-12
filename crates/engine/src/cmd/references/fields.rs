@@ -670,6 +670,8 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
     // DOCPROPERTY's counts (Words, Pages ...) of the body as it is before this pass changes it.
     let counts = doc_property_counts(s, &paths);
     let mut set: std::collections::HashMap<String, String> = Default::default();
+    // LINK sources read during this update, each file once.
+    let mut sources = super::link::Sources::default();
     for (story, path) in paths {
         let Some(p) = s.doc.para(story, &path) else { continue };
         if !p.objects.iter().any(|o| matches!(o, InlineObject::Field { .. })) {
@@ -789,6 +791,9 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 }
                 // The text of another local file, read only here, on an explicit update.
                 "INCLUDETEXT" => updates.push((k, super::includetext::include_text(s, instr))),
+                // A link to a saved Word document: its source as it is now. A link that can't be
+                // followed keeps its stored result; an equal result is not touched.
+                "LINK" => updates.extend(super::link::new_simple_result(s, &mut sources, o).map(|r| (k, r))),
                 // GOTOBUTTON and MACROBUTTON store the text their code shows.
                 "GOTOBUTTON" | "MACROBUTTON" => {
                     if let Some(text) = wordcraft_layout::fields::button_display_text(instr) {
@@ -815,6 +820,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
         para.touch();
     }
     update_button_ranges(s, &range_stories)?;
+    super::link::update_link_ranges(s, &mut sources, &range_stories)?;
     if !in_body {
         return Ok(());
     }
