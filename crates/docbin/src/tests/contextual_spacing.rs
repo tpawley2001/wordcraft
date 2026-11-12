@@ -1,6 +1,6 @@
-//! "Don't add space between paragraphs of the same style" ([MS-DOC] §2.6.2
-//! sprmPFContextualSpacing 0x246D, Bool8): the .doc form of `w:contextualSpacing` (ECMA-376
-//! Part 1 §17.3.1.9). Word's built-in List Paragraph style carries it with 8 pt after, so the
+//! Contextual spacing in .doc files ([MS-DOC] §2.6.2 sprmPFContextualSpacing 0x246D, Bool8,
+//! the same-style check box of Paragraph > Spacing): the .doc form of `w:contextualSpacing`
+//! (ECMA-376 Part 1 §17.3.1.9). Word's built-in List Paragraph style carries it with 8 pt after, so the
 //! items of a list sit together and the 8 pt show only after the last one.
 
 use super::{RichSpec, grpprl, read, rich_doc};
