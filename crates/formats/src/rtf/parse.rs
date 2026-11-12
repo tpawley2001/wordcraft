@@ -35,6 +35,8 @@ struct Parsed {
     own_styles: Vec<wordcraft_doc::styles::Style>,
     notes: Vec<NoteData>,
     comments: Vec<CommentData>,
+    /// The note separator stories (`\ftnsep`…), in the order of [`super::state::SEP_WORDS`].
+    note_seps: [Option<Vec<FBlock>>; 6],
     /// The document's footnote and endnote options; `num_fmt` is the number format.
     doc_notes: (wordcraft_doc::section::NoteProps, wordcraft_doc::section::NoteProps),
     /// The document's `\fetN`, when it names one.
@@ -64,6 +66,7 @@ impl Info {
         c.modified = self.modified;
         c.last_printed = self.printed;
         doc.custom_props = self.more.props;
+        doc.settings.doc_vars = self.more.doc_vars;
         let mut kept = String::new();
         for (name, value) in [("Manager", self.more.manager), ("Company", self.more.company), ("HyperlinkBase", self.more.hyperlink_base)] {
             if let Some(v) = app_kept_value(value) {
@@ -432,6 +435,7 @@ fn finalize(mut r: Reader) -> Parsed {
         own_styles,
         notes: r.notes,
         comments: r.comments,
+        note_seps: std::mem::take(&mut r.note_seps),
         doc_notes: r.doc_notes,
         fet: r.fet,
         doc_set: r.doc_set,
@@ -521,6 +525,7 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
         own_styles,
         mut notes,
         comments,
+        note_seps,
         doc_notes,
         fet,
         doc_opts,
@@ -549,9 +554,6 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
         doc.settings.endnote_format = wordcraft_doc::section::NumFormat::LowerRoman;
     }
     (doc.settings.footnote_pr, doc.settings.endnote_pr) = (foot, end);
-    // Word fits justified lines of an RTF document more tightly than a DOCX one; RTF has no
-    // control word for it, so every imported document gets it.
-    doc.settings.rtf_justification = true;
     // Each section's own headers and footers; those it leaves out stay linked to the previous.
     let mut sets = Vec::with_capacity(headers_footers.len());
     for parts in &headers_footers {
@@ -584,6 +586,7 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     }
     set_section_revisions(&mut doc);
     place_notes_and_comments(&mut doc, notes, comments);
+    place_note_separators(&mut doc, note_seps);
     // A drop cap's letter paragraph joins the paragraph it starts.
     super::frames::merge_drop_caps(&mut doc);
     // RTF's paragraph defaults are single spacing and no space around paragraphs; what a file
@@ -692,6 +695,46 @@ fn place_notes_and_comments(doc: &mut Document, notes: Vec<NoteData>, comments: 
     }
 }
 
+/// The document's own note separator stories, in the order of [`super::state::SEP_WORDS`].
+fn place_note_separators(doc: &mut Document, seps: [Option<Vec<FBlock>>; 6]) {
+    let ctx = Placer { note_parts: Vec::new(), by_rtf: HashMap::new() };
+    for (k, story) in seps.into_iter().enumerate() {
+        let Some(story) = story else { continue };
+        let mut blocks = model::part_blocks(doc, &story);
+        ctx.blocks(&mut blocks, None, 0);
+        // Word's default groups (one paragraph holding only the kind's own line, no paragraph
+        // formatting of its own) store nothing: the built-in separator is drawn.
+        if is_default_separator(&blocks, k % 3 == 1) {
+            continue;
+        }
+        let s = if k < 3 { &mut doc.footnote_separators } else { &mut doc.endnote_separators };
+        let slot = match k % 3 {
+            0 => &mut s.separator,
+            1 => &mut s.continuation_separator,
+            _ => &mut s.continuation_notice,
+        };
+        *slot = Some(blocks);
+    }
+}
+
+/// One paragraph without text or direct paragraph formatting holding only the separator line
+/// (`continuation`: the continuation line).
+fn is_default_separator(blocks: &Blocks, continuation: bool) -> bool {
+    let [b] = blocks.as_slice() else { return false };
+    let Block::Para(p) = &**b else { return false };
+    let [o] = p.objects.as_slice() else { return false };
+    // Every RTF paragraph without `\aspalpha`/`\aspnum` says no automatic Asian spacing, and
+    // `\ql` is the default alignment (written for every paragraph): not formatting of its own.
+    let plain = wordcraft_doc::props::ParaProps {
+        style: p.props.style.clone(),
+        align: p.props.align.filter(|a| *a == wordcraft_doc::Align::Left),
+        auto_space_de: p.props.auto_space_de,
+        auto_space_dn: p.props.auto_space_dn,
+        ..Default::default()
+    };
+    o.as_note_separator() == Some(continuation) && p.plain_text().trim().is_empty() && p.props == plain
+}
+
 struct Placer {
     note_parts: Vec<(wordcraft_doc::para::NoteKind, u32, String)>,
     by_rtf: HashMap<i64, u32>,
@@ -746,6 +789,8 @@ impl Placer {
                     Some((kind, id, custom)) => (Some(InlineObject::NoteRef { kind, id, custom: custom.to_string() }), Self::ref_props(kind)),
                     None => (None, Default::default()),
                 },
+                // A separator line (`\chftnsep`, `\chftnsepc`: 1).
+                'L' => (Some(InlineObject::note_separator(n == 1)), Default::default()),
                 'B' => (self.by_rtf.get(&n).map(|&id| InlineObject::CommentStart { id }), Default::default()),
                 'E' => (self.by_rtf.get(&n).map(|&id| InlineObject::CommentEnd { id }), Default::default()),
                 _ => (None, Default::default()),

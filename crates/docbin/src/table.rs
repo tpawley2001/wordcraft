@@ -636,7 +636,12 @@ impl TableBuilder {
             row_end && para.text.is_empty() && self.cell.is_empty() && !info.edges.is_empty() && self.cells.len() + 1 >= info.edges.len();
         // ...but a row-end mark with no cells before it still makes a (one-cell) row.
         let row_end_only = row_end_only && !self.cells.is_empty();
-        if !para.text.is_empty() {
+        // The cell mark is the paragraph mark of the cell's last paragraph ([MS-DOC] 2.4.3), so
+        // an empty one is still a paragraph: a blank last line after the cell's text, or an
+        // empty cell's only paragraph with its own style and formatting. After a nested table
+        // that just closed into the cell an empty mark adds nothing (not measured in Word).
+        let after_table = self.cell.last().is_some_and(|b| b.as_table().is_some());
+        if !row_end_only && (!para.text.is_empty() || !after_table) {
             self.cell.push(para_block(para));
         }
         if !row_end_only {
@@ -680,7 +685,17 @@ impl TableBuilder {
         if self.rows.is_empty() {
             return;
         }
-        out.push(Arc::new(Block::Table(Table { props: self.props, grid: self.grid, rows: self.rows, controls: Default::default() })));
+        let mut table = Table { props: self.props, grid: self.grid, rows: self.rows, controls: Default::default() };
+        // The grid comes from the first row's `sprmTDefTable` only, so a later row with more
+        // cells has columns the grid doesn't size; layout then splits them evenly, and a
+        // preferred width would stretch those even columns across the table instead of letting
+        // the content autofit them (a text column a fifth of the table, one word per line).
+        // Such a table stays automatic until the grid is built from every row.
+        if !table.grid.is_empty() && table.cols() > table.grid.len() {
+            table.props.width = None;
+            table.props.width_pct = None;
+        }
+        out.push(Arc::new(Block::Table(table)));
     }
 }
 

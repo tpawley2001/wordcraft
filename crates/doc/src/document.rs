@@ -840,6 +840,12 @@ impl Document {
         key
     }
 
+    /// The value of a document variable (names compare case-insensitively, as in Word; a
+    /// variable with an empty value counts as not there, as a `DOCVARIABLE` field treats it).
+    pub fn doc_var(&self, name: &str) -> Option<&str> {
+        self.settings.doc_vars.iter().find(|v| v.name.eq_ignore_ascii_case(name)).map(|v| v.value.as_str()).filter(|v| !v.is_empty())
+    }
+
     /// The value of a custom property (names compare case-insensitively, as in Word).
     pub fn custom_prop(&self, name: &str) -> Option<&str> {
         self.custom_props.iter().find(|p| p.name.eq_ignore_ascii_case(name)).map(|p| p.value.as_str())

@@ -382,6 +382,7 @@ impl Reader {
             | Dest::OldSect
             | Dest::Pn
             | Dest::UserProps
+            | Dest::DocVar
             | Dest::LatentStyles => {}
         }
     }

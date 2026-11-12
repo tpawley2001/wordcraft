@@ -71,8 +71,8 @@ fn a_border_removed_by_a_tracked_change_round_trips() {
     assert_eq!(para_borders(&back, 0), Borders::default());
 }
 
-/// Stylesheet entries keep only the formatting the stylesheet reader knows; a character
-/// style's `\chbrdr` is dropped there and never reaches the text or the paragraph.
+/// A character style's `\chbrdr` belongs to the style: it never reaches text that doesn't
+/// state it, or the paragraph.
 #[test]
 fn a_character_style_border_does_not_leak() {
     let rtf = format!(
