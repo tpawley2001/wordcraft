@@ -235,6 +235,13 @@ pub fn missing_font_line(family: &str, resolved: &Resolved) -> Option<(f64, f64)
     missing_font_metrics(family)
 }
 
+/// [`missing_font_line`] under the compatibility option "Don't add leading (extra space) between
+/// rows of text": `leading` is false when the option applies.
+pub fn missing_font_line_leading(family: &str, resolved: &Resolved, leading: bool) -> Option<(f64, f64)> {
+    let _ = leading;
+    missing_font_line(family, resolved)
+}
+
 /// Word's single line, (ascent, descent) in em, for fonts whose substitute spaces lines
 /// differently. Measured in Word's PDFs: Lucida Console's font descriptor gives `/Ascent` 789,
 /// and consecutive single-spaced 10 pt lines are 10.0 pt apart (one em), so the descent is the
@@ -996,6 +1003,13 @@ fn hhea_line(ascender: i16, descender: i16, line_gap: i16) -> (f64, f64) {
 pub fn hhea_line_leading(ascender: i16, descender: i16, line_gap: i16, leading: bool) -> (f64, f64) {
     let gap = if leading { f64::from(line_gap.max(0)) } else { 0.0 };
     (f64::from(ascender) + gap, f64::from(descender).abs())
+}
+
+/// [`hhea_line_leading`] for a face that also has OS/2 Windows metrics (`usWinAscent`,
+/// `usWinDescent`).
+pub fn win_line_leading(ascender: i16, descender: i16, line_gap: i16, win_ascent: u16, win_descent: u16, leading: bool) -> (f64, f64) {
+    let _ = (win_ascent, win_descent);
+    hhea_line_leading(ascender, descender, line_gap, leading)
 }
 
 /// The line (ascent, descent) in units of an `upem` em that Word gives the classic PostScript

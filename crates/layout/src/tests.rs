@@ -47,6 +47,7 @@ mod nbsp;
 mod nested_cant_split;
 mod next_column_section;
 mod no_leading;
+mod no_leading_missing_fonts;
 mod numeral;
 mod pages;
 mod picture_glue;
