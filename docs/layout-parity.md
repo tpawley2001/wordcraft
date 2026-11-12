@@ -1,5 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
+> **Last updated:** 2026-11-12 · **Change:** trivial (P0372: a floating object anchored after a page or column break starts no line of its own; a Top and Bottom object that does not fit with its line moves to the next page with it, and text after the break starts below it. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-12 · **Change:** trivial (P0352: in compatibility mode 15 header and footer text wraps a Top and Bottom object anchored in it as body text does; below mode 15 it stays in place. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-12 · **Change:** trivial (P0329: an even-page first section starts at page 2 with no blank page, so later odd- and even-page breaks fall where Word puts them. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-12 · **Change:** trivial (P0330: in compatibility modes 11, 12 and 14 an empty header or footer paragraph holding only a Top and Bottom object keeps its line in place, so the body starts right below the object. Readiness estimates unchanged.)
@@ -401,6 +402,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-12 | trivial | P0372: a picture or text box anchored (`wp:anchor`) in a paragraph with a page or column break (`w:br`): when only anchors follow the break they stay on the break's line and the next paragraph starts the new page or column; a Top and Bottom object that does not fit with its anchor line on the page goes to the top of the next page with that line instead of past the page's foot; text after the break starts below a Top and Bottom object anchored there, as in Word |
 | 2026-11-12 | trivial | Word 97-2003 documents (and DOCX with `w:splitPgBreakAndParaMark`) below compatibility mode 15: the paragraph mark after a page break is an empty line at the top of the new page, as Word lays it out; the option is read from `.doc` DOPs and kept on DOCX open and save |
 | 2026-11-12 | trivial | List numbers draw their strikethrough, highlight and border from the paragraph mark or the level, and their underline and shading from the level only, as Word does; a list number is never small caps; readiness estimates unchanged |
 | 2026-11-11 | trivial | P0304: formula fields whose operands look different (`$5 + 3` is `$8.00`, `$5 - 10` is `($5.00)`), ranges, SUM/COUNT/AVERAGE/MAX/MIN/PRODUCT and ABOVE/LEFT carry the union of the operands' looks, and an ABOVE/LEFT run counts parenthesised cells it starts with as negatives (`(5)`, `(10)` above is `(15)`), as measured in Word; readiness estimates unchanged |
