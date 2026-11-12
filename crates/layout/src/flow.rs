@@ -352,7 +352,15 @@ impl<'a> Flow<'a> {
         if !(rp.keep_lines || (keep_next && pb.y + height <= pb.bottom + 0.01)) {
             return before;
         }
-        let need = height + if keep_next { next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone()) } else { 0.0 };
+        let need = if keep_next {
+            // With the table rows a kept paragraph moves with; when those cannot fit on an empty
+            // column with it, the fixed start of the table, as before.
+            let room = pb.next_room(self.body_top);
+            let rows = height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), Some(room));
+            if rows <= room + 0.01 { rows } else { height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), None) }
+        } else {
+            height
+        };
         // (Against the whole column: balanced columns grow to hold it.)
         // With the 0.01 pt of slack the other fit checks take.
         if pb.y + need > pb.bottom + 0.01 && !pb.fresh() && need <= pb.next_room(self.body_top) {
@@ -403,7 +411,7 @@ impl<'a> Flow<'a> {
                 break true;
             }
             if !kept_para(ctx.doc, link + 1) {
-                total += next_first_line(ctx, link, self.width, 0, &mut counters);
+                total += next_first_line(ctx, link, self.width, 0, &mut counters, None);
                 break total > room + 0.01;
             }
             link += 1;
@@ -415,7 +423,7 @@ impl<'a> Flow<'a> {
     /// The lines going into a new column (or page) were broken around the wrap areas where the
     /// paragraph started: break them again around this column's (the lines before stay as they
     /// were, and so do the paragraph's own floating objects), when they differ (#1374).
-    fn relay_wrap(&mut self, ctx: &mut Ctx, pb: &PageBuilder) {
+    fn relay_wrap(&mut self, ctx: &mut Ctx, pb: &mut PageBuilder) {
         if self.l0 == 0 || pb.web || self.wrap_relays >= MAX_WRAP_RELAYS {
             return;
         }
@@ -430,11 +438,19 @@ impl<'a> Flow<'a> {
         WRAP_RELAYS.with(|c| c.set(c.get() + 1));
         let relaid = self.relay(ctx, &here);
         // Only if the rest still starts at the same line, at the same height (an outline
-        // reaching above it could move the lines before down, and the column's areas with them).
-        if let Some(k) = relaid.lines.iter().position(|l| l.start == resume)
-            && relaid.lines.get(k).is_some_and(|l| (l.top - t).abs() < 0.01)
-        {
+        // reaching above it could move the lines before down, and the column's areas with them),
+        // or lower, pushed down by an area covering the column's top, with the lines before
+        // exactly as placed (Word starts the continued lines below it, as a paragraph starting
+        // there would be).
+        let Some(k) = relaid.lines.iter().position(|l| l.start == resume) else { return };
+        let Some(top) = relaid.lines.get(k).map(|l| l.top) else { return };
+        let drop = top - t;
+        if drop.abs() < 0.01 {
             (self.pl, self.rel, self.l0) = (relaid, here, k);
+        } else if drop > 0.0 && k == self.l0 && same_lines(&self.pl, &relaid, k) {
+            (self.pl, self.rel, self.l0) = (relaid, here, k);
+            // The lines from the resume point are placed from where the new break puts them.
+            pb.y += drop;
         }
     }
 
@@ -934,6 +950,14 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
     f.finish(pb, rooms);
 }
 
+/// Whether the first `k` lines of `a` and `b` start at the same text and the same height.
+fn same_lines(a: &ParaLayout, b: &ParaLayout, k: usize) -> bool {
+    match (a.lines.get(..k), b.lines.get(..k)) {
+        (Some(x), Some(y)) => x.iter().zip(y).all(|(p, q)| p.start == q.start && (p.top - q.top).abs() < 0.01),
+        _ => false,
+    }
+}
+
 /// Whether `range` of `p`'s text holds nothing but zero-width markers (bookmarks, field and
 /// control boundaries…), or nothing at all: a line of them takes no room after a page break.
 fn only_markers(p: &Paragraph, range: std::ops::Range<usize>) -> bool {
@@ -1058,8 +1082,10 @@ fn space_after_kept(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::Resolv
 /// of a three-line one under that control (two would leave a widow), or all
 /// of it under keep lines together — or all of it and what it keeps with in turn when it is
 /// kept with the next too (a chain moves together in Word). Word carries a kept heading over
-/// when the paragraph after it cannot start on the page (#966).
-fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counters: &mut Counters) -> f32 {
+/// when the paragraph after it cannot start on the page (#966). A table needs a fixed start, or
+/// with `page` (the height of an empty column) the rows the table flow moves on together with
+/// its first row: a paragraph kept with the table goes with them (Word).
+fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counters: &mut Counters, page: Option<f32>) -> f32 {
     match ctx.doc.body.get(block + 1).map(|b| &**b) {
         Some(Block::Para(p)) => {
             let pl = para_ahead(ctx, p, width, counters);
@@ -1068,7 +1094,7 @@ fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counte
             let top = if joined(ctx.doc, &ctx.doc.body, block + 1, Some(block), None) { 0.0 } else { own.top };
             if pl.rp.keep_next && depth < 8 {
                 let bottom = if joined(ctx.doc, &ctx.doc.body, block + 1, Some(block + 2), None) { 0.0 } else { own.bottom };
-                pl.rp.space_before + top + pl.height + bottom + pl.rp.space_after + next_first_line(ctx, block + 1, width, depth + 1, counters)
+                pl.rp.space_before + top + pl.height + bottom + pl.rp.space_after + next_first_line(ctx, block + 1, width, depth + 1, counters, page)
             } else {
                 // The room this one needs to start on the page with the kept paragraph before
                 // it (#966).
@@ -1088,7 +1114,7 @@ fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counte
                     }
             }
         }
-        Some(Block::Table(_)) => 24.0,
+        Some(Block::Table(t)) => page.and_then(|page| super::table_flow::kept_rows_room(ctx, t, block + 1, width, page, counters)).unwrap_or(24.0),
         None => 0.0,
     }
 }
