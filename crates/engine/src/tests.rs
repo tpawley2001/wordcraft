@@ -13326,4 +13326,5 @@ mod formula_bookmarks;
 mod border_from_text;
 mod opentype_state;
 mod hyperlink_screen_tip_fixes;
+mod formula_mixed_looks;
 mod formula_operand_text;
