@@ -80,8 +80,11 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
 /// The flow formatting before a tracked formatting change, `old` its properties: with
 /// [`FlowOpts::hidden`] and [`FlowOpts::tabs_spacing`], its hidden text, position and border too, so
 /// a format writing only what the change altered sees those.
-fn old_fmt(doc: &Document, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fmt {
+fn old_fmt(doc: &Document, look: Option<&str>, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fmt {
     let mut f = fmt_of(doc, old, in_code);
+    if look.is_some() {
+        resolve_look(doc, look, old, &mut f);
+    }
     if !opts.chars {
         f.hidden = opts.hidden && effective(doc, old).hidden == Some(true);
         let e = effective(doc, old);
@@ -103,7 +106,7 @@ fn old_fmt(doc: &Document, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fm
 /// The flow formatting of a run with properties `props`: with `opts.chars`, its extra formatting,
 /// its custom character style by name (only its direct formatting then its own) and a
 /// monospaced font by its name.
-fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code: bool, opts: FlowOpts) -> Fmt {
+fn run_fmt(doc: &Document, para_style: Option<&str>, look: Option<&str>, props: &CharProps, in_code: bool, opts: FlowOpts) -> Fmt {
     let mut f = fmt_of(doc, props, in_code);
     if !opts.chars {
         if opts.tabs_spacing {
@@ -143,6 +146,9 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
         {
             f.extra.get_or_insert_with(Default::default).style = Some(id.to_string());
         }
+        if let Some(look) = look {
+            resolve_look(doc, Some(look), props, &mut f);
+        }
         return f;
     }
     let custom = props.style.as_deref().filter(|id| is_custom_char_style(doc, id));
@@ -181,6 +187,73 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
         f.font = e.shown_font().map(Arc::from);
     }
     f
+}
+
+/// The paragraph style whose formatting a paragraph of `kind` with style `style` states
+/// ([`FlowOpts::style_look`]): one of the document's own, in a paragraph of kind [`Kind::Normal`].
+fn look_style<'a>(doc: &Document, style: Option<&'a str>, kind: Kind, opts: FlowOpts) -> Option<&'a str> {
+    style.filter(|id| opts.style_look && !opts.chars && kind == Kind::Normal && is_custom_style(doc, id))
+}
+
+/// `f`, the flow formatting of a run with properties `props`, with its bold, italic, underline,
+/// strikethrough, font, size and colour as they resolve in a paragraph of style `para_style`
+/// (document defaults, the paragraph style chain, the character style chain, direct formatting).
+/// A link keeps its own underline and colour.
+fn resolve_look(doc: &Document, para_style: Option<&str>, props: &CharProps, f: &mut Fmt) {
+    let rc = doc.styles.resolve_char(para_style, props);
+    f.bold = rc.bold;
+    f.italic = rc.italic;
+    // Double strikethrough is its own word where the run's extra formatting holds it.
+    let double_apart = f.extra.as_ref().is_some_and(|x| x.double_strike.is_some());
+    f.strike = rc.strike || (rc.double_strike && !double_apart);
+    if f.link.is_none() {
+        f.underline = rc.underline != Underline::None;
+        f.color = match rc.color {
+            TextColor::Rgb(c) => Some(c),
+            _ => None,
+        };
+        let style = Some(rc.underline).filter(|u| f.underline && *u != Underline::Single);
+        if style.is_some() || f.extra.as_ref().is_some_and(|x| x.underline.is_some()) {
+            f.extra.get_or_insert_with(Default::default).underline = style;
+        }
+    }
+    f.size = Some(rc.size).filter(|s| s.is_finite());
+    if !f.code && !rc.font.is_empty() {
+        f.font = Some(Arc::from(rc.font.as_str()));
+    }
+}
+
+/// The character formatting paragraph style `para_style` of `doc` gives text without formatting
+/// of its own (`None`: Normal's), as [`FlowOpts::style_look`] resolves runs.
+pub fn style_look(doc: &Document, para_style: Option<&str>) -> Fmt {
+    let mut f = Fmt::default();
+    resolve_look(doc, para_style, &CharProps::default(), &mut f);
+    f
+}
+
+/// `out`, a flow paragraph of document paragraph `p` whose formatting is stated
+/// ([`FlowOpts::style_look`]), with its effective alignment, spacing, indents and keeps: its own
+/// where it sets them, else its style chain's where those differ from none. A list paragraph
+/// keeps its list level's left and first-line indents unless it sets its own.
+fn state_para_look(doc: &Document, p: &ParaProps, out: &mut Para) {
+    use wordcraft_doc::props::{Align, LineSpacing};
+    let rp = doc.styles.resolve_para(p);
+    let some = |v: f32| (v != 0.0 && v.is_finite()).then_some(v);
+    out.align = p.align.or(Some(rp.align).filter(|a| *a != Align::Left));
+    let s = &mut out.spacing;
+    s.before = p.space_before.or(some(rp.space_before));
+    s.after = p.space_after.or(some(rp.space_after));
+    s.right = p.indent_right.or(some(rp.indent_right));
+    if out.list.is_none() {
+        s.left = p.indent_left.or(some(rp.indent_left));
+        s.first = p.indent_first.or(some(rp.indent_first));
+    }
+    s.line = p.line_spacing.or(Some(rp.line_spacing).filter(|l| *l != LineSpacing::Multiple(1.0)));
+    out.keep_next = rp.keep_next;
+    out.page_break |= rp.page_break_before;
+    if rp.keep_lines {
+        out.extra.get_or_insert_with(Default::default).keep_lines = Some(true);
+    }
 }
 
 /// The highlight in `e` (effective character properties) and, with one, the shading under it;
@@ -669,6 +742,10 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
         group: None,
     };
     out.extra = outline_apart(doc, &p.props, kind, opts, flow_para_extra(doc, &p.props, opts));
+    let look = look_style(doc, p.props.style.as_deref(), kind, opts);
+    if look.is_some() {
+        state_para_look(doc, &p.props, &mut out);
+    }
     let in_code = kind == Kind::Code;
     let mut k = 0usize;
     let mut control = OpenControl::default();
@@ -679,19 +756,21 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
         // Formats that keep hidden text get it, marked hidden.
         let hidden_text = (props.hidden.unwrap_or(false) && !opts.chars && !opts.hidden) || (props.del.is_some() && !tracked);
         let hidden_obj = (props.hidden.unwrap_or(false) && !opts.chars) || props.del.is_some();
-        let mut f = run_fmt(doc, p.props.style.as_deref(), props, in_code, opts);
+        let mut f = run_fmt(doc, p.props.style.as_deref(), look, props, in_code, opts);
         f.hidden = opts.hidden && !opts.chars && props.hidden == Some(true);
         if tracked {
             (f.ins, f.del) = rev_marks(doc, props);
-            f.fmt_change =
-                props.fmt_change.as_deref().map(|c| Box::new(FmtChange { mark: rev_mark(doc, c.rev), old: old_fmt(doc, &c.old, in_code, opts) }));
+            f.fmt_change = props
+                .fmt_change
+                .as_deref()
+                .map(|c| Box::new(FmtChange { mark: rev_mark(doc, c.rev), old: old_fmt(doc, look, &c.old, in_code, opts) }));
         }
         let mut buf = String::new();
         for c in text.chars() {
             if c == PAGE_BREAK {
                 if !hidden {
                     out.push_text(&std::mem::take(&mut buf), &f);
-                    let next = Para {
+                    let mut next = Para {
                         kind,
                         list: None,
                         align: p.props.align,
@@ -711,6 +790,9 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
                         index: None,
                         group: None,
                     };
+                    if look.is_some() {
+                        state_para_look(doc, &p.props, &mut next);
+                    }
                     let prev = std::mem::replace(&mut out, next);
                     if prev.inlines.is_empty() {
                         out.page_break |= prev.page_break;
