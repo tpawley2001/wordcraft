@@ -72,7 +72,7 @@ pub(super) enum Dest {
     /// here, `\propname`, `\staticval` and `\linkval` are text groups (`Info(8..=10)`).
     UserProps,
     /// A document variable (`{\*\docvar {name}{value}}`, RTF 1.9.1 "Document Variables"): its
-    /// first nested group is the name, the second the value, both text groups (`Info(11)`).
+    /// first nested group is the name, the second the value, both text groups (`Info(14)`).
     DocVar,
 }
 
