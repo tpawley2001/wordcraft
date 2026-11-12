@@ -610,6 +610,8 @@ fn close_to(open: &mut Vec<TableBuilder>, depth: usize, out: &mut Blocks) {
 #[derive(Default)]
 struct TableBuilder {
     rows: Vec<Row>,
+    // Each row's own cell edges, parallel to `rows` (a row without a `sprmTDefTable` has none).
+    row_edges: Vec<Vec<f32>>,
     cells: Vec<Cell>,
     cell: Blocks,
     grid: Vec<f32>,
@@ -690,6 +692,7 @@ impl TableBuilder {
         if row_end {
             let row = build_row(std::mem::take(&mut self.cells), info);
             self.rows.push(row);
+            self.row_edges.push(info.edges.clone());
         }
     }
 
@@ -705,6 +708,7 @@ impl TableBuilder {
                 }
             }
             self.rows.push(stray);
+            self.row_edges.push(Vec::new());
         }
         self.push_table(out);
     }
@@ -721,16 +725,18 @@ impl TableBuilder {
         out.extend(cell);
     }
 
-    fn push_table(self, out: &mut Blocks) {
+    fn push_table(mut self, out: &mut Blocks) {
         if self.rows.is_empty() {
             return;
         }
-        let mut table = Table { props: self.props, grid: self.grid, rows: self.rows, controls: Default::default() };
-        // The grid comes from the first row's `sprmTDefTable` only, so a later row with more
-        // cells has columns the grid doesn't size; layout then splits them evenly, and a
+        let aligned = align_rows(&mut self.rows, &self.row_edges);
+        let grid = aligned.unwrap_or(self.grid);
+        let mut table = Table { props: self.props, grid, rows: self.rows, controls: Default::default() };
+        // When the rows' edges don't line up the grid comes from the first row's `sprmTDefTable`
+        // only, so a later row with more cells has columns the grid doesn't size; layout then splits them evenly, and a
         // preferred width would stretch those even columns across the table instead of letting
         // the content autofit them (a text column a fifth of the table, one word per line).
-        // Such a table stays automatic until the grid is built from every row.
+        // Such a table stays automatic.
         if !table.grid.is_empty() && table.cols() > table.grid.len() {
             table.props.width = None;
             table.props.width_pct = None;
@@ -739,6 +745,7 @@ impl TableBuilder {
     }
 }
 
+/// Close the open cell: its blocks (an empty paragraph when it has none) go onto the row's cells.
 fn flush_cell(cells: &mut Vec<Cell>, cell: &mut Blocks) {
     let mut blocks = std::mem::take(cell);
     if blocks.is_empty() {
@@ -747,6 +754,8 @@ fn flush_cell(cells: &mut Vec<Cell>, cell: &mut Blocks) {
     cells.push(Cell { props: CellProps { span: 1, ..Default::default() }, blocks, controls: Default::default() });
 }
 
+/// Turn a row's collected cells into a [`Row`]: the per-cell sprm overrides, a width from the
+/// row's cell edges for cells that have none, then the horizontal merges.
 fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
     // Per-cell overrides first (sprm cell indices count pre-merge cells), then merges.
     for (i, c) in cells.iter_mut().enumerate() {
@@ -760,6 +769,12 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
         if let Some((_, pct)) = info.width_pcts.iter().rfind(|(k, _)| *k == i) {
             c.props.width_pct = Some(*pct);
         }
+        // A cell with no width of its own is as wide as the row's `sprmTDefTable` edges make it,
+        // the width Word's own docx export writes on every cell. Without one, a table that asks
+        // for no width anywhere is laid out by its content alone and shrinks.
+        if c.props.width.is_none() && c.props.width_pct.is_none() {
+            c.props.width = edge_width(&info.edges, usize::from(i));
+        }
         if let Some((_, s)) = info.shading.iter().rfind(|(k, _)| *k == i) {
             c.props.shading = *s;
         }
@@ -770,13 +785,24 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
             c.props.partial_margins = Some(*m);
         }
     }
-    for &(a, b) in info.merges.iter().take(MAX_COLS) {
+    // Rightmost merge first: a merge drains only the cells after its first one, so the original
+    // indices of the merges to its left stay valid.
+    let mut merges: Vec<(u8, u8)> = info.merges.iter().take(MAX_COLS).copied().collect();
+    merges.sort_by_key(|m| std::cmp::Reverse(m.0));
+    for &(a, b) in &merges {
         let a = a as usize;
         let b = (b as usize).min(cells.len());
         if a < b && b <= cells.len() && b - a > 1 {
+            // A merged cell is as wide as the cells it spans together.
+            // When one of them has only a percentage width, the row's outer edges give the sum.
+            let merged_width =
+                cells.get(a..b).and_then(|s| s.iter().map(|c| c.props.width).sum::<Option<f32>>()).or_else(|| edge_span(&info.edges, a, b));
             let removed: Vec<Cell> = cells.drain(a + 1..b).collect();
             if let Some(first) = cells.get_mut(a) {
                 first.props.span = ((b - a) as u32).min(63);
+                if merged_width.is_some() {
+                    first.props.width = merged_width;
+                }
                 for c in removed {
                     first.blocks.extend(c.blocks.into_iter().filter(|x| x.as_para().is_none_or(|p| !p.is_empty())));
                 }
@@ -848,6 +874,81 @@ fn apply_def_table_valign(slots: &mut Vec<(u8, VAlign)>, operand: &[u8]) {
             None => slots.retain(|(k, _)| *k != c),
         }
     }
+}
+
+/// The width between `sprmTDefTable` edges `a` and `b`, when they give a usable one.
+fn edge_span(edges: &[f32], a: usize, b: usize) -> Option<f32> {
+    let w = edges.get(b)? - edges.get(a)?;
+    (w.is_finite() && w > 0.0).then_some(w)
+}
+
+/// The width of cell `i` between its `sprmTDefTable` edges, when they give a usable one.
+fn edge_width(edges: &[f32], i: usize) -> Option<f32> {
+    edge_span(edges, i, i + 1)
+}
+
+/// How far (points) two rows' cell edges may differ and still be the same column boundary.
+const EDGE_TOL: f32 = 0.5;
+
+/// A row of a .doc table carries its own cell edges, while the model's rows share one grid. The
+/// grid is every row's edges together (two wide cells under a row of four narrow ones, or rows
+/// whose edges only partly coincide), and each cell spans the grid columns its own edges cover.
+/// `None` when the rows agree (the first row's grid then stands), or when a row has no usable edges
+/// or its cells can't be mapped onto the grid: the grid and spans then stay as they were.
+fn align_rows(rows: &mut [Row], row_edges: &[Vec<f32>]) -> Option<Vec<f32>> {
+    if rows.is_empty() || rows.len() != row_edges.len() {
+        return None;
+    }
+    if row_edges.iter().any(|e| e.len() < 2 || e.iter().any(|x| !x.is_finite()) || e.windows(2).any(|w| w[0] >= w[1])) {
+        return None;
+    }
+    // The grid's boundaries: every row's edges, those within `EDGE_TOL` of each other as one.
+    let mut all: Vec<f32> = row_edges.iter().flatten().copied().collect();
+    all.sort_by(f32::total_cmp);
+    let mut bounds: Vec<f32> = Vec::new();
+    for e in all {
+        if bounds.last().is_none_or(|&l| e - l > EDGE_TOL) {
+            bounds.push(e);
+        }
+    }
+    if bounds.len() > MAX_COLS + 1 {
+        return None;
+    }
+    let col_of = |e: f32| bounds.iter().position(|f| (f - e).abs() <= EDGE_TOL);
+    let mut cols_of_row: Vec<Vec<usize>> = Vec::with_capacity(row_edges.len());
+    for edges in row_edges {
+        let cols = edges.iter().map(|&e| col_of(e)).collect::<Option<Vec<usize>>>()?;
+        if !cols.windows(2).all(|w| w[0] < w[1]) {
+            return None;
+        }
+        cols_of_row.push(cols);
+    }
+    if cols_of_row.iter().all(|c| c.len() == bounds.len()) {
+        return None;
+    }
+    // Work out every row's spans before changing any, so a row that can't be mapped leaves all as they were.
+    let mut plans: Vec<(Vec<u32>, u32, u32)> = Vec::with_capacity(rows.len());
+    for (row, cols) in rows.iter().zip(&cols_of_row) {
+        let mut at = 0usize;
+        let mut spans = Vec::with_capacity(row.cells.len());
+        for c in &row.cells {
+            let span = c.props.span.max(1) as usize;
+            let (Some(&l), Some(&r)) = (cols.get(at), cols.get(at + span)) else { return None };
+            spans.push(((r - l) as u32).min(63));
+            at += span;
+        }
+        let first = cols.first().copied().unwrap_or(0);
+        let last = cols.get(at).copied().unwrap_or(first);
+        plans.push((spans, first as u32, (bounds.len() - 1).saturating_sub(last) as u32));
+    }
+    for (row, (spans, before, after)) in rows.iter_mut().zip(plans) {
+        for (c, s) in row.cells.iter_mut().zip(spans) {
+            c.props.span = s;
+        }
+        row.props.grid_before = before;
+        row.props.grid_after = after;
+    }
+    Some(bounds.windows(2).map(|w| w[1] - w[0]).collect())
 }
 
 /// Each cell's vertical alignment from the TC80s of a `sprmTDefTable` operand: after the

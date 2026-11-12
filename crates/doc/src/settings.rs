@@ -376,6 +376,11 @@ pub struct Settings {
     /// descent and leaves out its line gap.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub no_leading: bool,
+    /// `w:wpJustification` / `Copts80.fWPJust` (WordPerfect-style justification): below
+    /// compatibility mode 15 a justified line keeps a word that overruns its right edge by at
+    /// most 0.0391 of the line's width, and the line is squeezed to end at the edge.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub wp_justification: bool,
     /// Keep contextual paragraph spacing inside legacy table cells (`allowSpaceOfSameStyleInTable`).
     /// Word ignores the layout override in compatibility mode 15, but the flag still round-trips.
     pub allow_space_of_same_style_in_table: bool,
@@ -738,6 +743,7 @@ impl Default for Settings {
             ext_leading_2pt_only: false,
             split_pg_break_and_para_mark: false,
             no_leading: false,
+            wp_justification: false,
             allow_space_of_same_style_in_table: false,
             grid_h: DEFAULT_GRID,
             grid_v: DEFAULT_GRID,
@@ -774,5 +780,18 @@ mod tests {
         for bad in ["", "0006", "size", "00000", "zz"] {
             assert_eq!(StylePaneSort::parse(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn wp_justification_is_off_by_default_and_saved_only_when_on() {
+        let mut s = super::Settings::default();
+        assert!(!s.wp_justification);
+        let v = serde_json::to_value(&s).unwrap();
+        assert!(v.get("wpJustification").is_none(), "skipped when false");
+        s.wp_justification = true;
+        let v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["wpJustification"], serde_json::Value::Bool(true));
+        let back: super::Settings = serde_json::from_value(v).unwrap();
+        assert!(back.wp_justification);
     }
 }

@@ -261,6 +261,8 @@ fn missing_font_metrics_no_leading(family: &str) -> Option<(f64, f64)> {
 /// rest of the em (its Courier-New-like substitute is 1.133 em).
 /// Palatino Linotype: 12 pt lines 16.20 pt apart (1.35 em); a 12 pt header at 36 pt has its first
 /// baseline at 48.60 pt, so the ascent is 1.05 em (its P052 substitute is 1.20 em).
+/// A font named "Palatino" is drawn by Word in Palatino Linotype and has its line (11 pt lines
+/// 14.65 to 14.8 pt apart).
 /// Franklin Gothic Book: 12 pt lines 13.56 pt apart (1.13 em); `/Ascent` 917, the descent is the
 /// rest of the line (its Carlito substitute is 1.2207 em).
 /// Tahoma: `/Ascent` 1000, `/Descent` -207; 12 pt lines 14.43 pt apart (1.207 em).
@@ -281,7 +283,7 @@ fn missing_font_metrics_no_leading(family: &str) -> Option<(f64, f64)> {
 fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
     match family.trim().to_ascii_lowercase().as_str() {
         "lucida console" => Some((0.789, 0.211)),
-        "palatino linotype" => Some((1.05, 0.30)),
+        "palatino linotype" | "palatino" => Some((1.05, 0.30)),
         "franklin gothic book" => Some((0.917, 0.213)),
         "tahoma" => Some((1.0, 0.207)),
         "lucida bright" => Some((0.967, 0.205)),
