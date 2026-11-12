@@ -1,6 +1,9 @@
 use super::bidi::{even_row, reorder_line};
 use super::grid::{Exclusion, Grid};
-use super::justify::{HYPHENATION_ZONE, MAX_SPACE_SHRINK, RTF_MAX_SPACE_SHRINK, hyphen_glyph, rtf_space_room, shrink_line_spaces, space_room};
+use super::justify::{
+    HYPHENATION_ZONE, MAX_SPACE_SHRINK, RTF_MAX_SPACE_SHRINK, hyphen_glyph, rtf_space_room, shrink_line_spaces, space_room, wp_line_room,
+    wp_squeeze_line,
+};
 use super::model::{ClKind, Cluster, Line, LineEnd, ParaEnv};
 use super::paragraph::word_widths;
 use super::tabs::{next_set_tab, next_tab, pl_text_at, ptab_stop, resolve_tab};
@@ -32,6 +35,10 @@ struct Breaker<'e> {
     /// they are all in fixed-pitch fonts; never on lines with tabs. With `\wraptrsp` justified
     /// paragraphs only (the only ones measured).
     rtf_squeeze: bool,
+    /// WordPerfect-style justification (`Settings::wp_justification`, below compatibility mode
+    /// 15): a justified line fits a word that overruns it by a small share of the line's width
+    /// (`wp_line_room`) and is squeezed to end at its edge (`wp_squeeze_line`); tabs or not.
+    wp_squeeze: bool,
     /// Whether each of the paragraph's styles is in a fixed-pitch font (for `rtf_squeeze` only).
     fixed_pitch: Vec<bool>,
     /// With `\wraptrsp` (`Settings::wrap_trail_spaces`) that word stays only when its first
@@ -225,6 +232,10 @@ impl<'e> Breaker<'e> {
             hanging_at: if rp.indent_first < 0.0 { Some(rp.indent_left) } else { None },
             tab_origin: if settings.odf.is_some_and(|o| o.tabs_from_indent) { rp.indent_left } else { 0.0 },
             shrink_spaces: rp.align == Align::Justify && settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT && !settings.rtf_justification,
+            wp_squeeze: rp.align == Align::Justify
+                && settings.wp_justification
+                && settings.compat_mode < wordcraft_doc::COMPAT_MODE_CURRENT
+                && !settings.rtf_justification,
             rtf_squeeze: settings.rtf_justification
                 && match rp.align {
                     Align::Justify => true,
@@ -629,7 +640,10 @@ impl<'e> Breaker<'e> {
         // A line that only fits with shrunk spaces is shrunk, the last line of the paragraph too.
         let rtf_squeeze = self.rtf_squeeze && sc.proportional_spaces == 0;
         let shrink = display.is_none() && (self.shrink_spaces || rtf_squeeze) && slack < 0.0 && last_tab.is_none();
-        if shrink {
+        if display.is_none() && self.wp_squeeze && slack < 0.0 {
+            let room = wp_line_room(sc.left, sc.right_edge);
+            wp_squeeze_line(pl, &mut sc.xs, (c0, c1, align_from), (content_end, slack), room);
+        } else if shrink {
             let cap = if rtf_squeeze { RTF_MAX_SPACE_SHRINK } else { MAX_SPACE_SHRINK };
             shrink_line_spaces(pl, &mut sc.xs, (c0, c1), (content_end, slack), cap, (rtf_squeeze, rtf_squeeze));
         } else if justify && slack > 0.0 {
@@ -970,6 +984,8 @@ impl Scan {
             };
             let first = bk.wrap_trail_spaces.then_some((first_end - self.right_edge, self.word_space));
             rtf_space_room(self.single_space_w, word_end - self.right_edge, self.word_from, self.right_edge, first)
+        } else if bk.wp_squeeze {
+            wp_line_room(self.left, self.right_edge)
         } else if bk.shrink_spaces && !self.has_tab {
             space_room(self.space_w, self.x + advance - pl.auto_space_after(j) - self.word_from)
         } else {
