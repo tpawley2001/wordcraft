@@ -55,6 +55,7 @@ mod table_width;
 mod table_width_rows;
 mod text_box_flow;
 mod text_box_margins;
+mod toggle_char_style;
 mod toggle_para_style;
 mod tracked_format_changes;
 mod word6;
