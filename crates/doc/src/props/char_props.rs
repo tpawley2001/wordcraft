@@ -423,6 +423,10 @@ pub struct CharProps {
     /// Hyperlink target: a URL, or `#bookmark` for an internal link.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link: Option<String>,
+    /// A hyperlink's ScreenTip (`w:hyperlink/@w:tooltip`, a HYPERLINK field's `\o`): the text shown on hover
+    /// instead of the address. Only meaningful on a run that has `link`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link_tip: Option<Box<str>>,
     /// Tracked insertion: index into `Document::revisions`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ins: Option<u32>,
@@ -556,6 +560,7 @@ impl CharProps {
     /// style that came with it. What a paragraph mark or text typed next to a link gets.
     pub fn unlinked(&self) -> CharProps {
         let mut c = self.clone();
+        c.link_tip = None;
         if c.link.take().is_some() && c.style.as_deref() == Some("Hyperlink") {
             c.style = None;
         }
@@ -586,7 +591,7 @@ impl CharProps {
     }
 
     fn minus_document_marks(&mut self, base: &CharProps) {
-        drop_same_fields!(self, base; link, ins, del, ligatures, num_form, num_spacing, stylistic_sets, contextual_alternates);
+        drop_same_fields!(self, base; link, link_tip, ins, del, ligatures, num_form, num_spacing, stylistic_sets, contextual_alternates);
     }
 
     /// Apply every `Some` field of `patch` on top of `self`.
@@ -617,7 +622,7 @@ impl CharProps {
     }
 
     fn overlay_document_marks(&mut self, patch: &CharProps) {
-        overlay_fields!(self, patch; link, ins, del, fmt_change, ligatures, num_form, num_spacing, stylistic_sets, contextual_alternates);
+        overlay_fields!(self, patch; link, link_tip, ins, del, fmt_change, ligatures, num_form, num_spacing, stylistic_sets, contextual_alternates);
     }
     pub fn overlaid(mut self, patch: &CharProps) -> CharProps {
         self.overlay(patch);
@@ -642,6 +647,7 @@ impl CharProps {
     pub fn cleared(&self) -> CharProps {
         CharProps {
             link: self.link.clone(),
+            link_tip: self.link_tip.clone(),
             ins: self.ins,
             del: self.del,
             fmt_change: self.fmt_change.clone(),
@@ -652,6 +658,6 @@ impl CharProps {
     }
     /// Just the formatting: without the link, revision marks and tracked formatting change.
     pub fn formatting(&self) -> CharProps {
-        CharProps { link: None, ins: None, del: None, fmt_change: None, ..self.clone() }
+        CharProps { link: None, link_tip: None, ins: None, del: None, fmt_change: None, ..self.clone() }
     }
 }

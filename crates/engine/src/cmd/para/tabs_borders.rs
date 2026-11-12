@@ -68,13 +68,16 @@ pub(super) fn tabs(s: &mut Session, v: &Value) -> CmdResult {
     })
 }
 
-/// A `sides` object: exactly the sides it names, each `{"style", "width", "color"}`.
+/// A `sides` object: exactly the sides it names, each `{"style", "width", "color", "space"}`.
+/// `space` is the distance from the text in points, held to Word's 0 to 31 pt; a side without
+/// a numeric `space` gets the default passed in.
 pub fn border_sides(v: &Value, space_tb: f32, space_lr: f32) -> Result<Borders, CmdError> {
     let obj = v.as_object().ok_or_else(|| CmdError::Params("`sides` is an object".into()))?;
     let side = |k: &str, space: f32| -> Option<Border> {
         let x = obj.get(k).filter(|x| x.is_object())?;
         let style = p::str(x, "style").map(BorderStyle::from_ooxml).unwrap_or(BorderStyle::Single);
         let width = p::f32(x, "width").unwrap_or(0.5).clamp(0.25, 6.0);
+        let space = p::f32(x, "space").map(|s| s.clamp(0.0, 31.0)).unwrap_or(space);
         Some(Border { style, width, color: p::str(x, "color").and_then(Rgb::parse), space })
     };
     Ok(Borders {

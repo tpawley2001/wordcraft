@@ -24,6 +24,7 @@ mod empty_inline_shape;
 mod fixtures;
 mod glossary;
 mod heading_levels;
+mod hyperlink_screen_tips;
 mod legacy_forms;
 mod level_and_section_extras;
 mod ligatures;

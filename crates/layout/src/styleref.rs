@@ -56,8 +56,11 @@ pub enum Number {
 /// A parsed STYLEREF instruction.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StyleRefCode {
-    /// Style name or id, or a heading level `1`–`9`.
+    /// Style name or alias, or a heading level `1`–`9`.
     pub style: String,
+    /// More than one name argument was given (an unquoted name of several words, or text after
+    /// the name): Word then finds no style, whatever the arguments are.
+    pub extra: bool,
     /// `\l`: the last paragraph of the style on the page.
     pub last: bool,
     pub number: Number,
@@ -67,8 +70,9 @@ pub struct StyleRefCode {
     pub suppress: bool,
 }
 
-/// Parse `STYLEREF "Heading 1" \l \n …`. Quoted text stays whole; an unquoted name of several
-/// words is joined back up.
+/// Parse `STYLEREF "Heading 1" \l \n …`. Quoted text stays whole and is always an argument
+/// (even `"\l"`); each unquoted word that is not a switch is an argument of its own. The first
+/// argument is the style name; any further one sets [`StyleRefCode::extra`].
 pub fn parse(instr: &str) -> StyleRefCode {
     let mut words: Vec<(String, bool)> = Vec::new();
     let mut chars = instr.chars().peekable();
@@ -99,6 +103,7 @@ pub fn parse(instr: &str) -> StyleRefCode {
         }
     }
     let mut code = StyleRefCode::default();
+    let mut args = 0usize;
     let mut it = words.into_iter().skip(1);
     while let Some((w, quoted)) = it.next() {
         let switch = if quoted { None } else { w.strip_prefix('\\').map(|r| r.chars().next().map(|c| c.to_ascii_lowercase())) };
@@ -114,12 +119,14 @@ pub fn parse(instr: &str) -> StyleRefCode {
                 it.next();
             }
             Some(_) => {}
-            None if code.style.is_empty() => code.style = w,
-            None if !quoted => {
-                code.style.push(' ');
-                code.style.push_str(&w);
+            None => {
+                args = args.saturating_add(1);
+                if args == 1 {
+                    code.style = w;
+                } else {
+                    code.extra = true;
+                }
             }
-            None => {}
         }
     }
     code
@@ -166,8 +173,10 @@ pub enum At {
 pub struct StyleIndex {
     entries: Vec<Entry>,
     by_path: HashMap<Path, usize>,
-    /// Lower-cased style id or name → (id, character style).
+    /// Lower-cased style name, alias or `name,aliases` list → (id, character style).
     styles: HashMap<String, (String, bool)>,
+    /// Lower-cased style id → id: only for a heading level whose style has no `heading N` name.
+    ids: HashMap<String, String>,
     /// Paragraph style id → the entries of that style, in order.
     para_entries: HashMap<String, Vec<usize>>,
     /// Character style id → the entries with a run of that style, in order.
@@ -180,11 +189,30 @@ fn clean(s: &str) -> String {
 
 impl StyleIndex {
     pub fn build(doc: &Document) -> StyleIndex {
-        let mut styles = HashMap::new();
+        // Word finds a style by its name, by any one of its aliases (`w:aliases`, or the parts
+        // of a name that holds commas) or by the whole `name,aliases` list, never by its id. The
+        // first style to claim a key keeps it, and names are indexed before any alias so that a
+        // name beats another style's alias.
+        let mut styles: HashMap<String, (String, bool)> = HashMap::new();
+        let mut ids: HashMap<String, String> = HashMap::new();
         for st in &doc.styles.styles {
             let v = (st.id.clone(), st.kind == StyleKind::Character);
-            styles.entry(st.name.to_lowercase()).or_insert_with(|| v.clone());
-            styles.insert(st.id.to_lowercase(), v);
+            let name = st.name.trim();
+            if !name.is_empty() {
+                styles.entry(name.to_lowercase()).or_insert(v);
+            }
+            ids.entry(st.id.to_lowercase()).or_insert_with(|| st.id.clone());
+        }
+        for st in &doc.styles.styles {
+            let v = (st.id.clone(), st.kind == StyleKind::Character);
+            let aliases = st.aliases.as_deref().unwrap_or("");
+            let parts: Vec<&str> = st.name.split(',').chain(aliases.split(',')).map(str::trim).filter(|a| !a.is_empty()).collect();
+            let full = parts.join(",").to_lowercase();
+            for key in parts.iter().map(|a| a.to_lowercase()).chain(std::iter::once(full)) {
+                if !key.is_empty() {
+                    styles.entry(key).or_insert_with(|| v.clone());
+                }
+            }
         }
         let mut counters = Counters::default();
         let mut ordinals: HashMap<String, u32> = HashMap::new();
@@ -243,7 +271,7 @@ impl StyleIndex {
             }
             entries.push(Entry { path, style, text: clean(&p.plain_text()), runs, label, levels, level, ordinal });
         }
-        StyleIndex { entries, by_path, styles, para_entries, char_entries }
+        StyleIndex { entries, by_path, styles, ids, para_entries, char_entries }
     }
 
     /// The entry of the body paragraph at `path`.
@@ -282,8 +310,8 @@ impl StyleIndex {
             let id = self
                 .styles
                 .get(&format!("heading {n}"))
-                .or_else(|| self.styles.get(&format!("heading{n}")))
                 .map(|s| s.0.clone())
+                .or_else(|| self.ids.get(&format!("heading{n}")).cloned())
                 .unwrap_or_else(|| format!("Heading{n}"));
             return Ok(Target::Para(id));
         }
@@ -338,6 +366,10 @@ impl StyleIndex {
     /// The field's result.
     pub fn eval(&self, instr: &str, at: At) -> String {
         let code = parse(instr);
+        if code.extra {
+            // Word reads a second argument as no style name at all.
+            return not_defined("");
+        }
         let target = match self.target(&code.style) {
             Ok(t) => t,
             Err(e) => return e,
@@ -464,7 +496,10 @@ mod tests {
         assert_eq!(c.number, Number::Plain);
         assert_eq!(parse("STYLEREF 1 \\s").style, "1");
         assert_eq!(parse("STYLEREF 1 \\s").number, Number::Chapter);
-        assert_eq!(parse("STYLEREF Heading 2 \\p").style, "Heading 2");
+        let two = parse("STYLEREF Heading 2 \\p");
+        assert_eq!((two.style.as_str(), two.extra, two.position), ("Heading", true, true));
+        assert!(!parse(r#"STYLEREF "Heading 2" \* MERGEFORMAT"#).extra);
+        assert!(parse(r#"STYLEREF "Heading 2" "\l""#).extra);
         assert_eq!(parse("STYLEREF").style, "");
     }
 
