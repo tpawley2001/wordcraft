@@ -50,8 +50,6 @@ impl Reader {
             "nestrow" => self.end_nest_row(),
             "line" | "softline" => self.ch('\n'),
             "tab" => self.ch('\t'),
-            // A page break has no place in a note separator story.
-            "page" | "softpage" if self.in_sep() => {}
             "page" | "softpage" => self.ch('\u{000C}'),
             "column" => self.ch('\u{000E}'),
             "emdash" => self.ch('—'),
@@ -531,6 +529,8 @@ impl Reader {
                     }
                     return true;
                 }
+                // A page break has no place in a note separator story.
+                "page" | "softpage" if self.in_sep() => return true,
                 // The separator lines, only in a separator story (elsewhere nothing).
                 "chftnsep" | "chftnsepc" if self.in_sep() => {
                     let f = self.st.fmt.clone();

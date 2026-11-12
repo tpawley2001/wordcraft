@@ -249,7 +249,7 @@ fn docx_default_separators_saved_as_rtf_read_back_as_the_defaults() {
     let line = |c: bool| -> Option<Blocks> {
         let mut p = Paragraph::default();
         p.insert_object(0, InlineObject::note_separator(c), &Default::default()).unwrap();
-        Some(vec![std::sync::Arc::new(wordcraft_doc::Block::Para(p))].into())
+        Some(vec![std::sync::Arc::new(wordcraft_doc::Block::Para(p))])
     };
     let mut d = open(&format!(r"\pard\plain Body{NOTE}\par"));
     d.footnote_separators.separator = line(false);
