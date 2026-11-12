@@ -1,7 +1,7 @@
 use super::numbers::{body_bookmark_paths, para_numbers, ref_number};
 use super::properties::{
-    BodyCounts, bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property_names_pages,
-    doc_property_result, new_property_value, set_summary_property, summary_property, text_result,
+    BodyCounts, bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property_arg,
+    doc_property_names_pages, doc_property_result, new_property_value, set_summary_property, summary_property, text_result,
 };
 use super::toc::{heading_style_level, update_toc, update_toc_pages};
 use super::{
@@ -338,7 +338,7 @@ fn styleref_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
             }
             let ix = styles.get_or_insert_with(|| wordcraft_layout::styleref::StyleIndex::build(doc));
             if let Some(i) = ix.index_of(&path) {
-                out.push((StoryRef::Body, path.clone(), k, text_result(instr, ix.eval(instr, wordcraft_layout::styleref::At::Body(i)))));
+                out.push((StoryRef::Body, path.clone(), k, ix.eval(instr, wordcraft_layout::styleref::At::Body(i))));
             }
         }
     }
@@ -347,6 +347,12 @@ fn styleref_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
 
 /// What Word prints for a `REF` to a bookmark the document doesn't have.
 pub const REFERENCE_NOT_FOUND: &str = "Error! Reference source not found.";
+
+/// What Word prints for a `DOCVARIABLE` field without a variable name.
+pub const DOC_VARIABLE_NOT_DEFINED: &str = "Error! Document Variable not defined.";
+
+/// What Word prints for a `DOCVARIABLE` field whose variable is missing or empty.
+pub const NO_DOC_VARIABLE: &str = "Error! No document variable supplied.";
 
 /// What Word shows for a `PAGEREF` or `NOTEREF` to a bookmark the document doesn't have.
 pub const BOOKMARK_NOT_DEFINED: &str = "Error! Bookmark not defined.";
@@ -472,7 +478,7 @@ pub(super) fn has_switch(instr: &str, sw: char) -> bool {
 
 /// Update fields of the story being edited, as Word's F9 does: dates, REF/PAGEREF, the document
 /// information fields (TITLE, SUBJECT, AUTHOR, KEYWORDS, COMMENTS, LASTSAVEDBY, REVNUM, NUMWORDS,
-/// NUMCHARS, FILENAME, DOCPROPERTY) in the body, or in the header, footer, note or text box the
+/// NUMCHARS, FILENAME, DOCPROPERTY, DOCVARIABLE) in the body, or in the header, footer, note or text box the
 /// caret is in (the body's fields stay as they are then). SEQ numbering, citations and TOC are
 /// body-only, so they run only when the caret is in the body.
 pub fn update_fields(s: &mut Session) -> Result<(), CmdError> {
@@ -596,6 +602,29 @@ fn noteref_mark(doc: &wordcraft_doc::Document, at: &Pos, marks: &std::collection
 /// every part story, wherever the caret is (what printing needs). With `toc_pages_only` the table
 /// of contents keeps its entries and only its page numbers are updated ([`update_toc_pages`]).
 pub fn update_fields_in(s: &mut Session, all: bool, toc_pages_only: bool) -> Result<(), CmdError> {
+    update_fields_with(s, all, toc_pages_only, true)
+}
+
+/// A `DOCVARIABLE` field's result: the variable its first argument names (quoted, or the first
+/// word), with the field's case switch, or Word's error text, stored as is.
+fn doc_variable_result(doc: &wordcraft_doc::Document, instr: &str) -> String {
+    match doc_property_arg(instr) {
+        None => DOC_VARIABLE_NOT_DEFINED.to_string(),
+        Some(n) => match doc.doc_var(&n) {
+            Some(v) => text_result(instr, v.to_string()),
+            None => NO_DOC_VARIABLE.to_string(),
+        },
+    }
+}
+
+/// The refresh after Insert › Field: as [`update_fields`], except that `DOCVARIABLE` fields keep
+/// their stored result. Only Update Field recomputes a document variable's result (Word keeps it
+/// on open and on export too).
+pub fn update_fields_after_insert(s: &mut Session) -> Result<(), CmdError> {
+    update_fields_with(s, false, false, false)
+}
+
+fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars: bool) -> Result<(), CmdError> {
     let caret_story = s.sel.focus.story;
     let in_body = all || caret_story == StoryRef::Body;
     if in_body {
@@ -743,6 +772,8 @@ pub fn update_fields_in(s: &mut Session, all: bool, toc_pages_only: bool) -> Res
                     let date = |value: &str, pic: &str| document_date_result(instr, value, pic);
                     updates.extend(doc_property_result(&s.doc, &core, &counts, date, instr).map(|v| (k, v)));
                 }
+                // DOCVARIABLE <name>: the document variable (names ignore case), or Word's error text.
+                "DOCVARIABLE" => updates.extend(doc_vars.then(|| (k, doc_variable_result(&s.doc, instr)))),
                 "FILENAME" => {
                     let (fn_name, fn_path) = s.resolved_filenames();
                     let text = if has_switch(instr, 'p') { fn_path } else { fn_name };

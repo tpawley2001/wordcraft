@@ -43,6 +43,7 @@ const OWNED: &[&str] = &[
     "w:characterSpacingControl",
     "w:footnotePr",
     "w:endnotePr",
+    "w:docVars",
     "m:mathPr",
     "w:captions",
 ];

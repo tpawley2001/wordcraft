@@ -298,6 +298,9 @@ impl Reader {
             // Cut to `MAX_INFO_TEXT` at the group's end; this bounds what a hostile file makes us hold.
             Dest::Info(_) if self.info_text.len() <= super::state::MAX_INFO_TEXT => self.info_text.push_str(s),
             Dest::Info(_) => {}
+            // Bounded: a path past `MAX_TEMPLATE_CHARS` is cut at the group's end.
+            Dest::Template if self.template_text.len() < super::state::MAX_TEMPLATE_CHARS * 4 => self.template_text.push_str(s),
+            Dest::Template => {}
             Dest::Generator => {
                 if let Some(g) = self.generator.as_mut()
                     && g.len() < 256
@@ -379,6 +382,7 @@ impl Reader {
             | Dest::OldSect
             | Dest::Pn
             | Dest::UserProps
+            | Dest::DocVar
             | Dest::LatentStyles => {}
         }
     }
@@ -387,7 +391,8 @@ impl Reader {
     /// `\oldcprops` words applied (a `\plain` among them starts from none).
     fn old_fmt(&mut self, words: &[(String, Option<i32>)]) -> Fmt {
         let fmt = Fmt { link: None, link_tip: None, ins: None, del: None, fmt_change: None, ..self.st.fmt.clone() };
-        let saved = std::mem::replace(&mut self.st, St { dest: Dest::OldProps(false), fmt, ..Default::default() });
+        let ch_pattern = self.st.ch_pattern;
+        let saved = std::mem::replace(&mut self.st, St { dest: Dest::OldProps(false), fmt, ch_pattern, ..Default::default() });
         // Border words replayed here describe the old character border, never a page or cell side.
         let sides = (self.page_side.take(), self.cell_side.take());
         for (w, p) in words {

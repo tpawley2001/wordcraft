@@ -33,7 +33,7 @@ fn the_number_text_splits_at_the_number_and_joins_back() {
 #[test]
 fn a_typed_percent_is_text_not_a_placeholder() {
     assert_eq!(join_number_text("50%", "%2"), "50%12");
-    let f = NumberForm { style: "decimal".into(), before: "%2 ".into(), after: "%".into(), align: "left".into() };
+    let f = NumberForm { style: "decimal".into(), before: "%2 ".into(), after: "%".into(), align: "left".into(), ..NumberForm::default() };
     assert_eq!(f.params(), json!({"format": "decimal", "text": "2 %1", "align": "left"}));
     assert_eq!(f.label(3), "2 3");
 }
@@ -68,7 +68,7 @@ fn the_form_opens_with_the_caret_lists_format() {
     a.run("para.defineNumber", json!({"format": "lowerLetter", "text": "(%1)", "align": "center"})).unwrap();
     a.run("ui.dialog", json!({"name": "defineNumber"})).unwrap();
     let Some(Dialog::DefineNumber { form }) = &a.dialog else { panic!("dialog") };
-    let want = NumberForm { style: "lowerLetter".into(), before: "(".into(), after: ")".into(), align: "center".into() };
+    let want = NumberForm { style: "lowerLetter".into(), before: "(".into(), after: ")".into(), align: "center".into(), ..NumberForm::default() };
     assert_eq!(**form, want);
     // A bullet list starts from the plain form.
     let mut b = app();
@@ -80,7 +80,7 @@ fn the_form_opens_with_the_caret_lists_format() {
 #[test]
 fn ok_numbers_the_caret_paragraph_with_the_form() {
     let mut a = app();
-    let form = NumberForm { style: "upperRoman".into(), before: "Step ".into(), after: ":".into(), align: "right".into() };
+    let form = NumberForm { style: "upperRoman".into(), before: "Step ".into(), after: ":".into(), align: "right".into(), ..NumberForm::default() };
     a.run("para.defineNumber", form.params()).unwrap();
     let level = caret_level0(&a);
     assert_eq!((level.format, level.text.as_str(), level.align), (NumFormat::UpperRoman, "Step %1:", Align::Right));
