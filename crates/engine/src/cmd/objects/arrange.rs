@@ -169,16 +169,7 @@ fn move_object_once(s: &mut Session, pos: &Pos, page: usize, x: f32, y: f32, (w,
     let at = if anchor.story == pos.story && anchor.path == pos.path && !on_page && layout.object(pos, page).is_some_and(|o| o.page == page) {
         pos.clone()
     } else {
-        let obj = s.doc.para_at(pos).and_then(|p| p.object_at(pos.off)).cloned().ok_or_else(|| CmdError::Failed("object vanished".into()))?;
-        let len = wordcraft_doc::para::OBJ.len_utf8();
-        s.doc.delete_range(pos, &Pos { off: pos.off + len, ..pos.clone() })?;
-        let mut at = anchor;
-        if at.story == pos.story && at.path == pos.path && at.off > pos.off {
-            at.off = at.off.saturating_sub(len);
-        }
-        let at = s.doc.clamp(&at);
-        s.doc.insert_object(&at, obj, &wordcraft_doc::CharProps::default())?;
-        at
+        move_anchor(s, pos, anchor)?
     };
     // First on the page where it was dropped, so the text wraps around it as it will in the end.
     edit_float(s, &at, |f| {
@@ -200,9 +191,52 @@ fn move_object_once(s: &mut Session, pos: &Pos, page: usize, x: f32, y: f32, (w,
         return Ok(at);
     }
     // Then offsets from its paragraph, as laid out with the object there.
+    from_paragraph(s, &at, page, (x, y))?;
+    // A `wp:wrapSquare` object positioned down from its paragraph that ends below the page's
+    // limit takes the paragraph to the next page. Dropped there, it goes on the paragraph that
+    // starts the page instead (one at the top of a page never moves for its objects), so it stays
+    // where it was dropped and still positioned from a paragraph.
     s.touch();
-    let origin = s.layout().object(&at, page).ok_or_else(|| CmdError::Failed("the object isn't laid out".into()))?.origin;
+    let layout = s.layout();
+    let square = s.doc.para_at(&at).and_then(|p| p.object_at(at.off)).and_then(InlineObject::frame).is_some_and(|(_, _, f)| f.wrap == Wrap::Square);
+    if !square || layout.object(&at, page).is_none_or(|o| o.page == page) {
+        return Ok(at);
+    }
+    let top = layout.pages.get(page).map_or(0.0, |pg| pg.body.y);
+    let Some(first) = anchor_paragraph(&s.doc, &layout, page, (x + w / 2.0, top), story).filter(|first| *first != at.path) else {
+        return Ok(at);
+    };
+    let at = move_anchor(s, &at, Pos { story, path: first, off: 0 })?;
     edit_float(s, &at, |f| {
+        (f.h_rel, f.v_rel) = (Anchor::Page, Anchor::Page);
+        f.x = x.clamp(-MAX_OFFSET, MAX_OFFSET);
+        f.y = y.clamp(-MAX_OFFSET, MAX_OFFSET);
+    })?;
+    from_paragraph(s, &at, page, (x, y))?;
+    Ok(at)
+}
+
+/// Move the object at `pos` to `anchor` (its character goes there); where it is now.
+fn move_anchor(s: &mut Session, pos: &Pos, anchor: Pos) -> Result<Pos, CmdError> {
+    let obj = s.doc.para_at(pos).and_then(|p| p.object_at(pos.off)).cloned().ok_or_else(|| CmdError::Failed("object vanished".into()))?;
+    let len = wordcraft_doc::para::OBJ.len_utf8();
+    s.doc.delete_range(pos, &Pos { off: pos.off + len, ..pos.clone() })?;
+    let mut at = anchor;
+    if at.story == pos.story && at.path == pos.path && at.off > pos.off {
+        at.off = at.off.saturating_sub(len);
+    }
+    let at = s.doc.clamp(&at);
+    s.doc.insert_object(&at, obj, &wordcraft_doc::CharProps::default())?;
+    Ok(at)
+}
+
+/// Turn the object at `at`, laid out at (`x`, `y`) on `page`, into offsets from its column and
+/// paragraph that keep it there.
+fn from_paragraph(s: &mut Session, at: &Pos, page: usize, (x, y): (f32, f32)) -> Result<(), CmdError> {
+    use wordcraft_doc::para::Anchor;
+    s.touch();
+    let origin = s.layout().object(at, page).ok_or_else(|| CmdError::Failed("the object isn't laid out".into()))?.origin;
+    edit_float(s, at, |f| {
         // On its paragraph now: a page it was anchored to is gone, not only hidden.
         f.page = 0;
         f.h_rel = Anchor::Column;
@@ -210,7 +244,7 @@ fn move_object_once(s: &mut Session, pos: &Pos, page: usize, x: f32, y: f32, (w,
         f.x = (x - origin.x).clamp(-MAX_OFFSET, MAX_OFFSET);
         f.y = (y - origin.y).clamp(-MAX_OFFSET, MAX_OFFSET);
     })?;
-    Ok(at)
+    Ok(())
 }
 
 /// Turn the selected floating object's alignment (left, centred, …) into an offset from its

@@ -3,7 +3,7 @@ use super::cache::has_page_number_fields;
 use super::ctx::Ctx;
 use super::floats::{
     FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, late_floats, place_late,
-    place_objects,
+    place_objects, square_float_past,
 };
 use super::notes::{DECOR_STORY, NoteBox, para_notes};
 use super::page::{PageBuilder, PageFrame, item_bottom};
@@ -599,6 +599,22 @@ impl<'a> Flow<'a> {
         }
     }
 
+    /// Whether a `wp:wrapSquare` object this paragraph anchors with its first piece ends past the
+    /// page's limit and would fit on the next page: the body's bottom from `compatibilityMode` 15
+    /// on, the paper's bottom edge before it (an object may hang into the bottom margin there).
+    fn square_float_past(&self, ctx: &Ctx, pb: &PageBuilder) -> bool {
+        if self.l0 != 0 || self.float_rects.is_empty() {
+            return false;
+        }
+        let next_top = if pb.col + 1 < pb.cols.len() { pb.top } else { self.body_top };
+        let (limit, room) = if ctx.doc.settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT {
+            (pb.bottom, pb.next_room(self.body_top))
+        } else {
+            (pb.sect.page_h, pb.sect.page_h - next_top)
+        };
+        square_float_past(self.p, &self.float_rects, self.anchor_y, limit, room)
+    }
+
     /// Put the lines `l0..fit.l1` on the page, with their notes, objects and line numbers.
     fn emit(&mut self, ctx: &mut Ctx, pb: &mut PageBuilder, rooms: Rooms, (lead, fit, notes): (f32, Fit, &[(usize, u32)])) {
         let (l0, l1, n) = (self.l0, fit.l1, self.n());
@@ -952,6 +968,9 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
         let y0 = pb.y;
         f.reanchor(ctx, pb, (y0, applied_before), &[]);
         f.anchor_y = y0 - applied_before;
+    }
+    if !pb.fresh() && !pb.web && f.square_float_past(ctx, pb) {
+        f.move_on(ctx, pb);
     }
     while f.l0 < f.n() {
         f.place_due_late(ctx, pb);

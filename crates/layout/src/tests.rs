@@ -77,6 +77,7 @@ mod rtf_wraptrsp_squeeze;
 mod rtl_gutter_vertical;
 mod section_pages_blank;
 mod split_break_mark;
+mod square_float_page_fit;
 mod styleref;
 mod styleref_args;
 mod styleref_case;
