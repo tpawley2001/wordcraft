@@ -22,6 +22,7 @@ use crate::theme::{Tokens, semibold};
 mod bookmarks;
 mod building_blocks;
 mod chrome;
+pub mod define_number;
 mod dispatch;
 mod find;
 mod font;
@@ -560,6 +561,10 @@ pub enum Dialog {
     DefineList {
         form: Box<crate::dialogs_lists::ListForm>,
     },
+    /// Home › Paragraph › Numbering › Define New Number Format.
+    DefineNumber {
+        form: Box<define_number::NumberForm>,
+    },
     /// Right-click a list item › Adjust List Indents: the caret's level of the caret's list.
     AdjustListIndents {
         form: Box<crate::dialogs_lists::IndentsForm>,
@@ -697,6 +702,7 @@ impl Dialog {
             Dialog::LockTracking { .. } => "lockTracking",
             Dialog::ReadOnlyRecommended { .. } => "readOnlyRecommended",
             Dialog::DefineList { .. } => "defineList",
+            Dialog::DefineNumber { .. } => "defineNumber",
             Dialog::AdjustListIndents { .. } => "adjustListIndents",
             Dialog::TrackOptions { .. } => "trackChangesOptions",
             Dialog::Review(d) => d.name(),
@@ -1070,6 +1076,7 @@ impl Dialog {
                 return Self::report(id, &app.session.run(id, &json!({})).unwrap_or_default());
             }
             "defineList" => Dialog::DefineList { form: Box::new(crate::dialogs_lists::ListForm::read(app)) },
+            "defineNumber" => Dialog::DefineNumber { form: Box::new(define_number::NumberForm::read(app)) },
             "trackChangesOptions" => Dialog::TrackOptions { form: Box::new(crate::dialogs_lists::TrackForm::read(app)) },
             "customizeKeyboard" => Dialog::CustomizeKeyboard { form: Box::new(crate::dialogs_keyboard::KeyboardForm::read(app)), resume: None },
             "customizeRibbon" => {
@@ -1166,6 +1173,8 @@ pub mod dialogs_templates;
 mod tests;
 #[cfg(test)]
 mod tests_border_options;
+#[cfg(test)]
+mod tests_define_number;
 #[cfg(test)]
 mod tests_font_opentype;
 #[cfg(test)]
