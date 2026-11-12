@@ -149,7 +149,14 @@ impl<'a> Builder<'a> {
         let (ascent, descent) = match line {
             Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
             None => {
-                let (a, d) = wordcraft_fonts::word::line_metrics(&face);
+                // "Don't add leading between rows of text" (below compatibility mode 15): the line
+                // is the font's ascent plus descent, without its line gap.
+                let s = &self.env.doc.settings;
+                let (a, d) = if s.no_leading && s.compat_mode < 15 {
+                    wordcraft_fonts::word::line_metrics_no_leading(&face)
+                } else {
+                    wordcraft_fonts::word::line_metrics(&face)
+                };
                 let k = f64::from(size) / face.upem.max(1.0);
                 (a * k, d * k)
             }

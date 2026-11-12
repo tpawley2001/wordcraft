@@ -93,6 +93,7 @@ impl Reader<'_> {
                         s.compat_mode = m.clamp(11, 99);
                     }
                     s.sum_paragraph_spacing = k.children("w:doNotUseHTMLParagraphAutoSpacing").any(on_off);
+                    s.no_leading = k.children("w:noLeading").any(on_off);
                     s.do_not_expand_shift_return = k.children("w:doNotExpandShiftReturn").any(on_off);
                     s.wrap_trail_spaces = k.children("w:wrapTrailSpaces").any(on_off);
                 }
