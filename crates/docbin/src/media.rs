@@ -322,10 +322,14 @@ fn locate(data: &[u8], fc_pic: u32, pics: &mut Pictures) -> Option<Found> {
             at = at.checked_add(1 + n)?;
         }
         let (blip, props) = inline_shape(pic.get(at..end)?, data, pics)?;
-        // The goal size is before cropping; the crop fractions take their share off it.
-        let [cl, ct, cr, cb] = props.crop;
+        // The goal size is before cropping; the signed crop fractions take their share off it
+        // (a negative crop adds room). A shape with no picture has nothing to crop: its box is
+        // the goal size, whatever crop it stores.
+        let [cl, ct, cr, cb] = props.crop_signed;
         let w = (dxa_goal / 20.0 * (1.0 - cl - cr).max(0.01) * scale(mx)).clamp(1.0, 1584.0);
         let h = (dya_goal / 20.0 * (1.0 - ct - cb).max(0.01) * scale(my)).clamp(1.0, 1584.0);
+        let uncropped_w = (dxa_goal / 20.0 * scale(mx)).clamp(1.0, 1584.0);
+        let uncropped_h = (dya_goal / 20.0 * scale(my)).clamp(1.0, 1584.0);
         // A picture horizontal line (one with a BLIP) stays a picture.
         if props.horiz_rule && blip.is_none() {
             let w = props.width_hr.map_or(dxa_goal * scale(mx), |v| v as f32) / 20.0;
@@ -342,7 +346,7 @@ fn locate(data: &[u8], fc_pic: u32, pics: &mut Pictures) -> Option<Found> {
             None => {
                 let linked = props.pib_flags.is_some_and(|f| f & 0x8 != 0) || !props.pib_name.is_empty() || mm == MM_SHAPEFILE;
                 if !linked {
-                    return Some(Found::Empty { w, h, props });
+                    return Some(Found::Empty { w: uncropped_w, h: uncropped_h, props });
                 }
                 let path = if props.pib_name.is_empty() { file } else { props.pib_name.clone() };
                 Some(Found::Linked { w, h, path, props })
