@@ -592,7 +592,7 @@ impl<'a> Flow<'a> {
             && let Some(placed_bottom) = item_bottom(y, &self.pl, l0, l1)
             && placed_bottom > pb.bottom + 0.01
         {
-            pb.bottom = pb.body_floor().max(placed_bottom).min(pb.orig_bottom);
+            pb.bottom = pb.note_floor().max(placed_bottom).min(pb.orig_bottom);
         }
         let mut items = Vec::new();
         let mut edges = Edges { top: if l0 == 0 { rooms.top } else { 0.0 }, bottom: if l1 >= n { rooms.bottom } else { 0.0 }, up: 0.0 };
@@ -789,7 +789,7 @@ fn notes_on_line(ctx: &mut Ctx, pb: &PageBuilder, l: &para::Line, notes: &[(usiz
             && let Some(part) = ctx.doc.parts.get(id).filter(|p| p.kind == wordcraft_doc::PartKind::Footnote)
         {
             let blocks = part.blocks.clone();
-            let BoxLayout { items, height: h, .. } = layout_box(ctx, BoxInput::other(StoryRef::Part(*id), &blocks, pb.sect.text_width(), 0, None));
+            let BoxLayout { items, height: h, .. } = layout_box(ctx, BoxInput::other(StoryRef::Part(*id), &blocks, pb.note_w(), 0, None));
             out.push(NoteBox { id: *id, items, h, cont: false });
         }
     }
@@ -800,8 +800,8 @@ fn notes_on_line(ctx: &mut Ctx, pb: &PageBuilder, l: &para::Line, notes: &[(usiz
 /// and those of this line (`line_notes`) at its foot.
 fn notes_limit(pb: &PageBuilder, new_notes: &[NoteBox], line_notes: &[NoteBox]) -> f32 {
     let height = |notes: &[NoteBox]| notes.iter().map(|n| n.h).sum::<f32>();
-    let extra = height(line_notes) + if pb.notes.is_empty() && new_notes.is_empty() && !line_notes.is_empty() { pb.seps.sep_h(false) } else { 0.0 };
-    pb.bottom - height(new_notes) - if pb.notes.is_empty() && !new_notes.is_empty() { pb.seps.sep_h(false) } else { 0.0 } - extra
+    let extra = height(line_notes) + if pb.notes.is_empty() && new_notes.is_empty() && !line_notes.is_empty() { pb.seps().sep_h(false) } else { 0.0 };
+    pb.bottom - height(new_notes) - if pb.notes.is_empty() && !new_notes.is_empty() { pb.seps().sep_h(false) } else { 0.0 } - extra
 }
 
 /// How much of the line has to fit. Multiple spacing above single puts its extra leading below
@@ -825,8 +825,8 @@ fn fit_height(pb: &PageBuilder, l: &para::Line, rp: &wordcraft_doc::resolve::Res
 fn notes_split(pb: &PageBuilder, (new_notes, line_notes): (&[NoteBox], &[NoteBox]), bottom: f32) -> bool {
     line_notes.split_last().is_some_and(|(last, others)| {
         let before: f32 = pb.notes.iter().chain(new_notes).chain(others).map(|n| n.h).sum();
-        let sep = pb.seps.sep_h(pb.notes.first().is_some_and(|n| n.cont));
-        pb.body_floor().max(bottom) + sep + before + last.first_piece() + pb.seps.notice_h() <= pb.orig_bottom + 0.01
+        let sep = pb.seps().sep_h(pb.notes.first().is_some_and(|n| n.cont));
+        pb.note_floor().max(bottom) + sep + before + last.first_piece() + pb.seps().notice_h() <= pb.orig_bottom + 0.01
     })
 }
 
