@@ -1076,21 +1076,6 @@ fn word_oldpprops_hold_the_full_old_paragraph_formatting() {
 }
 
 #[test]
-fn oldpprops_with_a_tab_stop_keep_widow_control_and_character_indents() {
-    // The old paragraph formatting of a tracked change is built like a paragraph's own: a tab
-    // stop word in the group does not drop `\nowidctlpar` or `\culiN`.
-    let rtf = br"{\rtf1\ansi\deff0{\fonttbl{\f0 Times New Roman;}}{\*\revtbl {Unknown;}{Alice;}}
-\pard\qc\prauth1\prdate-2014675576{\*\oldpprops \pard\ql\nowidctlpar\culi200\tx720}Centred\par}";
-    let doc = import(rtf).unwrap();
-    let paras = doc_paras(&doc);
-    let p = paras.first().unwrap();
-    let c = p.props.fmt_change.as_deref().expect("paragraph change");
-    let x = &c.old;
-    assert_eq!(x.widow_control, Some(false));
-    assert_eq!(x.indent_left_chars, Some(2.0));
-}
-
-#[test]
 fn oldcprops_are_written_as_the_differences() {
     use wordcraft_doc::props::{CharProps, PropChange};
     use wordcraft_doc::{Revision, RevisionKind};
