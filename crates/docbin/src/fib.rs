@@ -124,6 +124,10 @@ pub(crate) struct Fib {
     pub(crate) pairs: Vec<u32>,
     /// Set for a Word 6.0/95 file, whose FIB has its own layout (and no Table stream).
     pub(crate) word6: Option<Word6Fib>,
+    /// The version that wrote the file: `FibRgCswNew.nFibNew` when `cswNew` is not 0, else
+    /// `FibBase.nFib` ([MS-DOC] 2.5.1, 2.5.12). Word 97 writes 0x00C1, Word 2000 0x00D9,
+    /// Word 2002 0x0101, Word 2003 0x010C, Word 2007 0x0112.
+    pub(crate) version: u16,
 }
 
 /// The fields of a Word 6.0/95 FIB the reader uses (offsets in the WordDocument stream).
@@ -211,7 +215,8 @@ impl Fib {
             pairs.push(u32le(blob_off + i * 4));
         }
 
-        Ok(Fib { which_tbl_stm: flags & 0x0200 != 0, ccp: sub, pairs, word6: None })
+        let version = version(word, blob_off + blob_len, nfib);
+        Ok(Fib { which_tbl_stm: flags & 0x0200 != 0, ccp: sub, pairs, word6: None, version })
     }
 
     /// The Word 6.0/95 FIB: wIdent 0xA5DC, nFib 101..=105, with the text counts at 0x34 and the
@@ -255,9 +260,46 @@ impl Fib {
             plcf_sed: pair(0x88),
             clx: pair(0x160),
         };
-        Ok(Fib { which_tbl_stm: false, ccp: sub, pairs: Vec::new(), word6: Some(w6) })
+        Ok(Fib { which_tbl_stm: false, ccp: sub, pairs: Vec::new(), word6: Some(w6), version: nfib })
+    }
+}
+
+/// The file's version: `nFibNew`, the first word of `FibRgCswNew`, when the `cswNew` at `csw_at`
+/// (just after the `RgFcLcb` blob) is not 0, else `nfib`. A FIB too short to hold `cswNew` has
+/// none; one too short for `nFibNew` reads it as 0.
+fn version(word: &[u8], csw_at: usize, nfib: u16) -> u16 {
+    let u16_at = |at: usize| -> Option<u16> { Some(u16::from_le_bytes([*word.get(at)?, *word.get(at.checked_add(1)?)?])) };
+    match u16_at(csw_at) {
+        None | Some(0) => nfib,
+        Some(_) => csw_at.checked_add(2).and_then(u16_at).unwrap_or(0),
     }
 }
 
 /// Bytes of the Word 6.0/95 FIB the reader looks at (through `lcbClx` at 0x164).
 const OFF6_END: usize = 0x168;
+
+#[cfg(test)]
+mod tests {
+    use super::version;
+
+    #[test]
+    fn version_is_nfib_without_a_csw_new() {
+        // The FIB ends at the blob: no cswNew at all.
+        assert_eq!(version(&[0u8; 4], 4, 0x00C1), 0x00C1);
+        // cswNew present but truncated to one byte.
+        assert_eq!(version(&[0u8, 0, 0, 0, 2], 4, 0x00C1), 0x00C1);
+        // cswNew = 0.
+        assert_eq!(version(&[0u8, 0, 0, 0, 0, 0, 0x0C, 0x01], 4, 0x00C1), 0x00C1);
+        assert_eq!(version(&[], usize::MAX, 0x00D9), 0x00D9);
+    }
+
+    #[test]
+    fn version_is_nfib_new_with_a_csw_new() {
+        assert_eq!(version(&[0u8, 0, 2, 0, 0x0C, 0x01, 0, 0], 2, 0x00C1), 0x010C);
+        assert_eq!(version(&[0u8, 0, 2, 0, 0x01, 0x01, 0, 0], 2, 0x00C1), 0x0101);
+        // nFibNew = 0 is read as 0, not nFib.
+        assert_eq!(version(&[0u8, 0, 2, 0, 0, 0, 0, 0], 2, 0x00C1), 0);
+        // cswNew without room for nFibNew.
+        assert_eq!(version(&[0u8, 0, 2, 0, 0x0C], 2, 0x00C1), 0);
+    }
+}

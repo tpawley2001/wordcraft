@@ -368,16 +368,20 @@ impl Reader<'_> {
     }
 
     pub(super) fn read_core(&mut self, path: &str) {
+        // Word's DOCPROPERTY tells a summary property with no element (an error) from an empty
+        // one (nothing): each is missing until its element is read, also without a core part.
+        use wordcraft_doc::InFile::Present;
+        self.doc.core.in_file = wordcraft_doc::SummaryInFile::all(wordcraft_doc::InFile::Missing);
         let Ok(Some(root)) = self.xml(path) else { return };
         let c = &mut self.doc.core;
         for k in root.els() {
             let t = k.text().trim().to_string();
             match k.name.as_str() {
-                "dc:title" => c.title = t,
-                "dc:subject" => c.subject = t,
-                "dc:creator" => c.creator = t,
-                "cp:keywords" => c.keywords = t,
-                "dc:description" => c.description = t,
+                "dc:title" => (c.title, c.in_file.title) = (t, Present),
+                "dc:subject" => (c.subject, c.in_file.subject) = (t, Present),
+                "dc:creator" => (c.creator, c.in_file.creator) = (t, Present),
+                "cp:keywords" => (c.keywords, c.in_file.keywords) = (t, Present),
+                "dc:description" => (c.description, c.in_file.description) = (t, Present),
                 "cp:lastModifiedBy" => c.last_modified_by = t,
                 "cp:revision" => c.revision = u32_of(&t).unwrap_or(0),
                 // A date that isn't a W3CDTF date isn't one: leave the field empty.

@@ -966,7 +966,7 @@ mod style_list_indent_tests {
         pairs[2 * crate::fib::pair::PLF_LST + 1] = lfo_at;
         pairs[2 * crate::fib::pair::PLF_LFO] = lfo_at;
         pairs[2 * crate::fib::pair::PLF_LFO + 1] = table.len() as u32 - lfo_at;
-        let fib = crate::fib::Fib { which_tbl_stm: false, ccp: Default::default(), pairs, word6: None };
+        let fib = crate::fib::Fib { which_tbl_stm: false, ccp: Default::default(), pairs, word6: None, version: 0x00C1 };
         let mut d = Document::default();
         d.styles = std::sync::Arc::new(stylesheet(&raw, &ids, &fonts, Default::default()));
         d.numbering = std::sync::Arc::new(crate::list::parse(&table, &fib, &fonts));

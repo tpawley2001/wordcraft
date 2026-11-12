@@ -3,6 +3,7 @@ mod date_fields;
 mod doc_ole_objects;
 mod doc_plain_text;
 mod doc_tracked_changes;
+mod docproperty_absent_counts;
 mod docproperty_builtin;
 mod docproperty_unknown;
 mod docx_to_rtf_cell_margins;

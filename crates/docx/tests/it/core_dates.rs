@@ -211,3 +211,56 @@ fn the_writer_adds_seconds_to_last_printed() {
     assert_eq!(d.core.last_printed, "2026-11-02T09:30Z");
     assert_eq!(d.core.created, "2014-10-28T11:34Z");
 }
+
+/// The reader remembers whether the file had each summary property's element: there with a value,
+/// there but empty, or missing (also when the package has no core part).
+#[test]
+fn the_reader_tells_an_empty_summary_property_from_a_missing_one() {
+    use wordcraft_doc::InFile;
+    let base = wordcraft_docx::write(&Document::new()).unwrap();
+    let with = |elements: &str| {
+        let core = format!(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties {CORE_NS}>{elements}</cp:coreProperties>"#);
+        wordcraft_docx::read(&replace_part(&base, "docProps/core.xml", &core)).unwrap()
+    };
+    let d = with("<dc:title>Report</dc:title><dc:subject/>");
+    assert_eq!((d.core.title.as_str(), d.core.in_file.title), ("Report", InFile::Present));
+    assert_eq!((d.core.subject.as_str(), d.core.in_file.subject), ("", InFile::Present));
+    assert_eq!((d.core.creator.as_str(), d.core.in_file.creator), ("", InFile::Missing));
+    // No core part at all: all five missing.
+    let mut src = zip::ZipArchive::new(Cursor::new(&base[..])).unwrap();
+    let mut out = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    for i in 0..src.len() {
+        let mut f = src.by_index(i).unwrap();
+        let n = f.name().to_string();
+        if n == "docProps/core.xml" {
+            continue;
+        }
+        let mut buf = Vec::new();
+        f.read_to_end(&mut buf).unwrap();
+        out.start_file(n.as_str(), zip::write::SimpleFileOptions::default()).unwrap();
+        out.write_all(&buf).unwrap();
+    }
+    let d = wordcraft_docx::read(&out.finish().unwrap().into_inner()).unwrap();
+    assert_eq!(d.core.in_file, wordcraft_doc::SummaryInFile::all(InFile::Missing));
+    // A new document knows nothing, and its JSON doesn't mention it.
+    assert_eq!(Document::new().core.in_file, wordcraft_doc::SummaryInFile::default());
+    assert!(!serde_json::to_string(&Document::new().core).unwrap().contains("inFile"));
+}
+
+/// The writer writes an empty summary property the file had as an empty element, and leaves out
+/// one that was missing or that nothing is known about.
+#[test]
+fn the_writer_keeps_an_empty_summary_property_only_when_it_was_there() {
+    use wordcraft_doc::InFile;
+    for (state, written) in [(InFile::Present, true), (InFile::Missing, false), (InFile::Unknown, false)] {
+        let mut d = Document::new();
+        d.core.in_file.keywords = state;
+        let xml = part(&wordcraft_docx::write(&d).unwrap(), "docProps/core.xml").unwrap_or_default();
+        let has = xml.contains("<cp:keywords/>") || xml.contains("<cp:keywords></cp:keywords>");
+        assert_eq!(has, written, "{state:?}: {xml}");
+        // A value is written whatever the state.
+        d.core.keywords = "alpha".into();
+        let xml = part(&wordcraft_docx::write(&d).unwrap(), "docProps/core.xml").unwrap();
+        assert!(xml.contains("<cp:keywords>alpha</cp:keywords>"), "{state:?}: {xml}");
+    }
+}
