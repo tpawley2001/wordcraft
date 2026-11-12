@@ -129,6 +129,23 @@ impl WordApp {
         }
     }
 
+    /// Always create backup copy: a save that went through but couldn't keep the previous version says so.
+    /// The save stands; nothing is stored, so a later save without `backupError` says nothing.
+    fn backup_status(&mut self, id: &str, r: &Result<Value, String>) {
+        let Some(e) = r
+            .as_ref()
+            .ok()
+            .filter(|v| matches!(id, "file.save" | "file.saveAs") && v.get("saved").and_then(Value::as_bool) == Some(true))
+            .and_then(|v| v.get("backupError"))
+            .and_then(Value::as_str)
+            .filter(|e| !e.is_empty())
+        else {
+            return;
+        };
+        let msg = i18n::fmt(tl!("Saved, but the backup copy couldn't be made: {error}"), &[("error", e)]);
+        self.status(msg);
+    }
+
     /// Run a command for a script or an agent (control channel, MCP bridge): never asks first.
     /// UI-level commands (`ui.*`) are handled here, the rest by the engine.
     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value, String> {
@@ -274,6 +291,7 @@ impl WordApp {
             crate::system_clipboard::put_result(self, ctx, v);
         }
         self.copy_status(id, &r);
+        self.backup_status(id, &r);
         // Another document is shown (not when Open only showed its picker): the window's state
         // for the one it showed is put aside.
         if self.session.document_id() != document {
