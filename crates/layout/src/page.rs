@@ -517,7 +517,7 @@ pub(crate) fn body_top_for(ctx: &mut Ctx, sect: &SectionProps, header: Option<u3
 /// borders, while the empty paragraphs in cells (a cell's paragraph after a nested table) and
 /// the rest of a borderless cell don't count. Empty paragraphs outside tables do (pressing Enter
 /// in a header pushes the body down), and a line of only inline pictures that a float moved down
-/// reaches down to its baseline. Floating objects only count through the lines they move down,
+/// reaches down to its baseline. Text frames don't count. Floating objects only count through the lines they move down,
 /// except a Top and Bottom one anchored in the header itself (not in its table cells): it moves
 /// no header lines, but the body starts below it. `None` for turned text, which this doesn't
 /// measure.
@@ -529,8 +529,13 @@ pub(crate) fn drawn_extent(items: &[Placed], story: StoryRef) -> Option<f32> {
                 if turn.is_turned() {
                     return None;
                 }
-                let first = para.lines.get(*l0)?;
                 let in_cell = path.0.len() > 1;
+                // A text frame adds nothing to the header's height, in every mode (Word's PDF
+                // export); its part below the top margin is an obstacle for the body instead.
+                if !in_cell && para.rp.frame.is_some() {
+                    continue;
+                }
+                let first = para.lines.get(*l0)?;
                 for (k, line) in para.lines.iter().enumerate().take(*l1).skip(*l0) {
                     let clusters = para.clusters.get(line.c0..line.c1).unwrap_or_default();
                     let text = clusters.iter().any(|c| c.kind == ClKind::Text);
