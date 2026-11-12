@@ -1751,6 +1751,9 @@ fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
 
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
+    // A drop cap is written as Word stores it: its letter in a paragraph of its own.
+    let split = super::frames::split_drop_caps(doc);
+    let doc = split.as_ref().unwrap_or(doc);
     let (marked, marks) = match mark_doc(doc) {
         Some((d, m)) => (Some(d), m),
         None => (None, Vec::new()),
