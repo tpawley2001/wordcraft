@@ -117,6 +117,13 @@ pub(super) fn link_text(s: &Session, sources: &mut Sources, instr: &str) -> Opti
     source_range(sources, &link).map(|frag| text_of(&frag))
 }
 
+/// The new result of the simple LINK field `o`: as [`link_text`], and `None` too when the stored
+/// result already is the linked text, so the field is not touched.
+pub(super) fn new_simple_result(s: &Session, sources: &mut Sources, o: &wordcraft_doc::InlineObject) -> Option<String> {
+    let wordcraft_doc::InlineObject::Field { instr, result, .. } = o else { return None };
+    link_text(s, sources, instr).filter(|text| text != result)
+}
+
 /// F9 on LINK range fields (`FieldStart` … `FieldEnd`): the content between the markers becomes
 /// the linked range as the source holds it now. Unlocked fields only; a link that can't be
 /// followed keeps its result.

@@ -737,13 +737,7 @@ pub fn update_fields_in(s: &mut Session, all: bool, toc_pages_only: bool) -> Res
                 "INCLUDETEXT" => updates.push((k, super::includetext::include_text(s, instr))),
                 // A link to a saved Word document: its source as it is now. A link that can't be
                 // followed keeps its stored result; an equal result is not touched.
-                "LINK" => {
-                    if let Some(text) = super::link::link_text(s, &mut sources, instr)
-                        && !matches!(o, InlineObject::Field { result, .. } if *result == text)
-                    {
-                        updates.push((k, text));
-                    }
-                }
+                "LINK" => updates.extend(super::link::new_simple_result(s, &mut sources, o).map(|r| (k, r))),
                 // GOTOBUTTON and MACROBUTTON store the text their code shows.
                 "GOTOBUTTON" | "MACROBUTTON" => {
                     if let Some(text) = wordcraft_layout::fields::button_display_text(instr) {
