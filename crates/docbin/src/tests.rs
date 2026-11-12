@@ -47,6 +47,7 @@ mod style_own_char_props;
 mod style_own_para_props;
 mod table_float;
 mod table_width;
+mod table_width_rows;
 mod text_box_flow;
 mod text_box_margins;
 mod toggle_para_style;
