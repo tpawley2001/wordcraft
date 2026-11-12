@@ -161,7 +161,7 @@ impl Marker<'_> {
             match &**b {
                 Block::Para(p) => {
                     let q = self.para(p, Some(note));
-                    out.extend(model::flow_paras(self.doc, &q).into_iter().map(FBlock::Para));
+                    out.extend(model::flow_paras_with(self.doc, &q, rtf_flow_opts()).into_iter().map(FBlock::Para));
                 }
                 Block::Table(t) if depth < 4 => {
                     for c in t.rows.iter().flat_map(|r| r.cells.iter()) {
@@ -1957,6 +1957,12 @@ fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
     }
 }
 
+/// What the RTF writer keeps of the document's flow: the body, table cells, headers and footers,
+/// and the text of notes and comments alike. An empty paragraph's mark formatting sets its height.
+fn rtf_flow_opts() -> model::FlowOpts {
+    model::FlowOpts { marks: true, outline_apart: true, auto_space: true, ..model::FlowOpts::tracked() }
+}
+
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
     // A drop cap is written as Word stores it: its letter in a paragraph of its own.
@@ -1982,8 +1988,7 @@ pub fn export(doc: &Document) -> String {
         .collect();
     let before = set_own_styles(own);
     let ranged_before = set_ranged(HashSet::new());
-    // An empty paragraph's mark formatting sets its height.
-    let opts = model::FlowOpts { marks: true, outline_apart: true, auto_space: true, ..model::FlowOpts::tracked() };
+    let opts = rtf_flow_opts();
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
