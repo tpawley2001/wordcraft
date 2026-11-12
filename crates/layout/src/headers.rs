@@ -36,6 +36,20 @@ pub(crate) fn section_side(start: SectionStart, restart: Option<u32>, last: u32,
     }
 }
 
+/// The number the document's first page takes from its section's start type and restart
+/// (`None`: it counts on from 0, so it is page 1). Word puts no blank page in front of an
+/// even-page first section: it numbers that page 2 (or the first even number at or after the
+/// restart), so later odd- and even-page breaks are decided against those numbers. An odd-page
+/// first section restarting at an even number takes the next one, as later sections do.
+pub(crate) fn first_page_number(start: SectionStart, restart: Option<u32>) -> Option<u32> {
+    let to_even = |n: u32| if n % 2 == 0 { n } else { n.saturating_add(1) };
+    match start {
+        SectionStart::EvenPage => Some(to_even(restart.unwrap_or(2))),
+        SectionStart::OddPage => restart.map(|n| if n % 2 == 1 { n } else { n.saturating_add(1) }),
+        SectionStart::NextPage | SectionStart::Continuous | SectionStart::NextColumn => restart,
+    }
+}
+
 /// The document's sections with their headers and footers (Word's "link to previous"), each
 /// section's resolved once for the whole layout in document order rather than by looking back
 /// over the sections before it whenever one is needed.
