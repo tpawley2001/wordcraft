@@ -1,5 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
+> **Last updated:** 2026-11-12 · **Change:** trivial (list numbers draw underline, strikethrough, highlight, shading and border as Word does, and are never small caps. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (formula fields add up every number in an operand's text and keep its $, thousands separator and parentheses in the result. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0281: STYLEREF takes one style name, found by name or alias and not by style id, as in Word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0258: text in a WMF or EMF picture set in Symbol, Wingdings or Webdings shows its Unicode symbols when the font is not installed, on screen and in PDF. Readiness estimates unchanged.)
@@ -375,6 +376,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-12 | trivial | List numbers draw their strikethrough, highlight and border from the paragraph mark or the level, and their underline and shading from the level only, as Word does; a list number is never small caps; readiness estimates unchanged |
 | 2026-11-11 | trivial | Formula fields add up every number in a cell or bookmark operand's text (`3 apples 4` is 7) and keep the operand's `$`, thousands separator, parentheses and decimals in the result, as measured in Word; readiness estimates unchanged |
 | 2026-11-11 | trivial | P0281: STYLEREF takes one style name argument, found by name or alias and not by style id; a second argument shows Word's "not defined" error with no name |
 | 2026-11-11 | trivial | P0267: formula fields (`= Total * 2`) read the number a bookmark marks; Update Field works out formula fields outside tables (body, headers, footers) without cell references; readiness estimates unchanged |
