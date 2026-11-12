@@ -80,6 +80,7 @@ impl Reader<'_> {
                 "w:removeDateAndTime" => s.remove_date_time = on_off(k),
                 "w:compat" => {
                     s.allow_space_of_same_style_in_table = k.child("w:allowSpaceOfSameStyleInTable").is_some_and(on_off);
+                    s.split_pg_break_and_para_mark = k.child("w:splitPgBreakAndParaMark").is_some_and(on_off);
                     // Only Word's own setting: another `w:uri` names a different application's.
                     let mode = k
                         .children("w:compatSetting")

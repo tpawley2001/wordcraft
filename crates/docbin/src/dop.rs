@@ -30,6 +30,11 @@ const DOP2000_LEN: usize = 544;
 /// Size of `Dop2003` ([MS-DOC] §2.7, Dop2003); the Word 2003 options of `Copts` are only meaningful in
 /// a DOP at least this long.
 const DOP2003_LEN: usize = 616;
+/// Size of `Dop2007` ([MS-DOC] §2.7, Dop2007): a shorter DOP is a Word 97-2003 file.
+const DOP2007_LEN: usize = 674;
+/// `Copts.fSplitPgBreakAndParaMark` (bit 27 of the word after `copts80`; [MS-DOC] §2.7.1): the
+/// paragraph mark after a page break starts the new page.
+const F_SPLIT_PG_BREAK_AND_PARA_MARK: u32 = 1 << 27;
 
 /// Bytes of the `DopBase` ([MS-DOC] §2.7.3) holding every option `apply_base` reads.
 const DOPBASE_READ_LEN: usize = 20;
@@ -85,7 +90,8 @@ fn apply_base(dop: &[u8], settings: &mut Settings) {
 
 /// Apply the DOP's compatibility options to `settings`. A DOP outside the Table stream is
 /// ignored (the defaults stay). A valid Dop95/Dop97 sums paragraph spacing because HTML
-/// paragraph auto spacing was introduced with Dop2000.
+/// paragraph auto spacing was introduced with Dop2000. A DOP shorter than Dop2007 splits a page
+/// break from its paragraph mark.
 pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Settings) {
     let Some((fc, lcb)) = pair else { return };
     let (Ok(fc), Ok(lcb)) = (usize::try_from(fc), usize::try_from(lcb)) else { return };
@@ -112,6 +118,10 @@ pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Setti
             settings.allow_space_of_same_style_in_table = flags & F_ALLOW_SPACE_OF_SAME_STYLE_IN_TABLE != 0;
         }
     }
+    // Word 97-2003 always split a page break from the paragraph mark after it; from Dop2007 on
+    // the option is a `Copts` flag.
+    settings.split_pg_break_and_para_mark =
+        if dop.len() < DOP2007_LEN { true } else { u32_at(dop, OFF_COPTS_FLAGS).is_some_and(|flags| flags & F_SPLIT_PG_BREAK_AND_PARA_MARK != 0) };
 }
 
 fn u16_at(b: &[u8], at: usize) -> Option<u16> {

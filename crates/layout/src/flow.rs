@@ -495,7 +495,7 @@ impl<'a> Flow<'a> {
             }
             fit.notes.extend(line_notes);
             fit.l1 += 1;
-            if self.ends_page(pb, l, &mut fit) || split {
+            if self.ends_page(pb, l, &ctx.doc.settings, &mut fit) || split {
                 break;
             }
         }
@@ -517,17 +517,31 @@ impl<'a> Flow<'a> {
     }
 
     /// Whether the line (just taken, `fit.l1` is after it) forces a break, noted in `fit`.
-    fn ends_page(&self, pb: &PageBuilder, l: &para::Line, fit: &mut Fit) -> bool {
+    fn ends_page(&self, pb: &PageBuilder, l: &para::Line, settings: &wordcraft_doc::Settings, fit: &mut Fit) -> bool {
         if !matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak) || pb.web {
             return false;
         }
         fit.forced = Some(l.end);
         let mark_follows = self.pl.lines.get(fit.l1).is_some_and(|m| only_markers(self.p, m.start..m.stop));
-        if l.end == LineEnd::PageBreak && fit.l1 + 1 == self.n() && mark_follows {
+        // A Word 97-2003 document (`splitPgBreakAndParaMark`, below mode 15) puts the mark on the
+        // new page instead: an empty line there with the paragraph's spacing (measured in Word).
+        let split = settings.split_pg_break_and_para_mark && settings.compat_mode < 15;
+        if l.end == LineEnd::PageBreak && fit.l1 + 1 == self.n() && mark_follows && !split {
             fit.l1 += 1;
             fit.mark_with_break = true;
         }
         true
+    }
+
+    /// Whether `l0..l1` is the paragraph mark split from the page break before it
+    /// (`splitPgBreakAndParaMark` below compatibility mode 15): its last line, nothing but markers.
+    fn split_mark(&self, settings: &wordcraft_doc::Settings, l0: usize, l1: usize) -> bool {
+        settings.split_pg_break_and_para_mark
+            && settings.compat_mode < 15
+            && l1 == self.n()
+            && l0.checked_add(1) == Some(l1)
+            && l0.checked_sub(1).and_then(|k| self.pl.lines.get(k)).is_some_and(|b| b.end == LineEnd::PageBreak)
+            && self.pl.lines.get(l0).is_some_and(|m| only_markers(self.p, m.start..m.stop))
     }
 
     /// The end of the lines on this page after widow/orphan control, and keeping the rows beside
@@ -630,7 +644,10 @@ impl<'a> Flow<'a> {
         items.extend(line_numbers(ctx, pb, &self.pl, (l0, l1), y));
         add_items(pb, behind, items);
         if let (Some(f), Some(l)) = (self.pl.lines.get(l0), self.pl.lines.get(l1 - 1)) {
-            pb.y = y + (l.top + l.height - f.top);
+            // The mark split from its page break takes one line of its font (the spacing measured
+            // in Word is the mark's single line).
+            let height = if self.split_mark(&ctx.doc.settings, l0, l1) { l.text_asc + l.text_desc } else { l.height };
+            pb.y = y + (l.top + height - f.top);
             pb.content_bottom = pb.content_bottom.max(pb.y);
         }
         self.l0 = l1;
