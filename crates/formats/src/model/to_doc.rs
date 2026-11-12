@@ -9,6 +9,7 @@ use super::{
     levels_for, para_block,
 };
 use wordcraft_doc::para::{GroupChild, MAX_GROUP_CHILDREN};
+use wordcraft_doc::props::Highlight;
 
 pub fn char_props(f: &Fmt) -> CharProps {
     let on = |b: bool| if b { Some(true) } else { None };
@@ -26,6 +27,7 @@ pub fn char_props(f: &Fmt) -> CharProps {
             None
         },
         link: f.link.as_deref().filter(|l| !l.is_empty()).map(str::to_string),
+        link_tip: f.link_tip.as_deref().filter(|t| !t.is_empty() && f.link.as_deref().is_some_and(|l| !l.is_empty())).map(Box::from),
         color: f.color.map(TextColor::Rgb),
         size: f.size.filter(|s| s.is_finite() && *s >= 1.0 && *s <= 1638.0),
         font: if f.code { Some(MONO_FONT.to_string()) } else { f.font.as_deref().filter(|s| !s.is_empty()).map(str::to_string) },
@@ -97,6 +99,14 @@ impl WithExtra for CharProps {
         self.lang_bidi = name(&x.lang_bidi, 64);
         self.lang_ea = name(&x.lang_ea, 64);
         self.no_proof = x.no_proof.filter(|b| *b);
+        self.highlight = x.highlight.filter(|h| *h != Highlight::None);
+        // Saved formatting carries the highlight colour as its background: the shading under a
+        // highlight is the one kept beside it.
+        if let Some(h) = self.highlight
+            && (x.shading.is_some() || f.background == h.rgb())
+        {
+            self.shading = x.shading;
+        }
         self.east_asian_layout = x.east_asian_layout.clone().filter(|l| *l != Default::default());
         self
     }
@@ -304,14 +314,19 @@ impl<'a> Builder<'a> {
     /// `cp` as a run may keep it: without its link and font once the runs' copies of them are
     /// over budget.
     fn budget(&mut self, mut cp: CharProps) -> CharProps {
-        let n = cp.link.as_ref().map_or(0, String::len).saturating_add(cp.font.as_ref().map_or(0, String::len));
+        let n = cp
+            .link
+            .as_ref()
+            .map_or(0, String::len)
+            .saturating_add(cp.link_tip.as_ref().map_or(0, |t| t.len()))
+            .saturating_add(cp.font.as_ref().map_or(0, String::len));
         match self.run_strings.checked_add(n).filter(|&t| t <= MAX_RUN_STRINGS) {
             Some(t) => self.run_strings = t,
             None => {
                 if cp.link.is_some() || cp.font.is_some() {
                     dropped(Dropped::RunStrings);
                 }
-                (cp.link, cp.font) = (None, None);
+                (cp.link, cp.link_tip, cp.font) = (None, None, None);
             }
         }
         cp
@@ -901,6 +916,9 @@ impl<'a> Builder<'a> {
         if let Some(x) = &t.extra {
             tb.props.align = x.align;
             tb.props.indent = x.indent.filter(|i| i.is_finite()).map(|i| i.clamp(-1584.0, 1584.0));
+            if let Some(m) = x.cell_margins.filter(|m| m.iter().all(|v| v.is_finite())) {
+                tb.props.cell_margins = Some(m.map(|v| v.clamp(0.0, 1584.0)));
+            }
             tb.props.width_pct = x.width_pct.filter(|p| p.is_finite() && *p > 0.0).map(|p| p.min(100.0));
             tb.props.width = x.width.filter(|w| w.is_finite() && *w > 0.0).map(|w| w.min(1584.0));
             tb.props.fixed |= x.fixed;
@@ -945,6 +963,7 @@ impl<'a> Builder<'a> {
                     let media = self.doc.add_media(p.img.data.as_ref().clone(), &p.img.ext);
                     Box::new(wordcraft_doc::props::CellPicture { media, size: [p.img.w, p.img.h], repeat: p.repeat, align: p.align })
                 });
+                let (margins, partial_margins) = cell_margins(c);
                 row.cells.push(wordcraft_doc::Cell {
                     props: CellProps {
                         width: Some(w),
@@ -952,7 +971,9 @@ impl<'a> Builder<'a> {
                         vmerge,
                         shading: c.shading,
                         borders: c.borders,
-                        margins: c.margins.filter(|m| m.iter().all(|v| v.is_finite())).map(|m| m.map(|v| v.clamp(0.0, 1584.0))),
+                        margins,
+                        partial_margins,
+                        no_wrap: c.no_wrap,
                         valign: c.valign,
                         text_direction: c.direction,
                         picture,
@@ -988,8 +1009,8 @@ impl<'a> Builder<'a> {
     }
 }
 
-/// Whether a table's extra holds nothing but its alignment and left edge, which leave the style it
-/// gets as it was.
+/// Whether a table's extra holds nothing but its alignment, left edge and default cell padding,
+/// which leave the style it gets as it was.
 fn placement_only(x: &super::types::TableExtra) -> bool {
     x.width.is_none()
         && x.width_pct.is_none()
@@ -1077,4 +1098,20 @@ pub fn part_blocks(doc: &mut Document, blocks: &[FBlock]) -> Blocks {
         out.push(para_block(Paragraph::new()));
     }
     out
+}
+
+/// A cell's padding for its [`CellProps`]: all four sides (`margins`), else the sides it sets
+/// itself (`partial_margins`, all four set counting as `margins`), each finite and within 22
+/// inches.
+fn cell_margins(c: &crate::model::Cell) -> (Option<[f32; 4]>, Option<[Option<f32>; 4]>) {
+    let fit = |v: f32| v.is_finite().then(|| v.clamp(0.0, 1584.0));
+    if let Some(m) = c.margins.filter(|m| m.iter().all(|v| v.is_finite())) {
+        return (Some(m.map(|v| v.clamp(0.0, 1584.0))), None);
+    }
+    let own = c.own_margins.map(|s| s.and_then(fit));
+    match own {
+        [Some(t), Some(l), Some(b), Some(r)] => (Some([t, l, b, r]), None),
+        _ if own.iter().any(Option::is_some) => (None, Some(own)),
+        _ => (None, None),
+    }
 }

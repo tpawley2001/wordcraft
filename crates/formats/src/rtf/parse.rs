@@ -4,7 +4,9 @@ use super::{Arc, Block, Blocks, Cell, Document, FBlock, Flow, HashMap, InlineObj
 
 /// Parse RTF bytes into the flow model.
 pub fn parse(bytes: &[u8]) -> Result<Flow, String> {
-    parse_with_page(bytes).map(|(f, _, _)| f)
+    let mut flow = parse_with_page(bytes)?.0;
+    super::frames::settle_flow(&mut flow.blocks, 0);
+    Ok(flow)
 }
 
 /// The flow, the page, and the default font (`\deff`, font 0 when the file names none), which
@@ -61,7 +63,31 @@ impl Info {
         c.last_printed = self.printed;
         doc.custom_props = self.more.props;
         doc.settings.doc_vars = self.more.doc_vars;
+        let mut kept = String::new();
+        for (name, value) in [("Manager", self.more.manager), ("Company", self.more.company), ("HyperlinkBase", self.more.hyperlink_base)] {
+            if let Some(v) = app_kept_value(value) {
+                kept.push_str(name);
+                kept.push('\t');
+                kept.push_str(&v);
+                kept.push('\n');
+            }
+        }
+        if !kept.is_empty() {
+            doc.passthrough.insert(wordcraft_doc::APP_KEPT.into(), Arc::new(kept.into_bytes()));
+        }
     }
+}
+
+/// The longest value the kept extended properties hold (as the DOCX reader keeps them).
+const MAX_APP_KEPT_VALUE: usize = 2048;
+
+/// An information-group value as the line-based `wordcraft:app.kept` store holds it: trimmed, tabs
+/// and line ends turned into spaces (they would break the line), at most 2048 bytes; `None` when
+/// empty.
+fn app_kept_value(value: String) -> Option<String> {
+    let mut v: String = value.trim().chars().map(|c| if matches!(c, '\t' | '\n' | '\r') { ' ' } else { c }).collect();
+    super::state::truncate_chars(&mut v, MAX_APP_KEPT_VALUE);
+    (!v.is_empty()).then_some(v)
 }
 
 /// An information-group date read from `\yr \mo \dy \hr \min`, as `YYYY-MM-DDTHH:MM:00Z`; empty
@@ -236,7 +262,7 @@ fn parse_full(bytes: &[u8], marks: bool) -> Result<Parsed, String> {
                                 | Dest::Info(_)
                                 | Dest::FldInst
                                 | Dest::FfText(_)
-                                | Dest::Bookmark
+                                | Dest::Bookmark(_)
                                 | Dest::FontTbl
                                 | Dest::RevTbl
                                 | Dest::Atn(_)
@@ -555,6 +581,8 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     }
     set_section_revisions(&mut doc);
     place_notes_and_comments(&mut doc, notes, comments);
+    // A drop cap's letter paragraph joins the paragraph it starts.
+    super::frames::merge_drop_caps(&mut doc);
     // RTF's paragraph defaults are single spacing and no space around paragraphs; what a file
     // wants beyond that it states on each paragraph.
     let dp = &mut Arc::make_mut(&mut doc.styles).default_para;

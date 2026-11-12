@@ -165,6 +165,7 @@ fn every_char_prop_round_trips() {
             vert_compress: Some(true),
         }),
         link: None,
+        link_tip: None,
         ins: None,
         del: None,
         fmt_change: None,

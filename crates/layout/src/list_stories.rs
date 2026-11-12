@@ -10,7 +10,8 @@ use std::collections::{HashMap, HashSet};
 
 use wordcraft_doc::numbering::Counters;
 use wordcraft_doc::para::{InlineObject, NoteKind};
-use wordcraft_doc::{Document, PartKind, StoryRef};
+use wordcraft_doc::props::VMerge;
+use wordcraft_doc::{Document, Paragraph, PartKind, Path, StoryRef};
 
 /// The list counters each header, footer, text box, footnote and endnote part starts from.
 pub(crate) fn part_starts(doc: &Document) -> HashMap<u32, Counters> {
@@ -60,10 +61,42 @@ pub(crate) fn part_starts(doc: &Document) -> HashMap<u32, Counters> {
     out
 }
 
+/// Whether a list paragraph of a hidden cell (one that continues a vertical merge, ECMA-376
+/// §17.4.85) uses up its number. Word counts one with text and skips an empty one. Only plain run
+/// text was measured; any other content (a picture, a field, white space) counts as text here.
+pub(crate) fn hidden_cell_counts(p: &Paragraph) -> bool {
+    !p.text.is_empty() || !p.objects.is_empty()
+}
+
+/// Whether the paragraph at `path` counts for its list: everywhere, except as
+/// [`hidden_cell_counts`] says in a hidden cell. A paragraph of a table nested inside a hidden
+/// cell counts nothing, as the layout never walks it (not measured).
+fn path_counts(doc: &Document, story: StoryRef, path: &Path, p: &Paragraph) -> bool {
+    let ix = &path.0;
+    // A path runs block, row, cell, block, row, cell, ..., block: one (row, cell) per table level.
+    let levels = ix.len().saturating_sub(1) / 3;
+    for level in 0..levels {
+        let start = level * 3;
+        let (Some(table), Some(&ri), Some(&ci)) = (ix.get(..start + 1), ix.get(start + 1), ix.get(start + 2)) else { return true };
+        let hidden = doc
+            .table(story, &Path(table.to_vec()))
+            .and_then(|t| t.rows.get(ri as usize))
+            .and_then(|r| r.cells.get(ci as usize))
+            .is_some_and(|c| c.props.vmerge == VMerge::Continue);
+        if hidden {
+            return level + 1 == levels && hidden_cell_counts(p);
+        }
+    }
+    true
+}
+
 /// Advance `counters` over the list paragraphs of `story`, in document order.
 fn count(doc: &Document, story: StoryRef, counters: &mut Counters) {
     for path in doc.para_paths(story) {
         let Some(p) = doc.para(story, &path) else { continue };
+        if !path_counts(doc, story, &path, p) {
+            continue;
+        }
         if let Some(n) = p.props.numbering.or_else(|| doc.styles.resolve_para(&p.props).numbering).filter(|n| n.num != 0) {
             let _ = counters.next_label(&doc.numbering, n.num, n.level);
         }
@@ -181,5 +214,42 @@ mod tests {
         let (d, [.., e1]) = doc_with_notes_and_box();
         let l = lay(&d);
         assert_eq!(story_labels(&l, wordcraft_doc::StoryRef::Part(e1)), ["1.", "2.", "3."]);
+    }
+
+    /// A vertical merge down a table that breaks across pages (with a repeated header row): each
+    /// hidden numbered paragraph with text uses up its number exactly once, as on one page.
+    #[test]
+    fn a_merged_table_across_pages_counts_each_hidden_paragraph_once() {
+        use wordcraft_doc::props::VMerge;
+        use wordcraft_doc::{Block, Table};
+        crate::test_fonts();
+        let mut d = Document::new();
+        let num = Arc::make_mut(&mut d.numbering).add_list(wordcraft_doc::ListKind::Numbered);
+        let n = 80;
+        let mut t = Table::new(n, 2, 300.0);
+        t.rows[0].props.header = true;
+        for (ri, row) in t.rows.iter_mut().enumerate() {
+            for (ci, cell) in row.cells.iter_mut().enumerate() {
+                cell.blocks = vec![para_block(numbered(&format!("r{ri}c{ci}"), num))];
+            }
+            if let Some(c) = row.cells.get_mut(0) {
+                c.props.vmerge = match ri {
+                    0 => VMerge::None,
+                    1 => VMerge::Restart,
+                    _ => VMerge::Continue,
+                };
+            }
+        }
+        d.body = vec![Arc::new(Block::Table(t)), para_block(numbered("after", num))];
+        let l = lay(&d);
+        assert!(l.pages.len() > 1);
+        let shown: Vec<String> = l.pages.iter().flat_map(|pg| labels(&pg.items)).collect();
+        // Rows 0 and 1 show both cells (1.-4.); each later row hides one numbered paragraph.
+        let mut want: Vec<String> = (1..=4).map(|i| format!("{i}.")).collect();
+        want.extend((2..n).map(|ri| format!("{}.", 2 * ri + 2)));
+        want.push(format!("{}.", 2 * n + 1));
+        // The repeated header row shows row 0's numbers again on each later page.
+        let shown: Vec<String> = shown.into_iter().filter(|s| s != "1." && s != "2.").collect();
+        assert_eq!(shown, want[2..]);
     }
 }

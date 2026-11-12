@@ -62,6 +62,12 @@ pub fn specs() -> Vec<CommandSpec> {
             with_sect(s, |x| x.start = start)
         })
         .params(r#"{"value": "nextPage|continuous|evenPage|oddPage|nextColumn"} (the section's break type, DOCX `w:type` ST_SectionMark; anything else is refused)"#),
+        CommandSpec::new("layout.suppressEndnotes", "Suppress Endnotes", "Layout › Page Setup › Layout", |s, v| {
+            let on = p::bool(v, "value").unwrap_or(sect(s).no_endnote != Some(true));
+            // Off is no `w:noEndnote` at all, as Word writes after unticking the box.
+            with_sect(s, |x| x.no_endnote = on.then_some(true))
+        })
+        .params(r#"{"value"?: bool} (true: the section prints no endnotes of its own when endnotes go at the end of each section, they move on to the next section that doesn't suppress them; DOCX `w:noEndnote`; false removes it; without a value it toggles)"#),
         CommandSpec::new("layout.sectionRtl", "Right-to-Left Section", "Layout › Page Setup", |s, v| {
             let on = p::bool(v, "value").unwrap_or(!sect(s).rtl);
             with_sect(s, |x| x.rtl = on)

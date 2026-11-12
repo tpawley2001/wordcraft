@@ -59,6 +59,19 @@ mod tests {
     }
 
     #[test]
+    fn own_part_keeps_own_and_changed_fields_only() {
+        let inherited = ParaProps { indent_left: Some(56.7), indent_right: Some(8.5), keep_next: Some(true), ..Default::default() };
+        let own = ParaProps { indent_left: Some(56.7), space_after: Some(6.0), ..Default::default() };
+        // A field the own set doesn't hold but that still changed (a relative setting).
+        let full = ParaProps { indent_right: Some(10.0), ..inherited.clone().overlaid(&own) };
+        let part = full.own_part(&own, &inherited);
+        assert_eq!(part.indent_left, Some(56.7), "set by the style itself, though equal to the base's");
+        assert_eq!(part.space_after, Some(6.0));
+        assert_eq!(part.indent_right, Some(10.0), "changed against the base");
+        assert_eq!(part.keep_next, None, "merely inherited");
+    }
+
+    #[test]
     fn overlay_keeps_unset() {
         let base = CharProps { bold: Some(true), size: Some(12.0), ..Default::default() };
         let patch = CharProps { size: Some(14.0), italic: Some(true), ..Default::default() };

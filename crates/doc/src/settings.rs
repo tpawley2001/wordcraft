@@ -102,6 +102,16 @@ pub fn div_margins(divs: &[WebDiv], id: &str) -> Option<(f32, f32)> {
     find(divs, id.trim(), 0).filter(|(l, r)| l.is_finite() && r.is_finite())
 }
 
+/// `Document::passthrough` key for the extended properties (`docProps/app.xml`) the model doesn't
+/// hold but a save keeps ([`APP_KEPT_PROPS`]): UTF-8 `name\tvalue` lines. Shared by the DOCX and
+/// RTF code. Not a package part: WordCraft's own bookkeeping.
+pub const APP_KEPT: &str = "wordcraft:app.kept";
+/// The `docProps/app.xml` properties carried over from the file. Counts (pages, lines,
+/// characters, editing time) and the producing application's version are not: they describe
+/// the file Word saved, not the one WordCraft writes.
+pub const APP_KEPT_PROPS: &[&str] =
+    &["Template", "Manager", "Company", "HyperlinkBase", "ScaleCrop", "LinksUpToDate", "SharedDoc", "HyperlinksChanged"];
+
 /// Document properties (File › Info).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]

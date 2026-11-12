@@ -37,6 +37,13 @@ impl WordApp {
             self.ui.backstage = true;
             self.ui.backstage_page = "recover".into();
         }
+        // Update Table (or F9 in the table) asks what to update, as Word does (#1197); a script
+        // or the dialog's own OK says it with `pageNumbersOnly`.
+        if asks_update_toc(self, id, &params) && widgets::enabled(self, id) {
+            let d = crate::dialogs_refs::RefsDialog::UpdateToc { then: id.to_string(), entire: false };
+            self.dialog = Some(dialogs::Dialog::Refs(Box::new(d)));
+            return Ok(json!({"pending": "updateToc"}));
+        }
         // A button whose command needs input the user hasn't given yet opens its dialog (#240).
         if let Some(name) = input_dialog(id, &params)
             && widgets::enabled(self, id)
@@ -1067,6 +1074,28 @@ impl WordApp {
     }
 }
 
+/// Whether `id` asks Update page numbers only or Update entire table first: Update Table with a
+/// table of contents in the body, or Update Field with the selection reaching into it, without
+/// `pageNumbersOnly` saying which. F9 elsewhere updates fields without asking.
+fn asks_update_toc(app: &WordApp, id: &str, params: &Value) -> bool {
+    if params.get("pageNumbersOnly").is_some() {
+        return false;
+    }
+    let Some((start, end)) = wordcraft_engine::cmd::references::toc_blocks(&app.session) else { return false };
+    match id {
+        "references.updateToc" => true,
+        "references.updateFields" => {
+            let (a, b) = app.session.sel.ordered();
+            if a.story != wordcraft_doc::StoryRef::Body || b.story != wordcraft_doc::StoryRef::Body {
+                return false;
+            }
+            let block = |p: &wordcraft_doc::Pos| p.path.0.first().map(|t| *t as usize);
+            matches!((block(&a), block(&b)), (Some(a), Some(b)) if a <= end && b >= start)
+        }
+        _ => false,
+    }
+}
+
 /// The dialog a user-run command opens when it lacks the input it needs (scripts and agents get
 /// the command's own error or default instead): Select Recipients and Edit Recipient List without
 /// data, Insert Merge Field without a field, Find Recipient without text, the If and Skip
@@ -1164,6 +1193,7 @@ fn input_dialog_other(id: &str, params: &Value) -> Option<&'static str> {
         "fields.setCode" if !has_value(params, "code") => Some("editFieldCode"),
         "picture.size" if no_settings(params) => Some("pictureSize"),
         "list.define" if params.get("levels").is_none() => Some("defineList"),
+        "para.defineNumber" if params.get("format").is_none() && params.get("text").is_none() => Some("defineNumber"),
         "list.adjustIndents" if no_settings(params) => Some("adjustListIndents"),
         "review.trackingOptions" if no_settings(params) => Some("trackChangesOptions"),
         "review.compare" if !has_value(params, "path") && !has_value(params, "text") => Some("compare"),

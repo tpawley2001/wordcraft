@@ -30,11 +30,12 @@ pub(crate) use fields::{page_at, page_formats, page_label, page_text};
 pub(crate) use includetext::update_source;
 pub(super) use notes::note_options;
 use notes::{note, note_refs};
+pub(crate) use properties::bookmark_text_at;
 pub use properties::{bookmark_text, date_picture};
 #[cfg(test)]
 use toc::cached_toc_tabs;
 pub(crate) use toc::{bookmark_heading, headings, toc_bookmark};
-pub use toc::{caret_in_toc, leader, level_range, toc_instr, update_toc};
+pub use toc::{caret_in_toc, leader, level_range, toc_blocks, toc_instr, update_toc, update_toc_pages};
 use toc::{insert_toc, remove_toc, toc_range};
 
 pub fn specs() -> Vec<CommandSpec> {
@@ -42,10 +43,15 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("references.toc", "Table of Contents", "References › Table of Contents", insert_toc).params(
             r#"{"levels"?: 1-9, "title"?: string, "pageNumbers"?: bool, "rightAlign"?: bool, "tabLeader"?: "dot|hyphen|underscore|none", "hyperlinks"?: bool, "headingStyles"?: bool, "outlineLevels"?: bool, "tcFields"?: bool, "styleLevels"?: {style name: 1-9}} (replaces an existing table; {} updates it)"#,
         ),
-        CommandSpec::new("references.updateToc", "Update Table", "References › Table of Contents", |s, _| {
-            update_toc(s)?;
+        CommandSpec::new("references.updateToc", "Update Table", "References › Table of Contents", |s, v| {
+            if p::bool(v, "pageNumbersOnly").unwrap_or(false) {
+                update_toc_pages(s)?;
+            } else {
+                update_toc(s)?;
+            }
             sel_result(s)
-        }),
+        })
+        .params(r#"{"pageNumbersOnly"?: bool (keep the entries as they are and update only their page numbers; default: rebuild the entire table)}"#),
         CommandSpec::new("references.removeToc", "Remove Table of Contents", "References › Table of Contents", |s, _| {
             if let Some((start, end)) = toc_range(s) {
                 remove_toc(s, start, end)?;
@@ -108,11 +114,11 @@ pub fn specs() -> Vec<CommandSpec> {
         ),
         // F9: update fields; the selected ones that showed their code show their result again.
         CommandSpec::new("references.updateFields", "Update Field", "References", |s, v| {
-            update_fields_in(s, v.get("all").and_then(Value::as_bool).unwrap_or(false))?;
+            update_fields_in(s, p::bool(v, "all").unwrap_or(false), p::bool(v, "pageNumbersOnly").unwrap_or(false))?;
             super::fields::show_results(s)?;
             sel_result(s)
         })
-        .params(r#"{"all"?: bool (the body and every header, footer, note and text box, wherever the caret is; default: the story the caret is in)}"#)
+        .params(r#"{"all"?: bool (the body and every header, footer, note and text box, wherever the caret is; default: the story the caret is in), "pageNumbersOnly"?: bool (the table of contents keeps its entries and updates only their page numbers; default: rebuilt)}"#)
         .key("F9"),
     ]
 }

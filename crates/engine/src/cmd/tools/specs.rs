@@ -280,8 +280,7 @@ pub fn specs() -> Vec<CommandSpec> {
             let story = s.sel.focus.story;
             let current = {
                 let table = s.doc.table(story, &tp).ok_or_else(|| CmdError::Failed("no table".into()))?;
-                let style = table.props.style.as_deref().and_then(|id| s.doc.styles.table_style(id));
-                table.props.cell_margins.or(style.and_then(|st| st.parts.cell_margins)).unwrap_or([0.0, 5.4, 0.0, 5.4])
+                crate::cmd::table::table_cell_margins(&s.doc, table)
             };
             let m = [
                 p::f32(v, "top").unwrap_or(current[0]),
@@ -335,25 +334,8 @@ pub fn specs() -> Vec<CommandSpec> {
             s.run("para.bullets", &json!({"kind": p::str(v, "char").unwrap_or("★")}))
         })
         .params(r#"{"char": string}"#),
-        CommandSpec::new("para.defineNumber", "Define New Number Format", "Home › Paragraph › Numbering", |s, v| {
-            let fmt = wordcraft_doc::section::NumFormat::from_ooxml(p::str(v, "format").unwrap_or("decimal"));
-            let text = p::str(v, "text").unwrap_or("%1.").to_string();
-            let start = p::u64(v, "start").unwrap_or(1).min(100_000) as u32;
-            let id = Arc::make_mut(&mut s.doc.numbering).try_add_list(wordcraft_doc::ListKind::Numbered)?;
-            if let Some(a) = s.doc.numbering.abstract_of(id).map(|a| a.id)
-                && let Some(abs) = Arc::make_mut(&mut s.doc.numbering).abstracts.iter_mut().find(|x| x.id == a)
-                && let Some(l) = abs.levels.first_mut()
-            {
-                l.format = fmt;
-                l.text = text;
-                l.start = start;
-            }
-            crate::cmd::para::fmt(s, &|pp| {
-                pp.numbering = Some(NumRef { num: id, level: 0 });
-                pp.style = Some("ListParagraph".into());
-            })
-        })
-        .params(r#"{"format": "decimal|upperRoman|lowerLetter…", "text"?: "%1.", "start"?: n}"#),
+        CommandSpec::new("para.defineNumber", "Define New Number Format", "Home › Paragraph › Numbering", crate::cmd::lists::define_number)
+            .params(r#"{"format"?: "decimal|upperRoman|lowerRoman|upperLetter|lowerLetter|ordinal|cardinalText|ordinalText|decimalZero|…" (default decimal; not bullet), "text"?: "%1." (the number format text; %1 is the number, no %2…%9), "start"?: n, "align"?: "left|center|right" (default left), "font"?: string|null, "bold"?: bool, "italic"?: bool, "color"?: "RRGGBB"|null} — a new numbered list, applied to the selection's paragraphs; returns the new list as `num`"#),
         CommandSpec::new("review.language", "Language", "Review › Language", language).params(
             r#"{"lang"?: "en-US|en-GB|pl-PL|fr-FR|…" (BCP 47; default en-US), "noProof"?: bool, "detect"?: bool (detect language automatically, a preference), "default"?: bool (also the document's default and the saved language for future blank documents)}"#,
         ),

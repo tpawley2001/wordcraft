@@ -765,13 +765,23 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 // The paragraph's own list, or its style's list at its own level. Switching the
                 // style's list off is `num: 0`, which also drops the style's indents, so only a
                 // style that has a list gets it.
-                let style_list = pb.props.style.as_deref().and_then(|id| ctx.sheet.get(id)).and_then(|s| s.para.numbering).filter(|n| n.num != 0);
+                let style_list = pb
+                    .props
+                    .style
+                    .as_deref()
+                    .and_then(|id| ctx.sheet.chain(id).into_iter().rev().find_map(|s| s.para.numbering))
+                    .filter(|n| n.num != 0);
                 pb.props.numbering = match (ilfo.map(num_of), style_list) {
                     (Some(Some(num)), _) => Some(NumRef { num, level: ilvl.or(style_list.map(|n| n.level)).unwrap_or(0) }),
                     (Some(None), Some(s)) => Some(NumRef { num: 0, level: s.level }),
                     (None, Some(s)) => ilvl.map(|level| NumRef { num: s.num, level }),
                     _ => None,
                 };
+                // A tracked paragraph formatting change (sprmPPropRMark90 / sprmPPropRMark),
+                // read once the paragraph's formatting is resolved.
+                if let Ok(mut revs) = ctx.revs.try_borrow_mut() {
+                    revs.mark_para(&mut pb.props, revision::PropMark::of_para(papx));
+                }
                 let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
                 let chpx = ctx.chpx_bins.chpx(ctx.word, fc);
                 let base = pb.props.style.as_deref().and_then(|id| ctx.sheet.get(id)).map(|style| style.chr.clone()).unwrap_or_default();
@@ -1386,7 +1396,7 @@ fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, f
     }
 }
 
-/// Set the tracked insertion / deletion of `props` from the revision marks of a CHPX grpprl
+/// Set the tracked insertion / deletion / formatting change of `props` from the revision marks of a CHPX grpprl
 /// and the piece's Prm (which applies after it). A Prm1 grpprl is charged to the work budget,
 /// as in [`apply_prm`]; once that is spent its marks are skipped.
 fn revise(ctx: &WalkCtx, props: &mut CharProps, grpprl: &[u8], prm: PrmRef<'_>) {
@@ -1518,6 +1528,10 @@ mod tests;
 #[cfg(test)]
 #[path = "tests/table_float_tap.rs"]
 mod table_float_tap;
+
+#[cfg(test)]
+#[path = "tests/list_level_text_doc.rs"]
+mod list_level_text_doc;
 
 #[cfg(test)]
 mod character_style_tests {

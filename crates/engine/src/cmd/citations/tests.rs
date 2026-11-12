@@ -964,6 +964,6 @@ fn a_ref_bookmark_before_a_page_break_reads_the_heading_page() {
             .unwrap()
     };
     assert_eq!(pageref(&s), ("PAGEREF _Ref000000003 \\h".to_string(), "2".to_string()));
-    crate::cmd::references::update_fields_in(&mut s, true).unwrap();
+    crate::cmd::references::update_fields_in(&mut s, true, false).unwrap();
     assert_eq!(pageref(&s).1, "2");
 }
