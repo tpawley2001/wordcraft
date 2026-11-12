@@ -68,6 +68,7 @@ mod numeral;
 mod pages;
 mod picture_glue;
 mod picture_glue_touching;
+mod pushed_by_earlier_float;
 mod rtf_justify_squeeze;
 mod rtf_squeeze_any_align;
 mod rtf_wraptrsp_squeeze;
