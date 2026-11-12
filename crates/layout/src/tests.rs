@@ -72,6 +72,7 @@ mod tab_to_right_indent;
 mod table_contact;
 mod textbox;
 mod vertical;
+mod wp_justification_squeeze;
 
 const WRAP_TEST_FONT: &str = "Source Sans 3";
 

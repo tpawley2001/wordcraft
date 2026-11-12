@@ -16,6 +16,7 @@ mod char_styles;
 mod compat_mode;
 mod dop_base;
 mod dop_options;
+mod dop_wp_justification;
 mod drawing;
 mod emf_blip_repair;
 mod emf_font_faces;
