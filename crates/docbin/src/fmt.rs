@@ -618,21 +618,26 @@ pub(crate) fn stylesheet(raw: &[crate::stsh::RawStyle], ids: &[String], fonts: &
             _ => StyleKind::Paragraph,
         };
         let base = base_of(raw, istd).and_then(|i| ids.get(i)).cloned();
-        // Character properties come from the base chain, root first, then our own grpprl.
-        // Paragraph properties are resolved the same way, but the style keeps only its own
-        // ([MS-DOC] §2.9.260: the UPX holds the style's own settings): what it merely inherits
-        // comes through `based_on`. So a style with a list and no indent of its own takes the
-        // list level's indents, not a copy of its base's (Word; the same as DOCX `w:ind`).
-        let mut chr = CharProps::default();
+        // Character and paragraph properties are resolved over the base chain, root first, then
+        // our own grpprl (toggle operands need the inherited values), but the style keeps only
+        // its own ([MS-DOC] §2.9.260: the UPX holds the style's own settings): what it merely
+        // inherits comes through `based_on`. So a change to the base reaches it, and a style with
+        // a list and no indent of its own takes the list level's indents, not a copy of its
+        // base's (Word; the same as DOCX `w:ind`).
+        let mut inherited_chr = CharProps::default();
         let mut inherited = ParaProps::default();
         let chain = style_chain(raw, istd);
         let (own_ix, bases) = chain.split_last().map_or((None, &[][..]), |(o, b)| (Some(*o), b));
-        for s in chain.iter().filter_map(|&i| raw.get(i)) {
-            apply_chain(&mut chr, &s.chpx, fonts);
-        }
         for s in bases.iter().filter_map(|&i| raw.get(i)) {
+            apply_chain(&mut inherited_chr, &s.chpx, fonts);
             apply_chain_para(&mut inherited, &s.papx);
         }
+        let own_chpx = own_ix.and_then(|i| raw.get(i)).map_or(&[][..], |s| s.chpx.as_slice());
+        let mut full_chr = inherited_chr.clone();
+        apply_chain(&mut full_chr, own_chpx, fonts);
+        let mut own_chr = CharProps::default();
+        apply_chain(&mut own_chr, own_chpx, fonts);
+        let chr = if bases.is_empty() { full_chr } else { full_chr.own_part(&own_chr, &inherited_chr) };
         let own_papx = own_ix.and_then(|i| raw.get(i)).map_or(&[][..], |s| s.papx.as_slice());
         let mut full = inherited.clone();
         apply_chain_para(&mut full, own_papx);
