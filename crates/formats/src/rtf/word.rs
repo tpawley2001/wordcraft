@@ -332,10 +332,7 @@ impl Reader {
             "gutter" => self.page.gutter = Some(pv),
             "rtlgutter" => self.page.rtl_gutter = on,
             "landscape" => self.page.landscape = on,
-            // Only the document's own formatting words say how it justifies: not a style's, a
-            // header's or a note's.
-            "jexpand" | "jcompress" if self.st.dest != Dest::Body || self.sub.is_some() || self.hf.is_some() => {}
-            _ if self.doc_note_word(w, p) || self.doc_opts.word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
+            _ if self.doc_note_word(w, p) || self.doc_opts_word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
             _ if self.section_word(w, p) => {}
             "cellx" => {
                 self.cell_side = None;
@@ -379,6 +376,16 @@ impl Reader {
     }
 
     /// Enters destination `d`, setting up what it collects.
+    /// A document formatting word read into `doc_opts`. `\jexpand` and `\jcompress` only count
+    /// among the document's own formatting words: in a style, a header or a note they are
+    /// swallowed, so they can't change how the whole document justifies.
+    fn doc_opts_word(&mut self, w: &str, p: Option<i32>) -> bool {
+        if matches!(w, "jexpand" | "jcompress") && (self.st.dest != Dest::Body || self.sub.is_some() || self.hf.is_some()) {
+            return true;
+        }
+        self.doc_opts.word(w, p)
+    }
+
     fn enter_destination(&mut self, d: Dest) {
         match d {
             Dest::Bookmark(end) => {
