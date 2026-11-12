@@ -103,6 +103,7 @@ impl Session {
             dirty,
             read_only,
             clipboard: None,
+            clipboard_link: None,
             pending_move,
             clipboard_text: String::new(),
             clipboard_html: String::new(),
