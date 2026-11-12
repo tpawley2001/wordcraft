@@ -236,6 +236,7 @@ fn doc_with_header_fields() -> (wordcraft_doc::Document, u32) {
         dirty: false,
         code: false,
         form: String::new(),
+        code_paras: None,
     };
     let mut doc = wordcraft_doc::Document::from_text("one two three");
     doc.core.creator = "Ada".into();
@@ -338,8 +339,15 @@ fn header_fields_session(doc: wordcraft_doc::Document, instrs: &[&str]) -> (Sess
     let mut p = Paragraph::new();
     for instr in instrs {
         let off = p.len();
-        let field =
-            InlineObject::Field { instr: (*instr).into(), result: "stale".into(), locked: false, dirty: false, code: false, form: String::new() };
+        let field = InlineObject::Field {
+            instr: (*instr).into(),
+            result: "stale".into(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+            code_paras: None,
+        };
         p.insert_object(off, field, &CharProps::default()).unwrap();
     }
     let mut doc = doc;
@@ -548,7 +556,15 @@ fn toc_tabs_ignore_nonentries() {
         .unwrap()
         .insert_object(
             0,
-            InlineObject::Field { instr: "TOC".into(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: "TOC".into(),
+                result: String::new(),
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &CharProps::default(),
         )
         .unwrap();
@@ -869,6 +885,49 @@ fn output_counts_locked_seq_fields_and_not_deleted_ones() {
         .collect();
     assert_eq!(shown, ["1", "9", "2", "1", "7", "3", "7", "6"]);
     assert!(fields(&s).iter().all(|f| f.1 == "9" || f.1 == "7"), "the document keeps its results");
+}
+
+/// Printed or exported, a REF inside the bookmark it names shows Word's self-reference error
+/// (measured in Word), `\p` or not; the document keeps the stored result.
+#[test]
+fn output_shows_words_error_for_a_ref_inside_its_own_bookmark() {
+    let mut doc = wordcraft_doc::Document::from_text("inside  tail");
+    let top = wordcraft_doc::Path::top(0);
+    let p = doc.para_mut(StoryRef::Body, &top).unwrap();
+    let field = |instr: &str| InlineObject::Field {
+        instr: instr.into(),
+        result: "stale".into(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    };
+    p.insert_object(7, field(r"REF Self \p"), &CharProps::default()).unwrap();
+    p.insert_object(7, field("REF Self"), &CharProps::default()).unwrap();
+    let end = p.len();
+    p.insert_object(end, InlineObject::BookmarkEnd { name: "Self".into() }, &CharProps::default()).unwrap();
+    p.insert_object(0, InlineObject::BookmarkStart { name: "Self".into() }, &CharProps::default()).unwrap();
+    let out = output_fields(&doc).unwrap();
+    let shown: Vec<String> = out
+        .para(StoryRef::Body, &top)
+        .unwrap()
+        .objects
+        .iter()
+        .filter_map(|o| match o {
+            InlineObject::Field { result, .. } => Some(result.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(shown, [BOOKMARK_SELF_REFERENCE, BOOKMARK_SELF_REFERENCE]);
+    let kept = doc
+        .para(StoryRef::Body, &top)
+        .unwrap()
+        .objects
+        .iter()
+        .filter(|o| matches!(o, InlineObject::Field { result, .. } if result == "stale"))
+        .count();
+    assert_eq!(kept, 2, "the document keeps its results");
 }
 
 /// Printed or exported, a REF to a bookmark the document doesn't have shows Word's error

@@ -312,7 +312,12 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                 let mut floats = HashMap::new();
                 // A header or footer cell's floats placed on the page: no room taken in the cell.
                 let mut pinned = HashMap::new();
-                let text_over = hf_over && p.text.chars().any(|c| c != '\u{FFFC}' && !c.is_whitespace());
+                // Before Word 2013 (compatibility mode below 15) an empty paragraph holding only
+                // floating objects (a letterhead banner) keeps its line in place too; from mode 15
+                // its line goes below the object.
+                let text_over = hf_over
+                    && (p.text.chars().any(|c| c != '\u{FFFC}' && !c.is_whitespace())
+                        || (ctx.doc.settings.compat_mode < 15 && p.objects.iter().all(|o| floating(o).is_some())));
                 let left_out = left_out_objects(ctx.doc, p, table.map(|t| &t.chr), ctx.opts.show_hidden, ctx.hide_deleted);
                 for (oi, o) in p.objects.iter().enumerate() {
                     let Some((w, h, float)) = floating(o) else { continue };

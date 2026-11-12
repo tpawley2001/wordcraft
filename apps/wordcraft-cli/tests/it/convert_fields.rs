@@ -13,7 +13,15 @@ fn convert_refresh_is_opt_in() {
     for locked in [true, false] {
         doc.insert_object(
             &Pos::body(0, 0),
-            InlineObject::Field { instr: "PAGEREF target".into(), result: "104".into(), locked, dirty: true, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: "PAGEREF target".into(),
+                result: "104".into(),
+                locked,
+                dirty: true,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &Default::default(),
         )
         .unwrap();
@@ -68,6 +76,7 @@ fn convert_protected_document_with_update_fields_skips_with_warning() {
                 dirty: true,
                 code: false,
                 form: String::new(),
+                code_paras: None,
             },
             &Default::default(),
         )

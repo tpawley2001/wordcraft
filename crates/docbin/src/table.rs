@@ -196,7 +196,9 @@ fn set<T>(slots: &mut Vec<(u8, T)>, c: u8, v: T) {
 pub(crate) fn decode(papx: &[u8]) -> RowInfo {
     let mut r = RowInfo::default();
     let mut gap_half: Option<i16> = None;
-    let mut dxa_left: Option<i16> = None;
+    // The left edge of the row's first cell, twips from the margin, as the row's sprms set it
+    // in order: `sprmTDefTable`'s rgdxaCenter[0], or `sprmTDxaLeft` less the final gap half.
+    let mut edge0: Option<Edge0> = None;
     let mut padding: [Option<f32>; 4] = [None; 4];
     for prl in sprm::iter(papx) {
         // The membership sprms are paragraph sprms (sgc 1); the rest here are table sprms
@@ -207,7 +209,10 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
             P_INNER_CELL => r.inner_cell = prl.operand.first().copied().unwrap_or(0) != 0,
             P_INNER_TTP => r.inner_ttp = prl.operand.first().copied().unwrap_or(0) != 0,
             P_ITAP => r.depth = i32_of(&prl).unwrap_or(0).max(0) as u32,
-            T_DEF_TABLE => r.edges = def_table_edges(prl.operand),
+            T_DEF_TABLE => {
+                r.edges = def_table_edges(prl.operand);
+                edge0 = first_edge(prl.operand).map(Edge0::Center).or(edge0);
+            }
             T_TABLE_HEADER => r.header = prl.operand.first().copied().unwrap_or(0) != 0,
             T_CANT_SPLIT | T_CANT_SPLIT_90 => r.cant_split = prl.operand.first().copied().unwrap_or(0) != 0,
             T_ROW_HEIGHT => {
@@ -228,7 +233,7 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
                     _ => Some(Align::Left),
                 };
             }
-            T_DXA_LEFT => dxa_left = s16(&prl),
+            T_DXA_LEFT => edge0 = s16(&prl).map(Edge0::DxaLeft).or(edge0),
             T_DXA_GAP_HALF => gap_half = s16(&prl),
             T_TABLE_BORDERS_80 => r.borders = table_borders(prl.operand),
             T_MERGE => {
@@ -350,13 +355,43 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
             _ => {}
         }
     }
-    // The table indent is the row origin minus half the cell gap.
-    if let Some(l) = dxa_left {
-        let gap = gap_half.unwrap_or(0) as f32 / 20.0;
-        r.indent = Some(((l as f32 / 20.0) - gap).clamp(-1584.0, 1584.0));
-    }
     r.cell_margins = cell_margins(padding, gap_half);
+    r.indent = edge0.and_then(|e| row_indent(e, gap_half, r.cell_margins));
     r
+}
+
+/// The table indent a row says, in points: where the first cell's text starts (Word 97-2003
+/// compatibility, which every `.doc` is in), the first cell's edge plus the table's default
+/// left cell margin. `None` within half a twip of the margin: an ordinary table.
+fn row_indent(edge0: Edge0, gap_half: Option<i16>, margins: Option<[f32; 4]>) -> Option<f32> {
+    let edge = match edge0 {
+        Edge0::Center(c) => i32::from(c),
+        Edge0::DxaLeft(l) => i32::from(l) - i32::from(gap_half.unwrap_or(0)),
+    };
+    let left = margins.map_or(0.0, |m| m[1]);
+    let indent = (edge as f32 / 20.0 + left).clamp(-1584.0, 1584.0);
+    (indent.abs() >= 0.025).then_some(indent)
+}
+
+/// Where a row's first cell edge came from (see `decode`).
+#[derive(Clone, Copy)]
+enum Edge0 {
+    /// `sprmTDefTable`'s rgdxaCenter[0].
+    Center(i16),
+    /// `sprmTDxaLeft`, the edge plus the gap half.
+    DxaLeft(i16),
+}
+
+/// rgdxaCenter[0] of a `sprmTDefTable` operand (cb as u16, itcMac, rgdxaCenter…), twips; `None`
+/// for a row with no cells or a truncated operand.
+fn first_edge(operand: &[u8]) -> Option<i16> {
+    if operand.get(2).copied().unwrap_or(0) == 0 {
+        return None;
+    }
+    match operand.get(3..5) {
+        Some([a, b]) => Some(i16::from_le_bytes([*a, *b])),
+        _ => None,
+    }
 }
 
 /// The table's default cell margins: the padding sides set, with the gap half as the left and
