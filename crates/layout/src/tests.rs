@@ -9,6 +9,7 @@ mod autospace_legacy_lists;
 mod bidi;
 mod blank_side_page;
 mod border_band;
+mod break_then_float;
 mod budget;
 mod button_fields;
 mod cell_floats;
