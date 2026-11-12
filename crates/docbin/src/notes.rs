@@ -68,25 +68,55 @@ pub(crate) enum Mark {
 /// walk. Hidden bookmarks (leading `_`) are kept: the engine can decide.
 pub(crate) fn parse_bookmarks(table: &[u8], fib: &crate::fib::Fib) -> Vec<(u32, Mark)> {
     let names = fib.pair(crate::fib::pair::STTBF_BKMK).and_then(|(fc, lcb)| sttb_strings(table, fc, lcb)).unwrap_or_default();
-    let starts = fib.pair(crate::fib::pair::PLCF_BKF).and_then(|(fc, lcb)| plc_of(table, fc, lcb, 4)).unwrap_or_default();
-    let ends = fib.pair(crate::fib::pair::PLCF_BKL).and_then(|(fc, lcb)| plc_of(table, fc, lcb, 2)).unwrap_or_default();
-    let n = starts.len().saturating_sub(1).min(ends.len().saturating_sub(1)).min(names.len()).min(MAX);
-    let mut out = Vec::with_capacity(n * 2);
-    for i in 0..n {
-        let (Some(&a), Some(&b)) = (starts.get(i), ends.get(i)) else { break };
-        if b < a {
+    let starts = fib.pair(crate::fib::pair::PLCF_BKF).and_then(|(fc, lcb)| bkf_of(table, fc, lcb)).unwrap_or_default();
+    // PlcfBkl (§2.8.12) holds only CPs, sorted by CP; bytes after the ones there are ignored.
+    let ends = fib.pair(crate::fib::pair::PLCF_BKL).and_then(|(fc, lcb)| cps_of(table, fc, lcb)).unwrap_or_default();
+    let mut out = Vec::new();
+    for ((a, ibkl), name) in starts.into_iter().zip(names.iter()).take(MAX) {
+        // A start names its own end by index (FBKF.ibkl): nested bookmarks end in another order
+        // than they start. A bookmark whose end is missing, before its start or unnamed is skipped.
+        let Some(&b) = ends.get(usize::from(ibkl)) else { continue };
+        if b < a || name.is_empty() {
             continue;
         }
-        if let Some(name) = names.get(i) {
-            if name.is_empty() {
-                continue;
-            }
-            out.push((a, Mark::Start(name.clone())));
-            out.push((b, Mark::End(name.clone())));
-        }
+        out.push((a, Mark::Start(name.clone())));
+        out.push((b, Mark::End(name.clone())));
     }
     out.sort_by_key(|(cp, m)| (*cp, matches!(m, Mark::End(_))));
     out
+}
+
+/// The CPs of a PLC with no data: as many whole 4-byte CPs as there are, at most one per
+/// bookmark plus the limit ([`MAX`] + 1).
+fn cps_of(table: &[u8], fc: u32, lcb: u32) -> Option<Vec<u32>> {
+    let plc = table.get(fc as usize..(fc as usize).saturating_add(lcb as usize))?;
+    Some(
+        plc.chunks_exact(4)
+            .take(MAX + 1)
+            .filter_map(|c| match c {
+                [a, b, c, d] => Some(u32::from_le_bytes([*a, *b, *c, *d])),
+                _ => None,
+            })
+            .collect(),
+    )
+}
+
+/// PlcfBkf ([MS-DOC] §2.8.10): n + 1 CPs, then n FBKFs of 4 bytes (§2.9.71: `ibkl`, then
+/// `bkc`). Returns each bookmark's start CP with its `ibkl`, at most [`MAX`] of them.
+fn bkf_of(table: &[u8], fc: u32, lcb: u32) -> Option<Vec<(u32, u16)>> {
+    let plc = table.get(fc as usize..(fc as usize).saturating_add(lcb as usize))?;
+    let n = (plc.len().checked_sub(4)? / 8).min(MAX);
+    let data = plc.get((n + 1) * 4..)?;
+    let cps = plc.chunks_exact(4).take(n);
+    let fbkfs = data.chunks_exact(4).take(n);
+    Some(
+        cps.zip(fbkfs)
+            .filter_map(|(cp, f)| match (cp, f) {
+                ([a, b, c, d], [i0, i1, ..]) => Some((u32::from_le_bytes([*a, *b, *c, *d]), u16::from_le_bytes([*i0, *i1]))),
+                _ => None,
+            })
+            .collect(),
+    )
 }
 
 /// Strings of an STTB: extended (fExtend = 0xFFFF, 2-byte length and UTF-16 chars) or not
