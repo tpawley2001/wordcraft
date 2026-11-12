@@ -991,6 +991,11 @@ pub struct Cell {
     pub valign: Option<VAlign>,
     /// The cell's padding (top, left, bottom, right), points, when the source gives it.
     pub margins: Option<[f32; 4]>,
+    /// The sides of its padding the cell sets itself (top, left, bottom, right), points; `None`
+    /// for a side it takes from its table. Read when `margins` is `None`.
+    pub own_margins: [Option<f32>; 4],
+    /// Wrap text off: its text stays on one line.
+    pub no_wrap: bool,
     /// Which way its text runs (turned down or up).
     pub direction: wordcraft_doc::props::TextDirection,
     /// A picture behind its content (ODT).
@@ -1021,6 +1026,8 @@ impl Default for Cell {
             borders: None,
             valign: None,
             margins: None,
+            own_margins: [None; 4],
+            no_wrap: false,
             direction: Default::default(),
             picture: None,
             width: None,

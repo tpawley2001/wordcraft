@@ -864,6 +864,8 @@ impl Reader {
             c.header = self.row_header;
             c.valign = d.valign;
             c.direction = d.direction;
+            c.own_margins = d.own_margins();
+            c.no_wrap = d.no_wrap;
             match d.vmerge {
                 1 => c.rowspan = 2,
                 2 => c.covered = true,

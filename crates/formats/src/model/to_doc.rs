@@ -945,6 +945,7 @@ impl<'a> Builder<'a> {
                     let media = self.doc.add_media(p.img.data.as_ref().clone(), &p.img.ext);
                     Box::new(wordcraft_doc::props::CellPicture { media, size: [p.img.w, p.img.h], repeat: p.repeat, align: p.align })
                 });
+                let (margins, partial_margins) = cell_margins(c);
                 row.cells.push(wordcraft_doc::Cell {
                     props: CellProps {
                         width: Some(w),
@@ -952,7 +953,9 @@ impl<'a> Builder<'a> {
                         vmerge,
                         shading: c.shading,
                         borders: c.borders,
-                        margins: c.margins.filter(|m| m.iter().all(|v| v.is_finite())).map(|m| m.map(|v| v.clamp(0.0, 1584.0))),
+                        margins,
+                        partial_margins,
+                        no_wrap: c.no_wrap,
                         valign: c.valign,
                         text_direction: c.direction,
                         picture,
@@ -1077,4 +1080,20 @@ pub fn part_blocks(doc: &mut Document, blocks: &[FBlock]) -> Blocks {
         out.push(para_block(Paragraph::new()));
     }
     out
+}
+
+/// A cell's padding for its [`CellProps`]: all four sides (`margins`), else the sides it sets
+/// itself (`partial_margins`, all four set counting as `margins`), each finite and within 22
+/// inches.
+fn cell_margins(c: &crate::model::Cell) -> (Option<[f32; 4]>, Option<[Option<f32>; 4]>) {
+    let fit = |v: f32| v.is_finite().then(|| v.clamp(0.0, 1584.0));
+    if let Some(m) = c.margins.filter(|m| m.iter().all(|v| v.is_finite())) {
+        return (Some(m.map(|v| v.clamp(0.0, 1584.0))), None);
+    }
+    let own = c.own_margins.map(|s| s.and_then(fit));
+    match own {
+        [Some(t), Some(l), Some(b), Some(r)] => (Some([t, l, b, r]), None),
+        _ if own.iter().any(Option::is_some) => (None, Some(own)),
+        _ => (None, None),
+    }
 }
