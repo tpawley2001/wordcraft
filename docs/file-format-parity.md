@@ -1,6 +1,6 @@
 # File-format parity with Microsoft Word
 
-> **Last updated:** 2026-11-12 · **Change:** trivial (`.doc`: a table's indent comes from its first cell edge (`sprmTDefTable`) plus its left cell margin, so indented and outdented tables stand where Word puts them. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-12 · **Change:** trivial (P0349: `.doc` rows from Word 2002 and later break across pages unless `sprmTFCantSplit` (or the row's `sprmPTableProps` copy in the Data stream) says not to, so table-built pages are as long as in Word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-12 · **Change:** trivial (DOCX: a field code that runs over several paragraphs is one paragraph with its result, and is saved as it was read, as in Word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-12 · **Change:** trivial (RTF: `\jexpand` / `\jcompress` (whether Word squeezes spaces to keep an overrunning word) are read and written. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-12 · **Change:** trivial (`.doc`: Phonetic Guide text, stored as an `EQ` field with no result, is read as ruby and shown over its base text, as in Word; found by the real-file corpus. Readiness estimates unchanged.)
@@ -998,3 +998,4 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 | 2026-11-12 | trivial | RTF: `\jexpand` turns off the space squeeze Word uses to keep a line's overrunning last word, on open; it is written when the document does not squeeze; `\jcompress` (the default) leaves it on |
 | 2026-11-11 | trivial | DOCX: a picture's link to a place in the document (internal hyperlink relationship `#Name`), a link only on its `pic:cNvPr`, and a VML picture's `href` were dropped on open; each is the run's `link` (`picture_link_forms.rs`) |
 | 2026-11-12 | trivial | `.doc`: a table's indent is its first cell edge (`sprmTDefTable` rgdxaCenter[0], or `sprmTDxaLeft` less `sprmTDxaGapHalf`) plus its default left cell margin; rows without `sprmTDxaLeft` no longer start at the margin (`crates/docbin/src/tests/table_left_edge.rs`). |
+| 2026-11-12 | trivial | P0349: `.doc` row "can't split": `sprmTFCantSplit90` counts only in Word 97/2000 files (version `nFibNew`, else `nFib`, below 0x0101); `sprmTFCantSplit` in every version; a row-end PAPX's `sprmPTableProps` (a `PrcData` in the Data stream) decides it alone when it points inside the stream (`tests/table_row_cant_split.rs`) |
