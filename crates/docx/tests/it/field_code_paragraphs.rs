@@ -61,25 +61,29 @@ fn para(props: &str, content: &[String]) -> String {
 /// `BEFORE` / `AAA ` + begin + ` QUOTE "x` / `y` / `z" ` + separate + `RES` + end + ` tail` / `NEXT`,
 /// with the three field paragraphs' `w:pPr` contents.
 fn three(p1: &str, p2: &str, p3: &str) -> Vec<u8> {
-    package(&[
-        para("", &[text("BEFORE")]),
-        para(p1, &[text("AAA "), mark("begin"), code(r#" QUOTE "x"#)]),
-        para(p2, &[code("y")]),
-        para(p3, &[code(r#"z" "#), mark("separate"), text("RES"), mark("end"), text(" tail")]),
-        para("", &[text("NEXT")]),
-    ]
-    .concat())
+    package(
+        &[
+            para("", &[text("BEFORE")]),
+            para(p1, &[text("AAA "), mark("begin"), code(r#" QUOTE "x"#)]),
+            para(p2, &[code("y")]),
+            para(p3, &[code(r#"z" "#), mark("separate"), text("RES"), mark("end"), text(" tail")]),
+            para("", &[text("NEXT")]),
+        ]
+        .concat(),
+    )
 }
 
 /// `BEFORE` / `AAA ` + begin + ` QUOTE "x` / `z" ` + separate + `RES` + end + ` tail` / `NEXT`.
 fn two(p1: &str, p2: &str) -> Vec<u8> {
-    package(&[
-        para("", &[text("BEFORE")]),
-        para(p1, &[text("AAA "), mark("begin"), code(r#" QUOTE "x"#)]),
-        para(p2, &[code(r#"z" "#), mark("separate"), text("RES"), mark("end"), text(" tail")]),
-        para("", &[text("NEXT")]),
-    ]
-    .concat())
+    package(
+        &[
+            para("", &[text("BEFORE")]),
+            para(p1, &[text("AAA "), mark("begin"), code(r#" QUOTE "x"#)]),
+            para(p2, &[code(r#"z" "#), mark("separate"), text("RES"), mark("end"), text(" tail")]),
+            para("", &[text("NEXT")]),
+        ]
+        .concat(),
+    )
 }
 
 fn body_paras(doc: &Document) -> Vec<&Paragraph> {
@@ -238,12 +242,7 @@ fn the_last_paragraphs_space_after_is_saved_on_the_last_paragraph() {
 #[test]
 fn a_field_that_is_never_finished_leaves_the_following_paragraphs_alone() {
     let doc = wordcraft_docx::read(&package(
-        &[
-            para("", &[text("AAA "), mark("begin"), code(r#" QUOTE "x"#)]),
-            para(CENTER, &[text("Second.")]),
-            para("", &[text("Third.")]),
-        ]
-        .concat(),
+        &[para("", &[text("AAA "), mark("begin"), code(r#" QUOTE "x"#)]), para(CENTER, &[text("Second.")]), para("", &[text("Third.")])].concat(),
     ))
     .unwrap();
     assert_eq!(texts(&doc).len(), 3);
