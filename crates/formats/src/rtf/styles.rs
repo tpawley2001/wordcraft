@@ -460,7 +460,7 @@ impl Reader {
         p.spacing = spacing(st);
         p.borders = st.borders.any_visible().then_some(st.borders);
         if !st.tabs.is_empty() {
-            p.extra = Some(Box::new(wordcraft_doc::props::ParaProps { tabs: Some(st.tabs.clone()), ..Default::default() }));
+            p.extra.get_or_insert_with(Default::default).tabs = Some(st.tabs.clone());
         }
         p.keep_next = st.keepn;
         if st.keep || st.noline {
