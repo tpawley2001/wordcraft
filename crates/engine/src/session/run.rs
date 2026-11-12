@@ -480,3 +480,54 @@ impl Session {
         result
     }
 }
+
+/// The active document's text, selection, undo and redo steps, changed flag and revision, so a
+/// command that edits another open document as a side effect (Paste link bookmarking the copy's
+/// source) can take that edit back when it then fails: `run` only rolls back the document the
+/// command ran in.
+pub(crate) struct EditCheckpoint {
+    snap: RunSnapshot,
+    dirty: bool,
+    rev: u64,
+    join_anchor: bool,
+    last_bookmark: Option<String>,
+}
+
+impl Session {
+    /// The active document's [`EditCheckpoint`].
+    pub(crate) fn edit_checkpoint(&self) -> EditCheckpoint {
+        EditCheckpoint {
+            snap: (
+                self.doc.clone(),
+                self.sel.clone(),
+                self.history.clone(),
+                self.redo.clone(),
+                self.typing_open,
+                self.undo_evicted,
+                self.column.clone(),
+            ),
+            dirty: self.dirty,
+            rev: self.rev,
+            join_anchor: self.join_anchor,
+            last_bookmark: self.last_bookmark.clone(),
+        }
+    }
+
+    /// Put the active document back as it was at `c`: no undo or redo step, change or changed
+    /// flag made since is left.
+    pub(crate) fn restore_edit_checkpoint(&mut self, c: EditCheckpoint) {
+        let (doc, sel, history, redo, typing_open, evicted, column) = c.snap;
+        self.doc = doc;
+        self.sel = sel;
+        self.history = history;
+        self.redo = redo;
+        self.typing_open = typing_open;
+        self.undo_evicted = evicted;
+        self.column = column;
+        self.dirty = c.dirty;
+        self.join_anchor = c.join_anchor;
+        self.last_bookmark = c.last_bookmark;
+        self.restore_rev(c.rev);
+        self.clamp_selection();
+    }
+}

@@ -78,6 +78,8 @@ pub(super) struct Reader {
     pub(super) generator: Option<String>,
     pub(super) meta: Meta,
     pub(super) info_text: String,
+    /// The text of the `{\*\template …}` group being read (the attached template's path).
+    pub(super) template_text: String,
     // Lists: list id → ordered per level; override ls → list id.
     pub(super) lists: HashMap<i32, Vec<bool>>,
     pub(super) list_cur: Vec<bool>,
@@ -164,6 +166,9 @@ pub(super) struct Reader {
     // Notes and comments (only when the caller wants them).
     pub(super) marks_on: bool,
     pub(super) sub: Option<Sub>,
+    /// The note separator stories read, by slot in [`super::state::SEP_WORDS`]; a later group
+    /// of a kind replaces an earlier one.
+    pub(super) note_seps: [Option<Vec<FBlock>>; 6],
     pub(super) notes: Vec<NoteData>,
     pub(super) comments: Vec<CommentData>,
     pub(super) atn_text: String,
@@ -364,8 +369,33 @@ impl Reader {
         }
         let custom = if comment { String::new() } else { self.take_custom_mark() };
         let saved = self.swap_output(Output::default());
-        self.sub = Some(Sub { depth: self.depth(), comment, endnote: false, custom, own_mark_done: false, saved: Box::new(saved) });
+        self.sub = Some(Sub { depth: self.depth(), comment, endnote: false, custom, own_mark_done: false, sep: None, saved: Box::new(saved) });
         self.st.intbl = false;
+    }
+
+    /// A note separator story group starts (`\ftnsep`…, slot `k` of
+    /// [`super::state::SEP_WORDS`]): read like a note's text, into an output of its own.
+    pub(super) fn start_sep(&mut self, k: usize) {
+        if self.overflow > 0 {
+            self.st.dest = Dest::Skip;
+            return;
+        }
+        let saved = self.swap_output(Output::default());
+        self.sub = Some(Sub {
+            depth: self.depth(),
+            comment: false,
+            endnote: false,
+            custom: String::new(),
+            own_mark_done: false,
+            sep: Some(k),
+            saved: Box::new(saved),
+        });
+        self.st.intbl = false;
+    }
+
+    /// Inside a note separator story.
+    pub(super) fn in_sep(&self) -> bool {
+        self.sub.as_ref().is_some_and(|s| s.sep.is_some())
     }
 
     /// A place marker as text in the current paragraph.
@@ -389,6 +419,13 @@ impl Reader {
         let fmt = self.stack.last().map(|s| s.fmt.clone()).unwrap_or_default();
         let mut inner = self.swap_output(*sub.saved);
         inner.body.truncate(MAX_NOTE_BLOCKS);
+        if let Some(k) = sub.sep {
+            // A group with nothing in it (`{\ftnsep}`) stores nothing (not measured in Word).
+            if let Some(slot) = self.note_seps.get_mut(k) {
+                *slot = (!inner.body.is_empty()).then_some(inner.body);
+            }
+            return;
+        }
         if !sub.comment {
             self.push_mark('N', self.notes.len() as i64, fmt);
             self.notes.push(NoteData { endnote: sub.endnote, custom: sub.custom, blocks: inner.body });
@@ -580,6 +617,7 @@ impl Reader {
             "remdttm" => d.remove_date_time = Some(on),
             "rempersonalinfo" => d.remove_personal_info = Some(on),
             "revisions" => d.track_changes = Some(on),
+            "trackmoves" => d.track_moves = Some(on),
             "revprot" => d.old_prot = on.then_some("trackedChanges"),
             "viewscale" => d.percent = u32::try_from(pv).ok().filter(|n| (10..=500).contains(n)).or(d.percent),
             "viewzk" => match pv {
@@ -600,6 +638,10 @@ impl Reader {
             return;
         }
         self.stack.push(self.st.clone());
+        // A `{\*\docvar …}` group's first two nested groups are its name and value; any more are skipped.
+        if self.st.dest == Dest::DocVar {
+            self.st.dest = if self.info_more.var_parts.len() < 2 { Dest::Info(14) } else { Dest::Skip };
+        }
         self.mark_group_open();
     }
 
@@ -622,6 +664,17 @@ impl Reader {
             Dest::FontTbl if !self.font_name.is_empty() => self.commit_font(),
             Dest::StyleSheet if !self.style_name.is_empty() => self.commit_style(),
             Dest::RevTbl if !self.rev_name.trim().is_empty() => self.commit_author(),
+            // A document variable's name or value: kept as written, not trimmed.
+            Dest::Info(14) => {
+                let t = std::mem::take(&mut self.info_text);
+                if self.stack.last().is_some_and(|p| p.dest == Dest::DocVar) {
+                    let part = Some(t).filter(|t| t.len() <= super::state::MAX_INFO_TEXT);
+                    self.info_more.var_parts.push(part);
+                } else {
+                    // A nested group inside the name or value: its text belongs to that part.
+                    self.info_text = t;
+                }
+            }
             Dest::Info(k) => {
                 let mut t = std::mem::take(&mut self.info_text).trim().to_string();
                 super::state::truncate_chars(&mut t, super::state::MAX_INFO_TEXT);
@@ -640,7 +693,18 @@ impl Reader {
                     _ => {}
                 }
             }
+            // The template group's own end (a nested group inside it only changes formatting).
+            Dest::Template if self.stack.last().is_none_or(|p| p.dest != Dest::Template) => {
+                let mut t = std::mem::take(&mut self.template_text).trim().to_string();
+                if let Some((end, _)) = t.char_indices().nth(super::state::MAX_TEMPLATE_CHARS) {
+                    super::state::truncate_chars(&mut t, end);
+                }
+                if !t.is_empty() {
+                    self.doc_set.template = Some(t);
+                }
+            }
             Dest::UserProps => self.info_more.commit_user_prop(),
+            Dest::DocVar => self.info_more.commit_doc_var(),
             Dest::LatentStyles => self.latent.end(),
             Dest::LsdExcept => self.latent.end_exceptions(),
             Dest::Atn(k) => self.commit_atn(k),
@@ -915,6 +979,18 @@ impl Reader {
             rights.truncate(out.len());
             if self.table.is_empty() {
                 self.table_style = self.row_style.clone();
+            } else if !self.row_style.keeps_style_padding() && !self.table_style.keeps_style_padding() {
+                // The table has one default padding, its first row's: the sides where this
+                // row's differs become its cells' own, unless a cell sets that side itself.
+                let row = self.row_style.padding();
+                let first = self.table_style.padding();
+                for c in &mut out {
+                    for ((own, r), t) in c.own_margins.iter_mut().zip(row).zip(first) {
+                        if own.is_none() && (r - t).abs() >= 0.01 {
+                            *own = Some(r);
+                        }
+                    }
+                }
             }
             self.table.push(out);
             self.table_rights.push(rights);
@@ -1126,6 +1202,10 @@ pub(super) struct DocSettingWords {
     /// `\revisions` (Track Changes on) and `\printdata` (print only the data from a form).
     track_changes: Option<bool>,
     print_forms_data: Option<bool>,
+    /// `\trackmovesN` (Track moves): `\trackmoves0` turns move tracking off.
+    track_moves: Option<bool>,
+    /// The attached template (`{\*\template …}`): the last non-blank group's path.
+    pub(super) template: Option<String>,
 }
 
 impl DocSettingWords {
@@ -1176,10 +1256,14 @@ impl DocSettingWords {
             (self.expand_shift_return, &mut s.do_not_expand_shift_return),
             (self.track_changes, &mut s.track_changes),
             (self.print_forms_data, &mut s.print_forms_data),
+            (self.track_moves, &mut s.track_moves),
         ] {
             if let Some(v) = v {
                 *field = v;
             }
+        }
+        if let Some(t) = &self.template {
+            s.attached_template = Some(t.clone());
         }
     }
 }
@@ -1244,5 +1328,24 @@ mod bookmark_end_tests {
         let out = export(&import(rtf.as_bytes()).unwrap());
         let (s, t, e) = (out.find(r"{\*\bkmkstart h}").unwrap(), out.find("HEAD").unwrap(), out.find(r"{\*\bkmkend h}").unwrap());
         assert!(s < t && t < e, "{out}");
+    }
+}
+
+#[cfg(test)]
+mod template_tests {
+    use super::super::import;
+
+    #[test]
+    fn overlong_non_ascii_template_is_cut_by_characters() {
+        let rtf = format!(r"{{\rtf1\ansi\uc1{{\*\template {}}}\sectd a\par}}", r"\u233?".repeat(5000));
+        let t = import(rtf.as_bytes()).unwrap().settings.attached_template.unwrap_or_default();
+        assert_eq!(t.chars().count(), 4096);
+        assert!(t.chars().all(|c| c == '\u{e9}'));
+    }
+
+    #[test]
+    fn template_in_a_header_is_ignored() {
+        let d = import(br"{\rtf1\ansi{\header {\*\template H.dotx}h\par}\sectd a\par}").unwrap();
+        assert_eq!(d.settings.attached_template, None);
     }
 }

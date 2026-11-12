@@ -277,9 +277,19 @@ impl Reader {
             italic: d.italic,
             color: d.color.map(color),
             spacing: d.spacing,
-            ..Default::default()
+            ..self.def_char_lines(d)
         };
         (para, chr)
+    }
+
+    /// The character border, underline and strikethrough entry `d` states (`None` for what it
+    /// doesn't); the border's colour is looked up in the colour table as a run's `\brdrcf` is.
+    fn def_char_lines(&self, d: &StyleDef) -> CharProps {
+        let border = d.border.map(|mut b| {
+            b.color = d.border_color.and_then(|i| self.colors.get(i.max(0) as usize).copied().flatten());
+            b
+        });
+        CharProps { border, underline: d.underline, strike: d.strike, double_strike: d.double_strike, ..Default::default() }
     }
 
     /// Whether another program wrote the file: its `{\*\generator …}` names one that isn't
@@ -325,6 +335,12 @@ impl Reader {
             out.culi = out.culi.or(d.culi);
             out.curi = out.curi.or(d.curi);
             out.spacing = out.spacing.or(d.spacing);
+            if out.border.is_none() {
+                (out.border, out.border_color) = (d.border, d.border_color);
+            }
+            out.underline = out.underline.or(d.underline);
+            out.strike = out.strike.or(d.strike);
+            out.double_strike = out.double_strike.or(d.double_strike);
             cur = d.based_on;
         }
         out
@@ -403,7 +419,7 @@ impl Reader {
                 italic: Some(d.italic.unwrap_or(false)),
                 color: Some(color.map_or(TextColor::Auto, TextColor::Rgb)),
                 spacing: d.spacing,
-                ..Default::default()
+                ..self.def_char_lines(&d)
             };
             out.push((style, para, chr));
         }
@@ -460,7 +476,7 @@ impl Reader {
         p.spacing = spacing(st);
         p.borders = st.borders.any_visible().then_some(st.borders);
         if !st.tabs.is_empty() {
-            p.extra = Some(Box::new(wordcraft_doc::props::ParaProps { tabs: Some(st.tabs.clone()), ..Default::default() }));
+            p.extra.get_or_insert_with(Default::default).tabs = Some(st.tabs.clone());
         }
         p.keep_next = st.keepn;
         if st.keep || st.noline {
@@ -655,6 +671,17 @@ pub(super) struct StyleDef {
     pub(super) curi: Option<i32>,
     /// Character spacing in points (`\expnd`, `\expndtw`; the later wins).
     pub(super) spacing: Option<f32>,
+    /// The character border (`\chbrdr` and the border words after it), its colour as a
+    /// `\colortbl` index (`\brdrcf`, looked up when the style is made), and whether border words
+    /// still describe it (until a paragraph border side starts).
+    pub(super) border: Option<wordcraft_doc::props::Border>,
+    pub(super) border_color: Option<i32>,
+    pub(super) border_open: bool,
+    /// Underline (`\ul…`; `\ulnone` is a stated none), strikethrough (`\strike`) and double
+    /// strikethrough (`\striked1`).
+    pub(super) underline: Option<wordcraft_doc::props::Underline>,
+    pub(super) strike: Option<bool>,
+    pub(super) double_strike: Option<bool>,
     /// A table style's row formatting (after `\tsrowd`).
     pub(super) table: TableDef,
 }
