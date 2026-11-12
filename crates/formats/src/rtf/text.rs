@@ -215,6 +215,7 @@ impl Reader {
     /// Document text: a run in the current formatting, or a shape field's result.
     fn body_text(&mut self, s: &str) {
         let mut f = self.st.fmt.clone();
+        super::styles::mark_stated_off(&mut f, self.st.off);
         if s.contains([MARK_OPEN, MARK_CLOSE]) {
             self.para.push_text(&s.replace([MARK_OPEN, MARK_CLOSE], "\u{FFFD}"), &f);
             self.para_has = true;
@@ -392,14 +393,17 @@ impl Reader {
     fn old_fmt(&mut self, words: &[(String, Option<i32>)]) -> Fmt {
         let fmt = Fmt { link: None, link_tip: None, ins: None, del: None, fmt_change: None, ..self.st.fmt.clone() };
         let ch_pattern = self.st.ch_pattern;
-        let saved = std::mem::replace(&mut self.st, St { dest: Dest::OldProps(false), fmt, ch_pattern, ..Default::default() });
+        let off = self.st.off;
+        let saved = std::mem::replace(&mut self.st, St { dest: Dest::OldProps(false), fmt, ch_pattern, off, ..Default::default() });
         // Border words replayed here describe the old character border, never a page or cell side.
         let sides = (self.page_side.take(), self.cell_side.take());
         for (w, p) in words {
             self.word(w, *p, false, false);
         }
         (self.page_side, self.cell_side) = sides;
-        let old = std::mem::replace(&mut self.st, saved).fmt;
+        let old_st = std::mem::replace(&mut self.st, saved);
+        let mut old = old_st.fmt;
+        super::styles::mark_stated_off(&mut old, old_st.off);
         Fmt { link: None, link_tip: None, ..old }
     }
 

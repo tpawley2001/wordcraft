@@ -572,6 +572,29 @@ pub(super) struct St {
     pub(super) dir: Option<bool>,
     /// The font slot (`\loch`, `\hich`, `\dbch`) the next font word fills.
     pub(super) slot: Option<FontSlot>,
+    /// The character properties the text's own words turned off (`\b0`, `\ulnone`, `\cf0`…);
+    /// part of the group's state, forgotten by `\plain`.
+    pub(super) off: StatedOff,
+}
+
+/// Which character properties the text's own words turned off: over a style that turns one on,
+/// the text has it off (RTF 1.9.1, "Style Sheet": a style's formatting applies only where the
+/// text repeats it).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct StatedOff {
+    pub(super) bold: bool,
+    pub(super) italic: bool,
+    pub(super) underline: bool,
+    pub(super) strike: bool,
+    pub(super) double_strike: bool,
+    pub(super) caps: bool,
+    pub(super) small_caps: bool,
+    pub(super) hidden: bool,
+    /// Superscript and subscript (`\nosupersub`, `\super0`, `\sub0`).
+    pub(super) script: bool,
+    pub(super) highlight: bool,
+    /// The automatic colour (`\cf0`).
+    pub(super) color: bool,
 }
 
 /// The font a font word right after `\loch`, `\hich` or `\dbch` names (RTF 1.9.1, "Associated
@@ -599,6 +622,7 @@ impl Default for St {
             old_words: Vec::new(),
             old_rev: (None, None),
             uc: 1,
+            off: StatedOff::default(),
             align: None,
             style: 0,
             intbl: false,
