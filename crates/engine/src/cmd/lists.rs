@@ -156,13 +156,13 @@ pub fn level_from(mut l: Level, i: usize, v: &Value) -> Level {
 }
 
 /// A number's point size as Word keeps it: half points from 1 to 1638.
-fn number_size(x: f32) -> f32 {
+pub fn number_size(x: f32) -> f32 {
     ((x * 2.0).round() / 2.0).clamp(1.0, 1638.0)
 }
 
 /// The underline with exactly this `w:u` name. Unlike `Underline::from_ooxml`, an unknown name
 /// is no underline at all rather than a single line.
-fn underline_named(name: &str) -> Option<Underline> {
+pub fn underline_named(name: &str) -> Option<Underline> {
     Underline::ALL.into_iter().find(|u| u.ooxml() == name)
 }
 

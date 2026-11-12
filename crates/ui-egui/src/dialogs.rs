@@ -1191,6 +1191,8 @@ mod tests_define_number_font;
 #[cfg(test)]
 mod tests_define_number_size;
 #[cfg(test)]
+mod tests_define_number_size_typed;
+#[cfg(test)]
 mod tests_font_opentype;
 #[cfg(test)]
 mod tests_font_spacing;

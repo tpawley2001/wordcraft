@@ -7,7 +7,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use wordcraft_doc::props::Align;
 use wordcraft_doc::section::NumFormat;
-use wordcraft_engine::cmd::lists::{caret_list, levels_of};
+use wordcraft_engine::cmd::lists::{caret_list, levels_of, number_size, underline_named};
 
 use crate::WordApp;
 use crate::dialogs::font::UNDERLINE_STYLES;
@@ -28,13 +28,7 @@ const NUMBER_SIZES: [&str; 16] = ["8", "9", "10", "11", "12", "14", "16", "18", 
 
 /// The Size box's text as a point size Word takes: 1 to 1638, rounded to the nearest half point.
 fn size_points(s: &str) -> Option<f32> {
-    let x = s.trim().parse::<f32>().ok().filter(|x| x.is_finite() && (1.0..=1638.0).contains(x))?;
-    Some(((x * 2.0).round() / 2.0).clamp(1.0, 1638.0))
-}
-
-/// `name` when it is exactly one of the `w:u` underline names.
-fn underline_name(name: &str) -> Option<wordcraft_doc::props::Underline> {
-    wordcraft_doc::props::Underline::ALL.into_iter().find(|u| u.ooxml() == name)
+    s.trim().parse::<f32>().ok().filter(|x| x.is_finite() && (1.0..=1638.0).contains(x)).map(number_size)
 }
 
 /// `s` as an sRGB colour when it is exactly six hex digits (no `#`).
@@ -184,7 +178,7 @@ impl NumberForm {
         if let Some(x) = size_points(&self.size) {
             p.insert("size".into(), json!(x));
         }
-        if let Some(u) = underline_name(&self.underline) {
+        if let Some(u) = underline_named(&self.underline) {
             p.insert("underline".into(), json!(u.ooxml()));
         }
         Value::Object(p)
@@ -199,7 +193,7 @@ impl NumberForm {
     pub fn label_format(&self, size: f32) -> egui::TextFormat {
         let font_id = if self.bold { crate::theme::semibold(size) } else { egui::FontId::proportional(size) };
         let color = six_hex(&self.color).map_or(egui::Color32::BLACK, |c| egui::Color32::from_rgb(c.0, c.1, c.2));
-        let underline = match underline_name(&self.underline) {
+        let underline = match underline_named(&self.underline) {
             Some(u) if u != wordcraft_doc::props::Underline::None => egui::Stroke::new(1.0, color),
             _ => egui::Stroke::NONE,
         };
@@ -296,14 +290,18 @@ fn number_font(app: &mut WordApp, ui: &mut Ui, f: &mut NumberForm) {
     });
     ui.horizontal(|ui| {
         let size_label = ui.label(tl!("Size:"));
-        let sizes: Vec<String> = NUMBER_SIZES.iter().map(|s| s.to_string()).collect();
-        ui.scope(|ui| {
-            if let Some(v) = crate::widgets::combo(ui, "dnf_size", 52.0, &f.size, &sizes, None) {
-                f.size = v.trim().chars().take(SIZE_MAX).collect();
+        // The field holds what it shows at every moment, so a typed size counts without Enter,
+        // as in the Font dialog's own Size box; the arrow lists the usual sizes.
+        let field = egui::TextEdit::singleline(&mut f.size).id_salt("dnf_size").char_limit(SIZE_MAX).desired_width(40.0);
+        ui.add(field).labelled_by(size_label.id);
+        let list = craft_ui::ComboBox::from_id_salt("dnf_size_list").width(16.0).height(400.0).selected_text("").show_ui(ui, |ui| {
+            for s in NUMBER_SIZES {
+                if ui.selectable_label(f.size.trim() == s, s).clicked() {
+                    f.size = s.to_string();
+                }
             }
-        })
-        .response
-        .labelled_by(size_label.id);
+        });
+        list.response.labelled_by(size_label.id);
         let underline_label = ui.label(tl!("Underline style:"));
         let shown = UNDERLINE_STYLES.iter().find(|(v, _)| *v == f.underline).map_or("", |(_, l)| tl!(l));
         let combo = craft_ui::ComboBox::from_id_salt("dnf_underline").width(140.0).height(400.0).selected_text(shown).show_ui(ui, |ui| {
