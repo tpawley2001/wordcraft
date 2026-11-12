@@ -49,6 +49,7 @@ mod style_name_case;
 mod style_own_char_props;
 mod style_own_para_props;
 mod table_float;
+mod table_left_edge;
 mod table_width;
 mod table_width_rows;
 mod text_box_flow;
