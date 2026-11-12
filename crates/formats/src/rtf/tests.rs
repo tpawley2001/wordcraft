@@ -1863,6 +1863,7 @@ mod note_options;
 mod note_position;
 mod note_separator_stories;
 mod note_separators;
+mod note_story_paras;
 mod object_result;
 mod own_styles;
 mod page_borders;
