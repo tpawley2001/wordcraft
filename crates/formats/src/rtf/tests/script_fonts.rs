@@ -21,10 +21,10 @@ fn open(body: &str) -> Document {
 /// The properties of the run holding `needle` in paragraph 0.
 fn run(d: &Document, needle: &str) -> CharProps {
     let p = d.body[0].as_para().unwrap();
-    let chars: Vec<char> = p.text.chars().collect();
+    // `Run::len` counts bytes of the paragraph's UTF-8 text.
     let mut at = 0;
     for r in &p.runs {
-        let s: String = chars[at..(at + r.len).min(chars.len())].iter().collect();
+        let s = p.text.get(at..at + r.len).unwrap_or_default();
         at += r.len;
         if s.contains(needle) {
             return r.props.clone();
