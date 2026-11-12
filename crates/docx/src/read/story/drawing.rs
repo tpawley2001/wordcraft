@@ -4,6 +4,9 @@ use super::{
     StoryCtx, TextWarp, Wrap, WrapText, cap_alt, children_of_choice, int, measure, on_off_attr, own_fill, preset_kind, rt, shape_paint, u32_of,
 };
 
+/// A drawing's own hyperlink: its address and its ScreenTip (the run's `link` and `link_tip`).
+pub(super) type DrawingLink = (String, Option<Box<str>>);
+
 impl Reader<'_> {
     // ---- drawings ----
 
@@ -136,18 +139,20 @@ impl Reader<'_> {
     /// The hyperlink Word keeps on a drawing itself: its `wp:docPr`'s `a:hlinkClick` (ECMA-376
     /// Part 1 §20.4.2.5, §21.1.2.3.5) naming an external hyperlink relationship. Word stores a
     /// picture's link there rather than in a `w:hyperlink` around its run (#5267). Its `#name`
-    /// part, when the address has one, stays part of the address.
-    pub(super) fn drawing_link(d: &El, rels: &Rels) -> Option<String> {
+    /// part, when the address has one, stays part of the address. With it, the link's ScreenTip
+    /// (`tooltip`, §20.1.2.2.24), when it has a non-empty one; a tip without an address is dropped.
+    pub(super) fn drawing_link(d: &El, rels: &Rels) -> Option<DrawingLink> {
         let frame = d.child("wp:inline").or_else(|| d.child("wp:anchor"))?;
-        let id = frame.child("wp:docPr")?.child("a:hlinkClick")?.attr("r:id")?;
-        let rel = rels.by_id(id).filter(|r| r.external && crate::package::rel_is(&r.kind, rt::HYPERLINK))?;
-        Some(rel.target.trim().to_string()).filter(|u| !u.is_empty())
+        let click = frame.child("wp:docPr")?.child("a:hlinkClick")?;
+        let rel = rels.by_id(click.attr("r:id")?).filter(|r| r.external && crate::package::rel_is(&r.kind, rt::HYPERLINK))?;
+        let url = Some(rel.target.trim().to_string()).filter(|u| !u.is_empty())?;
+        Some((url, click.attr("tooltip").filter(|t| !t.is_empty()).map(Box::from)))
     }
 
     /// Native ink or an Office 2016 chart kept with its fallback (`mc:AlternateContent`), and the
     /// [`Self::drawing_link`] of the choice it was read from, else of its fallback: another
     /// choice's link is not this object's.
-    pub(super) fn read_alternate(&mut self, sc: &mut StoryCtx, ac: &El, rels: &Rels) -> Option<(InlineObject, Option<String>)> {
+    pub(super) fn read_alternate(&mut self, sc: &mut StoryCtx, ac: &El, rels: &Rels) -> Option<(InlineObject, Option<DrawingLink>)> {
         let (object, choice) = match self.read_ink_alternate(sc, ac, rels) {
             Some(o) => (o, children_of_choice(ac).filter(|e| e.name == "mc:Choice")),
             None => (self.read_chartex_alternate(sc, ac, rels)?, chartex_choice(ac)),
