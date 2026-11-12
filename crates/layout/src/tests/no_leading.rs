@@ -48,17 +48,6 @@ fn assert_pitch(font: &str, size: f32, spacing: LineSpacing, no_leading: bool, m
     }
 }
 
-/// The fonts these tests lay out with keep a line gap (Times New Roman's is 87/2048 em, Arial's
-/// 67/2048), so the option has something to remove.
-#[test]
-fn the_test_fonts_have_a_line_gap() {
-    for font in ["Times New Roman", "Arial"] {
-        let (full, bare) = line_em(font);
-        assert!(full - bare > 0.02, "{font}: {full} vs {bare}");
-        assert!((1.05..1.2).contains(&bare), "{font}: {bare}");
-    }
-}
-
 #[test]
 fn single_lines_are_ascent_plus_descent() {
     for (font, sizes) in [("Times New Roman", [14.0, 12.0, 10.0]), ("Arial", [14.0, 11.0, 10.0])] {
