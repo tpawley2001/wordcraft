@@ -280,6 +280,7 @@ fn missing_font_metrics_no_leading(family: &str) -> Option<(f64, f64)> {
 /// Garamond: `/Ascent` 862, the descent the rest of the line; 20 pt lines 22.44 to 22.58 pt apart (1.125 em).
 /// Comic Sans MS: `/Ascent` 1102, the descent the rest of the line; 11 pt lines 15.36 and 15.24 pt apart (1.394 em).
 /// Univers: `/Ascent` 989, the descent the rest of the line; 12 pt lines 14.88 pt apart (1.24 em).
+/// SimSun: `/Ascent` 859, `/Descent` -141; 10.5, 12 and 14 pt lines 13.62, 15.56 and 18.16 pt apart (1.297 em), the extra split evenly above and below.
 fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
     match family.trim().to_ascii_lowercase().as_str() {
         "lucida console" => Some((0.789, 0.211)),
@@ -296,6 +297,7 @@ fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
         "garamond" => Some((0.862, 0.263)),
         "comic sans ms" => Some((1.102, 0.292)),
         "univers" => Some((0.989, 0.251)),
+        "simsun" | "宋体" | "nsimsun" | "新宋体" | "simhei" | "黑体" => Some((1.007, 0.290)),
         _ => None,
     }
 }
