@@ -10,6 +10,7 @@ use wordcraft_doc::section::NumFormat;
 use wordcraft_engine::cmd::lists::{caret_list, levels_of};
 
 use crate::WordApp;
+use crate::dialogs::font::UNDERLINE_STYLES;
 use crate::dialogs::{buttons, color_menu};
 use crate::theme::Tokens;
 
@@ -18,6 +19,23 @@ const SIDE_MAX: usize = 30;
 
 /// Longest font family name sent to `para.defineNumber`.
 const FONT_MAX: usize = 64;
+
+/// Longest text kept in the Size box.
+const SIZE_MAX: usize = 6;
+
+/// The sizes listed under the Size box's arrow, in points.
+const NUMBER_SIZES: [&str; 16] = ["8", "9", "10", "11", "12", "14", "16", "18", "20", "22", "24", "26", "28", "36", "48", "72"];
+
+/// The Size box's text as a point size Word takes: 1 to 1638, rounded to the nearest half point.
+fn size_points(s: &str) -> Option<f32> {
+    let x = s.trim().parse::<f32>().ok().filter(|x| x.is_finite() && (1.0..=1638.0).contains(x))?;
+    Some(((x * 2.0).round() / 2.0).clamp(1.0, 1638.0))
+}
+
+/// `name` when it is exactly one of the `w:u` underline names.
+fn underline_name(name: &str) -> Option<wordcraft_doc::props::Underline> {
+    wordcraft_doc::props::Underline::ALL.into_iter().find(|u| u.ooxml() == name)
+}
 
 /// `s` as an sRGB colour when it is exactly six hex digits (no `#`).
 fn six_hex(s: &str) -> Option<wordcraft_doc::Rgb> {
@@ -124,7 +142,9 @@ impl NumberForm {
             Some(wordcraft_doc::TextColor::Rgb(c)) => c.hex(),
             _ => String::new(),
         };
-        let show_font = !font.is_empty() || bold || italic || !color.is_empty();
+        let size = level.chr.size.filter(|x| x.is_finite()).map(|x| format!("{x}")).unwrap_or_default();
+        let underline = level.chr.underline.map(|u| u.ooxml().to_string()).unwrap_or_default();
+        let show_font = !font.is_empty() || bold || italic || !color.is_empty() || !size.is_empty() || !underline.is_empty();
         NumberForm {
             style: level.format.ooxml().into(),
             before: without_percent(&before),
@@ -134,8 +154,8 @@ impl NumberForm {
             bold,
             italic,
             color,
-            size: String::new(),
-            underline: String::new(),
+            size,
+            underline,
             show_font,
         }
     }
@@ -161,6 +181,12 @@ impl NumberForm {
         if let Some(c) = six_hex(&self.color) {
             p.insert("color".into(), json!(c.hex()));
         }
+        if let Some(x) = size_points(&self.size) {
+            p.insert("size".into(), json!(x));
+        }
+        if let Some(u) = underline_name(&self.underline) {
+            p.insert("underline".into(), json!(u.ooxml()));
+        }
         Value::Object(p)
     }
 
@@ -168,11 +194,16 @@ impl NumberForm {
         NumFormat::from_ooxml(&self.style)
     }
 
-    /// How the preview draws a label of `size` points: bold, italic and the number's colour.
+    /// How the preview draws a label of `size` points: bold, italic, the number's colour and one
+    /// plain line under it for any underline but (none).
     pub fn label_format(&self, size: f32) -> egui::TextFormat {
         let font_id = if self.bold { crate::theme::semibold(size) } else { egui::FontId::proportional(size) };
         let color = six_hex(&self.color).map_or(egui::Color32::BLACK, |c| egui::Color32::from_rgb(c.0, c.1, c.2));
-        egui::TextFormat { font_id, italics: self.italic, color, ..Default::default() }
+        let underline = match underline_name(&self.underline) {
+            Some(u) if u != wordcraft_doc::props::Underline::None => egui::Stroke::new(1.0, color),
+            _ => egui::Stroke::NONE,
+        };
+        egui::TextFormat { font_id, italics: self.italic, color, underline, ..Default::default() }
     }
 
     /// The label of item `n` as the preview draws it.
@@ -242,7 +273,7 @@ pub fn define_number(app: &mut WordApp, ui: &mut Ui, f: &mut NumberForm) -> bool
     ok || cancel
 }
 
-/// The number's own font, bold, italic and colour (Font…).
+/// The number's own font, size, bold, italic, colour and underline (Font…).
 fn number_font(app: &mut WordApp, ui: &mut Ui, f: &mut NumberForm) {
     let theme = app.session.doc.settings.theme_colors.clone();
     let fams = app.previews.families();
@@ -262,6 +293,30 @@ fn number_font(app: &mut WordApp, ui: &mut Ui, f: &mut NumberForm) {
         .labelled_by(font_label.id);
         ui.checkbox(&mut f.bold, tl!("Bold"));
         ui.checkbox(&mut f.italic, tl!("Italic"));
+    });
+    ui.horizontal(|ui| {
+        let size_label = ui.label(tl!("Size:"));
+        let sizes: Vec<String> = NUMBER_SIZES.iter().map(|s| s.to_string()).collect();
+        ui.scope(|ui| {
+            if let Some(v) = crate::widgets::combo(ui, "dnf_size", 52.0, &f.size, &sizes, None) {
+                f.size = v.trim().chars().take(SIZE_MAX).collect();
+            }
+        })
+        .response
+        .labelled_by(size_label.id);
+        let underline_label = ui.label(tl!("Underline style:"));
+        let shown = UNDERLINE_STYLES.iter().find(|(v, _)| *v == f.underline).map_or("", |(_, l)| tl!(l));
+        let combo = craft_ui::ComboBox::from_id_salt("dnf_underline").width(140.0).height(400.0).selected_text(shown).show_ui(ui, |ui| {
+            if ui.selectable_label(f.underline.is_empty(), "").clicked() {
+                f.underline.clear();
+            }
+            for (v, l) in UNDERLINE_STYLES {
+                if ui.selectable_label(f.underline == v, tl!(l)).clicked() {
+                    f.underline = v.to_string();
+                }
+            }
+        });
+        combo.response.labelled_by(underline_label.id);
     });
     ui.horizontal(|ui| {
         ui.push_id("dnf_color", |ui| {
