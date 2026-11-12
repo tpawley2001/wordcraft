@@ -282,14 +282,8 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                     let float = frame_float(&fr);
                     let r = float_rect(frame, (0.0, width), y, fw, h, &float);
                     push_para(&mut items, (story, &path), &pf, (0, pf.lines.len()), (r.x, r.y), fw, Edges::own(&pf, 0, pf.lines.len()));
-                    let area = wrap_area(r, &float, None);
-                    if hf_over && frame_wraps.len() < MAX_FRAME_WRAPS {
-                        frame_wraps.extend(area.clone().filter(|(a, ..)| [a.x, a.y, a.w, a.h].iter().all(|v| v.is_finite())));
-                    }
-                    if !(hf_over && ctx.doc.settings.compat_mode < 15) {
-                        excl.extend(area);
-                        float_tables.push(r);
-                    }
+                    let legacy = ctx.doc.settings.compat_mode < 15;
+                    frame_areas(r, wrap_area(r, &float, None), (hf_over, legacy), (&mut excl, &mut float_tables, &mut frame_wraps));
                     continue;
                 }
                 let (ctxl, before) = paragraph_spacing(ParagraphSpacing {
@@ -451,6 +445,26 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
 
 /// Most text frames of one header handed to the body as obstacles (hostile files).
 const MAX_FRAME_WRAPS: usize = 64;
+
+/// Where text frame `r` with wrap area `area` keeps text clear: in a header or footer
+/// (`hf`) it is handed to the body (`page`, at most [`MAX_FRAME_WRAPS`], finite only), and
+/// below compatibility mode 15 (`legacy`) the header's or footer's own text runs past it (Word
+/// lays that text out as if the frame were not there). Elsewhere the box's text wraps around it
+/// (`own`) and other floating tables keep clear of it (`tables`).
+fn frame_areas(
+    r: Rect,
+    area: Option<WrapArea>,
+    (hf, legacy): (bool, bool),
+    (own, tables, page): (&mut Vec<WrapArea>, &mut Vec<Rect>, &mut Vec<WrapArea>),
+) {
+    if hf && page.len() < MAX_FRAME_WRAPS {
+        page.extend(area.clone().filter(|(a, ..)| [a.x, a.y, a.w, a.h].iter().all(|v| v.is_finite())));
+    }
+    if !(hf && legacy) {
+        own.extend(area);
+        tables.push(r);
+    }
+}
 
 /// The width a text frame without one takes: its widest line, with the paragraph's indents.
 fn natural_width(pl: &ParaLayout) -> f32 {
