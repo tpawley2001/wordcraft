@@ -30,6 +30,7 @@ mod float_top;
 mod grid;
 mod header_extent;
 mod header_extent_fixtures;
+mod header_space_after;
 mod hf_empty_anchor_legacy;
 mod hf_float_wrap_modes;
 mod hf_frame_flow;
