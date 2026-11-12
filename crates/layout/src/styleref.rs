@@ -10,7 +10,8 @@
 //! Switches: `\l` searches the page bottom-up; `\n` the paragraph number, `\r` and `\w` the
 //! number in full context (all levels; `\r` is treated like `\w`), `\s` a chapter number (the
 //! number alone, or the heading's count when it isn't numbered); `\t` drops the text around
-//! the number; `\p` adds "above" / "below".
+//! the number; `\p` adds "above" / "below" in the body (in a header or footer it adds nothing).
+//! The capitalization switches apply to the text or number, never to an error message.
 
 use std::collections::HashMap;
 
@@ -363,24 +364,30 @@ impl StyleIndex {
         }
     }
 
-    /// The field's result.
+    /// The field's result as shown, the capitalization switches (`\* Upper`, `\* Lower`,
+    /// `\* Caps`, `\* FirstCap`) applied. An error message keeps its capitalization, as in Word.
     pub fn eval(&self, instr: &str, at: At) -> String {
-        let code = parse(instr);
+        match self.result(&parse(instr), at) {
+            Ok(text) => crate::fields::apply_case_switch(instr, text),
+            Err(error) => error,
+        }
+    }
+
+    /// The field's text or number, or (`Err`) Word's error message.
+    fn result(&self, code: &StyleRefCode, at: At) -> Result<String, String> {
         if code.extra {
             // Word reads a second argument as no style name at all.
-            return not_defined("");
+            return Err(not_defined(""));
         }
-        let target = match self.target(&code.style) {
-            Ok(t) => t,
-            Err(e) => return e,
-        };
-        let Some((i, below)) = Self::first_in_order(self.matches(&target), self.entries.len(), at, code.last) else {
-            return NO_TEXT.to_string();
-        };
-        let Some(text) = self.text_of(i, &target) else { return NO_TEXT.to_string() };
-        let Some(e) = self.entries.get(i) else { return NO_TEXT.to_string() };
+        let target = self.target(&code.style)?;
+        let no_text = || NO_TEXT.to_string();
+        let (i, below) = Self::first_in_order(self.matches(&target), self.entries.len(), at, code.last).ok_or_else(no_text)?;
+        let text = self.text_of(i, &target).ok_or_else(no_text)?;
+        let e = self.entries.get(i).ok_or_else(no_text)?;
+        // In a header or footer `\p` adds nothing: the text shows, as without it.
+        let position = code.position && matches!(at, At::Body(_));
         let mut out = match code.number {
-            Number::Text if code.position => String::new(),
+            Number::Text if position => String::new(),
             Number::Text => text,
             // The last number the label shows (`3` of `3 Response`, or of a "none" level's `%1`);
             // a label of the paragraph's own number that shows none recognisably, its last word;
@@ -413,13 +420,13 @@ impl StyleIndex {
                 }
             }
         };
-        if code.position {
+        if position {
             if !out.is_empty() {
                 out.push(' ');
             }
             out.push_str(if below { "below" } else { "above" });
         }
-        out
+        Ok(out)
     }
 }
 
