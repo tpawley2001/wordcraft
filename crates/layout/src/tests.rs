@@ -21,6 +21,7 @@ mod eq_fields;
 mod eq_integral_limits;
 mod eq_radical_index;
 mod even_first_section;
+mod even_header_missing;
 mod ext_leading_2pt;
 mod ext_leading_2pt_fonts;
 mod field_picture_overflow;
