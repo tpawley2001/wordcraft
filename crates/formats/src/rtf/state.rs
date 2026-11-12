@@ -71,12 +71,19 @@ pub(super) enum Dest {
     /// User properties (`{\*\userprops …}`, RTF 1.9.1 "User Properties"): `\proptypeN` is read
     /// here, `\propname`, `\staticval` and `\linkval` are text groups (`Info(8..=10)`).
     UserProps,
+    /// The latent-style table (`{\*\latentstyles …}`): its words are read into
+    /// [`super::latent_styles::Latent`].
+    LatentStyles,
+    /// The exceptions of the latent-style table (`{\lsdlockedexcept …}`): words and names.
+    LsdExcept,
 }
 
 /// Longest text kept of one information-group field or user property name or value (bytes).
 pub(super) const MAX_INFO_TEXT: usize = 64 * 1024;
 /// Most user properties one file may bring in.
 pub(super) const MAX_USER_PROPS: usize = 1_000;
+/// Most latent-style exceptions kept (`{\lsdlockedexcept …}`); Word writes about 380.
+pub(super) const MAX_LATENT_EXCEPTIONS: usize = 2_000;
 
 /// Cut `s` to at most `max` bytes, at a character boundary.
 pub(super) fn truncate_chars(s: &mut String, max: usize) {
@@ -357,9 +364,55 @@ pub(super) struct RowStyle {
     pub(super) ind: Option<i32>,
     pub(super) ind_type: i32,
     pub(super) align: Option<Align>,
+    /// Whether the row states a gap at all (`\trgaphN`, N > 0).
+    pub(super) has_gap: bool,
+    /// The row's default cell padding (`\trpaddlN`, `\trpaddtN`, `\trpaddbN`, `\trpaddrN`,
+    /// twips) and each side's unit (`\trpaddflN`… : 3 twips, else the value is ignored), in
+    /// the order top, left, bottom, right.
+    pub(super) pad: [i32; 4],
+    pub(super) pad_unit: [i32; 4],
 }
 
 impl RowStyle {
+    /// `\trgaphN`: the gap, twips, clamped to 22 inches.
+    pub(super) fn gap_word(&mut self, pv: i32) {
+        self.gap = pv.clamp(0, 31_680);
+        self.has_gap = self.gap > 0;
+    }
+
+    /// A `\trpadd?N` value or `\trpaddf?N` unit word, by its side (top, left, bottom, right).
+    pub(super) fn pad_word(&mut self, w: &str, pv: i32) {
+        let i = match w.as_bytes().last() {
+            Some(b't') => 0,
+            Some(b'l') => 1,
+            Some(b'b') => 2,
+            _ => 3,
+        };
+        let slot = if w.starts_with("trpaddf") { self.pad_unit.get_mut(i) } else { self.pad.get_mut(i) };
+        if let Some(v) = slot {
+            *v = pv.clamp(-31_680, 31_680);
+        }
+    }
+
+    /// The row's default cell padding (top, left, bottom, right), points, when it is not Word's
+    /// default: a side in twips (unit 3) as stated, else left and right the gap and top and
+    /// bottom none. A row with a table style and neither a gap nor a side in twips keeps the
+    /// style's.
+    pub(super) fn cell_margins(&self) -> Option<[f32; 4]> {
+        let twips = |i: usize| self.pad_unit.get(i) == Some(&3);
+        let stated = (0..4).any(twips);
+        if self.style.is_some() && !self.has_gap && !stated {
+            return None;
+        }
+        let gap = self.gap.clamp(0, 31_680) as f32 / 20.0;
+        let side = |i: usize, default: f32| {
+            if twips(i) { self.pad.get(i).copied().unwrap_or(0).clamp(0, 31_680) as f32 / 20.0 } else { default }
+        };
+        let m = [side(0, 0.0), side(1, gap), side(2, 0.0), side(3, gap)];
+        let word = [0.0, 5.4, 0.0, 5.4];
+        if m.iter().zip(word).all(|(v, w)| (v - w).abs() < 0.01) { None } else { Some(m) }
+    }
+
     /// The table's left edge from the left margin in twips, when the row states one: `\tblind`
     /// in twips (`\tblindtype3`) less the gap, else `\trleft`. A centred or right-aligned row
     /// has none.
@@ -414,6 +467,10 @@ pub(super) struct St {
     pub(super) noline: bool,
     /// Widow/orphan control (`\widctlpar`, `\nowidctlpar`); `None` until the paragraph says.
     pub(super) widow: Option<bool>,
+    /// Automatic space between Asian and Latin text (`\aspalpha`) and between Asian text and
+    /// numbers (`\aspnum`); off unless the paragraph says, cleared by `\pard`.
+    pub(super) asp_alpha: bool,
+    pub(super) asp_num: bool,
     /// Contextual spacing (`\contextualspace`), mirror indents (`\mirrorindents`), automatic
     /// space before/after (`\sbautoN`, `\saautoN`), hyphenation suppressed (`\hyphpar0`) and
     /// line grid snapping (`\nosnaplinegrid`); `None` until the paragraph says.
@@ -485,6 +542,8 @@ impl Default for St {
             keep: false,
             noline: false,
             widow: None,
+            asp_alpha: false,
+            asp_num: false,
             contextual: None,
             mirror: None,
             sb_auto: None,
@@ -561,6 +620,28 @@ pub(super) struct CellDef {
     pub(super) valign: Option<VAlign>,
     /// Turned text (`\cltxtbrl`, `\cltxbtlr`…).
     pub(super) direction: wordcraft_doc::props::TextDirection,
+    /// The cell's own padding, twips, per side (top, left, bottom, right): the value word
+    /// (`\clpadl` top, `\clpadt` left, `\clpadb`, `\clpadr`; Word reads the first two swapped)
+    /// and its unit word (`\clpadfl` … `\clpadfr`).
+    pub(super) pad: [Option<i32>; 4],
+    pub(super) pad_unit: [Option<i32>; 4],
+    /// Wrap text off (`\clNoWrap`).
+    pub(super) no_wrap: bool,
+}
+
+impl CellDef {
+    /// The sides of its padding the cell sets, points: a side is set only with unit 3 (twips),
+    /// and then a negative, missing or beyond-22-inch value is 0, as Word reads it.
+    pub(super) fn own_margins(&self) -> [Option<f32>; 4] {
+        let mut out = [None; 4];
+        for ((o, v), u) in out.iter_mut().zip(self.pad).zip(self.pad_unit) {
+            if u == Some(3) {
+                let tw = v.filter(|v| (0..=31_680).contains(v)).unwrap_or(0);
+                *o = Some(tw as f32 / 20.0);
+            }
+        }
+        out
+    }
 }
 
 /// Page size and margins in twips (`\paperw`, `\margl`… and their `…sxn` section forms).

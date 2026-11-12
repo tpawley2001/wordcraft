@@ -4,7 +4,9 @@ use super::{Arc, Block, Blocks, Cell, Document, FBlock, Flow, HashMap, InlineObj
 
 /// Parse RTF bytes into the flow model.
 pub fn parse(bytes: &[u8]) -> Result<Flow, String> {
-    parse_with_page(bytes).map(|(f, _, _)| f)
+    let mut flow = parse_with_page(bytes)?.0;
+    super::frames::settle_flow(&mut flow.blocks, 0);
+    Ok(flow)
 }
 
 /// The flow, the page, and the default font (`\deff`, font 0 when the file names none), which
@@ -39,6 +41,8 @@ struct Parsed {
     fet: Option<i32>,
     /// The document settings the header names.
     doc_set: super::reader::DocSettingWords,
+    /// The latent-style table (`{\*\latentstyles …}`) as `w:latentStyles` XML.
+    latent_styles: Option<String>,
 }
 
 /// What the information group gives the document's properties beyond [`model::Meta`], with the user
@@ -431,6 +435,7 @@ fn finalize(mut r: Reader) -> Parsed {
         doc_notes: r.doc_notes,
         fet: r.fet,
         doc_set: r.doc_set,
+        latent_styles: r.latent.take(),
     }
 }
 
@@ -520,6 +525,7 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
         fet,
         doc_opts,
         doc_set,
+        latent_styles,
         ..
     } = parse_full(bytes, true)?;
     let mut doc = model::to_doc_in(&flow, last_section);
@@ -578,12 +584,17 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     }
     set_section_revisions(&mut doc);
     place_notes_and_comments(&mut doc, notes, comments);
+    // A drop cap's letter paragraph joins the paragraph it starts.
+    super::frames::merge_drop_caps(&mut doc);
     // RTF's paragraph defaults are single spacing and no space around paragraphs; what a file
     // wants beyond that it states on each paragraph.
     let dp = &mut Arc::make_mut(&mut doc.styles).default_para;
     dp.space_before = Some(0.0);
     dp.space_after = Some(0.0);
     dp.line_spacing = Some(wordcraft_doc::props::LineSpacing::Multiple(1.0));
+    if latent_styles.is_some() {
+        Arc::make_mut(&mut doc.styles).latent_styles = latent_styles;
+    }
     if default_font.is_some() {
         Arc::make_mut(&mut doc.styles).default_chr.font = default_font;
     }
