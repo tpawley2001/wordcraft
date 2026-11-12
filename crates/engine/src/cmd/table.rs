@@ -33,6 +33,30 @@ pub(super) use structure::{col, row};
 use structure::{del_col, del_row, del_table, delete_cells, insert_cells, merge, split, split_table};
 pub(super) use structure::{delete_table_at, selected_table};
 
+/// A table's default cell margins (top, left, bottom, right, in points): its own, else its
+/// style's, else Word's 0 / 0.075" defaults. A cell without margins of its own uses these.
+pub fn table_cell_margins(doc: &Document, t: &Table) -> [f32; 4] {
+    let style = t.props.style.as_deref().and_then(|id| doc.styles.table_style(id));
+    t.props.cell_margins.or(style.and_then(|st| st.parts.cell_margins)).unwrap_or([0.0, 5.4, 0.0, 5.4])
+}
+
+/// The margins a cell shows (top, left, bottom, right): its own, else the sides a file set one by
+/// one, else `default` (the table's, [`table_cell_margins`]).
+pub fn effective_cell_margins(props: &wordcraft_doc::props::CellProps, default: [f32; 4]) -> [f32; 4] {
+    if let Some(m) = props.margins {
+        return m;
+    }
+    let mut m = default;
+    if let Some(partial) = props.partial_margins {
+        for (side, own) in m.iter_mut().zip(partial) {
+            if let Some(x) = own {
+                *side = x;
+            }
+        }
+    }
+    m
+}
+
 fn in_table(s: &Session) -> Option<&'static str> {
     if s.sel.focus.path.cell().is_some() { None } else { Some("the cursor isn't in a table") }
 }
@@ -230,7 +254,7 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"value"?: bool} (true: the first column stands at the right; without a value it toggles)"#)),
         t(CommandSpec::new("table.properties", "Properties", "Table Layout › Table", properties).params(
-            r#"{"align"?: "left|center|right", "rtl"?: bool, "width"?: pt|null, "widthPct"?: percent, "indent"?: pt, "rowHeight"?: pt|null, "rowHeightRule"?: "atLeast|exact", "allowBreak"?: bool, "headerRow"?: bool, "columnWidth"?: pt, "cellWidth"?: pt|null, "valign"?: "top|center|bottom"} (row, column and cell settings apply to the selected rows, columns and cells, or the caret's; without settings it returns the caret's current ones)"#,
+            r#"{"align"?: "left|center|right", "rtl"?: bool, "width"?: pt|null, "widthPct"?: percent, "indent"?: pt, "rowHeight"?: pt|null, "rowHeightRule"?: "atLeast|exact", "allowBreak"?: bool, "headerRow"?: bool, "columnWidth"?: pt, "cellWidth"?: pt|null, "valign"?: "top|center|bottom", "cellMargins"?: {"top"?, "left"?, "bottom"?, "right"? (pt, 0-144; a side left out keeps the margin the cell shows)}|null (null: same as the whole table), "wrapText"?: bool} (row, column and cell settings apply to the selected rows, columns and cells, or the caret's; without settings it returns the caret's current ones)"#,
         )),
         CommandSpec::new("table.fromText", "Convert Text to Table", "Insert › Tables", from_text)
             .params(r#"{"separator"?: "tab|comma|paragraph|other", "char"?: string (with other), "columns"?: n, "autofit"?: "initial|fixed|contents|window", "width"?: pt (initial column width, 0 = Auto, at most 1584)}"#),

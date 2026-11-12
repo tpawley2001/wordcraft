@@ -10,17 +10,26 @@ pub(super) struct DrawingInfo<'a> {
     pub docpr: &'a str,
     pub name: &'a str,
     pub alt: &'a str,
-    /// The relationship id of the drawing's hyperlink (`a:hlinkClick`), see [`Writer::drawing_link`].
-    pub link: Option<&'a str>,
+    /// The drawing's hyperlink (`a:hlinkClick`), see [`Writer::drawing_link`].
+    pub link: Option<&'a DrawingLink>,
+}
+
+/// The hyperlink a drawing carries on itself (`wp:docPr/a:hlinkClick`): its relationship id and
+/// its ScreenTip (`tooltip`, ECMA-376 Part 1 §20.1.2.2.24), the run's `link_tip`.
+pub(super) struct DrawingLink {
+    pub rid: String,
+    pub tip: Option<Box<str>>,
 }
 
 impl Writer<'_> {
     /// The relationship of the hyperlink a drawing in a run with `props` carries on itself, as
     /// Word writes a picture's link (`wp:docPr/a:hlinkClick`, #5267): a web or file address. A
-    /// link to a place in the document (`#name`) is only the `w:hyperlink` around the run.
-    pub(super) fn drawing_link(props: &wordcraft_doc::CharProps, rels: &mut PartRels) -> Option<String> {
+    /// link to a place in the document (`#name`) is only the `w:hyperlink` around the run. The
+    /// run's ScreenTip goes with it, as Word writes it.
+    pub(super) fn drawing_link(props: &wordcraft_doc::CharProps, rels: &mut PartRels) -> Option<DrawingLink> {
         let url = props.link.as_deref().filter(|l| !l.is_empty() && !l.starts_with('#'))?;
-        Some(rels.add(rt::HYPERLINK, url, true))
+        let tip = props.link_tip.clone().filter(|t| !t.is_empty());
+        Some(DrawingLink { rid: rels.add(rt::HYPERLINK, url, true), tip })
     }
 
     /// A picture's `pic:pic` (the image in `media/{file}`), at `off` in its group (or 0, 0).
@@ -539,9 +548,17 @@ pub(in super::super) fn spin_attrs(spin: wordcraft_geom::Spin) -> Vec<(&'static 
 /// A drawing's `wp:docPr` (or a group member's `pic:cNvPr`/`wps:cNvPr`, ECMA-376
 /// `CT_NonVisualDrawingProps`) with its alt text `descr`, its title, and the decorative mark as
 /// the `adec:decorative` extension ([MS-ODRAWXML]). A description that is only the title (read
-/// from a file with no description) is not written twice. `link` is the relationship id of the
-/// drawing's hyperlink (`a:hlinkClick`, the first child the schema allows).
-pub(in super::super) fn nv_props(w: &mut W, tag: &str, (id, name): (&str, &str), descr: &str, alt: &AltText, hidden: bool, link: Option<&str>) {
+/// from a file with no description) is not written twice. `link` is the drawing's hyperlink
+/// (`a:hlinkClick`, the first child the schema allows) with its ScreenTip.
+pub(in super::super) fn nv_props(
+    w: &mut W,
+    tag: &str,
+    (id, name): (&str, &str),
+    descr: &str,
+    alt: &AltText,
+    hidden: bool,
+    link: Option<&DrawingLink>,
+) {
     let mut attrs = vec![("id", id), ("name", name)];
     if descr != alt.title || descr.is_empty() {
         attrs.push(("descr", descr));
@@ -557,8 +574,12 @@ pub(in super::super) fn nv_props(w: &mut W, tag: &str, (id, name): (&str, &str),
         return;
     }
     w.open(tag, &attrs);
-    if let Some(rid) = link {
-        w.empty("a:hlinkClick", &[("r:id", rid)]);
+    if let Some(link) = link {
+        let mut attrs = vec![("r:id", link.rid.as_str())];
+        if let Some(tip) = link.tip.as_deref() {
+            attrs.push(("tooltip", tip));
+        }
+        w.empty("a:hlinkClick", &attrs);
     }
     if alt.decorative {
         w.open("a:extLst", &[]);

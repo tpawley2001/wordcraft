@@ -117,16 +117,19 @@ impl Reader {
             && let Some(Inline::Text(t, f)) = self.para.inlines.get(at.n - 1)
             && t.len() > at.last_len
         {
+            if t.len() - at.last_len > MAX_MARK_CHARS * 4 {
+                return None;
+            }
             text.push_str(t.get(at.last_len..)?);
             fmt = Some(f.clone());
         }
         for i in self.para.inlines.get(at.n..)? {
             let Inline::Text(t, f) = i else { return None };
-            text.push_str(t);
-            fmt.get_or_insert_with(|| f.clone());
-            if text.len() > MAX_MARK_CHARS * 4 {
+            if text.len().saturating_add(t.len()) > MAX_MARK_CHARS * 4 {
                 return None;
             }
+            text.push_str(t);
+            fmt.get_or_insert_with(|| f.clone());
         }
         let chars = text.chars().count();
         if !(1..=MAX_MARK_CHARS).contains(&chars) || text.contains([MARK_OPEN, MARK_CLOSE]) || text.trim().is_empty() {

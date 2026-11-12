@@ -276,7 +276,8 @@ impl Reader {
                 self.st.border_side = None;
                 self.page_side = w.chars().last();
             }
-            "brsp" if self.page_side.is_some() => {
+            // A page side's, else a paragraph side's; nothing while a cell side is described.
+            "brsp" if self.page_side.is_some() || (self.cell_side.is_none() && self.st.border_side.is_some()) => {
                 let space = (pv as f32 / 20.0).clamp(0.0, 31.0);
                 self.each_border_slot(|slot| {
                     if let Some(b) = slot {
@@ -291,7 +292,7 @@ impl Reader {
 
     /// Applies `f` to the border of the page side being described, else of the cell side, else
     /// of the paragraph side: `h` is the border between paragraphs (`\brdrbtw`), `x` all four
-    /// sides (`\box`).
+    /// sides (`\box`); any other side (the bar border's `v`) has no slot.
     pub(super) fn each_border_slot(&mut self, mut f: impl FnMut(&mut Option<wordcraft_doc::props::Border>)) {
         let (b, side) = match (self.page_side, self.cell_side) {
             // A header or footer doesn't set the body's section.
@@ -470,7 +471,10 @@ impl Reader {
     /// set when the document is built ([`super::parse`]), as RTF names no author or date for it.
     pub(super) fn section_change(&mut self) -> Option<Box<wordcraft_doc::props::PropChange<wordcraft_doc::SectionProps>>> {
         let old = self.sec_old.take()?;
-        wordcraft_doc::props::PropChange::boxed(0, old.props(&self.page))
+        let mut props = old.props(&self.page);
+        // Suppress endnotes before the change: the same rule as the current section's.
+        props.no_endnote = (self.doc_notes.1.pos == Some(wordcraft_doc::section::NotePos::SectEnd)).then_some(!old.endnhere);
+        wordcraft_doc::props::PropChange::boxed(0, props)
     }
 
     /// A section formatting word: applied to the current section, unless it's inside a header
@@ -499,6 +503,12 @@ impl Reader {
             "box" => {
                 self.page_side = None;
                 self.st.border_side = Some('x');
+            }
+            // A bar border has no model value: its side is described and dropped, leaving the
+            // other sides as they are.
+            "brdrbar" => {
+                self.page_side = None;
+                self.st.border_side = Some('v');
             }
             "cbpat" => self.st.cbpat = Some(pv),
             "cfpat" => self.st.cfpat = Some(pv),
@@ -614,6 +624,9 @@ impl Reader {
                     6 => self.info_more.last_modified_by = t,
                     7 => self.info_more.category = t,
                     8..=10 => self.info_more.user_prop_text(k, t),
+                    11 => self.info_more.manager = t,
+                    12 => self.info_more.company = t,
+                    13 => self.info_more.hyperlink_base = t,
                     _ => {}
                 }
             }
@@ -871,6 +884,8 @@ impl Reader {
             c.header = self.row_header;
             c.valign = d.valign;
             c.direction = d.direction;
+            c.own_margins = d.own_margins();
+            c.no_wrap = d.no_wrap;
             match d.vmerge {
                 1 => c.rowspan = 2,
                 2 => c.covered = true,
@@ -934,6 +949,10 @@ impl Reader {
         if ts.align.is_some() || indent.is_some() {
             let x = extra.get_or_insert_with(Default::default);
             (x.align, x.indent) = (ts.align, indent);
+        }
+        // Its first row's default cell padding, when not Word's.
+        if let Some(m) = ts.cell_margins() {
+            extra.get_or_insert_with(Default::default).cell_margins = Some(m);
         }
         if ts.style.is_some() || ts.look.is_some() {
             let x = extra.get_or_insert_with(Default::default);

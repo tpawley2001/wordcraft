@@ -2,7 +2,7 @@ use super::reader::apply_section_word;
 use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pn, PnKind, RevSt, SecFmt, St};
 use super::styles::{StyleDef, StyleEntry, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
-use wordcraft_doc::props::{CharProps, TabAlign, TabLeader, TabStop, Underline};
+use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline};
 
 impl Reader {
     pub(super) fn word(&mut self, w: &str, p: Option<i32>, starred: bool, first_in_group: bool) {
@@ -175,7 +175,8 @@ impl Reader {
                 }
             }
             "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
-            "highlight" | "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "highlight" => self.highlight(pv),
             // Hidden text: kept, as hidden text.
             "v" => self.st.fmt.hidden = on,
             "ql" => self.st.align = Some(Align::Left),
@@ -222,7 +223,9 @@ impl Reader {
             "trhdr" => self.row_header = true,
             // The row's position, twips; beyond 22 inches clamped.
             "trleft" => self.row_style.left = pv.clamp(-31_680, 31_680),
-            "trgaph" => self.row_style.gap = pv.clamp(0, 31_680),
+            "trgaph" => self.row_style.gap_word(pv),
+            // The row's default cell padding, by side, and its units.
+            "trpaddt" | "trpaddl" | "trpaddb" | "trpaddr" | "trpaddft" | "trpaddfl" | "trpaddfb" | "trpaddfr" => self.row_style.pad_word(w, pv),
             "tblind" => self.row_style.ind = Some(pv.clamp(-31_680, 31_680)),
             "tblindtype" => self.row_style.ind_type = pv,
             "trqc" => self.row_style.align = Some(Align::Center),
@@ -243,6 +246,16 @@ impl Reader {
             "cltxlrtb" | "cltxlrtbv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Horizontal,
             "cltxtbrl" | "cltxtbrlv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Down,
             "cltxbtlr" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Up,
+            // A cell's own padding: Word reads `\clpadl` as the top and `\clpadt` as the left.
+            "clpadl" => self.def_cur.pad[0] = Some(pv),
+            "clpadt" => self.def_cur.pad[1] = Some(pv),
+            "clpadb" => self.def_cur.pad[2] = Some(pv),
+            "clpadr" => self.def_cur.pad[3] = Some(pv),
+            "clpadfl" => self.def_cur.pad_unit[0] = Some(pv),
+            "clpadft" => self.def_cur.pad_unit[1] = Some(pv),
+            "clpadfb" => self.def_cur.pad_unit[2] = Some(pv),
+            "clpadfr" => self.def_cur.pad_unit[3] = Some(pv),
+            "clNoWrap" => self.def_cur.no_wrap = true,
             "clcbpat" => self.def_cur.shading = self.colors.get(pv.max(0) as usize).copied().flatten(),
             "sb" => self.st.sb = Some(pv),
             "sa" => self.st.sa = Some(pv),
@@ -402,6 +415,9 @@ impl Reader {
             "doccomm" if self.in_info() => Some(Dest::Info(5)),
             "operator" if self.in_info() => Some(Dest::Info(6)),
             "category" if self.in_info() => Some(Dest::Info(7)),
+            "manager" if self.in_info() => Some(Dest::Info(11)),
+            "company" if self.in_info() => Some(Dest::Info(12)),
+            "hlinkbase" if self.in_info() => Some(Dest::Info(13)),
             "creatim" | "revtim" | "printim" if self.in_info() => {
                 let which = match w {
                     "creatim" => 0,
@@ -420,6 +436,9 @@ impl Reader {
             "oldcprops" => Some(Dest::OldProps(false)),
             "oldpprops" => Some(Dest::OldProps(true)),
             "oldsprops" => Some(Dest::OldSect),
+            // Note separator and continuation stories (RTF 1.9.1 "Footnotes"), also written
+            // without `\*` by older writers: not body text, and no custom separators are kept.
+            "ftnsep" | "ftnsepc" | "ftncn" | "aftnsep" | "aftnsepc" | "aftncn" => Some(Dest::Skip),
             "listoverridetable" => Some(Dest::ListOverride),
             "fldinst" => Some(Dest::FldInst),
             "formfield" if self.st.dest == Dest::FldInst => {
@@ -799,7 +818,22 @@ impl Reader {
             return true;
         }
         let kept_info = self.in_info()
-            && matches!(word, "title" | "author" | "subject" | "keywords" | "doccomm" | "operator" | "category" | "creatim" | "revtim" | "printim");
+            && matches!(
+                word,
+                "title"
+                    | "author"
+                    | "subject"
+                    | "keywords"
+                    | "doccomm"
+                    | "operator"
+                    | "category"
+                    | "creatim"
+                    | "revtim"
+                    | "printim"
+                    | "manager"
+                    | "company"
+                    | "hlinkbase"
+            );
         if !matches!(self.st.dest, Dest::Skip | Dest::Object) || kept_info {
             return false;
         }
@@ -866,12 +900,29 @@ impl Reader {
             "shad" => self.set_extra(|x| x.shadow = on.then_some(true)),
             "embo" => self.set_extra(|x| x.emboss = on.then_some(true)),
             "impr" => self.set_extra(|x| x.engrave = on.then_some(true)),
+            "noproof" => self.set_extra(|x| x.no_proof = on.then_some(true)),
+            "accnone" => self.set_extra(|x| x.emphasis = None),
+            "accdot" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Dot)),
+            "acccomma" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Comma)),
+            "acccircle" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Circle)),
+            "accunderdot" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::UnderDot)),
             // Horizontal scale, percent (100 = normal); kerning from a size in half-points (0 = off).
             "charscalex" if (1..=600).contains(&pv) => self.set_extra(|x| x.scale = (pv != 100).then_some(pv as f32)),
             "kerning" if (0..=3276).contains(&pv) => self.set_extra(|x| x.kern = (pv != 0).then_some(pv as f32 / 2.0)),
             _ => return false,
         }
         true
+    }
+
+    /// `\highlightN`: colour entry `n` as the text's highlight when it is one of the highlight
+    /// colours; any other colour stays character shading, and none (0, auto, missing) clears both.
+    fn highlight(&mut self, n: i32) {
+        let c = self.colors.get(n.max(0) as usize).copied().flatten();
+        let h = c.and_then(|c| Highlight::ALL.into_iter().find(|h| *h != Highlight::None && h.rgb() == Some(c)));
+        if h.is_none() {
+            self.st.fmt.background = c;
+        }
+        self.set_extra(|x| x.highlight = h);
     }
 
     /// `\csN`: the text's character style, when entry `n` became one of the document's own.

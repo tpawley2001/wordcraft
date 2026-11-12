@@ -1150,6 +1150,8 @@ impl<'r> Builder<'r> {
                     borders: cell_borders(&css),
                     valign,
                     margins: None,
+                    own_margins: [None; 4],
+                    no_wrap: false,
                     direction: Default::default(),
                     picture: None,
                     width: if colspan == 1 { cell_width(&css, attrs) } else { None },

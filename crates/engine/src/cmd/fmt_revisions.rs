@@ -341,7 +341,7 @@ fn words(s: &str) -> String {
 pub fn resolve_char(c: &mut CharProps, accept: bool) {
     let Some(ch) = c.fmt_change.take() else { return };
     if !accept {
-        *c = CharProps { link: c.link.take(), ins: c.ins, del: c.del, ..ch.old.formatting() };
+        *c = CharProps { link: c.link.take(), link_tip: c.link_tip.take(), ins: c.ins, del: c.del, ..ch.old.formatting() };
     }
 }
 

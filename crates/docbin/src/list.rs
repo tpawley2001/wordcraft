@@ -35,15 +35,19 @@ struct RawLvl {
     xst: Vec<u16>,
 }
 
-/// A bullet level's character, with the 0xF000 flag bits stripped and the common
-/// Symbol/Wingdings glyphs mapped to their Unicode equivalents so every font renders them.
-fn bullet_char(c: u16) -> char {
-    match c & 0x0FFF {
+/// One UTF-16 unit of a level's number text ([MS-DOC] §2.9.150 LVL `xst`) as a character.
+/// Symbol-font bullets are stored in the private-use range U+F000–U+F0FF: the 0xF000 flag bits
+/// are stripped and the common Symbol/Wingdings glyphs mapped to their Unicode equivalents so
+/// every font renders them (the same mapping applies to an unflagged low byte). Every other
+/// unit is the character itself (●, –, 第, （); an unpaired surrogate becomes a bullet.
+pub(crate) fn bullet_char(c: u16) -> char {
+    let c = if (0xF000..=0xF0FF).contains(&c) { c & 0x00FF } else { c };
+    match c {
         0xB7 => '\u{2022}',        // Symbol bullet
         0xA7 => '\u{25AA}',        // Wingdings small square
         0x6F => '\u{25CB}',        // Symbol open circle
         0x77 | 0x78 => '\u{25CF}', // Wingdings filled circles
-        other => char::from_u32(other as u32).unwrap_or('\u{2022}'),
+        other => char::from_u32(u32::from(other)).unwrap_or('\u{2022}'),
     }
 }
 
@@ -248,12 +252,21 @@ fn skip_lfodatas(table: &[u8], mut off: usize, n: u8) -> usize {
 /// Turn a stored LVL into a model level.
 fn level_of(l: &RawLvl, lvl_index: usize, fonts: &[String]) -> Level {
     // Number text: characters listed in rgbxchNums are level placeholders (their value is
-    // the zero-based level); bullet chars carry 0xF000 flag bits to strip.
+    // the zero-based level); symbol-font bullets carry 0xF000 flag bits to strip. The text is
+    // UTF-16, so a surrogate pair is one character.
     let mut text = String::new();
-    for (i, &c) in l.xst.iter().enumerate() {
+    let mut units = l.xst.iter().copied().enumerate().peekable();
+    while let Some((i, c)) = units.next() {
         if l.rgbxch_nums.contains(&(i as u8 + 1)) && c <= 8 {
             text.push('%');
             text.push((b'1' + c as u8) as char);
+        } else if (0xD800..=0xDBFF).contains(&c)
+            && let Some(&(_, low)) = units.peek()
+            && (0xDC00..=0xDFFF).contains(&low)
+            && let Some(ch) = char::decode_utf16([c, low]).next().and_then(Result::ok)
+        {
+            units.next();
+            text.push(ch);
         } else {
             text.push(bullet_char(c));
         }
