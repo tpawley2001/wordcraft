@@ -732,6 +732,21 @@ impl ParaBuild {
     }
 }
 
+/// The floating shapes and pictures anchored at `cp` (a 0x08 character), each as an object of
+/// the paragraph being built.
+fn drawn_objects(ctx: &WalkCtx<'_>, cp: u32, pb: &mut ParaBuild) {
+    let at = ctx.drawn.partition_point(|(c, _)| *c < cp);
+    // Each copy (a story can be walked more than once) is charged to the work budget
+    // by what a clone copies: a picture's alt text, a group with all its members (#3710).
+    for (_, obj) in ctx.drawn.get(at..).unwrap_or_default().iter().take_while(|(c, _)| *c == cp) {
+        if !ctx.work.charge(object_cost(obj), Cost::FloatingObject) {
+            continue;
+        }
+        pb.push('\u{FFFC}', revised(ctx, cp));
+        pb.objects.push(obj.clone());
+    }
+}
+
 /// Walk a CP range, splitting paragraphs at 0x0D/0x07 marks, applying the direct character
 /// formatting of each CP and the paragraph formatting of each mark. Works for the main
 /// document and for any subdocument range (headers, footers, notes…). Field characters,
@@ -931,19 +946,8 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     f.build.object = true;
                 }
             }
-            '\u{8}' => {
-                // Drawn object anchor: the floating shape or picture anchored at this CP.
-                let at = ctx.drawn.partition_point(|(c, _)| *c < cp);
-                // Each copy (a story can be walked more than once) is charged to the work budget
-                // by what a clone copies: a picture's alt text, a group with all its members (#3710).
-                for (_, obj) in ctx.drawn.get(at..).unwrap_or_default().iter().take_while(|(c, _)| *c == cp) {
-                    if !ctx.work.charge(object_cost(obj), Cost::FloatingObject) {
-                        continue;
-                    }
-                    pb.push('\u{FFFC}', revised(ctx, cp));
-                    pb.objects.push(obj.clone());
-                }
-            }
+            // Drawn object anchor: the floating shape or picture anchored at this CP.
+            '\u{8}' => drawn_objects(ctx, cp, &mut pb),
             '\u{2}' => {
                 // Footnote or endnote reference; custom symbols share the same character. In a
                 // note's own text it is that note's number, as `w:footnoteRef` is in DOCX.
