@@ -551,15 +551,7 @@ impl Reader {
                 self.record_date_part(word, value);
                 true
             }
-            Dest::LatentStyles => {
-                self.latent.table_word(word, param);
-                true
-            }
-            // Exception names take Unicode escapes like the body.
-            Dest::LsdExcept if !matches!(word, "u" | "uc") => {
-                self.latent.exception_word(word, param);
-                true
-            }
+            Dest::LatentStyles | Dest::LsdExcept => self.latent_word(word, param),
             Dest::UserProps => {
                 if word == "proptype" {
                     self.info_more.set_prop_type(value);
@@ -709,8 +701,6 @@ impl Reader {
                 false
             }
             Dest::OldProps(true) | Dest::Body => false,
-            // `\u` and `\uc` in a latent-style exception name, read as in the body.
-            Dest::LsdExcept => false,
         }
     }
 

@@ -165,6 +165,19 @@ impl Latent {
     }
 }
 
+impl super::Reader {
+    /// A word in the latent-style table or its exceptions; false for `\u` and `\uc`, which an
+    /// exception name reads as the body does.
+    pub(super) fn latent_word(&mut self, word: &str, p: Option<i32>) -> bool {
+        match self.st.dest {
+            super::state::Dest::LatentStyles => self.latent.table_word(word, p),
+            _ if matches!(word, "u" | "uc") => return false,
+            _ => self.latent.exception_word(word, p),
+        }
+        true
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Export
 
