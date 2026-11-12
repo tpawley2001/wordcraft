@@ -141,22 +141,24 @@ impl<'a> Builder<'a> {
         // the same override; installed fonts otherwise keep their real face metrics.
         // A Word 97-2003 file with "add only 2 pt of external leading" lays a Courier New line
         // out one em tall.
+        // "Don't add leading between rows of text" (below compatibility mode 15) drops a font's
+        // external leading.
+        let leading = {
+            let s = &self.env.doc.settings;
+            !(s.no_leading && s.compat_mode < 15)
+        };
         let line = if self.env.doc.settings.ext_leading_2pt_only && is_courier_new(&rc.font) {
             Some(one_em_line(&r.face))
         } else {
-            wordcraft_fonts::word::missing_font_line(&rc.font, &r)
+            wordcraft_fonts::word::missing_font_line_leading(&rc.font, &r, leading)
         };
         let (ascent, descent) = match line {
             Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
             None => {
-                // "Don't add leading between rows of text" (below compatibility mode 15): the line
-                // is the font's ascent plus descent, without its line gap.
-                let s = &self.env.doc.settings;
-                let (a, d) = if s.no_leading && s.compat_mode < 15 {
-                    wordcraft_fonts::word::line_metrics_no_leading(&face)
-                } else {
-                    wordcraft_fonts::word::line_metrics(&face)
-                };
+                // Without leading, the line loses the part of its gap outside the font's Windows
+                // cell.
+                let (a, d) =
+                    if !leading { wordcraft_fonts::word::line_metrics_no_leading(&face) } else { wordcraft_fonts::word::line_metrics(&face) };
                 let k = f64::from(size) / face.upem.max(1.0);
                 (a * k, d * k)
             }

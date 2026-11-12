@@ -161,6 +161,8 @@ const P_ILFO: u16 = 0x460B;
 /// `sprmPHugePapx`: the whole PAPX of a paragraph that is too large for its FKP page (a table row with
 /// many cells) is this one sprm, whose operand is the offset of the real properties in the Data stream.
 const P_HUGE_PAPX: u16 = 0x6646;
+/// `sprmPTableProps`: the Data-stream offset of a row's table-properties copy (a `PrcData`).
+const P_TABLE_PROPS: u16 = 0x646B;
 
 /// Errors from reading a Word 97-2003 binary file.
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
@@ -337,6 +339,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     let ctx = WalkCtx {
         word: &word,
         data: &data,
+        version: fib.version,
         pieces: &pieces,
         chpx_bins: &chpx_bins,
         papx_bins: &papx_bins,
@@ -565,7 +568,19 @@ fn story(base: u32, len: u32, (a, b): (u32, u32)) -> Option<(u32, u32)> {
 /// The sprms a `sprmPHugePapx` in `papx` points to in the Data stream: a `PrcData`, a two-byte byte
 /// count and then the grpprl. `None` when `papx` has none, or when it points outside the stream.
 fn huge_papx<'d>(data: &'d [u8], papx: &[u8]) -> Option<&'d [u8]> {
-    let prl = sprm::iter(papx).find(|p| p.op == P_HUGE_PAPX)?;
+    prc_data(data, papx, P_HUGE_PAPX)
+}
+
+/// The sprms of the row's table-properties copy a `sprmPTableProps` in `papx` points to in the Data
+/// stream (a `PrcData`, [MS-DOC] 2.9.209). `None` when `papx` has none, or when it points outside
+/// the stream: the PAPX's own sprms then decide.
+fn table_props<'d>(data: &'d [u8], papx: &[u8]) -> Option<&'d [u8]> {
+    prc_data(data, papx, P_TABLE_PROPS)
+}
+
+/// The grpprl of the `PrcData` at the Data-stream offset the first `op` sprm in `papx` holds.
+fn prc_data<'d>(data: &'d [u8], papx: &[u8], op: u16) -> Option<&'d [u8]> {
+    let prl = sprm::iter(papx).find(|p| p.op == op)?;
     let [a, b, c, d, ..] = *prl.operand else { return None };
     let at = u32::from_le_bytes([a, b, c, d]) as usize;
     let body = at.checked_add(2)?;
@@ -577,6 +592,8 @@ fn huge_papx<'d>(data: &'d [u8], papx: &[u8]) -> Option<&'d [u8]> {
 struct WalkCtx<'a> {
     word: &'a [u8],
     data: &'a [u8],
+    /// The file's version ([`fib::Fib::version`]).
+    version: u16,
     pieces: &'a PieceTable,
     chpx_bins: &'a Bins,
     papx_bins: &'a Bins,
@@ -755,7 +772,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     None => mark_papx(ctx, cp),
                 };
                 pb.props.style = ctx.style_ids.get(usize::from(istd)).filter(|id| !id.is_empty()).cloned();
-                let mut row = table::decode(papx);
+                let mut row = table::decode_in(papx, ctx.version, table_props(ctx.data, papx));
                 row.cell_mark = c == '\u{7}';
                 // Only table marks keep their table context; a plain paragraph would carry
                 // a `RowInfo` (about 300 bytes) it never uses.

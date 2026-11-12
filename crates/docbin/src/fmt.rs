@@ -58,6 +58,8 @@ const P_DYA_AFTER: u16 = 0xA414;
 // Automatic (HTML) space before/after, Bool8 (sprmPFDyaBeforeAuto, sprmPFDyaAfterAuto).
 const P_F_DYA_BEFORE_AUTO: u16 = 0x245B;
 const P_F_DYA_AFTER_AUTO: u16 = 0x245C;
+/// sprmPFContextualSpacing ([MS-DOC] §2.6.2): Don't add space between paragraphs of the same style.
+const P_F_CONTEXTUAL_SPACING: u16 = 0x246D;
 const P_DYA_LINE: u16 = 0x6412;
 const P_KEEP: u16 = 0x2405; // keep lines together
 const P_KEEP_FOLLOW: u16 = 0x2406; // keep with next
@@ -542,6 +544,12 @@ pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
                 }
             }
         }
+        // A Bool8: any non-zero byte turns it on; an empty operand changes nothing.
+        P_F_CONTEXTUAL_SPACING => {
+            if let Some(&b) = prl.operand.first() {
+                p.contextual_spacing = Some(b != 0);
+            }
+        }
         // LSPD ([MS-DOC] §2.9.150): a signed dyaLine, then fMultLinespace. In lines (240ths) when
         // fMultLinespace is 1; else twips, at least when positive and exactly when negative.
         P_DYA_LINE => {
@@ -958,7 +966,7 @@ mod style_list_indent_tests {
         pairs[2 * crate::fib::pair::PLF_LST + 1] = lfo_at;
         pairs[2 * crate::fib::pair::PLF_LFO] = lfo_at;
         pairs[2 * crate::fib::pair::PLF_LFO + 1] = table.len() as u32 - lfo_at;
-        let fib = crate::fib::Fib { which_tbl_stm: false, ccp: Default::default(), pairs, word6: None };
+        let fib = crate::fib::Fib { which_tbl_stm: false, ccp: Default::default(), pairs, word6: None, version: 0x00C1 };
         let mut d = Document::default();
         d.styles = std::sync::Arc::new(stylesheet(&raw, &ids, &fonts, Default::default()));
         d.numbering = std::sync::Arc::new(crate::list::parse(&table, &fib, &fonts));
