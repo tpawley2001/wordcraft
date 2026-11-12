@@ -1873,6 +1873,7 @@ mod table_position;
 mod table_rows;
 mod table_styles;
 mod tabs_spacing;
+mod template_and_track_moves;
 mod track_and_print_data;
 mod trailing_data;
 mod underline_styles;
