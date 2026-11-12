@@ -141,8 +141,8 @@ impl Reader {
             "hich" => self.st.slot = Some(FontSlot::High),
             "dbch" => self.st.slot = Some(FontSlot::DoubleByte),
             "af" => self.font_word(pv, true),
-            // A property turned off with its own word is kept as stated off ("Stated off" in
-            // `end_para`): over a style that turns it on, the text has it off.
+            // A property turned off with its own word is kept as stated off (`StatedOff`, laid over
+            // the text's style by `lay_own_words`): over a style that turns it on, it stays off.
             "strike" => {
                 self.st.fmt.strike = on;
                 self.st.off.strike = !on;
@@ -968,7 +968,7 @@ impl Reader {
     fn char_effect_word(&mut self, w: &str, on: bool, pv: i32) -> bool {
         match w {
             // `\striked1` is double strikethrough; single strikethrough is `\strike`.
-            // Turned off, each is kept as stated off (see `end_para`).
+            // Turned off, each is kept as stated off (see `lay_own_words`).
             "striked" => {
                 self.st.off.double_strike = !on;
                 self.set_extra(|x| x.double_strike = on.then_some(true));
