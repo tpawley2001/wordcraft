@@ -90,15 +90,7 @@ pub(crate) fn parse_bookmarks(table: &[u8], fib: &crate::fib::Fib) -> Vec<(u32, 
 /// bookmark plus the limit ([`MAX`] + 1).
 fn cps_of(table: &[u8], fc: u32, lcb: u32) -> Option<Vec<u32>> {
     let plc = table.get(fc as usize..(fc as usize).saturating_add(lcb as usize))?;
-    Some(
-        plc.chunks_exact(4)
-            .take(MAX + 1)
-            .filter_map(|c| match c {
-                [a, b, c, d] => Some(u32::from_le_bytes([*a, *b, *c, *d])),
-                _ => None,
-            })
-            .collect(),
-    )
+    Some(plc.as_chunks::<4>().0.iter().take(MAX + 1).map(|c| u32::from_le_bytes(*c)).collect())
 }
 
 /// PlcfBkf ([MS-DOC] §2.8.10): n + 1 CPs, then n FBKFs of 4 bytes (§2.9.71: `ibkl`, then
@@ -107,16 +99,9 @@ fn bkf_of(table: &[u8], fc: u32, lcb: u32) -> Option<Vec<(u32, u16)>> {
     let plc = table.get(fc as usize..(fc as usize).saturating_add(lcb as usize))?;
     let n = (plc.len().checked_sub(4)? / 8).min(MAX);
     let data = plc.get((n + 1) * 4..)?;
-    let cps = plc.chunks_exact(4).take(n);
-    let fbkfs = data.chunks_exact(4).take(n);
-    Some(
-        cps.zip(fbkfs)
-            .filter_map(|(cp, f)| match (cp, f) {
-                ([a, b, c, d], [i0, i1, ..]) => Some((u32::from_le_bytes([*a, *b, *c, *d]), u16::from_le_bytes([*i0, *i1]))),
-                _ => None,
-            })
-            .collect(),
-    )
+    let cps = plc.as_chunks::<4>().0.iter().take(n);
+    let fbkfs = data.as_chunks::<4>().0.iter().take(n);
+    Some(cps.zip(fbkfs).map(|(cp, [i0, i1, _, _])| (u32::from_le_bytes(*cp), u16::from_le_bytes([*i0, *i1]))).collect())
 }
 
 /// Strings of an STTB: extended (fExtend = 0xFFFF, 2-byte length and UTF-16 chars) or not
