@@ -194,6 +194,8 @@ impl Reader {
             "noline" => self.st.noline = on,
             "widctlpar" => self.st.widow = Some(true),
             "nowidctlpar" => self.st.widow = Some(false),
+            "aspalpha" => self.st.asp_alpha = on,
+            "aspnum" => self.st.asp_num = on,
             "contextualspace" => self.st.contextual = Some(true),
             "mirrorindents" => self.st.mirror = Some(true),
             "sbauto" => self.st.sb_auto = Some(on),

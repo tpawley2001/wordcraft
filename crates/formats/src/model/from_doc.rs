@@ -298,6 +298,11 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         x.frame = p.frame.clone().filter(|_| opts.frames);
     }
     x.style = p.style.clone().filter(|id| opts.styles && is_custom_style(doc, id));
+    if opts.auto_space {
+        let rp = doc.styles.resolve_para(p);
+        x.auto_space_de = (!rp.auto_space_de).then_some(false);
+        x.auto_space_dn = (!rp.auto_space_dn).then_some(false);
+    }
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
 

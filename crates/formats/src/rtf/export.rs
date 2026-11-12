@@ -1427,6 +1427,15 @@ impl Writer {
             Some(false) => out.push_str("\\nowidctlpar"),
             None => {}
         }
+        // Automatic space between Asian and Latin text and numbers: off in RTF unless written
+        // (the flow model holds the effective value, unset when on).
+        let x = p.extra.as_deref();
+        if x.and_then(|x| x.auto_space_de) != Some(false) {
+            out.push_str("\\aspalpha");
+        }
+        if x.and_then(|x| x.auto_space_dn) != Some(false) {
+            out.push_str("\\aspnum");
+        }
         if let Some(x) = p.extra.as_deref() {
             if x.contextual_spacing == Some(true) {
                 out.push_str("\\contextualspace");
@@ -1839,7 +1848,7 @@ pub fn export(doc: &Document) -> String {
     let before = set_own_styles(own);
     let ranged_before = set_ranged(HashSet::new());
     // An empty paragraph's mark formatting sets its height.
-    let opts = model::FlowOpts { marks: true, outline_apart: true, ..model::FlowOpts::tracked() };
+    let opts = model::FlowOpts { marks: true, outline_apart: true, auto_space: true, ..model::FlowOpts::tracked() };
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
