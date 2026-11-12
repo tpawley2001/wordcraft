@@ -399,6 +399,12 @@ pub enum Dialog {
     PasteSpecial {
         formats: Vec<String>,
         choice: usize,
+        /// Paste link: chosen instead of Paste.
+        #[serde(default)]
+        link: bool,
+        /// The formats Paste link offers; empty when the copy has no saved source to link to.
+        #[serde(default)]
+        link_formats: Vec<String>,
         #[serde(skip)]
         payload: Value,
         /// Shown when nothing can be pasted: what the clipboard holds, or that it is empty (#833).
@@ -1126,8 +1132,9 @@ impl Dialog {
                 kept[k] = json!(t);
             }
         }
+        let link_formats = wordcraft_engine::cmd::paste::link_formats(&app.session, payload).into_iter().map(str::to_string).collect();
         let note = if formats.is_empty() { crate::system_clipboard::nothing_to_paste(app) } else { String::new() };
-        Dialog::PasteSpecial { formats, choice: 0, payload: kept, note }
+        Dialog::PasteSpecial { formats, choice: 0, link: false, link_formats, payload: kept, note }
     }
 
     pub fn modify_style(app: &WordApp, id: &str) -> Option<Dialog> {
@@ -1180,6 +1187,8 @@ mod tests_border_options;
 #[cfg(test)]
 mod tests_define_number;
 #[cfg(test)]
+mod tests_define_number_font;
+#[cfg(test)]
 mod tests_font_opentype;
 #[cfg(test)]
 mod tests_font_spacing;
@@ -1201,6 +1210,8 @@ mod tests_para_grid;
 mod tests_para_line;
 #[cfg(test)]
 mod tests_para_outline;
+#[cfg(test)]
+mod tests_paste_special_link;
 #[cfg(test)]
 mod tests_table_props;
 #[cfg(test)]

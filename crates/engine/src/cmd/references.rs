@@ -23,14 +23,15 @@ pub(crate) use captions::{add_auto_caption, below_caption};
 use captions::{auto_caption, caption_label};
 use fields::caption;
 pub use fields::{
-    CHAPTER_SEPARATORS, REFERENCE_NOT_FOUND, output_fields, refresh_date_fields, seq_format, update_fields, update_fields_in, update_seq,
+    CHAPTER_SEPARATORS, REFERENCE_NOT_FOUND, output_fields, refresh_date_fields, seq_format, update_fields, update_fields_after_insert,
+    update_fields_in, update_seq,
 };
 pub(crate) use fields::{page_at, page_formats, page_label, page_text};
 pub(crate) use includetext::update_source;
 pub(super) use notes::note_options;
 use notes::{note, note_refs};
 pub(crate) use properties::bookmark_text_at;
-pub use properties::{bookmark_text, date_picture};
+pub use properties::{NO_DOC_PROPERTY_NAME, UNKNOWN_DOC_PROPERTY, bookmark_text, date_picture};
 #[cfg(test)]
 use toc::cached_toc_tabs;
 pub(crate) use toc::{bookmark_heading, headings, toc_bookmark};

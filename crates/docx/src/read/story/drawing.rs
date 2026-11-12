@@ -143,9 +143,24 @@ impl Reader<'_> {
     /// (`tooltip`, §20.1.2.2.24), when it has a non-empty one; a tip without an address is dropped.
     pub(super) fn drawing_link(d: &El, rels: &Rels) -> Option<DrawingLink> {
         let frame = d.child("wp:inline").or_else(|| d.child("wp:anchor"))?;
-        let click = frame.child("wp:docPr")?.child("a:hlinkClick")?;
-        let rel = rels.by_id(click.attr("r:id")?).filter(|r| r.external && crate::package::rel_is(&r.kind, rt::HYPERLINK))?;
-        let url = Some(rel.target.trim().to_string()).filter(|u| !u.is_empty())?;
+        // Word writes the link on the frame and, since 2010, on the picture's own properties too;
+        // the frame's wins, and the picture's stands in when the frame's names nothing usable.
+        let own = || {
+            let pic = frame.child("a:graphic")?.child("a:graphicData")?.child("pic:pic")?;
+            pic.child("pic:nvPicPr")?.child("pic:cNvPr")
+        };
+        frame.child("wp:docPr").and_then(|p| Self::click_link(p, rels)).or_else(|| own().and_then(|p| Self::click_link(p, rels)))
+    }
+
+    /// The `a:hlinkClick` of non-visual properties `nv` (`CT_NonVisualDrawingProps`): a web or
+    /// file address (an external hyperlink relationship) or a place in the document (an internal
+    /// one whose target is `#Name`), with its ScreenTip. `a:hlinkHover` is no link.
+    fn click_link(nv: &El, rels: &Rels) -> Option<DrawingLink> {
+        let click = nv.child("a:hlinkClick")?;
+        let id = click.attr("r:id")?;
+        let rel = rels.by_id(id).filter(|r| crate::package::rel_is(&r.kind, rt::HYPERLINK))?;
+        let url = if rel.external { rel.target.trim() } else { rels.place(id)? };
+        let url = Some(url.to_string()).filter(|u| !u.is_empty())?;
         Some((url, click.attr("tooltip").filter(|t| !t.is_empty()).map(Box::from)))
     }
 

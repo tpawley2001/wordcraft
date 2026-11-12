@@ -157,12 +157,25 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
     w.val("w:characterSpacingControl", "doNotCompress");
     write_note_settings(&mut w, s, s_notes, footnotes, endnotes);
     write_compatibility_settings(&mut w, doc);
+    write_doc_vars(&mut w, &s.doc_vars);
     if let Some(m) = &s.math {
         math::math_pr(&mut w, m);
     }
     write_captions(&mut w, &s.captions);
     w.close("w:settings");
     w.into_bytes()
+}
+
+/// `w:docVars` (§17.15.1.32): the document variables, in order; nothing when there are none.
+fn write_doc_vars(w: &mut W, vars: &[wordcraft_doc::DocVar]) {
+    if vars.is_empty() {
+        return;
+    }
+    w.open("w:docVars", &[]);
+    for v in vars {
+        w.empty("w:docVar", &[("w:name", &v.name), ("w:val", &v.value)]);
+    }
+    w.close("w:docVars");
 }
 
 /// `w:writeProtection` (§17.15.1.93): Read-only recommended and the password to modify's hash.

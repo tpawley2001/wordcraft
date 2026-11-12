@@ -517,8 +517,9 @@ pub struct FlowOpts {
     /// consecutive items form one list in the default look of its kind).
     pub lists: bool,
     /// Without [`FlowOpts::chars`] and [`FlowOpts::paras`]: just the paragraph's own tab stops
-    /// ([`Para::extra`]) and character spacing, underline style and colour, scale, kerning and
-    /// effects ([`Fmt::extra`]), for formats that write those alone (RTF).
+    /// ([`Para::extra`]) and character spacing, underline style and colour, scale, kerning,
+    /// effects, run direction and complex-script and East Asian formatting ([`Fmt::extra`]), for
+    /// formats that write those alone (RTF).
     pub tabs_spacing: bool,
     /// The paragraph's own widow/orphan control in [`Para::extra`], also without `paras`.
     pub widow: bool,
@@ -554,6 +555,11 @@ pub struct FlowOpts {
     /// gives and the level goes in [`Para::extra`] (otherwise the level alone makes it a
     /// heading), for formats that write the level on its own (RTF `\outlinelevelN`).
     pub outline_apart: bool,
+    /// The paragraph's effective automatic space between Asian and Latin text and between Asian
+    /// text and numbers (its own, else its style chain's, else on) in [`Para::extra`]: `None` when
+    /// on, `Some(false)` when off, for formats where a missing setting means off (RTF
+    /// `\aspalpha`, `\aspnum`).
+    pub auto_space: bool,
 }
 
 impl FlowOpts {

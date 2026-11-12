@@ -78,7 +78,7 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
 }
 
 /// The flow formatting before a tracked formatting change, `old` its properties: with
-/// [`FlowOpts::hidden`] and [`FlowOpts::tabs_spacing`], its hidden text and position too, so
+/// [`FlowOpts::hidden`] and [`FlowOpts::tabs_spacing`], its hidden text, position and border too, so
 /// a format writing only what the change altered sees those.
 fn old_fmt(doc: &Document, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fmt {
     let mut f = fmt_of(doc, old, in_code);
@@ -87,7 +87,13 @@ fn old_fmt(doc: &Document, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fm
         let e = effective(doc, old);
         if opts.tabs_spacing {
             let (highlight, shading) = highlight_of(&e);
-            let x = CharProps { position: e.position.filter(|v| *v != 0.0 && v.is_finite()), highlight, shading, ..Default::default() };
+            let x = CharProps {
+                position: e.position.filter(|v| *v != 0.0 && v.is_finite()),
+                border: e.border.filter(|b| b.is_visible()),
+                highlight,
+                shading,
+                ..Default::default()
+            };
             f.extra = (x != CharProps::default()).then(|| Box::new(x));
         }
     }
@@ -122,8 +128,16 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
                 underline_color: e.underline_color,
                 no_proof: set(e.no_proof),
                 emphasis: e.emphasis.filter(|m| *m != wordcraft_doc::props::EmphasisMark::None),
+                border: e.border.filter(|b| b.is_visible()),
                 highlight,
                 shading,
+                // The run's direction and its complex-script and East Asian formatting.
+                rtl: set(e.rtl),
+                font_cs: e.font_cs.clone().filter(|f| !f.is_empty()),
+                font_ea: e.font_ea.clone().filter(|f| !f.is_empty()),
+                size_cs: e.size_cs.filter(|s| s.is_finite()),
+                bold_cs: e.bold_cs,
+                italic_cs: e.italic_cs,
                 ..Default::default()
             };
             if x.double_strike.is_some() {
@@ -209,6 +223,7 @@ fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
         engrave: set(e.engrave),
         border: e.border.filter(|b| b.is_visible()),
         lang: e.lang.clone().filter(|l| !l.is_empty()),
+        rtl: set(e.rtl),
         font_cs: e.font_cs.clone().filter(|f| !f.is_empty()),
         font_ea: e.font_ea.clone().filter(|f| !f.is_empty()),
         size_cs: e.size_cs.filter(|s| s.is_finite()),
@@ -299,6 +314,11 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         x.frame = p.frame.clone().filter(|_| opts.frames);
     }
     x.style = p.style.clone().filter(|id| opts.styles && is_custom_style(doc, id));
+    if opts.auto_space {
+        let rp = doc.styles.resolve_para(p);
+        x.auto_space_de = (!rp.auto_space_de).then_some(false);
+        x.auto_space_dn = (!rp.auto_space_dn).then_some(false);
+    }
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
 
@@ -625,6 +645,12 @@ fn shown_text(o: &InlineObject) -> &str {
 
 pub fn flow_paras(doc: &Document, p: &Paragraph) -> Vec<Para> {
     flow_paras_in(doc, p, FlowOpts::default())
+}
+
+/// [`flow_paras`] with what `opts` keeps, for a story built apart from the body (a note's or
+/// comment's text) that must keep what the body keeps.
+pub fn flow_paras_with(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
+    flow_paras_in(doc, p, opts)
 }
 
 /// [`flow_paras`]; `tracked` keeps tracked changes: deleted text stays, and text carries its

@@ -21,6 +21,7 @@ mod layout;
 mod lifecycle;
 mod query;
 mod run;
+pub(crate) use run::EditCheckpoint;
 mod snapshot;
 
 use crate::doc_state;
@@ -76,6 +77,9 @@ pub struct Session {
     /// Add to Dictionary and File › Options › Proofing save through it (#40).
     pub user_dict_path: Option<std::path::PathBuf>,
     pub clipboard: Option<Fragment>,
+    /// Where the clipboard's copy was taken from, for Paste Special > Paste link. App-wide like
+    /// the clipboard: not saved, not part of undo.
+    pub clipboard_link: Option<crate::cmd::paste::ClipboardLink>,
     /// A tracked cut the next paste can turn into a move (see `cmd::moves`).
     pub pending_move: Option<crate::cmd::moves::PendingMove>,
     /// Plain text mirror of the clipboard (for the system clipboard).
