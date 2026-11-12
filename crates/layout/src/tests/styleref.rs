@@ -6,7 +6,15 @@ use wordcraft_doc::props::{CharProps, NumRef};
 use wordcraft_doc::{ListKind, PartKind, Pos, para_block};
 
 fn field(instr: &str) -> InlineObject {
-    InlineObject::Field { instr: instr.into(), result: "stale".into(), locked: false, dirty: false, code: false, form: String::new() }
+    InlineObject::Field {
+        instr: instr.into(),
+        result: "stale".into(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    }
 }
 
 /// Body paragraphs: `(style, text, page break before)`; a header with one STYLEREF per code.
@@ -78,12 +86,13 @@ fn a_missing_style_or_no_paragraph_of_it_is_an_error() {
     assert_eq!(no_text, "Error! No text of specified style in document.");
 }
 
+/// In a header `\p` adds nothing: the text shows, as in Word.
 #[test]
 fn before_the_first_heading_the_next_one_shows() {
     crate::test_fonts();
     let paras = [("Normal", "Preface", false), ("Heading1", "Chapter", true)];
     let d = doc(&paras, &[r#"STYLEREF "Heading 1""#, r#"STYLEREF "Heading 1" \p"#]);
-    assert_eq!(headers(&d), [vec!["Chapter", "below"], vec!["Chapter", "below"]]);
+    assert_eq!(headers(&d), [vec!["Chapter", "Chapter"], vec!["Chapter", "Chapter"]]);
 }
 
 #[test]
@@ -220,14 +229,14 @@ fn body_edits_keep_styleref_headers_cached() {
     let misses = c.misses;
     let again = layout(&d, &mut c, &opts);
     assert_eq!(c.misses, misses + 1, "only the edited body paragraph misses the cache");
-    assert_eq!(shown(&again.pages[1].header), ["Middles", "below"]);
+    assert_eq!(shown(&again.pages[1].header), ["Middles", "Middles"]);
     // Edit a heading: the headers showing it change.
     d.para_mut(StoryRef::Body, &Path::top(2)).unwrap().insert_text(0, "The ", &CharProps::default()).unwrap();
     let edited = layout(&d, &mut c, &opts);
-    assert_eq!(shown(&edited.pages[1].header), ["The Middles", "below"]);
-    // Page 3 has no heading: the one before it shows, above the header.
-    assert_eq!(shown(&edited.pages[2].header), ["The Middles", "above"]);
-    assert_eq!(shown(&edited.pages[0].header), ["Beginnings", "below"]);
+    assert_eq!(shown(&edited.pages[1].header), ["The Middles", "The Middles"]);
+    // Page 3 has no heading: the one before it shows (`\p` adds nothing in a header).
+    assert_eq!(shown(&edited.pages[2].header), ["The Middles", "The Middles"]);
+    assert_eq!(shown(&edited.pages[0].header), ["Beginnings", "Beginnings"]);
 }
 
 /// The x of each shown character's first glyph in a header field result, in text order.

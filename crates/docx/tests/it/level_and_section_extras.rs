@@ -146,3 +146,19 @@ fn a_second_save_is_identical() {
     }
     assert!(part(&once, "word/numbering.xml").contains(r#"w:legacyIndent="-90""#));
 }
+
+/// A level's own number size and underline (`w:lvl/w:rPr`, §17.9.24 with §17.3.2.38 `w:sz` and
+/// §17.3.2.40 `w:u`) are saved inside that level's `w:rPr`.
+#[test]
+fn a_levels_number_size_and_underline_are_kept() {
+    let rpr = r#"<w:rPr><w:sz w:val="40"/><w:szCs w:val="40"/><w:u w:val="double"/></w:rPr>"#;
+    let nums = numbering("", "", "").replacen("</w:pPr></w:lvl>", &format!("</w:pPr>{rpr}</w:lvl>"), 1);
+    let saved = part(&save(&docx(SECT, &nums)), "word/numbering.xml");
+    let l0 = lvl(&saved, 0);
+    let start = l0.find("<w:rPr>").unwrap_or_else(|| panic!("level 0 has no w:rPr: {l0}"));
+    let end = start + l0[start..].find("</w:rPr>").unwrap();
+    let rpr = &l0[start..end];
+    assert!(rpr.contains(r#"<w:sz w:val="40"/>"#), "{rpr}");
+    assert!(rpr.contains(r#"<w:u w:val="double"/>"#), "{rpr}");
+    assert!(!lvl(&saved, 1).contains("<w:u "), "level 1 has no underline");
+}

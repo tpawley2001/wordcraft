@@ -67,7 +67,7 @@ fn simple_host(instr: &str) -> Session {
     let mut doc = Document::from_text("Here: ");
     let path = doc.para_paths(StoryRef::Body).remove(0);
     let p = doc.para_mut(StoryRef::Body, &path).unwrap();
-    let field = InlineObject::Field { instr: instr.into(), result: "OLD".into(), locked: false, dirty: false, code: false, form: String::new() };
+    let field = InlineObject::Field { instr: instr.into(), result: "OLD".into(), locked: false, dirty: false, code: false, form: String::new(), code_paras: None };
     p.insert_object(p.len(), field, &CharProps::default()).unwrap();
     Session::new(doc)
 }

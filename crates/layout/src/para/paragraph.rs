@@ -90,6 +90,8 @@ struct Shaped<'a> {
     rubies: Vec<RubyLayout>,
     displays: Vec<(usize, wordcraft_doc::math::MathJc)>,
     ptabs: Vec<(usize, PTabAlign, PTabBase, TabLeader)>,
+    /// Cluster indexes of the markers that end a field.
+    field_ends: Vec<usize>,
     eq_counter: u32,
     /// The byte ranges of runs left out of the layout, in order, adjacent runs merged.
     left: Vec<std::ops::Range<usize>>,
@@ -215,6 +217,7 @@ impl<'a> Shaped<'a> {
             rubies: Vec::new(),
             displays: Vec::new(),
             ptabs: Vec::new(),
+            field_ends: Vec::new(),
             eq_counter,
             left: Vec::new(),
             bare: Vec::new(),
@@ -380,6 +383,10 @@ impl<'a> Shaped<'a> {
             InlineObject::PositionalTab { align, relative_to, leader } => {
                 self.push(slot, ClKind::Tab, 0.0, 0.0);
                 self.ptabs.push((self.b.clusters.len() - 1, *align, *relative_to, *leader));
+            }
+            InlineObject::FieldEnd => {
+                self.field_ends.push(self.b.clusters.len());
+                self.bare_marker(slot);
             }
             _ => self.bare_marker(slot),
         }
@@ -595,7 +602,7 @@ fn list_label(cx: &Cx, b: &mut Builder, mark_style: u32) -> Option<Label> {
     let break_only =
         b.clusters.iter().any(|c| c.kind == ClKind::PageBreak) && b.clusters.iter().all(|c| matches!(c.kind, ClKind::PageBreak | ClKind::Marker));
     let (text, lvl) = cx.env.label.as_ref().filter(|_| !break_only)?;
-    let rc = cx.res.char(&p.mark.clone().overlaid(&lvl.chr));
+    let rc = label_char(&cx.res.char(&p.mark.clone().overlaid(&lvl.chr)), &lvl.chr);
     // A bullet no installed font can draw would come from whatever icon font has its
     // private-use code (Font Awesome's Twitter logo at U+F081, #1683): it shows the level's
     // default bullet instead.
@@ -632,6 +639,22 @@ fn list_label(cx: &Cx, b: &mut Builder, mark_style: u32) -> Option<Label> {
         x += c.adv;
     }
     Some(Label { text: shown(text), ascent, style, glyphs, runs, x: 0.0, width: x })
+}
+
+/// A list number's resolved formatting: the paragraph mark's (direct, style, character style)
+/// with the level's laid over it, except that its underline and shading come from the level
+/// alone and it is never small caps, as Word draws it.
+fn label_char(rc: &Arc<ResolvedChar>, level: &CharProps) -> Arc<ResolvedChar> {
+    let underline = level.underline.unwrap_or(wordcraft_doc::props::Underline::None);
+    if rc.underline == underline && rc.underline_color == level.underline_color && rc.shading == level.shading && !rc.small_caps {
+        return rc.clone();
+    }
+    let mut r = ResolvedChar::clone(rc);
+    r.underline = underline;
+    r.underline_color = level.underline_color;
+    r.shading = level.shading;
+    r.small_caps = false;
+    Arc::new(r)
 }
 
 /// A label's clusters (in visual order) and the glyphs they index, shaped and taken back out of
@@ -740,7 +763,23 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     mark_break_opportunities(&mut sh.b.clusters, &bt, &rp);
     let label = list_label(&cx, &mut sh.b, mark_style);
     let joined_cluster_starts = joined_cluster_starts(p, &sh.b.clusters);
-    let Shaped { b, has_page_fields, notes, drop_cap, drop_cap_w, maths, check_boxes, enclosures, rubies, displays, ptabs, left, runs, .. } = sh;
+    let Shaped {
+        b,
+        has_page_fields,
+        notes,
+        drop_cap,
+        drop_cap_w,
+        maths,
+        check_boxes,
+        enclosures,
+        rubies,
+        displays,
+        ptabs,
+        field_ends,
+        left,
+        runs,
+        ..
+    } = sh;
     let mut pl = ParaLayout {
         rp,
         substituted: b.substituted,
@@ -765,6 +804,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         rubies,
         displays,
         ptabs,
+        field_ends,
         left_out: Vec::new(),
         enclosures,
         auto_space,

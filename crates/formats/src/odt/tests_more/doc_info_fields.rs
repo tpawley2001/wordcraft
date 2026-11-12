@@ -109,6 +109,7 @@ fn switches_are_case_insensitive_and_others_ignored() {
         dirty: false,
         code: false,
         form: String::new(),
+        code_paras: None,
     });
     p.runs = vec![Run { len: p.text.len(), props: Default::default() }];
     let mut d = wordcraft_doc::Document::new();

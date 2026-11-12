@@ -389,7 +389,15 @@ fn sections_headers_footers_round_trip() {
         let mut p = Paragraph::with_text("Page ", CharProps::default());
         p.insert_object(
             5,
-            InlineObject::Field { instr: instr.into(), result: "1".into(), locked: false, dirty: false, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: instr.into(),
+                result: "1".into(),
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &CharProps::default(),
         )
         .unwrap();
@@ -441,7 +449,15 @@ fn sections_headers_footers_round_trip() {
     let fp = r.parts.get(&secs[0].1.footers.default.unwrap()).unwrap().blocks[0].as_para().unwrap();
     assert_eq!(
         fp.objects,
-        vec![InlineObject::Field { instr: "PAGE".into(), result: "1".into(), locked: false, dirty: false, code: false, form: String::new() }]
+        vec![InlineObject::Field {
+            instr: "PAGE".into(),
+            result: "1".into(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+            code_paras: None
+        }]
     );
     assert_eq!(part_text(&r, secs[1].1.footers.default), "Page 1");
     assert_eq!(r.parts.get(&secs[0].1.headers.default.unwrap()).unwrap().kind, PartKind::Header);
@@ -913,6 +929,7 @@ fn toc_field_wraps_its_entries() {
                 dirty: false,
                 code: false,
                 form: String::new(),
+                code_paras: None,
             },
             &CharProps::default(),
         )
@@ -1005,6 +1022,7 @@ fn toc_field_skips_nested_stories() {
             dirty: false,
             code: false,
             form: String::new(),
+            code_paras: None,
         },
         &CharProps::default(),
     )
@@ -1046,7 +1064,15 @@ fn tracked_changes_round_trip() {
     let end = p.len();
     p.insert_object(
         end,
-        InlineObject::Field { instr: "DATE".into(), result: "today".into(), locked: false, dirty: false, code: false, form: String::new() },
+        InlineObject::Field {
+            instr: "DATE".into(),
+            result: "today".into(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+            code_paras: None,
+        },
         &del,
     )
     .unwrap();
@@ -1170,7 +1196,15 @@ fn tracked_paragraph_marks_round_trip() {
 fn fields_and_special_chars_round_trip() {
     let mut p = Paragraph::with_text("a\tb\nc\u{000C}d\u{000E}e\u{2011}f\u{00AD}g  spaced  ", CharProps::default());
     let fields = [
-        InlineObject::Field { instr: "PAGE".into(), result: "4".into(), locked: false, dirty: false, code: false, form: String::new() },
+        InlineObject::Field {
+            instr: "PAGE".into(),
+            result: "4".into(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+            code_paras: None,
+        },
         InlineObject::Field {
             instr: "DATE \\@ \"M/d/yyyy\"".into(),
             result: "1/2/2026".into(),
@@ -1178,8 +1212,17 @@ fn fields_and_special_chars_round_trip() {
             dirty: false,
             code: false,
             form: String::new(),
+            code_paras: None,
         },
-        InlineObject::Field { instr: "NUMPAGES".into(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() },
+        InlineObject::Field {
+            instr: "NUMPAGES".into(),
+            result: String::new(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+            code_paras: None,
+        },
     ];
     for f in &fields {
         let end = p.len();
@@ -1210,7 +1253,15 @@ fn field_dirty_flag_round_trips() {
         let end = p.len();
         p.insert_object(
             end,
-            InlineObject::Field { instr: instr.into(), result: "7".into(), locked: false, dirty: false, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: instr.into(),
+                result: "7".into(),
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &CharProps::default(),
         )
         .unwrap();
@@ -2657,7 +2708,15 @@ fn enclosed_characters_round_trip_in_words_structure() {
         let off = p.len();
         p.insert_object(
             off,
-            InlineObject::Field { instr: e.instr(), result: "字".into(), locked: false, dirty: false, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: e.instr(),
+                result: "字".into(),
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &CharProps { size, ..Default::default() },
         )
         .unwrap();
@@ -3171,4 +3230,49 @@ fn style_ui_flags_round_trip() {
     for id in ["SemiOnly", "UnhideOnly", "Everywhere", "Both", "AppHidden", "Extras"] {
         assert_eq!(r.styles.get(id), d.styles.get(id), "style {id}");
     }
+}
+
+/// An embedded object read from a .doc without its storage is a range field whose result is its
+/// picture: saved between the `separate` and `end` field characters, and read back in that order.
+#[test]
+fn picture_in_a_range_field_result_round_trips_in_order() {
+    let mut d = Document::new();
+    let key = d.add_media(tiny_png(), "png");
+    let pic = InlineObject::Image {
+        media: key,
+        w: 456.0,
+        h: 50.0,
+        alt: String::new(),
+        float: Float::default(),
+        crop: [0.0; 4],
+        fx: Default::default(),
+        ole: None,
+    };
+    let mut p = Paragraph::new();
+    let props = CharProps::default();
+    p.insert_object(0, InlineObject::FieldStart { instr: "EMBED Excel.Sheet.8".into(), locked: false, dirty: false }, &props).unwrap();
+    p.insert_object(p.len(), pic, &props).unwrap();
+    p.insert_object(p.len(), InlineObject::FieldEnd, &props).unwrap();
+    d.body = vec![para_block(p)].into_iter().collect();
+    let bytes = wordcraft_docx::write(&d).expect("write");
+    let xml = document_xml(&bytes);
+    let at = |s: &str| xml.find(s).unwrap_or_else(|| panic!("{s} in {xml}"));
+    let (begin, separate, end) = (at("fldCharType=\"begin\""), at("fldCharType=\"separate\""), at("fldCharType=\"end\""));
+    let drawing = at("<w:drawing");
+    assert!(begin < separate && separate < drawing && drawing < end, "the picture is the field's result: {xml}");
+    let r = wordcraft_docx::read(&bytes).expect("read");
+    let kinds: Vec<&str> = paras(&r)[0]
+        .objects
+        .iter()
+        .map(|o| match o {
+            InlineObject::FieldStart { instr, .. } => {
+                assert_eq!(instr.trim(), "EMBED Excel.Sheet.8");
+                "start"
+            }
+            InlineObject::Image { .. } => "image",
+            InlineObject::FieldEnd => "end",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["start", "image", "end"]);
 }

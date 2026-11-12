@@ -15,7 +15,7 @@ fn run(s: &mut Session, id: &str, v: Value) -> Value {
 }
 
 fn field(instr: &str, locked: bool) -> InlineObject {
-    InlineObject::Field { instr: instr.into(), result: "stale".into(), locked, dirty: false, code: false, form: String::new() }
+    InlineObject::Field { instr: instr.into(), result: "stale".into(), locked, dirty: false, code: false, form: String::new(), code_paras: None }
 }
 
 /// A paragraph holding one unlocked field per code, each stored with the result "stale".

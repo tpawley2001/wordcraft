@@ -351,8 +351,8 @@ impl Reader<'_> {
                 if let Some(o) = self.read_signature_line(sc, k, rels) {
                     self.emit_obj(sc, pb, o, props);
                 } else {
-                    for o in self.read_vml_all(sc, k, rels) {
-                        self.emit_obj(sc, pb, o, props);
+                    for (o, link) in self.read_vml_linked(sc, k, rels) {
+                        self.emit_linked_obj(sc, pb, o, props, link);
                     }
                 }
             }
@@ -399,7 +399,15 @@ impl Reader<'_> {
             "w:pgNum" => self.emit_obj(
                 sc,
                 pb,
-                InlineObject::Field { instr: "PAGE".into(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() },
+                InlineObject::Field {
+                    instr: "PAGE".into(),
+                    result: String::new(),
+                    locked: false,
+                    dirty: false,
+                    code: false,
+                    form: String::new(),
+                    code_paras: None,
+                },
                 props,
             ),
             "w:ruby" => self.read_ruby(sc, pb, k, props),
