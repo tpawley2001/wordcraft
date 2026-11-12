@@ -17,9 +17,10 @@ fn first_table(d: &Document) -> &Table {
 fn four_sides_set_in_the_document_are_written_and_read_back() {
     let mut d = open(r"\trowd\cellx3000\cellx6000\pard\intbl a\cell b\cell\row\pard after\par");
     let i = d.body.iter().position(|b| b.as_table().is_some()).unwrap();
-    let Block::Table(t) = std::sync::Arc::make_mut(&mut d.body[i]) else { unreachable!() };
-    t.rows[0].cells[1].props.margins = Some([1.0, 2.5, 3.0, 4.0]);
-    t.rows[0].cells[1].props.no_wrap = true;
+    if let Block::Table(t) = std::sync::Arc::make_mut(&mut d.body[i]) {
+        t.rows[0].cells[1].props.margins = Some([1.0, 2.5, 3.0, 4.0]);
+        t.rows[0].cells[1].props.no_wrap = true;
+    }
     let rtf = export(&d);
     for word in [r"\clpadl20\clpadfl3", r"\clpadt50\clpadft3", r"\clpadb60\clpadfb3", r"\clpadr80\clpadfr3", r"\clNoWrap"] {
         assert!(rtf.contains(word), "{word} missing in {rtf}");
