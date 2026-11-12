@@ -58,6 +58,7 @@ mod text_box_flow;
 mod text_box_margins;
 mod toggle_para_style;
 mod tracked_format_changes;
+mod widow_control;
 mod word6;
 mod wrap_polygon;
 
