@@ -42,7 +42,7 @@ pub(crate) fn section_side(start: SectionStart, restart: Option<u32>, last: u32,
 /// restart), so later odd- and even-page breaks are decided against those numbers. An odd-page
 /// first section restarting at an even number takes the next one, as later sections do.
 pub(crate) fn first_page_number(start: SectionStart, restart: Option<u32>) -> Option<u32> {
-    let to_even = |n: u32| if n % 2 == 0 { n } else { n.saturating_add(1) };
+    let to_even = |n: u32| if n.is_multiple_of(2) { n } else { n.saturating_add(1) };
     match start {
         SectionStart::EvenPage => Some(to_even(restart.unwrap_or(2))),
         SectionStart::OddPage => restart.map(|n| if n % 2 == 1 { n } else { n.saturating_add(1) }),
