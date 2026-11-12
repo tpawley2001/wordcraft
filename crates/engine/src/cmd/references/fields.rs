@@ -1,7 +1,7 @@
 use super::numbers::{body_bookmark_paths, para_numbers, ref_number};
 use super::properties::{
-    bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property, doc_property_arg, new_property_value,
-    set_summary_property, summary_property, text_result,
+    bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property_arg, doc_property_result,
+    new_property_value, set_summary_property, summary_property, text_result,
 };
 use super::toc::{heading_style_level, update_toc, update_toc_pages};
 use super::{
@@ -320,7 +320,7 @@ fn styleref_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
             }
             let ix = styles.get_or_insert_with(|| wordcraft_layout::styleref::StyleIndex::build(doc));
             if let Some(i) = ix.index_of(&path) {
-                out.push((StoryRef::Body, path.clone(), k, text_result(instr, ix.eval(instr, wordcraft_layout::styleref::At::Body(i)))));
+                out.push((StoryRef::Body, path.clone(), k, ix.eval(instr, wordcraft_layout::styleref::At::Body(i))));
             }
         }
     }
@@ -748,13 +748,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 }
                 "REVNUM" => updates.push((k, count_text(instr, core.revision as usize))),
                 // DOCPROPERTY <name>: a custom property first, then a built-in one (#1798).
-                "DOCPROPERTY" => {
-                    if let Some(name) = doc_property_arg(instr)
-                        && let Some(v) = doc_property(&s.doc, &core, &name)
-                    {
-                        updates.push((k, text_result(instr, v)));
-                    }
-                }
+                "DOCPROPERTY" => updates.extend(doc_property_result(&s.doc, &core, instr).map(|v| (k, v))),
                 // DOCVARIABLE <name>: the document variable (names ignore case), or Word's error text.
                 "DOCVARIABLE" => updates.extend(doc_vars.then(|| (k, doc_variable_result(&s.doc, instr)))),
                 "FILENAME" => {
