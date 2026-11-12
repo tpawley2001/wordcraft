@@ -14,6 +14,9 @@ const F_EXP_SH_RTN: u16 = 1 << 13;
 const OFF_COPTS80_HI: usize = 86;
 /// `Copts80.f2ptExtLeadingOnly` (bit G of the u16 at Dop offset 86; [MS-DOC] §2.7.3).
 const F_2PT_EXT_LEADING_ONLY: u16 = 1 << 6;
+/// `Copts80.fNoExtLeading` (bit D of the u16 at Dop offset 86; [MS-DOC] §2.7.3): "Don't add
+/// leading (extra space) between rows of text".
+const F_NO_EXT_LEADING: u16 = 1 << 3;
 /// Size of `Dop95` ([MS-DOC] §2.7, Dop95): `DopBase` (84) + `Copts80` (4).
 const DOP95_LEN: usize = 88;
 /// Offset of `Dop2000.copts` ([MS-DOC] §2.7, Dop2000): after `dop97` (500 bytes), the two
@@ -106,6 +109,7 @@ pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Setti
         && let Some(copts80) = u16_at(dop, OFF_COPTS80_HI)
     {
         settings.ext_leading_2pt_only = copts80 & F_2PT_EXT_LEADING_ONLY != 0;
+        settings.no_leading = copts80 & F_NO_EXT_LEADING != 0;
     }
     if (DOP95_LEN..DOP2000_LEN).contains(&dop.len()) {
         settings.sum_paragraph_spacing = true;

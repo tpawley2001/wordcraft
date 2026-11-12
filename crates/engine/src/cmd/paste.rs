@@ -305,17 +305,62 @@ fn paste_link(s: &mut Session, v: &Value, fmt: &str, src: &str) -> CmdResult {
     let Some(link) = s.clipboard_link.clone() else {
         return Err(CmdError::Failed("Paste link needs text copied from a saved document that is still open".into()));
     };
+    if replaces_source(s, &link) {
+        return Err(CmdError::Failed("Paste link can't replace the text it links to".into()));
+    }
+    // `run` rolls back only the active document: a failure from here on also takes back the
+    // bookmark this paste put in another open document, and the copy's link.
+    let mut source_before = None;
+    let r = link_and_paste(s, &link, &path, fmt, src, &mut source_before);
+    if r.is_err() {
+        s.clipboard_link = Some(link.clone());
+        if let Some(c) = source_before {
+            let _ = s.with_document(link.doc, |s| s.restore_edit_checkpoint(c));
+        }
+    }
+    r
+}
+
+/// Whether the selection would replace any of the copy's source text (in its document, between
+/// its bookmark's marks once a Paste link added one): pasting there would delete the text, and
+/// the bookmark, the new LINK field points at.
+fn replaces_source(s: &Session, link: &ClipboardLink) -> bool {
+    if link.doc != s.document_id() || s.sel.is_collapsed() {
+        return false;
+    }
+    let (start, end) = match &link.bookmark {
+        Some(name) => match find_bookmark(&s.doc, link.start.story, name) {
+            Some(at) => super::insert::bookmark_span(&s.doc, name, &at),
+            None => return false,
+        },
+        None => (link.start.clone(), link.end.clone()),
+    };
+    let (a, b) = s.sel.ordered();
+    a.story == start.story && a < end && start < b
+}
+
+/// Paste link's edits: bookmark the source range (once per copy), then the LINK field with the
+/// clipboard pasted as its result. `source_before` gets the source document as it was when the
+/// bookmark goes into another open document.
+fn link_and_paste(
+    s: &mut Session,
+    link: &ClipboardLink,
+    path: &std::path::Path,
+    fmt: &str,
+    src: &str,
+    source_before: &mut Option<crate::session::EditCheckpoint>,
+) -> CmdResult {
     let name = match &link.bookmark {
         Some(name) => name.clone(),
         None => {
-            let name = add_link_bookmark(s, &link)?;
+            let name = add_link_bookmark(s, link, source_before)?;
             if let Some(l) = s.clipboard_link.as_mut() {
                 l.bookmark = Some(name.clone());
             }
             name
         }
     };
-    let instr = link_instr(&path, &name, fmt).ok_or_else(|| CmdError::Failed(format!("Paste link can't paste as {fmt}")))?;
+    let instr = link_instr(path, &name, fmt).ok_or_else(|| CmdError::Failed(format!("Paste link can't paste as {fmt}")))?;
     // The field's start, then the content, then its end after the last pasted character.
     super::controls::prepare_edit(s)?;
     let at = delete_selection(s)?;
@@ -349,7 +394,7 @@ fn paste_link(s: &mut Session, v: &Value, fmt: &str, src: &str) -> CmdResult {
 /// that document doesn't use yet. In the active document it is part of this command's edit (and
 /// the selection keeps its place); in another open document it is that document's own undoable
 /// edit.
-fn add_link_bookmark(s: &mut Session, link: &ClipboardLink) -> Result<String, CmdError> {
+fn add_link_bookmark(s: &mut Session, link: &ClipboardLink, source_before: &mut Option<crate::session::EditCheckpoint>) -> Result<String, CmdError> {
     let (doc, _) = s.open_document(link.doc).ok_or_else(|| CmdError::Failed("the copied text's document is closed".into()))?;
     let taken = bookmark_names(doc);
     let name = (1..=MAX_LINK_BOOKMARKS)
@@ -363,6 +408,7 @@ fn add_link_bookmark(s: &mut Session, link: &ClipboardLink) -> Result<String, Cm
     s.with_document(link.doc, |s| {
         // A nested command so the source gets its own undo step and is marked changed; it isn't
         // what the user ran, so Repeat and a macro being recorded don't see it.
+        *source_before = Some(s.edit_checkpoint());
         let last = s.last_command.clone();
         let recorded = s.recording.as_ref().map(|(_, steps)| steps.len());
         let sel = s.sel.clone();
@@ -674,7 +720,7 @@ pub(crate) fn unlink_sections(blocks: &mut [Block]) {
 
 /// Turn an imported document into a fragment of the session's document: bring over the media,
 /// lists and styles it refers to (renumbered so they can't collide with ours).
-fn adopt(s: &mut Session, src: Document) -> Fragment {
+pub(crate) fn adopt(s: &mut Session, src: Document) -> Fragment {
     let mut frag = s.doc.adopt(src);
     // Pasted pictures fit our text width, like Insert › Pictures (layout keeps their size).
     let max_w = crate::io::text_width(&s.doc);

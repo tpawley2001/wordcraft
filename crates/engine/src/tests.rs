@@ -16,6 +16,7 @@ mod insert_table_autofit;
 mod insert_table_remember;
 mod drop_cap_from_style;
 mod define_number_format;
+mod define_number_size_underline;
 mod drop_cap_in_margin;
 mod bidi;
 mod browse_object;
@@ -24,7 +25,9 @@ mod clipboard_options;
 mod custom_prop_types;
 mod documents;
 mod email_links;
+mod embed_field_update;
 mod document_dates;
+mod docvariable_field;
 mod envelope_options;
 mod find_apostrophes;
 mod find_format;
@@ -34,6 +37,7 @@ mod grid_settings;
 mod fonts;
 mod includetext;
 mod includetext_update_source;
+mod link_update;
 mod goto_what;
 mod goto_line;
 mod ime_noop;
@@ -48,6 +52,7 @@ mod rtl_gutter;
 mod para_sort_case;
 mod para_sort_keys;
 mod paste_link;
+mod paste_link_failures;
 mod paste_special_results;
 mod manual_duplex;
 mod print_document_properties;
@@ -4495,6 +4500,7 @@ fn update_toc_clears_stale_field_result_for_docx_span() {
                 dirty: false,
                 code: false,
                 form: String::new(),
+code_paras: None,
             },
             &CharProps::default(),
         )
@@ -4556,6 +4562,7 @@ fn update_fields_clears_dirty() {
                 dirty: true,
                 code: false,
                 form: String::new(),
+code_paras: None,
             },
             &wordcraft_doc::props::CharProps::default(),
         )
@@ -10722,8 +10729,9 @@ fn table_formula_reads_and_writes_decimal_comma_in_polish() {
     assert_eq!(run(&mut s, "table.formula", json!({"formula": "=SUM(ABOVE)"}))["result"], "1350");
     let mut s = column_table("pl-PL", &["1\u{a0}250,50 zł", "100", ""]);
     assert_eq!(run(&mut s, "table.formula", json!({"formula": "=SUM(ABOVE)"}))["result"], "1350,50");
+    // Word gives the sum the look of the cells above: `$` and the thousands separator.
     let mut s = column_table("en-US", &["$1,250.50", "3.25", ""]);
-    assert_eq!(run(&mut s, "table.formula", json!({"formula": "=SUM(ABOVE)"}))["result"], "1253.75");
+    assert_eq!(run(&mut s, "table.formula", json!({"formula": "=SUM(ABOVE)"}))["result"], "$1,253.75");
 }
 
 /// #837: text sorts follow the language's alphabet: Polish `ł` after `l`, `ć` after `c`.
@@ -12217,6 +12225,7 @@ fn toc_collects_cell_headings() {
             dirty: true,
             code: false,
             form: String::new(),
+code_paras: None,
         },
         &CharProps::default(),
     )
@@ -12288,6 +12297,7 @@ fn toc_keeps_direct_number_tabs() {
                 dirty: true,
                 code: false,
                 form: String::new(),
+code_paras: None,
             },
             &CharProps::default(),
         )
@@ -13327,4 +13337,5 @@ mod formula_bookmarks;
 mod border_from_text;
 mod opentype_state;
 mod hyperlink_screen_tip_fixes;
+mod formula_mixed_looks;
 mod formula_operand_text;

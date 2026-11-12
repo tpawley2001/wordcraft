@@ -1,3 +1,11 @@
+use wordcraft_doc::SectionProps;
+use wordcraft_doc::para::CodeParas;
+
+/// Per field written over several paragraphs: its offset, and per paragraph mark in its code the
+/// offset in the code and the next paragraph's `w:pPr`.
+type CodeSplits = Vec<(usize, Vec<(usize, String)>)>;
+use wordcraft_doc::props::ParaProps;
+
 use super::{
     ChangeAttrs, CharProps, InlineObject, Paragraph, PartRels, Piece, PropChange, RevisionKind, W, Writer, open_change, ppr_inner, rpr, rpr_inner, rt,
 };
@@ -66,38 +74,15 @@ impl Writer<'_> {
             pp.drop_cap = None;
         }
         let section = if top { p.section.as_deref() } else { None };
-        // A tracked paragraph mark: `w:ins` / `w:del` first in the mark's `w:rPr` (CT_ParaRPr).
-        let mark_revs: Vec<(u32, &str)> = [(p.mark.ins, "w:ins"), (p.mark.del, "w:del")]
-            .into_iter()
-            .filter_map(|(idx, tag)| idx.filter(|i| self.rev_kind(Some(*i)).is_some_and(|k| k != RevisionKind::Format)).map(|i| (i, tag)))
-            .map(|(i, tag)| (i, self.rev_tag(i, tag)))
-            .collect();
-        let has_mark = crate::write::props::has_rpr(&p.mark) || !mark_revs.is_empty() || p.mark.fmt_change.is_some();
-        if !pp.is_empty() || has_mark || section.is_some() {
-            w.open("w:pPr", &[]);
-            let num_change = pp.num_change.as_ref().map(|c| {
-                let mut a = self.change_attrs(c.rev);
-                a.push(("w:original", c.original.clone()));
-                a
-            });
-            ppr_inner(w, &pp, framed, num_change.as_ref());
-            if has_mark {
-                self.write_mark_rpr(w, &p.mark, &mark_revs);
-            }
-            if let Some(s) = section {
-                self.sectpr(w, s, rels);
-            }
-            // The paragraph properties before a tracked change come last (§17.13.5.29).
-            if let Some(ch) = &pp.fmt_change {
-                let a = self.change_attrs(ch.rev);
-                open_change(w, "w:pPrChange", &a);
-                w.open("w:pPr", &[]);
-                ppr_inner(w, &ch.old, false, None);
-                w.close("w:pPr");
-                w.close("w:pPrChange");
-            }
-            w.close("w:pPr");
+        // A field code that ran over several paragraphs is saved in them again: this paragraph
+        // is the first, with its own space after.
+        let first_after;
+        (self.code_splits, first_after) = if framed { (Vec::new(), None) } else { self.plan_code_splits(p) };
+        if let Some((after, auto)) = first_after {
+            pp.space_after = after;
+            pp.space_after_auto = auto;
         }
+        self.write_ppr(w, &pp, &p.mark, section, rels, framed);
         // A note's first paragraph starts with its reference mark. When the paragraph holds the
         // note's reference to itself (notes read from a file, or made by references.footnote),
         // the mark is written there instead, with that reference's formatting.
@@ -136,9 +121,98 @@ impl Writer<'_> {
         w.close("w:p");
     }
 
+    /// A paragraph's `w:pPr`: its properties, the mark's formatting and its section.
+    fn write_ppr(&mut self, w: &mut W, pp: &ParaProps, mark: &CharProps, section: Option<&SectionProps>, rels: &mut PartRels, framed: bool) {
+        // A tracked paragraph mark: `w:ins` / `w:del` first in the mark's `w:rPr` (CT_ParaRPr).
+        let mark_revs: Vec<(u32, &str)> = [(mark.ins, "w:ins"), (mark.del, "w:del")]
+            .into_iter()
+            .filter_map(|(idx, tag)| idx.filter(|i| self.rev_kind(Some(*i)).is_some_and(|k| k != RevisionKind::Format)).map(|i| (i, tag)))
+            .map(|(i, tag)| (i, self.rev_tag(i, tag)))
+            .collect();
+        let has_mark = crate::write::props::has_rpr(mark) || !mark_revs.is_empty() || mark.fmt_change.is_some();
+        if pp.is_empty() && !has_mark && section.is_none() {
+            return;
+        }
+        w.open("w:pPr", &[]);
+        let num_change = pp.num_change.as_ref().map(|c| {
+            let mut a = self.change_attrs(c.rev);
+            a.push(("w:original", c.original.clone()));
+            a
+        });
+        ppr_inner(w, pp, framed, num_change.as_ref());
+        if has_mark {
+            self.write_mark_rpr(w, mark, &mark_revs);
+        }
+        if let Some(s) = section {
+            self.sectpr(w, s, rels);
+        }
+        // The paragraph properties before a tracked change come last (§17.13.5.29).
+        if let Some(ch) = &pp.fmt_change {
+            let a = self.change_attrs(ch.rev);
+            open_change(w, "w:pPrChange", &a);
+            w.open("w:pPr", &[]);
+            ppr_inner(w, &ch.old, false, None);
+            w.close("w:pPr");
+            w.close("w:pPrChange");
+        }
+        w.close("w:pPr");
+    }
+
+    /// The fields of `p` whose code is saved over several paragraphs (see [`CodeParas`]), with
+    /// the `w:pPr` of each paragraph after the first, and the first paragraph's own space after.
+    /// A field whose code changed since it was read, or that is written inside a link, a tracked
+    /// change, a content control or a direction element (none of which may contain a paragraph
+    /// end), is written in one.
+    fn plan_code_splits(&mut self, p: &Paragraph) -> (CodeSplits, Option<(Option<f32>, Option<bool>)>) {
+        if !p.objects.iter().any(|o| matches!(o, InlineObject::Field { code_paras: Some(_), .. })) {
+            return (Vec::new(), None);
+        }
+        if !self.inline_controls.is_empty() || p.text.chars().any(|c| ('\u{202A}'..='\u{202E}').contains(&c)) {
+            return (Vec::new(), None);
+        }
+        let mut found: Vec<(usize, &CodeParas)> = Vec::new();
+        let mut k = 0usize;
+        for (off, c) in p.text.char_indices() {
+            if c != wordcraft_doc::para::OBJ {
+                continue;
+            }
+            let o = p.objects.get(k);
+            k += 1;
+            let Some(InlineObject::Field { instr, code_paras: Some(split), .. }) = o else { continue };
+            let props = p.props_of_char(off);
+            let plain = props.link.is_none() && props.ins.is_none() && props.del.is_none();
+            if plain && split.parts(instr).is_some() && wordcraft_doc::eq::Enclosure::parse(instr).is_none() && !super::toc::is_toc(instr) {
+                found.push((off, split));
+            }
+        }
+        let first_after = found.first().map(|(_, s)| (s.first_after, s.first_after_auto));
+        let last = found.len().saturating_sub(1);
+        let mut out = Vec::with_capacity(found.len());
+        for (i, (off, split)) in found.into_iter().enumerate() {
+            let n = split.marks.len().saturating_sub(1);
+            let mut marks = Vec::with_capacity(split.marks.len());
+            for (j, m) in split.marks.iter().enumerate() {
+                let mut pp = m.props.clone();
+                pp.drop_cap = None;
+                // The paragraph mark that ends the line has the paragraph's space after.
+                if i == last && j == n {
+                    pp.space_after = p.props.space_after;
+                    pp.space_after_auto = p.props.space_after_auto;
+                }
+                let mut t = W::default();
+                let mut rels = PartRels::default();
+                self.write_ppr(&mut t, &pp, &m.mark, None, &mut rels, false);
+                marks.push((m.at, t.s));
+            }
+            out.push((off, marks));
+        }
+        (out, first_after)
+    }
+
     fn para_content(&mut self, w: &mut W, p: &Paragraph, rels: &mut PartRels, depth: usize) {
         // Taken first: a text box in this paragraph writes paragraphs of its own.
         let inline = std::mem::take(&mut self.inline_controls);
+        let mut code_splits = std::mem::take(&mut self.code_splits);
         // Split into pieces with their props.
         let mut pieces: Vec<(Piece, &CharProps)> = Vec::new();
         let mut k = 0usize;
@@ -253,8 +327,12 @@ impl Writer<'_> {
                     w.close(tag);
                     i += 1;
                 }
-                Piece::Obj(o, _) => {
+                Piece::Obj(o, off) => {
+                    if let Some(at) = code_splits.iter().position(|(o, _)| o == off) {
+                        self.code_marks = code_splits.swap_remove(at).1;
+                    }
                     self.object(w, o, props, rels, depth);
+                    self.code_marks.clear();
                     i += 1;
                 }
                 _ => {

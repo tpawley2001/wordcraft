@@ -94,6 +94,7 @@ impl Reader<'_> {
                         s.compat_mode = m.clamp(11, 99);
                     }
                     s.sum_paragraph_spacing = k.children("w:doNotUseHTMLParagraphAutoSpacing").any(on_off);
+                    s.no_leading = k.children("w:noLeading").any(on_off);
                     s.do_not_expand_shift_return = k.children("w:doNotExpandShiftReturn").any(on_off);
                     s.wrap_trail_spaces = k.children("w:wrapTrailSpaces").any(on_off);
                 }
@@ -154,6 +155,7 @@ impl Reader<'_> {
                 "w:documentProtection" => read_protection(k, s),
                 "w:writeProtection" => read_write_protection(k, s),
                 "w:captions" => s.captions = read_captions(k),
+                "w:docVars" => s.doc_vars = read_doc_vars(k),
                 "w:zoom" => {
                     let percent = k.attr("w:percent").and_then(|v| u32_of(v.trim_end_matches('%'))).unwrap_or(100).clamp(10, 500);
                     let fit = match k.attr("w:val") {
@@ -425,6 +427,29 @@ const MAX_CAPTION_NAME: usize = 255;
 /// `w:captions` (ECMA-376 §17.15.1.18): caption labels (`w:caption`) and AutoCaption entries
 /// (`w:autoCaptions/w:autoCaption`), [`wordcraft_doc::MAX_CAPTION_ENTRIES`] of each. An attribute
 /// with a value the schema doesn't have is ignored; an entry without a name is skipped.
+/// Most document variables read from a file (hostile-input cap).
+const MAX_DOC_VARS: usize = 4096;
+/// Longest variable name and value kept (ST_String limits of `w:docVar`, ECMA-376 §17.15.1.31).
+const MAX_DOC_VAR_NAME: usize = 255;
+const MAX_DOC_VAR_VALUE: usize = 65_280;
+
+/// `w:docVars` (§17.15.1.32): one variable per `w:docVar` with a name, in file order.
+fn read_doc_vars(k: &El) -> Vec<wordcraft_doc::DocVar> {
+    let mut vars = Vec::new();
+    for e in k.children("w:docVar") {
+        if vars.len() >= MAX_DOC_VARS {
+            break;
+        }
+        let Some(name) = e.attr("w:name").filter(|n| !n.is_empty() && n.chars().count() <= MAX_DOC_VAR_NAME) else { continue };
+        let value = e.attr("w:val").unwrap_or("");
+        if value.chars().count() > MAX_DOC_VAR_VALUE {
+            continue;
+        }
+        vars.push(wordcraft_doc::DocVar { name: name.to_string(), value: value.to_string() });
+    }
+    vars
+}
+
 pub(crate) fn read_captions(k: &El) -> wordcraft_doc::Captions {
     use wordcraft_doc::{AutoCaption, CAPTION_NUM_FORMATS, CaptionLabel, CaptionSep, MAX_CAPTION_ENTRIES};
     let name = |e: &El, attr: &str| {

@@ -71,6 +71,9 @@ pub(super) enum Dest {
     /// User properties (`{\*\userprops …}`, RTF 1.9.1 "User Properties"): `\proptypeN` is read
     /// here, `\propname`, `\staticval` and `\linkval` are text groups (`Info(8..=10)`).
     UserProps,
+    /// A document variable (`{\*\docvar {name}{value}}`, RTF 1.9.1 "Document Variables"): its
+    /// first nested group is the name, the second the value, both text groups (`Info(14)`).
+    DocVar,
     /// The attached template (`{\*\template …}`, RTF 1.9.1): its text is the template's path.
     Template,
     /// The latent-style table (`{\*\latentstyles …}`): its words are read into
@@ -89,6 +92,12 @@ pub(super) const MAX_INFO_TEXT: usize = 64 * 1024;
 pub(super) const MAX_USER_PROPS: usize = 1_000;
 /// Most latent-style exceptions kept (`{\lsdlockedexcept …}`); Word writes about 380.
 pub(super) const MAX_LATENT_EXCEPTIONS: usize = 2_000;
+
+/// Most document variables one file may bring in.
+pub(super) const MAX_DOC_VARS: usize = 4096;
+/// Longest document variable name and value kept (characters); longer ones are dropped.
+pub(super) const MAX_DOC_VAR_NAME: usize = 255;
+pub(super) const MAX_DOC_VAR_VALUE: usize = 65_280;
 
 /// Cut `s` to at most `max` bytes, at a character boundary.
 pub(super) fn truncate_chars(s: &mut String, max: usize) {
@@ -116,6 +125,10 @@ pub(super) struct InfoMore {
     pub(super) props: Vec<wordcraft_doc::CustomProp>,
     /// The user property being read: its name, `\proptypeN`, value and linked bookmark.
     pub(super) cur: Option<UserProp>,
+    pub(super) doc_vars: Vec<wordcraft_doc::DocVar>,
+    /// The name and value groups read so far of the `{\*\docvar …}` group being read; `None`
+    /// for a part longer than the information-group text cap.
+    pub(super) var_parts: Vec<Option<String>>,
 }
 
 #[derive(Debug, Default)]
@@ -142,6 +155,22 @@ impl InfoMore {
                 p.link = Some(t);
             }
         }
+    }
+
+    /// Keep the document variable just read: it needs a name; a missing value is empty; a name
+    /// or value over the limits drops it.
+    pub(super) fn commit_doc_var(&mut self) {
+        let mut parts = std::mem::take(&mut self.var_parts).into_iter();
+        let Some(Some(name)) = parts.next() else { return };
+        let Some(value) = parts.next().unwrap_or(Some(String::new())) else { return };
+        if name.is_empty()
+            || name.chars().count() > MAX_DOC_VAR_NAME
+            || value.chars().count() > MAX_DOC_VAR_VALUE
+            || self.doc_vars.len() >= MAX_DOC_VARS
+        {
+            return;
+        }
+        self.doc_vars.push(wordcraft_doc::DocVar { name, value });
     }
 
     pub(super) fn set_prop_type(&mut self, n: i32) {
@@ -242,8 +271,15 @@ pub(super) struct Sub {
     pub(super) custom: String,
     /// A group with text has been read in the note (only the first can be its own mark).
     pub(super) own_mark_done: bool,
+    /// A note separator story instead (`\ftnsep`…): its slot in [`SEP_WORDS`].
+    pub(super) sep: Option<usize>,
     pub(super) saved: Box<Output>,
 }
+
+/// The note separator and continuation story words (RTF 1.9.1 "Footnotes"), in the order of
+/// the document's footnote separator, continuation separator and continuation notice, then the
+/// endnote ones.
+pub(super) const SEP_WORDS: [&str; 6] = ["ftnsep", "ftnsepc", "ftncn", "aftnsep", "aftnsepc", "aftncn"];
 
 /// A note read: its kind and text.
 pub(super) struct NoteData {
@@ -531,6 +567,23 @@ pub(super) struct St {
     pub(super) pn: Option<Box<Pn>>,
     /// The paragraph's frame and drop cap words (`\absw`, `\posx`, `\dropcapli`…).
     pub(super) frame: Option<Box<super::frames::FrameSt>>,
+    /// The last run direction word in the group chain (`\rtlch` true, `\ltrch` false): the
+    /// font, size, bold and italic words after `\rtlch` are the complex-script formatting.
+    pub(super) dir: Option<bool>,
+    /// The font slot (`\loch`, `\hich`, `\dbch`) the next font word fills.
+    pub(super) slot: Option<FontSlot>,
+}
+
+/// The font a font word right after `\loch`, `\hich` or `\dbch` names (RTF 1.9.1, "Associated
+/// Character Properties").
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum FontSlot {
+    /// The ordinary (low-ANSI) font.
+    Low,
+    /// The high-ANSI font, which the model has no place for.
+    High,
+    /// The East Asian (double-byte) font.
+    DoubleByte,
 }
 
 impl Default for St {
@@ -588,6 +641,8 @@ impl Default for St {
             tab_leader: TabLeader::None,
             pn: None,
             frame: None,
+            dir: None,
+            slot: None,
         }
     }
 }
@@ -748,6 +803,10 @@ pub(super) struct DocOpts {
     pub(super) widow_control: bool,
     /// `\wraptrsp`: Wrap trailing spaces onto the next line.
     pub(super) wrap_trail_spaces: Option<bool>,
+    /// `\jexpand` (`Some(true)`) / `\jcompress` (`Some(false)`), the last one read: with
+    /// expanding justification Word does not squeeze a line's spaces to keep its overrunning
+    /// last word.
+    pub(super) expand_justification: Option<bool>,
 }
 
 impl DocOpts {
@@ -777,6 +836,8 @@ impl DocOpts {
             }
             "widowctrl" => self.widow_control = true,
             "wraptrsp" => self.wrap_trail_spaces = Some(on),
+            "jexpand" => self.expand_justification = Some(true),
+            "jcompress" => self.expand_justification = Some(false),
             _ => return false,
         }
         true
@@ -808,6 +869,8 @@ impl DocOpts {
         if let Some(v) = self.wrap_trail_spaces {
             s.wrap_trail_spaces = v;
         }
+        // An RTF document squeezes spaces unless it says `\jexpand`.
+        s.rtf_justification = self.expand_justification != Some(true);
     }
 }
 

@@ -95,6 +95,7 @@ impl WithExtra for CharProps {
         self.font_ea = name(&x.font_ea, super::types::MAX_FONT_NAME);
         self.size_cs = x.size_cs.filter(|s| s.is_finite()).map(|s| s.clamp(1.0, 1638.0));
         self.bold_cs = x.bold_cs;
+        self.rtl = x.rtl.filter(|b| *b);
         self.italic_cs = x.italic_cs;
         self.lang_bidi = name(&x.lang_bidi, 64);
         self.lang_ea = name(&x.lang_ea, 64);
@@ -683,7 +684,8 @@ impl<'a> Builder<'a> {
                     if instr.trim().is_empty() {
                         append(&mut out, &result, &cp, None);
                     } else {
-                        let obj = InlineObject::Field { instr, result, locked: *locked, dirty: false, code: false, form: form.clone() };
+                        let obj =
+                            InlineObject::Field { instr, result, locked: *locked, dirty: false, code: false, form: form.clone(), code_paras: None };
                         append(&mut out, "", &cp, Some(obj));
                     }
                 }

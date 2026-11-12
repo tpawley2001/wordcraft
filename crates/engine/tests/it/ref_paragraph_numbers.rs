@@ -287,6 +287,7 @@ fn numeric_refs_in_headers_use_the_body_target_number() {
                 dirty: false,
                 code: false,
                 form: String::new(),
+                code_paras: None,
             },
             &Default::default(),
         )
