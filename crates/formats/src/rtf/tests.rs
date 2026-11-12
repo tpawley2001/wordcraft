@@ -1884,6 +1884,7 @@ mod section_text_flow;
 mod shape_text;
 mod style_entry_extras;
 mod style_entry_formatting;
+mod style_unstated_formatting;
 mod surrogate_boundaries;
 mod table_cell_padding;
 mod table_position;
