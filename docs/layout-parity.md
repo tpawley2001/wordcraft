@@ -1,5 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
+> **Last updated:** 2026-11-12 · **Change:** trivial (P0333: a formula field result with no `\#` picture and plain operands drops trailing zeros after rounding to two decimals (`= 10 / 4` is `2.5`, `SUM(ABOVE)` over 1.5 and 3 is `4.5`), as in Word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0304: formula fields whose operands look different, ranges, functions and ABOVE/LEFT give the result the union of the operands' $, thousands separator and parentheses looks, as in Word. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0286: Update Field computes DOCVARIABLE fields. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (an inline picture too wide for its line that is a field's result, such as a `.doc` embedded object's picture, is followed by one more line, as in Word. Readiness estimates unchanged.)
