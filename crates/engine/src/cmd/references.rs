@@ -29,6 +29,7 @@ pub(crate) use fields::{page_at, page_formats, page_label, page_text};
 pub(crate) use includetext::update_source;
 pub(super) use notes::note_options;
 use notes::{note, note_refs};
+pub(crate) use properties::bookmark_text_at;
 pub use properties::{bookmark_text, date_picture};
 #[cfg(test)]
 use toc::cached_toc_tabs;
