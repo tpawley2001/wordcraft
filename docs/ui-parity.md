@@ -1,5 +1,6 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-12 · **Change:** trivial (P0337: Insert › Text from File with a Range brings only the comments, replies and footnotes/endnotes that range refers to, not every one of the other file. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0309: a Paste link that fails leaves the source document unchanged; Paste link over the copied text is refused. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (Define New Number Format has Font…: the number's own font, bold, italic and colour; the preview shows bold, italic and colour; the dialog is in the translation audit. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (Paste Special has Paste link for text copied from a saved WordCraft document: a LINK field to an `OLE_LINKn` bookmark in the source; links are not updated from the source yet. Readiness estimates unchanged.)
@@ -212,6 +213,7 @@ The table Formula dialog (Table Layout › Data › Formula) has Formula, Number
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-12 | trivial | P0337: Insert › Text from File with a Range brings only the comments, replies and footnotes/endnotes that range refers to, not every one of the other file. Readiness estimates unchanged. |
 | 2026-11-11 | trivial | P0279: Home › Font › Font… Advanced has Word's OpenType Features group (Ligatures, Number spacing, Number forms, Stylistic sets, Use Contextual Alternates), each set on OK only when changed and blank while the selected text differs; Scale is one editable combo box (type a whole percent 1–600 or pick from the list); `format.state` reports `ligatures`, `numSpacing`, `numForm`, `stylisticSet` and `contextualAlternates`. Readiness estimates unchanged. |
 | 2026-11-11 | trivial | Page Setup › Layout has a Suppress endnotes check box under Section start, greyed unless endnotes are at the end of each section; ticked, the section keeps no endnotes of its own and they move on to the next section. Saved as `w:noEndnote` (`layout.suppressEndnotes`; off removes the element), in the dialog's one undo step. Readiness estimates unchanged. |
 | 2026-11-11 | trivial | P0245: Header & Footer commands Insert Alignment Tab (`insert.alignmentTab`, with the Alignment Tab dialog) and Show Document Text (`view.showDocumentText`: the body is not drawn while a header or footer is edited). Readiness estimates unchanged. |
