@@ -502,6 +502,23 @@ pub(super) struct St {
     pub(super) pn: Option<Box<Pn>>,
     /// The paragraph's frame and drop cap words (`\absw`, `\posx`, `\dropcapli`…).
     pub(super) frame: Option<Box<super::frames::FrameSt>>,
+    /// The last run direction word in the group chain (`\rtlch` true, `\ltrch` false): the
+    /// font, size, bold and italic words after `\rtlch` are the complex-script formatting.
+    pub(super) dir: Option<bool>,
+    /// The font slot (`\loch`, `\hich`, `\dbch`) the next font word fills.
+    pub(super) slot: Option<FontSlot>,
+}
+
+/// The font a font word right after `\loch`, `\hich` or `\dbch` names (RTF 1.9.1, "Associated
+/// Character Properties").
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum FontSlot {
+    /// The ordinary (low-ANSI) font.
+    Low,
+    /// The high-ANSI font, which the model has no place for.
+    High,
+    /// The East Asian (double-byte) font.
+    DoubleByte,
 }
 
 impl Default for St {
@@ -556,6 +573,8 @@ impl Default for St {
             tab_leader: TabLeader::None,
             pn: None,
             frame: None,
+            dir: None,
+            slot: None,
         }
     }
 }

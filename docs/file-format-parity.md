@@ -1,5 +1,6 @@
 # File-format parity with Microsoft Word
 
+> **Last updated:** 2026-11-11 · **Change:** trivial (RTF keeps a run's direction, complex-script font, size, bold and italic, and East Asian font on open and save. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (RTF drop caps: the one-letter cap paragraph joins the paragraph it starts on open and is written as its own positioned paragraph on save. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0280: RTF tables take their default cell padding from the first row, `\trgaph` and `\trpaddl`/`t`/`b`/`r` with `\trpaddf*3`, on open, and write it back on save. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0278: RTF note separator groups written without `\*` stay out of the text; a tracked section change keeps Suppress endnotes. Readiness estimates unchanged.)
@@ -506,6 +507,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-11 | trivial | RTF reads and writes a run's direction (`\rtlch`/`\ltrch`, the last one before the text), its complex-script font, size, bold and italic (the words after `\rtlch`, with or without the `a` prefix: `\af`, `\afs`, `\ab`, `\ai`) and its East Asian font (the font word after `\dbch`), as Word reads them |
 | 2026-11-10 | trivial | P0188: RTF reads document widow and orphan control (`\widowctrl`): without it every paragraph that doesn't set `\widctlpar`/`\nowidctlpar` gets widow control off, in every story; the writer always writes `\widowctrl`, as Word does |
 | 2026-11-10 | trivial | P0193: ODT reads and writes paragraph `style:line-break`, `style:punctuation-wrap`, `style:text-autospace`, `style:snap-to-layout-grid` and `style:vertical-align` (Asian Typography and font alignment) |
 | 2026-11-10 | trivial | P0202: RTF reads and writes table styles: `{\*\tsN \tsrowd …}` stylesheet entries (borders, shading, cell padding in twips; Normal Table and Table Grid keep WordCraft's), the style a row names with `\tsN` and the table look (`\tbllkhdrrows`, `\tbllklastrow`, `\tbllkhdrcols`, `\tbllklastcol`, `\tbllknorowband`, `\tbllknocolband`); conditional formatting not yet |
