@@ -741,6 +741,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         levels,
         shown: Vec::new(),
         substituted: Vec::new(),
+        boxes: Vec::new(),
     };
     let mut cx =
         Cx { p, env, rp: &rp, res, math_props: doc.settings.math.clone().unwrap_or_default(), drop_first: drop_cap_char(p, &rp), shown: None };
@@ -809,6 +810,12 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         enclosures,
         auto_space,
     };
+    // Missing symbol-font codes draw their box, where the cluster shaped for it is still there.
+    let boxes = b
+        .boxes
+        .into_iter()
+        .filter(|(k, start, end, _)| pl.clusters.get(*k).is_some_and(|c| c.start == *start && c.end == *end && c.kind == ClKind::Text));
+    pl.enclosures.extend(boxes.map(|(k, _, _, e)| (k, e)));
     let auto = env.doc.settings.auto_hyphenation && !pl.rp.suppress_hyphens;
     pl.hyph_after = hyphenation_points(&bt.text, |i| bt.to_para(i), &pl, auto, env.doc.settings.hyphenate_caps, &runs);
     // A paragraph whose text and mark are all a deletion the layout leaves out (a deleted

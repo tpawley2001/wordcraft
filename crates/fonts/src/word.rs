@@ -213,6 +213,18 @@ pub fn symbol_font_metrics(family: &str) -> Option<(f64, f64)> {
     })
 }
 
+/// Advance (em) of the missing-character box Word draws for a code a symbol font has no glyph
+/// for (Symbol 0x7F-0x9F, say): the font's own empty box, never another font's glyph. Measured
+/// from the application's PDF output (line width less the letters around the box, Times New
+/// Roman at 10 and 20 pt); no font file was read. Symbol: 1224/2048 em; the others 1024/2048.
+pub fn notdef_advance(family: &str) -> Option<f64> {
+    family.split(';').map(str::trim).filter(|f| !f.is_empty()).find_map(|f| match f.to_ascii_lowercase().as_str() {
+        "symbol" | "symbol (pcl6)" => Some(1224.0 / 2048.0),
+        "wingdings" | "wingdings 2" | "wingdings 3" | "webdings" => Some(1024.0 / 2048.0),
+        _ => None,
+    })
+}
+
 /// The (ascent, descent) in em Word gives a line with a run in a symbol font, when that isn't the
 /// resolved face's own: the font isn't installed (`resolved` is a substitute), or the installed
 /// face is one em tall, as Apple's Symbol is (hhea 0.701 / -0.299, no gap). Word for Mac spaces

@@ -46,6 +46,45 @@ impl<'a> SymbolRun<'a> {
             _ => u,
         }
     }
+
+    /// The symbol font itself is installed.
+    pub(super) fn installed(&self) -> bool {
+        self.installed
+    }
+
+    /// Whether `c` is a code the symbol font has no glyph for (Symbol 0x7F-0x9F, 0xF0, 0xFF; the
+    /// others 0x7F), stored as U+F020-U+F0FF or as the 8-bit U+00A0-U+00FF. Word draws it as the
+    /// font's own empty missing-character box ([`wordcraft_fonts::word::notdef_advance`]), never
+    /// as another font's glyph: a private-use code means something else in every other font.
+    /// Wingdings 0xFF (a flag in the real font) and an installed font's own glyphs are left alone.
+    pub(super) fn missing_box(&self, c: char) -> bool {
+        let u = u32::from(c);
+        let code = match u {
+            0xF020..=0xF0FF => u - 0xF000,
+            0xA0..=0xFF if u != 0xAD => u,
+            _ => return false,
+        };
+        if wordcraft_doc::symbol_fonts::symbol_char(self.family, c).is_some() {
+            return false;
+        }
+        let first = self.family.split(';').map(str::trim).find(|f| wordcraft_doc::symbol_fonts::is_symbol_font(f));
+        if code == 0xFF && first.is_some_and(|f| f.eq_ignore_ascii_case("wingdings")) {
+            return false;
+        }
+        if self.installed && (self.face.covers(c) || char::from_u32(0xF000 + code).is_some_and(|p| self.face.covers(p))) {
+            return false;
+        }
+        true
+    }
+
+    /// The box drawn for a missing code when the symbol font isn't installed, at `size` points:
+    /// (advance, box width, box height, stroke), points. Symbol's box is wider and lower than
+    /// the others'.
+    pub(super) fn missing_box_metrics(&self, size: f32) -> Option<(f32, f32, f32, f32)> {
+        let adv = wordcraft_fonts::word::notdef_advance(self.family)? as f32;
+        let (w, h) = if adv > 0.55 { (0.50, 0.68) } else { (0.38, 0.75) };
+        Some((adv * size, w * size, h * size, 0.05 * size))
+    }
 }
 
 /// Whether a bullet level's `text` has a private-use character that no installed font draws:

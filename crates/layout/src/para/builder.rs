@@ -22,6 +22,10 @@ pub(super) struct Builder<'a> {
     /// Fonts asked for that aren't installed, and the faces drawn instead (see
     /// `ParaLayout::substituted`).
     pub(super) substituted: Vec<(String, FaceRef)>,
+    /// Symbol-font codes with no glyph, drawn as the font's empty box: (cluster index, its
+    /// start and end bytes, the box). Kept only while that cluster is still there (see
+    /// [`Builder::missing_boxes`]).
+    pub(super) boxes: Vec<(usize, usize, usize, Enclosed)>,
 }
 
 /// The fonts a run asks for that aren't installed (see [`Builder::note_missing_fonts`]).
@@ -46,6 +50,8 @@ struct SegmentInput<'a> {
     run_face: Option<FaceRef>,
     ea_face: Option<FaceRef>,
     sym: Option<SymbolRun<'a>>,
+    /// Codes the symbol font has no glyph for are its own empty box ([`SymbolRun::missing_box`]).
+    boxes: bool,
     levels: &'a [u8],
     lbase: usize,
     use_levels: bool,
@@ -63,13 +69,15 @@ impl<'a> Builder<'a> {
     }
 
     fn segment_keys(&self, input: SegmentInput<'_>) -> Vec<(usize, usize, SegKey)> {
-        let SegmentInput { text, rc, rc_cs, primary, primary_cs, primary_ea, run_face, ea_face, sym, levels, lbase, use_levels, context } = input;
+        let SegmentInput { text, rc, rc_cs, primary, primary_cs, primary_ea, run_face, ea_face, sym, boxes, levels, lbase, use_levels, context } =
+            input;
         let show = |c: char| sym.map_or(c, |m| m.show(c));
         let mut seg_start = 0;
         let mut cur: Option<SegKey> = None;
         let mut segs = Vec::new();
         for (i, c) in text.char_indices() {
             let rtl = use_levels && levels.get(lbase + i).is_some_and(|l| l % 2 == 1);
+            let boxed = boxes && sym.is_some_and(|m| m.missing_box(c));
             let c = show(c);
             let dc = self.numeral_char(context, i, c, rtl);
             let mark = is_mark(c);
@@ -80,6 +88,8 @@ impl<'a> Builder<'a> {
             let primary = if complex { primary_cs.unwrap_or(primary) } else { primary };
             let face = match cur {
                 Some(k) if mark => k.face,
+                // The symbol font's own missing-character box: never another face's glyph.
+                _ if boxed => None,
                 _ if !complex && east_asian(c) && primary_ea.is_some_and(|f| f.covers(c)) => primary_ea,
                 _ if !c.is_control() && c != SOFT_HYPHEN && run_face.is_some_and(|f| f.covers(dc)) => run_face,
                 _ if primary.covers(dc) || c.is_whitespace() || c.is_control() || c == SOFT_HYPHEN => None,
@@ -278,6 +288,9 @@ impl<'a> Builder<'a> {
         // Symbol-font characters are laid out as their Unicode equivalents.
         let sym = SymbolRun::of(&rc.font, &resolved);
         let show = |c: char| sym.map_or(c, |m| m.show(c));
+        // A code the symbol font has no glyph for is its empty box, in the paragraph's own text
+        // (list labels and field results keep their characters).
+        let boxes = matches!(dir, Dir::Para);
         // A font isn't installed when it was substituted, or looked up as a missing roman font.
         let resolved_cs = rc_cs.as_ref().map(|r| {
             let family = lookup_family(self.env.doc, &r.font);
@@ -334,6 +347,7 @@ impl<'a> Builder<'a> {
             run_face,
             ea_face,
             sym,
+            boxes,
             levels,
             lbase,
             use_levels,
@@ -459,8 +473,11 @@ impl<'a> Builder<'a> {
                     adv += g.x_advance as f32 * k * hscale;
                     gi += 1;
                 }
-                let g1 = self.glyphs.len() as u32;
                 let s = shape_text.get(gs..ge).unwrap_or("");
+                // Clusters index the document text, never the displayed text.
+                let (cs, ce) = if substituted { remap_range(&map_starts, &orig_of, sub.len(), gs, ge) } else { (gs, ge) };
+                let boxed = sym.filter(|_| boxes).and_then(|m| self.missing_symbol_box(m, s, &st, hscale, g0, (base + a + cs, base + a + ce)));
+                let g1 = self.glyphs.len() as u32;
                 let ch = s.chars().next().unwrap_or(' ');
                 let kind = kind_override.unwrap_or(if ch == ' ' || ch == '\u{3000}' {
                     ClKind::Space
@@ -470,10 +487,9 @@ impl<'a> Builder<'a> {
                     ClKind::Text
                 });
                 // The substitute's kerning pairs aren't the missing font's: Word's advance stands.
-                let adv = word_advances.then(|| self.missing_font_advance(s, map, rc, st.size * hscale, g0)).flatten().unwrap_or(adv);
+                let adv =
+                    boxed.or_else(|| word_advances.then(|| self.missing_font_advance(s, map, rc, st.size * hscale, g0)).flatten()).unwrap_or(adv);
                 let adv = if kind == ClKind::Marker { 0.0 } else { adv + rc.spacing };
-                // Clusters index the document text, never the displayed text.
-                let (cs, ce) = if substituted { remap_range(&map_starts, &orig_of, sub.len(), gs, ge) } else { (gs, ge) };
                 self.clusters.push(Cluster {
                     start: base + a + cs,
                     end: base + a + ce,
@@ -492,6 +508,29 @@ impl<'a> Builder<'a> {
                 self.split_ligature_advances(seg_c0, rc.spacing, key.rtl);
             }
         }
+    }
+
+    /// A code a missing symbol font has no glyph for, as the one-character cluster `s` whose
+    /// glyphs start at `g0` (doc bytes `range`): Word draws that font's empty box, as wide as the
+    /// font's own. One blank glyph keeps the character in the text output and the box is drawn
+    /// over it (`enclosures`). Returns its advance (points). An installed symbol font draws its
+    /// own missing glyph (glyph 0), so this is `None` for it.
+    fn missing_symbol_box(&mut self, sym: SymbolRun<'_>, s: &str, st: &StyleRun, hscale: f32, g0: u32, range: (usize, usize)) -> Option<f32> {
+        let c = single_char(s)?;
+        if sym.installed() || !sym.missing_box(c) {
+            return None;
+        }
+        let (box_adv, bw, bh, stroke) = sym.missing_box_metrics(st.size)?;
+        let adv = box_adv * hscale;
+        let bw = bw * hscale;
+        if !(adv.is_finite() && bw.is_finite() && bh.is_finite()) {
+            return None;
+        }
+        self.glyphs.truncate(g0 as usize);
+        self.glyphs.push(Glyph { gid: st.face.glyph_for(' '), dx: 0.0, dy: 0.0 });
+        let enclosed = Enclosed { kind: wordcraft_doc::para::ShapeKind::Rectangle, x: (adv - bw) / 2.0, top: bh, w: bw, h: bh, stroke };
+        self.boxes.push((self.clusters.len(), range.0, range.1, enclosed));
+        Some(adv)
     }
 
     /// The width (points) Word gives the one-character cluster `s` of a missing font it has
@@ -826,6 +865,15 @@ fn one_em_line(face: &wordcraft_fonts::FontFace) -> (f64, f64) {
     let (a, d) = wordcraft_fonts::word::line_metrics(face);
     let total = a + d;
     if total.is_finite() && total > 0.0 { (a / total, d / total) } else { (0.8, 0.2) }
+}
+
+/// The one character of `s`, if it has exactly one.
+fn single_char(s: &str) -> Option<char> {
+    let mut chars = s.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => Some(c),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
