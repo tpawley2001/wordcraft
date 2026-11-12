@@ -146,16 +146,6 @@ pub(crate) fn parse(table: &[u8], fc: u32, lcb: u32) -> Result<Vec<RawStyle>, Do
     Ok(out)
 }
 
-/// Font names from the `SttbfFfn` at `table[fc..fc+lcb]` ([MS-DOC] §2.9.286): an STTB
-/// (§2.2.4) whose entries are FFN records (§2.9.82). Each entry is a length (`cchData`: a
-/// one-byte byte count in the non-extended table the spec requires, a two-byte count of
-/// 16-bit units in an extended one) followed by the FFN, and that length alone decides where
-/// the next entry starts: an FFN ends with its primary name and an optional alternate name
-/// (`xszAlt`), so scanning for the primary name's terminator would land inside the latter.
-pub(crate) fn fonts(table: &[u8], fc: u32, lcb: u32) -> Vec<String> {
-    font_entries(table, fc, lcb).into_iter().map(|f| f.name).collect()
-}
-
 /// One font of the `SttbfFfn`: its FFN's primary name, alternate name (`xszAlt`) and the
 /// `ffid` byte's family class (`ff`, bits 4-6) and pitch (`prq`, bits 0-1), and its `chs`.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -174,8 +164,13 @@ pub(crate) struct FontEntry {
 /// FFN family class `roman` ([MS-DOC] §2.9.82 `ff`).
 pub(crate) const FF_ROMAN: u8 = 1;
 
-/// The fonts of the `SttbfFfn` at `table[fc..fc+lcb]`, one entry per FFN in table order (see
-/// [`fonts`]).
+/// The fonts, one entry per FFN in table order, of the `SttbfFfn` at `table[fc..fc+lcb]`
+/// ([MS-DOC] §2.9.286): an STTB
+/// (§2.2.4) whose entries are FFN records (§2.9.82). Each entry is a length (`cchData`: a
+/// one-byte byte count in the non-extended table the spec requires, a two-byte count of
+/// 16-bit units in an extended one) followed by the FFN, and that length alone decides where
+/// the next entry starts: an FFN ends with its primary name and an optional alternate name
+/// (`xszAlt`), so scanning for the primary name's terminator would land inside the latter.
 pub(crate) fn font_entries(table: &[u8], fc: u32, lcb: u32) -> Vec<FontEntry> {
     let end = match (fc as usize).checked_add(lcb as usize) {
         Some(e) if e <= table.len() => e,
