@@ -27,6 +27,7 @@ pub fn char_props(f: &Fmt) -> CharProps {
             None
         },
         link: f.link.as_deref().filter(|l| !l.is_empty()).map(str::to_string),
+        link_tip: f.link_tip.as_deref().filter(|t| !t.is_empty() && f.link.as_deref().is_some_and(|l| !l.is_empty())).map(Box::from),
         color: f.color.map(TextColor::Rgb),
         size: f.size.filter(|s| s.is_finite() && *s >= 1.0 && *s <= 1638.0),
         font: if f.code { Some(MONO_FONT.to_string()) } else { f.font.as_deref().filter(|s| !s.is_empty()).map(str::to_string) },
@@ -313,14 +314,19 @@ impl<'a> Builder<'a> {
     /// `cp` as a run may keep it: without its link and font once the runs' copies of them are
     /// over budget.
     fn budget(&mut self, mut cp: CharProps) -> CharProps {
-        let n = cp.link.as_ref().map_or(0, String::len).saturating_add(cp.font.as_ref().map_or(0, String::len));
+        let n = cp
+            .link
+            .as_ref()
+            .map_or(0, String::len)
+            .saturating_add(cp.link_tip.as_ref().map_or(0, |t| t.len()))
+            .saturating_add(cp.font.as_ref().map_or(0, String::len));
         match self.run_strings.checked_add(n).filter(|&t| t <= MAX_RUN_STRINGS) {
             Some(t) => self.run_strings = t,
             None => {
                 if cp.link.is_some() || cp.font.is_some() {
                     dropped(Dropped::RunStrings);
                 }
-                (cp.link, cp.font) = (None, None);
+                (cp.link, cp.link_tip, cp.font) = (None, None, None);
             }
         }
         cp

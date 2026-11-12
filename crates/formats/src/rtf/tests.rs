@@ -1852,6 +1852,7 @@ mod info_company;
 mod info_props;
 mod justification_flag;
 mod legacy_pn;
+mod link_screen_tip;
 mod mark_and_default_font;
 mod nested_tables;
 mod note_options;

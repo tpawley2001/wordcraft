@@ -62,6 +62,7 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
         sup: e.vert_align == Some(VertAlign::Superscript),
         sub: e.vert_align == Some(VertAlign::Subscript),
         link: e.link.as_deref().map(Arc::from),
+        link_tip: e.link.as_ref().and(e.link_tip.as_deref()).map(Arc::from),
         color: match e.color {
             Some(TextColor::Rgb(c)) => Some(c),
             _ => None,
