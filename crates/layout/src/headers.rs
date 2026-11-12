@@ -15,8 +15,10 @@ use super::{
 /// - An odd- or even-page break counts on from the previous section's numbers. A section that
 ///   restarts its numbering gets no blank page unless the document prints both sides (different
 ///   odd and even headers, or mirror margins); a restart at the wrong parity takes the next number.
-/// - With different odd and even headers, a next-page break that restarts the numbers at an odd
-///   (even) number starts on an odd (even) sheet.
+/// - With different odd and even headers or mirror margins, a next-page break that restarts the
+///   numbers at an odd (even) number starts on an odd (even) sheet, the side told by the number of
+///   the page before (not the page count), so a blank page goes first when the restart has the
+///   same parity as `last`.
 ///
 /// (Word's output for docxide-pdf's fixtures: bush_fires_act_comparison has a blank page 2.)
 pub(crate) fn section_side(start: SectionStart, restart: Option<u32>, last: u32, pages: usize, even_odd: bool, mirror: bool) -> (bool, Option<u32>) {
@@ -29,7 +31,7 @@ pub(crate) fn section_side(start: SectionStart, restart: Option<u32>, last: u32,
             (filler, restart)
         }
         SectionStart::NextPage => {
-            let filler = even_odd && pages > 0 && restart.is_some_and(|n| (n % 2 == 1) != ((pages + 1) % 2 == 1));
+            let filler = (even_odd || mirror) && pages > 0 && restart.is_some_and(|n| n % 2 == last % 2);
             (filler, restart)
         }
         SectionStart::Continuous | SectionStart::NextColumn => (false, restart),

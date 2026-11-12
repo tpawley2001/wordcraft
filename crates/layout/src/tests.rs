@@ -49,6 +49,7 @@ mod nbsp;
 mod nested_cant_split;
 mod nested_tail_paragraph;
 mod next_column_section;
+mod next_page_restart_side;
 mod no_leading;
 mod no_leading_missing_fonts;
 mod numeral;
