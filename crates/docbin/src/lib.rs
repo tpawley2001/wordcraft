@@ -784,6 +784,10 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 if !ctx.paragraphs.spend() {
                     break;
                 }
+                // A field result that runs over paragraphs keeps them ([MS-DOC] §2.8.25).
+                if c == '\r' {
+                    paragraph_in_result(&mut fields, &mut pb);
+                }
                 // Paragraph mark: its PAPX covers the FC range of the paragraph it ends, so
                 // querying at the mark's own FC finds that paragraph's properties.
                 let (istd, papx) = match head.take().flatten().filter(|h| h.mark == cp) {
@@ -933,8 +937,9 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
         }
         cp = cp.saturating_add(units);
     }
-    // A table of contents still open when the story ends (a cut-off file) is closed here, so its
-    // `FieldStart` doesn't reach a save without its end.
+    // A range field (a table of contents, an index, a result over paragraphs) still open when the
+    // story ends (a cut-off file) is closed here, so its `FieldStart` doesn't reach a save without
+    // its end.
     for _ in fields.iter().filter(|f| f.range) {
         push_field_end(&mut pb);
     }
@@ -1102,7 +1107,36 @@ fn inline_picture(
 /// result up to its end), so the picture stays the field's result as the file has it, rather than
 /// coming before an empty field. Not for a field in another field's collected result.
 fn embed_result_range(field: Option<&mut OpenField>, nested: bool, pb: &mut ParaBuild) {
-    let Some(f) = field.filter(|f| !nested && !f.range && ole::is_embed(&f.build.instr)) else { return };
+    if let Some(f) = field.filter(|f| !nested && ole::is_embed(&f.build.instr)) {
+        result_to_range(f, pb);
+    }
+}
+
+/// A paragraph mark (0x0D) in the result of a field that would otherwise become one inline
+/// object: the field becomes a range there ([`result_to_range`]), so its result keeps its
+/// paragraphs. Not for a field in another field's collected result, one counted past the nesting
+/// cap, a hyperlink (its result becomes linked runs) or an embedded object kept whole.
+fn paragraph_in_result(fields: &mut [OpenField], pb: &mut ParaBuild) {
+    let nested = fields.iter().rev().skip(1).any(|f| !f.range);
+    if let Some(f) = fields.last_mut().filter(|f| {
+        !nested
+            && f.build.depth == 1
+            && f.over_hidden == 0
+            && f.over_shown == 0
+            && !f.build.object
+            && hyperlink_target(f.build.instr.trim()).is_none()
+    }) {
+        result_to_range(f, pb);
+    }
+}
+
+/// Turns a field whose result is open into a range field: its start at the field's place, then
+/// the result so far as ordinary content with its formatting; the rest of the result follows as
+/// ordinary content up to its end.
+fn result_to_range(f: &mut OpenField, pb: &mut ParaBuild) {
+    if f.range {
+        return;
+    }
     let Some(result) = f.build.sep.take() else { return };
     f.range = true;
     pb.push('\u{FFFC}', f.build.props.clone());
@@ -1185,10 +1219,12 @@ impl FieldResult {
 const MAX_FIELD_NEST: usize = 32;
 
 /// Fields whose result stays ordinary content between `FieldStart` and `FieldEnd` markers, as
-/// the DOCX reader keeps them: a table of contents (its entries are paragraphs) and ADDIN fields.
+/// the DOCX reader keeps them: a table of contents, an index, a table of authorities and a
+/// bibliography (their entries are paragraphs) and ADDIN fields.
 fn is_range_instr(instr: &str) -> bool {
     let t = instr.trim_start();
-    t.split_whitespace().next().is_some_and(|k| k.eq_ignore_ascii_case("TOC")) || t.get(..5).is_some_and(|k| k.eq_ignore_ascii_case("ADDIN"))
+    t.split_whitespace().next().is_some_and(|k| ["TOC", "INDEX", "TOA", "BIBLIOGRAPHY"].iter().any(|r| k.eq_ignore_ascii_case(r)))
+        || t.get(..5).is_some_and(|k| k.eq_ignore_ascii_case("ADDIN"))
 }
 
 /// A field begin (0x13): a new field, or one more level in the innermost field's code. `props`
