@@ -125,7 +125,8 @@ fn a_centred_table_keeps_both_its_alignment_and_its_edge() {
 #[test]
 fn the_table_takes_its_first_row_s_edge_and_keeps_its_column_widths() {
     // Two rows; the second starts further right. The table's indent is the first row's, and the
-    // grid is still the first row's widths (767 and 8953 twips).
+    // first row's cells keep their widths (767 and 8953 twips). The rows share one grid of both
+    // rows' edges: the second row starts one column in.
     let row = |edges: &[i16], gap: i16| {
         let mut end = TTP.to_vec();
         end.extend(def_table(edges));
@@ -138,6 +139,10 @@ fn the_table_takes_its_first_row_s_edge_and_keeps_its_column_widths() {
     let t = table(&body);
     assert_indent(t.props.indent, 12.6, "first row");
     assert_eq!(t.rows.len(), 2);
-    assert_eq!(t.grid.len(), 2, "{:?}", t.grid);
-    assert!((t.grid[0] - 38.35).abs() < 0.01 && (t.grid[1] - 447.65).abs() < 0.01, "{:?}", t.grid);
+    assert_eq!(t.grid.len(), 3, "{:?}", t.grid);
+    assert!((t.grid[0] - 9.0).abs() < 0.01 && (t.grid[1] - 29.35).abs() < 0.01 && (t.grid[2] - 447.65).abs() < 0.01, "{:?}", t.grid);
+    let first: Vec<f32> = t.rows[0].cells.iter().filter_map(|c| c.props.width).collect();
+    assert!(first.len() == 2 && (first[0] - 38.35).abs() < 0.01 && (first[1] - 447.65).abs() < 0.01, "{first:?}");
+    assert_eq!(t.rows[0].cells.iter().map(|c| c.span()).collect::<Vec<_>>(), [2, 1]);
+    assert_eq!(t.rows[1].props.grid_before, 1);
 }
