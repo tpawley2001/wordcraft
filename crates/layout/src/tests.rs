@@ -20,6 +20,7 @@ mod eq_fields;
 mod eq_integral_limits;
 mod eq_radical_index;
 mod ext_leading_2pt;
+mod field_picture_overflow;
 mod float_table_bottom;
 mod float_table_notes;
 mod float_top;
