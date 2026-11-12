@@ -178,7 +178,7 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
         "century" | "century schoolbook" | "new century schoolbook" => (CENTURY, true),
         "arial narrow" | "helvetica narrow" => (ARIAL_NARROW, true),
         "arial unicode ms" => (ARIAL_UNICODE, true),
-        "times new roman" | "times" => (TIMES, true),
+        "times new roman" | "times" | "cg times" => (TIMES, true),
         "courier new" | "courier" | "consolas" | "lucida console" | "cascadia code" | "cascadia mono" => (MONO, true),
         "symbol" | "wingdings" | "wingdings 2" | "wingdings 3" | "segoe ui symbol" | "webdings" => (SYMBOL, true),
         // Serif faces with no open clone of their own: the generic serif list, as for any font.

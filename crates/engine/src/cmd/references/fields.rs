@@ -19,6 +19,26 @@ fn document_date_result(instr: &str, value: &str, default_picture: &str) -> Opti
     Some(text_result(instr, crate::cmd::insert::format_date_at(&picture, unix, crate::cmd::local_offset_secs(unix))))
 }
 
+/// The result Update Field gives a CREATEDATE, NUMWORDS, NUMCHARS, REVNUM or DOCPROPERTY field
+/// (DOCPROPERTY <name>: a custom property first, then a built-in one, #1798), reading `core` for
+/// the properties and `counts` for DOCPROPERTY's body counts. `None` keeps the stored result.
+fn document_info_result(
+    doc: &wordcraft_doc::Document,
+    core: &wordcraft_doc::CoreProps,
+    counts: &BodyCounts,
+    name: &str,
+    instr: &str,
+) -> Option<String> {
+    match name {
+        "CREATEDATE" => document_date_result(instr, &core.created, "M/d/yyyy"),
+        "NUMWORDS" => Some(count_text(instr, doc.word_count())),
+        "NUMCHARS" => Some(count_text(instr, doc.plain_text(StoryRef::Body).chars().filter(|c| !c.is_whitespace()).count())),
+        "REVNUM" => Some(count_text(instr, core.revision as usize)),
+        "DOCPROPERTY" => doc_property_result(doc, core, counts, |value: &str, pic: &str| document_date_result(instr, value, pic), instr),
+        _ => None,
+    }
+}
+
 /// The body counts DOCPROPERTY fields show, when a field among `paths` is a DOCPROPERTY field;
 /// the layout is taken only when one names `Pages`.
 fn doc_property_counts(s: &mut Session, paths: &[(StoryRef, Path)]) -> BodyCounts {
@@ -498,7 +518,8 @@ fn changed(doc: &wordcraft_doc::Document, mut results: Vec<FieldResult>) -> Vec<
 /// "Update fields before printing" off, while NUMWORDS, FILENAME, the summary properties and
 /// formulas keep their stored results (measured with Word for Windows, printing and exporting
 /// fields whose stored results were wrong). In headers and footers, the summary properties
-/// (TITLE, AUTHOR ...), LASTSAVEDBY, DATE, TIME and a QUOTE of one quoted text show their current
+/// (TITLE, AUTHOR ...), LASTSAVEDBY, DATE, TIME, a QUOTE of one quoted text, NUMWORDS, NUMCHARS,
+/// REVNUM, CREATEDATE and DOCPROPERTY show their current
 /// values too, while the same fields in the body and in notes keep theirs (measured with
 /// Microsoft 365 Word's PDF export). The document itself keeps its stored results.
 /// `None` when every such field already shows its fresh result, so nothing is copied then.
@@ -527,13 +548,16 @@ pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Doc
 
 /// The fresh results output shows for the unlocked fields in every header and footer (each
 /// section's default, first-page and even-page ones, table cells included): the summary
-/// properties and LASTSAVEDBY, DATE and TIME, and a QUOTE of one quoted text, each as Update
+/// properties and LASTSAVEDBY, DATE and TIME, a QUOTE of one quoted text, and NUMWORDS,
+/// NUMCHARS, REVNUM, CREATEDATE and DOCPROPERTY (but `Pages`), each as Update
 /// Field in that header would store it (Word's PDF export shows them current, measured with
 /// Microsoft 365 Word). A summary property field that gives the property a new value keeps its
 /// result: output never changes a property. Every other field keeps what it shows.
 fn header_footer_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
     use wordcraft_doc::PartKind;
     let mut out = Vec::new();
+    // DOCPROPERTY's body counts, taken once when a field needs them.
+    let mut counts = None;
     for (id, part) in &doc.parts {
         if !matches!(part.kind, PartKind::Header | PartKind::Footer) {
             continue;
@@ -555,6 +579,12 @@ fn header_footer_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
                         Some(text_result(instr, crate::cmd::insert::format_date_in(&pic, lang.as_deref())))
                     }
                     "QUOTE" => quote_literal(instr).map(|text| text_result(instr, text)),
+                    // Output has no layout to count pages from: DOCPROPERTY Pages keeps its result.
+                    "DOCPROPERTY" if doc_property_names_pages(instr) => None,
+                    "CREATEDATE" | "NUMWORDS" | "NUMCHARS" | "REVNUM" | "DOCPROPERTY" => {
+                        let counts = counts.get_or_insert_with(|| BodyCounts::of(doc, None));
+                        document_info_result(doc, &doc.core, counts, &name, instr)
+                    }
                     _ => None,
                 };
                 out.extend(fresh.map(|r| (story, path.clone(), k, r)));
@@ -909,10 +939,12 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
                     let pic = date_picture(instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
                     updates.push((k, text_result(instr, crate::cmd::insert::format_date_in(&pic, lang.as_deref()))));
                 }
-                "CREATEDATE" | "PRINTDATE" => {
-                    let value = if name == "CREATEDATE" { &core.created } else { &core.last_printed };
-                    updates.extend(document_date_result(instr, value, "M/d/yyyy").map(|text| (k, text)));
+                // After Insert › Field only a count field with no result yet (the new one) is counted.
+                "DOCPROPERTY" if !explicit && shows_text_count(o) => {}
+                "CREATEDATE" | "NUMWORDS" | "NUMCHARS" | "REVNUM" | "DOCPROPERTY" => {
+                    updates.extend(document_info_result(&s.doc, &core, &counts, &name, instr).map(|text| (k, text)));
                 }
+                "PRINTDATE" => updates.extend(document_date_result(instr, &core.last_printed, "M/d/yyyy").map(|text| (k, text))),
                 "REF" | "PAGEREF" | "NOTEREF" => {
                     let f = FieldCode::parse(instr);
                     let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
@@ -981,19 +1013,6 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
                         None => s.user_initials(),
                     };
                     updates.push((k, text_result(instr, v)));
-                }
-                "NUMWORDS" => updates.push((k, count_text(instr, s.doc.word_count()))),
-                "NUMCHARS" => {
-                    let chars = s.doc.plain_text(StoryRef::Body).chars().filter(|c| !c.is_whitespace()).count();
-                    updates.push((k, count_text(instr, chars)));
-                }
-                "REVNUM" => updates.push((k, count_text(instr, core.revision as usize))),
-                // DOCPROPERTY <name>: a custom property first, then a built-in one (#1798).
-                // After Insert › Field only a count field with no result yet (the new one) is counted.
-                "DOCPROPERTY" if !explicit && shows_text_count(o) => {}
-                "DOCPROPERTY" => {
-                    let date = |value: &str, pic: &str| document_date_result(instr, value, pic);
-                    updates.extend(doc_property_result(&s.doc, &core, &counts, date, instr).map(|v| (k, v)));
                 }
                 // DOCVARIABLE <name>: the document variable (names ignore case), or Word's error text.
                 "DOCVARIABLE" => updates.extend(explicit.then(|| (k, doc_variable_result(&s.doc, instr)))),
@@ -1326,8 +1345,49 @@ mod header_footer_output_tests {
     fn other_fields_keep_their_results() {
         let mut d = doc();
         assert!(output_fields(&d).is_none());
-        let id = d.add_part(PartKind::Footer, vec![Arc::new(Block::Para(para_with(&[("FILENAME", "old.docx"), ("NUMWORDS", "9")])))]);
-        assert!(output_fields(&d).is_none(), "FILENAME and NUMWORDS keep their results in part {id}");
+        let id = d.add_part(PartKind::Footer, vec![Arc::new(Block::Para(para_with(&[("FILENAME", "old.docx"), ("FILESIZE", "9")])))]);
+        assert!(output_fields(&d).is_none(), "FILENAME and FILESIZE keep their results in part {id}");
+    }
+
+    /// A header CREATEDATE shows what Update Field in that header stores: the created date in
+    /// local time, in its picture or the default one; the body's keeps its result.
+    #[test]
+    fn header_createdate_matches_update_field() {
+        let mut d = doc();
+        d.core.created = "2024-03-05T14:07:00Z".into();
+        let fields = [("CREATEDATE", "stale"), (r#"CREATEDATE \@ "yyyy-MM-dd""#, "stale")];
+        let id = d.add_part(PartKind::Header, vec![Arc::new(Block::Para(para_with(&fields)))]);
+        let story = StoryRef::Part(id);
+        let results = |doc: &Document| -> Vec<String> {
+            doc.para_paths(story)
+                .iter()
+                .flat_map(|p| doc.para(story, p).unwrap().objects.clone())
+                .filter_map(|o| match o {
+                    InlineObject::Field { result, .. } => Some(result),
+                    _ => None,
+                })
+                .collect()
+        };
+        let mut s = Session::new(d.clone());
+        let path = s.doc.para_paths(story).remove(0);
+        s.sel = Selection::caret(Pos::new(story, path, 0));
+        s.run("references.updateFields", &serde_json::json!({})).unwrap();
+        let want = results(&s.doc);
+        assert!(want.iter().all(|r| r != "stale"), "{want:?}");
+        assert!(want[1].starts_with("2024-03-0"), "{want:?}");
+        let out = output_fields(&d).expect("the header dates change");
+        assert_eq!(results(&out), want);
+    }
+
+    /// DOCPROPERTY in a footer: Update Field's lookup and error text; `Pages` keeps its result
+    /// (output has no layout to count them).
+    #[test]
+    fn footer_doc_property_forms() {
+        let mut d = doc();
+        assert_eq!(
+            shown(&mut d, &[r#"DOCPROPERTY "Title" \* Upper"#, "DOCPROPERTY NoSuchName", "DOCPROPERTY Pages", r#"NUMWORDS \* roman"#]),
+            ["ADA NOTES", super::super::properties::UNKNOWN_DOC_PROPERTY, "stale", "i"]
+        );
     }
 
     #[test]

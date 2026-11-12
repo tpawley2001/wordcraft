@@ -28,6 +28,8 @@ struct W6 {
     prc: bool,
     /// Fonts as (name, charset).
     fonts: Vec<(&'static str, u8)>,
+    /// FFID bytes of the fonts, in order; a font past the end gets 0x16 (roman, variable, TrueType).
+    ffids: Vec<u8>,
     /// Character runs as (start offset into `text`, Word 6 grpprl).
     chpx: Vec<(usize, Vec<u8>)>,
     /// Paragraph runs as (start offset into `text`, Word 6 grpprl), in one PAPX page with Word 6's
@@ -150,8 +152,9 @@ impl W6 {
         }
         if !self.fonts.is_empty() {
             let mut t = vec![0u8, 0u8];
-            for (name, chs) in &self.fonts {
-                let mut ffn = vec![0x16u8, 0x90, 0x01, *chs, 0];
+            for (i, (name, chs)) in self.fonts.iter().enumerate() {
+                let ffid = self.ffids.get(i).copied().unwrap_or(0x16);
+                let mut ffn = vec![ffid, 0x90, 0x01, *chs, 0];
                 ffn.extend_from_slice(name.as_bytes());
                 ffn.push(0);
                 t.push(ffn.len() as u8);
@@ -471,4 +474,18 @@ fn word6_hostile_section_tables_never_panic_and_keep_what_was_read() {
             let _ = read(&f);
         }
     }
+}
+
+#[test]
+fn word6_roman_family_class_fills_roman_fonts() {
+    // FFID 0x10 roman, 0x22 swiss, 0x31 modern, 0x96 roman (bit 7 ignored), and a roman FFN
+    // with an empty name.
+    let f = W6 {
+        fonts: vec![("Zzyzx Roman", 0), ("Zzyzx Sans", 0), ("Zzyzx Mono", 0), ("CG Times", 0), ("", 0)],
+        ffids: vec![0x10, 0x22, 0x31, 0x96, 0x10],
+        ..plain("Ahoy\r")
+    }
+    .build();
+    let doc = read(&f).expect("opens");
+    assert_eq!(doc.settings.roman_fonts, ["Zzyzx Roman", "CG Times"]);
 }
