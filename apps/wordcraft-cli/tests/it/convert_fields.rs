@@ -76,6 +76,7 @@ fn convert_protected_document_with_update_fields_skips_with_warning() {
                 dirty: true,
                 code: false,
                 form: String::new(),
+                code_paras: None,
             },
             &Default::default(),
         )
