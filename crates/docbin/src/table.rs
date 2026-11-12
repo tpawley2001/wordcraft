@@ -212,6 +212,13 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
             T_DEF_TABLE => {
                 r.edges = def_table_edges(prl.operand);
                 edge0 = first_edge(prl.operand).map(Edge0::Center).or(edge0);
+                // The definition replaces each cell's alignment; a later sprmTVertAlign wins.
+                for (c, v) in def_table_valign(prl.operand) {
+                    match v {
+                        Some(v) => set(&mut r.valign, c, v),
+                        None => r.valign.retain(|(k, _)| *k != c),
+                    }
+                }
             }
             T_TABLE_HEADER => r.header = prl.operand.first().copied().unwrap_or(0) != 0,
             T_CANT_SPLIT | T_CANT_SPLIT_90 => r.cant_split = prl.operand.first().copied().unwrap_or(0) != 0,
@@ -760,7 +767,7 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
 }
 
 /// Cell-edge positions (points) from a `sprmTDefTable` operand: cb u16, itcMac u8, then
-/// itcMac+1 twip boundaries followed by the TC80s (skipped). Edges are returned as stored:
+/// itcMac+1 twip boundaries followed by the TC80s (read by `def_table_valign`). Edges are returned as stored:
 /// per-row, in operand order; sorting and capping happen when the table grid is assembled.
 fn def_table_edges(operand: &[u8]) -> Vec<f32> {
     let itc = operand.get(2).copied().unwrap_or(0) as usize;
@@ -776,6 +783,28 @@ fn def_table_edges(operand: &[u8]) -> Vec<f32> {
         }
     }
     edges
+}
+
+/// Each cell's vertical alignment from the TC80s of a `sprmTDefTable` operand: after the
+/// itcMac+1 edges come up to itcMac 20-byte TC80s whose first word is the TCGRF flags, with
+/// vertAlign in bits 7-8 ([MS-DOC] 2.9.313, 2.9.314). Yields every cell below MAX_COLS: Center
+/// or Bottom when its TC80 says so, None (no explicit alignment) for top, the undefined value
+/// 3, or a TC80 missing from the operand or cut short.
+fn def_table_valign(operand: &[u8]) -> impl Iterator<Item = (u8, Option<VAlign>)> + '_ {
+    let itc = operand.get(2).copied().unwrap_or(0) as usize;
+    let start = 3 + (itc + 1) * 2;
+    (0..itc.min(MAX_COLS)).map(move |i| {
+        let at = start + i * 20;
+        let v = operand.get(at..at + 20).and_then(|tc| match tc {
+            [lo, hi, ..] => match (u16::from_le_bytes([*lo, *hi]) >> 7) & 3 {
+                1 => Some(VAlign::Center),
+                2 => Some(VAlign::Bottom),
+                _ => None,
+            },
+            _ => None,
+        });
+        (i as u8, v)
+    })
 }
 
 /// Table borders from `sprmTTableBorders80`: cb (0x18) then six Brc80s in the order top,
