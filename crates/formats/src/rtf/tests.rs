@@ -1831,6 +1831,7 @@ fn compound_borders_round_trip() {
 }
 
 mod bookmark_ranges;
+mod cell_margins;
 mod char_border;
 mod char_effects;
 mod char_unit_indents;
@@ -1840,6 +1841,7 @@ mod doc_grid;
 mod doc_page_options;
 mod doc_settings;
 mod doc_widow_control;
+mod drop_cap_paragraphs;
 mod endnote_here;
 mod foreign_styles;
 mod form_fields;
@@ -1851,10 +1853,12 @@ mod info_company;
 mod info_props;
 mod justification_flag;
 mod legacy_pn;
+mod link_screen_tip;
 mod mark_and_default_font;
 mod nested_tables;
 mod note_options;
 mod note_position;
+mod note_separators;
 mod object_result;
 mod own_styles;
 mod page_borders;
@@ -1870,6 +1874,7 @@ mod section_text_flow;
 mod shape_text;
 mod style_entry_extras;
 mod surrogate_boundaries;
+mod table_cell_padding;
 mod table_position;
 mod table_rows;
 mod table_styles;

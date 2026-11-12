@@ -62,6 +62,7 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
         sup: e.vert_align == Some(VertAlign::Superscript),
         sub: e.vert_align == Some(VertAlign::Subscript),
         link: e.link.as_deref().map(Arc::from),
+        link_tip: e.link.as_ref().and(e.link_tip.as_deref()).map(Arc::from),
         color: match e.color {
             Some(TextColor::Rgb(c)) => Some(c),
             _ => None,
@@ -1296,6 +1297,9 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
                 valign: c.props.valign.or(styled.as_ref().and_then(|s| s.v_align)),
                 // Formats that keep cell padding get each cell's, its table's or Word's default.
                 margins: tracked.paras.then(|| c.props.resolved_margins(t.props.cell_margins.unwrap_or(WORD_CELL_MARGINS))),
+                // The sides the cell sets itself, for formats that write only those (RTF).
+                own_margins: c.props.margins.map(|m| m.map(Some)).or(c.props.partial_margins).unwrap_or([None; 4]),
+                no_wrap: c.props.no_wrap,
                 direction: c.props.text_direction,
                 // Its background picture, for formats that keep cell formatting (ODT).
                 picture: c.props.picture.as_deref().filter(|_| tracked.paras).and_then(|p| {
@@ -1337,9 +1341,10 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one,
     // and the table's style and look, when it has a style, and its alignment and left edge.
     let placed = t.props.align.is_some() || t.props.indent.is_some();
+    let cell_margins = t.props.cell_margins.filter(|m| m.iter().all(|v| v.is_finite()));
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
-        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed)
+        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed || cell_margins.is_some())
         .map(|(heights, keep_rows)| super::types::TableExtra {
             align: t.props.align,
             indent: t.props.indent,
@@ -1347,6 +1352,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             keep_rows,
             style: t.props.style.clone(),
             look: t.props.style.is_some().then_some(t.props.look),
+            cell_margins,
             ..Default::default()
         });
     let extra = tracked.paras.then(|| {
@@ -1363,6 +1369,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             header_rows: t.rows.iter().take_while(|r| r.props.header).count(),
             style: None,
             look: None,
+            cell_margins: None,
         }
     });
     // Kept whole for formats that ask for it: its header rows count even without the rest.

@@ -90,7 +90,7 @@ impl Reader {
             }
             "uc" => self.st.uc = pv.max(0) as usize,
             "plain" => {
-                self.st.fmt = Fmt { link: self.st.fmt.link.clone(), ..Default::default() };
+                self.st.fmt = Fmt { link: self.st.fmt.link.clone(), link_tip: self.st.fmt.link_tip.clone(), ..Default::default() };
                 self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
@@ -233,7 +233,9 @@ impl Reader {
             "trhdr" => self.row_header = true,
             // The row's position, twips; beyond 22 inches clamped.
             "trleft" => self.row_style.left = pv.clamp(-31_680, 31_680),
-            "trgaph" => self.row_style.gap = pv.clamp(0, 31_680),
+            "trgaph" => self.row_style.gap_word(pv),
+            // The row's default cell padding, by side, and its units.
+            "trpaddt" | "trpaddl" | "trpaddb" | "trpaddr" | "trpaddft" | "trpaddfl" | "trpaddfb" | "trpaddfr" => self.row_style.pad_word(w, pv),
             "tblind" => self.row_style.ind = Some(pv.clamp(-31_680, 31_680)),
             "tblindtype" => self.row_style.ind_type = pv,
             "trqc" => self.row_style.align = Some(Align::Center),
@@ -254,6 +256,16 @@ impl Reader {
             "cltxlrtb" | "cltxlrtbv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Horizontal,
             "cltxtbrl" | "cltxtbrlv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Down,
             "cltxbtlr" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Up,
+            // A cell's own padding: Word reads `\clpadl` as the top and `\clpadt` as the left.
+            "clpadl" => self.def_cur.pad[0] = Some(pv),
+            "clpadt" => self.def_cur.pad[1] = Some(pv),
+            "clpadb" => self.def_cur.pad[2] = Some(pv),
+            "clpadr" => self.def_cur.pad[3] = Some(pv),
+            "clpadfl" => self.def_cur.pad_unit[0] = Some(pv),
+            "clpadft" => self.def_cur.pad_unit[1] = Some(pv),
+            "clpadfb" => self.def_cur.pad_unit[2] = Some(pv),
+            "clpadfr" => self.def_cur.pad_unit[3] = Some(pv),
+            "clNoWrap" => self.def_cur.no_wrap = true,
             "clcbpat" => self.def_cur.shading = self.colors.get(pv.max(0) as usize).copied().flatten(),
             "sb" => self.st.sb = Some(pv),
             "sa" => self.st.sa = Some(pv),
@@ -331,9 +343,14 @@ impl Reader {
             "field" => self.start_field(),
             "fldlock" => self.lock_field(),
             "fldrslt" => {
-                let link = self.st.field.and_then(|i| self.fields.get(i)).and_then(|s| hyperlink(s));
+                let instr = self.st.field.and_then(|i| self.fields.get(i));
+                let link = instr.and_then(|s| hyperlink(s));
                 if link.is_some() {
                     self.st.fmt.link = link.as_deref().and_then(model::kept_link);
+                    // The ScreenTip (`\o "text"`) goes with a kept link only; the result group's
+                    // end restores the formatting before it, so it never outlives its field.
+                    self.st.fmt.link_tip =
+                        self.st.fmt.link.as_ref().and(instr).and_then(|s| wordcraft_doc::link::hyperlink_tip(s)).map(std::sync::Arc::from);
                 } else if self.field_inline()
                     && let Some(instr) = self.st.field.and_then(|i| self.fields.get(i)).filter(|s| !s.trim().is_empty())
                 {
@@ -429,6 +446,9 @@ impl Reader {
             "oldcprops" => Some(Dest::OldProps(false)),
             "oldpprops" => Some(Dest::OldProps(true)),
             "oldsprops" => Some(Dest::OldSect),
+            // Note separator and continuation stories (RTF 1.9.1 "Footnotes"), also written
+            // without `\*` by older writers: not body text, and no custom separators are kept.
+            "ftnsep" | "ftnsepc" | "ftncn" | "aftnsep" | "aftnsepc" | "aftncn" => Some(Dest::Skip),
             "listoverridetable" => Some(Dest::ListOverride),
             "fldinst" => Some(Dest::FldInst),
             "formfield" if self.st.dest == Dest::FldInst => {
@@ -1048,5 +1068,46 @@ mod object_result_tests {
             })
             .collect();
         assert_eq!(text, "BeforevisibleAfter");
+    }
+}
+
+#[cfg(test)]
+mod link_tip_tests {
+    use super::super::{export, import};
+    use wordcraft_doc::Document;
+
+    /// The (text, link, ScreenTip) of each run in the first paragraph.
+    fn runs(d: &Document) -> Vec<(String, Option<String>, Option<String>)> {
+        let p = d.body.iter().find_map(|b| b.as_para()).expect("a paragraph");
+        p.run_ranges().map(|(r, c)| (p.text[r].to_string(), c.link.clone(), c.link_tip.as_deref().map(str::to_string))).collect()
+    }
+
+    #[test]
+    fn a_screen_tip_in_other_scripts_round_trips() {
+        // The two CJK characters as `\uN?` escapes, N = 26085 and 26412.
+        let cjk: String = [26085u32, 26412].iter().map(|n| format!("\\u{n}?")).collect();
+        let rtf = format!(
+            r#"{{\rtf1\ansi\uc1{{\field{{\*\fldinst{{HYPERLINK "http://example.com" \\o "Say \\"hi\\" a\{{b\}}\\\\c \u233? {cjk}"}}}}{{\fldrslt{{link}}}}}}\par}}"#
+        );
+        let want = "Say \"hi\" a{b}\\c \u{e9} \u{65e5}\u{672c}";
+        let d = import(rtf.as_bytes()).unwrap();
+        assert_eq!(runs(&d)[0].2.as_deref(), Some(want));
+        let out = export(&d);
+        assert!(out.contains(r#"\\o "Say \\"hi\\" a\{b\}\\\\c "#), "{out}");
+        assert_eq!(runs(&import(out.as_bytes()).unwrap())[0].2.as_deref(), Some(want));
+    }
+
+    #[test]
+    fn plain_inside_the_result_keeps_the_screen_tip() {
+        let rtf = br#"{\rtf1\ansi{\field{\*\fldinst{HYPERLINK "http://example.com" \\o "tip"}}{\fldrslt{\plain link}}}\par}"#;
+        let d = import(rtf).unwrap();
+        assert_eq!(runs(&d)[0], ("link".into(), Some("http://example.com".into()), Some("tip".into())));
+    }
+
+    #[test]
+    fn a_link_written_as_plain_text_has_no_screen_tip() {
+        let rtf = br#"{\rtf1\ansi{\field{\*\fldinst{HYPERLINK "javascript:alert(1)" \\o "tip"}}{\fldrslt{link}}}\par}"#;
+        let out = export(&import(rtf).unwrap());
+        assert!(!out.contains("HYPERLINK") && !out.contains("tip"), "{out}");
     }
 }

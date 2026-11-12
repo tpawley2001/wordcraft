@@ -53,6 +53,7 @@ mod rtf_squeeze_any_align;
 mod rtf_wraptrsp_squeeze;
 mod rtl_gutter_vertical;
 mod styleref;
+mod styleref_args;
 mod styleref_errors;
 mod symbol_field;
 mod symbol_font_lines;

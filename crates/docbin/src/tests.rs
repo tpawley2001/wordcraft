@@ -46,8 +46,10 @@ mod style_name_case;
 mod style_own_para_props;
 mod table_float;
 mod table_width;
+mod text_box_flow;
 mod text_box_margins;
 mod toggle_para_style;
+mod tracked_format_changes;
 mod word6;
 mod wrap_polygon;
 

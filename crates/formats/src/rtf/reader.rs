@@ -479,7 +479,10 @@ impl Reader {
     /// set when the document is built ([`super::parse`]), as RTF names no author or date for it.
     pub(super) fn section_change(&mut self) -> Option<Box<wordcraft_doc::props::PropChange<wordcraft_doc::SectionProps>>> {
         let old = self.sec_old.take()?;
-        wordcraft_doc::props::PropChange::boxed(0, old.props(&self.page))
+        let mut props = old.props(&self.page);
+        // Suppress endnotes before the change: the same rule as the current section's.
+        props.no_endnote = (self.doc_notes.1.pos == Some(wordcraft_doc::section::NotePos::SectEnd)).then_some(!old.endnhere);
+        wordcraft_doc::props::PropChange::boxed(0, props)
     }
 
     /// A section formatting word: applied to the current section, unless it's inside a header
@@ -803,7 +806,7 @@ impl Reader {
             return None;
         }
         let f = &self.st.fmt;
-        let plain = Fmt { link: None, ins: None, del: None, fmt_change: None, ..f.clone() };
+        let plain = Fmt { link: None, link_tip: None, ins: None, del: None, fmt_change: None, ..f.clone() };
         let mut m = model::char_props(&plain);
         if f.code
             && let Some(n) = &self.st.mono
@@ -889,6 +892,8 @@ impl Reader {
             c.header = self.row_header;
             c.valign = d.valign;
             c.direction = d.direction;
+            c.own_margins = d.own_margins();
+            c.no_wrap = d.no_wrap;
             match d.vmerge {
                 1 => c.rowspan = 2,
                 2 => c.covered = true,
@@ -952,6 +957,10 @@ impl Reader {
         if ts.align.is_some() || indent.is_some() {
             let x = extra.get_or_insert_with(Default::default);
             (x.align, x.indent) = (ts.align, indent);
+        }
+        // Its first row's default cell padding, when not Word's.
+        if let Some(m) = ts.cell_margins() {
+            extra.get_or_insert_with(Default::default).cell_margins = Some(m);
         }
         if ts.style.is_some() || ts.look.is_some() {
             let x = extra.get_or_insert_with(Default::default);

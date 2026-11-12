@@ -1018,7 +1018,14 @@ impl Writer {
             Some(l) => {
                 // In a field's quotes `\\` is one backslash; a quote is stored as `%22`.
                 let target = l.replace('\\', "\\\\").replace('"', "%22");
-                out.push_str(&format!("{{\\field{{\\*\\fldinst{{HYPERLINK \"{}\"}}}}{{\\fldrslt{{{}}}}}}}", esc(&target), body));
+                // A ScreenTip is the `\o` switch; in its quotes a backslash escapes the next
+                // character, and the RTF escaping keeps it text.
+                let tip = f
+                    .link_tip
+                    .as_deref()
+                    .filter(|t| !t.is_empty())
+                    .map_or_else(String::new, |t| format!(" \\\\o \"{}\"", esc(&t.replace('\\', "\\\\").replace('"', "\\\""))));
+                out.push_str(&format!("{{\\field{{\\*\\fldinst{{HYPERLINK \"{}\"{}}}}}{{\\fldrslt{{{}}}}}}}", esc(&target), tip, body));
             }
             None => out.push_str(&body),
         }
@@ -1607,7 +1614,17 @@ impl Writer {
             Some(Align::Center | Align::Right) => 0,
             _ => extra.and_then(|x| x.indent).filter(|i| i.is_finite()).map_or(0, |i| ((i * 20.0).round() as i64).clamp(-31_680, 31_680)),
         };
-        out.push_str(&format!("\\trgaph108\\trleft{left}"));
+        // Its default cell padding: the gap is the left padding, each side stated in twips.
+        let pad = extra.and_then(|x| x.cell_margins).filter(|m| m.iter().all(|v| v.is_finite()));
+        match pad {
+            Some(m) => {
+                let [t, l, b, r] = m.map(|v| ((v * 20.0).round() as i64).clamp(0, 31_680));
+                out.push_str(&format!(
+                    "\\trgaph{l}\\trleft{left}\\trpaddl{l}\\trpaddt{t}\\trpaddb{b}\\trpaddr{r}\\trpaddfl3\\trpaddft3\\trpaddfb3\\trpaddfr3"
+                ));
+            }
+            None => out.push_str(&format!("\\trgaph108\\trleft{left}")),
+        }
         // The table's style and its look.
         if let Some(n) = extra.and_then(|x| x.style.as_deref()).and_then(own_style_num) {
             out.push_str(&format!("\\ts{n}"));
@@ -1658,6 +1675,17 @@ impl Writer {
                 Some(VAlign::Center) => out.push_str("\\clvertalc"),
                 Some(VAlign::Bottom) => out.push_str("\\clvertalb"),
                 None => {}
+            }
+            // The padding sides the cell sets itself; Word writes the top as `\clpadl` and the
+            // left as `\clpadt`.
+            for (side, v) in ["l", "t", "b", "r"].iter().zip(c.own_margins) {
+                if let Some(v) = v.filter(|v| v.is_finite()) {
+                    let tw = (v * 20.0).round().clamp(0.0, 31_680.0) as i32;
+                    out.push_str(&format!("\\clpad{side}{tw}\\clpadf{side}3"));
+                }
+            }
+            if c.no_wrap {
+                out.push_str("\\clNoWrap");
             }
             match c.direction {
                 wordcraft_doc::props::TextDirection::Down => out.push_str("\\cltxtbrl"),
@@ -1830,6 +1858,9 @@ fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
 
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
+    // A drop cap is written as Word stores it: its letter in a paragraph of its own.
+    let split = super::frames::split_drop_caps(doc);
+    let doc = split.as_ref().unwrap_or(doc);
     let (marked, marks) = match mark_doc(doc) {
         Some((d, m)) => (Some(d), m),
         None => (None, Vec::new()),
@@ -1875,6 +1906,13 @@ pub fn export(doc: &Document) -> String {
             let mut s = s.clone();
             if sect_end && s.no_endnote != Some(true) {
                 s.no_endnote = Some(false);
+            }
+            // The same for the formatting before a tracked change (`{\*\oldsprops …}`).
+            if sect_end
+                && let Some(c) = s.fmt_change.as_deref_mut()
+                && c.old.no_endnote != Some(true)
+            {
+                c.old.no_endnote = Some(false);
             }
             s
         })

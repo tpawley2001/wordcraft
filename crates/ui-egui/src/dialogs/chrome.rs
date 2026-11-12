@@ -214,6 +214,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
         Dialog::LockTracking { .. } => "Lock Tracking",
         Dialog::ReadOnlyRecommended { .. } => "Open Read-Only",
         Dialog::DefineList { .. } => "Define New Multilevel List",
+        Dialog::DefineNumber { .. } => "Define New Number Format",
         Dialog::AdjustListIndents { .. } => "Adjust List Indents",
         Dialog::TrackOptions { .. } => "Track Changes Options",
         Dialog::Review(d) => d.title(),
