@@ -13,6 +13,7 @@ mod budget;
 mod button_fields;
 mod cell_floats;
 mod complex;
+mod deleted_mark_join;
 mod display_hide_body;
 mod early_float_stays;
 mod endnote_suppress;
