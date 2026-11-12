@@ -56,13 +56,21 @@ impl FormulaForm {
     }
 
     /// Number format's list: the box takes the picked picture.
-    pub fn pick_number_format(&mut self, _picture: &str) {
-        // Stub: the task makes the picked picture the box's text.
+    pub fn pick_number_format(&mut self, picture: &str) {
+        self.number_format = picture.to_string();
     }
 
-    /// `table.formula` parameters for OK.
+    /// `table.formula` parameters for OK: the trimmed formula, followed by ` \# "picture"` when
+    /// the Number format box holds a picture. Double quotes in the box are dropped so the field
+    /// code stays well formed; a formula that already has a `\#` switch is sent as typed.
     pub fn params(&self) -> Value {
-        json!({"formula": self.formula.trim()})
+        let formula = self.formula.trim();
+        let picture: String = self.number_format.chars().filter(|&ch| ch != '"').collect();
+        let picture = picture.trim();
+        if picture.is_empty() || formula.contains("\\#") {
+            return json!({ "formula": formula });
+        }
+        json!({ "formula": format!("{formula} \\# \"{picture}\"") })
     }
 }
 
@@ -70,6 +78,21 @@ pub(super) fn formula_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FormulaForm) ->
     ui.label(tl!("Formula:"));
     ui.add(egui::TextEdit::singleline(&mut f.formula).desired_width(300.0));
     ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.label(tl!("Number format:"));
+        ui.add(egui::TextEdit::singleline(&mut f.number_format).desired_width(180.0));
+        let mut picked = None;
+        craft_ui::ComboBox::from_id_salt("formula_number_format").selected_text("").show_ui(ui, |ui| {
+            for picture in FORMULA_NUMBER_FORMATS {
+                if ui.selectable_label(false, picture).clicked() {
+                    picked = Some(picture);
+                }
+            }
+        });
+        if let Some(picture) = picked {
+            f.pick_number_format(picture);
+        }
+    });
     ui.horizontal(|ui| {
         ui.label(tl!("Paste function:"));
         let mut picked = None;
