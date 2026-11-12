@@ -852,10 +852,10 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
             }
             '\u{1}' => {
                 // A range field's result is ordinary content: its pictures are not the field's.
-                let top = fields.last().filter(|f| f.build.depth == 1 && !f.range && f.over_hidden == 0 && f.over_shown == 0).map(|f| &f.build);
-                let open = top.map(|f| f.sep.is_some());
-                let instr = top.map(|f| f.instr.as_str());
-                if inline_picture(ctx, cp, (open, instr), &mut object_id, &mut pb, pics)
+                // A field in another field's result collects its result there.
+                let nested = fields.iter().rev().skip(1).any(|f| !f.range);
+                let top = fields.last_mut().filter(|f| f.build.depth == 1 && !f.range && f.over_hidden == 0 && f.over_shown == 0);
+                if inline_picture(ctx, cp, (top, nested), &mut object_id, &mut pb, pics)
                     && let Some(f) = fields.last_mut()
                 {
                     f.build.object = true;
@@ -959,8 +959,9 @@ fn para_head<'a>(ctx: &WalkCtx<'a>, cp: u32, cp_end: u32) -> Option<ParaHead<'a>
     None
 }
 
-/// An inline picture anchor (`\x01`): the CHPX carries sprmCPicLocation. `open` is whether the
-/// innermost open field (if any, and not nested) is in its result; in its code, an embedded
+/// An inline picture anchor (`\x01`): the CHPX carries sprmCPicLocation. `field` is the
+/// innermost open field (if any, and not nested), `nested` whether a field holding it collects its
+/// result. `open` is whether that field is in its result; in its code, an embedded
 /// object's reference (sprmCFOle2) sets `object_id`, and the result's picture then prints from
 /// that object's print presentation, when it has one. A result `\x01` that is itself an object
 /// reference (no object in the code) is drawn from the object's storage: its location is the
@@ -968,15 +969,17 @@ fn para_head<'a>(ctx: &WalkCtx<'a>, cp: u32, cp_end: u32) -> Option<ParaHead<'a>
 ///
 /// In an `EMBED` field's result (`instr` is the field code), the picture of an object whose
 /// storage is kept carries the object itself (its `w:object`): true then, and the field leaves
-/// no trace of its own (the object replaces it, as in a .docx).
+/// no trace of its own (the object replaces it, as in a .docx). Otherwise the picture stays in the
+/// `EMBED` field's result ([`embed_result_range`]).
 fn inline_picture(
     ctx: &WalkCtx<'_>,
     cp: u32,
-    (open, instr): (Option<bool>, Option<&str>),
+    (mut field, nested): (Option<&mut OpenField>, bool),
     object_id: &mut Option<u32>,
     pb: &mut ParaBuild,
     pics: &mut media::Pictures,
 ) -> bool {
+    let open = field.as_ref().map(|f| f.build.sep.is_some());
     let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
     let chpx = ctx.chpx_bins.chpx(ctx.word, fc);
     // The anchor takes its run's formatting as a text character there would: Word draws an
@@ -1009,6 +1012,7 @@ fn inline_picture(
     match pic {
         // Empty shapes keep their space; horizontal rules fill their line via the rule metadata.
         Some(p) if p.empty || p.rule.is_some() => {
+            embed_result_range(field, nested, pb);
             pb.push('\u{FFFC}', props);
             pb.objects.push(InlineObject::Shape {
                 kind: wordcraft_doc::para::ShapeKind::Rectangle,
@@ -1028,6 +1032,7 @@ fn inline_picture(
             // Every anchor of a picture gets its own copy of the alt text; the
             // copies are charged to the work budget (#3709).
             let alt = if ctx.work.charge(p.alt.len() as u64, Cost::AltText) { p.alt } else { String::new() };
+            let instr = field.as_deref().map(|f| f.build.instr.as_str());
             let ole = match (open, instr, result_object.or(*object_id)) {
                 (Some(true), Some(instr), Some(id)) if ole::is_embed(instr) => {
                     ctx.kept.borrow_mut().object(ctx.prints, id, instr, &p.key, &pics.media, (p.w, p.h))
@@ -1035,6 +1040,9 @@ fn inline_picture(
                 _ => None,
             };
             let object = ole.is_some();
+            if !object {
+                embed_result_range(field.take(), nested, pb);
+            }
             pb.push('\u{FFFC}', props);
             pb.objects.push(InlineObject::Image {
                 media: p.key,
@@ -1051,6 +1059,29 @@ fn inline_picture(
         None => pics.dropped(cp),
     }
     false
+}
+
+/// A picture in the result of an `EMBED` field whose object is not kept whole: the field becomes a
+/// range (its start, the result so far as ordinary content, then the picture and the rest of the
+/// result up to its end), so the picture stays the field's result as the file has it, rather than
+/// coming before an empty field. Not for a field in another field's collected result.
+fn embed_result_range(field: Option<&mut OpenField>, nested: bool, pb: &mut ParaBuild) {
+    let Some(f) = field.filter(|f| !nested && !f.range && ole::is_embed(&f.build.instr)) else { return };
+    let Some(result) = f.build.sep.take() else { return };
+    f.range = true;
+    pb.push('\u{FFFC}', f.build.props.clone());
+    pb.objects.push(InlineObject::FieldStart { instr: f.build.instr.trim().to_string(), locked: false, dirty: false });
+    let mut chars = result.text.chars();
+    for (len, props) in result.runs {
+        let Some(first) = chars.next() else { break };
+        pb.push(first, props);
+        let mut left = len.saturating_sub(first.len_utf8());
+        while left > 0 {
+            let Some(c) = chars.next() else { break };
+            pb.extend(c);
+            left = left.saturating_sub(c.len_utf8());
+        }
+    }
 }
 
 /// Field assembly: `instr` collects everything before the separator (nested fields

@@ -11,26 +11,7 @@ use wordcraft_engine::Session;
 const UNKNOWN: &str = "Error! Unknown document property name.";
 
 /// Word's built-in DocProperty names that WordCraft does not compute: their stored result stays.
-const KEPT: [&str; 18] = [
-    "Bytes",
-    "Characters",
-    "CharactersWithSpaces",
-    "Company",
-    "CreateTime",
-    "HyperlinkBase",
-    "LastPrinted",
-    "LastSavedTime",
-    "Lines",
-    "Manager",
-    "NameofApplication",
-    "ODMADocId",
-    "Pages",
-    "Paragraphs",
-    "Security",
-    "Template",
-    "TotalEditingTime",
-    "Words",
-];
+const KEPT: [&str; 7] = ["Bytes", "Lines", "NameofApplication", "ODMADocId", "Security", "Template", "TotalEditingTime"];
 
 /// A session whose body holds one field per code, each with the stored result `stored`.
 fn session_with(codes: &[String], stored: &str) -> Session {
@@ -112,10 +93,10 @@ fn a_built_in_name_that_is_not_computed_keeps_its_stored_result() {
 }
 
 #[test]
-fn a_field_with_no_name_keeps_its_stored_result() {
+fn a_field_with_no_name_shows_the_no_name_error() {
     let codes = owned(&["DOCPROPERTY", r"DOCPROPERTY \* Upper"]);
     let mut s = session_with(&codes, "kept");
-    assert_eq!(update(&mut s), ["kept", "kept"]);
+    assert_eq!(update(&mut s), ["Error! No property name supplied."; 2]);
 }
 
 #[test]

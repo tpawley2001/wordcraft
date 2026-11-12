@@ -8,6 +8,7 @@ use proptest::prelude::*;
 use super::read;
 
 mod auto_spacing;
+mod cell_end_paragraph;
 mod cell_padding;
 mod cfb_tolerance;
 mod char_spacing;
@@ -48,6 +49,7 @@ mod style_own_char_props;
 mod style_own_para_props;
 mod table_float;
 mod table_width;
+mod table_width_rows;
 mod text_box_flow;
 mod text_box_margins;
 mod toggle_para_style;

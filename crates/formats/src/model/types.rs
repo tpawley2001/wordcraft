@@ -517,8 +517,9 @@ pub struct FlowOpts {
     /// consecutive items form one list in the default look of its kind).
     pub lists: bool,
     /// Without [`FlowOpts::chars`] and [`FlowOpts::paras`]: just the paragraph's own tab stops
-    /// ([`Para::extra`]) and character spacing, underline style and colour, scale, kerning and
-    /// effects ([`Fmt::extra`]), for formats that write those alone (RTF).
+    /// ([`Para::extra`]) and character spacing, underline style and colour, scale, kerning,
+    /// effects, run direction and complex-script and East Asian formatting ([`Fmt::extra`]), for
+    /// formats that write those alone (RTF).
     pub tabs_spacing: bool,
     /// The paragraph's own widow/orphan control in [`Para::extra`], also without `paras`.
     pub widow: bool,
@@ -559,6 +560,12 @@ pub struct FlowOpts {
     /// on, `Some(false)` when off, for formats where a missing setting means off (RTF
     /// `\aspalpha`, `\aspnum`).
     pub auto_space: bool,
+    /// Without [`FlowOpts::chars`]: in a paragraph of the document's own style
+    /// ([`super::is_custom_style`]) of kind [`Kind::Normal`], the effective alignment, spacing,
+    /// indents and keeps (its own, else its style chain's) in the [`Para`] fields, and each run's
+    /// bold, italic, underline, strikethrough, font, size and colour resolved through the
+    /// paragraph style, for formats that state a style's formatting on each paragraph (RTF).
+    pub style_look: bool,
 }
 
 impl FlowOpts {

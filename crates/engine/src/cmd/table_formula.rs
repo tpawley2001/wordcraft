@@ -78,7 +78,7 @@ fn evaluate_look(
     let here = Here::new(t, doc, default_lang, r, c, g);
     match eval(&expr, &here)? {
         Val::Num(x, look) => Ok((finite(x)?, look)),
-        Val::List(_) => Err(syntax("a range or ABOVE/LEFT/RIGHT/BELOW needs a function, such as SUM".into())),
+        Val::List(..) => Err(syntax("a range or ABOVE/LEFT/RIGHT/BELOW needs a function, such as SUM".into())),
     }
 }
 
@@ -199,7 +199,7 @@ pub fn split_switch(instr: &str) -> (&str, Option<&str>) {
 
 /// The picture of the `\#` switch in a field's switch text: a quoted one (`"#,##0.00"`) or a
 /// single word.
-fn picture_of(switch: &str) -> Option<String> {
+pub(crate) fn picture_of(switch: &str) -> Option<String> {
     let rest = switch[switch.find("\\#")? + 2..].trim_start();
     let picture = match rest.strip_prefix('"') {
         Some(quoted) => quoted.split('"').next().unwrap_or_default(),
@@ -400,15 +400,16 @@ fn scan_operand(text: &str) -> (f64, Look) {
     (sum, look)
 }
 
-/// The text of a formula result with the look of the operand it came from: a `$` operand gives
-/// `$` and two decimals, a thousands separator groups the result's whole part, parentheses show a
-/// negative result as `(4)`, and otherwise the result keeps at least as many decimals as the
+/// The text of a formula result with the look of the operands it came from: a `$` operand gives
+/// `$` and at least two decimals (more when the operand wrote more), a thousands separator groups
+/// the result's whole part, parentheses show a negative result as `(4)` (and so does a currency
+/// result: `$5 - 10` is `($5.00)`), and otherwise the result keeps at least as many decimals as the
 /// operand wrote, trailing zeros dropped. A plain look shows as [`format_result`] does.
 fn format_look(value: f64, look: Look) -> String {
     if look == Look::default() {
         return format_result(value);
     }
-    let places = if look.currency { 2 } else { look.decimals.clamp(2, 15) };
+    let places = look.decimals.clamp(2, 15);
     let digits = format!("{:.*}", places, value.abs());
     let (whole, frac) = digits.split_once('.').unwrap_or((digits.as_str(), ""));
     let frac = if look.currency { frac } else { frac.trim_end_matches('0') };
@@ -421,20 +422,28 @@ fn format_look(value: f64, look: Look) -> String {
         body.insert(0, '$');
     }
     let zero = digits.chars().all(|c| matches!(c, '0' | '.'));
-    match (value < 0.0 && !zero, look.parens) {
+    match (value < 0.0 && !zero, look.parens || look.currency) {
         (true, true) => format!("({body})"),
         (true, false) => format!("-{body}"),
         (false, _) => body,
     }
 }
 
-/// The look of a result worked out from two operands: the one look when only one has it or both
-/// share it, otherwise none (operands with different looks are not measured).
+/// The look of a result worked out from two operands (or a function's arguments): the union of
+/// their looks, as Word shows it. A `$` on either makes it a currency, a thousands separator on
+/// either groups it, parentheses on either show a negative in parentheses, and it keeps the most
+/// decimals either wrote (`$5 + 3` is `$8.00`, `1,234.50 + 3` is `1,237.5`). A literal number has
+/// no look, so the other operand's look is kept.
 fn merge_looks(a: Option<Look>, b: Option<Look>) -> Option<Look> {
     match (a, b) {
-        (Some(x), None) | (None, Some(x)) => Some(x),
-        (Some(x), Some(y)) if x == y => Some(x),
-        _ => None,
+        (Some(x), Some(y)) => Some(Look {
+            currency: x.currency || y.currency,
+            thousands: x.thousands || y.thousands,
+            parens: x.parens || y.parens,
+            decimals: x.decimals.max(y.decimals),
+        }),
+        (x, None) => x,
+        (None, y) => y,
     }
 }
 
@@ -837,6 +846,46 @@ impl<'a> Here<'a> {
         parse_number(&text, lang.as_deref())
     }
 
+    /// A range's cell (grid column `g` of row `r`) as a formula reads it, counted against the
+    /// budget: in English (see [`scans_text`]) like a single cell reference, every number in its
+    /// text with their look (see [`scan_operand`]), and a cell without a digit is left out; in
+    /// other languages the cell must hold one number, with no look.
+    fn range_cell(&self, r: usize, g: usize) -> Result<Option<(f64, Option<Look>)>, CmdError> {
+        self.visit(1)?;
+        let t = self.table()?;
+        let Some(cell) = t.cell_at_grid(r, g).and_then(|ci| t.rows.get(r).and_then(|row| row.cells.get(ci))) else {
+            return Ok(None);
+        };
+        let lang = self.cell_lang(cell);
+        if !scans_text(lang.as_deref()) {
+            return Ok(self.cell_number(cell).map(|x| (x, None)));
+        }
+        let text = super::table::cell_text(cell);
+        if !text.chars().any(|c| c.is_ascii_digit()) {
+            return Ok(None);
+        }
+        let (x, look) = scan_operand(&text);
+        Ok(Some((x, Some(look))))
+    }
+
+    /// A cell in an ABOVE/LEFT/RIGHT/BELOW run: the number it holds, if its text is one, and the
+    /// look it gives the result. In English (see [`scans_text`]) a `$` or a thousands separator
+    /// gives its look, and a number in parentheses is marked as one (see [`side_numbers`]): it
+    /// is negative and gives the parentheses look.
+    fn side_cell(&self, c: &Cell) -> Option<SideCell> {
+        let lang = self.cell_lang(c);
+        let text = super::table::cell_text(c);
+        let x = parse_number(&text, lang.as_deref())?;
+        if !scans_text(lang.as_deref()) {
+            return Some(SideCell { x, look: None, parens: false });
+        }
+        let t = text.trim();
+        let parens = t.starts_with('(') && t.ends_with(')');
+        let (_, seen) = scan_operand(t);
+        let look = Look { currency: seen.currency, thousands: seen.thousands, parens, decimals: if seen.currency { seen.decimals } else { 0 } };
+        Some(SideCell { x, look: Some(look), parens })
+    }
+
     /// The number in the cell covering grid column `g` of row `r`, counted against the budget.
     fn number_at(&self, r: usize, g: usize) -> Result<Option<f64>, CmdError> {
         self.visit(1)?;
@@ -851,12 +900,33 @@ impl<'a> Here<'a> {
         };
         Ok(self.cell_number(c))
     }
+
+    /// As [`Here::side_cell`] for the cell covering grid column `g` of row `r`, counted against
+    /// the budget.
+    fn side_at(&self, r: usize, g: usize) -> Result<Option<SideCell>, CmdError> {
+        self.visit(1)?;
+        let t = self.table()?;
+        let cell = t.cell_at_grid(r, g).and_then(|ci| t.rows.get(r).and_then(|row| row.cells.get(ci)));
+        Ok(cell.and_then(|c| self.side_cell(c)))
+    }
+}
+
+/// A number in an ABOVE/LEFT/RIGHT/BELOW run (see [`Here::side_cell`]).
+#[derive(Clone, Copy, Debug)]
+struct SideCell {
+    /// The cell's number.
+    x: f64,
+    /// The look it gives the result.
+    look: Option<Look>,
+    /// Whether the number is in parentheses.
+    parens: bool,
 }
 
 enum Val {
     /// A number, with the look of the operands it came from (none for literals and functions).
     Num(f64, Option<Look>),
-    List(Vec<f64>),
+    /// The numbers of a range or ABOVE/LEFT/RIGHT/BELOW, with the look of the cells they came from.
+    List(Vec<f64>, Option<Look>),
 }
 
 fn eval(e: &Expr, here: &Here) -> Result<Val, CmdError> {
@@ -870,6 +940,7 @@ fn eval(e: &Expr, here: &Here) -> Result<Val, CmdError> {
             // Only the part of the range inside the table holds cells.
             let t = here.table()?;
             let mut v = Vec::new();
+            let mut look = None;
             let (r_end, g_end) = (t.rows.len().min(r1.saturating_add(1)), t.cols().min(g1.saturating_add(1)));
             for row in *r0..r_end {
                 let mut last_ci = None;
@@ -879,12 +950,18 @@ fn eval(e: &Expr, here: &Here) -> Result<Val, CmdError> {
                         continue;
                     }
                     last_ci = ci;
-                    v.extend(here.number_at(row, g)?);
+                    if let Some((x, l)) = here.range_cell(row, g)? {
+                        v.push(x);
+                        look = merge_looks(look, l);
+                    }
                 }
             }
-            Val::List(v)
+            Val::List(v, look)
         }
-        Expr::Side(side) => Val::List(side_numbers(here, *side)?),
+        Expr::Side(side) => {
+            let (v, look) = side_numbers(here, *side)?;
+            Val::List(v, look)
+        }
         Expr::Neg(inner) => {
             let (x, look) = scalar_look(eval(inner, here)?)?;
             Val::Num(-x, look)
@@ -921,7 +998,10 @@ fn eval(e: &Expr, here: &Here) -> Result<Val, CmdError> {
             };
             Val::Num(truth(holds), None)
         }
-        Expr::Call(name, args) => Val::Num(call(name, args, here)?, None),
+        Expr::Call(name, args) => {
+            let (x, look) = call(name, args, here)?;
+            Val::Num(x, look)
+        }
         Expr::Bookmark(name) => {
             let (x, look) = here.bookmark_number(name)?;
             Val::Num(x, look)
@@ -943,45 +1023,54 @@ fn scalar(v: Val) -> Result<f64, CmdError> {
 fn scalar_look(v: Val) -> Result<(f64, Option<Look>), CmdError> {
     match v {
         Val::Num(x, look) => Ok((finite(x)?, look)),
-        Val::List(_) => Err(syntax("a range can only be used inside a function".into())),
+        Val::List(..) => Err(syntax("a range can only be used inside a function".into())),
     }
 }
 
 /// The first run of numbers next to the formula's cell on one side (see the module note): the
 /// cells are skipped while they hold no number, then summed while they do.
-fn side_numbers(here: &Here, side: Side) -> Result<Vec<f64>, CmdError> {
+/// A cell with `$` or a thousands separator gives the sum its look. Walking away from the formula's
+/// cell, a number in parentheses counts as negative and gives the parentheses look while every
+/// cell taken before it was in parentheses too; after a cell that is not, it ends the run (as in
+/// Word: `(5)`, `(10)` above sum to `(15)`, but `10`, `(5)`, `3` above sum to `3`).
+fn side_numbers(here: &Here, side: Side) -> Result<(Vec<f64>, Option<Look>), CmdError> {
     let t = here.table()?;
     let mut out = Vec::new();
+    let mut look = None;
     let mut started = false;
-    let mut take = |value: Option<f64>| -> bool {
+    let mut all_parens = true;
+    let mut take = |value: Option<SideCell>| -> bool {
         match value {
-            Some(x) => {
-                out.push(x);
+            Some(cell) if !cell.parens || all_parens => {
+                out.push(cell.x);
+                look = merge_looks(look, cell.look);
                 started = true;
+                all_parens &= cell.parens;
                 true
             }
+            Some(_) => false,
             None => !started,
         }
     };
     match side {
         Side::Above => {
             for row in (0..here.r).rev() {
-                if !take(here.number_at(row, here.g)?) {
+                if !take(here.side_at(row, here.g)?) {
                     break;
                 }
             }
         }
         Side::Below => {
             for row in (here.r + 1)..t.rows.len() {
-                if !take(here.number_at(row, here.g)?) {
+                if !take(here.side_at(row, here.g)?) {
                     break;
                 }
             }
         }
         Side::Left | Side::Right => {
-            let Some(row) = t.rows.get(here.r) else { return Ok(out) };
+            let Some(row) = t.rows.get(here.r) else { return Ok((out, look)) };
             here.visit(row.cells.len())?;
-            let cells: Vec<Option<f64>> = row.cells.iter().map(|c| here.cell_number(c)).collect();
+            let cells: Vec<Option<SideCell>> = row.cells.iter().map(|c| here.side_cell(c)).collect();
             let order: Vec<usize> = if side == Side::Left { (0..here.c).rev().collect() } else { ((here.c + 1)..cells.len()).collect() };
             for ci in order {
                 if !take(cells.get(ci).copied().flatten()) {
@@ -990,19 +1079,58 @@ fn side_numbers(here: &Here, side: Side) -> Result<Vec<f64>, CmdError> {
             }
         }
     }
-    Ok(out)
+    Ok((out, look))
 }
 
-/// Gather a function's arguments: numbers and lists (ranges and keywords) become one list.
-fn gather(args: &[Expr], here: &Here) -> Result<Vec<f64>, CmdError> {
+/// Gather a function's arguments: numbers and lists (ranges and keywords) become one list, with
+/// the union of their looks (see [`merge_looks`]).
+fn gather_look(args: &[Expr], here: &Here) -> Result<(Vec<f64>, Option<Look>), CmdError> {
     let mut all = Vec::new();
+    let mut look = None;
     for a in args {
         match eval(a, here)? {
-            Val::Num(x, _) => all.push(finite(x)?),
-            Val::List(v) => all.extend(v),
+            Val::Num(x, l) => {
+                all.push(finite(x)?);
+                look = merge_looks(look, l);
+            }
+            Val::List(v, l) => {
+                all.extend(v);
+                look = merge_looks(look, l);
+            }
         }
     }
-    Ok(all)
+    Ok((all, look))
+}
+
+/// As [`gather_look`], without the look.
+fn gather(args: &[Expr], here: &Here) -> Result<Vec<f64>, CmdError> {
+    gather_look(args, here).map(|(v, _)| v)
+}
+
+/// A function's result and its look: SUM, COUNT, AVERAGE, MAX, MIN and PRODUCT carry the union of
+/// their arguments' looks (`SUM($5, 3)` is `$8.00`, `COUNT($5, 3)` is `$2.00`, as in Word); the
+/// other functions give a plain number.
+fn call(name: &str, args: &[Expr], here: &Here) -> Result<(f64, Option<Look>), CmdError> {
+    if matches!(name, "SUM" | "COUNT" | "AVERAGE" | "MAX" | "MIN" | "PRODUCT") && !args.is_empty() {
+        let (v, look) = gather_look(args, here)?;
+        let x = match name {
+            "SUM" => v.iter().sum(),
+            "COUNT" => v.len() as f64,
+            _ if v.is_empty() => {
+                if name == "PRODUCT" {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            "AVERAGE" => v.iter().sum::<f64>() / v.len() as f64,
+            "MAX" => v.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+            "MIN" => v.iter().copied().fold(f64::INFINITY, f64::min),
+            _ => v.iter().product(),
+        };
+        return Ok((x, look));
+    }
+    call_plain(name, args, here).map(|x| (x, None))
 }
 
 /// The one number a single-argument function takes.
@@ -1013,7 +1141,7 @@ fn one(name: &str, args: &[Expr], here: &Here) -> Result<f64, CmdError> {
     }
 }
 
-fn call(name: &str, args: &[Expr], here: &Here) -> Result<f64, CmdError> {
+fn call_plain(name: &str, args: &[Expr], here: &Here) -> Result<f64, CmdError> {
     let needs_one = matches!(
         name,
         "SUM" | "COUNT" | "AVERAGE" | "MAX" | "MIN" | "PRODUCT" | "ABS" | "INT" | "SIGN" | "ROUND" | "MOD" | "AND" | "OR" | "NOT" | "IF" | "DEFINED"
@@ -1049,24 +1177,7 @@ fn call(name: &str, args: &[Expr], here: &Here) -> Result<f64, CmdError> {
             [a] => Ok(truth(eval(a, here).is_ok())),
             _ => Err(CmdError::Failed("DEFINED takes one argument".into())),
         },
-        "SUM" => Ok(gather(args, here)?.iter().sum()),
-        "COUNT" => Ok(gather(args, here)?.len() as f64),
-        "AVERAGE" => {
-            let v = gather(args, here)?;
-            Ok(if v.is_empty() { 0.0 } else { v.iter().sum::<f64>() / v.len() as f64 })
-        }
-        "MAX" => {
-            let v = gather(args, here)?;
-            Ok(if v.is_empty() { 0.0 } else { v.iter().copied().fold(f64::NEG_INFINITY, f64::max) })
-        }
-        "MIN" => {
-            let v = gather(args, here)?;
-            Ok(if v.is_empty() { 0.0 } else { v.iter().copied().fold(f64::INFINITY, f64::min) })
-        }
-        "PRODUCT" => {
-            let v = gather(args, here)?;
-            Ok(if v.is_empty() { 1.0 } else { v.iter().product() })
-        }
+        // SUM, COUNT, AVERAGE, MAX, MIN and PRODUCT are worked out in `call`, with their look.
         "ABS" => Ok(one(name, args, here)?.abs()),
         "INT" => Ok(one(name, args, here)?.floor()),
         "SIGN" => {
@@ -1099,6 +1210,21 @@ fn call(name: &str, args: &[Expr], here: &Here) -> Result<f64, CmdError> {
         },
         _ => Err(CmdError::Failed(format!("unknown formula function `{name}`"))),
     }
+}
+
+/// The bookmark names the Formula dialog's Paste bookmark list offers: the body's bookmarks sorted
+/// by name ignoring case, each name once (the first in document order, the one a formula reads),
+/// without the hidden ones (a name starting with `_`).
+pub fn paste_bookmark_names(doc: &wordcraft_doc::Document) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for (name, _) in doc.bookmarks() {
+        if name.is_empty() || name.starts_with('_') || names.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+            continue;
+        }
+        names.push(name);
+    }
+    names.sort_by_key(|n| n.to_lowercase());
+    names
 }
 
 #[cfg(test)]
@@ -1415,7 +1541,8 @@ mod tests {
         assert_eq!(tokenize("Net_Total*2").unwrap().first(), Some(&Tok::Name("NET_TOTAL".into())));
         let doc = marked(&[("Net_Total", "7.5"), ("a_b_c", "2")]);
         assert_eq!(evaluate_text_field(&doc, None, "= Net_Total * 2").as_deref(), Ok("15"));
-        assert_eq!(evaluate_text_field(&doc, None, "= A_B_C + net_total").as_deref(), Ok("9.50"));
+        // The result keeps the decimals an operand wrote, as Word shows `1,234.50 + 3` as `1,237.5`.
+        assert_eq!(evaluate_text_field(&doc, None, "= A_B_C + net_total").as_deref(), Ok("9.5"));
     }
 
     #[test]
@@ -1493,6 +1620,69 @@ mod tests {
         assert_eq!(cell_field("$5", r#"= A1 + 1 \# "0.00""#), "6.00");
         assert_eq!(cell_field("(5)", r#"= A1 \# "0.00""#), "-5.00");
         assert_eq!(cell_field("1,234.50", r#"= A1 \# "0""#), "1235");
+    }
+
+    #[test]
+    fn looks_merge_as_a_union_and_a_currency_negative_shows_in_parentheses() {
+        let dollar = Look { currency: true, ..Look::default() };
+        let comma = Look { thousands: true, decimals: 2, ..Look::default() };
+        let merged = merge_looks(Some(dollar), Some(comma));
+        assert_eq!(merged, Some(Look { currency: true, thousands: true, parens: false, decimals: 2 }), "union of both");
+        assert_eq!(merge_looks(None, Some(dollar)), Some(dollar), "a literal keeps the other look");
+        assert_eq!(merge_looks(None, None), None);
+        assert_eq!(format_look(-5.0, dollar), "($5.00)", "a currency negative is in parentheses");
+        assert_eq!(format_look(0.125, Look { decimals: 3, ..dollar }), "$0.125", "more decimals are kept");
+        assert_eq!(format_look(5.0, Look { parens: true, ..Look::default() }), "5", "a positive result has no parentheses");
+    }
+
+    #[test]
+    fn a_range_leaves_out_cells_without_digits_and_side_runs_take_dollar_and_comma_looks() {
+        // A cell without a digit is not a number of the range, so COUNT and AVERAGE skip it.
+        let t = table(&[&["$4"], &["x"], &[""], &["2"], &[""]]);
+        assert_eq!(evaluate_field(&t, 4, 0, "=COUNT(A1:A4)"), Ok("$2.00".into()), "COUNT carries the $");
+        assert_eq!(evaluate_field(&t, 4, 0, "=AVERAGE(A1:A4)"), Ok("$3.00".into()));
+        // A run below and to the right reads like one above and to the left.
+        let t = table(&[&["", "1,000", "(5)"], &["$3", "", ""], &["1", "", ""]]);
+        assert_eq!(evaluate_field(&t, 0, 0, "=SUM(BELOW)"), Ok("$4.00".into()));
+        assert_eq!(evaluate_field(&t, 0, 0, "=SUM(RIGHT)"), Ok("1,000".into()), "the (5) ends the run");
+    }
+
+    #[test]
+    fn a_side_run_counts_leading_parenthesised_cells() {
+        // Word-measured: cells top to bottom, the formula cell right below (and the same row
+        // read the other ways: LEFT, RIGHT and BELOW walk away from the formula cell too).
+        let rows: [(&[&str], &str); 13] = [
+            (&["(10)"], "(10)"),
+            (&["(5)", "(10)"], "(15)"),
+            (&["$5", "(10)"], "($5.00)"),
+            (&["$5", "(10)", "(2)"], "($7.00)"),
+            (&["10", "(5)"], "5"),
+            (&["(5)", "10"], "10"),
+            (&["10", "(5)", "3"], "3"),
+            (&["10", "-5", "3"], "8"),
+            (&["5", "-10"], "-5"),
+            (&["$5", "-10"], "($5.00)"),
+            (&["$0.125", "1"], "$1.125"),
+            (&["1,250", "100"], "1,350"),
+            (&["$1250.50", "3.25"], "$1253.75"),
+        ];
+        for (cells, want) in rows {
+            let n = cells.len();
+            let mut column: Vec<Vec<&str>> = cells.iter().map(|c| vec![*c]).collect();
+            column.push(vec![""]);
+            let column: Vec<&[&str]> = column.iter().map(Vec::as_slice).collect();
+            assert_eq!(evaluate_field(&table(&column), n, 0, "=SUM(ABOVE)"), Ok(want.into()), "ABOVE {cells:?}");
+            let mut below: Vec<Vec<&str>> = vec![vec![""]];
+            below.extend(cells.iter().rev().map(|c| vec![*c]));
+            let below: Vec<&[&str]> = below.iter().map(Vec::as_slice).collect();
+            assert_eq!(evaluate_field(&table(&below), 0, 0, "=SUM(BELOW)"), Ok(want.into()), "BELOW {cells:?}");
+            let mut row: Vec<&str> = cells.to_vec();
+            row.push("");
+            assert_eq!(evaluate_field(&table(&[&row]), 0, n, "=SUM(LEFT)"), Ok(want.into()), "LEFT {cells:?}");
+            let mut right: Vec<&str> = vec![""];
+            right.extend(cells.iter().rev());
+            assert_eq!(evaluate_field(&table(&[&right]), 0, 0, "=SUM(RIGHT)"), Ok(want.into()), "RIGHT {cells:?}");
+        }
     }
 
     #[test]
