@@ -2,7 +2,7 @@
 //! paragraphs and tables, apply character/paragraph formatting, copy a range to a fragment and
 //! paste a fragment.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -553,6 +553,74 @@ fn perm_end<'a>(blocks: impl Iterator<Item = &'a Arc<Block>>) -> u32 {
         });
     }
     end
+}
+
+/// The note stories and comment ids `src`'s body refers to: note references and comment marks in
+/// it, in the text boxes it shows and in the notes and comments that come along, and the replies
+/// to a comment that comes along. A worklist with visited sets: a file's nesting or a reply cycle
+/// can't make it recurse or loop.
+fn referenced_stories(src: &Document) -> (BTreeSet<u32>, BTreeSet<u32>) {
+    enum Item {
+        Part(u32),
+        Comment(u32),
+    }
+    let mut replies: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+    for (id, c) in &src.comments {
+        if let Some(parent) = c.parent {
+            replies.entry(parent).or_default().push(*id);
+        }
+    }
+    let mut parts_seen = BTreeSet::new();
+    let mut notes = BTreeSet::new();
+    let mut comments = BTreeSet::new();
+    let mut todo: Vec<Item> = Vec::new();
+    let scan = |blocks: &[Arc<Block>], todo: &mut Vec<Item>| {
+        for b in blocks {
+            each_para(b, 0, &mut |p| {
+                let mut objs: Vec<(&InlineObject, usize)> = p.objects.iter().map(|o| (o, 0)).collect();
+                while let Some((o, depth)) = objs.pop() {
+                    match o {
+                        InlineObject::NoteRef { id, .. } => todo.push(Item::Part(*id)),
+                        InlineObject::CommentStart { id } | InlineObject::CommentEnd { id } => todo.push(Item::Comment(*id)),
+                        InlineObject::Group { children, .. } if depth < MAX_BOX_DEPTH => objs.extend(children.iter().map(|c| (&c.obj, depth + 1))),
+                        _ => {}
+                    }
+                    todo.extend(o.text_boxes().into_iter().map(Item::Part));
+                }
+            });
+        }
+    };
+    scan(&src.body, &mut todo);
+    while let Some(item) = todo.pop() {
+        match item {
+            Item::Part(id) => {
+                // A comment's story is reached through its comment, never a note reference.
+                let Some(part) = src.parts.get(&id).filter(|p| matches!(p.kind, PartKind::Footnote | PartKind::Endnote | PartKind::TextBox)) else {
+                    continue;
+                };
+                if !parts_seen.insert(id) {
+                    continue;
+                }
+                if part.kind != PartKind::TextBox {
+                    notes.insert(id);
+                }
+                scan(&part.blocks, &mut todo);
+            }
+            Item::Comment(id) => {
+                let Some(c) = src.comments.get(&id) else { continue };
+                if !comments.insert(id) {
+                    continue;
+                }
+                if let Some(part) = src.parts.get(&c.part).filter(|p| p.kind == PartKind::Comment)
+                    && parts_seen.insert(c.part)
+                {
+                    scan(&part.blocks, &mut todo);
+                }
+                todo.extend(replies.get(&id).into_iter().flatten().map(|r| Item::Comment(*r)));
+            }
+        }
+    }
+    (notes, comments)
 }
 
 /// Text box story ids of a paragraph's shapes.
@@ -1155,13 +1223,15 @@ impl Document {
         self.revisions.extend(src.revisions.iter().cloned());
         // Notes and comments get stories (and comments ids) of their own here; their text is
         // relinked below, once every new id is known.
+        // Only those its body refers to come along (a range of a file doesn't bring the rest).
+        let (kept_notes, kept_comments) = referenced_stories(&src);
         let mut notes = BTreeMap::new();
-        for (id, part) in src.parts.iter().filter(|(_, p)| matches!(p.kind, PartKind::Footnote | PartKind::Endnote)) {
+        for (id, part) in src.parts.iter().filter(|(id, p)| matches!(p.kind, PartKind::Footnote | PartKind::Endnote) && kept_notes.contains(id)) {
             notes.insert(*id, self.add_part(part.kind, Vec::new()));
         }
         let mut comments = BTreeMap::new();
         let mut next_comment = self.comments.keys().next_back().map_or(0, |k| k.saturating_add(1));
-        for (id, c) in &src.comments {
+        for (id, c) in src.comments.iter().filter(|(id, _)| kept_comments.contains(id)) {
             if src.parts.get(&c.part).is_some_and(|p| p.kind == PartKind::Comment) {
                 notes.insert(c.part, self.add_part(PartKind::Comment, Vec::new()));
                 comments.insert(*id, next_comment);
