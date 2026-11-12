@@ -77,7 +77,7 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
 }
 
 /// The flow formatting before a tracked formatting change, `old` its properties: with
-/// [`FlowOpts::hidden`] and [`FlowOpts::tabs_spacing`], its hidden text and position too, so
+/// [`FlowOpts::hidden`] and [`FlowOpts::tabs_spacing`], its hidden text, position and border too, so
 /// a format writing only what the change altered sees those.
 fn old_fmt(doc: &Document, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fmt {
     let mut f = fmt_of(doc, old, in_code);
@@ -86,7 +86,13 @@ fn old_fmt(doc: &Document, old: &CharProps, in_code: bool, opts: FlowOpts) -> Fm
         let e = effective(doc, old);
         if opts.tabs_spacing {
             let (highlight, shading) = highlight_of(&e);
-            let x = CharProps { position: e.position.filter(|v| *v != 0.0 && v.is_finite()), highlight, shading, ..Default::default() };
+            let x = CharProps {
+                position: e.position.filter(|v| *v != 0.0 && v.is_finite()),
+                border: e.border.filter(|b| b.is_visible()),
+                highlight,
+                shading,
+                ..Default::default()
+            };
             f.extra = (x != CharProps::default()).then(|| Box::new(x));
         }
     }
@@ -121,6 +127,7 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
                 underline_color: e.underline_color,
                 no_proof: set(e.no_proof),
                 emphasis: e.emphasis.filter(|m| *m != wordcraft_doc::props::EmphasisMark::None),
+                border: e.border.filter(|b| b.is_visible()),
                 highlight,
                 shading,
                 ..Default::default()

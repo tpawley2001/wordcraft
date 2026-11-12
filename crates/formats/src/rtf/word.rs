@@ -94,6 +94,9 @@ impl Reader {
                 self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
+                if self.st.border_side == Some('c') {
+                    self.st.border_side = None;
+                }
             }
             "pard" => {
                 let field = self.st.field;
@@ -175,6 +178,13 @@ impl Reader {
                 }
             }
             "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            // A character border: the border words that follow describe it, until another side
+            // starts, the group ends or `\plain`.
+            "chbrdr" => {
+                self.page_side = None;
+                self.cell_side = None;
+                self.st.border_side = Some('c');
+            }
             "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
             "highlight" => self.highlight(pv),
             // Hidden text: kept, as hidden text.
@@ -940,7 +950,7 @@ impl Reader {
     }
 
     /// Changes the run's character properties beyond the [`Fmt`] fields; none left is `None`.
-    fn set_extra(&mut self, f: impl FnOnce(&mut CharProps)) {
+    pub(super) fn set_extra(&mut self, f: impl FnOnce(&mut CharProps)) {
         let x = self.st.fmt.extra.get_or_insert_with(Default::default);
         f(x);
         if **x == CharProps::default() {

@@ -1087,6 +1087,14 @@ impl Writer {
             let i = old_shd.map_or(0, |c| self.t.color(c));
             ctl.push_str(&format!("\\chcbpat{i}"));
         }
+        let border = |f: &Fmt| f.extra.as_ref().and_then(|x| x.border).filter(|b| b.is_visible());
+        let old_border = border(old);
+        if old_border != border(cur) {
+            match old_border {
+                Some(b) => border_words("chbrd", 'r', b, true, &mut self.t, &mut ctl),
+                None => ctl.push_str("\\chbrdr\\brdrnone"),
+            }
+        }
         if old.hidden != cur.hidden {
             ctl.push_str(if old.hidden { "\\v" } else { "\\v0" });
         }
@@ -1184,6 +1192,10 @@ impl Writer {
                 Some(EmphasisMark::None) | None => "",
             };
             ctl.push_str(mark);
+            // The border around the text (Borders and Shading, Apply to: Text).
+            if let Some(b) = x.border.filter(|b| b.is_visible()) {
+                border_words("chbrd", 'r', b, true, &mut self.t, &mut ctl);
+            }
         }
         if let Some(w) = position_word(f) {
             ctl.push_str(&w);
