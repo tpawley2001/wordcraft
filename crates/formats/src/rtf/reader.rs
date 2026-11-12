@@ -848,6 +848,7 @@ impl Reader {
                 }
             }
         }
+        self.lay_own_words(&mut p);
         self.para_has = false;
         let d = self.para_depth();
         let d = if in_cell { d.max(1) } else { d };

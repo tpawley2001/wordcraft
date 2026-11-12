@@ -97,6 +97,7 @@ impl Reader {
                 self.st.dir = None;
                 self.st.slot = None;
                 self.st.ch_pattern = Pattern::default();
+                self.st.off = Default::default();
                 if self.st.border_side == Some('c') {
                     self.st.border_side = None;
                 }
@@ -108,8 +109,8 @@ impl Reader {
                 let chg_c = std::mem::take(&mut self.st.chg_c);
                 let mono = self.st.mono.take();
                 // The run direction and font slot are character formatting too.
-                let (dir, slot) = (self.st.dir, self.st.slot);
-                self.st = St { dest, fmt, mono, rev, chg_c, uc, field, dir, slot, ..Default::default() };
+                let (dir, slot, off) = (self.st.dir, self.st.slot, self.st.off);
+                self.st = St { dest, fmt, mono, rev, chg_c, uc, field, dir, slot, off, ..Default::default() };
                 self.page_side = None;
             }
             "revised" => self.st.rev.ins = on,
@@ -140,10 +141,16 @@ impl Reader {
             "hich" => self.st.slot = Some(FontSlot::High),
             "dbch" => self.st.slot = Some(FontSlot::DoubleByte),
             "af" => self.font_word(pv, true),
-            "strike" => self.st.fmt.strike = on,
+            // A property turned off with its own word is kept as stated off (`StatedOff`, laid over
+            // the text's style by `lay_own_words`): over a style that turns it on, it stays off.
+            "strike" => {
+                self.st.fmt.strike = on;
+                self.st.off.strike = !on;
+            }
             "super" => {
                 self.st.fmt.sup = on;
                 self.st.fmt.sub = false;
+                self.st.off.script = !on;
             }
             // Raised or lowered by N half-points, at full size (RTF 1.9.1; `w:position`): a
             // position, not superscript or subscript (no N: 6). `\up0`/`\dn0` clear it.
@@ -156,10 +163,12 @@ impl Reader {
             "sub" => {
                 self.st.fmt.sub = on;
                 self.st.fmt.sup = false;
+                self.st.off.script = !on;
             }
             "nosupersub" => {
                 self.st.fmt.sup = false;
                 self.st.fmt.sub = false;
+                self.st.off.script = true;
             }
             "fs" | "afs" => {
                 let size = if pv > 0 { Some((pv as f32 / 2.0).clamp(1.0, 1638.0)) } else { None };
@@ -185,7 +194,11 @@ impl Reader {
                 self.st.cp = self.font_cps.get(&pv).copied();
                 self.font_word(pv, false);
             }
-            "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "cf" => {
+                let c = self.colors.get(pv.max(0) as usize).copied().flatten();
+                self.st.fmt.color = c;
+                self.st.off.color = c.is_none();
+            }
             // A character border: the border words that follow describe it, until another side
             // starts, the group ends or `\plain`.
             "chbrdr" => {
@@ -196,7 +209,10 @@ impl Reader {
             "chcbpat" | "cb" | "chcfpat" | "chshdng" | "clcbpat" | "clcfpat" | "clshdng" => self.pattern_word(w, pv),
             "highlight" => self.highlight(pv),
             // Hidden text: kept, as hidden text.
-            "v" => self.st.fmt.hidden = on,
+            "v" => {
+                self.st.fmt.hidden = on;
+                self.st.off.hidden = !on;
+            }
             "ql" => self.st.align = Some(Align::Left),
             "qc" => self.st.align = Some(Align::Center),
             "qr" => self.st.align = Some(Align::Right),
@@ -952,9 +968,19 @@ impl Reader {
     fn char_effect_word(&mut self, w: &str, on: bool, pv: i32) -> bool {
         match w {
             // `\striked1` is double strikethrough; single strikethrough is `\strike`.
-            "striked" => self.set_extra(|x| x.double_strike = on.then_some(true)),
-            "caps" => self.set_extra(|x| x.caps = on.then_some(true)),
-            "scaps" => self.set_extra(|x| x.small_caps = on.then_some(true)),
+            // Turned off, each is kept as stated off (see `lay_own_words`).
+            "striked" => {
+                self.st.off.double_strike = !on;
+                self.set_extra(|x| x.double_strike = on.then_some(true));
+            }
+            "caps" => {
+                self.st.off.caps = !on;
+                self.set_extra(|x| x.caps = on.then_some(true));
+            }
+            "scaps" => {
+                self.st.off.small_caps = !on;
+                self.set_extra(|x| x.small_caps = on.then_some(true));
+            }
             "outl" => self.set_extra(|x| x.outline = on.then_some(true)),
             "shad" => self.set_extra(|x| x.shadow = on.then_some(true)),
             "embo" => self.set_extra(|x| x.emboss = on.then_some(true)),
@@ -1001,6 +1027,8 @@ impl Reader {
         if h.is_none() {
             self.st.fmt.background = c;
         }
+        // No colour at all (`\highlight0`) is the highlight stated off.
+        self.st.off.highlight = c.is_none();
         self.set_extra(|x| x.highlight = h);
     }
 
@@ -1035,6 +1063,7 @@ impl Reader {
     /// The run's underline turned on in `style`, or off (any underline word with parameter 0).
     fn underline(&mut self, style: Underline, on: bool) {
         self.st.fmt.underline = on;
+        self.st.off.underline = !on;
         self.set_extra(|x| x.underline = on.then_some(style));
     }
 
@@ -1046,8 +1075,14 @@ impl Reader {
             Some(true) if italic => self.set_extra(|x| x.italic_cs = Some(on)),
             Some(true) => self.set_extra(|x| x.bold_cs = Some(on)),
             None if assoc => {}
-            _ if italic => self.st.fmt.italic = on,
-            _ => self.st.fmt.bold = on,
+            _ if italic => {
+                self.st.fmt.italic = on;
+                self.st.off.italic = !on;
+            }
+            _ => {
+                self.st.fmt.bold = on;
+                self.st.off.bold = !on;
+            }
         }
     }
 

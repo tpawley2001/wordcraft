@@ -140,23 +140,30 @@ impl<'a> Builder<'a> {
         // ascent or descent must not enlarge a symbol run. Other known missing-font lines use
         // the same override; installed fonts otherwise keep their real face metrics.
         // A Word 97-2003 file with "add only 2 pt of external leading" lays a Courier New line
-        // out one em tall.
-        let line = if self.env.doc.settings.ext_leading_2pt_only && is_courier_new(&rc.font) {
+        // out one em tall, and a line of any other font (installed or not) its size plus 2 pt:
+        // the font's own descent below the baseline, the rest above it.
+        // "Don't add leading between rows of text" (below compatibility mode 15) drops a font's
+        // external leading.
+        let leading = {
+            let s = &self.env.doc.settings;
+            !(s.no_leading && s.compat_mode < 15)
+        };
+        let ext_2pt = self.env.doc.settings.ext_leading_2pt_only;
+        let line = if ext_2pt && is_courier_new(&rc.font) {
             Some(one_em_line(&r.face))
+        } else if ext_2pt {
+            None
         } else {
-            wordcraft_fonts::word::missing_font_line(&rc.font, &r)
+            wordcraft_fonts::word::missing_font_line_leading(&rc.font, &r, leading)
         };
         let (ascent, descent) = match line {
             Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
+            None if ext_2pt => size_plus_2pt_line(&r.face, f64::from(size)),
             None => {
-                // "Don't add leading between rows of text" (below compatibility mode 15): the line
-                // is the font's ascent plus descent, without its line gap.
-                let s = &self.env.doc.settings;
-                let (a, d) = if s.no_leading && s.compat_mode < 15 {
-                    wordcraft_fonts::word::line_metrics_no_leading(&face)
-                } else {
-                    wordcraft_fonts::word::line_metrics(&face)
-                };
+                // Without leading, the line loses the part of its gap outside the font's Windows
+                // cell.
+                let (a, d) =
+                    if !leading { wordcraft_fonts::word::line_metrics_no_leading(&face) } else { wordcraft_fonts::word::line_metrics(&face) };
                 let k = f64::from(size) / face.upem.max(1.0);
                 (a * k, d * k)
             }
@@ -802,6 +809,16 @@ pub(crate) fn left_out(doc: &Document, rc: &ResolvedChar, show_hidden: bool, hid
 /// `font` names Courier New (its first non-empty family).
 fn is_courier_new(font: &str) -> bool {
     font.split(';').map(str::trim).find(|f| !f.is_empty()).is_some_and(|f| f.eq_ignore_ascii_case("courier new"))
+}
+
+/// (ascent, descent) in points of a line `size` + 2 pt tall: `face`'s own descent (without line gap)
+/// at `size`, the rest above the baseline.
+fn size_plus_2pt_line(face: &wordcraft_fonts::FontFace, size: f64) -> (f64, f64) {
+    let (_, d) = wordcraft_fonts::word::line_metrics_no_leading(face);
+    let descent = d * size / face.upem.max(1.0);
+    let descent = if descent.is_finite() { descent.max(0.0) } else { 0.0 };
+    let total = size + 2.0;
+    ((total - descent).max(0.0), descent)
 }
 
 /// (ascent, descent) in em of a line one em tall, split in `face`'s own ascent:descent ratio.
