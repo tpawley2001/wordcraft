@@ -41,6 +41,7 @@ mod item_display_clip;
 mod item_display_warp;
 mod keep_next_long_chain;
 mod keep_next_table_chain;
+mod kept_row_chain;
 mod kept_row_not_split;
 mod ligature;
 pub(crate) mod linear;
