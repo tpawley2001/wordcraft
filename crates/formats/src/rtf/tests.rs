@@ -1861,6 +1861,7 @@ mod mark_and_default_font;
 mod nested_tables;
 mod note_options;
 mod note_position;
+mod note_separator_stories;
 mod note_separators;
 mod note_story_paras;
 mod object_result;

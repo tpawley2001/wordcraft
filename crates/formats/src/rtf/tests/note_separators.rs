@@ -1,6 +1,6 @@
 //! Note separator groups (`\ftnsep`, `\ftnsepc`, `\ftncn`, `\aftnsep`, `\aftnsepc`, `\aftncn`,
 //! RTF 1.9.1 "Footnotes") are destinations with or without `\*`: Microsoft 365 Word shows none of
-//! their text in the document. A tracked section formatting change (`{\*\oldsprops …}`) keeps
+//! their text in the body. A tracked section formatting change (`{\*\oldsprops …}`) keeps
 //! Suppress endnotes (`\endnhere`) like the section itself. Custom note marks stay 1 to 10
 //! characters however much text the groups before them hold.
 
@@ -40,7 +40,7 @@ fn each_separator_word_is_a_destination_on_its_own() {
     for word in ["ftnsep", "ftnsepc", "ftncn", "aftnsep", "aftnsepc", "aftncn"] {
         let d = open(&format!(r"{{\{word} \pard\plain ZZSEPZZ\par}}\pard\plain Body\par"));
         assert_eq!(body_texts(&d), ["Body"], "\\{word}");
-        assert!(!format!("{d:?}").contains("ZZSEPZZ"), "\\{word}");
+        assert!(!format!("{:?}{:?}", body_texts(&d), d.parts).contains("ZZSEPZZ"), "\\{word}");
     }
 }
 
@@ -75,7 +75,7 @@ fn formatting_and_breaks_inside_a_separator_group_do_not_reach_the_body() {
     let p = paras.first().expect("body paragraph");
     assert_ne!(p.props.align, Some(Align::Center));
     assert_ne!(p.props_of_char(0).bold, Some(true));
-    assert!(!format!("{d:?}").contains("ZZSEPZZ"));
+    assert!(!format!("{:?}{:?}", body_texts(&d), d.parts).contains("ZZSEPZZ"));
 }
 
 #[test]
@@ -206,4 +206,57 @@ fn a_long_paragraph_in_nested_groups_keeps_its_text_and_the_mark_after_it() {
     let d = open(&body);
     assert_eq!(marks(&d), [(NoteKind::Footnote, "*".to_string())]);
     assert_eq!(body_texts(&d), [long]);
+}
+
+#[test]
+fn a_page_break_or_note_number_inside_a_separator_story_adds_nothing() {
+    let d = open(&format!(r"{{\ftnsep \pard\plain A\page B\chftn C\par}}\pard\plain Body{NOTE}\par"));
+    let sep = d.footnote_separators.separator.as_ref().expect("separator kept");
+    let text: String = sep.iter().filter_map(|b| if let wordcraft_doc::Block::Para(p) = &**b { Some(p.plain_text()) } else { None }).collect();
+    assert_eq!(text.trim(), "ABC");
+    assert_eq!(body_texts(&d), ["Body"]);
+}
+
+#[test]
+fn a_separator_group_in_shape_text_is_skipped() {
+    let d = open(r"\pard\plain {\shp{\*\shpinst\shpleft0\shpright2000\shptop0\shpbottom500{\shptxt {\ftnsep ZZSEPZZ\par}Box\par}}}Body\par");
+    assert!(d.footnote_separators.is_empty());
+    assert!(!format!("{d:?}").contains("ZZSEPZZ"));
+}
+
+#[test]
+fn hostile_separator_groups_never_panic_and_stay_bounded() {
+    // Many groups of every kind, unclosed ones, huge text and stray line words.
+    let mut rtf = String::from(r"{\rtf1\ansi\ftnbj ");
+    for i in 0..2_000 {
+        let word = ["ftnsep", "ftnsepc", "ftncn", "aftnsep", "aftnsepc", "aftncn"][i % 6];
+        rtf.push_str(&format!(r"{{\{word} \pard\chftnsep\chftnsepc x{i}\par\sect\page{{\footnote y}}}}"));
+    }
+    rtf.push_str(r"{\ftnsep ");
+    rtf.push_str(&"z".repeat(200_000));
+    rtf.push_str(r"\par{\ftnsep {\aftnsep \chftnsep");
+    let d = import(rtf.as_bytes()).unwrap();
+    assert!(d.footnote_separators.separator.is_some());
+    assert!(d.endnote_separators.continuation_notice.is_some());
+    assert!(d.parts.is_empty());
+    let out = export(&d);
+    assert!(import(out.as_bytes()).is_ok());
+}
+
+#[test]
+fn docx_default_separators_saved_as_rtf_read_back_as_the_defaults() {
+    use wordcraft_doc::{Blocks, InlineObject, Paragraph};
+    let line = |c: bool| -> Option<Blocks> {
+        let mut p = Paragraph::default();
+        p.insert_object(0, InlineObject::note_separator(c), &Default::default()).unwrap();
+        Some(vec![std::sync::Arc::new(wordcraft_doc::Block::Para(p))])
+    };
+    let mut d = open(&format!(r"\pard\plain Body{NOTE}\par"));
+    d.footnote_separators.separator = line(false);
+    d.footnote_separators.continuation_separator = line(true);
+    let out = export(&d);
+    assert!(out.contains(r"{\*\ftnsep ") && out.contains(r"{\*\ftnsepc "), "{out}");
+    let back = import(out.as_bytes()).unwrap();
+    assert!(back.footnote_separators.is_empty(), "{:?}", back.footnote_separators);
+    assert_eq!(body_texts(&back), ["Body"]);
 }
