@@ -16,6 +16,7 @@ mod content_controls;
 mod core_dates;
 mod custom_xml;
 mod default_size;
+mod doc_vars;
 mod drawing_payload;
 mod east_asian_lang;
 mod east_asian_layout;

@@ -451,6 +451,7 @@ impl Reader {
             "propname" if self.st.dest == Dest::UserProps => Some(Dest::Info(8)),
             "staticval" if self.st.dest == Dest::UserProps => Some(Dest::Info(9)),
             "linkval" if self.st.dest == Dest::UserProps => Some(Dest::Info(10)),
+            "docvar" => Some(self.docvar_dest()),
             "latentstyles" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => {
                 self.latent.begin();
                 Some(Dest::LatentStyles)
@@ -504,7 +505,7 @@ impl Reader {
             | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
-            | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb" | "fontfile"
+            | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "objdata" | "fontemb" | "fontfile"
             | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl"
             // The flat copy of nested tables, for readers without them.
             | "nonesttables" => Some(Dest::Skip),
@@ -586,6 +587,7 @@ impl Reader {
                 self.record_date_part(word, value);
                 true
             }
+            Dest::DocVar => true,
             Dest::LatentStyles | Dest::LsdExcept => self.latent_word(word, param),
             Dest::UserProps => {
                 if word == "proptype" {
@@ -1066,6 +1068,17 @@ impl Reader {
 
     fn in_info(&self) -> bool {
         self.info_depth.is_some_and(|d| self.depth() > d)
+    }
+
+    /// Where a `{\*\docvar …}` group goes: a document variable in the main document; anywhere
+    /// else (a header, note, field or shape) it is not one and is skipped.
+    fn docvar_dest(&mut self) -> Dest {
+        if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() && self.st.field.is_none() && self.shapes.is_empty() {
+            self.info_more.var_parts.clear();
+            Dest::DocVar
+        } else {
+            Dest::Skip
+        }
     }
 }
 

@@ -1841,6 +1841,7 @@ mod custom_note_marks;
 mod doc_grid;
 mod doc_page_options;
 mod doc_settings;
+mod doc_vars;
 mod doc_widow_control;
 mod drop_cap_paragraphs;
 mod endnote_here;
