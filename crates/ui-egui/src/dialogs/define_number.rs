@@ -28,11 +28,32 @@ pub struct NumberForm {
     pub after: String,
     /// `left`, `center` or `right`.
     pub align: String,
+    /// The number's font family; empty for the paragraph text's font.
+    pub font: String,
+    /// The number is bold.
+    pub bold: bool,
+    /// The number is italic.
+    pub italic: bool,
+    /// The number's colour, `RRGGBB`; empty for Automatic.
+    pub color: String,
+    /// Font… was clicked: the font controls are showing.
+    #[serde(skip)]
+    pub show_font: bool,
 }
 
 impl Default for NumberForm {
     fn default() -> Self {
-        NumberForm { style: "decimal".into(), before: String::new(), after: ".".into(), align: "left".into() }
+        NumberForm {
+            style: "decimal".into(),
+            before: String::new(),
+            after: ".".into(),
+            align: "left".into(),
+            font: String::new(),
+            bold: false,
+            italic: false,
+            color: String::new(),
+            show_font: false,
+        }
     }
 }
 
@@ -81,7 +102,13 @@ impl NumberForm {
             Align::Right => "right",
             _ => "left",
         };
-        NumberForm { style: level.format.ooxml().into(), before: without_percent(&before), after: without_percent(&after), align: align.into() }
+        NumberForm {
+            style: level.format.ooxml().into(),
+            before: without_percent(&before),
+            after: without_percent(&after),
+            align: align.into(),
+            ..NumberForm::default()
+        }
     }
 
     /// `para.defineNumber` parameters.
@@ -91,6 +118,11 @@ impl NumberForm {
 
     fn format(&self) -> NumFormat {
         NumFormat::from_ooxml(&self.style)
+    }
+
+    /// How the preview draws a label of `size` points: bold, italic and the number's colour.
+    pub fn label_format(&self, size: f32) -> egui::TextFormat {
+        egui::TextFormat { font_id: egui::FontId::proportional(size), ..Default::default() }
     }
 
     /// The label of item `n` as the preview draws it.

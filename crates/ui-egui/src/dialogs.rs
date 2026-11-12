@@ -1176,6 +1176,8 @@ mod tests_border_options;
 #[cfg(test)]
 mod tests_define_number;
 #[cfg(test)]
+mod tests_define_number_font;
+#[cfg(test)]
 mod tests_font_opentype;
 #[cfg(test)]
 mod tests_font_spacing;
