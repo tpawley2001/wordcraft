@@ -53,6 +53,7 @@ mod table_float;
 mod table_left_edge;
 mod table_width;
 mod table_width_rows;
+mod tc80_cell_valign;
 mod text_box_flow;
 mod text_box_margins;
 mod toggle_para_style;
