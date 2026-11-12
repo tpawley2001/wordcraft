@@ -62,6 +62,7 @@ mod next_column_section;
 mod next_page_restart_side;
 mod no_leading;
 mod no_leading_missing_fonts;
+mod notes_overflow;
 mod numeral;
 mod pages;
 mod picture_glue;

@@ -828,13 +828,15 @@ fn fit_height(pb: &PageBuilder, l: &para::Line, rp: &wordcraft_doc::resolve::Res
 }
 
 /// Notes too long for the rest of the page continue on the next one: the line still fits if the
-/// notes before its last one, and that one's first line, fit below it. The notes then take the
-/// rest of the page.
+/// notes already on the page, and the first line of the first note it adds, fit below it (Word:
+/// a line referring to several notes stays when its first note can start). Its notes then take
+/// the rest of the page in order (whole while they fit, the first that doesn't split at a line or
+/// carried whole), and the rest continue on the next page ([`PageBuilder::flush_notes`]).
 fn notes_split(pb: &PageBuilder, (new_notes, line_notes): (&[NoteBox], &[NoteBox]), bottom: f32) -> bool {
-    line_notes.split_last().is_some_and(|(last, others)| {
-        let before: f32 = pb.notes.iter().chain(new_notes).chain(others).map(|n| n.h).sum();
+    line_notes.first().is_some_and(|first| {
+        let before: f32 = pb.notes.iter().chain(new_notes).map(|n| n.h).sum();
         let sep = pb.seps().sep_h(pb.notes.first().is_some_and(|n| n.cont));
-        pb.note_floor().max(bottom) + sep + before + last.first_piece() + pb.seps().notice_h() <= pb.orig_bottom + 0.01
+        pb.note_floor().max(bottom) + sep + before + first.first_piece() + pb.seps().notice_h() <= pb.orig_bottom + 0.01
     })
 }
 
