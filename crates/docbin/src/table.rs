@@ -650,7 +650,17 @@ impl TableBuilder {
         if self.rows.is_empty() {
             return;
         }
-        out.push(Arc::new(Block::Table(Table { props: self.props, grid: self.grid, rows: self.rows, controls: Default::default() })));
+        let mut table = Table { props: self.props, grid: self.grid, rows: self.rows, controls: Default::default() };
+        // The grid comes from the first row's `sprmTDefTable` only, so a later row with more
+        // cells has columns the grid doesn't size; layout then splits them evenly, and a
+        // preferred width would stretch those even columns across the table instead of letting
+        // the content autofit them (a text column a fifth of the table, one word per line).
+        // Such a table stays automatic until the grid is built from every row.
+        if !table.grid.is_empty() && table.cols() > table.grid.len() {
+            table.props.width = None;
+            table.props.width_pct = None;
+        }
+        out.push(Arc::new(Block::Table(table)));
     }
 }
 
