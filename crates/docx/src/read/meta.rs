@@ -80,6 +80,7 @@ impl Reader<'_> {
                 "w:removeDateAndTime" => s.remove_date_time = on_off(k),
                 "w:compat" => {
                     s.allow_space_of_same_style_in_table = k.child("w:allowSpaceOfSameStyleInTable").is_some_and(on_off);
+                    s.split_pg_break_and_para_mark = k.child("w:splitPgBreakAndParaMark").is_some_and(on_off);
                     // Only Word's own setting: another `w:uri` names a different application's.
                     let mode = k
                         .children("w:compatSetting")
@@ -93,6 +94,7 @@ impl Reader<'_> {
                         s.compat_mode = m.clamp(11, 99);
                     }
                     s.sum_paragraph_spacing = k.children("w:doNotUseHTMLParagraphAutoSpacing").any(on_off);
+                    s.no_leading = k.children("w:noLeading").any(on_off);
                     s.do_not_expand_shift_return = k.children("w:doNotExpandShiftReturn").any(on_off);
                     s.wrap_trail_spaces = k.children("w:wrapTrailSpaces").any(on_off);
                 }

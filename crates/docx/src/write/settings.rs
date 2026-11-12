@@ -256,6 +256,9 @@ pub(crate) fn write_captions(w: &mut W, c: &wordcraft_doc::Captions) {
 fn write_compatibility_settings(w: &mut W, doc: &Document) {
     w.open("w:compat", &[]);
     // CT_Compat: the older switches come before the `w:compatSetting`s.
+    if doc.settings.no_leading {
+        w.empty("w:noLeading", &[]);
+    }
     if doc.settings.do_not_expand_shift_return {
         w.empty("w:doNotExpandShiftReturn", &[]);
     }
@@ -267,6 +270,9 @@ fn write_compatibility_settings(w: &mut W, doc: &Document) {
     }
     if doc.settings.allow_space_of_same_style_in_table {
         w.empty("w:allowSpaceOfSameStyleInTable", &[]);
+    }
+    if doc.settings.split_pg_break_and_para_mark {
+        w.empty("w:splitPgBreakAndParaMark", &[]);
     }
     // An absent source mode uses legacy layout internally, but must stay absent so
     // reopening still selects the application-defined document defaults.

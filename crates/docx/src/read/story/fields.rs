@@ -1,4 +1,4 @@
-use super::{CharProps, FieldState, InlineObject, Item, MAX_FIELD_DEPTH, PB, Phase, Reader, StoryCtx};
+use super::{CharProps, El, FieldState, InlineObject, Item, MAX_FIELD_DEPTH, PB, Phase, Reader, StoryCtx};
 use wordcraft_doc::link::{hyperlink_target, hyperlink_tip};
 
 /// Enclosed characters (`eq \o\ac(○,字)`), with their style from the code's font sizes: Word
@@ -45,6 +45,8 @@ impl Reader<'_> {
             range: false,
             sizes: Vec::new(),
             form,
+            marks: Vec::new(),
+            first_after: (None, None),
         });
     }
 
@@ -135,10 +137,32 @@ impl Reader<'_> {
                 Item::Obj(o) => result.push_str(o.plain_text()),
             }
         }
+        let mut code_paras = None;
         let (instr, result) = match enclosure(&f) {
             // Word writes no result for enclosed characters: the text is their plain text.
             Some(e) => (e.instr(), if result.is_empty() { e.text } else { result }),
-            None => (f.instr.trim().to_string(), result),
+            None => {
+                let instr = f.instr.trim().to_string();
+                // Paragraph marks inside the code, at their offsets in the trimmed code.
+                if !f.marks.is_empty() && !nested_in_instr {
+                    let lead = f.instr.len().saturating_sub(f.instr.trim_start().len());
+                    let marks = f
+                        .marks
+                        .into_iter()
+                        .map(|mut m| {
+                            m.at = m.at.saturating_sub(lead).min(instr.len());
+                            m
+                        })
+                        .collect();
+                    code_paras = Some(Box::new(wordcraft_doc::para::CodeParas {
+                        code: wordcraft_doc::para::code_hash(&instr),
+                        first_after: f.first_after.0,
+                        first_after_auto: f.first_after.1,
+                        marks,
+                    }));
+                }
+                (instr, result)
+            }
         };
         // The visible result owns the field's formatting; empty results keep the begin's.
         let props = f
@@ -151,7 +175,7 @@ impl Reader<'_> {
             })
             .unwrap_or(&f.props)
             .clone();
-        let obj = InlineObject::Field { instr, result, locked: f.locked, dirty: f.dirty, code: false, form: f.form };
+        let obj = InlineObject::Field { instr, result, locked: f.locked, dirty: f.dirty, code: false, form: f.form, code_paras };
         if let Some(parent) = sc.fields.last_mut()
             && !parent.spilled
             && parent.phase == Phase::Instr
@@ -172,7 +196,15 @@ impl Reader<'_> {
             f.spilled = true;
             let form = std::mem::take(&mut f.form);
             pb.push_obj(
-                InlineObject::Field { instr: f.instr.trim().to_string(), result: String::new(), locked: f.locked, dirty: f.dirty, code: false, form },
+                InlineObject::Field {
+                    instr: f.instr.trim().to_string(),
+                    result: String::new(),
+                    locked: f.locked,
+                    dirty: f.dirty,
+                    code: false,
+                    form,
+                    code_paras: None,
+                },
                 &f.props,
             );
             for (it, p) in f.buf.drain(..) {
@@ -184,3 +216,72 @@ impl Reader<'_> {
         }
     }
 }
+
+/// Most paragraphs a field's code may run on into (more: the field ends at the paragraph end).
+const MAX_CODE_PARAS: usize = 64;
+
+/// How many of the paragraphs `next` (the siblings after a paragraph whose field is still
+/// collecting its code) the code runs on into: the last one holds the code's `separate` or `end`.
+/// `None` unless they are all plain sibling paragraphs (no section break), those wholly inside the
+/// code hold nothing but code, field characters, proofing and bookmark marks and empty runs, and
+/// no field nested in the code is open at a paragraph mark.
+pub(super) fn code_paragraphs(next: &[&El]) -> Option<usize> {
+    let mut depth = 1usize;
+    for (j, p) in next.iter().enumerate().take(MAX_CODE_PARAS) {
+        if p.name != "w:p" || p.child("w:pPr").is_some_and(|ppr| ppr.child("w:sectPr").is_some()) {
+            return None;
+        }
+        for k in p.els() {
+            match k.name.as_str() {
+                "w:pPr" | "w:proofErr" | "w:bookmarkStart" | "w:bookmarkEnd" => {}
+                "w:r" => {
+                    for c in k.els() {
+                        match c.name.as_str() {
+                            "w:rPr" | "w:instrText" | "w:delInstrText" => {}
+                            "w:fldChar" => match c.attr("w:fldCharType") {
+                                Some("begin") => depth = depth.saturating_add(1),
+                                Some("separate") if depth == 1 => return Some(j + 1),
+                                Some("end") if depth == 1 => return Some(j + 1),
+                                Some("end") => depth = depth.saturating_sub(1),
+                                _ => {}
+                            },
+                            _ => return None,
+                        }
+                    }
+                }
+                _ => return None,
+            }
+        }
+        if depth != 1 {
+            return None;
+        }
+    }
+    None
+}
+
+impl Reader<'_> {
+    /// At a paragraph end: whether the innermost field is still collecting its code and is the
+    /// only one doing so (a paragraph mark in a nested field's code is not joined).
+    pub(super) fn code_open_at_mark(sc: &StoryCtx) -> bool {
+        sc.ignored_begins == 0 && sc.fields.last().is_some_and(|f| !f.spilled && !f.range && f.phase == Phase::Instr) && !Self::parent_in_instr(sc)
+    }
+
+    /// A paragraph mark inside the code of the innermost field: one space in the code where the
+    /// mark is (none after white space), and the next paragraph's properties. `after` is the
+    /// space after of the paragraph the mark ends.
+    pub(super) fn code_mark(sc: &mut StoryCtx, props: wordcraft_doc::props::ParaProps, mark: CharProps, after: (Option<f32>, Option<bool>)) {
+        let Some(f) = sc.fields.last_mut() else { return };
+        if f.marks.is_empty() {
+            f.first_after = after;
+        }
+        if f.instr.len() < super::MAX_INSTR && !f.instr.is_empty() && !f.instr.ends_with(char::is_whitespace) {
+            f.instr.push(' ');
+        }
+        if f.marks.len() < MAX_CODE_PARAS {
+            f.marks.push(wordcraft_doc::para::CodeMark { at: f.instr.len(), props, mark });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;
