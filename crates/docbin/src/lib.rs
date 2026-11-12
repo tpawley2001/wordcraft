@@ -21,6 +21,7 @@ mod metadata;
 mod notes;
 mod officeart;
 mod ole;
+mod phonetic;
 mod piece;
 mod revision;
 mod sections;
@@ -1281,8 +1282,41 @@ fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &Work) {
     }
     // The visible result owns the formatting; an empty result keeps the begin's.
     let props = result.runs.iter().find(|(len, _)| *len > 0).map(|(_, props)| props.clone()).unwrap_or(f.props);
+    // A Phonetic Guide is an `EQ` field with no result: Word shows its base text with the ruby
+    // text above it, so it becomes the model's ruby object.
+    if result.text.trim().is_empty()
+        && let Some(p) = phonetic::parse(&instr)
+    {
+        pb.push('\u{FFFC}', props.clone());
+        pb.objects.push(phonetic_ruby(p, &props));
+        return;
+    }
     pb.push('\u{FFFC}', props);
     pb.objects.push(InlineObject::Field { instr, result: result.text, locked: false, dirty: false, code: false, form: String::new() });
+}
+
+/// The ruby object for a Phonetic Guide field whose object character has `props`. The ruby text
+/// keeps only the font it sets beyond the base text's (as the DOCX reader does for `w:rt`).
+fn phonetic_ruby(p: phonetic::Phonetic, props: &CharProps) -> InlineObject {
+    let mut rp = CharProps::default();
+    if let Some(font) = p.font {
+        if props.font_ea.as_deref() != Some(font.as_str()) {
+            rp.font_ea = Some(font.clone());
+        }
+        if props.font.as_deref() != Some(font.as_str()) {
+            rp.font = Some(font);
+        }
+    }
+    InlineObject::Ruby {
+        base: p.base,
+        ruby: p.ruby,
+        align: p.align,
+        size: p.size,
+        raise: p.raise,
+        base_size: props.size.unwrap_or(0.0),
+        lang: String::new(),
+        props: Box::new(rp),
+    }
 }
 
 /// `sprmCPicLocation` from a CHPX grpprl: the fc of the picture in the Data stream.
