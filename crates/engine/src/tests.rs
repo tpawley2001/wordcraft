@@ -47,6 +47,7 @@ mod mark_toc_entry;
 mod move_text_keys;
 mod negative_margins;
 mod rtl_gutter;
+mod output_header_footer_fields;
 mod para_sort_case;
 mod para_sort_keys;
 mod paste_link;
