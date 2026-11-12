@@ -1,6 +1,7 @@
 use super::*;
 use egui_kittest::kittest::Queryable;
 
+mod backup_status;
 mod break_dialog;
 mod perf;
 mod show_content;
