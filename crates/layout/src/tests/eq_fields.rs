@@ -13,7 +13,15 @@ fn doc_with(before: &str, instr: &str, after: &str) -> Document {
     let at = before.chars().count();
     d.insert_object(
         &Pos::body(0, at),
-        InlineObject::Field { instr: instr.into(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() },
+        InlineObject::Field {
+            instr: instr.into(),
+            result: String::new(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+            code_paras: None,
+        },
         &Default::default(),
     )
     .unwrap();

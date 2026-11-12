@@ -554,9 +554,6 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
         doc.settings.endnote_format = wordcraft_doc::section::NumFormat::LowerRoman;
     }
     (doc.settings.footnote_pr, doc.settings.endnote_pr) = (foot, end);
-    // Word fits justified lines of an RTF document more tightly than a DOCX one; RTF has no
-    // control word for it, so every imported document gets it.
-    doc.settings.rtf_justification = true;
     // Each section's own headers and footers; those it leaves out stay linked to the previous.
     let mut sets = Vec::with_capacity(headers_footers.len());
     for parts in &headers_footers {

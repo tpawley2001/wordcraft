@@ -803,6 +803,10 @@ pub(super) struct DocOpts {
     pub(super) widow_control: bool,
     /// `\wraptrsp`: Wrap trailing spaces onto the next line.
     pub(super) wrap_trail_spaces: Option<bool>,
+    /// `\jexpand` (`Some(true)`) / `\jcompress` (`Some(false)`), the last one read: with
+    /// expanding justification Word does not squeeze a line's spaces to keep its overrunning
+    /// last word.
+    pub(super) expand_justification: Option<bool>,
 }
 
 impl DocOpts {
@@ -832,6 +836,8 @@ impl DocOpts {
             }
             "widowctrl" => self.widow_control = true,
             "wraptrsp" => self.wrap_trail_spaces = Some(on),
+            "jexpand" => self.expand_justification = Some(true),
+            "jcompress" => self.expand_justification = Some(false),
             _ => return false,
         }
         true
@@ -863,6 +869,8 @@ impl DocOpts {
         if let Some(v) = self.wrap_trail_spaces {
             s.wrap_trail_spaces = v;
         }
+        // An RTF document squeezes spaces unless it says `\jexpand`.
+        s.rtf_justification = self.expand_justification != Some(true);
     }
 }
 

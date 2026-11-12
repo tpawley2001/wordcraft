@@ -86,6 +86,10 @@ struct FieldState {
     sizes: Vec<(usize, Option<f32>)>,
     /// A legacy form field's `w:ffData`, as raw XML.
     form: String,
+    /// Paragraph marks inside the code (offsets in the untrimmed `instr`).
+    marks: Vec<wordcraft_doc::para::CodeMark>,
+    /// The space after of the paragraph the first mark ends (with its auto flag).
+    first_after: (Option<f32>, Option<bool>),
 }
 
 /// The last paragraph of a block list: its last block, or inside a final table the last

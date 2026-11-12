@@ -14,7 +14,15 @@ fn not_defined(name: &str) -> String {
 }
 
 fn field(instr: &str) -> InlineObject {
-    InlineObject::Field { instr: instr.into(), result: "stale".into(), locked: false, dirty: false, code: false, form: String::new() }
+    InlineObject::Field {
+        instr: instr.into(),
+        result: "stale".into(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    }
 }
 
 /// A body of one `Heading1` paragraph and one `Normal` paragraph, and a header with one
