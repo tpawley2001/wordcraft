@@ -885,6 +885,20 @@ fn para_sort_fields_follow_separator_and_infer_types() {
 }
 
 #[test]
+fn para_sort_case_sensitive_option_reaches_the_sort() {
+    let mut a = WordApp::new(Session::new(wordcraft_doc::Document::from_text("banana\nApple\napple\nBanana")), Services::default());
+    a.session.run("select.all", &json!({})).unwrap();
+    let mut f = ParaSortForm::read(&a).unwrap();
+    assert!(!f.case_sensitive);
+    assert_eq!(f.params()["caseSensitive"], false);
+    f.case_sensitive = true;
+    assert_eq!(f.params()["caseSensitive"], true);
+    a.run("para.sort", f.params()).unwrap();
+    let paras: Vec<_> = a.session.doc.body.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect();
+    assert_eq!(paras, ["apple", "Apple", "banana", "Banana"]);
+}
+
+#[test]
 fn text_direction_text_box_reads_applies_and_undoes() {
     use wordcraft_doc::props::TextDirection;
     let mut a = app();

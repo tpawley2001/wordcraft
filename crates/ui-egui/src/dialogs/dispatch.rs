@@ -2,14 +2,14 @@ use super::bookmarks::{bookmark, enclose_preview, icons_body, macros};
 use super::chrome::{buttons, color_field};
 use super::find::{FindTab, SEARCH_SUGGESTIONS, command_matches, find_in_navigation_pane, goto_body, special_menu, swallow_shortcut_text};
 use super::font::{
-    UNDERLINE_STYLES, apply_font, font_box, font_sample_box, font_sample_lines, font_sample_props, sample_paper, scale_box, signed_by_box,
-    underline_style,
+    LIGATURES, NUM_FORMS, NUM_SPACINGS, UNDERLINE_STYLES, apply_font, font_box, font_sample_box, font_sample_lines, font_sample_props, name_box,
+    sample_paper, scale_box, signed_by_box, stylistic_set_box, underline_style,
 };
 use super::forms::{cell_margins_dialog, custom_properties, table_properties};
 use super::mailings::{ADDRESS_PARTS, recipient_list, rule_params};
 use super::page_setup::{
-    page_layout_commands, page_paper_group, page_paper_source_group, page_section_start_combo, page_section_start_value, page_valign_combo,
-    page_valign_value, run_as_one_step,
+    page_endnotes_at_section_end, page_layout_commands, page_paper_group, page_paper_source_group, page_section_start_combo,
+    page_section_start_value, page_valign_combo, page_valign_value, run_as_one_step,
 };
 use super::paragraph::{OUTLINE_LEVELS, ParaNumber, apply_paragraph, line_spacing_boxes, outline_entry, para_check, para_number};
 use super::styles::manage_styles;
@@ -137,6 +137,11 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         position,
         kern,
         kern_at,
+        ligatures,
+        num_spacing,
+        num_form,
+        stylistic_set,
+        contextual_alternates,
         ..
     } = d
     else {
@@ -264,6 +269,37 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             });
         });
     });
+    ui.separator();
+    ui.label(egui::RichText::new(tl!("OpenType Features")).font(semibold(12.5)));
+    crate::rtl::Table::new("fontdlg_opentype").columns(2).spacing(vec2(10.0, 6.0)).show(ui, |t| {
+        t.row(|r| {
+            let label = r.cell(|ui| ui.label(tl!("Ligatures:")));
+            r.cell(|ui| name_box(ui, "fontdlg_ligatures", ligatures, &LIGATURES, &label));
+        });
+        t.row(|r| {
+            let label = r.cell(|ui| ui.label(tl!("Number spacing:")));
+            r.cell(|ui| name_box(ui, "fontdlg_num_spacing", num_spacing, &NUM_SPACINGS, &label));
+        });
+        t.row(|r| {
+            let label = r.cell(|ui| ui.label(tl!("Number forms:")));
+            r.cell(|ui| name_box(ui, "fontdlg_num_forms", num_form, &NUM_FORMS, &label));
+        });
+        t.row(|r| {
+            let label = r.cell(|ui| ui.label(tl!("Stylistic sets:")));
+            r.cell(|ui| stylistic_set_box(ui, stylistic_set, &label));
+        });
+    });
+    let alternates = tl!("Use Contextual Alternates");
+    match contextual_alternates {
+        Some(on) => {
+            ui.checkbox(on, alternates);
+        }
+        None => {
+            if ui.add(egui::Checkbox::new(&mut false, alternates).indeterminate(true)).clicked() {
+                *contextual_alternates = Some(true);
+            }
+        }
+    }
     ui.separator();
     ui.label(egui::RichText::new(tl!("Effects")).font(semibold(12.5)));
     crate::rtl::Table::new("fx").columns(2).show(ui, |t| {
@@ -715,7 +751,7 @@ fn insert_table_width(text: &str) -> Option<f32> {
 }
 
 /// A margin's number box, in the unit the interface measures in.
-fn margin(value: &mut f32) -> impl egui::Widget + '_ {
+pub(super) fn margin(value: &mut f32) -> impl egui::Widget + '_ {
     move |ui: &mut Ui| {
         // DragValue's unfocused button extends to fit its value; keep it inside the field too.
         let (_, rect) = ui.allocate_space(egui::vec2(80.0, ui.spacing().interact_size.y));
@@ -755,6 +791,7 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         header,
         footer,
         start,
+        suppress_endnotes,
     } = d
     else {
         return false;
@@ -812,6 +849,9 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     }
     page_valign_combo(ui, valign);
     page_section_start_combo(ui, start);
+    // Greyed while the section's endnotes go at the end of the document, as in Word.
+    let endnotes_at_section_end = page_endnotes_at_section_end(app);
+    ui.add_enabled(endnotes_at_section_end, egui::Checkbox::new(suppress_endnotes, tl!("Suppress endnotes")));
     // Word's Page Setup › Layout: a title page without the page number (#1230).
     ui.label(egui::RichText::new(tl!("Headers and footers")).font(semibold(12.5)));
     ui.checkbox(odd_even, tl!("Different Odd & Even Pages"));
@@ -836,6 +876,9 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 }
                 if *start != wordcraft_engine::cmd::page::sect(&app.session).start {
                     commands.push(("layout.sectionStart", json!({"value": page_section_start_value(*start)})));
+                }
+                if endnotes_at_section_end && *suppress_endnotes != (wordcraft_engine::cmd::page::sect(&app.session).no_endnote == Some(true)) {
+                    commands.push(("layout.suppressEndnotes", json!({"value": *suppress_endnotes})));
                 }
                 if grid != grid_was {
                     let kind = ["none", "lines", "linesAndChars", "snapToChars"].get(grid.0 as usize).copied().unwrap_or("none");
@@ -875,15 +918,21 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 }
 
 fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
-    let Dialog::Link { url, text, kind, email, subject, targets, pick, focus } = d else {
+    let Dialog::Link { url, text, kind, email, subject, targets, pick, focus, tip, tip_edit } = d else {
         return false;
     };
+    // Enter and Escape belong to Set Hyperlink ScreenTip while it is open above this dialog.
+    let tip_open = tip_edit.is_some();
     // Read document targets once, when a choice first needs them.
     ui.horizontal(|ui| {
         ui.label(tl!("Link to:"));
         ui.selectable_value(kind, super::LinkKind::Web, tl!("Existing File or Web Page"));
         ui.selectable_value(kind, super::LinkKind::Place, tl!("Place in This Document"));
         ui.selectable_value(kind, super::LinkKind::Email, tl!("E-mail Address"));
+        ui.add_space(24.0);
+        if ui.button(tl!("ScreenTip…")).clicked() {
+            *tip_edit = Some(tip.clone());
+        }
     });
     if *kind != super::LinkKind::Web && targets.is_none() {
         *targets = app.run("link.targets", json!({})).ok();
@@ -988,24 +1037,61 @@ fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     } else {
         buttons(ui, tl!("OK"))
     };
+    let (ok, cancel) = if tip_open { (false, false) } else { (ok, cancel) };
+    screen_tip_modal(ui, tip, tip_edit);
     if ok {
-        if *kind == super::LinkKind::Place {
+        // Sent also when empty, so OK clears a tip the link had.
+        let mut params = if *kind == super::LinkKind::Place {
             let Some((mut params, _)) = pick.clone() else { return false };
             if !text.is_empty() {
                 params["text"] = json!(text);
             }
-            let _ = app.run("insert.link", params);
+            params
         } else if *kind == super::LinkKind::Email {
             let mut params = json!({"email": email, "subject": subject});
             if !text.is_empty() {
                 params["text"] = json!(text);
             }
-            let _ = app.run("insert.link", params);
+            params
         } else {
-            let _ = app.run("insert.link", json!({"url": url, "text": text}));
-        }
+            json!({"url": url, "text": text})
+        };
+        params["screenTip"] = json!(tip);
+        let _ = app.run("insert.link", params);
     }
     ok || cancel
+}
+
+/// Insert Hyperlink › ScreenTip…: Set Hyperlink ScreenTip, open while `edit` holds the text being
+/// edited. OK keeps it in `tip`; Cancel (or Escape) leaves `tip` as it was.
+fn screen_tip_modal(ui: &mut Ui, tip: &mut String, edit: &mut Option<String>) {
+    let Some(text) = edit.as_mut() else { return };
+    let mut answer = None;
+    let modal = egui::Modal::new(egui::Id::unique("wordcraft.linkScreenTip")).show(ui.ctx(), |ui| {
+        ui.set_max_width(380.0);
+        ui.heading(tl!("Set Hyperlink ScreenTip"));
+        let label = ui.label(tl!("ScreenTip text:"));
+        let field = egui::TextEdit::singleline(text).char_limit(wordcraft_engine::cmd::insert::MAX_SCREEN_TIP).desired_width(f32::INFINITY);
+        ui.add(field).labelled_by(label.id);
+        ui.add_space(8.0);
+        ui.with_layout(crate::rtl::far_side(ui, egui::Align::Center), |ui| {
+            let (okb, cancelb) = crate::dialogs::ok_cancel_responses(ui, |ui| ui.add(crate::widgets::primary_button(ui, tl!("OK"))), tl!("Cancel"));
+            if okb.clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                answer = Some(true);
+            }
+            if cancelb.clicked() {
+                answer = Some(false);
+            }
+        });
+    });
+    if modal.should_close() {
+        answer = answer.or(Some(false));
+    }
+    match answer {
+        Some(true) => *tip = edit.take().unwrap_or_default(),
+        Some(false) => *edit = None,
+        None => {}
+    }
 }
 
 fn word_count_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
@@ -1371,14 +1457,7 @@ fn paste_special_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool 
     if let Some(f) = formats.get(*choice) {
         ui.add_space(6.0);
         ui.label(egui::RichText::new(tl!("Result")).font(semibold(12.5)));
-        let hint = match f.as_str() {
-            "formatted" => "Keeps the fonts and formatting of the copied text.",
-            "rtf" => "Reads the clipboard's rich text and keeps its formatting.",
-            "html" => "Reads the clipboard's web content and keeps its formatting.",
-            "picture" => "Pastes the clipboard's picture.",
-            _ => "Drops all formatting and pastes plain text.",
-        };
-        ui.label(egui::RichText::new(tl!(hint)).weak());
+        ui.label(egui::RichText::new(tl!(wordcraft_engine::cmd::paste::result_text(f))).weak());
     }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok && let Some(f) = formats.get(*choice) {
@@ -2115,6 +2194,46 @@ fn browse_object_text(name: &str) -> &'static str {
 mod email_link_tests {
     use super::*;
     use egui_kittest::kittest::{NodeT, Queryable};
+
+    #[test]
+    fn insert_hyperlink_screen_tip_is_sent_on_ok() {
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        app.run("ui.language", json!({"value": "en"})).unwrap();
+        app.run("ui.dialog", json!({"name": "link"})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                app.logic(&ui.ctx().clone());
+                app.ui(ui);
+            },
+            app,
+        );
+        h.run_steps(3);
+        // ScreenTip… opens Set Hyperlink ScreenTip; its Cancel leaves the tip as it was.
+        h.get_by_label("ScreenTip…").click();
+        h.run_steps(3);
+        let _ = h.get_by_label("ScreenTip text:");
+        let Some(Dialog::Link { tip_edit, .. }) = &mut h.state_mut().dialog else { panic!("no link dialog") };
+        *tip_edit = Some("Not kept".into());
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        let Some(Dialog::Link { url, text, tip, tip_edit, .. }) = &mut h.state_mut().dialog else { panic!("Escape closed the link dialog") };
+        assert_eq!((tip.as_str(), tip_edit.is_none()), ("", true));
+        *url = "https://example.com".into();
+        *text = "Example".into();
+        *tip = "More about it".into();
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert!(h.state().dialog.is_none());
+        let doc = &h.state().session.doc;
+        let para = doc.body.first().and_then(|b| b.as_para()).unwrap();
+        assert_eq!(para.text, "Example");
+        assert!(para.run_ranges().all(|(_, c)| c.link.as_deref() == Some("https://example.com") && c.link_tip.as_deref() == Some("More about it")));
+        // Opened again on the link, the dialog shows its tip.
+        h.state_mut().run("select.all", json!({})).unwrap();
+        h.state_mut().run("ui.dialog", json!({"name": "link"})).unwrap();
+        let Some(Dialog::Link { tip, .. }) = &h.state().dialog else { panic!("no link dialog") };
+        assert_eq!(tip, "More about it");
+    }
 
     #[test]
     fn email_choice_requires_an_address_and_reuses_subject() {

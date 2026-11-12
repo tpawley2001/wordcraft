@@ -246,6 +246,11 @@ refused, so check the spelling. Lengths are points. A colour is a hex string `"R
 | `scale` | number | horizontal scale, percent (100 = normal) |
 | `position` | number | raised (positive) or lowered (negative), points |
 | `kern` | number | kern fonts at or above this size, points; 0 = off |
+| `ligatures` | object | OpenType ligatures (`w14:ligatures`): `{"standard", "contextual", "historical", "discretional"}` bools; unset draws standard and contextual |
+| `numSpacing` | string | `default`, `proportional`, `tabular` |
+| `numForm` | string | `default`, `lining`, `oldStyle` |
+| `stylisticSets` | array | `[{"id": 1–20, "on": bool}]`; `[]` = none |
+| `contextualAlternates` | bool | Use Contextual Alternates; unset = on |
 | `textEffects` | object | WordArt `fill`, `outline`, `shadow`, `glow`, `reflection` (see `crates/doc/src/wordart.rs`) |
 | `lang` | string | BCP 47 language tag (proofing) |
 | `rtl` | bool | right-to-left run |

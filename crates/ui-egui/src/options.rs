@@ -656,6 +656,9 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     let forms_data = app.session.doc.settings.print_forms_data;
     flag(app, ui, "Print only the data from a form", "printFormsData", forms_data);
     ui.add_space(8.0);
+    section(ui, "Save");
+    flag(app, ui, "Always create backup copy", "alwaysCreateBackup", pr.always_create_backup);
+    ui.add_space(8.0);
     section(ui, "Display");
     crate::rtl::Table::new("options_display").columns(2).spacing(vec2(8.0, 6.0)).show(ui, |t| {
         t.row(|r| {

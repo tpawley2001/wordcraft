@@ -121,7 +121,7 @@ fn update_fields_still_agree() {
     run(&mut s, "caret.docStart", json!({}));
     run(&mut s, "references.toc", json!({"levels": 1, "hyperlinks": true, "rightAlign": false}));
     let inserted = field_results(&s, "PAGEREF");
-    crate::cmd::references::update_fields_in(&mut s, true).unwrap();
+    crate::cmd::references::update_fields_in(&mut s, true, false).unwrap();
     assert_eq!(field_results(&s, "PAGEREF"), inserted);
 }
 

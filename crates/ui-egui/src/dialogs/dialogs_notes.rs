@@ -10,15 +10,28 @@ use serde_json::{Value, json};
 use crate::WordApp;
 use crate::theme::semibold;
 
-/// Number formats notes offer: OOXML name and a sample (not translated). The Format Page Numbers
-/// dialog offers the same list (#1113).
-pub(crate) const FORMATS: [(&str, &str); 5] = [
+/// Number formats notes offer: OOXML name and a sample (not translated). The last one is Word's
+/// symbol sequence (`chicago`: *, †, ‡, §, then doubled, tripled…). The Format Page Numbers dialog
+/// has its own list.
+pub(crate) const FORMATS: [(&str, &str); 6] = [
     ("decimal", "1, 2, 3, …"),
     ("lowerLetter", "a, b, c, …"),
     ("upperLetter", "A, B, C, …"),
     ("lowerRoman", "i, ii, iii, …"),
     ("upperRoman", "I, II, III, …"),
+    ("chicago", "*, †, ‡, §, …"),
 ];
+
+/// The start value as the Start at box shows it: in the chosen number format, as Word does.
+/// An unknown or empty format shows the plain number.
+pub(crate) fn start_label(fmt: &str, n: u32) -> String {
+    wordcraft_doc::section::NumFormat::from_ooxml(fmt).format(n)
+}
+
+/// A typed Start at value: a plain decimal number 1-32767, else nothing (the value stays).
+fn parse_start(text: &str) -> Option<f64> {
+    text.trim().parse::<u32>().ok().filter(|n| (1..=32_767).contains(n)).map(f64::from)
+}
 
 /// The dialog's fields; `[footnotes, endnotes]` where each kind has its own.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -134,8 +147,15 @@ pub fn note_options(app: &mut WordApp, ui: &mut Ui, f: &mut NoteForm) -> bool {
         t.row(|r| {
             r.cell(|ui| ui.label(tl!("Start at:")));
             r.cell(|ui| {
+                let fmt = f.fmt.get(k).cloned().unwrap_or_default();
                 if let Some(v) = f.start.get_mut(k) {
-                    ui.add(egui::DragValue::new(v).range(1..=32_767).speed(0.2));
+                    ui.add(
+                        egui::DragValue::new(v)
+                            .range(1..=32_767)
+                            .speed(0.2)
+                            .custom_formatter(move |n, _| start_label(&fmt, n.clamp(1.0, 32_767.0) as u32))
+                            .custom_parser(parse_start),
+                    );
                 }
             });
         });
