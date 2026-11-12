@@ -510,10 +510,12 @@ impl<'a> Flow<'a> {
             if over && fit.l1 > l0 && !split {
                 break;
             }
-            // A paragraph's first line pushed down by a top-and-bottom object goes to the next
-            // page with it when the two don't fit, even if the line holds only a break: the
-            // object is drawn there, above it, instead of past the page's foot.
-            let pushed = fit.l1 == 0 && l.top > 0.01;
+            // A paragraph's first line pushed down by its own top-and-bottom object goes to the
+            // next page with it when the two don't fit, even if the line holds only a break: the
+            // object is drawn there, above it, instead of past the page's foot. A line pushed down
+            // by an earlier paragraph's object has nothing to move with and stays as before.
+            let pushed =
+                fit.l1 == 0 && l.top > 0.01 && self.p.objects.iter().any(|o| floating(o).is_some_and(|(_, _, f)| f.wrap == Wrap::TopAndBottom));
             if over && fit.l1 == l0 && !pb.fresh() && !split && (pushed || !self.stays_at_bottom(pb, l)) {
                 break;
             }
