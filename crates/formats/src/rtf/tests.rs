@@ -1859,6 +1859,7 @@ mod nested_tables;
 mod note_options;
 mod note_position;
 mod note_separators;
+mod note_story_paras;
 mod object_result;
 mod own_styles;
 mod page_borders;
