@@ -4,7 +4,9 @@ use super::{Arc, Block, Blocks, Cell, Document, FBlock, Flow, HashMap, InlineObj
 
 /// Parse RTF bytes into the flow model.
 pub fn parse(bytes: &[u8]) -> Result<Flow, String> {
-    parse_with_page(bytes).map(|(f, _, _)| f)
+    let mut flow = parse_with_page(bytes)?.0;
+    super::frames::settle_flow(&mut flow.blocks, 0);
+    Ok(flow)
 }
 
 /// The flow, the page, and the default font (`\deff`, font 0 when the file names none), which
@@ -578,6 +580,8 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     }
     set_section_revisions(&mut doc);
     place_notes_and_comments(&mut doc, notes, comments);
+    // A drop cap's letter paragraph joins the paragraph it starts.
+    super::frames::merge_drop_caps(&mut doc);
     // RTF's paragraph defaults are single spacing and no space around paragraphs; what a file
     // wants beyond that it states on each paragraph.
     let dp = &mut Arc::make_mut(&mut doc.styles).default_para;
