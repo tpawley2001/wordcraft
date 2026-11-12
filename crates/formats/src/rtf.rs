@@ -41,6 +41,7 @@ mod date;
 mod export;
 mod form_field;
 mod frames;
+mod latent_styles;
 mod note_marks;
 mod parse;
 mod reader;

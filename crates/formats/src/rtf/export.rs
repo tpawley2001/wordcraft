@@ -1951,6 +1951,9 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     out.push_str("{\\s7\\sbasedon0\\snext0\\fs56 Title;}{\\s8\\sbasedon0\\snext0\\li720\\ri720\\i Quote;}{\\s9\\sbasedon0\\snext9\\sa0\\fs20 Code;}");
     out.push_str(own_styles);
     out.push_str("}\n");
+    if let Some(xml) = doc.styles.latent_styles.as_deref() {
+        out.push_str(&super::latent_styles::group(xml));
+    }
     if !w.lists.is_empty() {
         out.push_str("{\\*\\listtable");
         for (i, kinds) in w.lists.iter().enumerate() {

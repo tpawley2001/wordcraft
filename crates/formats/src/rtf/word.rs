@@ -416,6 +416,11 @@ impl Reader {
             "propname" if self.st.dest == Dest::UserProps => Some(Dest::Info(8)),
             "staticval" if self.st.dest == Dest::UserProps => Some(Dest::Info(9)),
             "linkval" if self.st.dest == Dest::UserProps => Some(Dest::Info(10)),
+            "latentstyles" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => {
+                self.latent.begin();
+                Some(Dest::LatentStyles)
+            }
+            "lsdlockedexcept" if self.st.dest == Dest::LatentStyles => Some(Dest::LsdExcept),
             "listtable" => Some(Dest::ListTable),
             "revtbl" => Some(Dest::RevTbl),
             "oldcprops" => Some(Dest::OldProps(false)),
@@ -544,6 +549,15 @@ impl Reader {
             Dest::ShapeInst | Dest::ShapeName | Dest::ShapeValue => true,
             Dest::Skip | Dest::Object => {
                 self.record_date_part(word, value);
+                true
+            }
+            Dest::LatentStyles => {
+                self.latent.table_word(word, param);
+                true
+            }
+            // Exception names take Unicode escapes like the body.
+            Dest::LsdExcept if !matches!(word, "u" | "uc") => {
+                self.latent.exception_word(word, param);
                 true
             }
             Dest::UserProps => {
@@ -695,6 +709,8 @@ impl Reader {
                 false
             }
             Dest::OldProps(true) | Dest::Body => false,
+            // `\u` and `\uc` in a latent-style exception name, read as in the body.
+            Dest::LsdExcept => false,
         }
     }
 
