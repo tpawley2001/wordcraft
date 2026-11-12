@@ -200,7 +200,7 @@ pub(crate) fn kept_rows_room(
         std::mem::take(&mut ctx.boxes),
         std::mem::take(&mut ctx.chains),
         ctx.fields.clone(),
-        ctx.grid.clone(),
+        ctx.grid,
         ctx.track_totals,
     );
     let tl = again(ctx, ctx.eq_count, |ctx| table::layout_table(ctx, StoryRef::Body, t, &[block as u32], width, 1));
