@@ -1,5 +1,6 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-12 · **Change:** trivial (Update Field, print and PDF on a REF inside the bookmark it names show Word's error (Error! Not a valid bookmark self-reference.), and a REF, PAGEREF or NOTEREF that names no bookmark shows Error! No bookmark name given., instead of the old result. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (P0309: a Paste link that fails leaves the source document unchanged; Paste link over the copied text is refused. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (Define New Number Format has Font…: the number's own font, bold, italic and colour; the preview shows bold, italic and colour; the dialog is in the translation audit. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (Paste Special has Paste link for text copied from a saved WordCraft document: a LINK field to an `OLE_LINKn` bookmark in the source; links are not updated from the source yet. Readiness estimates unchanged.)
@@ -558,3 +559,4 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 | 2026-11-11 | trivial | P0273: Update Field on a REF, PAGEREF or NOTEREF whose bookmark is gone shows Word's error text (Error! Reference source not found. / Error! Bookmark not defined.) instead of the old result |
 | 2026-11-11 | trivial | P0264: Borders and Shading › Borders has Options… with a paragraph border's From text distances (Top, Bottom, Left, Right, 0 to 31 pt; new borders 1, 1, 4, 4); a change to colour, style or width keeps the paragraph's distances; `para.borders` `sides` take `space`. Readiness estimates unchanged. |
 | 2026-11-11 | trivial | P0309: a Paste link that fails leaves the source document as it was (no bookmark, undo step or changed flag) and the copy still paste-links; Paste link over a selection sharing text with the copied range is refused |
+| 2026-11-12 | trivial | Update Field, print and PDF on a REF inside the bookmark it names show Word's error (Error! Not a valid bookmark self-reference.), and a REF, PAGEREF or NOTEREF that names no bookmark shows Error! No bookmark name given., instead of the old result |

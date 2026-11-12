@@ -127,11 +127,11 @@ fn a_name_given_a_value_by_set_is_not_missing() {
 }
 
 #[test]
-fn a_field_without_a_bookmark_name_keeps_its_result() {
+fn a_field_without_a_bookmark_name_says_no_bookmark_name_given() {
     let mut s = session();
     insert(&mut s, &["REF", r"REF \h", "PAGEREF", r"PAGEREF \h", "NOTEREF"]);
     update(&mut s);
-    assert_eq!(results(&s, StoryRef::Body), ["stale"; 5]);
+    assert_eq!(results(&s, StoryRef::Body), ["Error! No bookmark name given."; 5]);
 }
 
 #[test]
