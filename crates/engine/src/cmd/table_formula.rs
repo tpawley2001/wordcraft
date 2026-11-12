@@ -1101,6 +1101,21 @@ fn call(name: &str, args: &[Expr], here: &Here) -> Result<f64, CmdError> {
     }
 }
 
+/// The bookmark names the Formula dialog's Paste bookmark list offers: the body's bookmarks sorted
+/// by name ignoring case, each name once (the first in document order, the one a formula reads),
+/// without the hidden ones (a name starting with `_`).
+pub fn paste_bookmark_names(doc: &wordcraft_doc::Document) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for (name, _) in doc.bookmarks() {
+        if name.is_empty() || name.starts_with('_') || names.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+            continue;
+        }
+        names.push(name);
+    }
+    names.sort_by_key(|n| n.to_lowercase());
+    names
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

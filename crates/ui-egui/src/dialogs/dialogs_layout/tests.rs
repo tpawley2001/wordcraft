@@ -309,6 +309,40 @@ fn table_formula_opens_its_dialog() {
     assert!(a.dialog.is_none(), "no dialog outside a table");
 }
 
+/// Paste bookmark offers the document's bookmarks sorted by name, without the hidden ones.
+#[test]
+fn formula_form_lists_the_documents_bookmarks() {
+    let mut a = table_app(2, &["Tea", "3", "Jam", "4"]);
+    // Inserted directly: `insert.bookmark` refuses a hidden name like `_Toc1`.
+    let at = a.session.sel.focus.clone();
+    let props = wordcraft_doc::CharProps::default();
+    for name in ["Zeta", "alpha", "_Toc1"] {
+        a.session.doc.insert_object(&at, wordcraft_doc::InlineObject::BookmarkEnd { name: name.into() }, &props).unwrap();
+        a.session.doc.insert_object(&at, wordcraft_doc::InlineObject::BookmarkStart { name: name.into() }, &props).unwrap();
+    }
+    assert!(a.session.sel.focus.path.cell().is_some(), "caret in a cell");
+    assert_eq!(FormulaForm::read(&a).unwrap().bookmarks, ["alpha", "Zeta"]);
+}
+
+/// Paste bookmark puts the name, as it is, at the end of the formula.
+#[test]
+fn formula_paste_bookmark_appends_the_name() {
+    let a = table_app(2, &["Tea", "3", "Jam", "4"]);
+    let mut f = FormulaForm::read(&a).unwrap();
+    f.formula = "=".into();
+    f.paste_bookmark("Net_Total");
+    f.formula.push_str("*2");
+    assert_eq!(f.formula, "=Net_Total*2");
+    assert_eq!(f.params(), json!({"formula": "=Net_Total*2"}));
+}
+
+/// With no bookmarks in the document, Paste bookmark has nothing to offer (and is greyed out).
+#[test]
+fn formula_form_has_no_bookmarks_in_a_document_without_any() {
+    let a = table_app(2, &["Tea", "3", "Jam", "4"]);
+    assert!(FormulaForm::read(&a).unwrap().bookmarks.is_empty());
+}
+
 fn first_column(a: &WordApp) -> Vec<String> {
     let t = a.session.doc.body.iter().find_map(|b| b.as_table()).unwrap();
     t.rows.iter().map(|r| r.cells[0].blocks.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect()).collect()
