@@ -447,7 +447,10 @@ fn changed(doc: &wordcraft_doc::Document, mut results: Vec<FieldResult>) -> Vec<
 /// out for output, Word fills in the body's unlocked LISTNUM, SEQ, STYLEREF and REF fields, even with
 /// "Update fields before printing" off, while NUMWORDS, FILENAME, the summary properties and
 /// formulas keep their stored results (measured with Word for Windows, printing and exporting
-/// fields whose stored results were wrong). The document itself keeps its stored results.
+/// fields whose stored results were wrong). In headers and footers, the summary properties
+/// (TITLE, AUTHOR ...), LASTSAVEDBY, DATE, TIME and a QUOTE of one quoted text show their current
+/// values too, while the same fields in the body and in notes keep theirs (measured with
+/// Microsoft 365 Word's PDF export). The document itself keeps its stored results.
 /// `None` when every such field already shows its fresh result, so nothing is copied then.
 pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Document> {
     // Numbers first, then the fields that read them: a STYLEREF to a heading holding a SEQ field,
@@ -465,7 +468,65 @@ pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Doc
     if !refs.is_empty() {
         apply_results(out.get_or_insert_with(|| doc.clone()), refs).ok()?;
     }
+    let parts = changed(out.as_ref().unwrap_or(doc), header_footer_results(out.as_ref().unwrap_or(doc)));
+    if !parts.is_empty() {
+        apply_results(out.get_or_insert_with(|| doc.clone()), parts).ok()?;
+    }
     out
+}
+
+/// The fresh results output shows for the unlocked fields in every header and footer (each
+/// section's default, first-page and even-page ones, table cells included): the summary
+/// properties and LASTSAVEDBY, DATE and TIME, and a QUOTE of one quoted text, each as Update
+/// Field in that header would store it (Word's PDF export shows them current, measured with
+/// Microsoft 365 Word). A summary property field that gives the property a new value keeps its
+/// result: output never changes a property. Every other field keeps what it shows.
+fn header_footer_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
+    use wordcraft_doc::PartKind;
+    let mut out = Vec::new();
+    for (id, part) in &doc.parts {
+        if !matches!(part.kind, PartKind::Header | PartKind::Footer) {
+            continue;
+        }
+        let story = StoryRef::Part(*id);
+        for path in doc.para_paths(story) {
+            let Some(p) = doc.para(story, &path) else { continue };
+            for (k, o) in p.objects.iter().enumerate() {
+                let InlineObject::Field { instr, locked: false, .. } = o else { continue };
+                let name = wordcraft_layout::fields::field_name(instr);
+                let fresh = match name.as_str() {
+                    "TITLE" | "SUBJECT" | "AUTHOR" | "KEYWORDS" | "COMMENTS" if new_property_value(instr).is_none() => {
+                        Some(text_result(instr, summary_property(&doc.core, &name).to_string()))
+                    }
+                    "LASTSAVEDBY" => Some(text_result(instr, doc.core.last_modified_by.clone())),
+                    "DATE" | "TIME" => {
+                        let lang = field_lang(doc, p, k);
+                        let pic = date_picture(instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
+                        Some(text_result(instr, crate::cmd::insert::format_date_in(&pic, lang.as_deref())))
+                    }
+                    "QUOTE" => quote_literal(instr).map(|text| text_result(instr, text)),
+                    _ => None,
+                };
+                out.extend(fresh.map(|r| (story, path.clone(), k, r)));
+            }
+        }
+    }
+    out
+}
+
+/// The text of a `QUOTE "text"` field: exactly one quoted argument and no switch but `\*`.
+/// `None` for any other form (unquoted words, several arguments, picture switches).
+fn quote_literal(instr: &str) -> Option<String> {
+    let f = FieldCode::parse(instr);
+    if f.name != "QUOTE" || f.switches.iter().any(|(c, _)| *c != '*') {
+        return None;
+    }
+    let [text] = f.args.as_slice() else { return None };
+    let words = super::field_words(instr);
+    match words.get(1) {
+        Some((w, true)) if w == text => Some(text.clone()),
+        _ => None,
+    }
 }
 
 /// Whether `instr` has the one-letter switch `\sw`, also run together with another (`\p\h`).
@@ -995,5 +1056,123 @@ mod listnum_tests {
             let mut count = ListNumCount::default();
             assert_eq!(count.result(&FieldCode::parse(instr), None), want, "{instr}");
         }
+    }
+}
+
+#[cfg(test)]
+mod header_footer_output_tests {
+    use super::*;
+    use std::sync::Arc;
+    use wordcraft_doc::{Document, PartKind};
+
+    fn field(instr: &str, result: &str) -> InlineObject {
+        InlineObject::Field { instr: instr.into(), result: result.into(), locked: false, dirty: false, code: false, form: String::new() }
+    }
+
+    fn para_with(fields: &[(&str, &str)]) -> Paragraph {
+        let mut p = Paragraph::new();
+        for (instr, result) in fields {
+            let off = p.len();
+            p.insert_object(off, field(instr, result), &CharProps::default()).unwrap();
+        }
+        p
+    }
+
+    fn doc() -> Document {
+        let mut doc = Document::from_text("Body");
+        doc.core.title = "Ada Notes".into();
+        doc.core.creator = "Grace".into();
+        doc.core.last_modified_by = "Linus".into();
+        doc
+    }
+
+    /// The results output shows for `fields`, each stored as `stale`, in one header paragraph.
+    fn shown(doc: &mut Document, fields: &[&str]) -> Vec<String> {
+        let pairs: Vec<(&str, &str)> = fields.iter().map(|f| (*f, "stale")).collect();
+        let id = doc.add_part(PartKind::Header, vec![Arc::new(Block::Para(para_with(&pairs)))]);
+        let story = StoryRef::Part(id);
+        let out = output_fields(doc).unwrap_or_else(|| doc.clone());
+        out.para_paths(story)
+            .iter()
+            .flat_map(|path| out.para(story, path).unwrap().objects.clone())
+            .filter_map(|o| match o {
+                InlineObject::Field { result, .. } => Some(result),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn lastsavedby_and_summary_properties_with_case_switches() {
+        let mut d = doc();
+        assert_eq!(
+            shown(&mut d, &["LASTSAVEDBY", r"TITLE \* Upper", r"AUTHOR \* Lower", r"title \* FirstCap", "SUBJECT"]),
+            ["Linus", "ADA NOTES", "grace", "Ada Notes", ""]
+        );
+    }
+
+    /// A summary property field that gives a new value keeps its result, and the property stays.
+    #[test]
+    fn property_with_a_new_value_keeps_its_result() {
+        let mut d = doc();
+        assert_eq!(shown(&mut d, &[r#"TITLE "Other""#, "TITLE"]), ["stale", "Ada Notes"]);
+        assert_eq!(d.core.title, "Ada Notes");
+    }
+
+    #[test]
+    fn quote_forms() {
+        let mut d = doc();
+        assert_eq!(
+            shown(
+                &mut d,
+                &[
+                    r#"QUOTE "fresh text""#,
+                    r#"quote "Mixed" \* Upper"#,
+                    r#"QUOTE """#,
+                    "QUOTE fresh",
+                    r#"QUOTE "a" "b""#,
+                    r#"QUOTE "2024" \# "0""#,
+                    r#"QUOTE "1/2/2024" \@ "yyyy""#,
+                    "QUOTE",
+                ]
+            ),
+            ["fresh text", "MIXED", "", "stale", "stale", "stale", "stale", "stale"]
+        );
+    }
+
+    #[test]
+    fn other_fields_keep_their_results() {
+        let mut d = doc();
+        assert!(output_fields(&d).is_none());
+        let id = d.add_part(PartKind::Footer, vec![Arc::new(Block::Para(para_with(&[("FILENAME", "old.docx"), ("NUMWORDS", "9")])))]);
+        assert!(output_fields(&d).is_none(), "FILENAME and NUMWORDS keep their results in part {id}");
+    }
+
+    #[test]
+    fn field_in_a_header_table_cell() {
+        let mut d = doc();
+        let mut t = wordcraft_doc::Table::new(1, 2, 200.0);
+        t.rows[0].cells[1].blocks = vec![Arc::new(Block::Para(para_with(&[("TITLE", "stale")])))];
+        let id = d.add_part(PartKind::Footer, vec![Arc::new(Block::Table(t))]);
+        let story = StoryRef::Part(id);
+        let out = output_fields(&d).expect("the cell's field changes");
+        let results: Vec<String> = out
+            .para_paths(story)
+            .iter()
+            .flat_map(|p| out.para(story, p).unwrap().objects.clone())
+            .filter_map(|o| match o {
+                InlineObject::Field { result, .. } => Some(result),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(results, ["Ada Notes"]);
+    }
+
+    #[test]
+    fn quote_literal_parses_only_the_plain_form() {
+        assert_eq!(quote_literal(r#"QUOTE "x \"y\"""#).as_deref(), Some(r#"x "y""#));
+        assert_eq!(quote_literal(r#"QUOTE "x" \* MERGEFORMAT"#).as_deref(), Some("x"));
+        assert_eq!(quote_literal(r#"QUOTE \* Upper "x""#), None);
+        assert_eq!(quote_literal(r#"TITLE "x""#), None);
     }
 }
