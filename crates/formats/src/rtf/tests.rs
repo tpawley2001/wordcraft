@@ -1872,6 +1872,7 @@ mod para_spacing_hidden;
 mod percent_shading;
 mod picture_crop;
 mod row_cell_padding;
+mod script_fonts;
 mod section_extras;
 mod section_revisions;
 mod section_text_flow;

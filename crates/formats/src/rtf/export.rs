@@ -1154,10 +1154,11 @@ impl Writer {
         if let Some(n) = f.extra.as_ref().and_then(|x| x.style.as_deref()).and_then(own_style_num) {
             ctl.push_str(&format!("\\cs{n}"));
         }
-        if f.bold {
+        let rtl = self.script_ctl(f, &mut ctl);
+        if f.bold && !rtl {
             ctl.push_str("\\b");
         }
-        if f.italic {
+        if f.italic && !rtl {
             ctl.push_str("\\i");
         }
         if let Some(w) = underline_word(f) {
@@ -1175,15 +1176,8 @@ impl Writer {
         } else if f.sub {
             ctl.push_str("\\sub");
         }
-        if f.code {
-            let i = self.t.font(model::MONO_FONT);
-            ctl.push_str(&format!("\\f{i}"));
-        } else if let Some(fam) = &f.font {
-            let i = self.t.font(fam);
-            ctl.push_str(&format!("\\f{i}"));
-        }
-        if let Some(s) = f.size {
-            ctl.push_str(&format!("\\fs{}", (s * 2.0).round().clamp(2.0, 3276.0) as i32));
+        if !rtl {
+            self.font_size_words(f.code, f.font.as_deref(), f.size, "", &mut ctl);
         }
         let color = f.color.or(if f.link.is_some() { Some(Rgb(0x05, 0x63, 0xC1)) } else { None });
         if let Some(c) = color {
@@ -1247,6 +1241,68 @@ impl Writer {
             ctl.push_str("\\v");
         }
         ctl
+    }
+
+    /// The run direction and per-script font words of `f` (RTF 1.9.1, "Associated Character
+    /// Properties"), written only for a run that has a direction or such a font, size, bold or
+    /// italic. Word takes the font, size, bold and italic words after `\rtlch` as the
+    /// complex-script formatting and those after `\ltrch` as the ordinary formatting, and the last
+    /// of the two as the run's direction; the font word after `\dbch` names the East Asian font.
+    /// True for a right-to-left run, whose ordinary font, size, bold and italic are written here.
+    fn script_ctl(&mut self, f: &Fmt, ctl: &mut String) -> bool {
+        let Some(x) = f.extra.as_deref() else { return false };
+        let rtl = x.rtl == Some(true);
+        let any = x.font_cs.is_some() || x.size_cs.is_some() || x.bold_cs.is_some() || x.italic_cs.is_some() || x.font_ea.is_some();
+        if !rtl && !any {
+            return false;
+        }
+        let mut cs = String::new();
+        self.font_size_words(false, x.font_cs.as_deref(), x.size_cs, if rtl { "" } else { "a" }, &mut cs);
+        let (b, i) = if rtl { ("\\b", "\\i") } else { ("\\ab", "\\ai") };
+        for (v, w) in [(x.bold_cs, b), (x.italic_cs, i)] {
+            match v {
+                Some(true) => cs.push_str(w),
+                Some(false) => cs.push_str(&format!("{w}0")),
+                None => {}
+            }
+        }
+        let mut ea = String::new();
+        if let Some(n) = x.font_ea.as_deref() {
+            let i = self.t.font(n);
+            ea = format!("\\dbch\\af{i}");
+        }
+        if rtl {
+            ctl.push_str("\\ltrch\\fcs0 ");
+            ctl.push_str(&ea);
+            self.font_size_words(f.code, f.font.as_deref(), f.size, "a", ctl);
+            if f.bold {
+                ctl.push_str("\\ab");
+            }
+            if f.italic {
+                ctl.push_str("\\ai");
+            }
+            ctl.push_str(" \\rtlch\\fcs1 ");
+            ctl.push_str(&cs);
+        } else {
+            ctl.push_str("\\rtlch\\fcs1 ");
+            ctl.push_str(&cs);
+            ctl.push_str(" \\ltrch\\fcs0 ");
+            ctl.push_str(&ea);
+        }
+        rtl
+    }
+
+    /// `\fN` and `\fsN` (`\afN`, `\afsN` with `prefix` "a") for a font (the monospaced one
+    /// when `code`) and size in points.
+    fn font_size_words(&mut self, code: bool, font: Option<&str>, size: Option<f32>, prefix: &str, ctl: &mut String) {
+        let font = if code { Some(model::MONO_FONT) } else { font };
+        if let Some(fam) = font {
+            let i = self.t.font(fam);
+            ctl.push_str(&format!("\\{prefix}f{i}"));
+        }
+        if let Some(s) = size.filter(|s| s.is_finite()) {
+            ctl.push_str(&format!("\\{prefix}fs{}", (s * 2.0).round().clamp(2.0, 3276.0) as i32));
+        }
     }
 
     fn picture(&mut self, img: &model::Img, out: &mut String) {

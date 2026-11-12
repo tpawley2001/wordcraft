@@ -1,5 +1,6 @@
 # File-format parity with Microsoft Word
 
+> **Last updated:** 2026-11-11 · **Change:** trivial (RTF keeps a run's direction, complex-script font, size, bold and italic, and East Asian font on open and save. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (RTF reads and writes the attached template, `{\*\template …}`, and Track moves off, `\trackmoves0`. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (RTF: percent shading patterns (10 % to 95 %) on paragraphs, text and table cells are read as the colour they average to, as Word draws them. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-11 · **Change:** trivial (RTF: automatic space between Asian and Latin text or numbers, `\aspalpha` and `\aspnum`, is on only where the paragraph says, read and written, as in Word. Readiness estimates unchanged.)
@@ -516,6 +517,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-11 | trivial | RTF reads and writes a run's direction (`\rtlch`/`\ltrch`, the last one before the text), its complex-script font, size, bold and italic (the words after `\rtlch`, with or without the `a` prefix: `\af`, `\afs`, `\ab`, `\ai`) and its East Asian font (the font word after `\dbch`), as Word reads them |
 | 2026-11-11 | trivial | P0310: RTF: a paragraph with tab stops keeps its widow control (`\widctlpar`/`\nowidctlpar`) and character-unit indents (`\cufi`, `\culi`, `\curi`) on open |
 | 2026-11-11 | trivial | P0302: Update Field: a `DOCPROPERTY` field naming a property that doesn't exist shows Word's `Error! Unknown document property name.` instead of keeping its stale result (not re-capitalized by `\*` switches); Word's built-in names WordCraft cannot compute yet keep their stored result (`tests/it/docproperty_unknown.rs`) |
 | 2026-11-10 | trivial | P0188: RTF reads document widow and orphan control (`\widowctrl`): without it every paragraph that doesn't set `\widctlpar`/`\nowidctlpar` gets widow control off, in every story; the writer always writes `\widowctrl`, as Word does |

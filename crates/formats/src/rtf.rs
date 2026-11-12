@@ -78,6 +78,8 @@ mod info_edges;
 #[cfg(test)]
 mod own_style_edges;
 #[cfg(test)]
+mod script_font_edges;
+#[cfg(test)]
 mod shape_regressions;
 mod shapes;
 #[cfg(test)]
