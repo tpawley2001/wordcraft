@@ -58,6 +58,8 @@ const P_DYA_AFTER: u16 = 0xA414;
 // Automatic (HTML) space before/after, Bool8 (sprmPFDyaBeforeAuto, sprmPFDyaAfterAuto).
 const P_F_DYA_BEFORE_AUTO: u16 = 0x245B;
 const P_F_DYA_AFTER_AUTO: u16 = 0x245C;
+// Widow and orphan control, Bool8 (sprmPFWidowControl; `w:widowControl`).
+const P_F_WIDOW_CONTROL: u16 = 0x2431;
 const P_DYA_LINE: u16 = 0x6412;
 const P_KEEP: u16 = 0x2405; // keep lines together
 const P_KEEP_FOLLOW: u16 = 0x2406; // keep with next
@@ -542,6 +544,12 @@ pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
                 }
             }
         }
+        // Absent, the paragraph keeps the default (on); an explicit 0 turns it off.
+        P_F_WIDOW_CONTROL => {
+            if let Some(&b) = prl.operand.first() {
+                p.widow_control = Some(b != 0);
+            }
+        }
         // LSPD ([MS-DOC] §2.9.150): a signed dyaLine, then fMultLinespace. In lines (240ths) when
         // fMultLinespace is 1; else twips, at least when positive and exactly when negative.
         P_DYA_LINE => {
@@ -992,5 +1000,17 @@ mod style_list_indent_tests {
         let (left, first) = indents(&d);
         assert!((left - 56.7).abs() < 0.01, "left: {left}");
         assert!((first + 85.05).abs() < 0.01, "first line stays the level's: {first}");
+    }
+}
+
+#[cfg(test)]
+mod widow_control_operand {
+    use super::*;
+
+    #[test]
+    fn an_empty_widow_control_operand_sets_nothing() {
+        let mut p = ParaProps::default();
+        apply_para(&mut p, &Prl { op: P_F_WIDOW_CONTROL, operand: &[] });
+        assert_eq!(p.widow_control, None);
     }
 }
