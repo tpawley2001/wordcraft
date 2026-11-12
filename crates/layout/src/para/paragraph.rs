@@ -816,7 +816,9 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     // So is one whose mark is hidden and whose text is empty or hidden too: Word shows nothing of
     // it, not even its list number, though the number is counted (#3982).
     let mark_left_out = env.hide_deleted.hides(doc, mark_rc.del) || (mark_rc.hidden && !env.show_hidden);
-    let gone = mark_left_out && (p.text.is_empty() || left.first() == Some(&(0..p.text.len())));
+    // Zero-width markers (bookmarks, comment and permission ranges) don't count: a deleted
+    // heading keeps its bookmark, and takes no room all the same.
+    let gone = mark_left_out && nothing_shown(p, &left);
     pl.left_out = left;
     keep_graphemes_whole(&mut pl);
     break_lines(&mut pl, env, mark_style, env.label.as_ref().map(|(_, l)| l));
@@ -824,6 +826,43 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         collapse(&mut pl);
     }
     pl
+}
+
+/// Whether nothing of `p` is shown but zero-width markers: every character is in a range of
+/// `left` (sorted, apart) or is a bookmark, comment or permission range mark.
+fn nothing_shown(p: &Paragraph, left: &[std::ops::Range<usize>]) -> bool {
+    let mut ranges = left.iter().peekable();
+    let mut obj = 0usize;
+    for (i, c) in p.text.char_indices() {
+        let o = if c == OBJ {
+            let o = p.objects.get(obj);
+            obj = obj.saturating_add(1);
+            o
+        } else {
+            None
+        };
+        while ranges.peek().is_some_and(|r| r.end <= i) {
+            ranges.next();
+        }
+        if ranges.peek().is_some_and(|r| r.start <= i) {
+            continue;
+        }
+        let marker = o.is_some_and(|o| {
+            matches!(
+                o,
+                InlineObject::BookmarkStart { .. }
+                    | InlineObject::BookmarkEnd { .. }
+                    | InlineObject::CommentStart { .. }
+                    | InlineObject::CommentEnd { .. }
+                    | InlineObject::PermStart { .. }
+                    | InlineObject::PermEnd { .. }
+            )
+        });
+        if !marker {
+            return false;
+        }
+    }
+    true
 }
 
 /// Neither ordinary nor hyphenated wrapping may split a drawing group inside a grapheme.

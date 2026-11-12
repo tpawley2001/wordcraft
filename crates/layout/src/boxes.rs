@@ -265,7 +265,9 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
             Block::Para(p) => {
                 let label = ctx.next_label(p);
                 let list = label.as_ref().and_then(|_| ctx.label_num(p));
-                let mut pl = ctx.para_labelled(p, width, table, &[], label.clone());
+                let end_mark = (in_cell && i + 1 == blocks.len()).then(|| cell_end_mark(ctx, p)).flatten();
+                let laid = end_mark.as_ref().unwrap_or(p);
+                let mut pl = ctx.para_labelled(laid, width, table, &[], label.clone());
                 // The paragraph a cell needs after a table (ECMA-376 Part 1 §17.4.66): when it is
                 // the cell's last block, empty and right after an in-flow nested table, Word gives
                 // it no room at all, whatever its mark, spacing or borders (measured in Word's
@@ -282,7 +284,7 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                 // obstacle for the body text in every mode (`frame_wraps`).
                 if let Some(fr) = pl.rp.frame.clone().filter(|_| frames) {
                     let fw = fr.w.unwrap_or_else(|| natural_width(&pl)).clamp(1.0, 1584.0);
-                    let pf = if (fw - width).abs() > 0.01 { ctx.para_labelled(p, fw, table, &[], label) } else { pl };
+                    let pf = if (fw - width).abs() > 0.01 { ctx.para_labelled(laid, fw, table, &[], label) } else { pl };
                     let h = match fr.h {
                         Some(h) if fr.h_exact => h,
                         Some(h) => h.max(pf.height),
@@ -496,6 +498,25 @@ pub(crate) fn closes_nested_table(blocks: &Blocks, i: usize, p: &Paragraph) -> b
 /// (`closes_nested_table`, and no list label), place it at `y` taking no room: its lines are
 /// flattened to zero height (so the caret and hit testing still find it), with no shading or
 /// borders. Returns whether it did.
+/// A table cell's last paragraph as laid out when its mark is a deletion the layout leaves out:
+/// the same paragraph with its mark kept, as that mark ends the cell and cannot go. Word lays a
+/// wholly deleted one out as an empty line in the mark's font, so the row keeps that line.
+/// `None` when the mark stays anyway.
+fn cell_end_mark(ctx: &Ctx, p: &Paragraph) -> Option<Paragraph> {
+    use std::hash::{Hash, Hasher};
+    if !ctx.hide_deleted.hides(ctx.doc, p.mark.del) {
+        return None;
+    }
+    let mut q = p.clone();
+    q.mark.del = None;
+    // A layout revision of its own, apart from the document's (a counter) and the paragraph's
+    // own: the cache keeps the two layouts apart.
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (3u8, p.rev).hash(&mut h);
+    q.rev = h.finish() | (1 << 63);
+    Some(q)
+}
+
 fn push_collapsed(
     items: &mut Vec<Placed>,
     (story, path): (StoryRef, &[u32]),

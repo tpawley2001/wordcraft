@@ -109,6 +109,13 @@ impl<'a> Builder<'a> {
 
     /// Style index for a resolved char in `face` (caps-scaled `size` override for small caps).
     pub(super) fn style(&mut self, rc: &Arc<ResolvedChar>, face_override: Option<FaceRef>, small: bool) -> u32 {
+        self.style_with_line(rc, face_override, small, None)
+    }
+
+    /// [`Self::style`] for characters drawn from `line_font` rather than the run's font: East
+    /// Asian characters in the run's East Asian font. When `line_font` is missing and Word has a
+    /// line for it (SimSun), the style takes that line instead of the substitute's.
+    fn style_with_line(&mut self, rc: &Arc<ResolvedChar>, face_override: Option<FaceRef>, small: bool, line_font: Option<&str>) -> u32 {
         let r = wordcraft_fonts::word::resolve(lookup_family(self.env.doc, &rc.font), rc.bold, rc.italic);
         let face = face_override.unwrap_or(r.face);
         // The display list reads every run's format (link target, strike kind, underline colour,
@@ -119,9 +126,10 @@ impl<'a> Builder<'a> {
             use std::hash::{Hash, Hasher};
             let mut h = std::collections::hash_map::DefaultHasher::new();
             (face.id(), small, &rc.font, rc.size.to_bits(), rc.bold, rc.italic, rc.color, rc.highlight, rc.shading).hash(&mut h);
-            (rc.underline_color, rc.strike, rc.double_strike, &rc.link, rc.ins, rc.del, rc.hidden).hash(&mut h);
+            (rc.underline_color, rc.strike, rc.double_strike, &rc.link, rc.ins, rc.del, rc.hidden, line_font).hash(&mut h);
             h.finish()
         };
+        // `line_font` is in the key: CJK text measured with its East Asian font keeps its own style.
         let bucket = self.style_index.entry(key).or_default();
         // Formats that never compare equal (a NaN from a hostile file) get their own styles; a capped
         // scan keeps such a bucket from turning quadratic.
@@ -154,7 +162,10 @@ impl<'a> Builder<'a> {
         } else if ext_2pt {
             None
         } else {
-            wordcraft_fonts::word::missing_font_line_leading(&rc.font, &r, leading)
+            // East Asian characters drawn from a missing East Asian font take that font's line.
+            line_font
+                .and_then(|f| wordcraft_fonts::word::missing_font_line_leading(f, &wordcraft_fonts::word::resolve(f, rc.bold, rc.italic), leading))
+                .or_else(|| wordcraft_fonts::word::missing_font_line_leading(&rc.font, &r, leading))
         };
         let (ascent, descent) = match line {
             Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
@@ -355,7 +366,9 @@ impl<'a> Builder<'a> {
             };
             let rc = &rc;
             let small = key.small;
-            let si = self.style(rc, key.face, small);
+            // CJK text drawn from the run's missing East Asian font is measured with that font.
+            let line_font = missing.east_asian.filter(|_| !key.complex && sub.chars().any(east_asian));
+            let si = self.style_with_line(rc, key.face, small, line_font);
             let Some(st) = self.styles.get(si as usize).cloned() else { continue };
             let upper = rc.caps || small;
             // All Caps and Small Caps draw a letter's full capital, which can be several
@@ -858,3 +871,7 @@ mod tests {
         assert_eq!(non_finite_widths("Univers", 12.0), 0);
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/missing_font_simsun.rs"]
+mod missing_font_simsun;
