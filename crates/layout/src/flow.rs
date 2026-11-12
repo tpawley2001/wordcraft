@@ -533,17 +533,6 @@ impl<'a> Flow<'a> {
         true
     }
 
-    /// Whether `l0..l1` is the paragraph mark split from the page break before it
-    /// (`splitPgBreakAndParaMark` below compatibility mode 15): its last line, nothing but markers.
-    fn split_mark(&self, settings: &wordcraft_doc::Settings, l0: usize, l1: usize) -> bool {
-        settings.split_pg_break_and_para_mark
-            && settings.compat_mode < 15
-            && l1 == self.n()
-            && l0.checked_add(1) == Some(l1)
-            && l0.checked_sub(1).and_then(|k| self.pl.lines.get(k)).is_some_and(|b| b.end == LineEnd::PageBreak)
-            && self.pl.lines.get(l0).is_some_and(|m| only_markers(self.p, m.start..m.stop))
-    }
-
     /// The end of the lines on this page after widow/orphan control, and keeping the rows beside
     /// floating objects together.
     fn settled_end(&self, pb: &PageBuilder, fit: &Fit) -> usize {
@@ -644,10 +633,7 @@ impl<'a> Flow<'a> {
         items.extend(line_numbers(ctx, pb, &self.pl, (l0, l1), y));
         add_items(pb, behind, items);
         if let (Some(f), Some(l)) = (self.pl.lines.get(l0), self.pl.lines.get(l1 - 1)) {
-            // The mark split from its page break takes one line of its font (the spacing measured
-            // in Word is the mark's single line).
-            let height = if self.split_mark(&ctx.doc.settings, l0, l1) { l.text_asc + l.text_desc } else { l.height };
-            pb.y = y + (l.top + height - f.top);
+            pb.y = y + (l.top + l.height - f.top);
             pb.content_bottom = pb.content_bottom.max(pb.y);
         }
         self.l0 = l1;

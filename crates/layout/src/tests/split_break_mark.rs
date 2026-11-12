@@ -6,9 +6,12 @@
 //! 20 pt mark, 6 pt before and 12 pt after it starts 41.04 pt down (6 + 23.04 + 12); its own
 //! 12 pt space before adds to the line (25.80); a break followed by text in the same paragraph
 //! starts the page as before; without the option, or in mode 15, the mark stays with the break.
+//! The mark's line has its paragraph's line spacing: 15.84 pt at 1.15 lines, 27.60 at double,
+//! 20.04 at exactly 20 pt and 30.00 at at least 30 pt.
 
 use crate::{Document, LayoutCache, LayoutOptions, Placed, layout};
 use wordcraft_doc::Paragraph;
+use wordcraft_doc::props::LineSpacing;
 
 const BREAK: &str = "\u{000C}";
 
@@ -20,6 +23,7 @@ fn para(text: &str) -> Paragraph {
     let mut p = Paragraph::with_text(text, chr());
     p.props.space_before = Some(0.0);
     p.props.space_after = Some(0.0);
+    p.props.line_spacing = Some(LineSpacing::Multiple(1.0));
     p
 }
 
@@ -85,6 +89,25 @@ fn the_marks_paragraph_spacing_goes_with_it() {
     p.props.space_after = Some(12.0);
     assert_offset(true, 11, vec![p.clone()], 2, 6.0 + line() + 12.0);
     assert_offset(false, 11, vec![p], 2, 0.0);
+}
+
+#[test]
+fn the_mark_line_has_its_paragraphs_line_spacing() {
+    // Word's offsets for the break-only paragraph's own line spacing, 13.80 pt lines (the other
+    // paragraphs stay single): 15.84 at 1.15 lines, 27.60 at double, 20.04 at exactly 20 pt and
+    // 30.00 at at least 30 pt.
+    for (spacing, expected) in [
+        (LineSpacing::Multiple(1.15), line() * 1.15),
+        (LineSpacing::Multiple(2.0), line() * 2.0),
+        (LineSpacing::Exactly(20.0), 20.0),
+        (LineSpacing::AtLeast(30.0), 30.0),
+    ] {
+        let mut p = para(BREAK);
+        p.props.line_spacing = Some(spacing);
+        let (pages, offset) = last_offset(true, 11, vec![p]);
+        assert_eq!(pages, 2, "{spacing:?}");
+        assert!((offset - expected).abs() <= 0.1, "{spacing:?}: {offset} vs {expected}");
+    }
 }
 
 #[test]
