@@ -39,6 +39,7 @@ mod ole_pict_placeholder;
 mod ole_print;
 mod ole_result_objects;
 mod paper_source;
+mod row_edges_grid;
 mod phonetic_guide;
 mod section_columns;
 mod section_line_numbers_grid;
