@@ -1872,6 +1872,7 @@ mod para_extras;
 mod para_outline_borders;
 mod para_shading;
 mod para_spacing_hidden;
+mod para_style_words;
 mod percent_shading;
 mod picture_crop;
 mod row_cell_padding;
