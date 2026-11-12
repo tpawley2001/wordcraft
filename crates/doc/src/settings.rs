@@ -325,6 +325,11 @@ pub struct Settings {
     /// leading; a Courier New line is one em tall. Not saved.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ext_leading_2pt_only: bool,
+    /// `w:noLeading` / `Copts80.fNoExtLeading` (Don't add leading (extra space) between rows of
+    /// text): below compatibility mode 15 Word makes a line as tall as the font's ascent plus
+    /// descent and leaves out its line gap.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_leading: bool,
     /// Keep contextual paragraph spacing inside legacy table cells (`allowSpaceOfSameStyleInTable`).
     /// Word ignores the layout override in compatibility mode 15, but the flag still round-trips.
     pub allow_space_of_same_style_in_table: bool,
@@ -685,6 +690,7 @@ impl Default for Settings {
             rtf_justification: false,
             wrap_trail_spaces: false,
             ext_leading_2pt_only: false,
+            no_leading: false,
             allow_space_of_same_style_in_table: false,
             grid_h: DEFAULT_GRID,
             grid_v: DEFAULT_GRID,

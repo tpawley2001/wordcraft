@@ -39,6 +39,7 @@ mod missing_doc_defaults;
 mod missing_pictures;
 mod nested_block_controls;
 mod nested_txbx;
+mod no_leading;
 mod note_comments;
 mod opentype_features;
 mod passthrough;
