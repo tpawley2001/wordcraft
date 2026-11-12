@@ -61,6 +61,7 @@ mod section_text_direction;
 mod section_valign;
 mod settings_merge;
 mod short_table_grid;
+mod split_break_mark;
 mod strict_drawings;
 mod strict_graphics;
 mod strict_save;

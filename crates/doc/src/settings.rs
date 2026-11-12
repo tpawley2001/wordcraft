@@ -325,6 +325,11 @@ pub struct Settings {
     /// leading; a Courier New line is one em tall. Not saved.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ext_leading_2pt_only: bool,
+    /// `w:splitPgBreakAndParaMark` (set for Word 97-2003 files): below compatibility mode 15 the
+    /// paragraph mark after a page break is an empty line at the top of the new page instead of
+    /// staying on the break's page.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub split_pg_break_and_para_mark: bool,
     /// `w:noLeading` / `Copts80.fNoExtLeading` (Don't add leading (extra space) between rows of
     /// text): below compatibility mode 15 Word makes a line as tall as the font's ascent plus
     /// descent and leaves out its line gap.
@@ -690,6 +695,7 @@ impl Default for Settings {
             rtf_justification: false,
             wrap_trail_spaces: false,
             ext_leading_2pt_only: false,
+            split_pg_break_and_para_mark: false,
             no_leading: false,
             allow_space_of_same_style_in_table: false,
             grid_h: DEFAULT_GRID,

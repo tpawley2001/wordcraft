@@ -55,6 +55,7 @@ mod rtf_justify_squeeze;
 mod rtf_squeeze_any_align;
 mod rtf_wraptrsp_squeeze;
 mod rtl_gutter_vertical;
+mod split_break_mark;
 mod styleref;
 mod styleref_args;
 mod styleref_case;
