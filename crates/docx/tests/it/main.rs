@@ -41,6 +41,7 @@ mod nested_txbx;
 mod note_comments;
 mod opentype_features;
 mod passthrough;
+mod picture_link_forms;
 mod picture_link_tips;
 mod picture_links;
 mod positional_tabs;

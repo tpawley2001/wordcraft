@@ -439,16 +439,12 @@ impl Reader {
                 self.in_date = Some((which, self.depth()));
                 Some(Dest::Skip)
             }
+            "template" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => Some(Dest::Template),
             "userprops" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => Some(Dest::UserProps),
             "propname" if self.st.dest == Dest::UserProps => Some(Dest::Info(8)),
             "staticval" if self.st.dest == Dest::UserProps => Some(Dest::Info(9)),
             "linkval" if self.st.dest == Dest::UserProps => Some(Dest::Info(10)),
-            "docvar" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() && self.st.field.is_none() && self.shapes.is_empty() => {
-                self.info_more.var_parts.clear();
-                Some(Dest::DocVar)
-            }
-            // Anywhere else (a header, note, field or shape) it is not a document variable.
-            "docvar" => Some(Dest::Skip),
+            "docvar" => Some(self.docvar_dest()),
             "latentstyles" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => {
                 self.latent.begin();
                 Some(Dest::LatentStyles)
@@ -711,8 +707,10 @@ impl Reader {
                 }
                 true
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) if !matches!(word, "u" | "uc") => true,
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) => false,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template if !matches!(word, "u" | "uc") => {
+                true
+            }
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template => false,
             Dest::OldProps(false) if matches!(word, "crauth" | "crdate") => {
                 if word == "crauth" {
                     self.st.old_rev.0 = Some(value);
@@ -1015,6 +1013,17 @@ impl Reader {
 
     fn in_info(&self) -> bool {
         self.info_depth.is_some_and(|d| self.depth() > d)
+    }
+
+    /// Where a `{\*\docvar …}` group goes: a document variable in the main document; anywhere
+    /// else (a header, note, field or shape) it is not one and is skipped.
+    fn docvar_dest(&mut self) -> Dest {
+        if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() && self.st.field.is_none() && self.shapes.is_empty() {
+            self.info_more.var_parts.clear();
+            Dest::DocVar
+        } else {
+            Dest::Skip
+        }
     }
 }
 

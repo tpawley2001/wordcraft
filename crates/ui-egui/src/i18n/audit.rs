@@ -767,6 +767,7 @@ fn the_arabic_interface_is_mirrored_and_never_panics() {
         "fieldCode",
         "encryptPassword",
         "defineList",
+        "defineNumber",
         "trackChangesOptions",
         "customizeKeyboard",
         "customizeRibbon",
