@@ -2,7 +2,7 @@ use super::reader::apply_section_word;
 use super::state::{CellDef, Dest, FmtRevSt, FontSlot, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pattern, Pn, PnKind, RevSt, SecFmt, St};
 use super::styles::{StyleDef, StyleEntry, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
-use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline};
+use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline, VertAlign};
 
 impl Reader {
     pub(super) fn word(&mut self, w: &str, p: Option<i32>, starred: bool, first_in_group: bool) {
@@ -1122,8 +1122,42 @@ fn style_line_word(def: &mut StyleDef, w: &str, on: bool, pv: i32) {
         return;
     }
     match w {
-        "chbrdr" => def.border_open = true,
-        "brdrt" | "brdrl" | "brdrb" | "brdrr" | "brdrbtw" | "brdrbar" | "box" => def.border_open = false,
+        "chbrdr" => {
+            def.border_open = true;
+            def.para_side = None;
+        }
+        "brdrt" | "brdrl" | "brdrb" | "brdrr" | "brdrbtw" | "brdrbar" | "box" => {
+            def.border_open = false;
+            def.para_side = match w {
+                "brdrbtw" => Some('h'),
+                "box" => Some('x'),
+                "brdrbar" => Some('v'),
+                _ => w.chars().last(),
+            };
+        }
+        "caps" => def.caps = Some(on),
+        "scaps" => def.small_caps = Some(on),
+        "v" => def.hidden_text = Some(on),
+        "super" => def.vert_align = Some(if on { VertAlign::Superscript } else { VertAlign::Baseline }),
+        "sub" => def.vert_align = Some(if on { VertAlign::Subscript } else { VertAlign::Baseline }),
+        "nosupersub" => def.vert_align = Some(VertAlign::Baseline),
+        "highlight" => def.highlight = Some(pv),
+        "ulc" => def.underline_color = Some(pv),
+        "chcbpat" | "cb" => def.ch_fill = Some(pv),
+        "chcfpat" => def.ch_ink = Some(pv),
+        "chshdng" => def.ch_pct = Some(pv),
+        "cbpat" => def.para_fill = Some(pv),
+        "cfpat" => def.para_ink = Some(pv),
+        "shading" => def.para_pct = Some(pv),
+        "brdrw" if !def.border_open => {
+            let width = (pv as f32 / 20.0).clamp(0.25, 6.0);
+            each_para_side(def, |b, _| b.width = width);
+        }
+        "brdrcf" if !def.border_open => each_para_side(def, |_, c| *c = Some(pv)),
+        "brsp" if !def.border_open => {
+            let space = (pv as f32 / 20.0).clamp(0.0, 31.0);
+            each_para_side(def, |b, _| b.space = space);
+        }
         "brdrw" if def.border_open => {
             if let Some(b) = &mut def.border {
                 b.width = (pv as f32 / 20.0).clamp(0.25, 6.0);
@@ -1142,9 +1176,44 @@ fn style_line_word(def: &mut StyleDef, w: &str, on: bool, pv: i32) {
             if let Some(style) = border_style(w).filter(|_| def.border_open) {
                 def.border = Some(Border { style, ..Border::single(0.5) });
                 def.border_color = None;
+            } else if let Some(style) = border_style(w).filter(|_| def.para_side.is_some()) {
+                // A paragraph side's line: a stated none leaves the side without a border.
+                let b = (style != wordcraft_doc::props::BorderStyle::None).then_some(Border { style, ..Border::single(0.5) });
+                for i in para_side_slots(def.para_side) {
+                    if let Some(slot) = def.para_borders.get_mut(*i) {
+                        *slot = b;
+                    }
+                    if let Some(c) = def.para_border_colors.get_mut(*i) {
+                        *c = None;
+                    }
+                }
             } else if let Some(u) = underline_style(w) {
                 def.underline = Some(if on { u } else { Underline::None });
             }
+        }
+    }
+}
+
+/// The `StyleDef::para_borders` slots (top, left, bottom, right, between) paragraph border
+/// side `side` describes; none for the bar border, which has no model value.
+fn para_side_slots(side: Option<char>) -> &'static [usize] {
+    match side {
+        Some('t') => &[0],
+        Some('l') => &[1],
+        Some('b') => &[2],
+        Some('r') => &[3],
+        Some('h') => &[4],
+        Some('x') => &[0, 1, 2, 3],
+        _ => &[],
+    }
+}
+
+/// Applies `f` to each border (and its colour index) of the paragraph side a style entry's
+/// border words describe, where that side has a border.
+fn each_para_side(def: &mut StyleDef, mut f: impl FnMut(&mut wordcraft_doc::props::Border, &mut Option<i32>)) {
+    for i in para_side_slots(def.para_side) {
+        if let (Some(Some(b)), Some(c)) = (def.para_borders.get_mut(*i), def.para_border_colors.get_mut(*i)) {
+            f(b, c);
         }
     }
 }

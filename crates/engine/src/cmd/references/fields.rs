@@ -1,7 +1,8 @@
 use super::numbers::{body_bookmark_paths, para_numbers, ref_number};
 use super::properties::{
     BodyCounts, bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property_arg,
-    doc_property_names_pages, doc_property_result, new_property_value, set_summary_property, summary_property, text_result,
+    doc_property_names_pages, doc_property_names_text_count, doc_property_result, new_property_value, set_summary_property, summary_property,
+    text_result,
 };
 use super::toc::{heading_style_level, update_toc, update_toc_pages};
 use super::{
@@ -33,6 +34,24 @@ fn doc_property_counts(s: &mut Session, paths: &[(StoryRef, Path)]) -> BodyCount
     let needs_pages = instrs().any(doc_property_names_pages);
     let pages = needs_pages.then(|| s.layout().pages.len());
     BodyCounts::of(&s.doc, pages)
+}
+
+/// Does the paragraph hold an unlocked DOCPROPERTY field naming one of the body's text counts?
+fn paragraph_has_text_count(p: &Paragraph) -> bool {
+    p.objects.iter().any(|o| matches!(o, InlineObject::Field { instr, locked: false, .. } if doc_property_names_text_count(instr)))
+}
+
+/// Update Field takes the body's text counts again before a paragraph that holds a count field.
+fn recount_text(doc: &wordcraft_doc::Document, p: &Paragraph, explicit: bool, counts: &mut BodyCounts) {
+    if explicit && paragraph_has_text_count(p) {
+        *counts = BodyCounts::of(doc, counts.pages);
+    }
+}
+
+/// Is the object a DOCPROPERTY field naming one of the body's text counts that already shows a
+/// result? The refresh after Insert › Field leaves it alone (a new count field has none yet).
+fn shows_text_count(o: &InlineObject) -> bool {
+    matches!(o, InlineObject::Field { instr, result, .. } if !result.is_empty() && doc_property_names_text_count(instr))
 }
 
 /// The `\*` format switch value for a caption's number format (OOXML names work too).
@@ -356,6 +375,12 @@ fn styleref_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
 /// What Word prints for a `REF` to a bookmark the document doesn't have.
 pub const REFERENCE_NOT_FOUND: &str = "Error! Reference source not found.";
 
+/// What Word shows for a `REF` that sits inside the bookmark it names.
+pub const BOOKMARK_SELF_REFERENCE: &str = "Error! Not a valid bookmark self-reference.";
+
+/// What Word shows for a `REF`, `PAGEREF` or `NOTEREF` that names no bookmark.
+pub const NO_BOOKMARK_NAME: &str = "Error! No bookmark name given.";
+
 /// What Word prints for a `DOCVARIABLE` field without a variable name.
 pub const DOC_VARIABLE_NOT_DEFINED: &str = "Error! Document Variable not defined.";
 
@@ -374,7 +399,8 @@ pub const BOOKMARK_NOT_DEFINED: &str = "Error! Bookmark not defined.";
 /// comment or text box is found too, and a REF to it shows that text as `stored` holds it, its
 /// own fields not yet refreshed, as Word's output does (measured in Word for Windows). The
 /// document's bookmarks are looked up once, and each bookmark's text read once, however many
-/// fields refer to it.
+/// fields refer to it. A REF inside the bookmark it names shows Word's self-reference error, and
+/// one that names no bookmark Word's error for that, whatever the switches.
 fn ref_results(doc: &wordcraft_doc::Document, stored: &wordcraft_doc::Document) -> Vec<FieldResult> {
     let mut out = Vec::new();
     let mut starts: std::collections::HashMap<String, Pos> = std::collections::HashMap::new();
@@ -384,17 +410,33 @@ fn ref_results(doc: &wordcraft_doc::Document, stored: &wordcraft_doc::Document) 
     }
     // A bookmark's text, `None` when it ends in a later paragraph.
     let mut texts: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
+    let mut ranges = None;
     for path in doc.para_paths(StoryRef::Body) {
         let Some(p) = doc.para(StoryRef::Body, &path) else { continue };
+        let offsets: Vec<usize> = p.objects_with_offsets().map(|(off, _)| off).collect();
         for (k, o) in p.objects.iter().enumerate() {
             let InlineObject::Field { instr, locked: false, .. } = o else { continue };
-            // `\r`, `\n` and `\w` show the bookmarked paragraph's number, which isn't computed
-            // here: those keep their stored result rather than print the paragraph's text.
-            if wordcraft_layout::fields::field_name(instr) != "REF" || ['p', 'r', 'n', 'w'].iter().any(|&sw| has_switch(instr, sw)) {
+            if wordcraft_layout::fields::field_name(instr) != "REF" {
                 continue;
             }
             let f = FieldCode::parse(instr);
             let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
+            if target.is_empty() {
+                out.push((StoryRef::Body, path.clone(), k, NO_BOOKMARK_NAME.to_string()));
+                continue;
+            }
+            if let Some(off) = offsets.get(k) {
+                let ranges = ranges.get_or_insert_with(|| BookmarkRanges::build(doc));
+                if let Some(err) = self_reference_error("REF", instr, target, (StoryRef::Body, &path, *off), ranges) {
+                    out.push((StoryRef::Body, path.clone(), k, err.to_string()));
+                    continue;
+                }
+            }
+            // `\r`, `\n` and `\w` show the bookmarked paragraph's number, which isn't computed
+            // here: those keep their stored result rather than print the paragraph's text.
+            if ['p', 'r', 'n', 'w'].iter().any(|&sw| has_switch(instr, sw)) {
+                continue;
+            }
             let Some(start) = starts.get(target) else {
                 out.push((StoryRef::Body, path.clone(), k, REFERENCE_NOT_FOUND.to_string()));
                 continue;
@@ -455,7 +497,10 @@ fn changed(doc: &wordcraft_doc::Document, mut results: Vec<FieldResult>) -> Vec<
 /// out for output, Word fills in the body's unlocked LISTNUM, SEQ, STYLEREF and REF fields, even with
 /// "Update fields before printing" off, while NUMWORDS, FILENAME, the summary properties and
 /// formulas keep their stored results (measured with Word for Windows, printing and exporting
-/// fields whose stored results were wrong). The document itself keeps its stored results.
+/// fields whose stored results were wrong). In headers and footers, the summary properties
+/// (TITLE, AUTHOR ...), LASTSAVEDBY, DATE, TIME and a QUOTE of one quoted text show their current
+/// values too, while the same fields in the body and in notes keep theirs (measured with
+/// Microsoft 365 Word's PDF export). The document itself keeps its stored results.
 /// `None` when every such field already shows its fresh result, so nothing is copied then.
 pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Document> {
     // Numbers first, then the fields that read them: a STYLEREF to a heading holding a SEQ field,
@@ -473,7 +518,65 @@ pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Doc
     if !refs.is_empty() {
         apply_results(out.get_or_insert_with(|| doc.clone()), refs).ok()?;
     }
+    let parts = changed(out.as_ref().unwrap_or(doc), header_footer_results(out.as_ref().unwrap_or(doc)));
+    if !parts.is_empty() {
+        apply_results(out.get_or_insert_with(|| doc.clone()), parts).ok()?;
+    }
     out
+}
+
+/// The fresh results output shows for the unlocked fields in every header and footer (each
+/// section's default, first-page and even-page ones, table cells included): the summary
+/// properties and LASTSAVEDBY, DATE and TIME, and a QUOTE of one quoted text, each as Update
+/// Field in that header would store it (Word's PDF export shows them current, measured with
+/// Microsoft 365 Word). A summary property field that gives the property a new value keeps its
+/// result: output never changes a property. Every other field keeps what it shows.
+fn header_footer_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
+    use wordcraft_doc::PartKind;
+    let mut out = Vec::new();
+    for (id, part) in &doc.parts {
+        if !matches!(part.kind, PartKind::Header | PartKind::Footer) {
+            continue;
+        }
+        let story = StoryRef::Part(*id);
+        for path in doc.para_paths(story) {
+            let Some(p) = doc.para(story, &path) else { continue };
+            for (k, o) in p.objects.iter().enumerate() {
+                let InlineObject::Field { instr, locked: false, .. } = o else { continue };
+                let name = wordcraft_layout::fields::field_name(instr);
+                let fresh = match name.as_str() {
+                    "TITLE" | "SUBJECT" | "AUTHOR" | "KEYWORDS" | "COMMENTS" if new_property_value(instr).is_none() => {
+                        Some(text_result(instr, summary_property(&doc.core, &name).to_string()))
+                    }
+                    "LASTSAVEDBY" => Some(text_result(instr, doc.core.last_modified_by.clone())),
+                    "DATE" | "TIME" => {
+                        let lang = field_lang(doc, p, k);
+                        let pic = date_picture(instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
+                        Some(text_result(instr, crate::cmd::insert::format_date_in(&pic, lang.as_deref())))
+                    }
+                    "QUOTE" => quote_literal(instr).map(|text| text_result(instr, text)),
+                    _ => None,
+                };
+                out.extend(fresh.map(|r| (story, path.clone(), k, r)));
+            }
+        }
+    }
+    out
+}
+
+/// The text of a `QUOTE "text"` field: exactly one quoted argument and no switch but `\*`.
+/// `None` for any other form (unquoted words, several arguments, picture switches).
+fn quote_literal(instr: &str) -> Option<String> {
+    let f = FieldCode::parse(instr);
+    if f.name != "QUOTE" || f.switches.iter().any(|(c, _)| *c != '*') {
+        return None;
+    }
+    let [text] = f.args.as_slice() else { return None };
+    let words = super::field_words(instr);
+    match words.get(1) {
+        Some((w, true)) if w == text => Some(text.clone()),
+        _ => None,
+    }
 }
 
 /// Whether `instr` has the one-letter switch `\sw`, also run together with another (`\p\h`).
@@ -570,8 +673,8 @@ fn position_or_note(
 }
 
 /// Word's error text for a REF, PAGEREF or NOTEREF whose bookmark `target` is in no story of the
-/// document (`names`), measured in Word: `None` when the field names no bookmark, when the
-/// bookmark exists, or when a SET field gave the REF's name a value (`set`, `last_set`, keyed by
+/// document (`names`), or that names no bookmark, measured in Word: `None` when the bookmark
+/// exists, or when a SET field gave the REF's name a value (`set`, `last_set`, keyed by
 /// the lowercased name).
 fn missing_bookmark_error(
     name: &str,
@@ -579,7 +682,10 @@ fn missing_bookmark_error(
     names: &std::collections::HashSet<String>,
     (set, last_set): (&std::collections::HashMap<String, String>, &std::collections::HashMap<String, String>),
 ) -> Option<&'static str> {
-    if target.is_empty() || names.contains(target) {
+    if target.is_empty() {
+        return Some(NO_BOOKMARK_NAME);
+    }
+    if names.contains(target) {
         return None;
     }
     if name != "REF" {
@@ -587,6 +693,95 @@ fn missing_bookmark_error(
     }
     let key = target.to_lowercase();
     (!set.contains_key(&key) && !last_set.contains_key(&key)).then_some(REFERENCE_NOT_FOUND)
+}
+
+/// Where each bookmark lies, for [`self_reference_error`]: built once per update, however many
+/// fields there are.
+struct BookmarkRanges {
+    /// Each story's paragraphs → their place in the story, in document order.
+    order: std::collections::HashMap<StoryRef, std::collections::HashMap<Path, usize>>,
+    /// Bookmark name (the first of a name, body first) → its story and the (paragraph, offset) of
+    /// its `BookmarkStart` and of its matching `BookmarkEnd` (the end of the start paragraph when
+    /// it has none).
+    ranges: std::collections::HashMap<String, (StoryRef, (usize, usize), (usize, usize))>,
+}
+
+impl BookmarkRanges {
+    fn build(doc: &wordcraft_doc::Document) -> BookmarkRanges {
+        let mut order: std::collections::HashMap<StoryRef, std::collections::HashMap<Path, usize>> = Default::default();
+        let mut ranges: std::collections::HashMap<String, (StoryRef, (usize, usize), (usize, usize))> = Default::default();
+        let stories = std::iter::once(StoryRef::Body).chain(doc.parts.keys().map(|id| StoryRef::Part(*id)));
+        for story in stories {
+            // Bookmarks started in this story whose end hasn't been seen yet.
+            let mut open: std::collections::HashSet<String> = Default::default();
+            let paras = order.entry(story).or_default();
+            for (i, path) in doc.para_paths(story).into_iter().enumerate() {
+                let Some(p) = doc.para(story, &path) else { continue };
+                for (off, o) in p.objects_with_offsets() {
+                    match o {
+                        InlineObject::BookmarkStart { name } if !ranges.contains_key(name) => {
+                            ranges.insert(name.clone(), (story, (i, off), (i, p.len())));
+                            open.insert(name.clone());
+                        }
+                        InlineObject::BookmarkEnd { name } if open.remove(name) => {
+                            if let Some(r) = ranges.get_mut(name) {
+                                r.2 = (i, off);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                paras.insert(path, i);
+            }
+        }
+        BookmarkRanges { order, ranges }
+    }
+}
+
+/// Word's error text for a `REF` at `here` (story, paragraph, offset) that sits inside the
+/// bookmark `target` it names: after the bookmark's start and before its end, in the same story.
+/// The paragraph number switches (`\n`, `\r`, `\w`) show the number instead, and PAGEREF and
+/// NOTEREF are never self-references (measured in Word).
+fn self_reference_error(name: &str, instr: &str, target: &str, here: (StoryRef, &Path, usize), ranges: &BookmarkRanges) -> Option<&'static str> {
+    if name != "REF" || ['n', 'r', 'w'].iter().any(|&sw| has_switch(instr, sw)) {
+        return None;
+    }
+    let (story, start, end) = ranges.ranges.get(target)?;
+    if *story != here.0 {
+        return None;
+    }
+    let at = (*ranges.order.get(&here.0)?.get(here.1)?, here.2);
+    (*start < at && at < *end).then_some(BOOKMARK_SELF_REFERENCE)
+}
+
+/// Puts Word's self-reference error into every unlocked REF of `paths` that sits inside the
+/// bookmark it names, before any other field is updated: a REF to that bookmark elsewhere then
+/// shows the bookmark's text with the error in it, wherever it stands. Gives the bookmark ranges
+/// when it needed them.
+fn mark_self_references(doc: &mut wordcraft_doc::Document, paths: &[(StoryRef, Path)]) -> Result<Option<BookmarkRanges>, CmdError> {
+    let mut ranges = None;
+    let mut self_refs: Vec<FieldResult> = Vec::new();
+    for (story, path) in paths {
+        let Some(p) = doc.para(*story, path) else { continue };
+        for ((k, o), (off, _)) in p.objects.iter().enumerate().zip(p.objects_with_offsets()) {
+            let InlineObject::Field { instr, locked: false, .. } = o else { continue };
+            let name = wordcraft_layout::fields::field_name(instr);
+            if name != "REF" {
+                continue;
+            }
+            let f = FieldCode::parse(instr);
+            let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
+            if target.is_empty() {
+                continue;
+            }
+            let ranges = ranges.get_or_insert_with(|| BookmarkRanges::build(doc));
+            if let Some(err) = self_reference_error(&name, instr, target, (*story, path, off), ranges) {
+                self_refs.push((*story, path.clone(), k, err.to_string()));
+            }
+        }
+    }
+    apply_results(doc, self_refs)?;
+    Ok(ranges)
 }
 
 /// The mark of the footnote or endnote whose reference starts the bookmark at `at` (NOTEREF's
@@ -627,12 +822,15 @@ fn doc_variable_result(doc: &wordcraft_doc::Document, instr: &str) -> String {
 
 /// The refresh after Insert › Field: as [`update_fields`], except that `DOCVARIABLE` fields keep
 /// their stored result. Only Update Field recomputes a document variable's result (Word keeps it
-/// on open and on export too).
+/// on open and on export too). DOCPROPERTY fields naming a text count (`Words`, `Characters` ...)
+/// that already show a result keep it too: a count includes the field's own shown result, so
+/// recounting on every insert would make it drift. A count field with no result yet (the one just
+/// inserted) is counted, so it shows its number at once, as in Word; Update Field recounts.
 pub fn update_fields_after_insert(s: &mut Session) -> Result<(), CmdError> {
     update_fields_with(s, false, false, false)
 }
 
-fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars: bool) -> Result<(), CmdError> {
+fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit: bool) -> Result<(), CmdError> {
     let caret_story = s.sel.focus.story;
     let in_body = all || caret_story == StoryRef::Body;
     if in_body {
@@ -667,14 +865,23 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
     // SET <name> "<text>" (ECMA-376 §17.16.5.58): the values it gives, which REF <name> shows; a
     // REF before the SET shows the last value set, as Word's bookmark does after an update.
     let last_set = set_values(s, &paths);
-    // DOCPROPERTY's counts (Words, Pages ...) of the body as it is before this pass changes it.
-    let counts = doc_property_counts(s, &paths);
+    // DOCPROPERTY's counts (Words, Pages ...) of the body as it is before this pass changes it;
+    // the text counts are taken again for each paragraph with a count field (below).
+    let mut counts = doc_property_counts(s, &paths);
     let mut set: std::collections::HashMap<String, String> = Default::default();
+    // A REF inside its own bookmark gets its error first, so a REF to that bookmark elsewhere
+    // shows the bookmark's text with the error in it, wherever it stands.
+    let mut ranges = mark_self_references(&mut s.doc, &paths)?;
+    // LINK sources read during this update, each file once.
+    let mut sources = super::link::Sources::default();
     for (story, path) in paths {
         let Some(p) = s.doc.para(story, &path) else { continue };
         if !p.objects.iter().any(|o| matches!(o, InlineObject::Field { .. })) {
             continue;
         }
+        // Word takes a count when it updates the field: the fields before it already show their
+        // new results, this one and those after it their stored ones. `Pages` stays as taken.
+        recount_text(&s.doc, p, explicit, &mut counts);
         let mut updates: Vec<(usize, String)> = Vec::new();
         let offsets: Vec<usize> = p.objects_with_offsets().map(|(off, _)| off).collect();
         for (k, o) in p.objects.iter().enumerate() {
@@ -709,9 +916,15 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 "REF" | "PAGEREF" | "NOTEREF" => {
                     let f = FieldCode::parse(instr);
                     let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
-                    // A bookmark that is gone gives Word's error text whatever the switches, stored
+                    // A bookmark that is gone, or no name, gives Word's error text whatever the switches, stored
                     // as is (no `\*` format applied).
                     if let Some(err) = missing_bookmark_error(&name, target, &bookmark_names, (&set, &last_set)) {
+                        updates.push((k, err.to_string()));
+                        continue;
+                    }
+                    // A REF inside the bookmark it names: Word's error, stored as is.
+                    let ranges = ranges.get_or_insert_with(|| BookmarkRanges::build(&s.doc));
+                    if let Some(err) = offsets.get(k).and_then(|off| self_reference_error(&name, instr, target, (story, &path, *off), ranges)) {
                         updates.push((k, err.to_string()));
                         continue;
                     }
@@ -776,12 +989,14 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 }
                 "REVNUM" => updates.push((k, count_text(instr, core.revision as usize))),
                 // DOCPROPERTY <name>: a custom property first, then a built-in one (#1798).
+                // After Insert › Field only a count field with no result yet (the new one) is counted.
+                "DOCPROPERTY" if !explicit && shows_text_count(o) => {}
                 "DOCPROPERTY" => {
                     let date = |value: &str, pic: &str| document_date_result(instr, value, pic);
                     updates.extend(doc_property_result(&s.doc, &core, &counts, date, instr).map(|v| (k, v)));
                 }
                 // DOCVARIABLE <name>: the document variable (names ignore case), or Word's error text.
-                "DOCVARIABLE" => updates.extend(doc_vars.then(|| (k, doc_variable_result(&s.doc, instr)))),
+                "DOCVARIABLE" => updates.extend(explicit.then(|| (k, doc_variable_result(&s.doc, instr)))),
                 "FILENAME" => {
                     let (fn_name, fn_path) = s.resolved_filenames();
                     let text = if has_switch(instr, 'p') { fn_path } else { fn_name };
@@ -789,6 +1004,9 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 }
                 // The text of another local file, read only here, on an explicit update.
                 "INCLUDETEXT" => updates.push((k, super::includetext::include_text(s, instr))),
+                // A link to a saved Word document: its source as it is now. A link that can't be
+                // followed keeps its stored result; an equal result is not touched.
+                "LINK" => updates.extend(super::link::new_simple_result(s, &mut sources, o).map(|r| (k, r))),
                 // GOTOBUTTON and MACROBUTTON store the text their code shows.
                 "GOTOBUTTON" | "MACROBUTTON" => {
                     if let Some(text) = wordcraft_layout::fields::button_display_text(instr) {
@@ -815,6 +1033,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
         para.touch();
     }
     update_button_ranges(s, &range_stories)?;
+    super::link::update_link_ranges(s, &mut sources, &range_stories)?;
     if !in_body {
         return Ok(());
     }
@@ -1011,5 +1230,131 @@ mod listnum_tests {
             let mut count = ListNumCount::default();
             assert_eq!(count.result(&FieldCode::parse(instr), None), want, "{instr}");
         }
+    }
+}
+
+#[cfg(test)]
+mod header_footer_output_tests {
+    use super::*;
+    use std::sync::Arc;
+    use wordcraft_doc::{Document, PartKind};
+
+    fn field(instr: &str, result: &str) -> InlineObject {
+        InlineObject::Field {
+            instr: instr.into(),
+            result: result.into(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+            code_paras: None,
+        }
+    }
+
+    fn para_with(fields: &[(&str, &str)]) -> Paragraph {
+        let mut p = Paragraph::new();
+        for (instr, result) in fields {
+            let off = p.len();
+            p.insert_object(off, field(instr, result), &CharProps::default()).unwrap();
+        }
+        p
+    }
+
+    fn doc() -> Document {
+        let mut doc = Document::from_text("Body");
+        doc.core.title = "Ada Notes".into();
+        doc.core.creator = "Grace".into();
+        doc.core.last_modified_by = "Linus".into();
+        doc
+    }
+
+    /// The results output shows for `fields`, each stored as `stale`, in one header paragraph.
+    fn shown(doc: &mut Document, fields: &[&str]) -> Vec<String> {
+        let pairs: Vec<(&str, &str)> = fields.iter().map(|f| (*f, "stale")).collect();
+        let id = doc.add_part(PartKind::Header, vec![Arc::new(Block::Para(para_with(&pairs)))]);
+        let story = StoryRef::Part(id);
+        let out = output_fields(doc).unwrap_or_else(|| doc.clone());
+        out.para_paths(story)
+            .iter()
+            .flat_map(|path| out.para(story, path).unwrap().objects.clone())
+            .filter_map(|o| match o {
+                InlineObject::Field { result, .. } => Some(result),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn lastsavedby_and_summary_properties_with_case_switches() {
+        let mut d = doc();
+        assert_eq!(
+            shown(&mut d, &["LASTSAVEDBY", r"TITLE \* Upper", r"AUTHOR \* Lower", r"title \* FirstCap", "SUBJECT"]),
+            ["Linus", "ADA NOTES", "grace", "Ada Notes", ""]
+        );
+    }
+
+    /// A summary property field that gives a new value keeps its result, and the property stays.
+    #[test]
+    fn property_with_a_new_value_keeps_its_result() {
+        let mut d = doc();
+        assert_eq!(shown(&mut d, &[r#"TITLE "Other""#, "TITLE"]), ["stale", "Ada Notes"]);
+        assert_eq!(d.core.title, "Ada Notes");
+    }
+
+    #[test]
+    fn quote_forms() {
+        let mut d = doc();
+        assert_eq!(
+            shown(
+                &mut d,
+                &[
+                    r#"QUOTE "fresh text""#,
+                    r#"quote "Mixed" \* Upper"#,
+                    r#"QUOTE """#,
+                    "QUOTE fresh",
+                    r#"QUOTE "a" "b""#,
+                    r#"QUOTE "2024" \# "0""#,
+                    r#"QUOTE "1/2/2024" \@ "yyyy""#,
+                    "QUOTE",
+                ]
+            ),
+            ["fresh text", "MIXED", "", "stale", "stale", "stale", "stale", "stale"]
+        );
+    }
+
+    #[test]
+    fn other_fields_keep_their_results() {
+        let mut d = doc();
+        assert!(output_fields(&d).is_none());
+        let id = d.add_part(PartKind::Footer, vec![Arc::new(Block::Para(para_with(&[("FILENAME", "old.docx"), ("NUMWORDS", "9")])))]);
+        assert!(output_fields(&d).is_none(), "FILENAME and NUMWORDS keep their results in part {id}");
+    }
+
+    #[test]
+    fn field_in_a_header_table_cell() {
+        let mut d = doc();
+        let mut t = wordcraft_doc::Table::new(1, 2, 200.0);
+        t.rows[0].cells[1].blocks = vec![Arc::new(Block::Para(para_with(&[("TITLE", "stale")])))];
+        let id = d.add_part(PartKind::Footer, vec![Arc::new(Block::Table(t))]);
+        let story = StoryRef::Part(id);
+        let out = output_fields(&d).expect("the cell's field changes");
+        let results: Vec<String> = out
+            .para_paths(story)
+            .iter()
+            .flat_map(|p| out.para(story, p).unwrap().objects.clone())
+            .filter_map(|o| match o {
+                InlineObject::Field { result, .. } => Some(result),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(results, ["Ada Notes"]);
+    }
+
+    #[test]
+    fn quote_literal_parses_only_the_plain_form() {
+        assert_eq!(quote_literal(r#"QUOTE "x \"y\"""#).as_deref(), Some(r#"x "y""#));
+        assert_eq!(quote_literal(r#"QUOTE "x" \* MERGEFORMAT"#).as_deref(), Some("x"));
+        assert_eq!(quote_literal(r#"QUOTE \* Upper "x""#), None);
+        assert_eq!(quote_literal(r#"TITLE "x""#), None);
     }
 }

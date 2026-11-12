@@ -15,8 +15,10 @@ use super::{
 /// - An odd- or even-page break counts on from the previous section's numbers. A section that
 ///   restarts its numbering gets no blank page unless the document prints both sides (different
 ///   odd and even headers, or mirror margins); a restart at the wrong parity takes the next number.
-/// - With different odd and even headers, a next-page break that restarts the numbers at an odd
-///   (even) number starts on an odd (even) sheet.
+/// - With different odd and even headers or mirror margins, a next-page break that restarts the
+///   numbers at an odd (even) number starts on an odd (even) sheet, the side told by the number of
+///   the page before (not the page count), so a blank page goes first when the restart has the
+///   same parity as `last`.
 ///
 /// (Word's output for docxide-pdf's fixtures: bush_fires_act_comparison has a blank page 2.)
 pub(crate) fn section_side(start: SectionStart, restart: Option<u32>, last: u32, pages: usize, even_odd: bool, mirror: bool) -> (bool, Option<u32>) {
@@ -29,10 +31,24 @@ pub(crate) fn section_side(start: SectionStart, restart: Option<u32>, last: u32,
             (filler, restart)
         }
         SectionStart::NextPage => {
-            let filler = even_odd && pages > 0 && restart.is_some_and(|n| (n % 2 == 1) != ((pages + 1) % 2 == 1));
+            let filler = (even_odd || mirror) && pages > 0 && restart.is_some_and(|n| n % 2 == last % 2);
             (filler, restart)
         }
         SectionStart::Continuous | SectionStart::NextColumn => (false, restart),
+    }
+}
+
+/// The number the document's first page takes from its section's start type and restart
+/// (`None`: it counts on from 0, so it is page 1). Word puts no blank page in front of an
+/// even-page first section: it numbers that page 2 (or the first even number at or after the
+/// restart), so later odd- and even-page breaks are decided against those numbers. An odd-page
+/// first section restarting at an even number takes the next one, as later sections do.
+pub(crate) fn first_page_number(start: SectionStart, restart: Option<u32>) -> Option<u32> {
+    let to_even = |n: u32| if n.is_multiple_of(2) { n } else { n.saturating_add(1) };
+    match start {
+        SectionStart::EvenPage => Some(to_even(restart.unwrap_or(2))),
+        SectionStart::OddPage => restart.map(|n| if n % 2 == 1 { n } else { n.saturating_add(1) }),
+        SectionStart::NextPage | SectionStart::Continuous | SectionStart::NextColumn => restart,
     }
 }
 

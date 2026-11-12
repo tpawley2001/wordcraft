@@ -19,7 +19,8 @@ wordcraft-cli — WordCraft from the command line
 USAGE:
   wordcraft-cli convert <in> <out> [--markup] [--update-fields] [--strict] [--format wordml2003|flatopc]
                                               convert between formats (docx, doc [read], pdf, odt, rtf, html, md, tex, txt, json, png,
-                                              xml); --update-fields refreshes unlocked fields before saving
+                                              xml); --update-fields refreshes unlocked fields before saving,
+                                              in the body, headers, footers, footnotes and endnotes
                                               (if protection blocks updates, they are skipped with a warning);
                                               an .xml file is a Word XML Document (Flat OPC), or with
                                               --format wordml2003 a Word 2003 XML Document;
@@ -466,7 +467,7 @@ fn report_lines(json: &Value) -> Vec<String> {
 ///
 /// Returns `Err(Failure)` if the command fails with an error other than `CmdError::Disabled`.
 fn update_fields(s: &mut Session) -> Result<(), Failure> {
-    if let Err(e) = s.run("references.updateFields", &json!({})) {
+    if let Err(e) = s.run("references.updateFields", &json!({"all": true})) {
         if matches!(e, CmdError::Disabled(_)) {
             eprintln!("wordcraft-cli: warning: {e}");
         } else {

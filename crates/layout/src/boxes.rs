@@ -263,6 +263,14 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                 let label = ctx.next_label(p);
                 let list = label.as_ref().and_then(|_| ctx.label_num(p));
                 let mut pl = ctx.para_labelled(p, width, table, &[], label.clone());
+                // The paragraph a cell needs after a table (ECMA-376 Part 1 §17.4.66): when it is
+                // the cell's last block, empty and right after an in-flow nested table, Word gives
+                // it no room at all, whatever its mark, spacing or borders (measured in Word's
+                // PDFs, `tests::nested_tail_paragraph`). It keeps a zero-height place at the
+                // table's bottom edge for the caret.
+                if push_collapsed(&mut items, (story, &path), (in_cell, blocks, i, p), &pl, y) {
+                    continue;
+                }
                 // A text frame (a footer's page number in a frame, say) is placed apart, like a
                 // floating object, and the text after it wraps around it; it takes no room in
                 // the flow.
@@ -304,7 +312,12 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                 let mut floats = HashMap::new();
                 // A header or footer cell's floats placed on the page: no room taken in the cell.
                 let mut pinned = HashMap::new();
-                let text_over = hf_over && p.text.chars().any(|c| c != '\u{FFFC}' && !c.is_whitespace());
+                // Before Word 2013 (compatibility mode below 15) an empty paragraph holding only
+                // floating objects (a letterhead banner) keeps its line in place too; from mode 15
+                // its line goes below the object.
+                let text_over = hf_over
+                    && (p.text.chars().any(|c| c != '\u{FFFC}' && !c.is_whitespace())
+                        || (ctx.doc.settings.compat_mode < 15 && p.objects.iter().all(|o| floating(o).is_some())));
                 let left_out = left_out_objects(ctx.doc, p, table.map(|t| &t.chr), ctx.opts.show_hidden, ctx.hide_deleted);
                 for (oi, o) in p.objects.iter().enumerate() {
                     let Some((w, h, float)) = floating(o) else { continue };
@@ -395,9 +408,7 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                 // Automatic space after: none after the last paragraph of a cell or box. Nor
                 // contextual spacing after a cell's last paragraph in the default style (or an
                 // undefined one, formatted as Normal): the end-of-cell mark is a Normal paragraph.
-                let last = i + 1 == blocks.len();
-                let normal = || pl.rp.style == "Normal" || ctx.doc.styles.get(&pl.rp.style).is_none();
-                let after = if last && (pl.rp.after_auto || (in_cell && ctxl && normal())) { 0.0 } else { pl.rp.space_after };
+                let after = space_after(ctx.doc, &pl, i + 1 == blocks.len(), in_cell && ctxl);
                 y += edges.top + pl.height + edges.bottom + after;
                 prev_after = after;
                 prev_after_auto = pl.rp.after_auto;
@@ -431,6 +442,53 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
     let floats_bottom = float_tables.iter().map(|r| r.bottom()).fold(float_objects_bottom, f32::max);
     ctx.hide_deleted = outer_hide;
     BoxLayout { items, height: y.max(0.0), floats_bottom, last_top: last_top.max(0.0), table_areas, page_table_wraps }
+}
+
+/// The space after a paragraph laid out as `pl`: none after the last one of a box when it is
+/// automatic, nor after a cell's last one with contextual spacing (`cell_contextual`) in the
+/// default style (or an undefined one).
+fn space_after(doc: &Document, pl: &ParaLayout, last: bool, cell_contextual: bool) -> f32 {
+    let normal = || pl.rp.style == "Normal" || doc.styles.get(&pl.rp.style).is_none();
+    if last && (pl.rp.after_auto || (cell_contextual && normal())) { 0.0 } else { pl.rp.space_after }
+}
+
+/// Whether paragraph `p`, block `i` of a cell's `blocks`, is the cell's empty closing paragraph
+/// right after an in-flow nested table: Word gives it no room. Not after a floating table, nor
+/// one that is not the cell's last block.
+pub(crate) fn closes_nested_table(blocks: &Blocks, i: usize, p: &Paragraph) -> bool {
+    i + 1 == blocks.len()
+        && p.text.is_empty()
+        && p.objects.is_empty()
+        && i.checked_sub(1).and_then(|k| blocks.get(k)).is_some_and(|b| matches!(&**b, Block::Table(t) if t.props.float.is_none()))
+}
+
+/// When paragraph `p` (in a cell, block `i` of its `blocks`, laid out as `pl`) closes a nested table
+/// (`closes_nested_table`, and no list label), place it at `y` taking no room: its lines are
+/// flattened to zero height (so the caret and hit testing still find it), with no shading or
+/// borders. Returns whether it did.
+fn push_collapsed(
+    items: &mut Vec<Placed>,
+    (story, path): (StoryRef, &[u32]),
+    (in_cell, blocks, i, p): (bool, &Blocks, usize, &Paragraph),
+    pl: &Arc<ParaLayout>,
+    y: f32,
+) -> bool {
+    if !in_cell || !closes_nested_table(blocks, i, p) || pl.label.is_some() {
+        return false;
+    }
+    let mut pl = pl.clone();
+    let flat = Arc::make_mut(&mut pl);
+    for line in &mut flat.lines {
+        line.top = 0.0;
+        line.height = 0.0;
+        line.baseline = 0.0;
+        line.text_asc = 0.0;
+        line.text_desc = 0.0;
+    }
+    flat.height = 0.0;
+    let l1 = flat.lines.len();
+    items.push(Placed::Lines { story, path: Path(path.to_vec()), para: pl, l0: 0, l1, x: 0.0, y, turn: TextDirection::Horizontal });
+    true
 }
 
 /// The width a text frame without one takes: its widest line, with the paragraph's indents.
