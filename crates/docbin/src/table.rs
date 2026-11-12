@@ -193,7 +193,23 @@ fn set<T>(slots: &mut Vec<(u8, T)>, c: u8, v: T) {
     }
 }
 
+/// The first file version ([`crate::fib::Fib::version`]) written by Word 2002: from here on
+/// `sprmTFCantSplit90` is kept only for Word 97/2000 and `sprmTFCantSplit` alone counts.
+pub(crate) const VERSION_2002: u16 = 0x0101;
+/// Word 97's `nFib`.
+#[cfg(test)]
+const VERSION_97: u16 = 0x00C1;
+
+/// The table properties of a paragraph mark, as a Word 97 file would carry them.
+#[cfg(test)]
 pub(crate) fn decode(papx: &[u8]) -> RowInfo {
+    decode_in(papx, VERSION_97, None)
+}
+
+/// The table properties of a paragraph mark in a file of `version`. `prc` holds the sprms of the
+/// row's `sprmPTableProps` copy in the Data stream, when it has a readable one: that copy alone
+/// decides whether the row may break across pages; everything else comes from `papx`.
+pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInfo {
     let mut r = RowInfo::default();
     let mut gap_half: Option<i16> = None;
     // The left edge of the row's first cell, twips from the margin, as the row's sprms set it
@@ -216,7 +232,8 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
                 apply_def_table_valign(&mut r.valign, prl.operand);
             }
             T_TABLE_HEADER => r.header = prl.operand.first().copied().unwrap_or(0) != 0,
-            T_CANT_SPLIT | T_CANT_SPLIT_90 => r.cant_split = prl.operand.first().copied().unwrap_or(0) != 0,
+            // Read after the loop, from the Data-stream copy when there is one.
+            T_CANT_SPLIT | T_CANT_SPLIT_90 => {}
             T_ROW_HEIGHT => {
                 if let Some(v) = s16(&prl) {
                     if v < 0 {
@@ -359,7 +376,24 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
     }
     r.cell_margins = cell_margins(padding, gap_half);
     r.indent = edge0.and_then(|e| row_indent(e, gap_half, r.cell_margins));
+    r.cant_split = cant_split(prc.unwrap_or(papx), version);
     r
+}
+
+/// "Don't break this row across pages" from `grpprl`: `sprmTFCantSplit` in every version (a later
+/// one overrides an earlier one), `sprmTFCantSplit90` only in Word 97/2000 files, where it can set
+/// the flag but never clear one `sprmTFCantSplit` set.
+fn cant_split(grpprl: &[u8], version: u16) -> bool {
+    let (mut by_new, mut by_90) = (false, false);
+    for prl in sprm::iter(grpprl) {
+        let on = prl.operand.first().copied().unwrap_or(0) != 0;
+        match prl.op {
+            T_CANT_SPLIT => by_new = on,
+            T_CANT_SPLIT_90 if version < VERSION_2002 => by_90 = on,
+            _ => {}
+        }
+    }
+    by_new || by_90
 }
 
 /// The table indent a row says, in points: where the first cell's text starts (Word 97-2003
