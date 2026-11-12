@@ -69,7 +69,15 @@ fn mark_entry(s: &mut Session, v: &Value) -> CmdResult {
     }
     let instr = xe_instr(s, v, &main)?;
     let hidden = CharProps { hidden: Some(true), ..Default::default() };
-    let field = || InlineObject::Field { instr: instr.clone(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
+    let field = || InlineObject::Field {
+        instr: instr.clone(),
+        result: String::new(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    };
     if !p::bool(v, "all").unwrap_or(false) {
         let (_, b) = s.sel.ordered();
         s.doc.insert_object(&b, field(), &hidden)?;
@@ -91,8 +99,15 @@ fn mark_entry(s: &mut Session, v: &Value) -> CmdResult {
 /// First whole-word, same-case match per body paragraph, excluding generated or existing entries.
 fn mark_all(s: &mut Session, text: &str, instr: &str) -> Result<u64, CmdError> {
     let hidden = CharProps { hidden: Some(true), ..Default::default() };
-    let field =
-        || InlineObject::Field { instr: instr.to_string(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
+    let field = || InlineObject::Field {
+        instr: instr.to_string(),
+        result: String::new(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    };
     let mut marked = 0u64;
     for path in s.doc.para_paths(StoryRef::Body) {
         let Some(para) = s.doc.para(StoryRef::Body, &path) else { continue };

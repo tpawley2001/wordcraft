@@ -269,6 +269,11 @@ fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
     if s.wrap_trail_spaces {
         o.push_str("\\wraptrsp");
     }
+    // A document that does not squeeze spaces to keep an overrunning word (one not from RTF, or
+    // an RTF one that said so) tells Word with `\jexpand`; `\jcompress` is the default.
+    if !s.rtf_justification {
+        o.push_str("\\jexpand");
+    }
     o
 }
 
@@ -571,6 +576,37 @@ fn own_style_num(id: &str) -> Option<u32> {
 /// Set the numbers [`own_style_num`] gives, returning the ones it gave before.
 fn set_own_styles(nums: HashMap<String, u32>) -> HashMap<String, u32> {
     OWN_STYLES.with(|m| m.try_borrow_mut().map(|mut m| std::mem::replace(&mut *m, nums)).unwrap_or_default())
+}
+
+thread_local! {
+    /// While [`export`] writes a document: the character formatting Normal gives text, and that
+    /// each of the document's own paragraph styles gives it, by id ([`model::style_look`]).
+    static STYLE_LOOKS: std::cell::RefCell<Option<(Fmt, HashMap<String, Fmt>)>> = const { std::cell::RefCell::new(None) };
+    /// The character formatting the style of the paragraph being written gives its text, when the
+    /// paragraph states it (a paragraph in one of the document's own styles): its runs write what
+    /// differs from it.
+    static LOOK: std::cell::RefCell<Option<Fmt>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Set the looks [`STYLE_LOOKS`] gives, returning the ones it gave before.
+fn set_style_looks(looks: Option<(Fmt, HashMap<String, Fmt>)>) -> Option<(Fmt, HashMap<String, Fmt>)> {
+    STYLE_LOOKS.with(|m| m.try_borrow_mut().ok().and_then(|mut m| std::mem::replace(&mut *m, looks)))
+}
+
+/// Normal's character formatting and that of the document's own paragraph style `id`, while
+/// [`export`] writes the document.
+fn style_looks(id: &str) -> Option<(Fmt, Fmt)> {
+    STYLE_LOOKS.with(|m| m.try_borrow().ok().and_then(|m| m.as_ref().and_then(|(normal, looks)| Some((normal.clone(), looks.get(id)?.clone())))))
+}
+
+/// Set the look [`LOOK`] gives, returning the one it gave before.
+fn set_look(look: Option<Fmt>) -> Option<Fmt> {
+    LOOK.with(|m| m.try_borrow_mut().ok().and_then(|mut m| std::mem::replace(&mut *m, look)))
+}
+
+/// The look [`LOOK`] gives.
+fn look() -> Option<Fmt> {
+    LOOK.with(|m| m.try_borrow().ok().and_then(|m| m.clone()))
 }
 
 thread_local! {
@@ -1048,7 +1084,11 @@ impl Writer {
             ctl.push_str(&format!("{{\\*\\oldcprops {old}{words}}}"));
         }
         ctl.push_str(&self.rev_ctl(f.ins.as_ref(), f.del.as_ref()));
-        ctl.push_str(&self.char_ctl(f));
+        let words = match look() {
+            Some(look) => self.char_over(f, &look, true),
+            None => self.char_ctl(f),
+        };
+        ctl.push_str(&words);
         let body = if ctl.is_empty() { esc(t) } else { format!("{{{ctl} {}}}", esc(t)) };
         // A script, `file:`, UNC or other non-web target is written as plain text, as the HTML and
         // Markdown exporters do: Word follows a HYPERLINK field's target on click, and a UNC one
@@ -1147,6 +1187,44 @@ impl Writer {
         let old_pos = position_word(old);
         if old_pos != position_word(cur) {
             ctl.push_str(old_pos.as_deref().unwrap_or("\\up0"));
+        }
+        ctl
+    }
+
+    /// The character formatting control words of `f` over text already formatted as `from`: what
+    /// differs from it, with explicit "off" words (`\b0`, `\ulnone`, `\cf0`…) where `offs` asks
+    /// for them and `f` turns off what `from` has on.
+    fn char_over(&mut self, f: &Fmt, from: &Fmt, offs: bool) -> String {
+        let mut g = f.clone();
+        let mut off = String::new();
+        for (on, base, word) in [(&mut g.bold, from.bold, "\\b0"), (&mut g.italic, from.italic, "\\i0"), (&mut g.strike, from.strike, "\\strike0")] {
+            if base {
+                if !*on {
+                    off.push_str(word);
+                }
+                *on = false;
+            }
+        }
+        let ul = underline_word(f);
+        if ul == underline_word(from) {
+            g.underline = false;
+        } else if ul.is_none() && from.underline {
+            off.push_str("\\ulnone");
+        }
+        if g.font == from.font && g.code == from.code {
+            g.font = None;
+        }
+        if g.size == from.size {
+            g.size = None;
+        }
+        if g.color == from.color {
+            g.color = None;
+        } else if g.color.is_none() && g.link.is_none() {
+            off.push_str("\\cf0");
+        }
+        let mut ctl = self.char_ctl(&g);
+        if offs {
+            ctl.push_str(&off);
         }
         ctl
     }
@@ -1477,6 +1555,14 @@ impl Writer {
             let i = self.t.color(c);
             out.push_str(&format!("\\cbpat{i}"));
         }
+        // A paragraph in one of the document's own styles states the style's character
+        // formatting, once, for its text; its runs then state what differs.
+        let own = p.extra.as_ref().and_then(|x| x.style.as_deref()).filter(|_| p.kind == Kind::Normal).and_then(style_looks);
+        if let Some((normal, look)) = &own {
+            let words = self.char_over(look, normal, false);
+            out.push_str(&words);
+        }
+        let outer = set_look(own.map(|(_, look)| look));
         if let (Some(li), Some((n, label))) = (p.list, &ls) {
             let lv = li.level.min(8);
             out.push_str(&format!("\\ls{n}\\ilvl{lv}"));
@@ -1492,6 +1578,7 @@ impl Writer {
         self.base = style_fmt(p.kind);
         self.inlines(&p.inlines, out);
         self.base = Fmt::default();
+        set_look(outer);
         // A tracked paragraph mark is the `\par` inside the revision's group.
         let mut marks = self.rev_ctl(p.mark_ins.as_deref(), p.mark_del.as_deref());
         // An empty paragraph's mark formatting: the character formatting at its `\par`.
@@ -1963,7 +2050,7 @@ fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
 /// What the RTF writer keeps of the document's flow: the body, table cells, headers and footers,
 /// and the text of notes and comments alike. An empty paragraph's mark formatting sets its height.
 fn rtf_flow_opts() -> model::FlowOpts {
-    model::FlowOpts { marks: true, outline_apart: true, auto_space: true, ..model::FlowOpts::tracked() }
+    model::FlowOpts { marks: true, outline_apart: true, auto_space: true, style_look: true, ..model::FlowOpts::tracked() }
 }
 
 /// RTF text of a document.
@@ -1989,6 +2076,9 @@ pub fn export(doc: &Document) -> String {
         .zip(FIRST_OWN_STYLE..)
         .map(|(s, n)| (s.id.clone(), n))
         .collect();
+    // A paragraph in one of them states its style's character formatting.
+    let looks = own.keys().filter(|id| model::is_custom_style(doc, id)).map(|id| (id.clone(), model::style_look(doc, Some(id)))).collect();
+    let looks_before = set_style_looks(Some((model::style_look(doc, None), looks)));
     let before = set_own_styles(own);
     let ranged_before = set_ranged(HashSet::new());
     let opts = rtf_flow_opts();
@@ -2048,6 +2138,7 @@ pub fn export(doc: &Document) -> String {
     w.blocks(&flow.blocks, 0, "\\par", &mut body, 0);
     let own_entries = own_style_entries(doc, &mut w.t);
     set_own_styles(before);
+    set_style_looks(looks_before);
     set_ranged(ranged_before);
     export_with(&flow.meta, doc, &w, &own_entries, &body)
 }

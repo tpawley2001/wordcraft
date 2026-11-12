@@ -19,7 +19,15 @@ fn not_defined(name: &str) -> String {
 }
 
 fn field(instr: &str) -> InlineObject {
-    InlineObject::Field { instr: instr.into(), result: "stale".into(), locked: false, dirty: false, code: false, form: String::new() }
+    InlineObject::Field {
+        instr: instr.into(),
+        result: "stale".into(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    }
 }
 
 fn style(id: &str, name: &str) -> Style {

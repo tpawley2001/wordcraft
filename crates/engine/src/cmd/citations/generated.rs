@@ -56,7 +56,15 @@ fn generated_list_with(s: &mut Session, instr: &str, title: &str, leader: Option
     let end = head.len();
     head.insert_object(
         end,
-        InlineObject::Field { instr: instr.to_string(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() },
+        InlineObject::Field {
+            instr: instr.to_string(),
+            result: String::new(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+            code_paras: None,
+        },
         &CharProps::default(),
     )?;
     let i = if s.doc.para_at(&at).is_some_and(|p| p.is_empty()) { at.path.last() } else { s.doc.split_paragraph(&at)?.path.last() };
@@ -232,7 +240,7 @@ pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
             converted = Some(instr.trim_start().to_string());
             p.insert_object(
                 start,
-                InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new() },
+                InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new(), code_paras: None },
                 &Default::default(),
             )?;
             // What followed the field end in its own paragraph comes after the list, in a
@@ -436,6 +444,7 @@ fn entries_for(s: &mut Session, kind: &str) -> Result<Vec<Paragraph>, CmdError> 
                         dirty: false,
                         code: false,
                         form: String::new(),
+                        code_paras: None,
                     };
                     para.insert_object(para.len(), field, &props)?;
                 }
@@ -591,8 +600,15 @@ mod tests {
     fn a_wrapped_list_is_rebuilt_as_itself_after_another_list_field() {
         let mut s = wrapped("Old one\nOld two\nBelow", 0, 1, "Old two".len());
         s.doc.sources.push(wordcraft_doc::Source { tag: "a".into(), kind: "book".into(), title: "Listed Source".into(), ..Default::default() });
-        let index =
-            InlineObject::Field { instr: "INDEX".into(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
+        let index = InlineObject::Field {
+            instr: "INDEX".into(),
+            result: String::new(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+            code_paras: None,
+        };
         if let Ok(p) = s.doc.para_mut(StoryRef::Body, &Path::top(0)) {
             p.insert_object(0, index, &CharProps::default()).unwrap();
         }
