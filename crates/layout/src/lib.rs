@@ -58,6 +58,7 @@ mod ctx;
 mod floats;
 mod flow;
 mod headers;
+mod join;
 mod list_stories;
 mod missing;
 mod notes;
@@ -360,8 +361,22 @@ pub struct DocLayout {
     pub text_boxes: usize,
 }
 
-/// Lay out the whole document.
+pub use join::MAX_JOINED_PARAS;
+
+/// Lay out the whole document. Where deletions are hidden, a paragraph whose mark is a tracked
+/// deletion is laid out joined to the next one, as Word prints it ([`join`]).
 pub fn layout(doc: &Document, cache: &mut LayoutCache, opts: &LayoutOptions) -> DocLayout {
+    match join::plan(doc, opts) {
+        Some(joins) => {
+            let mut l = layout_doc(&joins.doc, cache, opts);
+            joins.split(&mut l);
+            l
+        }
+        None => layout_doc(doc, cache, opts),
+    }
+}
+
+fn layout_doc(doc: &Document, cache: &mut LayoutCache, opts: &LayoutOptions) -> DocLayout {
     #[cfg(test)]
     crate::test_fonts();
     let t0 = now_ms();

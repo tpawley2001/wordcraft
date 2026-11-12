@@ -27,6 +27,7 @@ mod model;
 mod paragraph;
 mod proof;
 mod tabs;
+mod view;
 
 pub use bidi::{bidi_levels, visual_order};
 pub(crate) use builder::left_out;
@@ -47,6 +48,7 @@ pub use paragraph::layout_para;
 #[cfg(test)]
 pub(crate) use paragraph::word_widths;
 pub use proof::{ProofRun, is_list_item, paragraph_issues, proof_runs, proof_text};
+pub(crate) use view::Share;
 
 /// A laid-out paragraph.
 #[derive(Clone, Debug)]
