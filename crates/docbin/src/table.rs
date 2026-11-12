@@ -193,7 +193,23 @@ fn set<T>(slots: &mut Vec<(u8, T)>, c: u8, v: T) {
     }
 }
 
+/// The first file version ([`crate::fib::Fib::version`]) written by Word 2002: from here on
+/// `sprmTFCantSplit90` is kept only for Word 97/2000 and `sprmTFCantSplit` alone counts.
+pub(crate) const VERSION_2002: u16 = 0x0101;
+/// Word 97's `nFib`.
+#[cfg(test)]
+const VERSION_97: u16 = 0x00C1;
+
+/// The table properties of a paragraph mark, as a Word 97 file would carry them.
+#[cfg(test)]
 pub(crate) fn decode(papx: &[u8]) -> RowInfo {
+    decode_in(papx, VERSION_97, None)
+}
+
+/// The table properties of a paragraph mark in a file of `version`. `prc` holds the sprms of the
+/// row's `sprmPTableProps` copy in the Data stream, when it has a readable one: that copy alone
+/// decides whether the row may break across pages; everything else comes from `papx`.
+pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInfo {
     let mut r = RowInfo::default();
     let mut gap_half: Option<i16> = None;
     // The left edge of the row's first cell, twips from the margin, as the row's sprms set it
@@ -212,9 +228,12 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
             T_DEF_TABLE => {
                 r.edges = def_table_edges(prl.operand);
                 edge0 = first_edge(prl.operand).map(Edge0::Center).or(edge0);
+                // The definition replaces each cell's alignment; a later sprmTVertAlign wins.
+                apply_def_table_valign(&mut r.valign, prl.operand);
             }
             T_TABLE_HEADER => r.header = prl.operand.first().copied().unwrap_or(0) != 0,
-            T_CANT_SPLIT | T_CANT_SPLIT_90 => r.cant_split = prl.operand.first().copied().unwrap_or(0) != 0,
+            // Read after the loop, from the Data-stream copy when there is one.
+            T_CANT_SPLIT | T_CANT_SPLIT_90 => {}
             T_ROW_HEIGHT => {
                 if let Some(v) = s16(&prl) {
                     if v < 0 {
@@ -357,7 +376,24 @@ pub(crate) fn decode(papx: &[u8]) -> RowInfo {
     }
     r.cell_margins = cell_margins(padding, gap_half);
     r.indent = edge0.and_then(|e| row_indent(e, gap_half, r.cell_margins));
+    r.cant_split = cant_split(prc.unwrap_or(papx), version);
     r
+}
+
+/// "Don't break this row across pages" from `grpprl`: `sprmTFCantSplit` in every version (a later
+/// one overrides an earlier one), `sprmTFCantSplit90` only in Word 97/2000 files, where it can set
+/// the flag but never clear one `sprmTFCantSplit` set.
+fn cant_split(grpprl: &[u8], version: u16) -> bool {
+    let (mut by_new, mut by_90) = (false, false);
+    for prl in sprm::iter(grpprl) {
+        let on = prl.operand.first().copied().unwrap_or(0) != 0;
+        match prl.op {
+            T_CANT_SPLIT => by_new = on,
+            T_CANT_SPLIT_90 if version < VERSION_2002 => by_90 = on,
+            _ => {}
+        }
+    }
+    by_new || by_90
 }
 
 /// The table indent a row says, in points: where the first cell's text starts (Word 97-2003
@@ -760,7 +796,7 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
 }
 
 /// Cell-edge positions (points) from a `sprmTDefTable` operand: cb u16, itcMac u8, then
-/// itcMac+1 twip boundaries followed by the TC80s (skipped). Edges are returned as stored:
+/// itcMac+1 twip boundaries followed by the TC80s (read by `def_table_valign`). Edges are returned as stored:
 /// per-row, in operand order; sorting and capping happen when the table grid is assembled.
 fn def_table_edges(operand: &[u8]) -> Vec<f32> {
     let itc = operand.get(2).copied().unwrap_or(0) as usize;
@@ -776,6 +812,39 @@ fn def_table_edges(operand: &[u8]) -> Vec<f32> {
         }
     }
     edges
+}
+
+/// Record the alignments a `sprmTDefTable` operand's TC80s give its cells, replacing earlier
+/// ones; a cell with none from the definition loses any earlier override.
+fn apply_def_table_valign(slots: &mut Vec<(u8, VAlign)>, operand: &[u8]) {
+    for (c, v) in def_table_valign(operand) {
+        match v {
+            Some(v) => set(slots, c, v),
+            None => slots.retain(|(k, _)| *k != c),
+        }
+    }
+}
+
+/// Each cell's vertical alignment from the TC80s of a `sprmTDefTable` operand: after the
+/// itcMac+1 edges come up to itcMac 20-byte TC80s whose first word is the TCGRF flags, with
+/// vertAlign in bits 7-8 ([MS-DOC] 2.9.313, 2.9.314). Yields every cell below MAX_COLS: Center
+/// or Bottom when its TC80 says so, None (no explicit alignment) for top, the undefined value
+/// 3, or a TC80 missing from the operand or cut short.
+fn def_table_valign(operand: &[u8]) -> impl Iterator<Item = (u8, Option<VAlign>)> + '_ {
+    let itc = operand.get(2).copied().unwrap_or(0) as usize;
+    let start = 3 + (itc + 1) * 2;
+    (0..itc.min(MAX_COLS)).map(move |i| {
+        let at = start + i * 20;
+        let v = operand.get(at..at + 20).and_then(|tc| match tc {
+            [lo, hi, ..] => match (u16::from_le_bytes([*lo, *hi]) >> 7) & 3 {
+                1 => Some(VAlign::Center),
+                2 => Some(VAlign::Bottom),
+                _ => None,
+            },
+            _ => None,
+        });
+        (i as u8, v)
+    })
 }
 
 /// Table borders from `sprmTTableBorders80`: cb (0x18) then six Brc80s in the order top,

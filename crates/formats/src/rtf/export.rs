@@ -579,8 +579,9 @@ fn set_own_styles(nums: HashMap<String, u32>) -> HashMap<String, u32> {
 }
 
 thread_local! {
-    /// While [`export`] writes a document: the character formatting Normal gives text, and that
-    /// each of the document's own paragraph styles gives it, by id ([`model::style_look`]).
+    /// While [`export`] writes a document: the character formatting text has after `\plain` (the
+    /// default font, 12 pt), and that each of the document's paragraph styles gives it, by id
+    /// ([`model::style_look`]).
     static STYLE_LOOKS: std::cell::RefCell<Option<(Fmt, HashMap<String, Fmt>)>> = const { std::cell::RefCell::new(None) };
     /// The character formatting the style of the paragraph being written gives its text, when the
     /// paragraph states it (a paragraph in one of the document's own styles): its runs write what
@@ -593,10 +594,16 @@ fn set_style_looks(looks: Option<(Fmt, HashMap<String, Fmt>)>) -> Option<(Fmt, H
     STYLE_LOOKS.with(|m| m.try_borrow_mut().ok().and_then(|mut m| std::mem::replace(&mut *m, looks)))
 }
 
-/// Normal's character formatting and that of the document's own paragraph style `id`, while
-/// [`export`] writes the document.
+/// The character formatting text has after `\plain` and that the document's paragraph style
+/// `id` gives it, while [`export`] writes the document.
 fn style_looks(id: &str) -> Option<(Fmt, Fmt)> {
     STYLE_LOOKS.with(|m| m.try_borrow().ok().and_then(|m| m.as_ref().and_then(|(normal, looks)| Some((normal.clone(), looks.get(id)?.clone())))))
+}
+
+/// The character formatting text has after `\plain` and the look paragraph `p` states for its
+/// text: its style's ([`style_looks`]), when the flow names one.
+fn stated_look(p: &Para) -> Option<(Fmt, Fmt)> {
+    p.extra.as_ref().and_then(|x| x.style.as_deref()).and_then(style_looks)
 }
 
 /// Set the look [`LOOK`] gives, returning the one it gave before.
@@ -706,7 +713,6 @@ fn used_table_styles(doc: &Document) -> Vec<String> {
 /// [`own_style_num`] gives them; their fonts and colours go into `t`.
 fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
     use wordcraft_doc::styles::StyleKind;
-    let tw = |v: f32| (v.clamp(-1584.0, 1584.0) * 20.0).round() as i32;
     let mut out = String::new();
     // In their numbers' order: a table's own style before the styles it is based on.
     let mut styles: Vec<(u32, &wordcraft_doc::styles::Style)> = doc.styles.styles.iter().filter_map(|s| Some((own_style_num(&s.id)?, s))).collect();
@@ -748,63 +754,122 @@ fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
         if s.locked {
             out.push_str("\\slocked");
         }
-        if !char {
-            let p = &s.para;
-            match p.align {
-                Some(Align::Left) => out.push_str("\\ql"),
-                Some(Align::Center) => out.push_str("\\qc"),
-                Some(Align::Right) => out.push_str("\\qr"),
-                Some(Align::Justify) => out.push_str("\\qj"),
-                Some(Align::Distribute) => out.push_str("\\qd"),
-                None => {}
+        style_def_words(s, t, &mut out);
+        out.push_str(&format!(" {};}}", esc_font(&s.name)));
+    }
+    out
+}
+
+/// The `\stylesheet` entries of Normal (`\s0`) and the built-in styles the flow's kinds stand for
+/// (`\s1`-`\s6` heading 1-6, `\s7` Title, `\s8` Quote, `\s9` Code): each from the document's
+/// definition when it has one, Normal's with the document defaults under it; else fixed. Their
+/// fonts and colours go into `t`.
+fn builtin_style_entries(doc: &Document, t: &mut Tables) -> String {
+    use wordcraft_doc::styles::StyleKind;
+    let defined = |id: &str| doc.styles.get(id).filter(|s| s.kind == StyleKind::Paragraph);
+    let mut out = String::from("{\\s0\\snext0");
+    if let Some(normal) = defined("Normal") {
+        let mut chr = doc.styles.effective_default_chr();
+        chr.overlay(&normal.chr);
+        let s = wordcraft_doc::styles::Style { chr, ..normal.clone() };
+        style_def_words(&s, t, &mut out);
+        style_caps_words(&s.chr, &mut out);
+    }
+    out.push_str(" Normal;}");
+    let mut entry = |n: u32, id: &str, head: String, fixed: String, name: &str| {
+        out.push_str(&format!("{{\\s{n}{head}"));
+        match defined(id) {
+            Some(s) => {
+                style_def_words(s, t, &mut out);
+                style_caps_words(&s.chr, &mut out);
             }
-            for (word, v) in [("li", p.indent_left), ("ri", p.indent_right), ("fi", p.indent_first), ("sb", p.space_before), ("sa", p.space_after)] {
-                if let Some(v) = v.filter(|v| v.is_finite()) {
-                    out.push_str(&format!("\\{word}{}", tw(v)));
-                }
-            }
-            use wordcraft_doc::props::LineSpacing;
-            match p.line_spacing {
-                Some(LineSpacing::Multiple(m)) if m.is_finite() => {
-                    out.push_str(&format!("\\sl{}\\slmult1", (m.clamp(0.06, 132.0) * 240.0).round() as i32));
-                }
-                Some(LineSpacing::AtLeast(v)) if v.is_finite() => out.push_str(&format!("\\sl{}\\slmult0", tw(v.max(0.0)))),
-                Some(LineSpacing::Exactly(v)) if v.is_finite() => out.push_str(&format!("\\sl-{}\\slmult0", tw(v.max(1.0)))),
-                _ => {}
-            }
-            for (word, v) in [("keepn", p.keep_next), ("keep", p.keep_lines)] {
-                match v {
-                    Some(true) => out.push_str(&format!("\\{word}")),
-                    Some(false) => out.push_str(&format!("\\{word}0")),
-                    None => {}
-                }
-            }
-            style_tab_and_char_indent_words(p, &mut out);
+            None => out.push_str(&fixed),
         }
-        let c = &s.chr;
-        for (word, v) in [("b", c.bold), ("i", c.italic)] {
+        out.push_str(&format!(" {name};}}"));
+    };
+    for n in 1..=6u32 {
+        let sz = HEAD_SIZES.get(n as usize - 1).copied().unwrap_or(12.0);
+        let head = format!("\\sbasedon0\\snext0\\outlinelevel{}", n - 1);
+        entry(n, &format!("Heading{n}"), head, format!("\\keepn\\b\\fs{}", (sz * 2.0) as i32), &format!("heading {n}"));
+    }
+    let based = || "\\sbasedon0\\snext0".to_string();
+    entry(7, "Title", based(), "\\fs56".into(), "Title");
+    entry(8, "Quote", based(), "\\li720\\ri720\\i".into(), "Quote");
+    entry(9, model::CODE_STYLE, "\\sbasedon0\\snext9".into(), "\\sa0\\fs20".into(), "Code");
+    out
+}
+
+/// The paragraph and character formatting words of style `s`'s own definition, for its
+/// `\stylesheet` entry; its fonts and colours go into `t`.
+fn style_def_words(s: &wordcraft_doc::styles::Style, t: &mut Tables, out: &mut String) {
+    use wordcraft_doc::styles::StyleKind;
+    let tw = |v: f32| (v.clamp(-1584.0, 1584.0) * 20.0).round() as i32;
+    let char = s.kind == StyleKind::Character;
+    if !char {
+        let p = &s.para;
+        match p.align {
+            Some(Align::Left) => out.push_str("\\ql"),
+            Some(Align::Center) => out.push_str("\\qc"),
+            Some(Align::Right) => out.push_str("\\qr"),
+            Some(Align::Justify) => out.push_str("\\qj"),
+            Some(Align::Distribute) => out.push_str("\\qd"),
+            None => {}
+        }
+        for (word, v) in [("li", p.indent_left), ("ri", p.indent_right), ("fi", p.indent_first), ("sb", p.space_before), ("sa", p.space_after)] {
+            if let Some(v) = v.filter(|v| v.is_finite()) {
+                out.push_str(&format!("\\{word}{}", tw(v)));
+            }
+        }
+        use wordcraft_doc::props::LineSpacing;
+        match p.line_spacing {
+            Some(LineSpacing::Multiple(m)) if m.is_finite() => {
+                out.push_str(&format!("\\sl{}\\slmult1", (m.clamp(0.06, 132.0) * 240.0).round() as i32));
+            }
+            Some(LineSpacing::AtLeast(v)) if v.is_finite() => out.push_str(&format!("\\sl{}\\slmult0", tw(v.max(0.0)))),
+            Some(LineSpacing::Exactly(v)) if v.is_finite() => out.push_str(&format!("\\sl-{}\\slmult0", tw(v.max(1.0)))),
+            _ => {}
+        }
+        for (word, v) in [("keepn", p.keep_next), ("keep", p.keep_lines)] {
             match v {
                 Some(true) => out.push_str(&format!("\\{word}")),
                 Some(false) => out.push_str(&format!("\\{word}0")),
                 None => {}
             }
         }
-        if let Some(f) = c.font.as_deref().filter(|f| !f.is_empty()) {
-            out.push_str(&format!("\\f{}", t.font(f)));
-        }
-        if let Some(sz) = c.size.filter(|v| v.is_finite()) {
-            out.push_str(&format!("\\fs{}", (sz * 2.0).round().clamp(2.0, 3276.0) as i32));
-        }
-        match c.color {
-            Some(wordcraft_doc::TextColor::Rgb(rgb)) => out.push_str(&format!("\\cf{}", t.color(rgb))),
-            Some(wordcraft_doc::TextColor::Auto) => out.push_str("\\cf0"),
+        style_tab_and_char_indent_words(p, out);
+    }
+    let c = &s.chr;
+    for (word, v) in [("b", c.bold), ("i", c.italic)] {
+        match v {
+            Some(true) => out.push_str(&format!("\\{word}")),
+            Some(false) => out.push_str(&format!("\\{word}0")),
             None => {}
         }
-        style_char_spacing_words(c.spacing, &mut out);
-        style_char_line_words(c, t, &mut out);
-        out.push_str(&format!(" {};}}", esc_font(&s.name)));
     }
-    out
+    if let Some(f) = c.font.as_deref().filter(|f| !f.is_empty()) {
+        out.push_str(&format!("\\f{}", t.font(f)));
+    }
+    if let Some(sz) = c.size.filter(|v| v.is_finite()) {
+        out.push_str(&format!("\\fs{}", (sz * 2.0).round().clamp(2.0, 3276.0) as i32));
+    }
+    match c.color {
+        Some(wordcraft_doc::TextColor::Rgb(rgb)) => out.push_str(&format!("\\cf{}", t.color(rgb))),
+        Some(wordcraft_doc::TextColor::Auto) => out.push_str("\\cf0"),
+        None => {}
+    }
+    style_char_spacing_words(c.spacing, out);
+    style_char_line_words(c, t, out);
+}
+
+/// A built-in style entry's all caps and small caps words.
+fn style_caps_words(c: &wordcraft_doc::props::CharProps, out: &mut String) {
+    for (word, v) in [("caps", c.caps), ("scaps", c.small_caps)] {
+        match v {
+            Some(true) => out.push_str(&format!("\\{word}")),
+            Some(false) => out.push_str(&format!("\\{word}0")),
+            None => {}
+        }
+    }
 }
 
 /// A style entry's tab stops in position order, then its indents in hundredths of a character
@@ -1154,8 +1219,9 @@ impl Writer {
         let half_points = |s: Option<f32>| s.map(|s| (s * 2.0).round().clamp(2.0, 3276.0) as i32);
         let old_size = half_points(old.size);
         if old_size != half_points(cur.size) {
-            // No size is Normal's, RTF's default 12 pt.
-            ctl.push_str(&format!("\\fs{}", old_size.unwrap_or(24)));
+            // No size is the paragraph's: the size its look states, else RTF's default 12 pt.
+            let para_size = look().and_then(|l| half_points(l.size));
+            ctl.push_str(&format!("\\fs{}", old_size.or(para_size).unwrap_or(24)));
         }
         let color = |f: &Fmt| f.color.or(if f.link.is_some() { Some(Rgb(0x05, 0x63, 0xC1)) } else { None });
         let old_color = color(old);
@@ -1221,6 +1287,25 @@ impl Writer {
             g.color = None;
         } else if g.color.is_none() && g.link.is_none() {
             off.push_str("\\cf0");
+        }
+        // All caps and small caps.
+        let caps = |f: &Fmt| f.extra.as_ref().map_or((false, false), |x| (x.caps == Some(true), x.small_caps == Some(true)));
+        let ((caps_on, scaps_on), (caps_from, scaps_from)) = (caps(f), caps(from));
+        if caps_from || scaps_from {
+            if let Some(x) = g.extra.as_mut() {
+                if caps_from {
+                    x.caps = None;
+                }
+                if scaps_from {
+                    x.small_caps = None;
+                }
+            }
+            if caps_from && !caps_on {
+                off.push_str("\\caps0");
+            }
+            if scaps_from && !scaps_on {
+                off.push_str("\\scaps0");
+            }
         }
         let mut ctl = self.char_ctl(&g);
         if offs {
@@ -1555,14 +1640,15 @@ impl Writer {
             let i = self.t.color(c);
             out.push_str(&format!("\\cbpat{i}"));
         }
-        // A paragraph in one of the document's own styles states the style's character
-        // formatting, once, for its text; its runs then state what differs.
-        let own = p.extra.as_ref().and_then(|x| x.style.as_deref()).filter(|_| p.kind == Kind::Normal).and_then(style_looks);
-        if let Some((normal, look)) = &own {
-            let words = self.char_over(look, normal, false);
+        // RTF has no inheritance after `\plain` (RTF 1.9.1, "Style Sheet"): a paragraph states
+        // the character formatting its style gives its text (with Normal's and the document
+        // defaults'), once, for its text; its runs then state what differs.
+        let own = stated_look(p);
+        if let Some((plain, look)) = &own {
+            let words = self.char_over(look, plain, false);
             out.push_str(&words);
         }
-        let outer = set_look(own.map(|(_, look)| look));
+        let outer = set_look(own.clone().map(|(_, look)| look));
         if let (Some(li), Some((n, label))) = (p.list, &ls) {
             let lv = li.level.min(8);
             out.push_str(&format!("\\ls{n}\\ilvl{lv}"));
@@ -1575,7 +1661,8 @@ impl Writer {
         } else {
             out.push(' ');
         }
-        self.base = style_fmt(p.kind);
+        // Runs in a stated look are resolved; the fixed formatting of a kind is for the rest.
+        self.base = if own.is_some() { Fmt::default() } else { style_fmt(p.kind) };
         self.inlines(&p.inlines, out);
         self.base = Fmt::default();
         set_look(outer);
@@ -1664,7 +1751,11 @@ impl Writer {
             }
             out.push_str(&super::frames::frame_words(x));
         }
+        // A kind's fixed formatting, unless the paragraph states its style's look (`para`) and
+        // has its style's paragraph formatting in its own.
+        let stated = stated_look(p).is_some();
         match p.kind {
+            _ if stated && p.kind != Kind::Rule => {}
             Kind::Quote => out.push_str("\\li720\\ri720\\i"),
             Kind::Code => {
                 let f = self.t.font(model::MONO_FONT);
@@ -1680,7 +1771,7 @@ impl Writer {
         }
         // The paragraph's own spacing, indents and keeps, after its kind's (the later word wins).
         out.push_str(&spacing_words(&p.spacing));
-        if p.keep_next && !matches!(p.kind, Kind::Heading(_)) {
+        if p.keep_next && (stated || !matches!(p.kind, Kind::Heading(_))) {
             out.push_str("\\keepn");
         }
         if let Some(x) = p.extra.as_deref() {
@@ -2076,14 +2167,23 @@ pub fn export(doc: &Document) -> String {
         .zip(FIRST_OWN_STYLE..)
         .map(|(s, n)| (s.id.clone(), n))
         .collect();
-    // A paragraph in one of them states its style's character formatting.
-    let looks = own.keys().filter(|id| model::is_custom_style(doc, id)).map(|id| (id.clone(), model::style_look(doc, Some(id)))).collect();
-    let looks_before = set_style_looks(Some((model::style_look(doc, None), looks)));
+    // A paragraph states the character formatting its style gives its text (Normal's without
+    // one), over what text has after `\plain`: the default font, font 0, at 12 pt.
+    let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
+    let plain = Fmt { font: Some(Arc::from(base_font.as_str())), size: Some(12.0), ..Fmt::default() };
+    let looks = doc
+        .styles
+        .styles
+        .iter()
+        .filter(|s| s.kind == wordcraft_doc::styles::StyleKind::Paragraph)
+        .map(|s| (s.id.clone(), model::style_look(doc, Some(&s.id))))
+        .chain(std::iter::once(("Normal".to_string(), model::style_look(doc, None))))
+        .collect();
+    let looks_before = set_style_looks(Some((plain, looks)));
     let before = set_own_styles(own);
     let ranged_before = set_ranged(HashSet::new());
     let opts = rtf_flow_opts();
     let flow = model::from_doc_with(doc, opts);
-    let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
         marks,
         t: Tables { fonts: vec![base_font], colors: Vec::new() },
@@ -2136,7 +2236,7 @@ pub fn export(doc: &Document) -> String {
     }
     set_ranged(model::ranged_anchors(&flow.blocks));
     w.blocks(&flow.blocks, 0, "\\par", &mut body, 0);
-    let own_entries = own_style_entries(doc, &mut w.t);
+    let own_entries = builtin_style_entries(doc, &mut w.t) + &own_style_entries(doc, &mut w.t);
     set_own_styles(before);
     set_style_looks(looks_before);
     set_ranged(ranged_before);
@@ -2234,12 +2334,7 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     for c in &w.t.colors {
         out.push_str(&format!("\\red{}\\green{}\\blue{};", c.0, c.1, c.2));
     }
-    out.push_str("}\n{\\*\\generator WordCraft;}\n{\\stylesheet{\\s0\\snext0 Normal;}");
-    for n in 1..=6u32 {
-        let sz = HEAD_SIZES.get(n as usize - 1).copied().unwrap_or(12.0);
-        out.push_str(&format!("{{\\s{n}\\sbasedon0\\snext0\\outlinelevel{}\\keepn\\b\\fs{} heading {n};}}", n - 1, (sz * 2.0) as i32));
-    }
-    out.push_str("{\\s7\\sbasedon0\\snext0\\fs56 Title;}{\\s8\\sbasedon0\\snext0\\li720\\ri720\\i Quote;}{\\s9\\sbasedon0\\snext9\\sa0\\fs20 Code;}");
+    out.push_str("}\n{\\*\\generator WordCraft;}\n{\\stylesheet");
     out.push_str(own_styles);
     out.push_str("}\n");
     if let Some(xml) = doc.styles.latent_styles.as_deref() {

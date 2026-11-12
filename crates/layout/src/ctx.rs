@@ -66,7 +66,9 @@ pub(crate) struct Ctx<'a> {
     /// on the page (see [`with_pin`]).
     pub(crate) pin: Option<Pin>,
     pub(crate) footer_wraps: HashMap<(usize, u32, bool), Vec<WrapArea>>,
-    pub(crate) header_tables: HashMap<(usize, u32, bool), Vec<Rect>>,
+    /// A page's header table areas and text frame wrap areas, in page coordinates
+    /// ([`header_table_areas`](super::headers::header_table_areas)).
+    pub(crate) header_tables: HashMap<(usize, u32, bool), (Vec<Rect>, Vec<WrapArea>)>,
     /// Heights of text boxes that resize to fit their text, by story, width and page fields,
     /// worked out once per matching layout context ([`textbox::fitted_height`]).
     pub(crate) fitted: HashMap<(u32, u32, (u32, u32, u32, u32, u64, wordcraft_doc::section::NumFormat, String)), Option<f32>>,

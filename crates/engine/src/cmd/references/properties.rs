@@ -12,15 +12,34 @@ pub(super) fn summary_property<'a>(core: &'a wordcraft_doc::CoreProps, field: &s
     }
 }
 
+/// Set a summary property from its field; a property set this way is never missing from the
+/// file ([`wordcraft_doc::InFile::Present`]).
 pub(super) fn set_summary_property(core: &mut wordcraft_doc::CoreProps, field: &str, value: String) {
+    use wordcraft_doc::InFile::Present;
+    let f = &mut core.in_file;
     match field {
-        "TITLE" => core.title = value,
-        "SUBJECT" => core.subject = value,
-        "AUTHOR" => core.creator = value,
-        "KEYWORDS" => core.keywords = value,
-        "COMMENTS" => core.description = value,
+        "TITLE" => (core.title, f.title) = (value, Present),
+        "SUBJECT" => (core.subject, f.subject) = (value, Present),
+        "AUTHOR" => (core.creator, f.creator) = (value, Present),
+        "KEYWORDS" => (core.keywords, f.keywords) = (value, Present),
+        "COMMENTS" => (core.description, f.description) = (value, Present),
         _ => {}
     }
+}
+
+/// Is `name` (a DOCPROPERTY name) Title, Subject, Author, Keywords or Comments, empty and with no
+/// element in the file it was read from? Word shows [`UNKNOWN_DOC_PROPERTY`] for it.
+fn summary_property_missing(core: &wordcraft_doc::CoreProps, name: &str) -> bool {
+    let f = &core.in_file;
+    let (value, state) = match name.trim().to_ascii_lowercase().as_str() {
+        "title" => (&core.title, f.title),
+        "subject" => (&core.subject, f.subject),
+        "author" => (&core.creator, f.creator),
+        "keywords" => (&core.keywords, f.keywords),
+        "comments" => (&core.description, f.description),
+        _ => return false,
+    };
+    value.is_empty() && state == wordcraft_doc::InFile::Missing
 }
 
 /// The new value a summary-property field gives its property: the argument after the field's
@@ -91,8 +110,8 @@ pub const NO_DOC_PROPERTY_NAME: &str = "Error! No property name supplied.";
 /// valid in Word, so showing [`UNKNOWN_DOC_PROPERTY`] for it would be wrong.
 const UNCOMPUTED_BUILT_IN_PROPERTIES: [&str; 7] = ["Bytes", "Lines", "NameofApplication", "ODMADocId", "Security", "Template", "TotalEditingTime"];
 
-/// Counts of the document body for the DOCPROPERTY count names, taken once when Update Field
-/// starts (before any result changes). Header and footer text is not counted, as in Word.
+/// Counts of the document body for the DOCPROPERTY count names, as the body stands when a count
+/// field is updated. Header and footer text is not counted, as in Word.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct BodyCounts {
     pub words: usize,
@@ -108,13 +127,13 @@ pub(super) struct BodyCounts {
 
 impl BodyCounts {
     /// The counts of `doc`'s body; `pages` is the laid-out page count when the caller needs it.
-    /// The results of DOCPROPERTY fields are left out of the character and paragraph counts, so
-    /// a count field does not count its own (or another count's) result.
+    /// Every field's result is counted as shown (a count field's own stored result too), as Word
+    /// does; an empty paragraph is not.
     pub(super) fn of(doc: &wordcraft_doc::Document, pages: Option<usize>) -> Self {
         let mut counts = BodyCounts { words: doc.word_count(), pages, ..Default::default() };
         for path in doc.para_paths(wordcraft_doc::StoryRef::Body) {
             let Some(p) = doc.para(wordcraft_doc::StoryRef::Body, &path) else { continue };
-            let text = text_without_doc_properties(p);
+            let text = p.plain_text();
             counts.characters = counts.characters.saturating_add(wordcraft_doc::count_chars_no_spaces(&text));
             counts.characters_with_spaces = counts.characters_with_spaces.saturating_add(wordcraft_doc::count_chars(&text));
             if !text.trim().is_empty() {
@@ -136,22 +155,12 @@ impl BodyCounts {
     }
 }
 
-/// A paragraph's plain text with the results of its DOCPROPERTY fields left out.
-fn text_without_doc_properties(p: &wordcraft_doc::Paragraph) -> String {
-    let mut objects = p.objects.iter();
-    let mut out = String::with_capacity(p.text.len());
-    for c in p.text.chars() {
-        if c != wordcraft_doc::para::OBJ {
-            out.push(c);
-            continue;
-        }
-        match objects.next() {
-            Some(InlineObject::Field { instr, .. }) if wordcraft_layout::fields::field_name(instr) == "DOCPROPERTY" => {}
-            Some(o) => out.push_str(o.plain_text()),
-            None => {}
-        }
-    }
-    out
+/// Does this DOCPROPERTY field code name a count of the body's text (`Words`, `Characters`,
+/// `CharactersWithSpaces`, `Paragraphs`), which Update Field takes again when it reaches the field?
+pub(super) fn doc_property_names_text_count(instr: &str) -> bool {
+    wordcraft_layout::fields::field_name(instr) == "DOCPROPERTY"
+        && doc_property_arg(instr)
+            .is_some_and(|n| ["words", "characters", "characterswithspaces", "paragraphs"].contains(&n.trim().to_ascii_lowercase().as_str()))
 }
 
 /// Does this DOCPROPERTY field code name the `Pages` property (so Update Field needs the layout)?
@@ -179,7 +188,8 @@ fn doc_property_count(instr: &str, n: usize) -> String {
 
 /// The new result of a DOCPROPERTY field on Update Field; `None` keeps the stored result. A field
 /// with no name gives [`NO_DOC_PROPERTY_NAME`]; a name that is neither a custom property nor a
-/// built-in one gives [`UNKNOWN_DOC_PROPERTY`]. Both are stored as is: Word does not apply the `\*`
+/// built-in one gives [`UNKNOWN_DOC_PROPERTY`], as does Title, Subject, Author, Keywords or Comments
+/// when it is empty and the file had no element for it. Both are stored as is: Word does not apply the `\*`
 /// capitalization switches to an error text. `date` formats a core date (an RFC 3339 instant) with
 /// the field's `\@` picture or the given default, `None` when it isn't a date.
 pub(super) fn doc_property_result(
@@ -190,6 +200,9 @@ pub(super) fn doc_property_result(
     instr: &str,
 ) -> Option<String> {
     let Some(name) = doc_property_arg(instr) else { return Some(NO_DOC_PROPERTY_NAME.to_string()) };
+    if doc.custom_prop(&name).is_none() && summary_property_missing(core, &name) {
+        return Some(UNKNOWN_DOC_PROPERTY.to_string());
+    }
     if let Some(v) = doc_property(doc, core, &name) {
         return Some(text_result(instr, v));
     }

@@ -1,4 +1,5 @@
 use super::ctx::Ctx;
+use super::headers::header_frame_wraps;
 use super::page::{PageBuilder, PageFrame};
 use super::placed::Placed;
 use super::table_flow::footer_table_wraps;
@@ -544,6 +545,7 @@ fn anchor_floats_but(
 
 pub(crate) fn body_wraps(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<WrapArea> {
     let mut areas = footer_table_wraps(ctx, pb);
+    areas.extend(header_frame_wraps(ctx, pb));
     areas.extend_from_slice(&pb.excl);
     areas
 }

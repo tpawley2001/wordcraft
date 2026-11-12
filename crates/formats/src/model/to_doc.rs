@@ -9,7 +9,6 @@ use super::{
     levels_for, para_block,
 };
 use wordcraft_doc::para::{GroupChild, MAX_GROUP_CHILDREN};
-use wordcraft_doc::props::Highlight;
 
 pub fn char_props(f: &Fmt) -> CharProps {
     let on = |b: bool| if b { Some(true) } else { None };
@@ -68,6 +67,12 @@ impl WithExtra for CharProps {
         if !f.underline && x.underline == Some(Underline::None) {
             self.underline = Some(Underline::None);
         }
+        if !f.sup && !f.sub && x.vert_align == Some(VertAlign::Baseline) {
+            self.vert_align = Some(VertAlign::Baseline);
+        }
+        if f.color.is_none() && x.color == Some(TextColor::Auto) {
+            self.color = Some(TextColor::Auto);
+        }
         if x.double_strike == Some(true) {
             (self.strike, self.double_strike) = (None, Some(true));
         }
@@ -100,7 +105,8 @@ impl WithExtra for CharProps {
         self.lang_bidi = name(&x.lang_bidi, 64);
         self.lang_ea = name(&x.lang_ea, 64);
         self.no_proof = x.no_proof.filter(|b| *b);
-        self.highlight = x.highlight.filter(|h| *h != Highlight::None);
+        // No highlight over a highlighted style is kept as such.
+        self.highlight = x.highlight;
         // Saved formatting carries the highlight colour as its background: the shading under a
         // highlight is the one kept beside it.
         if let Some(h) = self.highlight

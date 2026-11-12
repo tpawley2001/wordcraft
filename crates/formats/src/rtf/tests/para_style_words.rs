@@ -16,7 +16,9 @@ const LOUD_KID: &str = r"{\s16\sbasedon15\snext16\qr\ul Loud Kid;}";
 
 fn open(stylesheet: &str, body: &str) -> Document {
     let head = r"{\rtf1\ansi\deff0{\fonttbl{\f0 Times New Roman;}}{\colortbl;\red255\green0\blue0;}";
-    import(format!(r"{head}{{\stylesheet{{\s0 Normal;}}{stylesheet}}}{body}}}").as_bytes()).unwrap()
+    // A file WordCraft wrote: its paragraphs state nothing of their style's look, which they
+    // have all the same (a file from another program has only what its text states).
+    import(format!(r"{head}{{\*\generator WordCraft;}}{{\stylesheet{{\s0 Normal;}}{stylesheet}}}{body}}}").as_bytes()).unwrap()
 }
 
 /// The body paragraph whose text contains `text`.
