@@ -125,7 +125,7 @@ fn f9_shows_the_sources_text_for_text_links_automatic_or_manual() {
         update(&mut s);
         assert_eq!(result(&s), "this part", "{sw}");
         assert_eq!(letters(&s), "Here this part tail", "{sw}: the text around the field stays");
-        assert_eq!(instrs(&s), [instr.clone()], "{sw}: the field and its code stay");
+        assert_eq!(instrs(&s), std::slice::from_ref(&instr), "{sw}: the field and its code stay");
         assert!(!result_is_bold(&s), "{sw}: plain text takes the result's formatting, not the source's");
     }
 }
@@ -142,7 +142,7 @@ fn a_formatted_link_keeps_the_sources_formatting() {
         assert_eq!(result(&s), "this part", "{sw}");
         assert!(result_is_bold(&s), "{sw}: the source's bold comes along");
         assert_eq!(letters(&s), "Here this part tail", "{sw}");
-        assert_eq!(instrs(&s), [instr.clone()], "{sw}");
+        assert_eq!(instrs(&s), std::slice::from_ref(&instr), "{sw}");
     }
 }
 
