@@ -1,6 +1,7 @@
 use super::boxes::{BoxInput, layout_box};
 use super::cache::{Totals, hash_of};
 use super::ctx::{Ctx, with_pct_base, with_pin};
+use super::floats::WrapArea;
 use super::flow::again;
 use super::page::{PageBuilder, PageFrame, page_border_rules};
 use super::placed::{HfSlot, Placed};
@@ -15,8 +16,10 @@ use super::{
 /// - An odd- or even-page break counts on from the previous section's numbers. A section that
 ///   restarts its numbering gets no blank page unless the document prints both sides (different
 ///   odd and even headers, or mirror margins); a restart at the wrong parity takes the next number.
-/// - With different odd and even headers, a next-page break that restarts the numbers at an odd
-///   (even) number starts on an odd (even) sheet.
+/// - With different odd and even headers or mirror margins, a next-page break that restarts the
+///   numbers at an odd (even) number starts on an odd (even) sheet, the side told by the number of
+///   the page before (not the page count), so a blank page goes first when the restart has the
+///   same parity as `last`.
 ///
 /// (Word's output for docxide-pdf's fixtures: bush_fires_act_comparison has a blank page 2.)
 pub(crate) fn section_side(start: SectionStart, restart: Option<u32>, last: u32, pages: usize, even_odd: bool, mirror: bool) -> (bool, Option<u32>) {
@@ -29,10 +32,24 @@ pub(crate) fn section_side(start: SectionStart, restart: Option<u32>, last: u32,
             (filler, restart)
         }
         SectionStart::NextPage => {
-            let filler = even_odd && pages > 0 && restart.is_some_and(|n| (n % 2 == 1) != ((pages + 1) % 2 == 1));
+            let filler = (even_odd || mirror) && pages > 0 && restart.is_some_and(|n| n % 2 == last % 2);
             (filler, restart)
         }
         SectionStart::Continuous | SectionStart::NextColumn => (false, restart),
+    }
+}
+
+/// The number the document's first page takes from its section's start type and restart
+/// (`None`: it counts on from 0, so it is page 1). Word puts no blank page in front of an
+/// even-page first section: it numbers that page 2 (or the first even number at or after the
+/// restart), so later odd- and even-page breaks are decided against those numbers. An odd-page
+/// first section restarting at an even number takes the next one, as later sections do.
+pub(crate) fn first_page_number(start: SectionStart, restart: Option<u32>) -> Option<u32> {
+    let to_even = |n: u32| if n.is_multiple_of(2) { n } else { n.saturating_add(1) };
+    match start {
+        SectionStart::EvenPage => Some(to_even(restart.unwrap_or(2))),
+        SectionStart::OddPage => restart.map(|n| if n % 2 == 1 { n } else { n.saturating_add(1) }),
+        SectionStart::NextPage | SectionStart::Continuous | SectionStart::NextColumn => restart,
     }
 }
 
@@ -170,19 +187,33 @@ pub(crate) fn placed_cost_by(it: &Placed, limit: usize, cost: impl Fn(&Placed) -
 /// Header tables can displace a non-overlapping body table. Page-positioned drawings keep
 /// their own wrapping rules, so only table areas are retained from the header layout.
 pub(crate) fn header_table_areas(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<Rect> {
+    header_obstacles(ctx, pb).0
+}
+
+/// The wrap areas of the text frames of the page's header (page coordinates), the part below
+/// the body's top: body text wraps around them like around a floating object with the frame's
+/// wrap (Word's PDF export, every compatibility mode). A footer's frames are left alone.
+pub(crate) fn header_frame_wraps(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<WrapArea> {
+    header_obstacles(ctx, pb).1
+}
+
+/// [`header_table_areas`] and [`header_frame_wraps`], from one layout of the page's header
+/// (with that page's fields), cached by section, page number and whether it is the section's
+/// first page.
+fn header_obstacles(ctx: &mut Ctx, pb: &PageBuilder) -> (Vec<Rect>, Vec<WrapArea>) {
     if pb.web || ctx.opts.view == ViewMode::Read {
-        return Vec::new();
+        return Default::default();
     }
-    let Some(page) = pb.pages.last() else { return Vec::new() };
+    let Some(page) = pb.pages.last() else { return Default::default() };
     let first = pb.pages.iter().rev().nth(1).is_none_or(|prev| prev.section != page.section);
     let key = (page.section, page.number, first);
     if let Some(areas) = ctx.header_tables.get(&key) {
         return areas.clone();
     }
     let hf = Arc::clone(&ctx.hf);
-    let Some((_, sect)) = hf.sections.get(page.section) else { return Vec::new() };
+    let Some((_, sect)) = hf.sections.get(page.section) else { return Default::default() };
     if sect.text_direction.is_turned() {
-        return Vec::new();
+        return Default::default();
     }
     let set = hf.heads.set(page.section);
     let id = if sect.title_page && first {
@@ -192,10 +223,11 @@ pub(crate) fn header_table_areas(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<Rect> {
     } else {
         set.default
     };
-    let Some(id) = id else { return Vec::new() };
-    let Some(part) = ctx.doc.parts.get(&id) else { return Vec::new() };
+    let Some(id) = id else { return Default::default() };
+    let Some(part) = ctx.doc.parts.get(&id) else { return Default::default() };
     let blocks = part.blocks.clone();
     let x = sect.text_left(ctx.mirror);
+    let body_top = page.body.y;
     let frame = PageFrame { sect, margin_top: Some(page.body.y), origin: (x, sect.header), number: page.number, mirror: ctx.mirror };
     let base = hf.defining_width(false, page.section, Some(id));
     let counters = std::mem::take(&mut ctx.counters);
@@ -206,9 +238,10 @@ pub(crate) fn header_table_areas(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<Rect> {
     let track = std::mem::replace(&mut ctx.track_totals, false);
     ctx.fields.page_format = sect.page_num_format;
     ctx.fields.page = page.number;
-    let mut areas = again(ctx, 0, |ctx| {
-        with_pct_base(ctx, base, |ctx| layout_box(ctx, BoxInput::other(StoryRef::Part(id), &blocks, sect.text_width(), 0, Some(frame)))).table_areas
+    let laid = again(ctx, 0, |ctx| {
+        with_pct_base(ctx, base, |ctx| layout_box(ctx, BoxInput::other(StoryRef::Part(id), &blocks, sect.text_width(), 0, Some(frame))))
     });
+    let (mut areas, mut frames) = (laid.table_areas, laid.frame_wraps);
     ctx.counters = counters;
     ctx.boxes = boxes;
     ctx.chains = chains;
@@ -219,8 +252,14 @@ pub(crate) fn header_table_areas(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<Rect> {
         r.x += x;
         r.y += sect.header;
     }
-    ctx.header_tables.insert(key, areas.clone());
-    areas
+    for (r, ..) in &mut frames {
+        r.x += x;
+        r.y += sect.header;
+    }
+    frames.retain(|(r, ..)| r.bottom() > body_top);
+    let out = (areas, frames);
+    ctx.header_tables.insert(key, out.clone());
+    out
 }
 
 /// Whether a header, a footer or a text box shows a `PAGEREF` field, which they resolve from the

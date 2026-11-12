@@ -1,7 +1,7 @@
 //! A row of a nested table marked "can't split" moves on with its outer row, as in Word
 //! (docxide-pdf `nested-first-row-*-cant1`): the outer row splits only above it.
 use crate::*;
-use wordcraft_doc::{Table, para_block};
+use wordcraft_doc::{Pos, Table, para_block};
 
 fn one_line_paras(what: &str, n: usize) -> Vec<Arc<Block>> {
     (0..n)
@@ -210,4 +210,100 @@ fn a_merged_cell_doesnt_stretch_its_cant_split_row() {
     let l = lay_pushed(520.0, outer);
     let long = per_page(&l, |p| p.len() == 7 && p[..6] == [1, 0, 0, 0, 1, 1]);
     assert!(long[0] > 0 && long[1] > 0, "the splittable row splits: {long:?}");
+}
+
+// The empty paragraph that closes a cell right after a nested table takes no room (as in Word,
+// `nested_tail_paragraph`): two levels deep, in a row split over pages, and for the caret.
+
+/// Where the body paragraph after `outer` (laid out below a filler pushed `push` down) starts:
+/// its page and y.
+fn after_table(push: f32, outer: Table) -> (usize, f32) {
+    let mut d = Document::from_text("Filler");
+    if let Some(Block::Para(p)) = d.body.first_mut().map(Arc::make_mut) {
+        p.props.space_before = Some(push);
+    }
+    d.insert_block(StoryRef::Body, &Path::top(1), Block::Table(outer)).unwrap();
+    d.body.push(para_block(Paragraph::with_text("After", Default::default())));
+    let mut c = LayoutCache::new();
+    let l = layout(&d, &mut c, &LayoutOptions::default());
+    l.pages
+        .iter()
+        .enumerate()
+        .find_map(|(pi, pg)| {
+            pg.items.iter().find_map(|it| match it {
+                Placed::Lines { story: StoryRef::Body, path, y, .. } if path.0 == [2] => Some((pi, *y)),
+                _ => None,
+            })
+        })
+        .expect("After is placed")
+}
+
+fn one_cell(blocks: Vec<Arc<Block>>) -> Table {
+    let mut t = Table::new(1, 1, 400.0);
+    t.rows[0].cells[0].blocks = blocks;
+    t
+}
+
+#[test]
+fn closing_paragraphs_after_nested_tables_two_levels_deep_take_no_room() {
+    let deep = |close: bool| {
+        let inner = one_cell(one_line_paras("Deep", 1));
+        let mut mid = vec![Arc::new(Block::Table(inner))];
+        if close {
+            mid.push(empty());
+        }
+        let mut blocks = vec![Arc::new(Block::Table(one_cell(mid)))];
+        if close {
+            blocks.push(empty());
+        }
+        one_cell(blocks)
+    };
+    let (with, without) = (after_table(0.0, deep(true)), after_table(0.0, deep(false)));
+    assert_eq!(with.0, without.0);
+    assert!((with.1 - without.1).abs() < 0.05, "After at {with:?}, expected {without:?}");
+}
+
+#[test]
+fn a_row_split_over_pages_at_a_closing_paragraph_matches_one_without_it() {
+    let row = |close: bool| {
+        let mut nested = Table::new(1, 1, 200.0);
+        nested.rows[0].cells[0].blocks = one_line_paras("Nested", 40);
+        let mut blocks = one_line_paras("Prefix", 5);
+        blocks.push(Arc::new(Block::Table(nested)));
+        if close {
+            blocks.push(empty());
+        }
+        one_cell(blocks)
+    };
+    let (with, without) = (after_table(400.0, row(true)), after_table(400.0, row(false)));
+    assert!(with.0 > 0, "the row splits onto the next page: {with:?}");
+    assert_eq!(with.0, without.0);
+    assert!((with.1 - without.1).abs() < 0.05, "After at {with:?}, expected {without:?}");
+    // The closing paragraph is still placed, exactly once.
+    let mut nested = Table::new(1, 1, 200.0);
+    nested.rows[0].cells[0].blocks = one_line_paras("Nested", 40);
+    let mut blocks = one_line_paras("Prefix", 5);
+    blocks.extend([Arc::new(Block::Table(nested)), empty()]);
+    let l = lay_pushed(400.0, one_cell(blocks));
+    assert_eq!(per_page(&l, |p| p == [1, 0, 0, 6]).iter().sum::<usize>(), 1);
+}
+
+#[test]
+fn the_caret_and_hit_testing_find_a_collapsed_closing_paragraph() {
+    let l = lay_pushed(0.0, one_cell(vec![kept_nested(2), empty()]));
+    let pos = Pos { story: StoryRef::Body, path: Path(vec![1, 0, 0, 1]), off: 0 };
+    let c = l.caret(&pos).expect("a caret in the closing paragraph");
+    assert!(c.x.is_finite() && c.top.is_finite() && c.height.is_finite() && c.height > 0.0, "{c:?}");
+    // At the nested table's bottom edge: below its last line.
+    let nested_bottom = l.pages[0]
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            Placed::Lines { path, y, para, .. } if path.0.len() == 7 => Some(y + para.height),
+            _ => None,
+        })
+        .fold(0.0f32, f32::max);
+    assert!(c.top >= nested_bottom - 0.5, "caret at {}, nested text ends at {nested_bottom}", c.top);
+    let hit = l.hit(0, c.x, c.top, StoryRef::Body);
+    assert!(hit.is_some(), "hit testing there finds a position");
 }

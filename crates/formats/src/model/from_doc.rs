@@ -196,10 +196,22 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, look: Option<&str>, props: 
     f
 }
 
-/// The paragraph style whose formatting a paragraph of `kind` with style `style` states
-/// ([`FlowOpts::style_look`]): one of the document's own, in a paragraph of kind [`Kind::Normal`].
+/// The paragraph style whose character formatting a paragraph of `kind` with style `style` states
+/// ([`FlowOpts::style_look`]): its own when the document defines it, else Normal. A rule has no
+/// text to state it for.
 fn look_style<'a>(doc: &Document, style: Option<&'a str>, kind: Kind, opts: FlowOpts) -> Option<&'a str> {
-    style.filter(|id| opts.style_look && !opts.chars && kind == Kind::Normal && is_custom_style(doc, id))
+    if !opts.style_look || opts.chars || kind == Kind::Rule {
+        return None;
+    }
+    let defined = |id: &&str| doc.styles.get(id).is_some_and(|s| s.kind == wordcraft_doc::styles::StyleKind::Paragraph);
+    Some(style.filter(defined).unwrap_or("Normal"))
+}
+
+/// Of `look` ([`look_style`]), the style whose paragraph formatting a paragraph of `kind` states
+/// too: one of the document's own, or the built-in style a heading, title, quote or code paragraph
+/// stands for. Normal's paragraph formatting is left to the paragraph.
+fn para_look_style<'a>(doc: &Document, look: Option<&'a str>, kind: Kind) -> Option<&'a str> {
+    look.filter(|id| kind != Kind::Normal || is_custom_style(doc, id))
 }
 
 /// `f`, the flow formatting of a run with properties `props`, with its bold, italic, underline,
@@ -227,6 +239,12 @@ fn resolve_look(doc: &Document, para_style: Option<&str>, props: &CharProps, f: 
     f.size = Some(rc.size).filter(|s| s.is_finite());
     if !f.code && !rc.font.is_empty() {
         f.font = Some(Arc::from(rc.font.as_str()));
+    }
+    // All caps and small caps, which only the extra formatting holds.
+    if rc.caps || rc.small_caps || f.extra.as_ref().is_some_and(|x| x.caps.is_some() || x.small_caps.is_some()) {
+        let x = f.extra.get_or_insert_with(Default::default);
+        x.caps = rc.caps.then_some(true);
+        x.small_caps = rc.small_caps.then_some(true);
     }
 }
 
@@ -760,7 +778,15 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
     };
     out.extra = outline_apart(doc, &p.props, kind, opts, flow_para_extra(doc, &p.props, opts));
     let look = look_style(doc, p.props.style.as_deref(), kind, opts);
-    state_para_look(doc, look, &p.props, &mut out);
+    let para_look = para_look_style(doc, look, kind);
+    state_para_look(doc, para_look, &p.props, &mut out);
+    // The writer states the look of the style it names.
+    let name_look = |out: &mut Para| {
+        if let Some(id) = look {
+            out.extra.get_or_insert_with(Default::default).style = Some(id.to_string());
+        }
+    };
+    name_look(&mut out);
     let in_code = kind == Kind::Code;
     let mut k = 0usize;
     let mut control = OpenControl::default();
@@ -805,7 +831,8 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
                         index: None,
                         group: None,
                     };
-                    state_para_look(doc, look, &p.props, &mut next);
+                    state_para_look(doc, para_look, &p.props, &mut next);
+                    name_look(&mut next);
                     let prev = std::mem::replace(&mut out, next);
                     if prev.inlines.is_empty() {
                         out.page_break |= prev.page_break;

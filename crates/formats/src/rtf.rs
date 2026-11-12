@@ -76,6 +76,8 @@ mod gutter_edges;
 #[cfg(test)]
 mod info_edges;
 #[cfg(test)]
+mod normal_style_save_edges;
+#[cfg(test)]
 mod own_style_edges;
 #[cfg(test)]
 mod script_font_edges;
