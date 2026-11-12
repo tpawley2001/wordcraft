@@ -44,6 +44,7 @@ mod missing_font_univers;
 mod missing_glyphs;
 mod nbsp;
 mod nested_cant_split;
+mod nested_tail_paragraph;
 mod next_column_section;
 mod numeral;
 mod pages;
