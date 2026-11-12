@@ -1,7 +1,8 @@
 //! A table's cell padding in RTF (RTF 1.9.1, "Table Definitions"): `\trgaphN` is the left and right padding of a
 //! row's cells, 0 when the row has none; `\trpaddlN`, `\trpaddtN`, `\trpaddbN` and `\trpaddrN` state each side when
 //! its unit word (`\trpaddflN`, `\trpaddftN`, `\trpaddfbN`, `\trpaddfrN`) is 3 (twips). The values are what Word
-//! shows for the same rows; the table's first row decides.
+//! shows for the same rows; the table's first row decides. Once a row states its left or its right padding in twips,
+//! the gap no longer stands in for the other side (it is 0).
 
 use super::*;
 use wordcraft_doc::{Block, Document};
@@ -64,13 +65,13 @@ fn the_gap_is_the_left_and_right_padding() {
 }
 
 #[test]
-fn a_side_stated_in_twips_wins_over_the_gap() {
-    assert_padding(r"\trgaph108\trleft720\trpaddl300\trpaddfl3", [0.0, 15.0, 0.0, 5.4]);
-    assert_padding(r"\trgaph108\trleft0\trpaddr300\trpaddfr3", [0.0, 5.4, 0.0, 15.0]);
-    assert_padding(r"\trgaph108\trleft0\trpaddl0\trpaddfl3", [0.0, 0.0, 0.0, 5.4]);
+fn a_side_stated_in_twips_wins_over_the_gap_and_takes_it_from_the_other_side() {
+    assert_padding(r"\trgaph108\trleft720\trpaddl300\trpaddfl3", [0.0, 15.0, 0.0, 0.0]);
+    assert_padding(r"\trgaph108\trleft0\trpaddr300\trpaddfr3", [0.0, 0.0, 0.0, 15.0]);
+    assert_padding(r"\trgaph108\trleft0\trpaddl0\trpaddfl3", [0.0; 4]);
     assert_padding(r"\trleft0\trpaddl300\trpaddfl3", [0.0, 15.0, 0.0, 0.0]);
     // The unit may come before its value.
-    assert_padding(r"\trpaddfl3\trpaddl300\trgaph108", [0.0, 15.0, 0.0, 5.4]);
+    assert_padding(r"\trpaddfl3\trpaddl300\trgaph108", [0.0, 15.0, 0.0, 0.0]);
 }
 
 #[test]
@@ -92,7 +93,7 @@ fn the_first_row_decides_and_a_new_row_definition_forgets_the_last_ones_padding(
     let d = open(&format!("{}{}", row(r"\trgaph108\trpaddl300\trpaddfl3"), row(r"\trgaph108")));
     assert_eq!(tables(&d).len(), 1);
     assert_eq!(table(&d).rows.len(), 2);
-    assert!(same(padding(&d), [0.0, 15.0, 0.0, 5.4]), "{:?}", padding(&d));
+    assert!(same(padding(&d), [0.0, 15.0, 0.0, 0.0]), "{:?}", padding(&d));
 
     // The second table's row states only Word's gap: nothing is left of the first table's padding.
     let d = open(&format!(r"{}\pard between\par {}", row(r"\trpaddt200\trpaddft3\trpaddl300\trpaddfl3"), row(r"\trgaph108")));
@@ -132,18 +133,18 @@ fn hostile_padding_stays_finite_and_within_22_inches() {
         assert_eq!(table(&d).rows.len(), 1, "{def}");
     }
     // A negative value is no padding.
-    assert_padding(r"\trgaph108\trpaddl-500\trpaddfl3", [0.0, 0.0, 0.0, 5.4]);
+    assert_padding(r"\trgaph108\trpaddl-500\trpaddfl3", [0.0; 4]);
 }
 
 #[test]
 fn the_padding_round_trips() {
     let out = export(&open(&row(r"\trgaph108\trleft0\trpaddl300\trpaddfl3\trpaddt200\trpaddft3")));
     assert!(out.contains(r"\trgaph300\trleft0"), "the gap is the left padding:\n{out}");
-    for word in [r"\trpaddl300", r"\trpaddt200", r"\trpaddb0", r"\trpaddr108", r"\trpaddfl3", r"\trpaddft3", r"\trpaddfb3", r"\trpaddfr3"] {
+    for word in [r"\trpaddl300", r"\trpaddt200", r"\trpaddb0", r"\trpaddr0", r"\trpaddfl3", r"\trpaddft3", r"\trpaddfb3", r"\trpaddfr3"] {
         assert!(out.contains(word), "{word} not written:\n{out}");
     }
     let back = padding(&import(out.as_bytes()).unwrap());
-    assert!(same(back, [10.0, 15.0, 0.0, 5.4]), "{back:?}");
+    assert!(same(back, [10.0, 15.0, 0.0, 0.0]), "{back:?}");
 }
 
 #[test]

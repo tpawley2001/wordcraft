@@ -351,8 +351,8 @@ impl Reader<'_> {
                 if let Some(o) = self.read_signature_line(sc, k, rels) {
                     self.emit_obj(sc, pb, o, props);
                 } else {
-                    for o in self.read_vml_all(sc, k, rels) {
-                        self.emit_obj(sc, pb, o, props);
+                    for (o, link) in self.read_vml_linked(sc, k, rels) {
+                        self.emit_linked_obj(sc, pb, o, props, link);
                     }
                 }
             }

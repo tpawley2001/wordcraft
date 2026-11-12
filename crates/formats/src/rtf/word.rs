@@ -1,5 +1,5 @@
 use super::reader::apply_section_word;
-use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pn, PnKind, RevSt, SecFmt, St};
+use super::state::{CellDef, Dest, FmtRevSt, FontSlot, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pattern, Pn, PnKind, RevSt, SecFmt, St};
 use super::styles::{StyleDef, StyleEntry, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
 use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline};
@@ -94,6 +94,9 @@ impl Reader {
                 self.st.mono = None;
                 self.st.rev = RevSt::default();
                 self.st.chg_c = FmtRevSt::default();
+                self.st.dir = None;
+                self.st.slot = None;
+                self.st.ch_pattern = Pattern::default();
                 if self.st.border_side == Some('c') {
                     self.st.border_side = None;
                 }
@@ -104,7 +107,9 @@ impl Reader {
                 let (dest, fmt, rev, uc) = (self.st.dest, self.st.fmt.clone(), self.st.rev, self.st.uc);
                 let chg_c = std::mem::take(&mut self.st.chg_c);
                 let mono = self.st.mono.take();
-                self.st = St { dest, fmt, mono, rev, chg_c, uc, field, ..Default::default() };
+                // The run direction and font slot are character formatting too.
+                let (dir, slot) = (self.st.dir, self.st.slot);
+                self.st = St { dest, fmt, mono, rev, chg_c, uc, field, dir, slot, ..Default::default() };
                 self.page_side = None;
             }
             "revised" => self.st.rev.ins = on,
@@ -118,8 +123,23 @@ impl Reader {
             "crdate" => self.st.chg_c.date = pv as u32,
             "prauth" => self.st.chg_p.auth = pv,
             "prdate" => self.st.chg_p.date = pv as u32,
-            "b" => self.st.fmt.bold = on,
-            "i" => self.st.fmt.italic = on,
+            "b" | "ab" => self.script_bold(w == "ab", false, on),
+            "i" | "ai" => self.script_bold(w == "ai", true, on),
+            "rtlch" => {
+                self.st.dir = Some(true);
+                self.set_extra(|x| x.rtl = Some(true));
+            }
+            "ltrch" => {
+                self.st.dir = Some(false);
+                self.set_extra(|x| x.rtl = None);
+            }
+            // Which formatting the words after a direction word set is decided by their position,
+            // not by `\fcsN` (as Word reads it).
+            "fcs" => {}
+            "loch" => self.st.slot = Some(FontSlot::Low),
+            "hich" => self.st.slot = Some(FontSlot::High),
+            "dbch" => self.st.slot = Some(FontSlot::DoubleByte),
+            "af" => self.font_word(pv, true),
             "strike" => self.st.fmt.strike = on,
             "super" => {
                 self.st.fmt.sup = on;
@@ -141,7 +161,15 @@ impl Reader {
                 self.st.fmt.sup = false;
                 self.st.fmt.sub = false;
             }
-            "fs" => self.st.fmt.size = if pv > 0 { Some((pv as f32 / 2.0).clamp(1.0, 1638.0)) } else { None },
+            "fs" | "afs" => {
+                let size = if pv > 0 { Some((pv as f32 / 2.0).clamp(1.0, 1638.0)) } else { None };
+                match self.st.dir {
+                    Some(true) => self.set_extra(|x| x.size_cs = size),
+                    Some(false) => self.st.fmt.size = size,
+                    None if w == "fs" => self.st.fmt.size = size,
+                    None => {}
+                }
+            }
             "ansicpg" => {
                 if let Some(cp) = u16::try_from(pv).ok().filter(|cp| wordcraft_doc::encoding::is_text_code_page(*cp)) {
                     self.ansicpg = cp;
@@ -155,27 +183,7 @@ impl Reader {
             "deff" => self.deff = pv,
             "f" => {
                 self.st.cp = self.font_cps.get(&pv).copied();
-                let name = self.fonts.get(&pv).cloned();
-                match name {
-                    // The default font (`\deff`), monospaced or not, is the document's: text in
-                    // it is plain text, as after `\plain`.
-                    Some(n) if model::is_mono(&n) && pv == self.deff => {
-                        self.st.fmt.code = false;
-                        self.st.fmt.font = None;
-                        self.st.mono = None;
-                    }
-                    Some(n) if model::is_mono(&n) => {
-                        self.st.fmt.code = true;
-                        self.st.fmt.font = None;
-                        self.st.mono = Some(n);
-                    }
-                    Some(n) => {
-                        self.st.fmt.code = false;
-                        self.st.fmt.font = Some(n);
-                        self.st.mono = None;
-                    }
-                    None => {}
-                }
+                self.font_word(pv, false);
             }
             "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
             // A character border: the border words that follow describe it, until another side
@@ -185,7 +193,7 @@ impl Reader {
                 self.cell_side = None;
                 self.st.border_side = Some('c');
             }
-            "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "chcbpat" | "cb" | "chcfpat" | "chshdng" | "clcbpat" | "clcfpat" | "clshdng" => self.pattern_word(w, pv),
             "highlight" => self.highlight(pv),
             // Hidden text: kept, as hidden text.
             "v" => self.st.fmt.hidden = on,
@@ -268,7 +276,6 @@ impl Reader {
             "clpadfb" => self.def_cur.pad_unit[2] = Some(pv),
             "clpadfr" => self.def_cur.pad_unit[3] = Some(pv),
             "clNoWrap" => self.def_cur.no_wrap = true,
-            "clcbpat" => self.def_cur.shading = self.colors.get(pv.max(0) as usize).copied().flatten(),
             "sb" => self.st.sb = Some(pv),
             "sa" => self.st.sa = Some(pv),
             "sl" => self.st.sl = pv,
@@ -439,10 +446,12 @@ impl Reader {
                 self.in_date = Some((which, self.depth()));
                 Some(Dest::Skip)
             }
+            "template" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => Some(Dest::Template),
             "userprops" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => Some(Dest::UserProps),
             "propname" if self.st.dest == Dest::UserProps => Some(Dest::Info(8)),
             "staticval" if self.st.dest == Dest::UserProps => Some(Dest::Info(9)),
             "linkval" if self.st.dest == Dest::UserProps => Some(Dest::Info(10)),
+            "docvar" => Some(self.docvar_dest()),
             "latentstyles" if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() => {
                 self.latent.begin();
                 Some(Dest::LatentStyles)
@@ -497,7 +506,7 @@ impl Reader {
             | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
-            | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb" | "fontfile"
+            | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "objdata" | "fontemb" | "fontfile"
             | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl"
             // The flat copy of nested tables, for readers without them.
             | "nonesttables" => Some(Dest::Skip),
@@ -597,6 +606,7 @@ impl Reader {
                 self.record_date_part(word, value);
                 true
             }
+            Dest::DocVar => true,
             Dest::LatentStyles | Dest::LsdExcept => self.latent_word(word, param),
             Dest::UserProps => {
                 if word == "proptype" {
@@ -678,7 +688,7 @@ impl Reader {
                     "curi" => def.curi = Some(value.clamp(-158400, 158400)),
                     "expnd" => def.spacing = (value != 0).then_some(value as f32 / 4.0),
                     "expndtw" => def.spacing = (value != 0).then_some(value as f32 / 20.0),
-                    _ => {}
+                    _ => style_line_word(def, word, on, value),
                 }
                 true
             }
@@ -723,8 +733,10 @@ impl Reader {
                 }
                 true
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) if !matches!(word, "u" | "uc") => true,
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) => false,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template if !matches!(word, "u" | "uc") => {
+                true
+            }
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template => false,
             Dest::OldProps(false) if matches!(word, "crauth" | "crdate") => {
                 if word == "crauth" {
                     self.st.old_rev.0 = Some(value);
@@ -951,6 +963,26 @@ impl Reader {
         true
     }
 
+    /// A character (`\chcbpat`/`\cb`, `\chcfpat`, `\chshdng`) or cell (`\clcbpat`, `\clcfpat`,
+    /// `\clshdng`) shading word: kept on its pattern, and the shading resolved again, so the
+    /// words may come in any order.
+    fn pattern_word(&mut self, w: &str, pv: i32) {
+        let c = self.colors.get(pv.max(0) as usize).copied().flatten();
+        let cell = w.starts_with("cl");
+        let pat = if cell { &mut self.def_cur.pattern } else { &mut self.st.ch_pattern };
+        match w {
+            "chcfpat" | "clcfpat" => pat.ink = c,
+            "chshdng" | "clshdng" => pat.pct = pv,
+            _ => pat.fill = c,
+        }
+        let colour = pat.colour();
+        if cell {
+            self.def_cur.shading = colour;
+        } else {
+            self.st.fmt.background = colour;
+        }
+    }
+
     /// `\highlightN`: colour entry `n` as the text's highlight when it is one of the highlight
     /// colours; any other colour stays character shading, and none (0, auto, missing) clears both.
     fn highlight(&mut self, n: i32) {
@@ -996,6 +1028,54 @@ impl Reader {
         self.set_extra(|x| x.underline = on.then_some(style));
     }
 
+    /// A bold (`\b`, `\ab`) or italic (`\i`, `\ai`) word: complex-script formatting after
+    /// `\rtlch`, the ordinary formatting after `\ltrch` or with no direction word (where the `a`
+    /// form is ignored).
+    fn script_bold(&mut self, assoc: bool, italic: bool, on: bool) {
+        match self.st.dir {
+            Some(true) if italic => self.set_extra(|x| x.italic_cs = Some(on)),
+            Some(true) => self.set_extra(|x| x.bold_cs = Some(on)),
+            None if assoc => {}
+            _ if italic => self.st.fmt.italic = on,
+            _ => self.st.fmt.bold = on,
+        }
+    }
+
+    /// A font word (`\fN`, or `\afN` when `assoc`): the slot word before it (`\loch`, `\hich`,
+    /// `\dbch`) decides which font it names, else the direction word before it. The code page of
+    /// `\fN` is set by the caller whichever font it names.
+    fn font_word(&mut self, pv: i32, assoc: bool) {
+        let name = self.fonts.get(&pv).filter(|n| n.len() <= model::MAX_FONT_NAME).cloned();
+        let slot = self.st.slot.take();
+        let Some(n) = name else { return };
+        match (slot, self.st.dir) {
+            (Some(FontSlot::DoubleByte), _) => self.set_extra(|x| x.font_ea = Some(n.to_string())),
+            (Some(FontSlot::High), _) => {}
+            (None, Some(true)) => self.set_extra(|x| x.font_cs = Some(n.to_string())),
+            (None, None) if assoc => {}
+            (Some(FontSlot::Low), _) | (None, _) => self.base_font(pv, n),
+        }
+    }
+
+    /// The run's ordinary font: a monospaced one marks the text as code.
+    fn base_font(&mut self, pv: i32, n: super::Arc<str>) {
+        if model::is_mono(&n) && pv == self.deff {
+            // The default font (`\deff`), monospaced or not, is the document's: text in it is
+            // plain text, as after `\plain`.
+            self.st.fmt.code = false;
+            self.st.fmt.font = None;
+            self.st.mono = None;
+        } else if model::is_mono(&n) {
+            self.st.fmt.code = true;
+            self.st.fmt.font = None;
+            self.st.mono = Some(n);
+        } else {
+            self.st.fmt.code = false;
+            self.st.fmt.font = Some(n);
+            self.st.mono = None;
+        }
+    }
+
     /// Changes the run's character properties beyond the [`Fmt`] fields; none left is `None`.
     pub(super) fn set_extra(&mut self, f: impl FnOnce(&mut CharProps)) {
         let x = self.st.fmt.extra.get_or_insert_with(Default::default);
@@ -1007,6 +1087,55 @@ impl Reader {
 
     fn in_info(&self) -> bool {
         self.info_depth.is_some_and(|d| self.depth() > d)
+    }
+
+    /// Where a `{\*\docvar …}` group goes: a document variable in the main document; anywhere
+    /// else (a header, note, field or shape) it is not one and is skipped.
+    fn docvar_dest(&mut self) -> Dest {
+        if self.st.dest == Dest::Body && self.sub.is_none() && self.hf.is_none() && self.st.field.is_none() && self.shapes.is_empty() {
+            self.info_more.var_parts.clear();
+            Dest::DocVar
+        } else {
+            Dest::Skip
+        }
+    }
+}
+
+/// A character border, underline or strikethrough word of a paragraph or character style's
+/// stylesheet entry, read as the run's are: `\chbrdr` starts the border, and the border words
+/// after it describe it until a paragraph border side (`\brdrt`, `\box`…) starts. A stated
+/// "no border" (`\brdrnone`) is kept as an invisible border: it undoes a base style's.
+fn style_line_word(def: &mut StyleDef, w: &str, on: bool, pv: i32) {
+    use wordcraft_doc::props::Border;
+    // A table or section entry's aren't read.
+    if !matches!(def.entry, StyleEntry::Para | StyleEntry::Char) {
+        return;
+    }
+    match w {
+        "chbrdr" => def.border_open = true,
+        "brdrt" | "brdrl" | "brdrb" | "brdrr" | "brdrbtw" | "brdrbar" | "box" => def.border_open = false,
+        "brdrw" if def.border_open => {
+            if let Some(b) = &mut def.border {
+                b.width = (pv as f32 / 20.0).clamp(0.25, 6.0);
+            }
+        }
+        "brdrcf" if def.border_open && def.border.is_some() => def.border_color = Some(pv),
+        "brsp" if def.border_open => {
+            if let Some(b) = &mut def.border {
+                b.space = (pv as f32 / 20.0).clamp(0.0, 31.0);
+            }
+        }
+        "strike" => def.strike = Some(on),
+        "striked" => def.double_strike = Some(on),
+        "ulnone" => def.underline = Some(Underline::None),
+        _ => {
+            if let Some(style) = border_style(w).filter(|_| def.border_open) {
+                def.border = Some(Border { style, ..Border::single(0.5) });
+                def.border_color = None;
+            } else if let Some(u) = underline_style(w) {
+                def.underline = Some(if on { u } else { Underline::None });
+            }
+        }
     }
 }
 

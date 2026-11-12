@@ -66,6 +66,7 @@ impl Info {
         c.modified = self.modified;
         c.last_printed = self.printed;
         doc.custom_props = self.more.props;
+        doc.settings.doc_vars = self.more.doc_vars;
         let mut kept = String::new();
         for (name, value) in [("Manager", self.more.manager), ("Company", self.more.company), ("HyperlinkBase", self.more.hyperlink_base)] {
             if let Some(v) = app_kept_value(value) {

@@ -90,6 +90,8 @@ struct Shaped<'a> {
     rubies: Vec<RubyLayout>,
     displays: Vec<(usize, wordcraft_doc::math::MathJc)>,
     ptabs: Vec<(usize, PTabAlign, PTabBase, TabLeader)>,
+    /// Cluster indexes of the markers that end a field.
+    field_ends: Vec<usize>,
     eq_counter: u32,
     /// The byte ranges of runs left out of the layout, in order, adjacent runs merged.
     left: Vec<std::ops::Range<usize>>,
@@ -215,6 +217,7 @@ impl<'a> Shaped<'a> {
             rubies: Vec::new(),
             displays: Vec::new(),
             ptabs: Vec::new(),
+            field_ends: Vec::new(),
             eq_counter,
             left: Vec::new(),
             bare: Vec::new(),
@@ -380,6 +383,10 @@ impl<'a> Shaped<'a> {
             InlineObject::PositionalTab { align, relative_to, leader } => {
                 self.push(slot, ClKind::Tab, 0.0, 0.0);
                 self.ptabs.push((self.b.clusters.len() - 1, *align, *relative_to, *leader));
+            }
+            InlineObject::FieldEnd => {
+                self.field_ends.push(self.b.clusters.len());
+                self.bare_marker(slot);
             }
             _ => self.bare_marker(slot),
         }
@@ -740,7 +747,23 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     mark_break_opportunities(&mut sh.b.clusters, &bt, &rp);
     let label = list_label(&cx, &mut sh.b, mark_style);
     let joined_cluster_starts = joined_cluster_starts(p, &sh.b.clusters);
-    let Shaped { b, has_page_fields, notes, drop_cap, drop_cap_w, maths, check_boxes, enclosures, rubies, displays, ptabs, left, runs, .. } = sh;
+    let Shaped {
+        b,
+        has_page_fields,
+        notes,
+        drop_cap,
+        drop_cap_w,
+        maths,
+        check_boxes,
+        enclosures,
+        rubies,
+        displays,
+        ptabs,
+        field_ends,
+        left,
+        runs,
+        ..
+    } = sh;
     let mut pl = ParaLayout {
         rp,
         substituted: b.substituted,
@@ -765,6 +788,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         rubies,
         displays,
         ptabs,
+        field_ends,
         left_out: Vec::new(),
         enclosures,
         auto_space,
