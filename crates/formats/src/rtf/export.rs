@@ -269,6 +269,11 @@ fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
     if s.wrap_trail_spaces {
         o.push_str("\\wraptrsp");
     }
+    // A document that does not squeeze spaces to keep an overrunning word (one not from RTF, or
+    // an RTF one that said so) tells Word with `\jexpand`; `\jcompress` is the default.
+    if !s.rtf_justification {
+        o.push_str("\\jexpand");
+    }
     o
 }
 

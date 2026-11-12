@@ -13,6 +13,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 mod captions;
 mod fields;
 mod includetext;
+mod link;
 mod notes;
 mod numbers;
 mod properties;
@@ -23,8 +24,8 @@ pub(crate) use captions::{add_auto_caption, below_caption};
 use captions::{auto_caption, caption_label};
 use fields::caption;
 pub use fields::{
-    CHAPTER_SEPARATORS, REFERENCE_NOT_FOUND, output_fields, refresh_date_fields, seq_format, update_fields, update_fields_after_insert,
-    update_fields_in, update_seq,
+    BOOKMARK_SELF_REFERENCE, CHAPTER_SEPARATORS, NO_BOOKMARK_NAME, REFERENCE_NOT_FOUND, output_fields, refresh_date_fields, seq_format,
+    update_fields, update_fields_after_insert, update_fields_in, update_seq,
 };
 pub(crate) use fields::{page_at, page_formats, page_label, page_text};
 pub(crate) use includetext::update_source;
@@ -140,7 +141,7 @@ fn mark_toc_entry(s: &mut Session, v: &Value) -> CmdResult {
     };
     let instr = format!("TC \"{text}\" \\f {identifier} \\l {level}");
     let hidden = CharProps { hidden: Some(true), ..Default::default() };
-    let field = InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
+    let field = InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new(), code_paras: None };
     let (_, b) = s.sel.ordered();
     s.doc.insert_object(&b, field, &hidden)?;
     Ok(json!({"text": text, "identifier": identifier, "level": level}))

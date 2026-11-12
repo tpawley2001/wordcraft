@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 use wordcraft_doc::StoryRef;
 use wordcraft_doc::numbering::{Level, LevelSuffix, ListKind, levels_for};
-use wordcraft_doc::props::{Align, NumRef, Rgb, TextColor};
+use wordcraft_doc::props::{Align, NumRef, Rgb, TextColor, Underline};
 use wordcraft_doc::section::NumFormat;
 
 use super::sel_result;
@@ -19,7 +19,7 @@ pub const LEVELS: usize = 9;
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("list.define", "Define New Multilevel List", "Home › Paragraph › Multilevel List", define).params(
-            r#"{"levels": [{"format"?: "decimal|lowerLetter|upperLetter|lowerRoman|upperRoman|decimalZero|ordinal|bullet|none", "text"?: "%1.%2." (%n = level n's number; the bullet character for bullet), "start"?: n, "restartAfter"?: 0-8 (0 = never; omit = the level above), "style"?: paragraph style linked to the level | null, "align"?: "left|center|right", "alignedAt"?: pt, "indentAt"?: pt, "follow"?: "tab|space|nothing", "tabAt"?: pt | null, "font"?: string | null, "bold"?: bool, "italic"?: bool, "color"?: "RRGGBB" | null, "legal"?: bool}, …] (index = level, up to 9; fields left out keep the base list's), "num"?: list id to change in place (default: a new list), "apply"?: bool (default true: number the selected paragraphs), "name"?: string}"#,
+            r#"{"levels": [{"format"?: "decimal|lowerLetter|upperLetter|lowerRoman|upperRoman|decimalZero|ordinal|bullet|none", "text"?: "%1.%2." (%n = level n's number; the bullet character for bullet), "start"?: n, "restartAfter"?: 0-8 (0 = never; omit = the level above), "style"?: paragraph style linked to the level | null, "align"?: "left|center|right", "alignedAt"?: pt, "indentAt"?: pt, "follow"?: "tab|space|nothing", "tabAt"?: pt | null, "font"?: string | null, "bold"?: bool, "italic"?: bool, "color"?: "RRGGBB" | null, "size"?: pt (1-1638, half points) | null, "underline"?: w:u name (none|single|words|double|thick|dotted|dash|dotDash|dotDotDash|wave|wavyDouble) | null, "legal"?: bool}, …] (index = level, up to 9; fields left out keep the base list's), "num"?: list id to change in place (default: a new list), "apply"?: bool (default true: number the selected paragraphs), "name"?: string}"#,
         ),
         CommandSpec::new("list.get", "List Definition", "Home › Paragraph › Multilevel List", get)
             .params(r#"{"num"?: list id (default: the caret's list)} → {"num", "levels": [as list.define]}"#)
@@ -62,6 +62,8 @@ pub fn level_json(l: &Level) -> Value {
         "bold": l.chr.bold.unwrap_or(false),
         "italic": l.chr.italic.unwrap_or(false),
         "color": color,
+        "size": l.chr.size,
+        "underline": l.chr.underline.map(|u| u.ooxml()),
         "legal": l.legal,
     })
 }
@@ -137,10 +139,31 @@ pub fn level_from(mut l: Level, i: usize, v: &Value) -> Level {
         Some(Value::String(s)) => l.chr.color = Rgb::parse(s).map(TextColor::Rgb).or(l.chr.color),
         _ => {}
     }
+    match v.get("size") {
+        Some(Value::Null) => l.chr.size = None,
+        Some(Value::Number(n)) => l.chr.size = n.as_f64().filter(|x| x.is_finite()).map(|x| number_size(x as f32)).or(l.chr.size),
+        _ => {}
+    }
+    match v.get("underline") {
+        Some(Value::Null) => l.chr.underline = None,
+        Some(Value::String(s)) => l.chr.underline = underline_named(s).or(l.chr.underline),
+        _ => {}
+    }
     if let Some(b) = p::bool(v, "legal") {
         l.legal = b;
     }
     l
+}
+
+/// A number's point size as Word keeps it: half points from 1 to 1638.
+pub fn number_size(x: f32) -> f32 {
+    ((x * 2.0).round() / 2.0).clamp(1.0, 1638.0)
+}
+
+/// The underline with exactly this `w:u` name. Unlike `Underline::from_ooxml`, an unknown name
+/// is no underline at all rather than a single line.
+pub fn underline_named(name: &str) -> Option<Underline> {
+    Underline::ALL.into_iter().find(|u| u.ooxml() == name)
 }
 
 /// The caret's list, if it is in one.
@@ -312,12 +335,24 @@ pub fn define_number(s: &mut Session, v: &Value) -> CmdResult {
     {
         return Err(CmdError::Params("`align` must be left, center or right".into()));
     }
+    if let Some(x) = v.get("size")
+        && !x.is_null()
+        && !x.as_f64().is_some_and(|x| x.is_finite() && (1.0..=1638.0).contains(&x))
+    {
+        return Err(CmdError::Params("`size` must be a number of points from 1 to 1638".into()));
+    }
+    if let Some(x) = v.get("underline")
+        && !x.is_null()
+        && !x.as_str().is_some_and(|u| underline_named(u).is_some())
+    {
+        return Err(CmdError::Params("`underline` must be a w:u underline name such as single or double".into()));
+    }
     let start = p::u64(v, "start").map(|n| n.min(100_000) as u32);
     // Only the number's own settings reach the level, read as `list.define` reads them.
     let mut given = serde_json::Map::new();
     given.insert("format".into(), json!(format.ooxml()));
     given.insert("text".into(), json!(text));
-    for key in ["align", "font", "bold", "italic", "color"] {
+    for key in ["align", "font", "bold", "italic", "color", "size", "underline"] {
         if let Some(x) = v.get(key) {
             given.insert(key.into(), x.clone());
         }

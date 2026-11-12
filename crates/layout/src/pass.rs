@@ -4,7 +4,9 @@ use super::cache::{LayoutCache, Totals, env_hash, hash_of};
 use super::ctx::{Ctx, Pass, with_pct_base};
 use super::floats::{EarlyFloats, WrapArea, early_covered, left_out_objects};
 use super::flow::{OutlinePass, place_outline_para, place_para};
-use super::headers::{HfLinks, bookmark_pages, headers_footers, headers_footers_refer_to_pages, marks_key, mirror_even_pages, section_side};
+use super::headers::{
+    HfLinks, bookmark_pages, first_page_number, headers_footers, headers_footers_refer_to_pages, marks_key, mirror_even_pages, section_side,
+};
 use super::notes::{MAX_NOTE_PAGES, NoteSeps, note_info, place_endnotes};
 use super::page::{PageBuilder, body_top_for, foot_top_for, item_bottom};
 use super::placed::Placed;
@@ -328,7 +330,11 @@ fn start_section_page<'p>(ctx: &mut Ctx, pb: &mut PageBuilder<'p>, hf: &HfLinks<
         pb.take_back_break_page();
     }
     let s = &ctx.doc.settings;
-    let (filler, restart) = section_side(sec.start, sec.sect.page_num_start, pb.number, pb.pages.len(), s.even_odd_headers, s.mirror_margins);
+    let (filler, restart) = if sec.si == 0 && pb.pages.is_empty() && !mode.web {
+        (false, first_page_number(sec.sect.start, sec.sect.page_num_start))
+    } else {
+        section_side(sec.start, sec.sect.page_num_start, pb.number, pb.pages.len(), s.even_odd_headers, s.mirror_margins)
+    };
     if filler && !mode.web {
         end_previous_section(ctx, pb, hf, sec.si, block);
         pb.sect = sec.sect;

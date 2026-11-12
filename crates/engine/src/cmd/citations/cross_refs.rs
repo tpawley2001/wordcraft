@@ -76,7 +76,7 @@ pub(super) fn cross_ref(s: &mut Session, v: &Value) -> CmdResult {
     };
     let end = s.doc.insert_object(
         &at,
-        InlineObject::Field { instr, result: result.clone(), locked: false, dirty: false, code: false, form: String::new() },
+        InlineObject::Field { instr, result: result.clone(), locked: false, dirty: false, code: false, form: String::new(), code_paras: None },
         &props,
     )?;
     s.sel = Selection::caret(end);
@@ -160,7 +160,7 @@ fn note_cross_ref(s: &mut Session, v: &Value, kind: NoteKind) -> CmdResult {
     };
     let end = s.doc.insert_object(
         &at,
-        InlineObject::Field { instr, result: result.clone(), locked: false, dirty: false, code: false, form: String::new() },
+        InlineObject::Field { instr, result: result.clone(), locked: false, dirty: false, code: false, form: String::new(), code_paras: None },
         &props,
     )?;
     s.sel = Selection::caret(end);

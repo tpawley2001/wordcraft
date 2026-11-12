@@ -13,11 +13,13 @@ use crate::props::{CharProps, ParaProps};
 use crate::section::SectionProps;
 use crate::{DocError, Result};
 
+mod code_paras;
 mod float;
 mod inline_kinds;
 mod inline_object;
 mod run;
 
+pub use code_paras::{CodeMark, CodeParas, code_hash};
 pub use float::{AltText, Anchor, Float, FloatAlign, MAX_ALT_TEXT, Wrap, WrapText, cap_alt};
 pub use inline_kinds::{NoteKind, PTabAlign, PTabBase, RubyAlign, ShapeKind, ruby_offset, ruby_raise};
 pub use inline_object::{CanvasStyle, GroupChild, InlineObject, MAX_GROUP_CHILDREN};
@@ -644,7 +646,15 @@ mod tests {
         let mut p = Paragraph::with_text("añb€c", CharProps::default());
         p.insert_object(
             3,
-            InlineObject::Field { instr: "PAGE".into(), result: "7".into(), locked: false, dirty: false, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: "PAGE".into(),
+                result: "7".into(),
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &CharProps::default(),
         )
         .unwrap();
@@ -718,7 +728,15 @@ mod tests {
         let mut p = Paragraph::with_text("ab", CharProps::default());
         p.insert_object(
             1,
-            InlineObject::Field { instr: "PAGE".into(), result: "1".into(), locked: false, dirty: false, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: "PAGE".into(),
+                result: "1".into(),
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &CharProps::default(),
         )
         .unwrap();

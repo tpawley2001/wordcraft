@@ -31,8 +31,9 @@ impl Writer<'_> {
             f(w);
             w.close("w:r");
         };
+        let marks = std::mem::take(&mut self.code_marks);
         self.rev_open(w, props);
-        self.field_start(w, instr, locked, dirty, form, props);
+        self.field_code(w, instr, (locked, dirty, form), &marks, props);
         if !result.is_empty() {
             run(w, &|w| {
                 let mut buf = String::new();
@@ -113,6 +114,13 @@ impl Writer<'_> {
     /// A field's begin, code and separator; `form` is a legacy form field's `w:ffData`, which
     /// belongs inside the begin.
     pub(super) fn field_start(&self, w: &mut W, instr: &str, locked: bool, dirty: bool, form: &str, props: &CharProps) {
+        self.field_code(w, instr, (locked, dirty, form), &[], props);
+    }
+
+    /// [`Self::field_start`] for a code that runs over several paragraphs: `marks` are the
+    /// paragraph marks in it (offset in the trimmed code, the next paragraph's `w:pPr`). The
+    /// caller makes sure nothing but the paragraph is open around the field.
+    fn field_code(&self, w: &mut W, instr: &str, (locked, dirty, form): (bool, bool, &str), marks: &[(usize, String)], props: &CharProps) {
         let del = self.is_del(props);
         let run = |w: &mut W, f: &dyn Fn(&mut W)| {
             w.open("w:r", &[]);
@@ -136,8 +144,44 @@ impl Writer<'_> {
                 w.close("w:fldChar");
             }
         });
-        let instr_text = format!(" {} ", instr.trim());
-        run(w, &|w| w.leaf(if del { "w:delInstrText" } else { "w:instrText" }, &[("xml:space", "preserve")], &instr_text));
+        let tag = if del { "w:delInstrText" } else { "w:instrText" };
+        let code = instr.trim();
+        let parts: Option<Vec<&str>> = (!marks.is_empty())
+            .then(|| {
+                let mut from = 0usize;
+                let mut parts = Vec::with_capacity(marks.len() + 1);
+                for (at, _) in marks {
+                    parts.push(code.get(from..*at)?);
+                    from = *at;
+                }
+                parts.push(code.get(from..)?);
+                Some(parts)
+            })
+            .flatten();
+        match parts {
+            Some(parts) => {
+                let last = parts.len().saturating_sub(1);
+                for (i, part) in parts.into_iter().enumerate() {
+                    if let Some((_, ppr)) = i.checked_sub(1).and_then(|m| marks.get(m)) {
+                        w.close("w:p");
+                        w.open("w:p", &[]);
+                        w.raw(ppr);
+                    }
+                    let text = match (i == 0, i == last) {
+                        (true, _) => format!(" {part}"),
+                        (false, true) => format!("{part} "),
+                        _ => part.to_string(),
+                    };
+                    if !text.is_empty() {
+                        run(w, &|w| w.leaf(tag, &[("xml:space", "preserve")], &text));
+                    }
+                }
+            }
+            None => {
+                let instr_text = format!(" {code} ");
+                run(w, &|w| w.leaf(tag, &[("xml:space", "preserve")], &instr_text));
+            }
+        }
         run(w, &|w| w.empty("w:fldChar", &[("w:fldCharType", "separate")]));
     }
 }

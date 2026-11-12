@@ -103,6 +103,10 @@ pub enum InlineObject {
         /// source's `w:ffData`, raw OOXML kept for round trip. Empty for other fields.
         #[serde(default, skip_serializing_if = "String::is_empty")]
         form: String,
+        /// Paragraph marks inside the code, from a file whose code runs over several paragraphs
+        /// (Word shows them as one): kept so the field is saved in those paragraphs again.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        code_paras: Option<Box<super::CodeParas>>,
     },
     /// The start of a field whose result is ordinary content — formatted, possibly spanning
     /// paragraphs — up to the matching [`InlineObject::FieldEnd`]. Imported TOCs and citation

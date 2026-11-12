@@ -720,7 +720,7 @@ pub(crate) fn unlink_sections(blocks: &mut [Block]) {
 
 /// Turn an imported document into a fragment of the session's document: bring over the media,
 /// lists and styles it refers to (renumbered so they can't collide with ours).
-fn adopt(s: &mut Session, src: Document) -> Fragment {
+pub(crate) fn adopt(s: &mut Session, src: Document) -> Fragment {
     let mut frag = s.doc.adopt(src);
     // Pasted pictures fit our text width, like Insert › Pictures (layout keeps their size).
     let max_w = crate::io::text_width(&s.doc);

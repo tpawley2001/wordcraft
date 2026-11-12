@@ -16,6 +16,7 @@ mod insert_table_autofit;
 mod insert_table_remember;
 mod drop_cap_from_style;
 mod define_number_format;
+mod define_number_size_underline;
 mod drop_cap_in_margin;
 mod bidi;
 mod browse_object;
@@ -36,6 +37,7 @@ mod grid_settings;
 mod fonts;
 mod includetext;
 mod includetext_update_source;
+mod link_update;
 mod goto_what;
 mod goto_line;
 mod ime_noop;
@@ -47,6 +49,7 @@ mod mark_toc_entry;
 mod move_text_keys;
 mod negative_margins;
 mod rtl_gutter;
+mod output_header_footer_fields;
 mod para_sort_case;
 mod para_sort_keys;
 mod paste_link;
@@ -73,6 +76,7 @@ mod symbol_field_update;
 mod accent_compose;
 mod alignment_tab;
 mod cross_ref_missing;
+mod cross_ref_self;
 mod cross_ref_notes;
 mod typing;
 mod view_split;
@@ -4498,6 +4502,7 @@ fn update_toc_clears_stale_field_result_for_docx_span() {
                 dirty: false,
                 code: false,
                 form: String::new(),
+code_paras: None,
             },
             &CharProps::default(),
         )
@@ -4559,6 +4564,7 @@ fn update_fields_clears_dirty() {
                 dirty: true,
                 code: false,
                 form: String::new(),
+code_paras: None,
             },
             &wordcraft_doc::props::CharProps::default(),
         )
@@ -12221,6 +12227,7 @@ fn toc_collects_cell_headings() {
             dirty: true,
             code: false,
             form: String::new(),
+code_paras: None,
         },
         &CharProps::default(),
     )
@@ -12292,6 +12299,7 @@ fn toc_keeps_direct_number_tabs() {
                 dirty: true,
                 code: false,
                 form: String::new(),
+code_paras: None,
             },
             &CharProps::default(),
         )
@@ -13330,6 +13338,8 @@ mod backup_copy;
 mod formula_bookmarks;
 mod border_from_text;
 mod opentype_state;
+mod formula_error_texts;
 mod hyperlink_screen_tip_fixes;
 mod formula_mixed_looks;
 mod formula_operand_text;
+mod formula_plain_decimals;
