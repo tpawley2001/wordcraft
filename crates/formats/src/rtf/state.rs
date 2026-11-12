@@ -71,12 +71,24 @@ pub(super) enum Dest {
     /// User properties (`{\*\userprops …}`, RTF 1.9.1 "User Properties"): `\proptypeN` is read
     /// here, `\propname`, `\staticval` and `\linkval` are text groups (`Info(8..=10)`).
     UserProps,
+    /// The attached template (`{\*\template …}`, RTF 1.9.1): its text is the template's path.
+    Template,
+    /// The latent-style table (`{\*\latentstyles …}`): its words are read into
+    /// [`super::latent_styles::Latent`].
+    LatentStyles,
+    /// The exceptions of the latent-style table (`{\lsdlockedexcept …}`): words and names.
+    LsdExcept,
 }
+
+/// Longest attached template path kept (characters).
+pub(super) const MAX_TEMPLATE_CHARS: usize = 4096;
 
 /// Longest text kept of one information-group field or user property name or value (bytes).
 pub(super) const MAX_INFO_TEXT: usize = 64 * 1024;
 /// Most user properties one file may bring in.
 pub(super) const MAX_USER_PROPS: usize = 1_000;
+/// Most latent-style exceptions kept (`{\lsdlockedexcept …}`); Word writes about 380.
+pub(super) const MAX_LATENT_EXCEPTIONS: usize = 2_000;
 
 /// Cut `s` to at most `max` bytes, at a character boundary.
 pub(super) fn truncate_chars(s: &mut String, max: usize) {
@@ -387,21 +399,32 @@ impl RowStyle {
         }
     }
 
-    /// The row's default cell padding (top, left, bottom, right), points, when it is not Word's
-    /// default: a side in twips (unit 3) as stated, else left and right the gap and top and
-    /// bottom none. A row with a table style and neither a gap nor a side in twips keeps the
-    /// style's.
-    pub(super) fn cell_margins(&self) -> Option<[f32; 4]> {
+    /// Whether the row keeps its table style's cell padding: it has a table style and states
+    /// neither a gap nor a side in twips.
+    pub(super) fn keeps_style_padding(&self) -> bool {
+        self.style.is_some() && !self.has_gap && !self.pad_unit.contains(&3)
+    }
+
+    /// The row's cell padding (top, left, bottom, right), points: a side in twips (unit 3) as
+    /// stated (a negative value is 0), top and bottom else none, and left and right else the
+    /// gap while the row states neither its left nor its right side in twips (once it states
+    /// one, the other is 0).
+    pub(super) fn padding(&self) -> [f32; 4] {
         let twips = |i: usize| self.pad_unit.get(i) == Some(&3);
-        let stated = (0..4).any(twips);
-        if self.style.is_some() && !self.has_gap && !stated {
-            return None;
-        }
-        let gap = self.gap.clamp(0, 31_680) as f32 / 20.0;
+        let gap = if twips(1) || twips(3) { 0.0 } else { self.gap.clamp(0, 31_680) as f32 / 20.0 };
         let side = |i: usize, default: f32| {
             if twips(i) { self.pad.get(i).copied().unwrap_or(0).clamp(0, 31_680) as f32 / 20.0 } else { default }
         };
-        let m = [side(0, 0.0), side(1, gap), side(2, 0.0), side(3, gap)];
+        [side(0, 0.0), side(1, gap), side(2, 0.0), side(3, gap)]
+    }
+
+    /// The row's default cell padding (top, left, bottom, right), points, when it is not Word's
+    /// default (see [`RowStyle::padding`]). A row that keeps its table style's padding has none.
+    pub(super) fn cell_margins(&self) -> Option<[f32; 4]> {
+        if self.keeps_style_padding() {
+            return None;
+        }
+        let m = self.padding();
         let word = [0.0, 5.4, 0.0, 5.4];
         if m.iter().zip(word).all(|(v, w)| (v - w).abs() < 0.01) { None } else { Some(m) }
     }
@@ -433,6 +456,8 @@ pub(super) struct St {
     /// the `\oldcprops` words, applied on top of the run's formatting when text is read: Word
     /// writes only the properties that changed there.
     pub(super) chg_c: FmtRevSt<OldWords>,
+    /// Character shading pattern (`\chcbpat`/`\cb`, `\chcfpat`, `\chshdng`); reset by `\plain`.
+    pub(super) ch_pattern: Pattern,
     /// While an `\oldcprops` group is read: its character formatting words, and the author and
     /// date of the change (`\crauth`/`\crdate`, which Word writes inside the group).
     pub(super) old_words: OldWords,
@@ -458,6 +483,10 @@ pub(super) struct St {
     pub(super) noline: bool,
     /// Widow/orphan control (`\widctlpar`, `\nowidctlpar`); `None` until the paragraph says.
     pub(super) widow: Option<bool>,
+    /// Automatic space between Asian and Latin text (`\aspalpha`) and between Asian text and
+    /// numbers (`\aspnum`); off unless the paragraph says, cleared by `\pard`.
+    pub(super) asp_alpha: bool,
+    pub(super) asp_num: bool,
     /// Contextual spacing (`\contextualspace`), mirror indents (`\mirrorindents`), automatic
     /// space before/after (`\sbautoN`, `\saautoN`), hyphenation suppressed (`\hyphpar0`) and
     /// line grid snapping (`\nosnaplinegrid`); `None` until the paragraph says.
@@ -502,6 +531,23 @@ pub(super) struct St {
     pub(super) pn: Option<Box<Pn>>,
     /// The paragraph's frame and drop cap words (`\absw`, `\posx`, `\dropcapli`…).
     pub(super) frame: Option<Box<super::frames::FrameSt>>,
+    /// The last run direction word in the group chain (`\rtlch` true, `\ltrch` false): the
+    /// font, size, bold and italic words after `\rtlch` are the complex-script formatting.
+    pub(super) dir: Option<bool>,
+    /// The font slot (`\loch`, `\hich`, `\dbch`) the next font word fills.
+    pub(super) slot: Option<FontSlot>,
+}
+
+/// The font a font word right after `\loch`, `\hich` or `\dbch` names (RTF 1.9.1, "Associated
+/// Character Properties").
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum FontSlot {
+    /// The ordinary (low-ANSI) font.
+    Low,
+    /// The high-ANSI font, which the model has no place for.
+    High,
+    /// The East Asian (double-byte) font.
+    DoubleByte,
 }
 
 impl Default for St {
@@ -512,6 +558,7 @@ impl Default for St {
             mono: None,
             rev: RevSt::default(),
             chg_c: FmtRevSt::default(),
+            ch_pattern: Pattern::default(),
             chg_p: FmtRevSt::default(),
             old_words: Vec::new(),
             old_rev: (None, None),
@@ -528,6 +575,8 @@ impl Default for St {
             keep: false,
             noline: false,
             widow: None,
+            asp_alpha: false,
+            asp_num: false,
             contextual: None,
             mirror: None,
             sb_auto: None,
@@ -556,8 +605,40 @@ impl Default for St {
             tab_leader: TabLeader::None,
             pn: None,
             frame: None,
+            dir: None,
+            slot: None,
         }
     }
+}
+
+/// A shading pattern as read: the pattern (ink) and background (fill) colours, `None` for
+/// automatic, and the pattern's coverage in hundredths of a percent.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct Pattern {
+    pub(super) ink: Option<Rgb>,
+    pub(super) fill: Option<Rgb>,
+    pub(super) pct: i32,
+}
+
+impl Pattern {
+    /// The one colour the pattern paints: see [`pattern_shading`].
+    pub(super) fn colour(&self) -> Option<Rgb> {
+        pattern_shading(self.pct, self.ink, self.fill)
+    }
+}
+
+/// The colour a percent shading pattern averages to: `pct` hundredths of a percent of the pattern
+/// colour `ink` (automatic = black) over the background `fill` (automatic = white), exact halves
+/// rounding down. With no pattern (0) it is the background colour, or none when that is automatic.
+pub(super) fn pattern_shading(pct: i32, ink: Option<Rgb>, fill: Option<Rgb>) -> Option<Rgb> {
+    let n = u32::try_from(pct.clamp(0, 10_000)).unwrap_or(0);
+    if n == 0 {
+        return fill;
+    }
+    let ink = ink.unwrap_or(Rgb(0, 0, 0));
+    let fill = fill.unwrap_or(Rgb(255, 255, 255));
+    let mix = |i: u8, f: u8| u8::try_from((u32::from(i) * n + u32::from(f) * (10_000 - n) + 4_999) / 10_000).unwrap_or(u8::MAX);
+    Some(Rgb(mix(ink.0, fill.0), mix(ink.1, fill.1), mix(ink.2, fill.2)))
 }
 
 #[derive(Default, Clone)]
@@ -565,6 +646,8 @@ pub(super) struct CellDef {
     pub(super) vmerge: u8,
     pub(super) hmerge: u8,
     pub(super) shading: Option<Rgb>,
+    /// The cell's shading pattern (`\clcbpat`, `\clcfpat`, `\clshdng`), `shading` resolved.
+    pub(super) pattern: Pattern,
     pub(super) right: i32,
     /// The borders the cell names (`\clbrdrt` … `\clbrdrr`, each with its line style, `\brdrw`
     /// width and `\brdrcf` colour).

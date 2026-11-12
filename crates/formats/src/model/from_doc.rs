@@ -131,6 +131,13 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, props: &CharProps, in_code:
                 border: e.border.filter(|b| b.is_visible()),
                 highlight,
                 shading,
+                // The run's direction and its complex-script and East Asian formatting.
+                rtl: set(e.rtl),
+                font_cs: e.font_cs.clone().filter(|f| !f.is_empty()),
+                font_ea: e.font_ea.clone().filter(|f| !f.is_empty()),
+                size_cs: e.size_cs.filter(|s| s.is_finite()),
+                bold_cs: e.bold_cs,
+                italic_cs: e.italic_cs,
                 ..Default::default()
             };
             if x.double_strike.is_some() {
@@ -216,6 +223,7 @@ fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
         engrave: set(e.engrave),
         border: e.border.filter(|b| b.is_visible()),
         lang: e.lang.clone().filter(|l| !l.is_empty()),
+        rtl: set(e.rtl),
         font_cs: e.font_cs.clone().filter(|f| !f.is_empty()),
         font_ea: e.font_ea.clone().filter(|f| !f.is_empty()),
         size_cs: e.size_cs.filter(|s| s.is_finite()),
@@ -306,6 +314,11 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         x.frame = p.frame.clone().filter(|_| opts.frames);
     }
     x.style = p.style.clone().filter(|id| opts.styles && is_custom_style(doc, id));
+    if opts.auto_space {
+        let rp = doc.styles.resolve_para(p);
+        x.auto_space_de = (!rp.auto_space_de).then_some(false);
+        x.auto_space_dn = (!rp.auto_space_dn).then_some(false);
+    }
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
 

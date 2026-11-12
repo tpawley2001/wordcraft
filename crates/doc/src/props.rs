@@ -72,6 +72,19 @@ mod tests {
     }
 
     #[test]
+    fn char_own_part_keeps_own_and_changed_fields_only() {
+        let inherited = CharProps { bold: Some(true), size: Some(12.0), font: Some("Serif".into()), ..Default::default() };
+        let own = CharProps { size: Some(12.0), italic: Some(true), ..Default::default() };
+        // A field the own set doesn't hold but that still changed (a toggle against the base).
+        let full = CharProps { bold: Some(false), ..inherited.clone().overlaid(&own) };
+        let part = full.own_part(&own, &inherited);
+        assert_eq!(part.size, Some(12.0), "set by the style itself, though equal to the base's");
+        assert_eq!(part.italic, Some(true));
+        assert_eq!(part.bold, Some(false), "changed against the base");
+        assert_eq!(part.font, None, "merely inherited");
+    }
+
+    #[test]
     fn overlay_keeps_unset() {
         let base = CharProps { bold: Some(true), size: Some(12.0), ..Default::default() };
         let patch = CharProps { size: Some(14.0), italic: Some(true), ..Default::default() };

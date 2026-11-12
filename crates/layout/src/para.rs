@@ -92,6 +92,8 @@ pub struct ParaLayout {
     pub displays: Vec<(usize, wordcraft_doc::math::MathJc)>,
     /// Positional tabs (laid out as tab clusters): cluster index, alignment, base and leader.
     pub ptabs: Vec<(usize, PTabAlign, PTabBase, TabLeader)>,
+    /// The markers that end a field (laid out as zero-width marker clusters): cluster indexes, in order.
+    pub field_ends: Vec<usize>,
     /// Byte ranges of the text laid out as nothing ([`left_out`]): hidden text that is not shown,
     /// tracked deletions in the final text. Resolved as laid out, table formatting included.
     pub left_out: Vec<std::ops::Range<usize>>,

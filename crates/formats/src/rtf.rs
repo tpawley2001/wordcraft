@@ -41,6 +41,7 @@ mod date;
 mod export;
 mod form_field;
 mod frames;
+mod latent_styles;
 mod note_marks;
 mod parse;
 mod reader;
@@ -77,5 +78,9 @@ mod info_edges;
 #[cfg(test)]
 mod own_style_edges;
 #[cfg(test)]
+mod script_font_edges;
+#[cfg(test)]
 mod shape_regressions;
 mod shapes;
+#[cfg(test)]
+mod style_char_border_edges;

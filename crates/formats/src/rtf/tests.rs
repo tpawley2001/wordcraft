@@ -1830,6 +1830,7 @@ fn compound_borders_round_trip() {
     assert_eq!(tops(&back), want);
 }
 
+mod asian_auto_space;
 mod bookmark_ranges;
 mod cell_margins;
 mod char_border;
@@ -1852,6 +1853,7 @@ mod html_auto_spacing;
 mod info_company;
 mod info_props;
 mod justification_flag;
+mod latent_styles;
 mod legacy_pn;
 mod link_screen_tip;
 mod mark_and_default_font;
@@ -1867,7 +1869,10 @@ mod para_extras;
 mod para_outline_borders;
 mod para_shading;
 mod para_spacing_hidden;
+mod percent_shading;
 mod picture_crop;
+mod row_cell_padding;
+mod script_fonts;
 mod section_extras;
 mod section_revisions;
 mod section_text_flow;
@@ -1878,7 +1883,9 @@ mod table_cell_padding;
 mod table_position;
 mod table_rows;
 mod table_styles;
+mod tabs_keep_para_words;
 mod tabs_spacing;
+mod template_and_track_moves;
 mod track_and_print_data;
 mod trailing_data;
 mod underline_styles;
