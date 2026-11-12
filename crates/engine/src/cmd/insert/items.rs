@@ -412,7 +412,7 @@ pub(super) fn field(s: &mut Session, v: &Value) -> CmdResult {
         &props,
     )?;
     s.sel = Selection::caret(end);
-    let _ = crate::cmd::references::update_fields(s);
+    let _ = crate::cmd::references::update_fields_after_insert(s);
     sel_result(s)
 }
 

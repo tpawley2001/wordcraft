@@ -50,3 +50,21 @@ fn a_property_value_cut_at_the_limit_keeps_whole_characters() {
     let v = d.custom_prop("L").unwrap_or_default();
     assert!(!v.is_empty() && v.len() <= 64 * 1024);
 }
+
+#[test]
+fn document_variable_text_decodes_unicode_and_escaped_braces() {
+    // Built from parts, as above: an en dash as a Unicode escape with a one-byte fallback.
+    let dash = format!(r"\u{}?", 8211);
+    let d = doc(&format!(r"{{\rtf1\ansi\ansicpg1252\uc1{{\*\docvar {{Caf\'e9}}{{a{dash}b \{{x\}} \\ y}}}}\pard Xyzzy\par}}"));
+    let vars: Vec<_> = d.settings.doc_vars.iter().map(|v| (v.name.as_str(), v.value.as_str())).collect();
+    assert_eq!(vars, [("Caf\u{e9}", "a\u{2013}b {x} \\ y")]);
+    assert_eq!(d.plain_text(StoryRef::Body).trim(), "Xyzzy");
+}
+
+#[test]
+fn a_group_nested_in_a_document_variable_name_stays_part_of_it() {
+    let d = doc(r"{\rtf1\ansi{\*\docvar {Cli{\b en}t}{Acme}{extra}}\pard Xyzzy\par}");
+    let vars: Vec<_> = d.settings.doc_vars.iter().map(|v| (v.name.as_str(), v.value.as_str())).collect();
+    assert_eq!(vars, [("Client", "Acme")]);
+    assert_eq!(d.plain_text(StoryRef::Body).trim(), "Xyzzy");
+}

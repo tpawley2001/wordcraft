@@ -335,7 +335,7 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"char": string}"#),
         CommandSpec::new("para.defineNumber", "Define New Number Format", "Home › Paragraph › Numbering", crate::cmd::lists::define_number)
-            .params(r#"{"format"?: "decimal|upperRoman|lowerRoman|upperLetter|lowerLetter|ordinal|cardinalText|ordinalText|decimalZero|…" (default decimal; not bullet), "text"?: "%1." (the number format text; %1 is the number, no %2…%9), "start"?: n, "align"?: "left|center|right" (default left), "font"?: string|null, "bold"?: bool, "italic"?: bool, "color"?: "RRGGBB"|null} — a new numbered list, applied to the selection's paragraphs; returns the new list as `num`"#),
+            .params(r#"{"format"?: "decimal|upperRoman|lowerRoman|upperLetter|lowerLetter|ordinal|cardinalText|ordinalText|decimalZero|…" (default decimal; not bullet), "text"?: "%1." (the number format text; %1 is the number, no %2…%9), "start"?: n, "align"?: "left|center|right" (default left), "font"?: string|null, "bold"?: bool, "italic"?: bool, "color"?: "RRGGBB"|null, "size"?: pt (1-1638, rounded to half points)|null, "underline"?: "none|single|words|double|thick|dotted|dash|dotDash|dotDotDash|wave|wavyDouble"|null} — a new numbered list, applied to the selection's paragraphs; returns the new list as `num`"#),
         CommandSpec::new("review.language", "Language", "Review › Language", language).params(
             r#"{"lang"?: "en-US|en-GB|pl-PL|fr-FR|…" (BCP 47; default en-US), "noProof"?: bool, "detect"?: bool (detect language automatically, a preference), "default"?: bool (also the document's default and the saved language for future blank documents)}"#,
         ),

@@ -3231,3 +3231,48 @@ fn style_ui_flags_round_trip() {
         assert_eq!(r.styles.get(id), d.styles.get(id), "style {id}");
     }
 }
+
+/// An embedded object read from a .doc without its storage is a range field whose result is its
+/// picture: saved between the `separate` and `end` field characters, and read back in that order.
+#[test]
+fn picture_in_a_range_field_result_round_trips_in_order() {
+    let mut d = Document::new();
+    let key = d.add_media(tiny_png(), "png");
+    let pic = InlineObject::Image {
+        media: key,
+        w: 456.0,
+        h: 50.0,
+        alt: String::new(),
+        float: Float::default(),
+        crop: [0.0; 4],
+        fx: Default::default(),
+        ole: None,
+    };
+    let mut p = Paragraph::new();
+    let props = CharProps::default();
+    p.insert_object(0, InlineObject::FieldStart { instr: "EMBED Excel.Sheet.8".into(), locked: false, dirty: false }, &props).unwrap();
+    p.insert_object(p.len(), pic, &props).unwrap();
+    p.insert_object(p.len(), InlineObject::FieldEnd, &props).unwrap();
+    d.body = vec![para_block(p)].into_iter().collect();
+    let bytes = wordcraft_docx::write(&d).expect("write");
+    let xml = document_xml(&bytes);
+    let at = |s: &str| xml.find(s).unwrap_or_else(|| panic!("{s} in {xml}"));
+    let (begin, separate, end) = (at("fldCharType=\"begin\""), at("fldCharType=\"separate\""), at("fldCharType=\"end\""));
+    let drawing = at("<w:drawing");
+    assert!(begin < separate && separate < drawing && drawing < end, "the picture is the field's result: {xml}");
+    let r = wordcraft_docx::read(&bytes).expect("read");
+    let kinds: Vec<&str> = paras(&r)[0]
+        .objects
+        .iter()
+        .map(|o| match o {
+            InlineObject::FieldStart { instr, .. } => {
+                assert_eq!(instr.trim(), "EMBED Excel.Sheet.8");
+                "start"
+            }
+            InlineObject::Image { .. } => "image",
+            InlineObject::FieldEnd => "end",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["start", "image", "end"]);
+}

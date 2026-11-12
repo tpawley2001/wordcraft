@@ -239,3 +239,34 @@ fn a_field_that_is_not_embed_keeps_only_the_picture() {
     assert_eq!(fields(&d).len(), 1);
     assert!(!d.passthrough.keys().any(|k| k.starts_with("word/embeddings/")));
 }
+
+#[test]
+fn an_object_not_kept_whole_keeps_its_picture_in_the_field_result() {
+    // Begin CP 0, code 1..21, separator 22, result picture 23 (a Data stream picture), end 24.
+    const TEXT: &str = "\u{13} EMBED Excel.Sheet.8 \u{14}\u{1}\u{15}\r";
+    let png: Vec<u8> = [b"\x89PNG\r\n\x1a\n".as_slice(), &[0x5Au8; 16]].concat();
+    let mut picf = vec![0u8; 0x44];
+    picf[0..4].copy_from_slice(&((0x44 + png.len()) as u32).to_le_bytes());
+    picf[4..6].copy_from_slice(&0x44u16.to_le_bytes());
+    picf[28..30].copy_from_slice(&1440i16.to_le_bytes());
+    picf[30..32].copy_from_slice(&720i16.to_le_bytes());
+    picf[32..34].copy_from_slice(&1000u16.to_le_bytes());
+    picf[34..36].copy_from_slice(&1000u16.to_le_bytes());
+    let spec = StructSpec {
+        text: TEXT,
+        data_stream: [picf, png].concat(),
+        chpx_runs: vec![(0, Vec::new()), (23, grpprl(&[(PIC_LOCATION, &0u32.to_le_bytes()), (F_SPEC, &[1])])), (24, Vec::new())],
+        ..structured_spec(TEXT, TEXT.chars().count() as u32)
+    };
+    let d = read(&struct_doc(&spec)).expect("opens");
+    let kinds: Vec<String> = objects(&d)
+        .into_iter()
+        .map(|o| match o {
+            InlineObject::FieldStart { instr, .. } => format!("start {instr}"),
+            InlineObject::Image { ole, .. } => format!("image {}", ole.is_some()),
+            InlineObject::FieldEnd => "end".into(),
+            o => format!("{o:?}"),
+        })
+        .collect();
+    assert_eq!(kinds, ["start EMBED Excel.Sheet.8", "image false", "end"], "the picture is the field's result, in the file's order");
+}

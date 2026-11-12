@@ -21,6 +21,7 @@ mod layout;
 mod lifecycle;
 mod query;
 mod run;
+pub(crate) use run::EditCheckpoint;
 mod snapshot;
 
 use crate::doc_state;
