@@ -230,7 +230,7 @@ impl Writer<'_> {
             let z = self.z;
             self.graphic_frame(
                 w,
-                DrawingInfo { float, size: (*gw, *gh), docpr: &docpr, name: &name, alt, link: link.as_deref() },
+                DrawingInfo { float, size: (*gw, *gh), docpr: &docpr, name: &name, alt, link: link.as_ref() },
                 native.unwrap_or(&root),
             );
             if let Some(fallback) = fallback {
@@ -240,11 +240,7 @@ impl Writer<'_> {
                         // Both branches are one object: same id and stacking order.
                         self.z = z;
                         w.open("mc:Fallback", &[]);
-                        self.graphic_frame(
-                            w,
-                            DrawingInfo { float, size: (*gw, *gh), docpr: &docpr, name: &name, alt, link: link.as_deref() },
-                            picture,
-                        );
+                        self.graphic_frame(w, DrawingInfo { float, size: (*gw, *gh), docpr: &docpr, name: &name, alt, link: link.as_ref() }, picture);
                         w.close("mc:Fallback");
                     }
                     None => w.raw(&fallback.to_xml()),
@@ -278,7 +274,7 @@ impl Writer<'_> {
         let docpr = self.next_docpr();
         let link = Self::drawing_link(props, rels);
         let name = format!("Picture {docpr}");
-        self.drawing_open(w, DrawingInfo { float, size: (*iw, *ih), docpr: &docpr, name: &name, alt, link: link.as_deref() });
+        self.drawing_open(w, DrawingInfo { float, size: (*iw, *ih), docpr: &docpr, name: &name, alt, link: link.as_ref() });
         super::drawing::frame_pr(w, float, true);
         w.open("a:graphic", &[]);
         w.open("a:graphicData", &[("uri", "http://schemas.openxmlformats.org/drawingml/2006/picture")]);
@@ -381,7 +377,7 @@ impl Writer<'_> {
                 .map(std::sync::Arc::new);
         }
         let float = &float;
-        self.drawing_open(w, DrawingInfo { float, size: (*sw, *sh), docpr: &docpr, name: &name, alt: o.alt_text(), link: link.as_deref() });
+        self.drawing_open(w, DrawingInfo { float, size: (*sw, *sh), docpr: &docpr, name: &name, alt: o.alt_text(), link: link.as_ref() });
         super::drawing::frame_pr(w, float, false);
         w.open("a:graphic", &[]);
         w.open("a:graphicData", &[("uri", "http://schemas.microsoft.com/office/word/2010/wordprocessingShape")]);
@@ -403,7 +399,7 @@ impl Writer<'_> {
         let docpr = self.next_docpr();
         let link = Self::drawing_link(props, rels);
         let name = format!("{} {docpr}", if canvas.is_some() { "Canvas" } else { "Group" });
-        self.drawing_open(w, DrawingInfo { float, size: (*gw, *gh), docpr: &docpr, name: &name, alt: o.alt_text(), link: link.as_deref() });
+        self.drawing_open(w, DrawingInfo { float, size: (*gw, *gh), docpr: &docpr, name: &name, alt: o.alt_text(), link: link.as_ref() });
         super::drawing::frame_pr(w, float, false);
         w.open("a:graphic", &[]);
         let outer = match canvas {

@@ -22,6 +22,7 @@ use crate::theme::{Tokens, semibold};
 mod bookmarks;
 mod building_blocks;
 mod chrome;
+pub mod define_number;
 mod dispatch;
 mod find;
 mod font;
@@ -109,6 +110,15 @@ pub enum Dialog {
         /// differs, shown neither on nor off; `kern_at` is its Points and above size.
         kern: Option<bool>,
         kern_at: f32,
+        /// OpenType Features, as `format.state` names them: the `w14:ligatures`,
+        /// `w14:numSpacing` and `w14:numForm` names, the one stylistic set switched on (0 = none)
+        /// and Use Contextual Alternates. `None` while the selected text differs (or, for the
+        /// stylistic set, has several sets on); such a box shows nothing chosen.
+        ligatures: Option<String>,
+        num_spacing: Option<String>,
+        num_form: Option<String>,
+        stylistic_set: Option<u8>,
+        contextual_alternates: Option<bool>,
         /// The properties the fields stood for when the dialog opened: OK sends only what the
         /// user changed, so formatting the dialog can't show (a double underline) or left
         /// alone stays as it is.
@@ -255,6 +265,9 @@ pub enum Dialog {
         pick: Option<(Value, String)>,
         /// The ScreenTip (shown on hover instead of the address), sent as `screenTip` on OK.
         tip: String,
+        /// The ScreenTip the dialog opened with: OK sends `screenTip` only when `tip` differs, so a
+        /// stored tip the dialog cannot send (longer than `MAX_SCREEN_TIP`) stays as it is.
+        tip_opened: String,
         /// The ScreenTip being edited while Set Hyperlink ScreenTip is open.
         tip_edit: Option<String>,
     },
@@ -386,6 +399,12 @@ pub enum Dialog {
     PasteSpecial {
         formats: Vec<String>,
         choice: usize,
+        /// Paste link: chosen instead of Paste.
+        #[serde(default)]
+        link: bool,
+        /// The formats Paste link offers; empty when the copy has no saved source to link to.
+        #[serde(default)]
+        link_formats: Vec<String>,
         #[serde(skip)]
         payload: Value,
         /// Shown when nothing can be pasted: what the clipboard holds, or that it is empty (#833).
@@ -551,6 +570,10 @@ pub enum Dialog {
     DefineList {
         form: Box<crate::dialogs_lists::ListForm>,
     },
+    /// Home › Paragraph › Numbering › Define New Number Format.
+    DefineNumber {
+        form: Box<define_number::NumberForm>,
+    },
     /// Right-click a list item › Adjust List Indents: the caret's level of the caret's list.
     AdjustListIndents {
         form: Box<crate::dialogs_lists::IndentsForm>,
@@ -688,6 +711,7 @@ impl Dialog {
             Dialog::LockTracking { .. } => "lockTracking",
             Dialog::ReadOnlyRecommended { .. } => "readOnlyRecommended",
             Dialog::DefineList { .. } => "defineList",
+            Dialog::DefineNumber { .. } => "defineNumber",
             Dialog::AdjustListIndents { .. } => "adjustListIndents",
             Dialog::TrackOptions { .. } => "trackChangesOptions",
             Dialog::Review(d) => d.name(),
@@ -788,6 +812,11 @@ impl Dialog {
                     position: st.get("position").and_then(Value::as_f64).unwrap_or(0.0) as f32,
                     kern: kern.map(|k| k > 0.0),
                     kern_at: kern.filter(|k| *k > 0.0).unwrap_or(12.0) as f32,
+                    ligatures: st.get("ligatures").and_then(Value::as_str).map(str::to_string),
+                    num_spacing: st.get("numSpacing").and_then(Value::as_str).map(str::to_string),
+                    num_form: st.get("numForm").and_then(Value::as_str).map(str::to_string),
+                    stylistic_set: st.get("stylisticSet").and_then(Value::as_u64).and_then(|n| u8::try_from(n).ok()),
+                    contextual_alternates: st.get("contextualAlternates").and_then(Value::as_bool),
                     start: serde_json::Map::new(),
                 };
                 let props = font_props(&d);
@@ -916,6 +945,7 @@ impl Dialog {
                 targets: None,
                 pick: None,
                 tip: wordcraft_engine::cmd::insert::selected_link_tip(&app.session),
+                tip_opened: wordcraft_engine::cmd::insert::selected_link_tip(&app.session),
                 tip_edit: None,
                 focus: true,
             },
@@ -1056,6 +1086,7 @@ impl Dialog {
                 return Self::report(id, &app.session.run(id, &json!({})).unwrap_or_default());
             }
             "defineList" => Dialog::DefineList { form: Box::new(crate::dialogs_lists::ListForm::read(app)) },
+            "defineNumber" => Dialog::DefineNumber { form: Box::new(define_number::NumberForm::read(app)) },
             "trackChangesOptions" => Dialog::TrackOptions { form: Box::new(crate::dialogs_lists::TrackForm::read(app)) },
             "customizeKeyboard" => Dialog::CustomizeKeyboard { form: Box::new(crate::dialogs_keyboard::KeyboardForm::read(app)), resume: None },
             "customizeRibbon" => {
@@ -1101,8 +1132,9 @@ impl Dialog {
                 kept[k] = json!(t);
             }
         }
+        let link_formats = wordcraft_engine::cmd::paste::link_formats(&app.session, payload).into_iter().map(str::to_string).collect();
         let note = if formats.is_empty() { crate::system_clipboard::nothing_to_paste(app) } else { String::new() };
-        Dialog::PasteSpecial { formats, choice: 0, payload: kept, note }
+        Dialog::PasteSpecial { formats, choice: 0, link: false, link_formats, payload: kept, note }
     }
 
     pub fn modify_style(app: &WordApp, id: &str) -> Option<Dialog> {
@@ -1153,6 +1185,10 @@ mod tests;
 #[cfg(test)]
 mod tests_border_options;
 #[cfg(test)]
+mod tests_define_number;
+#[cfg(test)]
+mod tests_font_opentype;
+#[cfg(test)]
 mod tests_font_spacing;
 #[cfg(test)]
 mod tests_font_underline;
@@ -1172,6 +1208,8 @@ mod tests_para_grid;
 mod tests_para_line;
 #[cfg(test)]
 mod tests_para_outline;
+#[cfg(test)]
+mod tests_paste_special_link;
 #[cfg(test)]
 mod tests_table_props;
 #[cfg(test)]
