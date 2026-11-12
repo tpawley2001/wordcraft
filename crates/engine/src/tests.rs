@@ -73,6 +73,7 @@ mod symbol_field_update;
 mod accent_compose;
 mod alignment_tab;
 mod cross_ref_missing;
+mod cross_ref_self;
 mod cross_ref_notes;
 mod typing;
 mod view_split;
