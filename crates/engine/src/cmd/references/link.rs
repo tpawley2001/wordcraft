@@ -302,8 +302,8 @@ mod tests {
         let mut source = Session::new(Document::from_text("One\nTwo\nThree"));
         source.run("select.range", &serde_json::json!({"anchor": Pos::body(0, 0), "focus": Pos::body(2, 5)})).unwrap();
         source.run("para.numbering", &serde_json::json!({})).unwrap();
-        let src_num = source.doc.para_at(&Pos::body(1, 0)).unwrap().props.numbering.clone().unwrap().num;
-        let src_format = source.doc.numbering.level(src_num, 0).unwrap().format.clone();
+        let src_num = source.doc.para_at(&Pos::body(1, 0)).unwrap().props.numbering.unwrap().num;
+        let src_format = source.doc.numbering.level(src_num, 0).unwrap().format;
         crate::io::save_path(&src, &source.doc).unwrap();
 
         let mut s = host(&code(&src, r"\a \r"), "OLD");
@@ -313,7 +313,7 @@ mod tests {
         assert_ne!(host_level.format, src_format);
         update(&mut s);
         let two = s.doc.para_paths(StoryRef::Body).into_iter().find(|p| s.doc.para(StoryRef::Body, p).unwrap().plain_text() == "Two").unwrap();
-        let num = s.doc.para(StoryRef::Body, &two).unwrap().props.numbering.clone().unwrap().num;
+        let num = s.doc.para(StoryRef::Body, &two).unwrap().props.numbering.unwrap().num;
         assert_ne!(num, host_num, "the source's list doesn't become the host's list");
         assert_eq!(s.doc.numbering.level(num, 0).unwrap().format, src_format, "the list keeps the source's format");
         assert_eq!(s.doc.numbering.level(host_num, 0), Some(&host_level), "the host's own list is unchanged");
