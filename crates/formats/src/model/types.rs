@@ -548,6 +548,10 @@ pub struct FlowOpts {
     pub obj_revs: bool,
     /// A picture's crop ([`Img::crop`]), also without `paras`.
     pub crop: bool,
+    /// An outline level apart from a heading style: the paragraph keeps the kind its style
+    /// gives and the level goes in [`Para::extra`] (otherwise the level alone makes it a
+    /// heading), for formats that write the level on its own (RTF `\outlinelevelN`).
+    pub outline_apart: bool,
 }
 
 impl FlowOpts {
@@ -1094,6 +1098,9 @@ pub struct TableExtra {
     /// them by row (RTF's `\\tsN` and `\\tbllk*`); `None` leaves the table's own.
     pub style: Option<String>,
     pub look: Option<wordcraft_doc::props::TableLook>,
+    /// The table's default cell padding (top, left, bottom, right), points, for formats that
+    /// state it by row (RTF).
+    pub cell_margins: Option<[f32; 4]>,
 }
 
 impl FTable {

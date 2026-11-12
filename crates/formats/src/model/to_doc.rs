@@ -9,6 +9,7 @@ use super::{
     levels_for, para_block,
 };
 use wordcraft_doc::para::{GroupChild, MAX_GROUP_CHILDREN};
+use wordcraft_doc::props::Highlight;
 
 pub fn char_props(f: &Fmt) -> CharProps {
     let on = |b: bool| if b { Some(true) } else { None };
@@ -97,6 +98,14 @@ impl WithExtra for CharProps {
         self.lang_bidi = name(&x.lang_bidi, 64);
         self.lang_ea = name(&x.lang_ea, 64);
         self.no_proof = x.no_proof.filter(|b| *b);
+        self.highlight = x.highlight.filter(|h| *h != Highlight::None);
+        // Saved formatting carries the highlight colour as its background: the shading under a
+        // highlight is the one kept beside it.
+        if let Some(h) = self.highlight
+            && (x.shading.is_some() || f.background == h.rgb())
+        {
+            self.shading = x.shading;
+        }
         self.east_asian_layout = x.east_asian_layout.clone().filter(|l| *l != Default::default());
         self
     }
@@ -901,6 +910,9 @@ impl<'a> Builder<'a> {
         if let Some(x) = &t.extra {
             tb.props.align = x.align;
             tb.props.indent = x.indent.filter(|i| i.is_finite()).map(|i| i.clamp(-1584.0, 1584.0));
+            if let Some(m) = x.cell_margins.filter(|m| m.iter().all(|v| v.is_finite())) {
+                tb.props.cell_margins = Some(m.map(|v| v.clamp(0.0, 1584.0)));
+            }
             tb.props.width_pct = x.width_pct.filter(|p| p.is_finite() && *p > 0.0).map(|p| p.min(100.0));
             tb.props.width = x.width.filter(|w| w.is_finite() && *w > 0.0).map(|w| w.min(1584.0));
             tb.props.fixed |= x.fixed;
@@ -991,8 +1003,8 @@ impl<'a> Builder<'a> {
     }
 }
 
-/// Whether a table's extra holds nothing but its alignment and left edge, which leave the style it
-/// gets as it was.
+/// Whether a table's extra holds nothing but its alignment, left edge and default cell padding,
+/// which leave the style it gets as it was.
 fn placement_only(x: &super::types::TableExtra) -> bool {
     x.width.is_none()
         && x.width_pct.is_none()

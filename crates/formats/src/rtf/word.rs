@@ -2,7 +2,7 @@ use super::reader::apply_section_word;
 use super::state::{CellDef, Dest, FmtRevSt, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pn, PnKind, RevSt, SecFmt, St};
 use super::styles::{StyleDef, StyleEntry, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
-use wordcraft_doc::props::{CharProps, TabAlign, TabLeader, TabStop, Underline};
+use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline};
 
 impl Reader {
     pub(super) fn word(&mut self, w: &str, p: Option<i32>, starred: bool, first_in_group: bool) {
@@ -175,7 +175,8 @@ impl Reader {
                 }
             }
             "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
-            "highlight" | "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "chcbpat" | "cb" => self.st.fmt.background = self.colors.get(pv.max(0) as usize).copied().flatten(),
+            "highlight" => self.highlight(pv),
             // Hidden text: kept, as hidden text.
             "v" => self.st.fmt.hidden = on,
             "ql" => self.st.align = Some(Align::Left),
@@ -222,7 +223,9 @@ impl Reader {
             "trhdr" => self.row_header = true,
             // The row's position, twips; beyond 22 inches clamped.
             "trleft" => self.row_style.left = pv.clamp(-31_680, 31_680),
-            "trgaph" => self.row_style.gap = pv.clamp(0, 31_680),
+            "trgaph" => self.row_style.gap_word(pv),
+            // The row's default cell padding, by side, and its units.
+            "trpaddt" | "trpaddl" | "trpaddb" | "trpaddr" | "trpaddft" | "trpaddfl" | "trpaddfb" | "trpaddfr" => self.row_style.pad_word(w, pv),
             "tblind" => self.row_style.ind = Some(pv.clamp(-31_680, 31_680)),
             "tblindtype" => self.row_style.ind_type = pv,
             "trqc" => self.row_style.align = Some(Align::Center),
@@ -328,6 +331,7 @@ impl Reader {
                 }
             }
             "field" => self.start_field(),
+            "fldlock" => self.lock_field(),
             "fldrslt" => {
                 let link = self.st.field.and_then(|i| self.fields.get(i)).and_then(|s| hyperlink(s));
                 if link.is_some() {
@@ -344,7 +348,7 @@ impl Reader {
                         instr: instr.clone(),
                         result: String::new(),
                         fmt: self.st.fmt.clone(),
-                        locked: false,
+                        locked: self.st.field.is_some_and(|i| self.locked_fields.contains(&i)),
                         form: self.st.field.and_then(|i| self.forms.get(&i)).map(|ff| ff.to_xml()).unwrap_or_default(),
                     });
                     self.para_has = true;
@@ -357,8 +361,9 @@ impl Reader {
     /// Enters destination `d`, setting up what it collects.
     fn enter_destination(&mut self, d: Dest) {
         match d {
-            Dest::Bookmark => {
+            Dest::Bookmark(end) => {
                 self.bkmk = Some((self.depth(), String::new()));
+                self.bkmk_end = end;
             }
             Dest::Pict => {
                 self.pict_depth = Some(self.depth());
@@ -405,6 +410,9 @@ impl Reader {
             "doccomm" if self.in_info() => Some(Dest::Info(5)),
             "operator" if self.in_info() => Some(Dest::Info(6)),
             "category" if self.in_info() => Some(Dest::Info(7)),
+            "manager" if self.in_info() => Some(Dest::Info(11)),
+            "company" if self.in_info() => Some(Dest::Info(12)),
+            "hlinkbase" if self.in_info() => Some(Dest::Info(13)),
             "creatim" | "revtim" | "printim" if self.in_info() => {
                 let which = match w {
                     "creatim" => 0,
@@ -423,6 +431,9 @@ impl Reader {
             "oldcprops" => Some(Dest::OldProps(false)),
             "oldpprops" => Some(Dest::OldProps(true)),
             "oldsprops" => Some(Dest::OldSect),
+            // Note separator and continuation stories (RTF 1.9.1 "Footnotes"), also written
+            // without `\*` by older writers: not body text, and no custom separators are kept.
+            "ftnsep" | "ftnsepc" | "ftncn" | "aftnsep" | "aftnsepc" | "aftncn" => Some(Dest::Skip),
             "listoverridetable" => Some(Dest::ListOverride),
             "fldinst" => Some(Dest::FldInst),
             "formfield" if self.st.dest == Dest::FldInst => {
@@ -441,7 +452,8 @@ impl Reader {
             // control data, skipped below.
             "object" => Some(Dest::Object),
             "result" if self.st.dest == Dest::Object => Some(Dest::Body),
-            "bkmkstart" => Some(Dest::Bookmark),
+            "bkmkstart" => Some(Dest::Bookmark(false)),
+            "bkmkend" => Some(Dest::Bookmark(true)),
             "atrfstart" | "atrfend" | "atnid" | "atnauthor" | "atndate" | "atntime" | "atnref"
                 if self.marks_on
                     && self.hf.is_none()
@@ -459,7 +471,7 @@ impl Reader {
                 }))
             }
             "header" | "footer" | "headerl" | "headerr" | "headerf" | "footerl" | "footerr" | "footerf" | "footnote" | "annotation" | "pntext"
-            | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "bkmkend" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
+            | "listtext" | "nonshppict" | "xe" | "tc" | "txe" | "private" | "atnid" | "atnauthor" | "comment" | "shpinst" | "do"
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
             | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "docvar" | "objdata" | "fontemb" | "fontfile"
@@ -530,7 +542,7 @@ impl Reader {
     fn skip_ignorable_destination(&mut self, word: &str, starred: bool, first_in_group: bool) -> bool {
         // A character style's stylesheet entry is `{\*\csN …}`, a table style's `{\*\tsN …}`.
         let char_style = matches!(word, "cs" | "ts") && self.st.dest == Dest::StyleSheet;
-        if !starred || !first_in_group || char_style || matches!(word, "fldinst" | "bkmkstart") {
+        if !starred || !first_in_group || char_style || matches!(word, "fldinst" | "bkmkstart" | "bkmkend") {
             return false;
         }
         self.st.dest = Dest::Skip;
@@ -669,8 +681,8 @@ impl Reader {
                 }
                 true
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator | Dest::FfText(_) if !matches!(word, "u" | "uc") => true,
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark | Dest::Generator | Dest::FfText(_) => false,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) if !matches!(word, "u" | "uc") => true,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) => false,
             Dest::OldProps(false) if matches!(word, "crauth" | "crdate") => {
                 if word == "crauth" {
                     self.st.old_rev.0 = Some(value);
@@ -801,7 +813,22 @@ impl Reader {
             return true;
         }
         let kept_info = self.in_info()
-            && matches!(word, "title" | "author" | "subject" | "keywords" | "doccomm" | "operator" | "category" | "creatim" | "revtim" | "printim");
+            && matches!(
+                word,
+                "title"
+                    | "author"
+                    | "subject"
+                    | "keywords"
+                    | "doccomm"
+                    | "operator"
+                    | "category"
+                    | "creatim"
+                    | "revtim"
+                    | "printim"
+                    | "manager"
+                    | "company"
+                    | "hlinkbase"
+            );
         if !matches!(self.st.dest, Dest::Skip | Dest::Object) || kept_info {
             return false;
         }
@@ -834,6 +861,16 @@ impl Reader {
         }
     }
 
+    /// `\fldlock`: the field of this `\field` group keeps its stored result (RTF 1.9.1
+    /// "Fields"); fields nested in it are not locked by it.
+    fn lock_field(&mut self) {
+        if self.st.dest == Dest::Body
+            && let Some(i) = self.st.field
+        {
+            self.locked_fields.insert(i);
+        }
+    }
+
     fn start_field(&mut self) {
         if self.fields.len() < 100_000 {
             self.fields.push(String::new());
@@ -858,12 +895,29 @@ impl Reader {
             "shad" => self.set_extra(|x| x.shadow = on.then_some(true)),
             "embo" => self.set_extra(|x| x.emboss = on.then_some(true)),
             "impr" => self.set_extra(|x| x.engrave = on.then_some(true)),
+            "noproof" => self.set_extra(|x| x.no_proof = on.then_some(true)),
+            "accnone" => self.set_extra(|x| x.emphasis = None),
+            "accdot" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Dot)),
+            "acccomma" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Comma)),
+            "acccircle" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Circle)),
+            "accunderdot" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::UnderDot)),
             // Horizontal scale, percent (100 = normal); kerning from a size in half-points (0 = off).
             "charscalex" if (1..=600).contains(&pv) => self.set_extra(|x| x.scale = (pv != 100).then_some(pv as f32)),
             "kerning" if (0..=3276).contains(&pv) => self.set_extra(|x| x.kern = (pv != 0).then_some(pv as f32 / 2.0)),
             _ => return false,
         }
         true
+    }
+
+    /// `\highlightN`: colour entry `n` as the text's highlight when it is one of the highlight
+    /// colours; any other colour stays character shading, and none (0, auto, missing) clears both.
+    fn highlight(&mut self, n: i32) {
+        let c = self.colors.get(n.max(0) as usize).copied().flatten();
+        let h = c.and_then(|c| Highlight::ALL.into_iter().find(|h| *h != Highlight::None && h.rgb() == Some(c)));
+        if h.is_none() {
+            self.st.fmt.background = c;
+        }
+        self.set_extra(|x| x.highlight = h);
     }
 
     /// `\csN`: the text's character style, when entry `n` became one of the document's own.

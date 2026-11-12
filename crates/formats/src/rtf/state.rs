@@ -40,7 +40,8 @@ pub(super) enum Dest {
     /// An embedded object (`\object`): its control data is skipped, its `{\result …}` group is
     /// read as body content, which is what Word shows for the object.
     Object,
-    Bookmark,
+    /// A bookmark's name: its start (`\bkmkstart`, `false`) or its end (`\bkmkend`, `true`).
+    Bookmark(bool),
     /// A comment's text-valued word: 1 `\atrfstart`, 2 `\atrfend`, 3 `\atnid`, 4 `\atnauthor`,
     /// 5 `\atndate`/`\atntime`, 6 `\atnref`.
     Atn(u8),
@@ -94,6 +95,11 @@ pub(super) fn truncate_chars(s: &mut String, max: usize) {
 pub(super) struct InfoMore {
     pub(super) last_modified_by: String,
     pub(super) category: String,
+    /// `{\manager …}`, `{\company …}` and `{\hlinkbase …}`: kept as the DOCX code keeps
+    /// `docProps/app.xml`'s Manager, Company and HyperlinkBase.
+    pub(super) manager: String,
+    pub(super) company: String,
+    pub(super) hyperlink_base: String,
     pub(super) revision: u32,
     pub(super) props: Vec<wordcraft_doc::CustomProp>,
     /// The user property being read: its name, `\proptypeN`, value and linked bookmark.
@@ -351,9 +357,55 @@ pub(super) struct RowStyle {
     pub(super) ind: Option<i32>,
     pub(super) ind_type: i32,
     pub(super) align: Option<Align>,
+    /// Whether the row states a gap at all (`\trgaphN`, N > 0).
+    pub(super) has_gap: bool,
+    /// The row's default cell padding (`\trpaddlN`, `\trpaddtN`, `\trpaddbN`, `\trpaddrN`,
+    /// twips) and each side's unit (`\trpaddflN`… : 3 twips, else the value is ignored), in
+    /// the order top, left, bottom, right.
+    pub(super) pad: [i32; 4],
+    pub(super) pad_unit: [i32; 4],
 }
 
 impl RowStyle {
+    /// `\trgaphN`: the gap, twips, clamped to 22 inches.
+    pub(super) fn gap_word(&mut self, pv: i32) {
+        self.gap = pv.clamp(0, 31_680);
+        self.has_gap = self.gap > 0;
+    }
+
+    /// A `\trpadd?N` value or `\trpaddf?N` unit word, by its side (top, left, bottom, right).
+    pub(super) fn pad_word(&mut self, w: &str, pv: i32) {
+        let i = match w.as_bytes().last() {
+            Some(b't') => 0,
+            Some(b'l') => 1,
+            Some(b'b') => 2,
+            _ => 3,
+        };
+        let slot = if w.starts_with("trpaddf") { self.pad_unit.get_mut(i) } else { self.pad.get_mut(i) };
+        if let Some(v) = slot {
+            *v = pv.clamp(-31_680, 31_680);
+        }
+    }
+
+    /// The row's default cell padding (top, left, bottom, right), points, when it is not Word's
+    /// default: a side in twips (unit 3) as stated, else left and right the gap and top and
+    /// bottom none. A row with a table style and neither a gap nor a side in twips keeps the
+    /// style's.
+    pub(super) fn cell_margins(&self) -> Option<[f32; 4]> {
+        let twips = |i: usize| self.pad_unit.get(i) == Some(&3);
+        let stated = (0..4).any(twips);
+        if self.style.is_some() && !self.has_gap && !stated {
+            return None;
+        }
+        let gap = self.gap.clamp(0, 31_680) as f32 / 20.0;
+        let side = |i: usize, default: f32| {
+            if twips(i) { self.pad.get(i).copied().unwrap_or(0).clamp(0, 31_680) as f32 / 20.0 } else { default }
+        };
+        let m = [side(0, 0.0), side(1, gap), side(2, 0.0), side(3, gap)];
+        let word = [0.0, 5.4, 0.0, 5.4];
+        if m.iter().zip(word).all(|(v, w)| (v - w).abs() < 0.01) { None } else { Some(m) }
+    }
+
     /// The table's left edge from the left margin in twips, when the row states one: `\tblind`
     /// in twips (`\tblindtype3`) less the gap, else `\trleft`. A centred or right-aligned row
     /// has none.

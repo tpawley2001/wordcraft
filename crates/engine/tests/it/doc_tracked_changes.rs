@@ -1,6 +1,7 @@
 //! A Word 97-2003 document with tracked changes (#4187): its deleted text opens as a tracked
 //! deletion, not as live text, so Accept All drops it, Reject All keeps it, and a DOCX save
-//! writes it inside `w:del` as `w:delText`, never as an ordinary `w:t`.
+//! writes it inside `w:del` as `w:delText`, never as an ordinary `w:t`. Its tracked formatting
+//! changes (sprmCPropRMark90, sprmPPropRMark90) save as `w:rPrChange` and `w:pPrChange`.
 
 use std::io::{Read, Write};
 
@@ -16,7 +17,7 @@ const TEXT_FC: usize = 0x600;
 const AUTHOR: &str = "A. Reviewer";
 
 /// A minimal Word 97 FIB ([MS-DOC] §2.5.1): FibBase, 14 `rgw`, 22 `rglw` (ccpText), 0x5D fc/lcb
-/// pairs (PlcfBteChpx at 12, Clx at 33, SttbfRMark at 51).
+/// pairs (PlcfBteChpx at 12, PlcfBtePapx at 13, Clx at 33, SttbfRMark at 51).
 fn fib(ccp_text: u32, pairs: &[(usize, u32, u32)]) -> Vec<u8> {
     let mut v = vec![0u8; 0x9A + 0x5D * 8 + 2];
     let mut put = |at: usize, b: &[u8]| v[at..at + b.len()].copy_from_slice(b);
@@ -40,11 +41,19 @@ fn sprm(op: u16, operand: &[u8]) -> Vec<u8> {
     [&op.to_le_bytes()[..], operand].concat()
 }
 
+/// A PropRMarkOperand (cb 7, fPropRMark 1, author 0, DTTM 2015-05-25 13:47) behind `op`.
+fn prop_rmark(op: u16) -> Vec<u8> {
+    let at: u32 = 47 | 13 << 6 | 25 << 11 | 5 << 16 | (2015 - 1900) << 20;
+    sprm(op, &[&[7, 1, 0, 0][..], &at.to_le_bytes()].concat())
+}
+
 /// A ChpxFkp page: plain text, the deletion (sprmCFRMarkDel, sprmCIbstRMarkDel = author 0), the
-/// insertion (sprmCFRMarkIns, sprmCIbstRMark = author 0), plain text.
-fn chpx_page(ccp: u32) -> Vec<u8> {
+/// insertion (sprmCFRMarkIns, sprmCIbstRMark = author 0), plain text. With `format`, the first
+/// run is bold with a tracked formatting change (sprmCFBold, sprmCPropRMark90).
+fn chpx_page(ccp: u32, format: bool) -> Vec<u8> {
     let del = [sprm(0x0800, &[1]), sprm(0x4863, &[0, 0])].concat();
     let ins = [sprm(0x0801, &[1]), sprm(0x4804, &[0, 0])].concat();
+    let bold = [sprm(0x0835, &[1]), prop_rmark(0xCA57)].concat();
     let fc = |cp: u32| (TEXT_FC as u32 + 2 * cp).to_le_bytes();
     let mut page = vec![0u8; 512];
     for (i, cp) in [0, DEL.0, INS.0, INS.1, ccp].into_iter().enumerate() {
@@ -53,7 +62,10 @@ fn chpx_page(ccp: u32) -> Vec<u8> {
     // rgb after the five FCs: runs 0 and 3 have no CHPX; run 1's sits at byte 0x40, run 2's at 0x60.
     page[20 + 1] = 0x20;
     page[20 + 2] = 0x30;
-    for (at, grpprl) in [(0x40, &del), (0x60, &ins)] {
+    if format {
+        page[20] = 0x40;
+    }
+    for (at, grpprl) in [(0x40, &del), (0x60, &ins), (0x80, &bold)] {
         page[at] = grpprl.len() as u8;
         page[at + 1..at + 1 + grpprl.len()].copy_from_slice(grpprl);
     }
@@ -61,8 +73,25 @@ fn chpx_page(ccp: u32) -> Vec<u8> {
     page
 }
 
-/// The .doc: one paragraph, one uncompressed piece, and the author table.
-fn doc_bytes() -> Vec<u8> {
+/// A PapxFkp page: one paragraph over the whole text, centred (sprmPJc) with a tracked
+/// formatting change (sprmPPropRMark90).
+fn papx_page(ccp: u32) -> Vec<u8> {
+    let mut page = vec![0u8; 512];
+    for (i, cp) in [0, ccp].into_iter().enumerate() {
+        page[i * 4..i * 4 + 4].copy_from_slice(&(TEXT_FC as u32 + 2 * cp).to_le_bytes());
+    }
+    // One BX after the two FCs, its PAPX at byte 0x40: cb, then istd 0 and the grpprl in 2×cb-1 bytes.
+    page[8] = 0x20;
+    let grp = [&[0, 0][..], &sprm(0x2461, &[1]), &prop_rmark(0xC63F)].concat();
+    page[0x40] = grp.len().div_ceil(2) as u8;
+    page[0x41..0x41 + grp.len()].copy_from_slice(&grp);
+    page[511] = 1;
+    page
+}
+
+/// The .doc: one paragraph, one uncompressed piece, and the author table. With `format`, a
+/// bold run and the paragraph carry tracked formatting changes.
+fn doc_bytes(format: bool) -> Vec<u8> {
     let ccp = TEXT.chars().count() as u32;
     let text: Vec<u8> = TEXT.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let page_at = (TEXT_FC + text.len()).div_ceil(512) * 512;
@@ -90,12 +119,22 @@ fn doc_bytes() -> Vec<u8> {
     table.extend_from_slice(&(units.len() as u16).to_le_bytes());
     table.extend(units.iter().flat_map(|u| u.to_le_bytes()));
     let rmark_len = table.len() - rmark_at;
-    let pairs = [(33, 0x40, clx_len as u32), (12, bte_at as u32, 12), (51, rmark_at as u32, rmark_len as u32)];
+    let papx_bte_at = table.len();
+    for x in [0u32, 0x7FFF_FFFF, (page_at / 512 + 1) as u32] {
+        table.extend_from_slice(&x.to_le_bytes());
+    }
+    let mut pairs = vec![(33, 0x40, clx_len as u32), (12, bte_at as u32, 12), (51, rmark_at as u32, rmark_len as u32)];
+    if format {
+        pairs.push((13, papx_bte_at as u32, 12));
+    }
     let mut word = fib(ccp, &pairs);
     word.resize(TEXT_FC, 0);
     word.extend_from_slice(&text);
     word.resize(page_at, 0);
-    word.extend_from_slice(&chpx_page(ccp));
+    word.extend_from_slice(&chpx_page(ccp, format));
+    if format {
+        word.extend_from_slice(&papx_page(ccp));
+    }
 
     let mut comp = cfb::CompoundFile::create(std::io::Cursor::new(Vec::new())).expect("create");
     comp.create_stream("/WordDocument").expect("stream").write_all(&word).expect("write");
@@ -124,7 +163,7 @@ fn elements<'a>(xml: &'a str, tag: &str) -> Vec<&'a str> {
 
 #[test]
 fn a_tracked_deletion_is_not_live_text_after_a_docx_save() {
-    let doc = io::open_bytes("tracked.doc", &doc_bytes()).expect("opens");
+    let doc = io::open_bytes("tracked.doc", &doc_bytes(false)).expect("opens");
 
     let mut accepted = Session::new(doc.clone());
     accepted.run("review.acceptAll", &json!({})).expect("accept all");
@@ -151,5 +190,24 @@ fn a_tracked_deletion_is_not_live_text_after_a_docx_save() {
     for t in elements(&body, "w:t").into_iter().chain(body.match_indices("<w:t>").map(|(i, _)| &body[i..])) {
         let t = t.split("</w:t>").next().unwrap_or_default();
         assert!(!t.contains("gone"), "deleted text written as live text: {t}");
+    }
+}
+
+#[test]
+fn tracked_formatting_changes_save_as_property_changes() {
+    let doc = io::open_bytes("tracked.doc", &doc_bytes(true)).expect("opens");
+    let docx = io::save_bytes("tracked.docx", &doc).expect("saves");
+    let mut z = zip::ZipArchive::new(std::io::Cursor::new(docx)).expect("zip");
+    let mut body = String::new();
+    z.by_name("word/document.xml").expect("document part").read_to_string(&mut body).expect("utf-8");
+
+    for tag in ["w:rPrChange", "w:pPrChange"] {
+        let changes: Vec<&str> = body.match_indices(&format!("<{tag} ")).map(|(i, _)| &body[i..]).collect();
+        assert!(!changes.is_empty(), "a {tag}: {body}");
+        for c in changes {
+            let start = c.split('>').next().unwrap_or_default();
+            assert!(start.contains("w:author=\"A. Reviewer\""), "{start}");
+            assert!(start.contains("w:date=\"2015-05-25T13:47:00Z\""), "{start}");
+        }
     }
 }

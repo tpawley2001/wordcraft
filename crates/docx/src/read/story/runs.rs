@@ -482,10 +482,11 @@ impl Reader<'_> {
         }
     }
 
-    /// [`Self::emit_obj`] for a drawing that carries its own `link`: a link around the run wins.
-    fn emit_linked_obj(&mut self, sc: &mut StoryCtx, pb: &mut PB, o: InlineObject, props: &CharProps, link: Option<String>) {
+    /// [`Self::emit_obj`] for a drawing that carries its own `link` and ScreenTip: a link around
+    /// the run wins whole, address and tip.
+    fn emit_linked_obj(&mut self, sc: &mut StoryCtx, pb: &mut PB, o: InlineObject, props: &CharProps, link: Option<super::drawing::DrawingLink>) {
         match link.filter(|_| props.link.is_none()) {
-            Some(link) => self.emit_obj(sc, pb, o, &CharProps { link: Some(link), ..props.clone() }),
+            Some((link, tip)) => self.emit_obj(sc, pb, o, &CharProps { link: Some(link), link_tip: tip, ..props.clone() }),
             None => self.emit_obj(sc, pb, o, props),
         }
     }
