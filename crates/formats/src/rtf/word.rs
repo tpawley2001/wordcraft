@@ -339,7 +339,7 @@ impl Reader {
             "gutter" => self.page.gutter = Some(pv),
             "rtlgutter" => self.page.rtl_gutter = on,
             "landscape" => self.page.landscape = on,
-            _ if self.doc_note_word(w, p) || self.doc_opts.word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
+            _ if self.doc_note_word(w, p) || self.doc_opts_word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
             _ if self.section_word(w, p) => {}
             "cellx" => {
                 self.cell_side = None;
@@ -383,6 +383,16 @@ impl Reader {
     }
 
     /// Enters destination `d`, setting up what it collects.
+    /// A document formatting word read into `doc_opts`. `\jexpand` and `\jcompress` only count
+    /// among the document's own formatting words: in a style, a header or a note they are
+    /// swallowed, so they can't change how the whole document justifies.
+    fn doc_opts_word(&mut self, w: &str, p: Option<i32>) -> bool {
+        if matches!(w, "jexpand" | "jcompress") && (self.st.dest != Dest::Body || self.sub.is_some() || self.hf.is_some()) {
+            return true;
+        }
+        self.doc_opts.word(w, p)
+    }
+
     fn enter_destination(&mut self, d: Dest) {
         match d {
             Dest::Bookmark(end) => {
@@ -1265,5 +1275,22 @@ mod link_tip_tests {
         let rtf = br#"{\rtf1\ansi{\field{\*\fldinst{HYPERLINK "javascript:alert(1)" \\o "tip"}}{\fldrslt{link}}}\par}"#;
         let out = export(&import(rtf).unwrap());
         assert!(!out.contains("HYPERLINK") && !out.contains("tip"), "{out}");
+    }
+}
+
+#[cfg(test)]
+mod jexpand_scope_tests {
+    use super::super::import;
+
+    /// `\jexpand` in a style, a header or a footnote is not the document's own word.
+    #[test]
+    fn jexpand_outside_the_document_formatting_does_not_count() {
+        for rtf in [
+            r"{\rtf1\ansi{\stylesheet{\s0\jexpand Normal;}}\pard Text.\par}",
+            r"{\rtf1\ansi{\header\jexpand\pard Head\par}\pard Text.\par}",
+            r"{\rtf1\ansi\pard Text{\footnote\jexpand\pard Note\par}.\par}",
+        ] {
+            assert!(import(rtf.as_bytes()).unwrap().settings.rtf_justification, "{rtf}");
+        }
     }
 }
