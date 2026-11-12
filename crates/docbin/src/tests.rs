@@ -43,6 +43,7 @@ mod section_page_borders;
 mod section_page_numbers;
 mod section_rtl_gutter;
 mod style_name_case;
+mod style_own_char_props;
 mod style_own_para_props;
 mod table_float;
 mod table_width;
@@ -2301,10 +2302,14 @@ fn style_inherits_its_declared_base() {
         let style = |name: &str| doc.styles.styles.iter().find(|s| s.name == name).cloned().expect("style");
         let derived = style("Derived");
         assert_eq!(derived.based_on.as_deref(), Some("Normal"), "next {next}");
-        assert_eq!(derived.chr.bold, Some(true), "next {next}");
+        // A style keeps only its own character formatting; the base's bold reaches it on resolve.
+        let resolved = |name: &str| doc.styles.resolve_char(Some(name), &wordcraft_doc::CharProps::default());
+        assert_eq!(derived.chr.bold, None, "next {next}");
+        assert!(resolved("Derived").bold, "next {next}");
         let grand = style("Grandchild");
         assert_eq!(grand.based_on.as_deref(), Some("Derived"));
-        assert_eq!((grand.chr.bold, grand.chr.italic), (Some(true), Some(true)), "two-level chain");
+        assert_eq!((grand.chr.bold, grand.chr.italic), (None, Some(true)), "two-level chain");
+        assert!(resolved("Grandchild").bold && resolved("Grandchild").italic, "two-level chain");
         assert_eq!(style("Normal").based_on, None);
         assert_eq!(para0(&doc).props.style.as_deref(), Some("Derived"));
     }

@@ -531,6 +531,12 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
     if let Some(n) = level {
         o.push_str(&format!("\\enforceprot1\\protlevel{n}"));
     }
+    if !set.track_moves {
+        o.push_str("\\trackmoves0");
+    }
+    if let Some(t) = set.attached_template.as_deref().filter(|t| !t.trim().is_empty()) {
+        o.push_str(&format!("{{\\*\\template {}}}", esc(t)));
+    }
     for (on, w) in [
         (!set.sum_paragraph_spacing, "\\htmautsp"),
         (set.link_styles, "\\linkstyles"),
@@ -757,6 +763,7 @@ fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
             None => {}
         }
         style_char_spacing_words(c.spacing, &mut out);
+        style_char_line_words(c, t, &mut out);
         out.push_str(&format!(" {};}}", esc_font(&s.name)));
     }
     out
@@ -773,6 +780,30 @@ fn style_tab_and_char_indent_words(p: &wordcraft_doc::props::ParaProps, out: &mu
     for (word, v) in [("\\cufi", p.indent_first_chars), ("\\culi", p.indent_left_chars), ("\\curi", p.indent_right_chars)] {
         if let Some(v) = v.filter(|v| v.is_finite()) {
             out.push_str(&format!("{word}{}", (v.clamp(-1584.0, 1584.0) * 100.0).round() as i64));
+        }
+    }
+}
+
+/// A style entry's character border (`\\chbrdr`; `\\brdrnone` for a stated none), underline
+/// (`\\ulnone` for a stated none), strikethrough and double strikethrough, as the text writes them.
+fn style_char_line_words(c: &wordcraft_doc::props::CharProps, t: &mut Tables, out: &mut String) {
+    use wordcraft_doc::props::Underline;
+    match c.border {
+        Some(b) if b.is_visible() => border_words("chbrd", 'r', b, true, t, out),
+        Some(_) => out.push_str("\\chbrdr\\brdrnone"),
+        None => {}
+    }
+    match c.underline {
+        Some(Underline::None) => out.push_str("\\ulnone"),
+        Some(u) => out.push_str(underline_style_word(Some(u))),
+        None => {}
+    }
+    for (word, v) in [("strike", c.strike), ("striked", c.double_strike)] {
+        match v {
+            Some(true) if word == "striked" => out.push_str("\\striked1"),
+            Some(true) => out.push_str("\\strike"),
+            Some(false) => out.push_str(&format!("\\{word}0")),
+            None => {}
         }
     }
 }
@@ -799,11 +830,16 @@ fn style_num(k: Kind) -> Option<u32> {
 /// The control word for the underline of `f` (RTF 1.9.1), `None` when it has none; a link's
 /// text is underlined.
 fn underline_word(f: &Fmt) -> Option<&'static str> {
-    use wordcraft_doc::props::Underline;
     if !f.underline {
         return f.link.is_some().then_some("\\ul");
     }
-    Some(match f.extra.as_ref().and_then(|x| x.underline) {
+    Some(underline_style_word(f.extra.as_ref().and_then(|x| x.underline)))
+}
+
+/// The control word for an underline style; no stated style is a single underline.
+fn underline_style_word(u: Option<wordcraft_doc::props::Underline>) -> &'static str {
+    use wordcraft_doc::props::Underline;
+    match u {
         Some(Underline::Words) => "\\ulw",
         Some(Underline::Double) => "\\uldb",
         Some(Underline::Thick) => "\\ulth",
@@ -814,7 +850,7 @@ fn underline_word(f: &Fmt) -> Option<&'static str> {
         Some(Underline::Wave) => "\\ulwave",
         Some(Underline::DoubleWave) => "\\ululdbwave",
         Some(Underline::None | Underline::Single) | None => "\\ul",
-    })
+    }
 }
 
 /// The highlight colour (`\highlight`) and the character shading (`\chcbpat`) of `f`: with a
@@ -1118,10 +1154,11 @@ impl Writer {
         if let Some(n) = f.extra.as_ref().and_then(|x| x.style.as_deref()).and_then(own_style_num) {
             ctl.push_str(&format!("\\cs{n}"));
         }
-        if f.bold {
+        let rtl = self.script_ctl(f, &mut ctl);
+        if f.bold && !rtl {
             ctl.push_str("\\b");
         }
-        if f.italic {
+        if f.italic && !rtl {
             ctl.push_str("\\i");
         }
         if let Some(w) = underline_word(f) {
@@ -1139,15 +1176,8 @@ impl Writer {
         } else if f.sub {
             ctl.push_str("\\sub");
         }
-        if f.code {
-            let i = self.t.font(model::MONO_FONT);
-            ctl.push_str(&format!("\\f{i}"));
-        } else if let Some(fam) = &f.font {
-            let i = self.t.font(fam);
-            ctl.push_str(&format!("\\f{i}"));
-        }
-        if let Some(s) = f.size {
-            ctl.push_str(&format!("\\fs{}", (s * 2.0).round().clamp(2.0, 3276.0) as i32));
+        if !rtl {
+            self.font_size_words(f.code, f.font.as_deref(), f.size, "", &mut ctl);
         }
         let color = f.color.or(if f.link.is_some() { Some(Rgb(0x05, 0x63, 0xC1)) } else { None });
         if let Some(c) = color {
@@ -1211,6 +1241,68 @@ impl Writer {
             ctl.push_str("\\v");
         }
         ctl
+    }
+
+    /// The run direction and per-script font words of `f` (RTF 1.9.1, "Associated Character
+    /// Properties"), written only for a run that has a direction or such a font, size, bold or
+    /// italic. Word takes the font, size, bold and italic words after `\rtlch` as the
+    /// complex-script formatting and those after `\ltrch` as the ordinary formatting, and the last
+    /// of the two as the run's direction; the font word after `\dbch` names the East Asian font.
+    /// True for a right-to-left run, whose ordinary font, size, bold and italic are written here.
+    fn script_ctl(&mut self, f: &Fmt, ctl: &mut String) -> bool {
+        let Some(x) = f.extra.as_deref() else { return false };
+        let rtl = x.rtl == Some(true);
+        let any = x.font_cs.is_some() || x.size_cs.is_some() || x.bold_cs.is_some() || x.italic_cs.is_some() || x.font_ea.is_some();
+        if !rtl && !any {
+            return false;
+        }
+        let mut cs = String::new();
+        self.font_size_words(false, x.font_cs.as_deref(), x.size_cs, if rtl { "" } else { "a" }, &mut cs);
+        let (b, i) = if rtl { ("\\b", "\\i") } else { ("\\ab", "\\ai") };
+        for (v, w) in [(x.bold_cs, b), (x.italic_cs, i)] {
+            match v {
+                Some(true) => cs.push_str(w),
+                Some(false) => cs.push_str(&format!("{w}0")),
+                None => {}
+            }
+        }
+        let mut ea = String::new();
+        if let Some(n) = x.font_ea.as_deref() {
+            let i = self.t.font(n);
+            ea = format!("\\dbch\\af{i}");
+        }
+        if rtl {
+            ctl.push_str("\\ltrch\\fcs0 ");
+            ctl.push_str(&ea);
+            self.font_size_words(f.code, f.font.as_deref(), f.size, "a", ctl);
+            if f.bold {
+                ctl.push_str("\\ab");
+            }
+            if f.italic {
+                ctl.push_str("\\ai");
+            }
+            ctl.push_str(" \\rtlch\\fcs1 ");
+            ctl.push_str(&cs);
+        } else {
+            ctl.push_str("\\rtlch\\fcs1 ");
+            ctl.push_str(&cs);
+            ctl.push_str(" \\ltrch\\fcs0 ");
+            ctl.push_str(&ea);
+        }
+        rtl
+    }
+
+    /// `\fN` and `\fsN` (`\afN`, `\afsN` with `prefix` "a") for a font (the monospaced one
+    /// when `code`) and size in points.
+    fn font_size_words(&mut self, code: bool, font: Option<&str>, size: Option<f32>, prefix: &str, ctl: &mut String) {
+        let font = if code { Some(model::MONO_FONT) } else { font };
+        if let Some(fam) = font {
+            let i = self.t.font(fam);
+            ctl.push_str(&format!("\\{prefix}f{i}"));
+        }
+        if let Some(s) = size.filter(|s| s.is_finite()) {
+            ctl.push_str(&format!("\\{prefix}fs{}", (s * 2.0).round().clamp(2.0, 3276.0) as i32));
+        }
     }
 
     fn picture(&mut self, img: &model::Img, out: &mut String) {
@@ -1445,6 +1537,15 @@ impl Writer {
             Some(true) => out.push_str("\\widctlpar"),
             Some(false) => out.push_str("\\nowidctlpar"),
             None => {}
+        }
+        // Automatic space between Asian and Latin text and numbers: off in RTF unless written
+        // (the flow model holds the effective value, unset when on).
+        let x = p.extra.as_deref();
+        if x.and_then(|x| x.auto_space_de) != Some(false) {
+            out.push_str("\\aspalpha");
+        }
+        if x.and_then(|x| x.auto_space_dn) != Some(false) {
+            out.push_str("\\aspnum");
         }
         if let Some(x) = p.extra.as_deref() {
             if x.contextual_spacing == Some(true) {
@@ -1859,7 +1960,7 @@ fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
 /// What the RTF writer keeps of the document's flow: the body, table cells, headers and footers,
 /// and the text of notes and comments alike. An empty paragraph's mark formatting sets its height.
 fn rtf_flow_opts() -> model::FlowOpts {
-    model::FlowOpts { marks: true, outline_apart: true, ..model::FlowOpts::tracked() }
+    model::FlowOpts { marks: true, outline_apart: true, auto_space: true, ..model::FlowOpts::tracked() }
 }
 
 /// RTF text of a document.
@@ -1947,6 +2048,16 @@ pub fn export(doc: &Document) -> String {
     export_with(&flow.meta, doc, &w, &own_entries, &body)
 }
 
+/// One `{\*\docvar {name}{value}}` (RTF 1.9.1 "Document Variables") per document variable, in
+/// order; empty when there are none.
+fn doc_vars(vars: &[wordcraft_doc::DocVar]) -> String {
+    let mut out = String::new();
+    for v in vars {
+        out.push_str(&format!("{{\\*\\docvar {{{}}}{{{}}}}}\n", esc(&v.name), esc(&v.value)));
+    }
+    out
+}
+
 /// `{\*\userprops …}` (RTF 1.9.1 "User Properties") for the custom properties RTF has a type
 /// for, in document order; empty when there are none.
 fn user_props(props: &[wordcraft_doc::CustomProp]) -> String {
@@ -1989,6 +2100,9 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     out.push_str("{\\s7\\sbasedon0\\snext0\\fs56 Title;}{\\s8\\sbasedon0\\snext0\\li720\\ri720\\i Quote;}{\\s9\\sbasedon0\\snext9\\sa0\\fs20 Code;}");
     out.push_str(own_styles);
     out.push_str("}\n");
+    if let Some(xml) = doc.styles.latent_styles.as_deref() {
+        out.push_str(&super::latent_styles::group(xml));
+    }
     if !w.lists.is_empty() {
         out.push_str("{\\*\\listtable");
         for (i, kinds) in w.lists.iter().enumerate() {
@@ -2034,6 +2148,7 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
     }
     out.push_str("}\n");
     out.push_str(&user_props(&doc.custom_props));
+    out.push_str(&doc_vars(&doc.settings.doc_vars));
     let tw = |v: f32| (v * 20.0).round() as i64;
     let landscape = if sec.landscape { "\\landscape" } else { "" };
     let notes = doc_note_words(doc);
