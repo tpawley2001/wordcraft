@@ -11,6 +11,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use wordcraft_doc::edit::Fragment;
 use wordcraft_doc::para::OBJ;
@@ -110,6 +111,20 @@ fn source_range(sources: &mut Sources, link: &Link) -> Option<Fragment> {
     linked_range(doc, link.mark.as_deref())
 }
 
+/// The source's linked range for `link` as a fragment of `s`'s document, as a paste brings it in:
+/// the source's media, lists, styles, notes, comments and tracked changes it refers to come along
+/// under ids of their own here, so they don't name the host's. `None` (nothing added to the host)
+/// when the link can't be followed.
+fn adopted_range(s: &mut Session, sources: &mut Sources, link: &Link) -> Option<Fragment> {
+    let src = sources.get(link.path.clone())?;
+    let frag = linked_range(src, link.mark.as_deref())?;
+    // The source with just the range in its body: its tables stay for the range to refer to,
+    // and the cached source stays whole for other fields.
+    let mut only = src.clone();
+    only.body = frag.blocks.into_iter().map(Arc::new).collect();
+    Some(crate::cmd::paste::adopt(s, only))
+}
+
 /// The new result of the simple LINK field `instr`: the linked text (paragraphs joined by `\r`),
 /// or `None` when the link is not one F9 updates or can't be followed, so the stored result stays.
 pub(super) fn link_text(s: &Session, sources: &mut Sources, instr: &str) -> Option<String> {
@@ -140,11 +155,11 @@ pub(super) fn update_link_ranges(s: &mut Session, sources: &mut Sources, stories
                 continue;
             }
             let Some(link) = parse(s, &r.instr) else { continue };
-            let Some(frag) = source_range(sources, &link) else { continue };
             let Some(inner) = r.start.off.checked_add(width) else { continue };
             let start = Pos { off: inner, ..r.start.clone() };
             match link.format {
                 Format::Text => {
+                    let Some(frag) = source_range(sources, &link) else { continue };
                     let text = text_of(&frag);
                     if text_of(&s.doc.copy_range(&start, &r.end)) == text {
                         continue;
@@ -159,6 +174,7 @@ pub(super) fn update_link_ranges(s: &mut Session, sources: &mut Sources, stories
                     }
                 }
                 Format::Formatted => {
+                    let Some(frag) = adopted_range(s, sources, &link) else { continue };
                     let at = s.doc.delete_range(&start, &r.end)?;
                     s.doc.insert_fragment(&at, &frag)?;
                 }
@@ -251,5 +267,140 @@ mod tests {
         update_link_ranges(&mut s, &mut sources, &[StoryRef::Body]).unwrap();
         assert_eq!(s.doc, before, "no edit when the result already matches");
         assert_eq!(sources.opened, 1);
+    }
+
+    fn png(w: u32, h: u32, shade: u8) -> Vec<u8> {
+        let img = image::RgbaImage::from_fn(w, h, |_, _| image::Rgba([shade, 30, 30, 255]));
+        let mut b = Vec::new();
+        image::DynamicImage::ImageRgba8(img).write_to(&mut std::io::Cursor::new(&mut b), image::ImageFormat::Png).unwrap();
+        b
+    }
+
+    /// F9 on every field of `s`, as `references.updateFields {"all": true}` does.
+    fn update(s: &mut Session) {
+        s.run("references.updateFields", &serde_json::json!({"all": true})).unwrap();
+    }
+
+    /// The objects in the host's field result (between its markers), in every paragraph.
+    fn result_objects(s: &Session) -> Vec<InlineObject> {
+        let r = s.doc.field_ranges(StoryRef::Body).into_iter().next().unwrap();
+        let start = Pos { off: r.start.off + OBJ.len_utf8(), ..r.start.clone() };
+        let frag = s.doc.copy_range(&start, &r.end);
+        let mut out = Vec::new();
+        for b in &frag.blocks {
+            if let wordcraft_doc::Block::Para(p) = b {
+                out.extend(p.objects.iter().cloned());
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn a_formatted_list_link_brings_the_sources_list_not_the_hosts() {
+        let dir = scratch("list");
+        let src = dir.join("source.docx");
+        let mut source = Session::new(Document::from_text("One\nTwo\nThree"));
+        source.run("select.range", &serde_json::json!({"anchor": Pos::body(0, 0), "focus": Pos::body(2, 5)})).unwrap();
+        source.run("para.numbering", &serde_json::json!({})).unwrap();
+        let src_num = source.doc.para_at(&Pos::body(1, 0)).unwrap().props.numbering.clone().unwrap().num;
+        let src_format = source.doc.numbering.level(src_num, 0).unwrap().format.clone();
+        crate::io::save_path(&src, &source.doc).unwrap();
+
+        let mut s = host(&code(&src, r"\a \r"), "OLD");
+        let host_num = Arc::make_mut(&mut s.doc.numbering).add_list(wordcraft_doc::numbering::ListKind::Bullet);
+        assert_eq!(host_num, src_num, "the test needs the same list id in both");
+        let host_level = s.doc.numbering.level(host_num, 0).unwrap().clone();
+        assert_ne!(host_level.format, src_format);
+        update(&mut s);
+        let two = s.doc.para_paths(StoryRef::Body).into_iter().find(|p| s.doc.para(StoryRef::Body, p).unwrap().plain_text() == "Two").unwrap();
+        let num = s.doc.para(StoryRef::Body, &two).unwrap().props.numbering.clone().unwrap().num;
+        assert_ne!(num, host_num, "the source's list doesn't become the host's list");
+        assert_eq!(s.doc.numbering.level(num, 0).unwrap().format, src_format, "the list keeps the source's format");
+        assert_eq!(s.doc.numbering.level(host_num, 0), Some(&host_level), "the host's own list is unchanged");
+    }
+
+    #[test]
+    fn a_formatted_picture_link_brings_the_sources_bytes() {
+        let dir = scratch("pic");
+        let src = dir.join("source.docx");
+        let mut source = Session::new(Document::from_text("A"));
+        source.run("caret.set", &serde_json::json!({"pos": Pos::body(0, 1)})).unwrap();
+        let theirs = png(4, 4, 200);
+        source.run("insert.picture", &serde_json::json!({"data": crate::cmd::insert::base64_encode(&theirs)})).unwrap();
+        crate::io::save_path(&src, &source.doc).unwrap();
+        let src_bytes = crate::io::open_path(&src).unwrap().media.values().next().unwrap().to_vec();
+
+        let mut s = host(&code(&src, r"\a \r"), "OLD");
+        let ours = s.doc.add_media(png(4, 4, 10), "png");
+        assert!(crate::io::open_path(&src).unwrap().media.contains_key(&ours), "the test needs the same media key in both");
+        update(&mut s);
+        let key = result_objects(&s)
+            .into_iter()
+            .find_map(|o| match o {
+                InlineObject::Image { media, .. } => Some(media),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(s.doc.media.get(&key).map(|b| b.to_vec()), Some(src_bytes));
+        assert_ne!(s.doc.media.get(&ours).map(|b| b.to_vec()), s.doc.media.get(&key).map(|b| b.to_vec()));
+    }
+
+    /// The text of the note story `id`.
+    fn note_text(doc: &Document, id: u32) -> String {
+        doc.para_paths(StoryRef::Part(id)).iter().filter_map(|p| doc.para(StoryRef::Part(id), p)).map(|p| p.plain_text()).collect()
+    }
+
+    #[test]
+    fn a_formatted_footnote_link_brings_the_sources_note() {
+        let dir = scratch("note");
+        let src = dir.join("source.docx");
+        let mut source = Session::new(Document::from_text("Noted"));
+        source.run("caret.set", &serde_json::json!({"pos": Pos::body(0, 5)})).unwrap();
+        source.run("references.footnote", &serde_json::json!({})).unwrap();
+        source.run("text.insert", &serde_json::json!({"text": "source note"})).unwrap();
+        crate::io::save_path(&src, &source.doc).unwrap();
+
+        let mut s = host(&code(&src, r"\a \r"), "OLD");
+        s.run("caret.set", &serde_json::json!({"pos": Pos::body(0, 0)})).unwrap();
+        s.run("references.footnote", &serde_json::json!({})).unwrap();
+        s.run("text.insert", &serde_json::json!({"text": "host note"})).unwrap();
+        let host_note = s.doc.parts.iter().find(|(_, p)| p.kind == wordcraft_doc::PartKind::Footnote).map(|(k, _)| *k).unwrap();
+        update(&mut s);
+        let id = result_objects(&s)
+            .into_iter()
+            .find_map(|o| match o {
+                InlineObject::NoteRef { id, .. } => Some(id),
+                _ => None,
+            })
+            .unwrap();
+        assert!(note_text(&s.doc, id).contains("source note"), "{:?}", note_text(&s.doc, id));
+        assert!(note_text(&s.doc, host_note).contains("host note"));
+    }
+
+    #[test]
+    fn updating_a_formatted_link_twice_gives_the_same_result() {
+        let dir = scratch("twice");
+        let src = dir.join("source.docx");
+        save_source(&src);
+        let mut s = host(&code(&src, r#""OLE_LINK1" \a \r"#), "OLD");
+        update(&mut s);
+        let (text, paras) = (range_result(&s), s.doc.para_paths(StoryRef::Body).len());
+        assert_eq!(text, "Alpha\rBeta");
+        update(&mut s);
+        assert_eq!((range_result(&s), s.doc.para_paths(StoryRef::Body).len()), (text, paras));
+    }
+
+    #[test]
+    fn a_link_that_cant_be_followed_adds_nothing_to_the_host() {
+        let dir = scratch("nofollow");
+        let src = dir.join("source.docx");
+        let mut source = Session::new(Document::from_text("A"));
+        source.run("para.numbering", &serde_json::json!({})).unwrap();
+        crate::io::save_path(&src, &source.doc).unwrap();
+        let mut s = host(&code(&src, r#""NoSuchMark" \a \r"#), "OLD");
+        let (lists, media, parts) = (s.doc.numbering.nums.len(), s.doc.media.len(), s.doc.parts.len());
+        update(&mut s);
+        assert_eq!((s.doc.numbering.nums.len(), s.doc.media.len(), s.doc.parts.len()), (lists, media, parts));
+        assert_eq!(range_result(&s), "OLD");
     }
 }
