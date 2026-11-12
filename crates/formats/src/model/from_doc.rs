@@ -723,6 +723,12 @@ pub fn flow_paras(doc: &Document, p: &Paragraph) -> Vec<Para> {
     flow_paras_in(doc, p, FlowOpts::default())
 }
 
+/// [`flow_paras`] with what `opts` keeps, for a story built apart from the body (a note's or
+/// comment's text) that must keep what the body keeps.
+pub fn flow_paras_with(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {
+    flow_paras_in(doc, p, opts)
+}
+
 /// [`flow_paras`]; `tracked` keeps tracked changes: deleted text stays, and text carries its
 /// insertion and deletion marks.
 fn flow_paras_in(doc: &Document, p: &Paragraph, opts: FlowOpts) -> Vec<Para> {

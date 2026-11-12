@@ -271,8 +271,15 @@ pub(super) struct Sub {
     pub(super) custom: String,
     /// A group with text has been read in the note (only the first can be its own mark).
     pub(super) own_mark_done: bool,
+    /// A note separator story instead (`\ftnsep`…): its slot in [`SEP_WORDS`].
+    pub(super) sep: Option<usize>,
     pub(super) saved: Box<Output>,
 }
+
+/// The note separator and continuation story words (RTF 1.9.1 "Footnotes"), in the order of
+/// the document's footnote separator, continuation separator and continuation notice, then the
+/// endnote ones.
+pub(super) const SEP_WORDS: [&str; 6] = ["ftnsep", "ftnsepc", "ftncn", "aftnsep", "aftnsepc", "aftncn"];
 
 /// A note read: its kind and text.
 pub(super) struct NoteData {

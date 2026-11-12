@@ -1,7 +1,7 @@
 use super::numbers::{body_bookmark_paths, para_numbers, ref_number};
 use super::properties::{
-    bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property_arg, doc_property_result,
-    new_property_value, set_summary_property, summary_property, text_result,
+    BodyCounts, bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property_arg,
+    doc_property_names_pages, doc_property_result, new_property_value, set_summary_property, summary_property, text_result,
 };
 use super::toc::{heading_style_level, update_toc, update_toc_pages};
 use super::{
@@ -10,11 +10,29 @@ use super::{
 };
 
 /// Core date fields keep their cached result when the property cannot identify an instant.
-fn document_date_result(instr: &str, value: &str) -> Option<String> {
+/// `default_picture` is used when the field has no `\@` picture.
+fn document_date_result(instr: &str, value: &str, default_picture: &str) -> Option<String> {
     let date = chrono::DateTime::parse_from_rfc3339(value).ok()?;
     let unix = u64::try_from(date.timestamp()).ok()?;
-    let picture = date_picture(instr).unwrap_or_else(|| "M/d/yyyy".into());
+    let picture = date_picture(instr).unwrap_or_else(|| default_picture.into());
     Some(text_result(instr, crate::cmd::insert::format_date_at(&picture, unix, crate::cmd::local_offset_secs(unix))))
+}
+
+/// The body counts DOCPROPERTY fields show, when a field among `paths` is a DOCPROPERTY field;
+/// the layout is taken only when one names `Pages`.
+fn doc_property_counts(s: &mut Session, paths: &[(StoryRef, Path)]) -> BodyCounts {
+    let instrs = || {
+        paths.iter().filter_map(|(st, p)| s.doc.para(*st, p)).flat_map(|p| p.objects.iter()).filter_map(|o| match o {
+            InlineObject::Field { instr, locked: false, .. } => Some(instr.as_str()),
+            _ => None,
+        })
+    };
+    if !instrs().any(|i| wordcraft_layout::fields::field_name(i) == "DOCPROPERTY") {
+        return BodyCounts::default();
+    }
+    let needs_pages = instrs().any(doc_property_names_pages);
+    let pages = needs_pages.then(|| s.layout().pages.len());
+    BodyCounts::of(&s.doc, pages)
 }
 
 /// The `\*` format switch value for a caption's number format (OOXML names work too).
@@ -641,6 +659,8 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
     // SET <name> "<text>" (ECMA-376 §17.16.5.58): the values it gives, which REF <name> shows; a
     // REF before the SET shows the last value set, as Word's bookmark does after an update.
     let last_set = set_values(s, &paths);
+    // DOCPROPERTY's counts (Words, Pages ...) of the body as it is before this pass changes it.
+    let counts = doc_property_counts(s, &paths);
     let mut set: std::collections::HashMap<String, String> = Default::default();
     for (story, path) in paths {
         let Some(p) = s.doc.para(story, &path) else { continue };
@@ -676,7 +696,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 }
                 "CREATEDATE" | "PRINTDATE" => {
                     let value = if name == "CREATEDATE" { &core.created } else { &core.last_printed };
-                    updates.extend(document_date_result(instr, value).map(|text| (k, text)));
+                    updates.extend(document_date_result(instr, value, "M/d/yyyy").map(|text| (k, text)));
                 }
                 "REF" | "PAGEREF" | "NOTEREF" => {
                     let f = FieldCode::parse(instr);
@@ -748,7 +768,10 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 }
                 "REVNUM" => updates.push((k, count_text(instr, core.revision as usize))),
                 // DOCPROPERTY <name>: a custom property first, then a built-in one (#1798).
-                "DOCPROPERTY" => updates.extend(doc_property_result(&s.doc, &core, instr).map(|v| (k, v))),
+                "DOCPROPERTY" => {
+                    let date = |value: &str, pic: &str| document_date_result(instr, value, pic);
+                    updates.extend(doc_property_result(&s.doc, &core, &counts, date, instr).map(|v| (k, v)));
+                }
                 // DOCVARIABLE <name>: the document variable (names ignore case), or Word's error text.
                 "DOCVARIABLE" => updates.extend(doc_vars.then(|| (k, doc_variable_result(&s.doc, instr)))),
                 "FILENAME" => {

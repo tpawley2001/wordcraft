@@ -92,6 +92,8 @@ pub(super) enum Mark {
         id: u32,
         ann: Option<Annotation>,
     },
+    /// A note separator line in a separator story (`true`: the continuation line).
+    SepLine(bool),
     Done,
 }
 
@@ -161,7 +163,7 @@ impl Marker<'_> {
             match &**b {
                 Block::Para(p) => {
                     let q = self.para(p, Some(note));
-                    out.extend(model::flow_paras(self.doc, &q).into_iter().map(FBlock::Para));
+                    out.extend(model::flow_paras_with(self.doc, &q, rtf_flow_opts()).into_iter().map(FBlock::Para));
                 }
                 Block::Table(t) if depth < 4 => {
                     for c in t.rows.iter().flat_map(|r| r.cells.iter()) {
@@ -1044,6 +1046,7 @@ impl Writer {
                 out.push('}');
             }
             Mark::Own(custom) => out.push_str(&note_mark(&custom)),
+            Mark::SepLine(continuation) => out.push_str(if continuation { "\\chftnsepc " } else { "\\chftnsep " }),
             Mark::RangeStart(id) => out.push_str(&format!("{{\\*\\atrfstart {id}}}")),
             Mark::RangeEnd { id, ann } => {
                 out.push_str(&format!("{{\\*\\atrfend {id}}}"));
@@ -2039,6 +2042,12 @@ fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
     }
 }
 
+/// What the RTF writer keeps of the document's flow: the body, table cells, headers and footers,
+/// and the text of notes and comments alike. An empty paragraph's mark formatting sets its height.
+fn rtf_flow_opts() -> model::FlowOpts {
+    model::FlowOpts { marks: true, outline_apart: true, auto_space: true, style_look: true, ..model::FlowOpts::tracked() }
+}
+
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
     // A drop cap is written as Word stores it: its letter in a paragraph of its own.
@@ -2067,8 +2076,7 @@ pub fn export(doc: &Document) -> String {
     let looks_before = set_style_looks(Some((model::style_look(doc, None), looks)));
     let before = set_own_styles(own);
     let ranged_before = set_ranged(HashSet::new());
-    // An empty paragraph's mark formatting sets its height.
-    let opts = model::FlowOpts { marks: true, outline_apart: true, auto_space: true, style_look: true, ..model::FlowOpts::tracked() };
+    let opts = rtf_flow_opts();
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
@@ -2103,6 +2111,7 @@ pub fn export(doc: &Document) -> String {
             s
         })
         .collect();
+    note_separator_groups(doc, &mut w, opts, &mut body);
     if let Some(first) = secs.first() {
         body.push_str(&sect_words(first, first.gutter, &mut w.t));
         for (set, prefix) in [(&first.headers, "header"), (&first.footers, "footer")] {
@@ -2127,6 +2136,53 @@ pub fn export(doc: &Document) -> String {
     set_style_looks(looks_before);
     set_ranged(ranged_before);
     export_with(&flow.meta, doc, &w, &own_entries, &body)
+}
+
+/// The document's own note separator stories (RTF 1.9.1 "Footnotes"): `{\*\ftnsep …}`,
+/// `{\*\ftnsepc …}`, `{\*\ftncn …}`, then the endnote ones, each that the document has. Every
+/// paragraph ends with `\par`, the last too; a separator line is `\chftnsep` / `\chftnsepc`.
+fn note_separator_groups(doc: &Document, w: &mut Writer, opts: model::FlowOpts, out: &mut String) {
+    let (f, e) = (&doc.footnote_separators, &doc.endnote_separators);
+    let stories = [
+        ("ftnsep", &f.separator),
+        ("ftnsepc", &f.continuation_separator),
+        ("ftncn", &f.continuation_notice),
+        ("aftnsep", &e.separator),
+        ("aftnsepc", &e.continuation_separator),
+        ("aftncn", &e.continuation_notice),
+    ];
+    for (word, story) in stories {
+        let Some(blocks) = story else { continue };
+        let blocks: Blocks = blocks.iter().take(MAX_NOTE_BLOCKS).map(|b| sep_lines_as_marks(b, &mut w.marks)).collect();
+        let flow = model::part_flow(doc, &blocks, opts);
+        out.push_str(&format!("{{\\*\\{word} "));
+        set_ranged(model::ranged_anchors(&flow));
+        w.blocks(&flow, 0, "\\par", out, 1);
+        out.push_str("}\n");
+    }
+}
+
+/// `b` with its note separator lines replaced by place markers (see [`MARK_OPEN`]) for
+/// [`Mark::SepLine`]; tables are left as they are.
+fn sep_lines_as_marks(b: &Arc<Block>, marks: &mut Vec<Mark>) -> Arc<Block> {
+    let Block::Para(p) = &**b else { return b.clone() };
+    if !p.objects.iter().any(|o| o.as_note_separator().is_some()) {
+        return b.clone();
+    }
+    let mut q = p.clone();
+    for off in p.object_offsets().into_iter().rev() {
+        let Some(line) = q.object_at(off).and_then(InlineObject::as_note_separator) else { continue };
+        marks.push(Mark::SepLine(line));
+        let text = format!("{MARK_OPEN}{}{MARK_CLOSE}", marks.len().saturating_sub(1));
+        let end = off + wordcraft_doc::para::OBJ.len_utf8();
+        if q.delete(off, end).is_err() {
+            continue;
+        }
+        if q.insert_text(off, &text, &Default::default()).is_err() {
+            continue;
+        }
+    }
+    Arc::new(Block::Para(q))
 }
 
 /// One `{\*\docvar {name}{value}}` (RTF 1.9.1 "Document Variables") per document variable, in
