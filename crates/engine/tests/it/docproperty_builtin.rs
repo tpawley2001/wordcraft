@@ -170,14 +170,37 @@ fn a_missing_date_keeps_the_stored_result_except_last_printed() {
     assert_eq!(update(&mut s), ["kept", "kept", ""]);
 }
 
+/// The result Insert › Field gives the field in [`counted`]'s body, before any Update Field.
+fn inserted(code: &str) -> String {
+    let mut s = Session::new(Document::new());
+    s.run("text.insert", &json!({"text": "One two three four five."})).unwrap();
+    s.run("text.newParagraph", &json!({})).unwrap();
+    s.run("text.insert", &json!({"text": "Six seven."})).unwrap();
+    s.run("insert.field", &json!({"instr": code, "result": ""})).unwrap();
+    let got = results(&s);
+    assert_eq!(got.len(), 1, "{code}");
+    got[0].clone()
+}
+
+/// Insert › Field shows the count at once: the new field has no result yet, so it adds nothing.
 #[test]
 fn the_counts_are_taken_from_the_body() {
+    assert_eq!(inserted("DOCPROPERTY Words"), "7");
+    assert_eq!(inserted("DOCPROPERTY Characters"), "29");
+    assert_eq!(inserted("DOCPROPERTY CharactersWithSpaces"), "34");
+    assert_eq!(inserted("DOCPROPERTY Paragraphs"), "2");
+    assert_eq!(inserted("DOCPROPERTY words"), "7");
+    assert_eq!(inserted(r#"DOCPROPERTY "Characters" \* MERGEFORMAT"#), "29");
+}
+
+/// Update Field counts the body as shown, the count field's own digits included, as Word does:
+/// `29` adds two characters (29 + 2, 34 + 2) and joins the last word.
+#[test]
+fn update_field_counts_the_count_fields_own_result() {
     assert_eq!(counted("DOCPROPERTY Words"), "7");
-    assert_eq!(counted("DOCPROPERTY Characters"), "29");
-    assert_eq!(counted("DOCPROPERTY CharactersWithSpaces"), "34");
+    assert_eq!(counted("DOCPROPERTY Characters"), "31");
+    assert_eq!(counted("DOCPROPERTY CharactersWithSpaces"), "36");
     assert_eq!(counted("DOCPROPERTY Paragraphs"), "2");
-    assert_eq!(counted("DOCPROPERTY words"), "7");
-    assert_eq!(counted(r#"DOCPROPERTY "Characters" \* MERGEFORMAT"#), "29");
 }
 
 #[test]

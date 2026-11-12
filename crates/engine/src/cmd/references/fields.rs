@@ -41,6 +41,19 @@ fn paragraph_has_text_count(p: &Paragraph) -> bool {
     p.objects.iter().any(|o| matches!(o, InlineObject::Field { instr, locked: false, .. } if doc_property_names_text_count(instr)))
 }
 
+/// Update Field takes the body's text counts again before a paragraph that holds a count field.
+fn recount_text(doc: &wordcraft_doc::Document, p: &Paragraph, explicit: bool, counts: &mut BodyCounts) {
+    if explicit && paragraph_has_text_count(p) {
+        *counts = BodyCounts::of(doc, counts.pages);
+    }
+}
+
+/// Is the object a DOCPROPERTY field naming one of the body's text counts that already shows a
+/// result? The refresh after Insert › Field leaves it alone (a new count field has none yet).
+fn shows_text_count(o: &InlineObject) -> bool {
+    matches!(o, InlineObject::Field { instr, result, .. } if !result.is_empty() && doc_property_names_text_count(instr))
+}
+
 /// The `\*` format switch value for a caption's number format (OOXML names work too).
 pub fn seq_format(name: &str) -> &'static str {
     match name {
@@ -810,8 +823,9 @@ fn doc_variable_result(doc: &wordcraft_doc::Document, instr: &str) -> String {
 /// The refresh after Insert › Field: as [`update_fields`], except that `DOCVARIABLE` fields keep
 /// their stored result. Only Update Field recomputes a document variable's result (Word keeps it
 /// on open and on export too). DOCPROPERTY fields naming a text count (`Words`, `Characters` ...)
-/// keep theirs too: a count includes the field's own shown result, so recounting on every insert
-/// would make it drift; Update Field takes it.
+/// that already show a result keep it too: a count includes the field's own shown result, so
+/// recounting on every insert would make it drift. A count field with no result yet (the one just
+/// inserted) is counted, so it shows its number at once, as in Word; Update Field recounts.
 pub fn update_fields_after_insert(s: &mut Session) -> Result<(), CmdError> {
     update_fields_with(s, false, false, false)
 }
@@ -867,9 +881,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
         }
         // Word takes a count when it updates the field: the fields before it already show their
         // new results, this one and those after it their stored ones. `Pages` stays as taken.
-        if explicit && paragraph_has_text_count(p) {
-            counts = BodyCounts::of(&s.doc, counts.pages);
-        }
+        recount_text(&s.doc, p, explicit, &mut counts);
         let mut updates: Vec<(usize, String)> = Vec::new();
         let offsets: Vec<usize> = p.objects_with_offsets().map(|(off, _)| off).collect();
         for (k, o) in p.objects.iter().enumerate() {
@@ -977,7 +989,8 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
                 }
                 "REVNUM" => updates.push((k, count_text(instr, core.revision as usize))),
                 // DOCPROPERTY <name>: a custom property first, then a built-in one (#1798).
-                "DOCPROPERTY" if !explicit && doc_property_names_text_count(instr) => {}
+                // After Insert › Field only a count field with no result yet (the new one) is counted.
+                "DOCPROPERTY" if !explicit && shows_text_count(o) => {}
                 "DOCPROPERTY" => {
                     let date = |value: &str, pic: &str| document_date_result(instr, value, pic);
                     updates.extend(doc_property_result(&s.doc, &core, &counts, date, instr).map(|v| (k, v)));
