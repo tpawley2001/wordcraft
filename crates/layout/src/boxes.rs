@@ -236,6 +236,8 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
     let mut float_objects_bottom = 0.0f32;
     let mut table_areas = Vec::new();
     let mut page_table_wraps = Vec::new();
+    // Wrap areas of a header's or footer's own text frames, for the body.
+    let mut frame_wraps = Vec::new();
     let mut y = 0.0f32;
     let mut prev_after = 0.0f32;
     let mut prev_after_auto = false;
@@ -245,9 +247,10 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
     // Word has no frames in a text box: a framed paragraph there (its style's frame, usually)
     // runs with the box's text (#2357).
     let frames = !matches!(story, StoryRef::Part(id) if ctx.doc.parts.get(&id).is_some_and(|p| p.kind == wordcraft_doc::PartKind::TextBox));
-    // Word: a Top and Bottom object anchored in a header or footer doesn't move that header's or
-    // footer's own lines of text (they run as if it were in front of the text); it still counts
-    // for where the body starts. A paragraph of only pictures still goes below it (Word's PDF: a
+    // Word, before Word 2013 (compatibility mode below 15): a Top and Bottom object anchored in a
+    // header or footer doesn't move that header's or footer's own lines of text (they run as if it
+    // were in front of the text); it still counts for where the body starts. From mode 15 the
+    // header's or footer's text wraps it as body text does (`text_over` below). A paragraph of only pictures still goes below it (Word's PDF: a
     // header's inline logo under a Top and Bottom text box, `tests::header_extent`). Its table
     // cells, like the body, keep text above and below it.
     let hf_over = !in_cell
@@ -273,7 +276,10 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                 }
                 // A text frame (a footer's page number in a frame, say) is placed apart, like a
                 // floating object, and the text after it wraps around it; it takes no room in
-                // the flow.
+                // the flow. Word before 2013 (compatibility mode below 15) lays a header's or
+                // footer's own text out as if its frame were not there, drawn over it, whatever
+                // the frame's wrap (measured in Word's PDF export). A header's frame is an
+                // obstacle for the body text in every mode (`frame_wraps`).
                 if let Some(fr) = pl.rp.frame.clone().filter(|_| frames) {
                     let fw = fr.w.unwrap_or_else(|| natural_width(&pl)).clamp(1.0, 1584.0);
                     let pf = if (fw - width).abs() > 0.01 { ctx.para_labelled(p, fw, table, &[], label) } else { pl };
@@ -285,8 +291,8 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                     let float = frame_float(&fr);
                     let r = float_rect(frame, (0.0, width), y, fw, h, &float);
                     push_para(&mut items, (story, &path), &pf, (0, pf.lines.len()), (r.x, r.y), fw, Edges::own(&pf, 0, pf.lines.len()));
-                    excl.extend(wrap_area(r, &float, None));
-                    float_tables.push(r);
+                    let legacy = ctx.doc.settings.compat_mode < 15;
+                    frame_areas(r, wrap_area(r, &float, None), (hf_over, legacy), (&mut excl, &mut float_tables, &mut frame_wraps));
                     continue;
                 }
                 let (ctxl, before) = paragraph_spacing(ParagraphSpacing {
@@ -312,12 +318,13 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                 let mut floats = HashMap::new();
                 // A header or footer cell's floats placed on the page: no room taken in the cell.
                 let mut pinned = HashMap::new();
-                // Before Word 2013 (compatibility mode below 15) an empty paragraph holding only
-                // floating objects (a letterhead banner) keeps its line in place too; from mode 15
-                // its line goes below the object.
+                // Before Word 2013 (compatibility mode below 15) only: a paragraph with text, or an
+                // empty one holding only floating objects (a letterhead banner), keeps its lines in
+                // place over a Top and Bottom object; from mode 15 a line the object's band would
+                // cover goes below it, as in the body.
                 let text_over = hf_over
-                    && (p.text.chars().any(|c| c != '\u{FFFC}' && !c.is_whitespace())
-                        || (ctx.doc.settings.compat_mode < 15 && p.objects.iter().all(|o| floating(o).is_some())));
+                    && ctx.doc.settings.compat_mode < 15
+                    && (p.text.chars().any(|c| c != '\u{FFFC}' && !c.is_whitespace()) || p.objects.iter().all(|o| floating(o).is_some()));
                 let left_out = left_out_objects(ctx.doc, p, table.map(|t| &t.chr), ctx.opts.show_hidden, ctx.hide_deleted);
                 for (oi, o) in p.objects.iter().enumerate() {
                     let Some((w, h, float)) = floating(o) else { continue };
@@ -441,7 +448,30 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
     }
     let floats_bottom = float_tables.iter().map(|r| r.bottom()).fold(float_objects_bottom, f32::max);
     ctx.hide_deleted = outer_hide;
-    BoxLayout { items, height: y.max(0.0), floats_bottom, last_top: last_top.max(0.0), table_areas, page_table_wraps }
+    BoxLayout { items, height: y.max(0.0), floats_bottom, last_top: last_top.max(0.0), table_areas, page_table_wraps, frame_wraps }
+}
+
+/// Most text frames of one header handed to the body as obstacles (hostile files).
+const MAX_FRAME_WRAPS: usize = 64;
+
+/// Where text frame `r` with wrap area `area` keeps text clear: in a header or footer
+/// (`hf`) it is handed to the body (`page`, at most [`MAX_FRAME_WRAPS`], finite only), and
+/// below compatibility mode 15 (`legacy`) the header's or footer's own text runs past it (Word
+/// lays that text out as if the frame were not there). Elsewhere the box's text wraps around it
+/// (`own`) and other floating tables keep clear of it (`tables`).
+fn frame_areas(
+    r: Rect,
+    area: Option<WrapArea>,
+    (hf, legacy): (bool, bool),
+    (own, tables, page): (&mut Vec<WrapArea>, &mut Vec<Rect>, &mut Vec<WrapArea>),
+) {
+    if hf && page.len() < MAX_FRAME_WRAPS {
+        page.extend(area.clone().filter(|(a, ..)| [a.x, a.y, a.w, a.h].iter().all(|v| v.is_finite())));
+    }
+    if !(hf && legacy) {
+        own.extend(area);
+        tables.push(r);
+    }
 }
 
 /// The space after a paragraph laid out as `pl`: none after the last one of a box when it is
@@ -545,6 +575,9 @@ pub(crate) struct BoxLayout {
     pub(crate) items: Vec<Placed>,
     pub(crate) table_areas: Vec<Rect>,
     pub(crate) page_table_wraps: Vec<WrapArea>,
+    /// A header's or footer's text frames' wrap areas (outside its table cells, at most
+    /// [`MAX_FRAME_WRAPS`]), relative to the box: the body text wraps around a header's.
+    pub(crate) frame_wraps: Vec<WrapArea>,
     pub(crate) height: f32,
     pub(crate) floats_bottom: f32,
     pub(crate) last_top: f32,

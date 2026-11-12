@@ -23,8 +23,12 @@ fn a_based_on_loop_imports_and_resolves() {
     let d = open(r"{\s15\sbasedon16\li720 Alpha;}{\s16\sbasedon15\ri360 Beta;}", r"\pard\s15 a\par");
     assert_eq!(d.styles.get("Alpha").and_then(|s| s.based_on.as_deref()), Some("Beta"));
     assert_eq!(d.styles.get("Beta").and_then(|s| s.based_on.as_deref()), Some("Alpha"));
+    // The style resolves through the loop (the paragraph, stating no indent, has none).
     let p = d.body[0].as_para().unwrap();
-    assert_eq!(d.styles.resolve_para(&p.props).indent_left, 36.0);
+    assert_eq!(p.props.style.as_deref(), Some("Alpha"));
+    let alpha = wordcraft_doc::props::ParaProps { style: Some("Alpha".into()), ..Default::default() };
+    let r = d.styles.resolve_para(&alpha);
+    assert_eq!((r.indent_left, r.indent_right), (36.0, 18.0));
     let back = import(export(&d).as_bytes()).unwrap();
     assert!(back.styles.get("Alpha").is_some() && back.styles.get("Beta").is_some());
 }
