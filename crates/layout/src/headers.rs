@@ -202,7 +202,7 @@ pub(crate) fn header_table_areas(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<Rect> {
     let id = if sect.title_page && first {
         set.first
     } else if ctx.doc.settings.even_odd_headers && page.number.is_multiple_of(2) {
-        set.even.or(set.default)
+        set.even
     } else {
         set.default
     };
@@ -396,7 +396,7 @@ pub(crate) fn headers_footers(ctx: &mut Ctx, pages: &mut [Page], sections: &[(us
                 return set.first;
             }
             if even_odd && page.number % 2 == 0 {
-                return set.even.or(set.default);
+                return set.even;
             }
             set.default
         };

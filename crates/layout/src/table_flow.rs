@@ -30,7 +30,7 @@ pub(crate) fn footer_table_wraps(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<WrapAre
     let id = if sect.title_page && first {
         set.first
     } else if doc.settings.even_odd_headers && page.number.is_multiple_of(2) {
-        set.even.or(set.default)
+        set.even
     } else {
         set.default
     };
