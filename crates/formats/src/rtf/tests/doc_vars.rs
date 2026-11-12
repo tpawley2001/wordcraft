@@ -28,8 +28,8 @@ fn variables_are_read_in_file_order_and_stay_out_of_the_text() {
 
 #[test]
 fn names_and_values_decode_escapes_like_other_text() {
-    // \'e9 is é in code page 1252; 舑 is an en dash with a one-byte fallback; \{ \} \\ are literal.
-    let d = doc(&with_vars(r"{\*\docvar {Caf\'e9}{a舑?b \{x\} \\ y}}"));
+    // \'e9 is é in code page 1252; \u8211 is an en dash with a one-byte fallback; \{ \} \\ are literal.
+    let d = doc(&with_vars(r"{\*\docvar {Caf\'e9}{a\u8211?b \{x\} \\ y}}"));
     assert_eq!(d.settings.doc_vars, [var("Café", "a\u{2013}b {x} \\ y")]);
 }
 
