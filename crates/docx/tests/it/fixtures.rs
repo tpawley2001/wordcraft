@@ -1135,10 +1135,14 @@ fn empty_field_results_keep_line() {
     let p = paras(&doc);
     assert_eq!(p[0].mark.hidden, None);
     assert!(matches!(&p[0].objects[0], InlineObject::Field { instr, .. } if instr == "PAGE"));
-    assert_eq!(p[1].mark.hidden, Some(true));
-    assert_eq!(p[2].mark.hidden, Some(true));
-    assert_eq!(p[3].mark.hidden, None);
-    assert_eq!(p[3].plain_text(), "Result");
+    // The paragraph marks inside the `IF` code are part of the code, as in Word: the code's
+    // paragraphs show as one, with the result, and no mark is hidden.
+    assert_eq!(p.len(), 2);
+    assert_eq!(p[1].mark.hidden, None);
+    assert_eq!(p[1].plain_text(), "Result");
+    assert!(
+        matches!(&p[1].objects[0], InlineObject::Field { instr, result, .. } if instr.split_whitespace().eq(["IF", "x", "=", "y"]) && result == "Result")
+    );
 }
 
 #[test]
