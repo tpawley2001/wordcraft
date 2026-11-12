@@ -78,6 +78,8 @@ pub(super) struct Reader {
     pub(super) generator: Option<String>,
     pub(super) meta: Meta,
     pub(super) info_text: String,
+    /// The text of the `{\*\template …}` group being read (the attached template's path).
+    pub(super) template_text: String,
     // Lists: list id → ordered per level; override ls → list id.
     pub(super) lists: HashMap<i32, Vec<bool>>,
     pub(super) list_cur: Vec<bool>,
@@ -567,6 +569,7 @@ impl Reader {
             "remdttm" => d.remove_date_time = Some(on),
             "rempersonalinfo" => d.remove_personal_info = Some(on),
             "revisions" => d.track_changes = Some(on),
+            "trackmoves" => d.track_moves = Some(on),
             "revprot" => d.old_prot = on.then_some("trackedChanges"),
             "viewscale" => d.percent = u32::try_from(pv).ok().filter(|n| (10..=500).contains(n)).or(d.percent),
             "viewzk" => match pv {
@@ -625,6 +628,16 @@ impl Reader {
                     12 => self.info_more.company = t,
                     13 => self.info_more.hyperlink_base = t,
                     _ => {}
+                }
+            }
+            // The template group's own end (a nested group inside it only changes formatting).
+            Dest::Template if self.stack.last().is_none_or(|p| p.dest != Dest::Template) => {
+                let mut t = std::mem::take(&mut self.template_text).trim().to_string();
+                if let Some((end, _)) = t.char_indices().nth(super::state::MAX_TEMPLATE_CHARS) {
+                    super::state::truncate_chars(&mut t, end);
+                }
+                if !t.is_empty() {
+                    self.doc_set.template = Some(t);
                 }
             }
             Dest::UserProps => self.info_more.commit_user_prop(),
@@ -1105,6 +1118,10 @@ pub(super) struct DocSettingWords {
     /// `\revisions` (Track Changes on) and `\printdata` (print only the data from a form).
     track_changes: Option<bool>,
     print_forms_data: Option<bool>,
+    /// `\trackmovesN` (Track moves): `\trackmoves0` turns move tracking off.
+    track_moves: Option<bool>,
+    /// The attached template (`{\*\template …}`): the last non-blank group's path.
+    pub(super) template: Option<String>,
 }
 
 impl DocSettingWords {
@@ -1155,10 +1172,14 @@ impl DocSettingWords {
             (self.expand_shift_return, &mut s.do_not_expand_shift_return),
             (self.track_changes, &mut s.track_changes),
             (self.print_forms_data, &mut s.print_forms_data),
+            (self.track_moves, &mut s.track_moves),
         ] {
             if let Some(v) = v {
                 *field = v;
             }
+        }
+        if let Some(t) = &self.template {
+            s.attached_template = Some(t.clone());
         }
     }
 }
@@ -1223,5 +1244,24 @@ mod bookmark_end_tests {
         let out = export(&import(rtf.as_bytes()).unwrap());
         let (s, t, e) = (out.find(r"{\*\bkmkstart h}").unwrap(), out.find("HEAD").unwrap(), out.find(r"{\*\bkmkend h}").unwrap());
         assert!(s < t && t < e, "{out}");
+    }
+}
+
+#[cfg(test)]
+mod template_tests {
+    use super::super::import;
+
+    #[test]
+    fn overlong_non_ascii_template_is_cut_by_characters() {
+        let rtf = format!(r"{{\rtf1\ansi\uc1{{\*\template {}}}\sectd a\par}}", r"\u233?".repeat(5000));
+        let t = import(rtf.as_bytes()).unwrap().settings.attached_template.unwrap_or_default();
+        assert_eq!(t.chars().count(), 4096);
+        assert!(t.chars().all(|c| c == '\u{e9}'));
+    }
+
+    #[test]
+    fn template_in_a_header_is_ignored() {
+        let d = import(br"{\rtf1\ansi{\header {\*\template H.dotx}h\par}\sectd a\par}").unwrap();
+        assert_eq!(d.settings.attached_template, None);
     }
 }

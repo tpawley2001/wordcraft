@@ -298,6 +298,9 @@ impl Reader {
             // Cut to `MAX_INFO_TEXT` at the group's end; this bounds what a hostile file makes us hold.
             Dest::Info(_) if self.info_text.len() <= super::state::MAX_INFO_TEXT => self.info_text.push_str(s),
             Dest::Info(_) => {}
+            // Bounded: a path past `MAX_TEMPLATE_CHARS` is cut at the group's end.
+            Dest::Template if self.template_text.len() < super::state::MAX_TEMPLATE_CHARS * 4 => self.template_text.push_str(s),
+            Dest::Template => {}
             Dest::Generator => {
                 if let Some(g) = self.generator.as_mut()
                     && g.len() < 256

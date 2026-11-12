@@ -71,7 +71,12 @@ pub(super) enum Dest {
     /// User properties (`{\*\userprops …}`, RTF 1.9.1 "User Properties"): `\proptypeN` is read
     /// here, `\propname`, `\staticval` and `\linkval` are text groups (`Info(8..=10)`).
     UserProps,
+    /// The attached template (`{\*\template …}`, RTF 1.9.1): its text is the template's path.
+    Template,
 }
+
+/// Longest attached template path kept (characters).
+pub(super) const MAX_TEMPLATE_CHARS: usize = 4096;
 
 /// Longest text kept of one information-group field or user property name or value (bytes).
 pub(super) const MAX_INFO_TEXT: usize = 64 * 1024;

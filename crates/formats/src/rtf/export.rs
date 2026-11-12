@@ -531,6 +531,12 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
     if let Some(n) = level {
         o.push_str(&format!("\\enforceprot1\\protlevel{n}"));
     }
+    if !set.track_moves {
+        o.push_str("\\trackmoves0");
+    }
+    if let Some(t) = set.attached_template.as_deref().filter(|t| !t.trim().is_empty()) {
+        o.push_str(&format!("{{\\*\\template {}}}", esc(t)));
+    }
     for (on, w) in [
         (!set.sum_paragraph_spacing, "\\htmautsp"),
         (set.link_styles, "\\linkstyles"),
