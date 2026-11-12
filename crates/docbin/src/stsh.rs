@@ -146,13 +146,32 @@ pub(crate) fn parse(table: &[u8], fc: u32, lcb: u32) -> Result<Vec<RawStyle>, Do
     Ok(out)
 }
 
-/// Font names from the `SttbfFfn` at `table[fc..fc+lcb]` ([MS-DOC] §2.9.286): an STTB
+/// One font of the `SttbfFfn`: its FFN's primary name, alternate name (`xszAlt`) and the
+/// `ffid` byte's family class (`ff`, bits 4-6) and pitch (`prq`, bits 0-1), and its `chs`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct FontEntry {
+    pub(crate) name: String,
+    /// The alternate name, when `ixchSzAlt` points inside the name field at a non-empty name.
+    pub(crate) alt: Option<String>,
+    /// Family class: 0 dontcare, 1 roman, 2 swiss, 3 modern, 4 script, 5 decorative.
+    pub(crate) ff: u8,
+    /// Pitch request: 0 default, 1 fixed, 2 variable.
+    pub(crate) prq: u8,
+    /// Character set.
+    pub(crate) chs: u8,
+}
+
+/// FFN family class `roman` ([MS-DOC] §2.9.82 `ff`).
+pub(crate) const FF_ROMAN: u8 = 1;
+
+/// The fonts, one entry per FFN in table order, of the `SttbfFfn` at `table[fc..fc+lcb]`
+/// ([MS-DOC] §2.9.286): an STTB
 /// (§2.2.4) whose entries are FFN records (§2.9.82). Each entry is a length (`cchData`: a
 /// one-byte byte count in the non-extended table the spec requires, a two-byte count of
 /// 16-bit units in an extended one) followed by the FFN, and that length alone decides where
 /// the next entry starts: an FFN ends with its primary name and an optional alternate name
 /// (`xszAlt`), so scanning for the primary name's terminator would land inside the latter.
-pub(crate) fn fonts(table: &[u8], fc: u32, lcb: u32) -> Vec<String> {
+pub(crate) fn font_entries(table: &[u8], fc: u32, lcb: u32) -> Vec<FontEntry> {
     let end = match (fc as usize).checked_add(lcb as usize) {
         Some(e) if e <= table.len() => e,
         _ => return Vec::new(),
@@ -163,8 +182,7 @@ pub(crate) fn fonts(table: &[u8], fc: u32, lcb: u32) -> Vec<String> {
     // FFN: ffid(1) wWeight(2) chs(1) ixchSzAlt(1) panose(10) fs(24) = 39 bytes, then the
     // primary name, NUL-terminated, as UTF-16LE in the Word 97 files we accept (8-bit names
     // from older writers fall back to Windows-1252).
-    let name_of = |ffn: &[u8]| -> String {
-        let tail = ffn.get(FFN_HEADER.min(ffn.len())..).unwrap_or(&[]);
+    let name_of = |tail: &[u8]| -> String {
         let units: Vec<u16> = tail.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).take_while(|&u| u != 0).take(64).collect();
         let s = String::from_utf16_lossy(&units);
         if s.chars().any(|c| c as u32 > 0x7F || c.is_ascii_graphic() || c == ' ') || s.is_empty() {
@@ -173,6 +191,21 @@ pub(crate) fn fonts(table: &[u8], fc: u32, lcb: u32) -> Vec<String> {
             // An 8-bit name reads as garbage through UTF-16; fall back to Windows-1252.
             tail.iter().take_while(|&&b| b != 0).take(64).map(|&b| wordcraft_doc::encoding::cp1252(b)).collect()
         }
+    };
+    let entry_of = |ffn: &[u8]| -> FontEntry {
+        let tail = ffn.get(FFN_HEADER.min(ffn.len())..).unwrap_or(&[]);
+        let name = name_of(tail);
+        let Some(&[ffid, _, _, chs, ixch_alt]) = ffn.first_chunk::<5>() else { return FontEntry { name, ..FontEntry::default() } };
+        let ixch_alt = usize::from(ixch_alt);
+        // `ixchSzAlt` counts characters of the name field: 16-bit units in the UTF-16 names of
+        // Word 97 files.
+        let alt = (ixch_alt != 0)
+            .then(|| ixch_alt.checked_mul(2).and_then(|o| tail.get(o..)))
+            .flatten()
+            .filter(|t| !t.is_empty())
+            .map(name_of)
+            .filter(|a| !a.is_empty());
+        FontEntry { name, alt, ff: (ffid >> 4) & 7, prq: ffid & 3, chs }
     };
     // STTB header: [fExtend 0xFFFF] cData(2) cbExtra(2); each entry is followed by cbExtra
     // bytes (0 for font tables, but skip them if present).
@@ -190,7 +223,7 @@ pub(crate) fn fonts(table: &[u8], fc: u32, lcb: u32) -> Vec<String> {
         let start = at.saturating_add(len_bytes);
         let stop = start.saturating_add(cb);
         // A record cut short by the end of the table still yields what it holds.
-        out.push(name_of(sttb.get(start..stop.min(sttb.len())).unwrap_or(&[])));
+        out.push(entry_of(sttb.get(start..stop.min(sttb.len())).unwrap_or(&[])));
         at = stop.saturating_add(usize::from(cb_extra));
     }
     out
@@ -198,3 +231,58 @@ pub(crate) fn fonts(table: &[u8], fc: u32, lcb: u32) -> Vec<String> {
 
 /// Bytes of an FFN before its primary name ([MS-DOC] §2.9.82).
 const FFN_HEADER: usize = 39;
+
+#[cfg(test)]
+mod font_entry_tests {
+    use super::*;
+
+    fn utf16z(s: &str) -> Vec<u8> {
+        s.encode_utf16().chain([0]).flat_map(u16::to_le_bytes).collect()
+    }
+
+    /// A non-extended SttbfFfn of one FFN with this FFID, chs, ixchSzAlt and name bytes.
+    fn table_of(ffid: u8, chs: u8, ixch: u8, names: &[u8]) -> Vec<u8> {
+        let mut ffn = vec![0u8; FFN_HEADER];
+        ffn[0] = ffid;
+        ffn[3] = chs;
+        ffn[4] = ixch;
+        ffn.extend_from_slice(names);
+        let mut t = vec![1, 0, 0, 0, ffn.len() as u8];
+        t.extend_from_slice(&ffn);
+        t
+    }
+
+    #[test]
+    fn ffn_header_fields_and_alternate_name() {
+        let mut names = utf16z("Zzyzx Mono");
+        names.extend(utf16z("Courier New"));
+        let t = table_of(0x31, 0xCC, 11, &names);
+        let e = font_entries(&t, 0, t.len() as u32);
+        assert_eq!(e.len(), 1);
+        assert_eq!(e[0].name, "Zzyzx Mono");
+        assert_eq!(e[0].alt.as_deref(), Some("Courier New"));
+        assert_eq!((e[0].ff, e[0].prq, e[0].chs), (3, 1, 0xCC));
+    }
+
+    #[test]
+    fn alternate_index_past_the_name_field_is_no_alternate() {
+        let t = table_of(0x12, 0, 200, &utf16z("Zzyzx Roman"));
+        let e = font_entries(&t, 0, t.len() as u32);
+        assert_eq!(e[0].name, "Zzyzx Roman");
+        assert_eq!(e[0].alt, None);
+        assert_eq!((e[0].ff, e[0].prq), (FF_ROMAN, 2));
+        // An index landing on the primary name's terminator: an empty alternate.
+        let t = table_of(0x12, 0, 11, &utf16z("Zzyzx Roman"));
+        assert_eq!(font_entries(&t, 0, t.len() as u32)[0].alt, None);
+    }
+
+    #[test]
+    fn short_ffns_have_no_class() {
+        for ffn in [&[][..], &[0x12], &[0x12, 0, 0, 0]] {
+            let mut t = vec![1, 0, 0, 0, ffn.len() as u8];
+            t.extend_from_slice(ffn);
+            let e = font_entries(&t, 0, t.len() as u32);
+            assert_eq!(e, vec![FontEntry::default()]);
+        }
+    }
+}

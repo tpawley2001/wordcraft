@@ -50,6 +50,8 @@ struct Piece {
 struct Font {
     name: String,
     chs: u8,
+    /// FFN family class (`ff`, bits 4-6 of the FFID byte).
+    ff: u8,
 }
 
 /// How a run's bytes become characters.
@@ -154,6 +156,7 @@ pub(crate) fn read<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, word: &[u8],
     let mut doc = Document::new();
     // Word 6/95 files are laid out in Compatibility Mode too; 11 is the oldest mode modelled.
     doc.settings.compat_mode = wordcraft_doc::WORD2003_COMPAT_MODE;
+    doc.settings.roman_fonts = crate::roman_fonts(fonts.iter().map(|f| (f.ff, f.name.as_str())));
     let last = sects.len().saturating_sub(1);
     for (si, sec) in sects.into_iter().enumerate() {
         if si == last || sec.end_cp >= cp_text {
@@ -439,7 +442,8 @@ fn fonts(word: &[u8], (fc, lcb): (u32, u32)) -> Vec<Font> {
             Decode::Symbol => 1252,
         };
         let name = ffn.get(5..).unwrap_or(&[]).iter().take_while(|&&b| b != 0).take(64).map(|&b| windows_byte(cp, b)).collect();
-        out.push(Font { name, chs });
+        let ff = ffn.first().map_or(0, |&ffid| (ffid >> 4) & 7);
+        out.push(Font { name, chs, ff });
         at = at.saturating_add(1).saturating_add(usize::from(cb));
     }
     out
@@ -461,7 +465,7 @@ mod unit {
 
     #[test]
     fn hostile_grpprls_and_tables_never_panic() {
-        let fonts = vec![Font { name: "A".into(), chs: 204 }];
+        let fonts = vec![Font { name: "A".into(), chs: 204, ff: 0 }];
         let names = vec!["A".to_string()];
         for g in [&[][..], &[93], &[93, 0xFF, 0xFF], &[0xFF, 1, 2], &[99, 1], &[85]] {
             let _ = char_props(g, &fonts, &names, false);
