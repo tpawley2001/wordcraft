@@ -1595,7 +1595,17 @@ impl Writer {
             Some(Align::Center | Align::Right) => 0,
             _ => extra.and_then(|x| x.indent).filter(|i| i.is_finite()).map_or(0, |i| ((i * 20.0).round() as i64).clamp(-31_680, 31_680)),
         };
-        out.push_str(&format!("\\trgaph108\\trleft{left}"));
+        // Its default cell padding: the gap is the left padding, each side stated in twips.
+        let pad = extra.and_then(|x| x.cell_margins).filter(|m| m.iter().all(|v| v.is_finite()));
+        match pad {
+            Some(m) => {
+                let [t, l, b, r] = m.map(|v| ((v * 20.0).round() as i64).clamp(0, 31_680));
+                out.push_str(&format!(
+                    "\\trgaph{l}\\trleft{left}\\trpaddl{l}\\trpaddt{t}\\trpaddb{b}\\trpaddr{r}\\trpaddfl3\\trpaddft3\\trpaddfb3\\trpaddfr3"
+                ));
+            }
+            None => out.push_str(&format!("\\trgaph108\\trleft{left}")),
+        }
         // The table's style and its look.
         if let Some(n) = extra.and_then(|x| x.style.as_deref()).and_then(own_style_num) {
             out.push_str(&format!("\\ts{n}"));
