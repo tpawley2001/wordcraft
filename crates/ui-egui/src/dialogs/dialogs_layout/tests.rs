@@ -7,6 +7,8 @@ use super::*;
 use crate::dialogs::Dialog;
 use crate::{Services, WordApp};
 
+mod formula_number_format;
+
 fn app() -> WordApp {
     WordApp::new(Session::new(wordcraft_doc::Document::from_text("Dear Jo,\nThanks.")), Services::default())
 }

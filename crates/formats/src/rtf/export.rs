@@ -92,6 +92,8 @@ pub(super) enum Mark {
         id: u32,
         ann: Option<Annotation>,
     },
+    /// A note separator line in a separator story (`true`: the continuation line).
+    SepLine(bool),
     Done,
 }
 
@@ -161,7 +163,7 @@ impl Marker<'_> {
             match &**b {
                 Block::Para(p) => {
                     let q = self.para(p, Some(note));
-                    out.extend(model::flow_paras(self.doc, &q).into_iter().map(FBlock::Para));
+                    out.extend(model::flow_paras_with(self.doc, &q, rtf_flow_opts()).into_iter().map(FBlock::Para));
                 }
                 Block::Table(t) if depth < 4 => {
                     for c in t.rows.iter().flat_map(|r| r.cells.iter()) {
@@ -266,6 +268,11 @@ fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
     }
     if s.wrap_trail_spaces {
         o.push_str("\\wraptrsp");
+    }
+    // A document that does not squeeze spaces to keep an overrunning word (one not from RTF, or
+    // an RTF one that said so) tells Word with `\jexpand`; `\jcompress` is the default.
+    if !s.rtf_justification {
+        o.push_str("\\jexpand");
     }
     o
 }
@@ -569,6 +576,37 @@ fn own_style_num(id: &str) -> Option<u32> {
 /// Set the numbers [`own_style_num`] gives, returning the ones it gave before.
 fn set_own_styles(nums: HashMap<String, u32>) -> HashMap<String, u32> {
     OWN_STYLES.with(|m| m.try_borrow_mut().map(|mut m| std::mem::replace(&mut *m, nums)).unwrap_or_default())
+}
+
+thread_local! {
+    /// While [`export`] writes a document: the character formatting Normal gives text, and that
+    /// each of the document's own paragraph styles gives it, by id ([`model::style_look`]).
+    static STYLE_LOOKS: std::cell::RefCell<Option<(Fmt, HashMap<String, Fmt>)>> = const { std::cell::RefCell::new(None) };
+    /// The character formatting the style of the paragraph being written gives its text, when the
+    /// paragraph states it (a paragraph in one of the document's own styles): its runs write what
+    /// differs from it.
+    static LOOK: std::cell::RefCell<Option<Fmt>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Set the looks [`STYLE_LOOKS`] gives, returning the ones it gave before.
+fn set_style_looks(looks: Option<(Fmt, HashMap<String, Fmt>)>) -> Option<(Fmt, HashMap<String, Fmt>)> {
+    STYLE_LOOKS.with(|m| m.try_borrow_mut().ok().and_then(|mut m| std::mem::replace(&mut *m, looks)))
+}
+
+/// Normal's character formatting and that of the document's own paragraph style `id`, while
+/// [`export`] writes the document.
+fn style_looks(id: &str) -> Option<(Fmt, Fmt)> {
+    STYLE_LOOKS.with(|m| m.try_borrow().ok().and_then(|m| m.as_ref().and_then(|(normal, looks)| Some((normal.clone(), looks.get(id)?.clone())))))
+}
+
+/// Set the look [`LOOK`] gives, returning the one it gave before.
+fn set_look(look: Option<Fmt>) -> Option<Fmt> {
+    LOOK.with(|m| m.try_borrow_mut().ok().and_then(|mut m| std::mem::replace(&mut *m, look)))
+}
+
+/// The look [`LOOK`] gives.
+fn look() -> Option<Fmt> {
+    LOOK.with(|m| m.try_borrow().ok().and_then(|m| m.clone()))
 }
 
 thread_local! {
@@ -1013,6 +1051,7 @@ impl Writer {
                 out.push('}');
             }
             Mark::Own(custom) => out.push_str(&note_mark(&custom)),
+            Mark::SepLine(continuation) => out.push_str(if continuation { "\\chftnsepc " } else { "\\chftnsep " }),
             Mark::RangeStart(id) => out.push_str(&format!("{{\\*\\atrfstart {id}}}")),
             Mark::RangeEnd { id, ann } => {
                 out.push_str(&format!("{{\\*\\atrfend {id}}}"));
@@ -1045,7 +1084,11 @@ impl Writer {
             ctl.push_str(&format!("{{\\*\\oldcprops {old}{words}}}"));
         }
         ctl.push_str(&self.rev_ctl(f.ins.as_ref(), f.del.as_ref()));
-        ctl.push_str(&self.char_ctl(f));
+        let words = match look() {
+            Some(look) => self.char_over(f, &look, true),
+            None => self.char_ctl(f),
+        };
+        ctl.push_str(&words);
         let body = if ctl.is_empty() { esc(t) } else { format!("{{{ctl} {}}}", esc(t)) };
         // A script, `file:`, UNC or other non-web target is written as plain text, as the HTML and
         // Markdown exporters do: Word follows a HYPERLINK field's target on click, and a UNC one
@@ -1144,6 +1187,44 @@ impl Writer {
         let old_pos = position_word(old);
         if old_pos != position_word(cur) {
             ctl.push_str(old_pos.as_deref().unwrap_or("\\up0"));
+        }
+        ctl
+    }
+
+    /// The character formatting control words of `f` over text already formatted as `from`: what
+    /// differs from it, with explicit "off" words (`\b0`, `\ulnone`, `\cf0`…) where `offs` asks
+    /// for them and `f` turns off what `from` has on.
+    fn char_over(&mut self, f: &Fmt, from: &Fmt, offs: bool) -> String {
+        let mut g = f.clone();
+        let mut off = String::new();
+        for (on, base, word) in [(&mut g.bold, from.bold, "\\b0"), (&mut g.italic, from.italic, "\\i0"), (&mut g.strike, from.strike, "\\strike0")] {
+            if base {
+                if !*on {
+                    off.push_str(word);
+                }
+                *on = false;
+            }
+        }
+        let ul = underline_word(f);
+        if ul == underline_word(from) {
+            g.underline = false;
+        } else if ul.is_none() && from.underline {
+            off.push_str("\\ulnone");
+        }
+        if g.font == from.font && g.code == from.code {
+            g.font = None;
+        }
+        if g.size == from.size {
+            g.size = None;
+        }
+        if g.color == from.color {
+            g.color = None;
+        } else if g.color.is_none() && g.link.is_none() {
+            off.push_str("\\cf0");
+        }
+        let mut ctl = self.char_ctl(&g);
+        if offs {
+            ctl.push_str(&off);
         }
         ctl
     }
@@ -1474,6 +1555,14 @@ impl Writer {
             let i = self.t.color(c);
             out.push_str(&format!("\\cbpat{i}"));
         }
+        // A paragraph in one of the document's own styles states the style's character
+        // formatting, once, for its text; its runs then state what differs.
+        let own = p.extra.as_ref().and_then(|x| x.style.as_deref()).filter(|_| p.kind == Kind::Normal).and_then(style_looks);
+        if let Some((normal, look)) = &own {
+            let words = self.char_over(look, normal, false);
+            out.push_str(&words);
+        }
+        let outer = set_look(own.map(|(_, look)| look));
         if let (Some(li), Some((n, label))) = (p.list, &ls) {
             let lv = li.level.min(8);
             out.push_str(&format!("\\ls{n}\\ilvl{lv}"));
@@ -1489,6 +1578,7 @@ impl Writer {
         self.base = style_fmt(p.kind);
         self.inlines(&p.inlines, out);
         self.base = Fmt::default();
+        set_look(outer);
         // A tracked paragraph mark is the `\par` inside the revision's group.
         let mut marks = self.rev_ctl(p.mark_ins.as_deref(), p.mark_del.as_deref());
         // An empty paragraph's mark formatting: the character formatting at its `\par`.
@@ -1957,6 +2047,12 @@ fn mark_fmt(m: &wordcraft_doc::props::CharProps) -> Fmt {
     }
 }
 
+/// What the RTF writer keeps of the document's flow: the body, table cells, headers and footers,
+/// and the text of notes and comments alike. An empty paragraph's mark formatting sets its height.
+fn rtf_flow_opts() -> model::FlowOpts {
+    model::FlowOpts { marks: true, outline_apart: true, auto_space: true, style_look: true, ..model::FlowOpts::tracked() }
+}
+
 /// RTF text of a document.
 pub fn export(doc: &Document) -> String {
     // A drop cap is written as Word stores it: its letter in a paragraph of its own.
@@ -1980,10 +2076,12 @@ pub fn export(doc: &Document) -> String {
         .zip(FIRST_OWN_STYLE..)
         .map(|(s, n)| (s.id.clone(), n))
         .collect();
+    // A paragraph in one of them states its style's character formatting.
+    let looks = own.keys().filter(|id| model::is_custom_style(doc, id)).map(|id| (id.clone(), model::style_look(doc, Some(id)))).collect();
+    let looks_before = set_style_looks(Some((model::style_look(doc, None), looks)));
     let before = set_own_styles(own);
     let ranged_before = set_ranged(HashSet::new());
-    // An empty paragraph's mark formatting sets its height.
-    let opts = model::FlowOpts { marks: true, outline_apart: true, auto_space: true, ..model::FlowOpts::tracked() };
+    let opts = rtf_flow_opts();
     let flow = model::from_doc_with(doc, opts);
     let base_font = doc.styles.default_chr.font.clone().unwrap_or_else(|| wordcraft_doc::styles::BODY_FONT.to_string());
     let mut w = Writer {
@@ -2018,6 +2116,7 @@ pub fn export(doc: &Document) -> String {
             s
         })
         .collect();
+    note_separator_groups(doc, &mut w, opts, &mut body);
     if let Some(first) = secs.first() {
         body.push_str(&sect_words(first, first.gutter, &mut w.t));
         for (set, prefix) in [(&first.headers, "header"), (&first.footers, "footer")] {
@@ -2039,8 +2138,56 @@ pub fn export(doc: &Document) -> String {
     w.blocks(&flow.blocks, 0, "\\par", &mut body, 0);
     let own_entries = own_style_entries(doc, &mut w.t);
     set_own_styles(before);
+    set_style_looks(looks_before);
     set_ranged(ranged_before);
     export_with(&flow.meta, doc, &w, &own_entries, &body)
+}
+
+/// The document's own note separator stories (RTF 1.9.1 "Footnotes"): `{\*\ftnsep …}`,
+/// `{\*\ftnsepc …}`, `{\*\ftncn …}`, then the endnote ones, each that the document has. Every
+/// paragraph ends with `\par`, the last too; a separator line is `\chftnsep` / `\chftnsepc`.
+fn note_separator_groups(doc: &Document, w: &mut Writer, opts: model::FlowOpts, out: &mut String) {
+    let (f, e) = (&doc.footnote_separators, &doc.endnote_separators);
+    let stories = [
+        ("ftnsep", &f.separator),
+        ("ftnsepc", &f.continuation_separator),
+        ("ftncn", &f.continuation_notice),
+        ("aftnsep", &e.separator),
+        ("aftnsepc", &e.continuation_separator),
+        ("aftncn", &e.continuation_notice),
+    ];
+    for (word, story) in stories {
+        let Some(blocks) = story else { continue };
+        let blocks: Blocks = blocks.iter().take(MAX_NOTE_BLOCKS).map(|b| sep_lines_as_marks(b, &mut w.marks)).collect();
+        let flow = model::part_flow(doc, &blocks, opts);
+        out.push_str(&format!("{{\\*\\{word} "));
+        set_ranged(model::ranged_anchors(&flow));
+        w.blocks(&flow, 0, "\\par", out, 1);
+        out.push_str("}\n");
+    }
+}
+
+/// `b` with its note separator lines replaced by place markers (see [`MARK_OPEN`]) for
+/// [`Mark::SepLine`]; tables are left as they are.
+fn sep_lines_as_marks(b: &Arc<Block>, marks: &mut Vec<Mark>) -> Arc<Block> {
+    let Block::Para(p) = &**b else { return b.clone() };
+    if !p.objects.iter().any(|o| o.as_note_separator().is_some()) {
+        return b.clone();
+    }
+    let mut q = p.clone();
+    for off in p.object_offsets().into_iter().rev() {
+        let Some(line) = q.object_at(off).and_then(InlineObject::as_note_separator) else { continue };
+        marks.push(Mark::SepLine(line));
+        let text = format!("{MARK_OPEN}{}{MARK_CLOSE}", marks.len().saturating_sub(1));
+        let end = off + wordcraft_doc::para::OBJ.len_utf8();
+        if q.delete(off, end).is_err() {
+            continue;
+        }
+        if q.insert_text(off, &text, &Default::default()).is_err() {
+            continue;
+        }
+    }
+    Arc::new(Block::Para(q))
 }
 
 /// One `{\*\docvar {name}{value}}` (RTF 1.9.1 "Document Variables") per document variable, in

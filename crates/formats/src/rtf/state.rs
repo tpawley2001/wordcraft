@@ -271,8 +271,15 @@ pub(super) struct Sub {
     pub(super) custom: String,
     /// A group with text has been read in the note (only the first can be its own mark).
     pub(super) own_mark_done: bool,
+    /// A note separator story instead (`\ftnsep`…): its slot in [`SEP_WORDS`].
+    pub(super) sep: Option<usize>,
     pub(super) saved: Box<Output>,
 }
+
+/// The note separator and continuation story words (RTF 1.9.1 "Footnotes"), in the order of
+/// the document's footnote separator, continuation separator and continuation notice, then the
+/// endnote ones.
+pub(super) const SEP_WORDS: [&str; 6] = ["ftnsep", "ftnsepc", "ftncn", "aftnsep", "aftnsepc", "aftncn"];
 
 /// A note read: its kind and text.
 pub(super) struct NoteData {
@@ -796,6 +803,10 @@ pub(super) struct DocOpts {
     pub(super) widow_control: bool,
     /// `\wraptrsp`: Wrap trailing spaces onto the next line.
     pub(super) wrap_trail_spaces: Option<bool>,
+    /// `\jexpand` (`Some(true)`) / `\jcompress` (`Some(false)`), the last one read: with
+    /// expanding justification Word does not squeeze a line's spaces to keep its overrunning
+    /// last word.
+    pub(super) expand_justification: Option<bool>,
 }
 
 impl DocOpts {
@@ -825,6 +836,8 @@ impl DocOpts {
             }
             "widowctrl" => self.widow_control = true,
             "wraptrsp" => self.wrap_trail_spaces = Some(on),
+            "jexpand" => self.expand_justification = Some(true),
+            "jcompress" => self.expand_justification = Some(false),
             _ => return false,
         }
         true
@@ -856,6 +869,8 @@ impl DocOpts {
         if let Some(v) = self.wrap_trail_spaces {
             s.wrap_trail_spaces = v;
         }
+        // An RTF document squeezes spaces unless it says `\jexpand`.
+        s.rtf_justification = self.expand_justification != Some(true);
     }
 }
 

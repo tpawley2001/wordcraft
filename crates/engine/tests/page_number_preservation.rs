@@ -17,7 +17,7 @@ fn fields(doc: &Document, story: StoryRef, name: &str) -> usize {
 }
 
 fn field(instr: &str) -> InlineObject {
-    InlineObject::Field { instr: instr.into(), result: "1".into(), locked: false, dirty: false, code: false, form: String::new() }
+    InlineObject::Field { instr: instr.into(), result: "1".into(), locked: false, dirty: false, code: false, form: String::new(), code_paras: None }
 }
 
 #[test]

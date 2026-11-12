@@ -2,7 +2,7 @@ use super::reader::apply_section_word;
 use super::state::{CellDef, Dest, FmtRevSt, FontSlot, HeaderFooter, HfPages, MAX_OLD_WORDS, MAX_TABS, Pattern, Pn, PnKind, RevSt, SecFmt, St};
 use super::styles::{StyleDef, StyleEntry, is_char_format_word, is_format_word};
 use super::{Align, Fmt, Reader, VAlign, model};
-use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline};
+use wordcraft_doc::props::{CharProps, EmphasisMark, Highlight, TabAlign, TabLeader, TabStop, Underline, VertAlign};
 
 impl Reader {
     pub(super) fn word(&mut self, w: &str, p: Option<i32>, starred: bool, first_in_group: bool) {
@@ -339,7 +339,7 @@ impl Reader {
             "gutter" => self.page.gutter = Some(pv),
             "rtlgutter" => self.page.rtl_gutter = on,
             "landscape" => self.page.landscape = on,
-            _ if self.doc_note_word(w, p) || self.doc_opts.word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
+            _ if self.doc_note_word(w, p) || self.doc_opts_word(w, p) || self.doc_setting_word(w, p) || self.frame_word(w, pv) => {}
             _ if self.section_word(w, p) => {}
             "cellx" => {
                 self.cell_side = None;
@@ -383,6 +383,16 @@ impl Reader {
     }
 
     /// Enters destination `d`, setting up what it collects.
+    /// A document formatting word read into `doc_opts`. `\jexpand` and `\jcompress` only count
+    /// among the document's own formatting words: in a style, a header or a note they are
+    /// swallowed, so they can't change how the whole document justifies.
+    fn doc_opts_word(&mut self, w: &str, p: Option<i32>) -> bool {
+        if matches!(w, "jexpand" | "jcompress") && (self.st.dest != Dest::Body || self.sub.is_some() || self.hf.is_some()) {
+            return true;
+        }
+        self.doc_opts.word(w, p)
+    }
+
     fn enter_destination(&mut self, d: Dest) {
         match d {
             Dest::Bookmark(end) => {
@@ -463,7 +473,8 @@ impl Reader {
             "oldpprops" => Some(Dest::OldProps(true)),
             "oldsprops" => Some(Dest::OldSect),
             // Note separator and continuation stories (RTF 1.9.1 "Footnotes"), also written
-            // without `\*` by older writers: not body text, and no custom separators are kept.
+            // without `\*` by older writers: read as the document's own separators only where
+            // a header or footer could start ([`Self::start_note_word`]); anywhere else skipped.
             "ftnsep" | "ftnsepc" | "ftncn" | "aftnsep" | "aftnsepc" | "aftncn" => Some(Dest::Skip),
             "listoverridetable" => Some(Dest::ListOverride),
             "fldinst" => Some(Dest::FldInst),
@@ -537,13 +548,31 @@ impl Reader {
                     }
                     return true;
                 }
-                "chftn" if self.sub.as_ref().is_some_and(|s| !s.comment) => {
+                // A page break has no place in a note separator story.
+                "page" | "softpage" if self.in_sep() => return true,
+                // The separator lines, only in a separator story (elsewhere nothing).
+                "chftnsep" | "chftnsepc" if self.in_sep() => {
+                    let f = self.st.fmt.clone();
+                    self.push_mark('L', i64::from(word == "chftnsepc"), f);
+                    return true;
+                }
+                "chftn" if self.sub.as_ref().is_some_and(|s| !s.comment && s.sep.is_none()) => {
                     let f = self.st.fmt.clone();
                     self.push_mark('S', 0, f);
                     return true;
                 }
                 _ => {}
             }
+        }
+        // A separator story is read where a header or footer group would be: at body level, not
+        // in a table cell, note, comment, header, footer, shape or another separator story
+        // (Word was not measured elsewhere).
+        if let Some(k) = super::state::SEP_WORDS.iter().position(|w| *w == word) {
+            if !self.marks_on || self.hf.is_some() || self.sub.is_some() || !self.shapes.is_empty() || self.st.dest != Dest::Body || self.st.intbl {
+                return false;
+            }
+            self.start_sep(k);
+            return true;
         }
         if !matches!(word, "footnote" | "annotation") || !self.marks_on || self.hf.is_some() || self.sub.is_some() || self.st.dest != Dest::Body {
             return false;
@@ -1093,8 +1122,42 @@ fn style_line_word(def: &mut StyleDef, w: &str, on: bool, pv: i32) {
         return;
     }
     match w {
-        "chbrdr" => def.border_open = true,
-        "brdrt" | "brdrl" | "brdrb" | "brdrr" | "brdrbtw" | "brdrbar" | "box" => def.border_open = false,
+        "chbrdr" => {
+            def.border_open = true;
+            def.para_side = None;
+        }
+        "brdrt" | "brdrl" | "brdrb" | "brdrr" | "brdrbtw" | "brdrbar" | "box" => {
+            def.border_open = false;
+            def.para_side = match w {
+                "brdrbtw" => Some('h'),
+                "box" => Some('x'),
+                "brdrbar" => Some('v'),
+                _ => w.chars().last(),
+            };
+        }
+        "caps" => def.caps = Some(on),
+        "scaps" => def.small_caps = Some(on),
+        "v" => def.hidden_text = Some(on),
+        "super" => def.vert_align = Some(if on { VertAlign::Superscript } else { VertAlign::Baseline }),
+        "sub" => def.vert_align = Some(if on { VertAlign::Subscript } else { VertAlign::Baseline }),
+        "nosupersub" => def.vert_align = Some(VertAlign::Baseline),
+        "highlight" => def.highlight = Some(pv),
+        "ulc" => def.underline_color = Some(pv),
+        "chcbpat" | "cb" => def.ch_fill = Some(pv),
+        "chcfpat" => def.ch_ink = Some(pv),
+        "chshdng" => def.ch_pct = Some(pv),
+        "cbpat" => def.para_fill = Some(pv),
+        "cfpat" => def.para_ink = Some(pv),
+        "shading" => def.para_pct = Some(pv),
+        "brdrw" if !def.border_open => {
+            let width = (pv as f32 / 20.0).clamp(0.25, 6.0);
+            each_para_side(def, |b, _| b.width = width);
+        }
+        "brdrcf" if !def.border_open => each_para_side(def, |_, c| *c = Some(pv)),
+        "brsp" if !def.border_open => {
+            let space = (pv as f32 / 20.0).clamp(0.0, 31.0);
+            each_para_side(def, |b, _| b.space = space);
+        }
         "brdrw" if def.border_open => {
             if let Some(b) = &mut def.border {
                 b.width = (pv as f32 / 20.0).clamp(0.25, 6.0);
@@ -1113,9 +1176,44 @@ fn style_line_word(def: &mut StyleDef, w: &str, on: bool, pv: i32) {
             if let Some(style) = border_style(w).filter(|_| def.border_open) {
                 def.border = Some(Border { style, ..Border::single(0.5) });
                 def.border_color = None;
+            } else if let Some(style) = border_style(w).filter(|_| def.para_side.is_some()) {
+                // A paragraph side's line: a stated none leaves the side without a border.
+                let b = (style != wordcraft_doc::props::BorderStyle::None).then_some(Border { style, ..Border::single(0.5) });
+                for i in para_side_slots(def.para_side) {
+                    if let Some(slot) = def.para_borders.get_mut(*i) {
+                        *slot = b;
+                    }
+                    if let Some(c) = def.para_border_colors.get_mut(*i) {
+                        *c = None;
+                    }
+                }
             } else if let Some(u) = underline_style(w) {
                 def.underline = Some(if on { u } else { Underline::None });
             }
+        }
+    }
+}
+
+/// The `StyleDef::para_borders` slots (top, left, bottom, right, between) paragraph border
+/// side `side` describes; none for the bar border, which has no model value.
+fn para_side_slots(side: Option<char>) -> &'static [usize] {
+    match side {
+        Some('t') => &[0],
+        Some('l') => &[1],
+        Some('b') => &[2],
+        Some('r') => &[3],
+        Some('h') => &[4],
+        Some('x') => &[0, 1, 2, 3],
+        _ => &[],
+    }
+}
+
+/// Applies `f` to each border (and its colour index) of the paragraph side a style entry's
+/// border words describe, where that side has a border.
+fn each_para_side(def: &mut StyleDef, mut f: impl FnMut(&mut wordcraft_doc::props::Border, &mut Option<i32>)) {
+    for i in para_side_slots(def.para_side) {
+        if let (Some(Some(b)), Some(c)) = (def.para_borders.get_mut(*i), def.para_border_colors.get_mut(*i)) {
+            f(b, c);
         }
     }
 }
@@ -1246,5 +1344,22 @@ mod link_tip_tests {
         let rtf = br#"{\rtf1\ansi{\field{\*\fldinst{HYPERLINK "javascript:alert(1)" \\o "tip"}}{\fldrslt{link}}}\par}"#;
         let out = export(&import(rtf).unwrap());
         assert!(!out.contains("HYPERLINK") && !out.contains("tip"), "{out}");
+    }
+}
+
+#[cfg(test)]
+mod jexpand_scope_tests {
+    use super::super::import;
+
+    /// `\jexpand` in a style, a header or a footnote is not the document's own word.
+    #[test]
+    fn jexpand_outside_the_document_formatting_does_not_count() {
+        for rtf in [
+            r"{\rtf1\ansi{\stylesheet{\s0\jexpand Normal;}}\pard Text.\par}",
+            r"{\rtf1\ansi{\header\jexpand\pard Head\par}\pard Text.\par}",
+            r"{\rtf1\ansi\pard Text{\footnote\jexpand\pard Note\par}.\par}",
+        ] {
+            assert!(import(rtf.as_bytes()).unwrap().settings.rtf_justification, "{rtf}");
+        }
     }
 }

@@ -351,7 +351,8 @@ fn single_entry_toc_keeps_formatted_result_and_nested_page_field() {
             locked: true,
             dirty: false,
             code: false,
-            form: String::new()
+            form: String::new(),
+            code_paras: None,
         }]
     );
     assert_eq!(p[1].plain_text(), "Intro\t1");
@@ -365,7 +366,8 @@ fn single_entry_toc_keeps_formatted_result_and_nested_page_field() {
             locked: false,
             dirty: false,
             code: false,
-            form: String::new()
+            form: String::new(),
+            code_paras: None,
         }]
     );
 }
@@ -394,7 +396,8 @@ fn toc_complex_field_spanning_paragraphs() {
             locked: false,
             dirty: false,
             code: false,
-            form: String::new()
+            form: String::new(),
+            code_paras: None,
         }
     );
     assert_eq!(p[0].props_of_char(3).link.as_deref(), Some("#_Toc1"));
@@ -406,7 +409,15 @@ fn toc_complex_field_spanning_paragraphs() {
     assert_eq!(p[4].plain_text(), "Page 7");
     assert_eq!(
         p[4].objects[0],
-        InlineObject::Field { instr: "PAGE".into(), result: "7".into(), locked: false, dirty: false, code: false, form: String::new() }
+        InlineObject::Field {
+            instr: "PAGE".into(),
+            result: "7".into(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+            code_paras: None
+        }
     );
     // And it writes back out and reads the same.
     let again = wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap();
@@ -1087,7 +1098,8 @@ fn unbalanced_fields_and_markers() {
             locked: false,
             dirty: false,
             code: false,
-            form: String::new()
+            form: String::new(),
+            code_paras: None,
         }]
     );
     assert_eq!(p[2].objects, vec![InlineObject::BookmarkStart { name: "between".into() }, InlineObject::BookmarkEnd { name: "between".into() }]);
@@ -1123,10 +1135,14 @@ fn empty_field_results_keep_line() {
     let p = paras(&doc);
     assert_eq!(p[0].mark.hidden, None);
     assert!(matches!(&p[0].objects[0], InlineObject::Field { instr, .. } if instr == "PAGE"));
-    assert_eq!(p[1].mark.hidden, Some(true));
-    assert_eq!(p[2].mark.hidden, Some(true));
-    assert_eq!(p[3].mark.hidden, None);
-    assert_eq!(p[3].plain_text(), "Result");
+    // The paragraph marks inside the `IF` code are part of the code, as in Word: the code's
+    // paragraphs show as one, with the result, and no mark is hidden.
+    assert_eq!(p.len(), 2);
+    assert_eq!(p[1].mark.hidden, None);
+    assert_eq!(p[1].plain_text(), "Result");
+    assert!(
+        matches!(&p[1].objects[0], InlineObject::Field { instr, result, .. } if instr.split_whitespace().eq(["IF", "x", "=", "y"]) && result == "Result")
+    );
 }
 
 #[test]

@@ -236,6 +236,7 @@ fn doc_with_header_fields() -> (wordcraft_doc::Document, u32) {
         dirty: false,
         code: false,
         form: String::new(),
+        code_paras: None,
     };
     let mut doc = wordcraft_doc::Document::from_text("one two three");
     doc.core.creator = "Ada".into();
@@ -338,8 +339,15 @@ fn header_fields_session(doc: wordcraft_doc::Document, instrs: &[&str]) -> (Sess
     let mut p = Paragraph::new();
     for instr in instrs {
         let off = p.len();
-        let field =
-            InlineObject::Field { instr: (*instr).into(), result: "stale".into(), locked: false, dirty: false, code: false, form: String::new() };
+        let field = InlineObject::Field {
+            instr: (*instr).into(),
+            result: "stale".into(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+            code_paras: None,
+        };
         p.insert_object(off, field, &CharProps::default()).unwrap();
     }
     let mut doc = doc;
@@ -548,7 +556,15 @@ fn toc_tabs_ignore_nonentries() {
         .unwrap()
         .insert_object(
             0,
-            InlineObject::Field { instr: "TOC".into(), result: String::new(), locked: false, dirty: false, code: false, form: String::new() },
+            InlineObject::Field {
+                instr: "TOC".into(),
+                result: String::new(),
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
             &CharProps::default(),
         )
         .unwrap();
@@ -871,6 +887,49 @@ fn output_counts_locked_seq_fields_and_not_deleted_ones() {
     assert!(fields(&s).iter().all(|f| f.1 == "9" || f.1 == "7"), "the document keeps its results");
 }
 
+/// Printed or exported, a REF inside the bookmark it names shows Word's self-reference error
+/// (measured in Word), `\p` or not; the document keeps the stored result.
+#[test]
+fn output_shows_words_error_for_a_ref_inside_its_own_bookmark() {
+    let mut doc = wordcraft_doc::Document::from_text("inside  tail");
+    let top = wordcraft_doc::Path::top(0);
+    let p = doc.para_mut(StoryRef::Body, &top).unwrap();
+    let field = |instr: &str| InlineObject::Field {
+        instr: instr.into(),
+        result: "stale".into(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    };
+    p.insert_object(7, field(r"REF Self \p"), &CharProps::default()).unwrap();
+    p.insert_object(7, field("REF Self"), &CharProps::default()).unwrap();
+    let end = p.len();
+    p.insert_object(end, InlineObject::BookmarkEnd { name: "Self".into() }, &CharProps::default()).unwrap();
+    p.insert_object(0, InlineObject::BookmarkStart { name: "Self".into() }, &CharProps::default()).unwrap();
+    let out = output_fields(&doc).unwrap();
+    let shown: Vec<String> = out
+        .para(StoryRef::Body, &top)
+        .unwrap()
+        .objects
+        .iter()
+        .filter_map(|o| match o {
+            InlineObject::Field { result, .. } => Some(result.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(shown, [BOOKMARK_SELF_REFERENCE, BOOKMARK_SELF_REFERENCE]);
+    let kept = doc
+        .para(StoryRef::Body, &top)
+        .unwrap()
+        .objects
+        .iter()
+        .filter(|o| matches!(o, InlineObject::Field { result, .. } if result == "stale"))
+        .count();
+    assert_eq!(kept, 2, "the document keeps its results");
+}
+
 /// Printed or exported, a REF to a bookmark the document doesn't have shows Word's error
 /// (measured in Word for Windows: "Error! Reference source not found."); the editor and the
 /// document keep the stored result, and a REF showing "above" or "below" (`\p`) keeps it too.
@@ -1131,8 +1190,22 @@ fn document_date_fields_accept_offsets_and_fractions_and_keep_locked_results() {
 #[test]
 fn header_docproperty_unknown_name_shows_the_error() {
     let doc = wordcraft_doc::Document::from_text("one two three");
-    let (mut s, hdr) = header_fields_session(doc, &[r"DOCPROPERTY Nope \* Upper", "DOCPROPERTY Company"]);
+    let (mut s, hdr) = header_fields_session(doc, &[r"DOCPROPERTY Nope \* Upper", "DOCPROPERTY Template"]);
     s.run("references.updateFields", &json!({})).unwrap();
     let got: Vec<String> = story_fields(&s, StoryRef::Part(hdr)).into_iter().map(|(_, r)| r).collect();
     assert_eq!(got, [UNKNOWN_DOC_PROPERTY, "stale"]);
+}
+
+/// A DOCPROPERTY date that isn't a date keeps its stored result (LastPrinted too, unless it is
+/// empty), and a header's DOCPROPERTY count counts the body only.
+#[test]
+fn header_docproperty_counts_the_body_and_keeps_a_date_that_is_not_one() {
+    let mut doc = wordcraft_doc::Document::from_text("one two three");
+    doc.core.created = "not a date".into();
+    doc.core.last_printed = "never".into();
+    let codes = ["DOCPROPERTY CreateTime", "DOCPROPERTY LastPrinted", "DOCPROPERTY Words", r"DOCPROPERTY Paragraphs \* Roman"];
+    let (mut s, hdr) = header_fields_session(doc, &codes);
+    s.run("references.updateFields", &json!({})).unwrap();
+    let got: Vec<String> = story_fields(&s, StoryRef::Part(hdr)).into_iter().map(|(_, r)| r).collect();
+    assert_eq!(got, ["stale", "stale", "3", "I"]);
 }
