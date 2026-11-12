@@ -86,7 +86,10 @@ impl Writer<'_> {
         // A note's first paragraph starts with its reference mark. When the paragraph holds the
         // note's reference to itself (notes read from a file, or made by references.footnote),
         // the mark is written there instead, with that reference's formatting.
+        // A note referenced with a custom mark gets no automatic number: its text starts with
+        // the mark as typed.
         if !self.holds_own_ref(p)
+            && !self.current_note.is_some_and(|n| self.custom_notes.contains(&n))
             && let Some(mark) = self.pending_mark.take()
         {
             w.raw("<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr>");

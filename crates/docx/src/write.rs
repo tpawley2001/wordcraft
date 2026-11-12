@@ -119,6 +119,9 @@ pub(crate) struct Writer<'d> {
     pending_mark: Option<&'static str>,
     /// The note being written (is footnote, part id): its reference to itself is the mark above.
     current_note: Option<(bool, u32)>,
+    /// Notes referenced with a custom mark (is footnote, part id): their text starts with the mark
+    /// as typed and gets no automatic number (ECMA-376 Part 1 §17.11.14 `w:customMarkFollows`).
+    custom_notes: std::collections::HashSet<(bool, u32)>,
     /// Writing a TOC heading: its TOC field is held back so the entries become the field's result.
     toc_hold_end: bool,
     /// The held TOC field (instruction, locked, props), opened in the first entry as Word does.

@@ -12,8 +12,21 @@ const MAX: usize = 10_000;
 /// that steps back would make many notes read the same text again (each one materialised
 /// as its own part), so a story starting before the end of the last one kept is dropped:
 /// every subdocument CP becomes at most one note.
-pub(crate) fn parse_notes(table: &[u8], fib: &crate::fib::Fib, ref_pair: usize, txt_pair: usize) -> Vec<(u32, (u32, u32))> {
-    let refs = fib.pair(ref_pair).and_then(|(fc, lcb)| plc_of(table, fc, lcb, 2)).unwrap_or_default();
+///
+/// Each note comes with whether it is auto-numbered: the reference PLC's 2-byte data element
+/// ([MS-DOC] §2.8, the PlcffndRef and PlcfendRef structures) is non-zero for an automatically numbered
+/// note (whose reference character is 0x02) and 0 for a custom mark, whose characters at the
+/// reference CP are the mark itself.
+pub(crate) fn parse_notes(table: &[u8], fib: &crate::fib::Fib, ref_pair: usize, txt_pair: usize) -> Vec<(u32, bool, (u32, u32))> {
+    let ref_plc = fib.pair(ref_pair);
+    let refs = ref_plc.and_then(|(fc, lcb)| plc_of(table, fc, lcb, 2)).unwrap_or_default();
+    // The data elements follow aCP (refs.len() CPs, the last one a limit).
+    let data_at = ref_plc.map_or(0, |(fc, _)| (fc as usize).saturating_add(refs.len().saturating_mul(4)));
+    let auto = |i: usize| -> bool {
+        let at = data_at.saturating_add(i.saturating_mul(2));
+        // A missing element reads as auto-numbered: the behaviour before data elements were read.
+        table.get(at..at.saturating_add(2)).is_none_or(|b| b != [0, 0])
+    };
     let txts = fib.pair(txt_pair).and_then(|(fc, lcb)| plc_of(table, fc, lcb, 0)).unwrap_or_default();
     if txts.len() < 2 {
         return Vec::new();
@@ -26,7 +39,7 @@ pub(crate) fn parse_notes(table: &[u8], fib: &crate::fib::Fib, ref_pair: usize, 
             && b > a
             && a >= kept_to
         {
-            out.push((cp, (a, b)));
+            out.push((cp, auto(i), (a, b)));
             kept_to = b;
         }
     }
