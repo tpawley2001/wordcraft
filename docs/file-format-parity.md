@@ -10,7 +10,7 @@
 
 > **2026-11-05:** DOCX paragraph `w:adjustRightInd` keeps its default and explicit values through style resolution and schema-ordered repeated saves.
 
-> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-11-12 · **Change:** trivial (P0319: encrypted `.docx` with stale end-of-chain FAT markers past the end of the file asks for its password; earlier: P0302: `DOCPROPERTY` unknown property name error on Update Field; earlier: P0173: `.doc` section page borders)
+> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-11-12 · **Change:** trivial (P0338: `DOCPROPERTY` Title, Subject, Author, Keywords and Comments missing from `.docx` core properties show the unknown-name error; counts include field results, taken per field; earlier: P0319: encrypted `.docx` with stale end-of-chain FAT markers past the end of the file asks for its password; earlier: P0302: `DOCPROPERTY` unknown property name error on Update Field)
 > **CLI path update:** 2026-11-04 · Options before a non-Unicode input filename no longer make the CLI reject that filename; text option values still require Unicode; `run --file` and `run --script` retain native paths. No ranked gap or readiness estimate changes.
 
 
@@ -457,6 +457,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-12 | trivial | P0338: Update Field: `DOCPROPERTY` Title, Subject, Author, Keywords or Comments shows `Error! Unknown document property name.` when the `.docx` core part has no element for it (an empty element shows nothing and is written back empty; setting the property clears the error); Characters, CharactersWithSpaces and Paragraphs count the body as shown, every field result in, and each text count is taken when its field is updated, after the fields before it; Insert › Field shows a new text count at once and leaves the counts already shown to Update Field (`tests/it/docproperty_absent_counts.rs`) |
 | 2026-11-11 | trivial | P0316: Update Field: `DOCPROPERTY` shows Company, Manager and HyperlinkBase from the stored extended properties (empty when none), CreateTime, LastSavedTime and LastPrinted in local time (`M/d/yyyy h:mm AM/PM` or the `\@` picture; a missing date keeps its result, an empty LastPrinted is empty), and Words, Characters, CharactersWithSpaces, Paragraphs and Pages counted from the body without DOCPROPERTY results (`\*` and `\#` switches apply); a field with no name shows `Error! No property name supplied.`; Creator, Description, LastModifiedBy, Revision and their spaced forms are unknown names, as in Word; Bytes, Lines, NameofApplication, ODMADocId, Security, Template and TotalEditingTime keep their stored result (`tests/it/docproperty_builtin.rs`) |
 | 2026-11-11 | trivial | RTF reads and writes a run's direction (`\rtlch`/`\ltrch`, the last one before the text), its complex-script font, size, bold and italic (the words after `\rtlch`, with or without the `a` prefix: `\af`, `\afs`, `\ab`, `\ai`) and its East Asian font (the font word after `\dbch`), as Word reads them |
 | 2026-11-11 | trivial | P0310: RTF: a paragraph with tab stops keeps its widow control (`\widctlpar`/`\nowidctlpar`) and character-unit indents (`\cufi`, `\culi`, `\curi`) on open |
