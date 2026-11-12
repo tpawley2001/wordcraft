@@ -2,7 +2,7 @@
 
 use serde_json::{Value, json};
 use wordcraft_doc::eq::{EncloseShape, EncloseStyle, Enclosure};
-use wordcraft_doc::props::{Border, CharProps, Highlight, Rgb, TextColor, Underline, VertAlign};
+use wordcraft_doc::props::{Border, CharProps, Highlight, Ligatures, NumForm, NumSpacing, Rgb, TextColor, Underline, VertAlign};
 use wordcraft_doc::resolve::ResolvedChar;
 use wordcraft_doc::{InlineObject, PartKind, Pos, RevisionKind, StoryRef};
 
@@ -873,6 +873,20 @@ fn set(s: &mut Session, v: &Value) -> CmdResult {
     apply(s, &|c| c.overlay(&props))
 }
 
+/// The ligatures a run with no `w14:ligatures` setting draws (see `CharProps::ligatures`).
+const DEFAULT_LIGATURES: Ligatures = Ligatures { standard: true, contextual: true, historical: false, discretional: false };
+
+/// A run's stylistic set as the Font dialog shows it: 0 when none is switched on, its id when
+/// exactly one is, null when several are.
+fn stylistic_set(r: &ResolvedChar) -> Value {
+    let mut on = r.stylistic_sets.iter().flatten().filter(|set| set.on);
+    match (on.next(), on.next()) {
+        (None, _) => json!(0),
+        (Some(set), None) => json!(set.id),
+        (Some(_), Some(_)) => Value::Null,
+    }
+}
+
 /// What the ribbon shows: the formatting at the selection (mixed values are null).
 pub fn state(s: &Session) -> Value {
     let all = resolved(s);
@@ -917,6 +931,15 @@ pub fn state(s: &Session) -> Value {
         "emphasisMark": same(&|r| json!(r.emphasis.ooxml())),
         // Kerning for fonts: the smallest kerned size, points; 0 = off.
         "kern": same(&|r| json!(r.kern)),
+        // OpenType features. Ligatures: the `w14:ligatures` name of what is drawn (unset runs
+        // draw standard and contextual ligatures).
+        "ligatures": same(&|r| json!(r.ligatures.unwrap_or(DEFAULT_LIGATURES).ooxml())),
+        "numSpacing": same(&|r| json!(r.num_spacing.map_or("default", NumSpacing::ooxml))),
+        "numForm": same(&|r| json!(r.num_form.map_or("default", NumForm::ooxml))),
+        // The one stylistic set switched on (0 = none; null when several are on).
+        "stylisticSet": same(&|r| stylistic_set(r)),
+        // Use Contextual Alternates (unset = the shaper's default, on).
+        "contextualAlternates": same(&|r| json!(r.contextual_alternates.unwrap_or(true))),
         "color": same(&|r| json!(match r.color { TextColor::Auto => "auto".to_string(), TextColor::Rgb(c) => c.hex() })),
         "highlight": same(&|r| json!(r.highlight.map(|c| c.hex()))),
         "style": style,
