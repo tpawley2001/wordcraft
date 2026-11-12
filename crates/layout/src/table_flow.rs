@@ -106,8 +106,20 @@ fn kept_para_bottom(row: &table::RowLayout) -> Option<f32> {
 /// Measured in Word: a row kept with the next is not split while anything is above it on the
 /// page; it starts the next page whole. The paragraph that keeps it may still split when it is
 /// itself taller than the room (its last line then stays with what follows).
+/// A row holding a nested table keeps today's split: its nested rows have their own cut
+/// ([`nested_keep_cut`]), and the measured cases have no nested tables.
 fn keeps_whole(row: &table::RowLayout, room: f32) -> bool {
-    kept_para_bottom(row).is_some_and(|bottom| bottom <= room + 0.01)
+    whole_kept_para_bottom(row).is_some_and(|bottom| bottom <= room + 0.01)
+}
+
+/// [`kept_para_bottom`] for a row the rule of [`keeps_whole`] applies to.
+fn whole_kept_para_bottom(row: &table::RowLayout) -> Option<f32> {
+    let mut depths = row.items.iter().filter_map(|it| if let Placed::Cell { table, .. } = it { Some(table.0.len()) } else { None });
+    let own = depths.clone().min();
+    if depths.any(|d| Some(d) != own) {
+        return None;
+    }
+    kept_para_bottom(row)
 }
 
 /// The cut that leaves every row of a nested table marked "can't split" whole: just below the
@@ -249,6 +261,12 @@ fn row_start(doc: &wordcraft_doc::Document, row: &wordcraft_doc::Row, laid: &tab
     let (mut lo, mut hi) = (0.0f32, laid.height.max(0.0));
     if !hi.is_finite() {
         return 0.0;
+    }
+    // A kept row starts only whole while its kept paragraph fits, yet may split in less room
+    // than that paragraph: `row_can_start` does not flip once, so the search below would stop
+    // in the split range. The row needs its full height.
+    if whole_kept_para_bottom(laid).is_some() {
+        return hi;
     }
     // `row_can_start` is true from the row's height down to the least piece that splits off.
     for _ in 0..24 {
@@ -578,8 +596,8 @@ pub(crate) fn below(excl: &[WrapArea], mut y: f32, x0: f32, x1: f32) -> f32 {
     y
 }
 
+#[path = "tests/keep_next_table_chain_more.rs"]
+mod keep_next_table_chain_more;
 #[cfg(test)]
 #[path = "tests/kept_row_not_split_more.rs"]
 mod kept_row_not_split_more;
-#[path = "tests/keep_next_table_chain_more.rs"]
-mod keep_next_table_chain_more;

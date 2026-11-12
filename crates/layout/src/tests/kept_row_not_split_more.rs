@@ -116,3 +116,39 @@ fn a_plain_row_after_a_kept_one_still_splits() {
     let l = lay(&d);
     assert_eq!(pages_with(&l, &[tb, 1, 1], 4), [0, 1]);
 }
+
+/// A heading kept with the next above a table whose last row is kept and whose kept first
+/// paragraph runs several lines, more than half the row: when that row does not fit whole, the
+/// row moves on, the row kept above it follows, and the heading goes with them.
+#[test]
+fn a_heading_follows_a_kept_last_row_with_a_tall_kept_paragraph() {
+    let words = (0..75).map(|i| format!("w{i}")).collect::<Vec<_>>().join(" ");
+    let t = table(vec![
+        (vec![para("ROWONE", true)], vec![para("x", false)]),
+        (vec![para(&words, true)], (0..12).map(|i| para(&format!("tall{i}"), false)).collect()),
+    ]);
+    // How tall the kept paragraph and the row are, in lines, on a page of their own.
+    let mut d = Document::new();
+    d.body = vec![Arc::new(Block::Table(t.clone()))];
+    let l = lay(&d);
+    let kept = l
+        .pages
+        .iter()
+        .flat_map(|pg| &pg.items)
+        .filter_map(|it| if let Placed::Lines { path, l0, l1, .. } = it { (path.0 == [0, 1, 0, 0]).then_some(l1 - l0) } else { None })
+        .sum::<usize>();
+    assert!(kept > 7 && kept < 12, "{kept} lines");
+    // The heading's line, ROWONE's, then room for the kept paragraph but not the whole row.
+    let fillers = lines_per_page() - (kept + 3);
+    let mut d = Document::new();
+    d.body = (0..fillers).map(|i| para(&format!("F{i}"), false)).collect();
+    let heading = d.body.len();
+    d.body.push(para("HEADING", true));
+    let tb = d.body.len() as u32;
+    d.body.push(Arc::new(Block::Table(t)));
+    d.body.push(para("AFTER", false));
+    let l = lay(&d);
+    assert_eq!(pages_with(&l, &[tb, 1, 0, 0], 4), [1]);
+    assert_eq!(pages_with(&l, &[tb, 0, 0, 0], 4), [1]);
+    assert_eq!(l.caret(&Pos::body(heading, 0)).unwrap().page, 1);
+}
