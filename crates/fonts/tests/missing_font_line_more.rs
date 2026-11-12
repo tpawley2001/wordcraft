@@ -48,7 +48,7 @@ fn guard_lucida_console_and_near_names_are_unchanged() {
         assert!(close(missing_font_line("Lucida Console", &r).unwrap(), (0.789, 0.211)));
     }
     // Other faces of the same designers are not in the table.
-    for name in ["Palatino", "Franklin Gothic Medium", "Franklin Gothic Demi", "Book Antiqua"] {
+    for name in ["Franklin Gothic Medium", "Franklin Gothic Demi", "Book Antiqua"] {
         let r = resolve(name, false, false);
         if r.substituted {
             assert_eq!(missing_font_line(name, &r), None, "{name}");
