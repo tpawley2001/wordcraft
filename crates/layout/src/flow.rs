@@ -423,7 +423,7 @@ impl<'a> Flow<'a> {
     /// The lines going into a new column (or page) were broken around the wrap areas where the
     /// paragraph started: break them again around this column's (the lines before stay as they
     /// were, and so do the paragraph's own floating objects), when they differ (#1374).
-    fn relay_wrap(&mut self, ctx: &mut Ctx, pb: &PageBuilder) {
+    fn relay_wrap(&mut self, ctx: &mut Ctx, pb: &mut PageBuilder) {
         if self.l0 == 0 || pb.web || self.wrap_relays >= MAX_WRAP_RELAYS {
             return;
         }
@@ -438,11 +438,19 @@ impl<'a> Flow<'a> {
         WRAP_RELAYS.with(|c| c.set(c.get() + 1));
         let relaid = self.relay(ctx, &here);
         // Only if the rest still starts at the same line, at the same height (an outline
-        // reaching above it could move the lines before down, and the column's areas with them).
-        if let Some(k) = relaid.lines.iter().position(|l| l.start == resume)
-            && relaid.lines.get(k).is_some_and(|l| (l.top - t).abs() < 0.01)
-        {
+        // reaching above it could move the lines before down, and the column's areas with them),
+        // or lower, pushed down by an area covering the column's top, with the lines before
+        // exactly as placed (Word starts the continued lines below it, as a paragraph starting
+        // there would be).
+        let Some(k) = relaid.lines.iter().position(|l| l.start == resume) else { return };
+        let Some(top) = relaid.lines.get(k).map(|l| l.top) else { return };
+        let drop = top - t;
+        if drop.abs() < 0.01 {
             (self.pl, self.rel, self.l0) = (relaid, here, k);
+        } else if drop > 0.0 && k == self.l0 && same_lines(&self.pl, &relaid, k) {
+            (self.pl, self.rel, self.l0) = (relaid, here, k);
+            // The lines from the resume point are placed from where the new break puts them.
+            pb.y += drop;
         }
     }
 
@@ -940,6 +948,14 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
         f.after_lines(ctx, pb, forced, mark_with_break);
     }
     f.finish(pb, rooms);
+}
+
+/// Whether the first `k` lines of `a` and `b` start at the same text and the same height.
+fn same_lines(a: &ParaLayout, b: &ParaLayout, k: usize) -> bool {
+    match (a.lines.get(..k), b.lines.get(..k)) {
+        (Some(x), Some(y)) => x.iter().zip(y).all(|(p, q)| p.start == q.start && (p.top - q.top).abs() < 0.01),
+        _ => false,
+    }
 }
 
 /// Whether `range` of `p`'s text holds nothing but zero-width markers (bookmarks, field and
