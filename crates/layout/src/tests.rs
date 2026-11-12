@@ -31,6 +31,7 @@ mod hf_top_bottom_wrap;
 mod item_display_clip;
 mod item_display_warp;
 mod keep_next_long_chain;
+mod kept_row_not_split;
 mod ligature;
 pub(crate) mod linear;
 mod list_label_decorations;
