@@ -869,23 +869,21 @@ impl<'a> Here<'a> {
     }
 
     /// A cell in an ABOVE/LEFT/RIGHT/BELOW run: the number it holds, if its text is one, and the
-    /// look it gives the result. In English (see [`scans_text`]) a number in parentheses is not
-    /// one (it ends the run, as in Word), and a `$` or a thousands separator gives its look.
-    fn side_cell(&self, c: &Cell) -> Option<(f64, Option<Look>)> {
+    /// look it gives the result. In English (see [`scans_text`]) a `$` or a thousands separator
+    /// gives its look, and a number in parentheses is marked as one (see [`side_numbers`]): it
+    /// is negative and gives the parentheses look.
+    fn side_cell(&self, c: &Cell) -> Option<SideCell> {
         let lang = self.cell_lang(c);
         let text = super::table::cell_text(c);
         let x = parse_number(&text, lang.as_deref())?;
         if !scans_text(lang.as_deref()) {
-            return Some((x, None));
+            return Some(SideCell { x, look: None, parens: false });
         }
         let t = text.trim();
-        if t.starts_with('(') && t.ends_with(')') {
-            return None;
-        }
+        let parens = t.starts_with('(') && t.ends_with(')');
         let (_, seen) = scan_operand(t);
-        let look =
-            Look { currency: seen.currency, thousands: seen.thousands, parens: false, decimals: if seen.currency { seen.decimals } else { 0 } };
-        Some((x, Some(look)))
+        let look = Look { currency: seen.currency, thousands: seen.thousands, parens, decimals: if seen.currency { seen.decimals } else { 0 } };
+        Some(SideCell { x, look: Some(look), parens })
     }
 
     /// The number in the cell covering grid column `g` of row `r`, counted against the budget.
@@ -905,12 +903,23 @@ impl<'a> Here<'a> {
 
     /// As [`Here::side_cell`] for the cell covering grid column `g` of row `r`, counted against
     /// the budget.
-    fn side_at(&self, r: usize, g: usize) -> Result<Option<(f64, Option<Look>)>, CmdError> {
+    fn side_at(&self, r: usize, g: usize) -> Result<Option<SideCell>, CmdError> {
         self.visit(1)?;
         let t = self.table()?;
         let cell = t.cell_at_grid(r, g).and_then(|ci| t.rows.get(r).and_then(|row| row.cells.get(ci)));
         Ok(cell.and_then(|c| self.side_cell(c)))
     }
+}
+
+/// A number in an ABOVE/LEFT/RIGHT/BELOW run (see [`Here::side_cell`]).
+#[derive(Clone, Copy, Debug)]
+struct SideCell {
+    /// The cell's number.
+    x: f64,
+    /// The look it gives the result.
+    look: Option<Look>,
+    /// Whether the number is in parentheses.
+    parens: bool,
 }
 
 enum Val {
@@ -1020,21 +1029,26 @@ fn scalar_look(v: Val) -> Result<(f64, Option<Look>), CmdError> {
 
 /// The first run of numbers next to the formula's cell on one side (see the module note): the
 /// cells are skipped while they hold no number, then summed while they do.
-/// A cell with `$` or a thousands separator gives the sum its look; a number in parentheses is not
-/// one, so it ends the run.
+/// A cell with `$` or a thousands separator gives the sum its look. Walking away from the formula's
+/// cell, a number in parentheses counts as negative and gives the parentheses look while every
+/// cell taken before it was in parentheses too; after a cell that is not, it ends the run (as in
+/// Word: `(5)`, `(10)` above sum to `(15)`, but `10`, `(5)`, `3` above sum to `3`).
 fn side_numbers(here: &Here, side: Side) -> Result<(Vec<f64>, Option<Look>), CmdError> {
     let t = here.table()?;
     let mut out = Vec::new();
     let mut look = None;
     let mut started = false;
-    let mut take = |value: Option<(f64, Option<Look>)>| -> bool {
+    let mut all_parens = true;
+    let mut take = |value: Option<SideCell>| -> bool {
         match value {
-            Some((x, l)) => {
-                out.push(x);
-                look = merge_looks(look, l);
+            Some(cell) if !cell.parens || all_parens => {
+                out.push(cell.x);
+                look = merge_looks(look, cell.look);
                 started = true;
+                all_parens &= cell.parens;
                 true
             }
+            Some(_) => false,
             None => !started,
         }
     };
@@ -1056,7 +1070,7 @@ fn side_numbers(here: &Here, side: Side) -> Result<(Vec<f64>, Option<Look>), Cmd
         Side::Left | Side::Right => {
             let Some(row) = t.rows.get(here.r) else { return Ok((out, look)) };
             here.visit(row.cells.len())?;
-            let cells: Vec<Option<(f64, Option<Look>)>> = row.cells.iter().map(|c| here.side_cell(c)).collect();
+            let cells: Vec<Option<SideCell>> = row.cells.iter().map(|c| here.side_cell(c)).collect();
             let order: Vec<usize> = if side == Side::Left { (0..here.c).rev().collect() } else { ((here.c + 1)..cells.len()).collect() };
             for ci in order {
                 if !take(cells.get(ci).copied().flatten()) {
@@ -1616,6 +1630,44 @@ mod tests {
         let t = table(&[&["", "1,000", "(5)"], &["$3", "", ""], &["1", "", ""]]);
         assert_eq!(evaluate_field(&t, 0, 0, "=SUM(BELOW)"), Ok("$4.00".into()));
         assert_eq!(evaluate_field(&t, 0, 0, "=SUM(RIGHT)"), Ok("1,000".into()), "the (5) ends the run");
+    }
+
+    #[test]
+    fn a_side_run_counts_leading_parenthesised_cells() {
+        // Word-measured: cells top to bottom, the formula cell right below (and the same row
+        // read the other ways: LEFT, RIGHT and BELOW walk away from the formula cell too).
+        let rows: [(&[&str], &str); 13] = [
+            (&["(10)"], "(10)"),
+            (&["(5)", "(10)"], "(15)"),
+            (&["$5", "(10)"], "($5.00)"),
+            (&["$5", "(10)", "(2)"], "($7.00)"),
+            (&["10", "(5)"], "5"),
+            (&["(5)", "10"], "10"),
+            (&["10", "(5)", "3"], "3"),
+            (&["10", "-5", "3"], "8"),
+            (&["5", "-10"], "-5"),
+            (&["$5", "-10"], "($5.00)"),
+            (&["$0.125", "1"], "$1.125"),
+            (&["1,250", "100"], "1,350"),
+            (&["$1250.50", "3.25"], "$1253.75"),
+        ];
+        for (cells, want) in rows {
+            let n = cells.len();
+            let mut column: Vec<Vec<&str>> = cells.iter().map(|c| vec![*c]).collect();
+            column.push(vec![""]);
+            let column: Vec<&[&str]> = column.iter().map(Vec::as_slice).collect();
+            assert_eq!(evaluate_field(&table(&column), n, 0, "=SUM(ABOVE)"), Ok(want.into()), "ABOVE {cells:?}");
+            let mut below: Vec<Vec<&str>> = vec![vec![""]];
+            below.extend(cells.iter().rev().map(|c| vec![*c]));
+            let below: Vec<&[&str]> = below.iter().map(Vec::as_slice).collect();
+            assert_eq!(evaluate_field(&table(&below), 0, 0, "=SUM(BELOW)"), Ok(want.into()), "BELOW {cells:?}");
+            let mut row: Vec<&str> = cells.to_vec();
+            row.push("");
+            assert_eq!(evaluate_field(&table(&[&row]), 0, n, "=SUM(LEFT)"), Ok(want.into()), "LEFT {cells:?}");
+            let mut right: Vec<&str> = vec![""];
+            right.extend(cells.iter().rev());
+            assert_eq!(evaluate_field(&table(&[&right]), 0, 0, "=SUM(RIGHT)"), Ok(want.into()), "RIGHT {cells:?}");
+        }
     }
 
     #[test]
