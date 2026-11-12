@@ -48,6 +48,7 @@ mod missing_glyphs;
 mod nbsp;
 mod nested_cant_split;
 mod next_column_section;
+mod next_page_restart_side;
 mod no_leading;
 mod numeral;
 mod pages;
