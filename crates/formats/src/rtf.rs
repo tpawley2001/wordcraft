@@ -84,3 +84,5 @@ mod shape_regressions;
 mod shapes;
 #[cfg(test)]
 mod style_char_border_edges;
+#[cfg(test)]
+mod style_look_edges;

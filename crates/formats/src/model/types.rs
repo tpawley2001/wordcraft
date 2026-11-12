@@ -560,6 +560,12 @@ pub struct FlowOpts {
     /// on, `Some(false)` when off, for formats where a missing setting means off (RTF
     /// `\aspalpha`, `\aspnum`).
     pub auto_space: bool,
+    /// Without [`FlowOpts::chars`]: in a paragraph of the document's own style
+    /// ([`super::is_custom_style`]) of kind [`Kind::Normal`], the effective alignment, spacing,
+    /// indents and keeps (its own, else its style chain's) in the [`Para`] fields, and each run's
+    /// bold, italic, underline, strikethrough, font, size and colour resolved through the
+    /// paragraph style, for formats that state a style's formatting on each paragraph (RTF).
+    pub style_look: bool,
 }
 
 impl FlowOpts {

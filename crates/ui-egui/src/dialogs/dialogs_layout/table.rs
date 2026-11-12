@@ -6,6 +6,9 @@ use super::{Serialize, Ui, Value, WordApp, buttons, heading, json, run, unit};
 /// The functions `table.formula` works out, offered by Paste function.
 pub const FORMULA_FUNCTIONS: [&str; 6] = ["AVERAGE", "COUNT", "MAX", "MIN", "PRODUCT", "SUM"];
 
+/// The numeric pictures the Formula dialog's Number format list offers, in Word's order.
+pub const FORMULA_NUMBER_FORMATS: [&str; 7] = ["#,##0", "#,##0.00", "$#,##0.00;($#,##0.00)", "0", "0%", "0.00", "0.00%"];
+
 /// The table Formula dialog's fields: the formula, suggested as Word does from the numbers next
 /// to the caret's cell (`=SUM(ABOVE)`, else `=SUM(LEFT)`, else a bare `=`), and the bookmark
 /// names Paste bookmark offers.
@@ -13,6 +16,8 @@ pub const FORMULA_FUNCTIONS: [&str; 6] = ["AVERAGE", "COUNT", "MAX", "MIN", "PRO
 #[serde(rename_all = "camelCase")]
 pub struct FormulaForm {
     pub formula: String,
+    /// The Number format box: a numeric picture for the field's `\#` switch, empty for none.
+    pub number_format: String,
     pub bookmarks: Vec<String>,
 }
 
@@ -36,7 +41,7 @@ impl FormulaForm {
             "="
         };
         let bookmarks = wordcraft_engine::cmd::table_formula::paste_bookmark_names(&s.doc);
-        Some(FormulaForm { formula: formula.into(), bookmarks })
+        Some(FormulaForm { formula: formula.into(), number_format: String::new(), bookmarks })
     }
 
     /// Paste function: `NAME()` at the end of the formula.
@@ -50,9 +55,22 @@ impl FormulaForm {
         self.formula.push_str(name);
     }
 
-    /// `table.formula` parameters for OK.
+    /// Number format's list: the box takes the picked picture.
+    pub fn pick_number_format(&mut self, picture: &str) {
+        self.number_format = picture.to_string();
+    }
+
+    /// `table.formula` parameters for OK: the trimmed formula, followed by ` \# "picture"` when
+    /// the Number format box holds a picture. Double quotes in the box are dropped so the field
+    /// code stays well formed; a formula that already has a `\#` switch is sent as typed.
     pub fn params(&self) -> Value {
-        json!({"formula": self.formula.trim()})
+        let formula = self.formula.trim();
+        let picture: String = self.number_format.chars().filter(|&ch| ch != '"').collect();
+        let picture = picture.trim();
+        if picture.is_empty() || formula.contains("\\#") {
+            return json!({ "formula": formula });
+        }
+        json!({ "formula": format!("{formula} \\# \"{picture}\"") })
     }
 }
 
@@ -60,6 +78,21 @@ pub(super) fn formula_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FormulaForm) ->
     ui.label(tl!("Formula:"));
     ui.add(egui::TextEdit::singleline(&mut f.formula).desired_width(300.0));
     ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.label(tl!("Number format:"));
+        ui.add(egui::TextEdit::singleline(&mut f.number_format).desired_width(180.0));
+        let mut picked = None;
+        craft_ui::ComboBox::from_id_salt("formula_number_format").selected_text("").show_ui(ui, |ui| {
+            for picture in FORMULA_NUMBER_FORMATS {
+                if ui.selectable_label(false, picture).clicked() {
+                    picked = Some(picture);
+                }
+            }
+        });
+        if let Some(picture) = picked {
+            f.pick_number_format(picture);
+        }
+    });
     ui.horizontal(|ui| {
         ui.label(tl!("Paste function:"));
         let mut picked = None;

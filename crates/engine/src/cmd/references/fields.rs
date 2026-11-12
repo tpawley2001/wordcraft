@@ -67,7 +67,15 @@ pub(super) fn caption(s: &mut Session, v: &Value) -> CmdResult {
     let chapter = p::u64(v, "chapter").filter(|l| (1..=9).contains(l));
     let sep = p::str(v, "separator").and_then(|x| CHAPTER_SEPARATORS.iter().find(|s| **s == x)).copied().unwrap_or("-");
     let mut para = Paragraph::new().styled("Caption");
-    let field = |instr: String| InlineObject::Field { instr, result: String::new(), locked: false, dirty: false, code: false, form: String::new() };
+    let field = |instr: String| InlineObject::Field {
+        instr,
+        result: String::new(),
+        locked: false,
+        dirty: false,
+        code: false,
+        form: String::new(),
+        code_paras: None,
+    };
     if !p::bool(v, "excludeLabel").unwrap_or(false) {
         para.insert_text(0, &format!("{label} "), &CharProps::default())?;
     }
@@ -348,6 +356,12 @@ fn styleref_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
 /// What Word prints for a `REF` to a bookmark the document doesn't have.
 pub const REFERENCE_NOT_FOUND: &str = "Error! Reference source not found.";
 
+/// What Word shows for a `REF` that sits inside the bookmark it names.
+pub const BOOKMARK_SELF_REFERENCE: &str = "Error! Not a valid bookmark self-reference.";
+
+/// What Word shows for a `REF`, `PAGEREF` or `NOTEREF` that names no bookmark.
+pub const NO_BOOKMARK_NAME: &str = "Error! No bookmark name given.";
+
 /// What Word prints for a `DOCVARIABLE` field without a variable name.
 pub const DOC_VARIABLE_NOT_DEFINED: &str = "Error! Document Variable not defined.";
 
@@ -366,7 +380,8 @@ pub const BOOKMARK_NOT_DEFINED: &str = "Error! Bookmark not defined.";
 /// comment or text box is found too, and a REF to it shows that text as `stored` holds it, its
 /// own fields not yet refreshed, as Word's output does (measured in Word for Windows). The
 /// document's bookmarks are looked up once, and each bookmark's text read once, however many
-/// fields refer to it.
+/// fields refer to it. A REF inside the bookmark it names shows Word's self-reference error, and
+/// one that names no bookmark Word's error for that, whatever the switches.
 fn ref_results(doc: &wordcraft_doc::Document, stored: &wordcraft_doc::Document) -> Vec<FieldResult> {
     let mut out = Vec::new();
     let mut starts: std::collections::HashMap<String, Pos> = std::collections::HashMap::new();
@@ -376,17 +391,33 @@ fn ref_results(doc: &wordcraft_doc::Document, stored: &wordcraft_doc::Document) 
     }
     // A bookmark's text, `None` when it ends in a later paragraph.
     let mut texts: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
+    let mut ranges = None;
     for path in doc.para_paths(StoryRef::Body) {
         let Some(p) = doc.para(StoryRef::Body, &path) else { continue };
+        let offsets: Vec<usize> = p.objects_with_offsets().map(|(off, _)| off).collect();
         for (k, o) in p.objects.iter().enumerate() {
             let InlineObject::Field { instr, locked: false, .. } = o else { continue };
-            // `\r`, `\n` and `\w` show the bookmarked paragraph's number, which isn't computed
-            // here: those keep their stored result rather than print the paragraph's text.
-            if wordcraft_layout::fields::field_name(instr) != "REF" || ['p', 'r', 'n', 'w'].iter().any(|&sw| has_switch(instr, sw)) {
+            if wordcraft_layout::fields::field_name(instr) != "REF" {
                 continue;
             }
             let f = FieldCode::parse(instr);
             let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
+            if target.is_empty() {
+                out.push((StoryRef::Body, path.clone(), k, NO_BOOKMARK_NAME.to_string()));
+                continue;
+            }
+            if let Some(off) = offsets.get(k) {
+                let ranges = ranges.get_or_insert_with(|| BookmarkRanges::build(doc));
+                if let Some(err) = self_reference_error("REF", instr, target, (StoryRef::Body, &path, *off), ranges) {
+                    out.push((StoryRef::Body, path.clone(), k, err.to_string()));
+                    continue;
+                }
+            }
+            // `\r`, `\n` and `\w` show the bookmarked paragraph's number, which isn't computed
+            // here: those keep their stored result rather than print the paragraph's text.
+            if ['p', 'r', 'n', 'w'].iter().any(|&sw| has_switch(instr, sw)) {
+                continue;
+            }
             let Some(start) = starts.get(target) else {
                 out.push((StoryRef::Body, path.clone(), k, REFERENCE_NOT_FOUND.to_string()));
                 continue;
@@ -562,8 +593,8 @@ fn position_or_note(
 }
 
 /// Word's error text for a REF, PAGEREF or NOTEREF whose bookmark `target` is in no story of the
-/// document (`names`), measured in Word: `None` when the field names no bookmark, when the
-/// bookmark exists, or when a SET field gave the REF's name a value (`set`, `last_set`, keyed by
+/// document (`names`), or that names no bookmark, measured in Word: `None` when the bookmark
+/// exists, or when a SET field gave the REF's name a value (`set`, `last_set`, keyed by
 /// the lowercased name).
 fn missing_bookmark_error(
     name: &str,
@@ -571,7 +602,10 @@ fn missing_bookmark_error(
     names: &std::collections::HashSet<String>,
     (set, last_set): (&std::collections::HashMap<String, String>, &std::collections::HashMap<String, String>),
 ) -> Option<&'static str> {
-    if target.is_empty() || names.contains(target) {
+    if target.is_empty() {
+        return Some(NO_BOOKMARK_NAME);
+    }
+    if names.contains(target) {
         return None;
     }
     if name != "REF" {
@@ -579,6 +613,95 @@ fn missing_bookmark_error(
     }
     let key = target.to_lowercase();
     (!set.contains_key(&key) && !last_set.contains_key(&key)).then_some(REFERENCE_NOT_FOUND)
+}
+
+/// Where each bookmark lies, for [`self_reference_error`]: built once per update, however many
+/// fields there are.
+struct BookmarkRanges {
+    /// Each story's paragraphs → their place in the story, in document order.
+    order: std::collections::HashMap<StoryRef, std::collections::HashMap<Path, usize>>,
+    /// Bookmark name (the first of a name, body first) → its story and the (paragraph, offset) of
+    /// its `BookmarkStart` and of its matching `BookmarkEnd` (the end of the start paragraph when
+    /// it has none).
+    ranges: std::collections::HashMap<String, (StoryRef, (usize, usize), (usize, usize))>,
+}
+
+impl BookmarkRanges {
+    fn build(doc: &wordcraft_doc::Document) -> BookmarkRanges {
+        let mut order: std::collections::HashMap<StoryRef, std::collections::HashMap<Path, usize>> = Default::default();
+        let mut ranges: std::collections::HashMap<String, (StoryRef, (usize, usize), (usize, usize))> = Default::default();
+        let stories = std::iter::once(StoryRef::Body).chain(doc.parts.keys().map(|id| StoryRef::Part(*id)));
+        for story in stories {
+            // Bookmarks started in this story whose end hasn't been seen yet.
+            let mut open: std::collections::HashSet<String> = Default::default();
+            let paras = order.entry(story).or_default();
+            for (i, path) in doc.para_paths(story).into_iter().enumerate() {
+                let Some(p) = doc.para(story, &path) else { continue };
+                for (off, o) in p.objects_with_offsets() {
+                    match o {
+                        InlineObject::BookmarkStart { name } if !ranges.contains_key(name) => {
+                            ranges.insert(name.clone(), (story, (i, off), (i, p.len())));
+                            open.insert(name.clone());
+                        }
+                        InlineObject::BookmarkEnd { name } if open.remove(name) => {
+                            if let Some(r) = ranges.get_mut(name) {
+                                r.2 = (i, off);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                paras.insert(path, i);
+            }
+        }
+        BookmarkRanges { order, ranges }
+    }
+}
+
+/// Word's error text for a `REF` at `here` (story, paragraph, offset) that sits inside the
+/// bookmark `target` it names: after the bookmark's start and before its end, in the same story.
+/// The paragraph number switches (`\n`, `\r`, `\w`) show the number instead, and PAGEREF and
+/// NOTEREF are never self-references (measured in Word).
+fn self_reference_error(name: &str, instr: &str, target: &str, here: (StoryRef, &Path, usize), ranges: &BookmarkRanges) -> Option<&'static str> {
+    if name != "REF" || ['n', 'r', 'w'].iter().any(|&sw| has_switch(instr, sw)) {
+        return None;
+    }
+    let (story, start, end) = ranges.ranges.get(target)?;
+    if *story != here.0 {
+        return None;
+    }
+    let at = (*ranges.order.get(&here.0)?.get(here.1)?, here.2);
+    (*start < at && at < *end).then_some(BOOKMARK_SELF_REFERENCE)
+}
+
+/// Puts Word's self-reference error into every unlocked REF of `paths` that sits inside the
+/// bookmark it names, before any other field is updated: a REF to that bookmark elsewhere then
+/// shows the bookmark's text with the error in it, wherever it stands. Gives the bookmark ranges
+/// when it needed them.
+fn mark_self_references(doc: &mut wordcraft_doc::Document, paths: &[(StoryRef, Path)]) -> Result<Option<BookmarkRanges>, CmdError> {
+    let mut ranges = None;
+    let mut self_refs: Vec<FieldResult> = Vec::new();
+    for (story, path) in paths {
+        let Some(p) = doc.para(*story, path) else { continue };
+        for ((k, o), (off, _)) in p.objects.iter().enumerate().zip(p.objects_with_offsets()) {
+            let InlineObject::Field { instr, locked: false, .. } = o else { continue };
+            let name = wordcraft_layout::fields::field_name(instr);
+            if name != "REF" {
+                continue;
+            }
+            let f = FieldCode::parse(instr);
+            let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
+            if target.is_empty() {
+                continue;
+            }
+            let ranges = ranges.get_or_insert_with(|| BookmarkRanges::build(doc));
+            if let Some(err) = self_reference_error(&name, instr, target, (*story, path, off), ranges) {
+                self_refs.push((*story, path.clone(), k, err.to_string()));
+            }
+        }
+    }
+    apply_results(doc, self_refs)?;
+    Ok(ranges)
 }
 
 /// The mark of the footnote or endnote whose reference starts the bookmark at `at` (NOTEREF's
@@ -662,6 +785,11 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
     // DOCPROPERTY's counts (Words, Pages ...) of the body as it is before this pass changes it.
     let counts = doc_property_counts(s, &paths);
     let mut set: std::collections::HashMap<String, String> = Default::default();
+    // A REF inside its own bookmark gets its error first, so a REF to that bookmark elsewhere
+    // shows the bookmark's text with the error in it, wherever it stands.
+    let mut ranges = mark_self_references(&mut s.doc, &paths)?;
+    // LINK sources read during this update, each file once.
+    let mut sources = super::link::Sources::default();
     for (story, path) in paths {
         let Some(p) = s.doc.para(story, &path) else { continue };
         if !p.objects.iter().any(|o| matches!(o, InlineObject::Field { .. })) {
@@ -701,9 +829,15 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 "REF" | "PAGEREF" | "NOTEREF" => {
                     let f = FieldCode::parse(instr);
                     let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
-                    // A bookmark that is gone gives Word's error text whatever the switches, stored
+                    // A bookmark that is gone, or no name, gives Word's error text whatever the switches, stored
                     // as is (no `\*` format applied).
                     if let Some(err) = missing_bookmark_error(&name, target, &bookmark_names, (&set, &last_set)) {
+                        updates.push((k, err.to_string()));
+                        continue;
+                    }
+                    // A REF inside the bookmark it names: Word's error, stored as is.
+                    let ranges = ranges.get_or_insert_with(|| BookmarkRanges::build(&s.doc));
+                    if let Some(err) = offsets.get(k).and_then(|off| self_reference_error(&name, instr, target, (story, &path, *off), ranges)) {
                         updates.push((k, err.to_string()));
                         continue;
                     }
@@ -781,6 +915,9 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
                 }
                 // The text of another local file, read only here, on an explicit update.
                 "INCLUDETEXT" => updates.push((k, super::includetext::include_text(s, instr))),
+                // A link to a saved Word document: its source as it is now. A link that can't be
+                // followed keeps its stored result; an equal result is not touched.
+                "LINK" => updates.extend(super::link::new_simple_result(s, &mut sources, o).map(|r| (k, r))),
                 // GOTOBUTTON and MACROBUTTON store the text their code shows.
                 "GOTOBUTTON" | "MACROBUTTON" => {
                     if let Some(text) = wordcraft_layout::fields::button_display_text(instr) {
@@ -807,6 +944,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, doc_vars
         para.touch();
     }
     update_button_ranges(s, &range_stories)?;
+    super::link::update_link_ranges(s, &mut sources, &range_stories)?;
     if !in_body {
         return Ok(());
     }
@@ -939,7 +1077,15 @@ mod listnum_tests {
         for locked in [false, true, false] {
             para.insert_object(
                 para.len(),
-                InlineObject::Field { instr: "LISTNUM".into(), result: "stale".into(), locked, dirty: true, code: false, form: String::new() },
+                InlineObject::Field {
+                    instr: "LISTNUM".into(),
+                    result: "stale".into(),
+                    locked,
+                    dirty: true,
+                    code: false,
+                    form: String::new(),
+                    code_paras: None,
+                },
                 &CharProps::default(),
             )
             .unwrap();
