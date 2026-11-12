@@ -28,6 +28,7 @@ mod float_top;
 mod grid;
 mod header_extent;
 mod header_extent_fixtures;
+mod header_space_after;
 mod hf_empty_anchor_legacy;
 mod hf_top_bottom_wrap;
 mod item_display_clip;
