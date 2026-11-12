@@ -176,16 +176,7 @@ impl Reader {
                 }
             }
             "cf" => self.st.fmt.color = self.colors.get(pv.max(0) as usize).copied().flatten(),
-            "chcbpat" | "cb" | "chcfpat" | "chshdng" => {
-                let c = self.colors.get(pv.max(0) as usize).copied().flatten();
-                let pat = &mut self.st.ch_pattern;
-                match w {
-                    "chcfpat" => pat.ink = c,
-                    "chshdng" => pat.pct = pv,
-                    _ => pat.fill = c,
-                }
-                self.st.fmt.background = pat.colour();
-            }
+            "chcbpat" | "cb" | "chcfpat" | "chshdng" | "clcbpat" | "clcfpat" | "clshdng" => self.pattern_word(w, pv),
             "highlight" => self.highlight(pv),
             // Hidden text: kept, as hidden text.
             "v" => self.st.fmt.hidden = on,
@@ -254,16 +245,6 @@ impl Reader {
             "cltxlrtb" | "cltxlrtbv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Horizontal,
             "cltxtbrl" | "cltxtbrlv" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Down,
             "cltxbtlr" => self.def_cur.direction = wordcraft_doc::props::TextDirection::Up,
-            "clcbpat" | "clcfpat" | "clshdng" => {
-                let c = self.colors.get(pv.max(0) as usize).copied().flatten();
-                let pat = &mut self.def_cur.pattern;
-                match w {
-                    "clcfpat" => pat.ink = c,
-                    "clshdng" => pat.pct = pv,
-                    _ => pat.fill = c,
-                }
-                self.def_cur.shading = pat.colour();
-            }
             "sb" => self.st.sb = Some(pv),
             "sa" => self.st.sa = Some(pv),
             "sl" => self.st.sl = pv,
@@ -911,6 +892,26 @@ impl Reader {
             _ => return false,
         }
         true
+    }
+
+    /// A character (`\chcbpat`/`\cb`, `\chcfpat`, `\chshdng`) or cell (`\clcbpat`, `\clcfpat`,
+    /// `\clshdng`) shading word: kept on its pattern, and the shading resolved again, so the
+    /// words may come in any order.
+    fn pattern_word(&mut self, w: &str, pv: i32) {
+        let c = self.colors.get(pv.max(0) as usize).copied().flatten();
+        let cell = w.starts_with("cl");
+        let pat = if cell { &mut self.def_cur.pattern } else { &mut self.st.ch_pattern };
+        match w {
+            "chcfpat" | "clcfpat" => pat.ink = c,
+            "chshdng" | "clshdng" => pat.pct = pv,
+            _ => pat.fill = c,
+        }
+        let colour = pat.colour();
+        if cell {
+            self.def_cur.shading = colour;
+        } else {
+            self.st.fmt.background = colour;
+        }
     }
 
     /// `\highlightN`: colour entry `n` as the text's highlight when it is one of the highlight
