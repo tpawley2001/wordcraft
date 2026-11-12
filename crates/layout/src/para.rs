@@ -482,4 +482,13 @@ mod tests {
         }
         assert_eq!(lookup_family(&d, "No Such Roman Font"), MISSING_ROMAN_FONT);
     }
+
+    #[test]
+    fn roman_fonts_with_named_substitutes_keep_their_name() {
+        crate::test_fonts();
+        let mut d = Document::new();
+        d.settings.roman_fonts = vec!["CG Times".into(), "Zzyzx Roman".into()];
+        assert_eq!(lookup_family(&d, "CG Times"), "CG Times");
+        assert_eq!(lookup_family(&d, "Zzyzx Roman"), MISSING_ROMAN_FONT);
+    }
 }

@@ -260,7 +260,8 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     let pieces = piece::PieceTable::parse(&table, fc_clx, lcb_clx)?;
 
     // Styles, fonts and the formatting bin tables; each is optional in broken files.
-    let fonts = fib.pair(fib::pair::STTBF_FFN).map(|(f, l)| stsh::fonts(&table, f, l)).unwrap_or_default();
+    let font_entries = fib.pair(fib::pair::STTBF_FFN).map(|(f, l)| stsh::font_entries(&table, f, l)).unwrap_or_default();
+    let fonts: Vec<String> = font_entries.iter().map(|f| f.name.clone()).collect();
     let raw_styles = match fib.pair(fib::pair::STSHF) {
         Some((f, l)) => stsh::parse(&table, f, l)?,
         None => Vec::new(),
@@ -279,6 +280,9 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     // Word lays out every Word 97-2003 file in Compatibility Mode, with the file's options.
     doc.settings.compat_mode = wordcraft_doc::WORD2003_COMPAT_MODE;
     dop::apply(&table, fib.pair(fib::pair::DOP), &mut doc.settings);
+    // A missing font of the roman family class is drawn in a serif face, as for DOCX's
+    // `w:family w:val="roman"`.
+    doc.settings.roman_fonts = roman_fonts(font_entries.iter().map(|f| (f.ff, f.name.as_str())));
     if let Some(core) = metadata::read(&mut comp) {
         doc.core = core;
     }
@@ -1660,4 +1664,19 @@ mod character_style_tests {
             assert_eq!(char_props(grpprl, &[], &CharProps::default(), &styles, &fmt::style_ids(&styles)).style, None);
         }
     }
+}
+
+/// Most fonts of a font table listed in `Settings::roman_fonts` (as the DOCX reader caps it).
+const MAX_ROMAN_FONTS: usize = 2000;
+/// Longest font name, in bytes, listed in `Settings::roman_fonts`.
+const MAX_ROMAN_FONT_NAME: usize = 256;
+
+/// The names of the fonts whose FFN family class (`ff`, [MS-DOC] §2.9.82) is roman, in table
+/// order, from `(ff, name)` pairs.
+pub(crate) fn roman_fonts<'a>(fonts: impl Iterator<Item = (u8, &'a str)>) -> Vec<String> {
+    fonts
+        .filter(|&(ff, name)| ff == stsh::FF_ROMAN && !name.is_empty() && name.len() <= MAX_ROMAN_FONT_NAME)
+        .map(|(_, name)| name.to_string())
+        .take(MAX_ROMAN_FONTS)
+        .collect()
 }
