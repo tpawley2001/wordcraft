@@ -1,6 +1,6 @@
-//! A document opened from RTF lays out its justified lines the way Word does for RTF
+//! A document opened from RTF lays out its lines the way Word does for RTF
 //! (`Settings::rtf_justification`, see the layout crate's `para::justify`): the reader sets it for
-//! every RTF file, whatever its document controls say; nothing else sets it, and it is not written.
+//! every RTF file that does not say `\jexpand` (see the `jexpand` tests); nothing else sets it.
 
 use super::*;
 use wordcraft_doc::Document;
@@ -22,11 +22,9 @@ fn a_new_document_does_not() {
 }
 
 #[test]
-fn it_is_not_written_and_comes_back_on_reopening() {
+fn nothing_is_written_for_it_and_it_comes_back_on_reopening() {
     let d = import(PLAIN.as_bytes()).unwrap();
     let out = export(&d);
-    let mut plain = d.clone();
-    plain.settings.rtf_justification = false;
-    assert_eq!(out, export(&plain), "the writer writes nothing for it");
+    assert!(!out.contains("\\jexpand") && !out.contains("\\jcompress"), "{out}");
     assert!(import(out.as_bytes()).unwrap().settings.rtf_justification);
 }

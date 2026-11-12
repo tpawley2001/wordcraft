@@ -1852,6 +1852,7 @@ mod highlight_proof_emphasis;
 mod html_auto_spacing;
 mod info_company;
 mod info_props;
+mod jexpand;
 mod justification_flag;
 mod latent_styles;
 mod legacy_pn;
