@@ -478,12 +478,12 @@ impl Props {
             Some(2 | 5 | 7 | 9) => wordcraft_doc::props::VAlign::Bottom,
             _ => wordcraft_doc::props::VAlign::Top,
         };
-        // MSOTXFL: horizontal (0, 4), top to bottom (1, 3), bottom to top (2), and vertical
-        // with upright glyphs (5); values the enumeration does not define are horizontal.
+        // MSOTXFL ([MS-ODRAW] §2.4.5): horizontal (0, 4), top to bottom with the glyph tops to
+        // the right (1, 3, 5), bottom to top (2); values the enumeration does not define are
+        // horizontal.
         body.vert = match self.text_flow {
-            Some(1 | 3) => wordcraft_doc::props::TextVert::Vert,
+            Some(1 | 3 | 5) => wordcraft_doc::props::TextVert::Vert,
             Some(2) => wordcraft_doc::props::TextVert::Vert270,
-            Some(5) => wordcraft_doc::props::TextVert::Stacked,
             _ => wordcraft_doc::props::TextVert::Horz,
         };
         body.auto_fit = self.fit_shape_to_text.unwrap_or(false);

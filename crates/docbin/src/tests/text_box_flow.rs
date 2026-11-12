@@ -85,7 +85,7 @@ fn a_box_without_the_properties_is_horizontal_and_fixed() {
 #[test]
 fn text_direction_is_read() {
     for (txfl, want) in
-        [(0u32, TextVert::Horz), (1, TextVert::Vert), (2, TextVert::Vert270), (3, TextVert::Vert), (4, TextVert::Horz), (77, TextVert::Horz)]
+        [(0u32, TextVert::Horz), (1, TextVert::Vert), (2, TextVert::Vert270), (3, TextVert::Vert), (4, TextVert::Horz), (5, TextVert::Vert), (77, TextVert::Horz)]
     {
         let body = text_body(&[(0x0088, txfl)]);
         assert_eq!(body.vert, want, "txflTextFlow {txfl}");
