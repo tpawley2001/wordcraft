@@ -446,6 +446,11 @@ impl Reader {
     fn destination_for_word(&mut self, w: &str) -> Option<Dest> {
         match w {
             "fonttbl" => Some(Dest::FontTbl),
+            // A font entry's classification: with `\fcharset` it tells a symbol font.
+            "panose" if self.st.dest == Dest::FontTbl => {
+                self.font_panose.clear();
+                Some(Dest::Panose)
+            }
             "colortbl" => Some(Dest::ColorTbl),
             "stylesheet" => Some(Dest::StyleSheet),
             "generator" => {
@@ -759,10 +764,12 @@ impl Reader {
                 }
                 true
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template if !matches!(word, "u" | "uc") => {
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template | Dest::Panose
+                if !matches!(word, "u" | "uc") =>
+            {
                 true
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template => false,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template | Dest::Panose => false,
             Dest::OldProps(false) if matches!(word, "crauth" | "crdate") => {
                 if word == "crauth" {
                     self.st.old_rev.0 = Some(value);
@@ -807,8 +814,13 @@ impl Reader {
                 self.font_cur = value;
                 self.font_name.clear();
                 self.font_cp_cur = None;
+                self.font_charset_cur = 0;
+                self.font_panose.clear();
             }
-            "fcharset" => self.font_cp_cur = wordcraft_doc::encoding::charset_code_page(value),
+            "fcharset" => {
+                self.font_cp_cur = wordcraft_doc::encoding::charset_code_page(value);
+                self.font_charset_cur = u8::try_from(value).unwrap_or(0);
+            }
             "cpg" => {
                 if let Some(cp) = u16::try_from(value).ok().filter(|cp| wordcraft_doc::encoding::is_text_code_page(*cp)) {
                     self.font_cp_cur = Some(cp);

@@ -341,6 +341,11 @@ pub struct Settings {
     /// draws one that isn't installed in a serif face.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub roman_fonts: Vec<String>,
+    /// Fonts (lowercase names) the document's font table marks as symbol fonts: PANOSE family
+    /// kind 5 (pictorial), or the symbol character set with a PANOSE ([`is_symbol_class_font`]).
+    /// Word lays out a run in one that isn't installed with Symbol.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub symbol_class_fonts: Vec<String>,
     /// HTML divs (`w:divs` in the web settings part, ECMA-376 §17.15.2.8): paragraphs and table
     /// rows name one with `div_id`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -735,6 +740,7 @@ impl Default for Settings {
             write_protection: None,
             compat_mode: COMPAT_MODE_CURRENT,
             roman_fonts: Vec::new(),
+            symbol_class_fonts: Vec::new(),
             web_divs: Vec::new(),
             sum_paragraph_spacing: false,
             do_not_expand_shift_return: false,
@@ -794,4 +800,26 @@ mod tests {
         let back: super::Settings = serde_json::from_value(v).unwrap();
         assert!(back.wp_justification);
     }
+}
+
+/// Whether a font-table entry with this character set (`chs`, `\fcharsetN`, `w:charset`) and
+/// 10-byte PANOSE describes a symbol font: the PANOSE family kind (its first byte) is 5,
+/// pictorial, or the character set is 2, symbol, with a PANOSE that isn't all zero (an all-zero
+/// PANOSE in a .doc means none was given). Without a PANOSE an entry is never one here.
+pub fn is_symbol_class_font(charset: u8, panose: &[u8; 10]) -> bool {
+    panose.first() == Some(&5) || (charset == 2 && panose.iter().any(|&b| b != 0))
+}
+
+/// The PANOSE of a font-table entry written as hex digits (RTF `\panose`, DOCX `w:panose1`):
+/// exactly 20 of them, else `None` (a malformed value is ignored).
+pub fn panose_from_hex(hex: &str) -> Option<[u8; 10]> {
+    let hex = hex.trim();
+    if hex.len() != 20 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let mut out = [0u8; 10];
+    for (i, o) in out.iter_mut().enumerate() {
+        *o = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
+    }
+    Some(out)
 }

@@ -160,6 +160,18 @@ pub(crate) fn roman_fonts<'a>(fonts: impl Iterator<Item = (u8, &'a str)>) -> Vec
         .collect()
 }
 
+/// The names (lowercase) of the fonts the font table marks as symbol fonts by their charset and
+/// PANOSE ([`wordcraft_doc::is_symbol_class_font`]), capped as [`roman_fonts`] is: Word lays out
+/// a run in one that isn't installed with Symbol.
+pub(crate) fn symbol_class_fonts(fonts: &[stsh::FontEntry]) -> Vec<String> {
+    fonts
+        .iter()
+        .filter(|f| f.symbol_class() && !f.name.trim().is_empty() && f.name.len() <= MAX_ROMAN_FONT_NAME)
+        .map(|f| f.name.trim().to_lowercase())
+        .take(MAX_ROMAN_FONTS)
+        .collect()
+}
+
 #[cfg(test)]
 thread_local! {
     /// What the last document read on this thread left out for the work budget ([`Work::log`]).
@@ -300,6 +312,8 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     // A missing font of the roman family class is drawn in a serif face, as for DOCX's
     // `w:family w:val="roman"`.
     doc.settings.roman_fonts = roman_fonts(font_entries.iter().map(|f| (f.ff, f.name.as_str())));
+    // A missing font the table marks as a symbol font is laid out as Symbol.
+    doc.settings.symbol_class_fonts = symbol_class_fonts(&font_entries);
     if let Some(core) = metadata::read(&mut comp) {
         doc.core = core;
     }
