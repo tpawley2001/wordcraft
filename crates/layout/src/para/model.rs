@@ -129,9 +129,6 @@ pub struct StyleRun {
     /// Line ascent/descent at this size, points.
     pub ascent: f32,
     pub descent: f32,
-    /// The part of `ascent` that doesn't scale with the font size, points: the 2 pt of external
-    /// leading of a Word 97-2003 line ("add only 2 pt of external leading"), else 0.
-    pub fixed_leading: f32,
     /// Baseline shift (superscript etc.), points, positive up.
     pub shift: f32,
 }
@@ -141,16 +138,11 @@ impl StyleRun {
     /// or subscript's line at the full font size and leaves out its raise or drop; only a
     /// `w:position` raise or lowering counts (Word for Mac: an 11pt subscript beside 11pt text
     /// keeps the 12.675pt line, and a line of 24pt subscript is as tall as plain 24pt text).
-    /// Only the font's part of the line grows with the size: a fixed external leading
-    /// (`fixed_leading`) is added once (Word 97-2003 file, 11 pt text with a 12 pt superscript
-    /// footnote mark: the line is 12 + 2 pt tall, not 3 pt more than its text).
     pub fn line_extent(&self) -> (f32, f32) {
         let draw = self.rc.draw_size();
         let k = if draw > 0.0 { self.rc.size / draw } else { 1.0 };
         let raise = self.rc.position;
-        let fixed = self.fixed_leading.clamp(0.0, self.ascent.max(0.0));
-        let ascent = (self.ascent - fixed) * k + fixed;
-        let (mut a, mut d) = (ascent + raise.max(0.0), self.descent * k + (-raise).max(0.0));
+        let (mut a, mut d) = (self.ascent * k + raise.max(0.0), self.descent * k + (-raise).max(0.0));
         // Emphasis marks sit above the characters (or below), and the line makes room for them
         // (see `display::lines::emphasis_mark`).
         let size = if self.rc.size.is_finite() { self.rc.size.clamp(0.0, 1638.0) } else { 0.0 };

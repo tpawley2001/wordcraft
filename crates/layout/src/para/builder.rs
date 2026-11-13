@@ -183,10 +183,6 @@ impl<'a> Builder<'a> {
                     wordcraft_fonts::word::missing_font_line_leading(font, &r, leading)
                 })
         };
-        // The 2 pt of external leading are added to the line once, whatever the size: a superscript
-        // or subscript's line (counted at its full font size, `StyleRun::line_extent`) is its full
-        // size plus 2 pt, not its drawn size plus 2 pt scaled up with it.
-        let fixed = if line.is_none() && ext_2pt { EXT_LEADING_2PT } else { 0.0 };
         let (ascent, descent) = match line {
             Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
             None if ext_2pt => size_plus_2pt_line(&r.face, f64::from(size)),
@@ -213,7 +209,6 @@ impl<'a> Builder<'a> {
             rc: rc.clone(),
             ascent: ascent as f32,
             descent: descent as f32,
-            fixed_leading: (fixed as f32).min(ascent as f32).max(0.0),
             shift: rc.baseline_shift(),
         };
         // A `u32` index (like the glyph ranges) counts more distinct formats than a paragraph can
@@ -886,16 +881,13 @@ fn is_courier_new(font: &str) -> bool {
     font.split(';').map(str::trim).find(|f| !f.is_empty()).is_some_and(|f| f.eq_ignore_ascii_case("courier new"))
 }
 
-/// The external leading of a line in a Word 97-2003 file with "add only 2 pt of external leading".
-const EXT_LEADING_2PT: f64 = 2.0;
-
 /// (ascent, descent) in points of a line `size` + 2 pt tall: `face`'s own descent (without line gap)
 /// at `size`, the rest above the baseline.
 fn size_plus_2pt_line(face: &wordcraft_fonts::FontFace, size: f64) -> (f64, f64) {
     let (_, d) = wordcraft_fonts::word::line_metrics_no_leading(face);
     let descent = d * size / face.upem.max(1.0);
     let descent = if descent.is_finite() { descent.max(0.0) } else { 0.0 };
-    let total = size + EXT_LEADING_2PT;
+    let total = size + 2.0;
     ((total - descent).max(0.0), descent)
 }
 
