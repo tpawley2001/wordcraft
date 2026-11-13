@@ -74,10 +74,11 @@ pub(crate) fn place_para(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, blo
     place_para_in_flow(ctx, pb, p, block, body_top);
 }
 
-/// A paragraph closing a section that starts a new page, with nothing in it but bookmarks.
+/// A paragraph closing a section before a next page, odd page or even page break, with nothing in
+/// it but bookmarks.
 fn bare_section_mark(pb: &PageBuilder, p: &Paragraph) -> bool {
     p.section.is_some()
-        && pb.next_starts_page
+        && pb.next_breaks_page
         && !pb.web
         && p.text.char_indices().all(|(i, c)| {
             c == wordcraft_doc::para::OBJ && matches!(p.object_at(i), Some(InlineObject::BookmarkStart { .. } | InlineObject::BookmarkEnd { .. }))

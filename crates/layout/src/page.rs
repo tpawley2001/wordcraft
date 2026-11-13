@@ -43,6 +43,9 @@ pub(crate) struct PageBuilder<'a> {
     /// The next section starts on a new page: this section's closing mark, when empty, needs no
     /// room (Word leaves it on a full page rather than starting a page for it).
     pub(crate) next_starts_page: bool,
+    /// ... with a next page, odd page or even page break (not a continuous break to another
+    /// paper size).
+    pub(crate) next_breaks_page: bool,
     /// The number the next page takes instead of counting on: a section restarting its
     /// numbering, possibly at 0 (a cover page numbered 0).
     pub(crate) restart_at: Option<u32>,
