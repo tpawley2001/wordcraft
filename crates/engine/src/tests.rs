@@ -34,6 +34,7 @@ mod docvariable_field;
 mod envelope_options;
 mod find_apostrophes;
 mod find_format;
+mod fit_one_page;
 mod font_sizes;
 mod shrink_font_steps;
 mod grid_settings;
