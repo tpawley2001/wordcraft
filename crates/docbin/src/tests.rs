@@ -66,6 +66,7 @@ mod section_page_numbers;
 mod section_rtl_gutter;
 mod shape_placeholder_size;
 mod split_break_mark;
+mod style_base_kind;
 mod style_name_case;
 mod style_own_char_props;
 mod style_own_para_props;
