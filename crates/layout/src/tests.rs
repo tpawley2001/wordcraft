@@ -82,6 +82,7 @@ mod pages;
 mod pct_table_legacy_width;
 mod picture_glue;
 mod picture_glue_touching;
+mod picture_line_at_least;
 mod pushed_by_earlier_float;
 mod row_exception_no_borders;
 mod rtf_justify_squeeze;
@@ -5909,10 +5910,11 @@ fn list_label_does_not_inflate_an_inline_picture_floor() {
         let (a, d) = label.fold((st.ascent, st.descent), |(a, d), s| (a.max(s.ascent), d.max(s.descent)));
         // Multiple spacing: the picture plus its share of the font's height, the label's being a
         // font too (Word, measured: 144 pt at 1.25 with a 24 pt label takes 144 + 0.25 * 27.6);
-        // at least: the picture and the descent.
+        // at least: the picture alone, no room for the font below it (Word, measured: at least
+        // 12 with a 400 pt picture alone takes 400, `tests::picture_line_at_least`).
         let want = match spacing {
             LineSpacing::Multiple(m) => 144.0 + (m - 1.0) * (a + d),
-            _ => 144.0 + st.descent,
+            _ => 144.0,
         };
         assert!((line.height - want).abs() < 0.01, "{spacing:?}: {} (want {want})", line.height);
         assert!((line.baseline - line.top - 144.0).abs() < 0.01);
