@@ -958,16 +958,21 @@ fn notes_limit(pb: &PageBuilder, new_notes: &[NoteBox], line_notes: &[NoteBox]) 
 }
 
 /// How much of the line has to fit. Multiple spacing above single puts its extra leading below
-/// the text (see `baseline_offset`), and Word lets that leading of a page's last line run into the
-/// bottom margin: only the text has to fit (observed: a double-spaced 12pt line stays on the page
-/// while its text ends above the margin, about half a line lower than when the whole line must
-/// fit). Only the bottom margin takes that leading: a footer taller than the margin, or
-/// footnotes (`free` is false), keep the whole line clear of them.
+/// the text (see `baseline_offset`), and Word lets that leading of a page's last line hang past
+/// the page's bottom: only the text has to fit. That holds whether the bottom is the bottom
+/// margin or the top of a footer taller than the margin (measured in Word at 1.15 and double
+/// spacing: the line stays while its text ends at or above the footer's top, with up to all of
+/// its leading past it; the top border of the footer's first paragraph belongs to the footer).
+/// Footnotes (`free` is false) and any other bottom (balanced columns, notes carried over, the
+/// minimum body height, an ODF gap above the footer) keep the whole line clear.
 fn fit_height(pb: &PageBuilder, l: &para::Line, rp: &wordcraft_doc::resolve::ResolvedPara, free: bool) -> f32 {
     let at_margin = pb.bottom >= pb.sect.page_h - pb.sect.margin_bottom - 0.01;
+    let at_body_bottom = at_margin || pb.at_footer_top();
     match rp.line_spacing {
         // `baseline` is from the paragraph's top; the text ends a descent below it.
-        wordcraft_doc::props::LineSpacing::Multiple(m) if m > 1.0 && at_margin && free => (l.baseline - l.top + l.text_desc).clamp(0.0, l.height),
+        wordcraft_doc::props::LineSpacing::Multiple(m) if m > 1.0 && at_body_bottom && free => {
+            (l.baseline - l.top + l.text_desc).clamp(0.0, l.height)
+        }
         _ => l.height,
     }
 }
