@@ -76,12 +76,18 @@ pub struct PropCtx {
     /// The theme's complex-script fonts (`a:cs`), which the `…Bidi` theme slots fall back on.
     pub major_cs: String,
     pub minor_cs: String,
+    /// The theme's East Asian fonts (`a:ea`), which the `…EastAsia` theme slots fall back on.
+    pub major_ea: String,
+    pub minor_ea: String,
     /// The theme's per-script fonts (`a:font script="Arab" typeface="…"`).
     pub major_scripts: Vec<(String, String)>,
     pub minor_scripts: Vec<(String, String)>,
     /// The script (ISO 15924) of `w:themeFontLang/@w:bidi`, which picks the font a `…Bidi` theme
     /// slot names. `None` = the settings name no bidi language.
     pub bidi_script: Option<&'static str>,
+    /// The script of `w:themeFontLang/@w:eastAsia`, which picks the font a `…EastAsia` theme slot
+    /// names. `None` = the settings name no East Asian language (Word then takes Japanese).
+    pub ea_script: Option<&'static str>,
     /// The theme's colour scheme (dk1, lt1, dk2, lt2, accent1..6, hlink, folHlink); empty when the
     /// package has none, and then `w:themeColor` falls back to the fixed colour.
     pub theme_colors: Vec<Rgb>,
@@ -223,6 +229,22 @@ impl PropCtx {
         by_script.or_else(|| named(cs)).unwrap_or_else(|| BIDI_THEME_FALLBACK_FONT.to_string())
     }
 
+    /// The font a `w:eastAsiaTheme` slot names. Measured in Word: for `majorEastAsia` /
+    /// `minorEastAsia`, the major / minor theme font for the script of the settings'
+    /// `w:themeFontLang/@w:eastAsia` (Japanese when it names none), else the theme's `a:ea`, else
+    /// none. Any other slot names what it names in `w:asciiTheme`.
+    fn ea_theme_font(&self, t: &str) -> Option<String> {
+        let major = match t {
+            "majorEastAsia" => true,
+            "minorEastAsia" => false,
+            _ => return self.theme_font(t),
+        };
+        let (ea, scripts) = if major { (&self.major_ea, &self.major_scripts) } else { (&self.minor_ea, &self.minor_scripts) };
+        let named = |f: &String| (!f.is_empty()).then(|| f.clone());
+        let script = self.ea_script.unwrap_or("Jpan");
+        scripts.iter().find(|(s, _)| s == script).and_then(|(_, f)| named(f)).or_else(|| named(ea))
+    }
+
     /// The theme colour `e` names in `attr` (`w:themeColor`, `w:themeFill`), through the colour
     /// scheme mapping, with its `tint` or else its `shade` (hex bytes) applied to the HSL
     /// luminance as Word does: given both, Word applies the tint alone (MS-OI29500 17.3.2.6 b,
@@ -301,9 +323,13 @@ impl PropCtx {
                     // The complex-script font (Persian, Arabic, Hebrew text). A `w:cstheme` font is
                     // left to inherit: the theme's per-script fonts aren't read.
                     c.font_cs = k.attr("w:cs").filter(|f| !f.is_empty() && f.len() < 256).map(str::to_string);
-                    // The East Asian font (Chinese, Japanese, Korean text). A `w:eastAsiaTheme` font
-                    // is left to inherit, like `w:cstheme`.
-                    c.font_ea = k.attr("w:eastAsia").filter(|f| !f.is_empty() && f.len() < 256).map(str::to_string);
+                    // The East Asian font (Chinese, Japanese, Korean text): a `w:eastAsiaTheme` font
+                    // supersedes `w:eastAsia` beside it, as Word draws it.
+                    c.font_ea = k
+                        .attr("w:eastAsiaTheme")
+                        .and_then(|t| self.ea_theme_font(t))
+                        .filter(|f| f.len() < 256)
+                        .or_else(|| k.attr("w:eastAsia").filter(|f| !f.is_empty() && f.len() < 256).map(str::to_string));
                 }
                 "w:b" => c.bold = Some(on_off(k)),
                 "w:bCs" => c.bold_cs = Some(on_off(k)),

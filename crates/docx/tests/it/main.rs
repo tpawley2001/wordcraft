@@ -22,6 +22,7 @@ mod doc_vars;
 mod drawing_payload;
 mod east_asian_lang;
 mod east_asian_layout;
+mod east_asian_theme_fonts;
 mod emphasis_marks;
 mod empty_inline_shape;
 mod encrypted_compound_repairs;
