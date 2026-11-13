@@ -1132,6 +1132,9 @@ impl Dialog {
                 kept[k] = json!(t);
             }
         }
+        if let Some(own) = payload.get("privateClipboard").and_then(Value::as_bool) {
+            kept["privateClipboard"] = json!(own);
+        }
         let link_formats = wordcraft_engine::cmd::paste::link_formats(&app.session, payload).into_iter().map(str::to_string).collect();
         let note = if formats.is_empty() { crate::system_clipboard::nothing_to_paste(app) } else { String::new() };
         Dialog::PasteSpecial { formats, choice: 0, link: false, link_formats, payload: kept, note }

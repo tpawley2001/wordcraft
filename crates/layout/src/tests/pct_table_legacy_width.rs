@@ -139,3 +139,118 @@ fn a_nested_percent_table_is_unchanged() {
     // The outer cell's text width: 300 less its two 5.4pt margins.
     assert!(close(w, 289.2), "{nested:?}");
 }
+
+/// The measured three-column form: `w:tcW` 38.65 / 363.15 / 77 pt (478.8 pt), 100% wide.
+const FORM_COLS: [f32; 3] = [38.65, 363.15, 77.0];
+
+fn form_table() -> Table {
+    let mut t = pct_table(3, 100.0);
+    t.grid = FORM_COLS.to_vec();
+    for row in &mut t.rows {
+        for (cell, w) in row.cells.iter_mut().zip(FORM_COLS) {
+            cell.props.width = Some(w);
+        }
+    }
+    t.props.cell_margins = Some([0.0, 5.4, 0.0, 5.4]);
+    t
+}
+
+/// Sets left and right margins `m` on cell `cell` of the rows `rows`.
+fn own_margins(t: &mut Table, rows: &[usize], cell: usize, m: f32) {
+    for &r in rows {
+        t.rows[r].cells[cell].props.margins = Some([0.0, m, 0.0, m]);
+    }
+}
+
+/// Checks the first row against a table `w` wide whose left edge is at `x`, the columns being
+/// the `w:tcW` widths scaled to it.
+fn assert_form(cells: &[Rect], x: f32, w: f32) {
+    let near = |a: f32, b: f32| (a - b).abs() < 0.3;
+    assert_eq!(cells.len(), 3, "{cells:?}");
+    assert!(near(cells[0].x, x), "left edge {x}: {cells:?}");
+    assert!(near(width(cells), w), "width {w}: {cells:?}");
+    let sum: f32 = FORM_COLS.iter().sum();
+    for (c, col) in cells.iter().zip(FORM_COLS) {
+        assert!(near(c.w, col * w / sum), "column {col} of {w}: {cells:?}");
+    }
+}
+
+#[test]
+fn a_middle_cells_own_margins_do_not_change_the_width() {
+    let mut t = form_table();
+    own_margins(&mut t, &[0, 1], 1, 5.75);
+    assert_form(&first_row(&doc_with(11, t)), 72.0 - 5.4, 468.0 + 5.4 + 5.4);
+}
+
+#[test]
+fn the_first_cells_left_margin_widens_the_table() {
+    let mut t = form_table();
+    own_margins(&mut t, &[0, 1], 0, 10.0);
+    assert_form(&first_row(&doc_with(11, t)), 62.0, 468.0 + 10.0 + 5.4);
+}
+
+#[test]
+fn the_last_cells_right_margin_widens_the_table() {
+    let mut t = form_table();
+    own_margins(&mut t, &[0, 1], 2, 10.0);
+    assert_form(&first_row(&doc_with(11, t)), 72.0 - 5.4, 468.0 + 5.4 + 10.0);
+}
+
+#[test]
+fn every_cell_with_wide_margins() {
+    let mut t = form_table();
+    for cell in 0..3 {
+        own_margins(&mut t, &[0, 1], cell, 10.0);
+    }
+    assert_form(&first_row(&doc_with(14, t)), 62.0, 468.0 + 10.0 + 10.0);
+}
+
+#[test]
+fn only_the_first_rows_outer_cells_count() {
+    let mut t = form_table();
+    own_margins(&mut t, &[0], 0, 10.0);
+    assert_form(&first_row(&doc_with(11, t)), 62.0, 468.0 + 10.0 + 5.4);
+    // A wide last-cell margin in the second row only does not count either.
+    let mut t = form_table();
+    own_margins(&mut t, &[1], 2, 10.0);
+    assert_form(&first_row(&doc_with(11, t)), 72.0 - 5.4, 468.0 + 5.4 + 5.4);
+}
+
+#[test]
+fn fixed_layout_with_cell_margins() {
+    let mut t = form_table();
+    t.props.fixed = true;
+    own_margins(&mut t, &[0, 1], 1, 5.75);
+    assert_form(&first_row(&doc_with(11, t)), 72.0 - 5.4, 468.0 + 5.4 + 5.4);
+}
+
+#[test]
+fn mode_15_ignores_cell_margins() {
+    let mut t = form_table();
+    for cell in 0..3 {
+        own_margins(&mut t, &[0, 1], cell, 10.0);
+    }
+    assert_form(&first_row(&doc_with(15, t)), 72.0, 468.0);
+}
+
+#[test]
+fn zero_cell_margins_give_the_text_width() {
+    let mut t = form_table();
+    for cell in 0..3 {
+        own_margins(&mut t, &[0, 1], cell, 0.0);
+    }
+    assert_form(&first_row(&doc_with(11, t)), 72.0, 468.0);
+}
+
+#[test]
+fn partial_cell_margins_resolve_per_side() {
+    let mut t = form_table();
+    // The first cell sets only its right margin and the last only its left: both outer sides
+    // fall back to the table's default.
+    t.rows[0].cells[0].props.partial_margins = Some([None, None, None, Some(10.0)]);
+    t.rows[0].cells[2].props.partial_margins = Some([None, Some(10.0), None, None]);
+    assert_form(&first_row(&doc_with(11, t)), 72.0 - 5.4, 468.0 + 5.4 + 5.4);
+    let mut t = form_table();
+    t.rows[0].cells[0].props.partial_margins = Some([None, Some(10.0), None, None]);
+    assert_form(&first_row(&doc_with(11, t)), 62.0, 468.0 + 10.0 + 5.4);
+}

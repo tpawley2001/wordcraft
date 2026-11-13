@@ -114,6 +114,10 @@ pub(crate) struct PageBuilder<'a> {
     /// Floating objects held where the section's first, unbalanced layout put them while its
     /// columns are balanced (compatibility mode below 15, see `balance_columns`).
     pub(crate) pins: Vec<Pin>,
+    /// The bottom of the body text above a line that stays on this page without counting for the
+    /// footnote area (a page break on a line of its own kept at the foot of a full page): the
+    /// notes go below this, not below that line.
+    pub(crate) mark_floor: Option<f32>,
 }
 
 /// A page break whose paragraph mark stayed with it: the page (index) and column it is in, the
@@ -270,20 +274,22 @@ impl PageBuilder<'_> {
     /// that doesn't is split at a line and its rest, with the notes after it, continues on the
     /// next page.
     pub(crate) fn flush_notes(&mut self) {
+        let mark_floor = self.mark_floor.take();
         if self.notes.is_empty() {
             return;
         }
+        let floor = mark_floor.unwrap_or_else(|| self.note_floor());
         let total = self.notes_h();
         let in_col = self.col_notes();
         let (x, width) = if in_col { (self.col_x(), self.col_w()) } else { (self.sect.text_left(self.mirror), self.sect.text_width()) };
         let seps = self.seps().clone();
         // The note area starts below the text (a page of continued notes alone: at its top).
-        let area = self.bottom.max(self.note_floor());
+        let area = self.bottom.max(floor);
         let fits = total <= self.orig_bottom - area + 0.01;
         let top = match (fits, self.beneath) {
             (false, _) => area,
             // Below the page's last line of text.
-            (true, true) => self.body_floor().min(self.orig_bottom - total),
+            (true, true) => mark_floor.unwrap_or_else(|| self.body_floor()).min(self.orig_bottom - total),
             (true, false) => self.orig_bottom - total,
         };
         let notes = std::mem::take(&mut self.notes);
@@ -550,6 +556,20 @@ impl PageBuilder<'_> {
         // ODF keeps the footer's spacing above a footer too tall for the bottom margin.
         let gap = if self.sect.footer_gap.is_finite() { self.sect.footer_gap.clamp(0.0, 1584.0) } else { 0.0 };
         (self.sect.page_h - self.sect.margin_bottom).min((self.foot_top - gap).max(body_top + 36.0))
+    }
+    /// Whether the text now ends where the current page's footer starts: a footer taller than the
+    /// bottom margin pushed the page's body up ([`Self::body_bottom`]) and nothing (balanced
+    /// columns, notes, the minimum body height, an ODF gap above the footer) moved the bottom
+    /// since. The page's own body rectangle is used, so a different first page's footer counts.
+    pub(crate) fn at_footer_top(&self) -> bool {
+        if self.web || (self.sect.footer_gap.is_finite() && self.sect.footer_gap > 0.0) {
+            return false;
+        }
+        let margin = self.sect.page_h - self.sect.margin_bottom;
+        self.pages.last().is_some_and(|p| {
+            let foot = p.body.y + p.body.h;
+            p.body.h > 36.01 && foot < margin - 0.01 && (self.bottom - foot).abs() <= 0.01
+        })
     }
     /// The room for text in the next column, or on the page [`Self::advance`] starts after the
     /// last: there, below its body top (`body_top`) and above its footer and the notes carried
