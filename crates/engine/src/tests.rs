@@ -25,6 +25,7 @@ mod clipboard_options;
 mod custom_prop_types;
 mod doc_note_separators_docx;
 mod doc_row_borders_docx;
+mod doc_row_end_anchor_docx;
 mod doc_turned_cell_docx;
 mod documents;
 mod email_links;

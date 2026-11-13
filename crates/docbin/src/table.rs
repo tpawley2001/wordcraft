@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use wordcraft_doc::Rgb;
-use wordcraft_doc::para::{Anchor, FloatAlign, Paragraph};
+use wordcraft_doc::para::{Anchor, FloatAlign, InlineObject, OBJ, Paragraph};
 use wordcraft_doc::props::{
     Align, Border, Borders, CellProps, HeightRule, ParaProps, RowProps, TableFloat, TableProps, TextDirection, TextFrame, VAlign, VMerge,
 };
@@ -698,17 +698,22 @@ impl TableBuilder {
             return;
         }
         // A row-end (TTP) mark terminates the row. Word writes rows as N content
-        // cells each ended by their own cell mark, followed by an empty row-end mark
-        // that carries the row's TDefTable (the 3GPP change history: 8 content marks
+        // cells each ended by their own cell mark, followed by a row-end mark that
+        // carries the row's TDefTable (the 3GPP change history: 8 content marks
         // + an empty TTP whose TDefTable defines itcMac = 8). When that mark ends no
-        // content of its own and the TDefTable already has a column per flushed cell,
-        // it is a pure row terminator, not the end of a phantom (N+1)th cell — such a
-        // cell has no column (width None) and shifts every real cell's span one grid
-        // column over. A TTP mark with content, or one short of the TDefTable's
-        // columns, still ends a real cell (rows without a TDefTable keep today's
-        // shape: the count is unknowable, so the mark always flushes).
-        let row_end_only =
-            row_end && para.text.is_empty() && self.cell.is_empty() && !info.edges.is_empty() && self.cells.len() + 1 >= info.edges.len();
+        // text of its own (it is empty, or holds only the anchors of floating objects
+        // Word stores at the row's end) and the TDefTable already has a column per
+        // flushed cell, it is a pure row terminator, not the end of a phantom (N+1)th
+        // cell — such a cell has no column (width None) and shifts every real cell's
+        // span one grid column over. A TTP mark with any other content, or one short
+        // of the TDefTable's columns, still ends a real cell (rows without a TDefTable
+        // keep today's shape: the count is unknowable, so the mark always flushes).
+        let anchors_only = anchors_only(&para);
+        let row_end_only = row_end
+            && (para.text.is_empty() || anchors_only)
+            && self.cell.is_empty()
+            && !info.edges.is_empty()
+            && self.cells.len() + 1 >= info.edges.len();
         // ...but a row-end mark with no cells before it still makes a (one-cell) row.
         let row_end_only = row_end_only && !self.cells.is_empty();
         // The cell mark is the paragraph mark of the cell's last paragraph ([MS-DOC] 2.4.3), so
@@ -716,10 +721,14 @@ impl TableBuilder {
         // empty cell's only paragraph with its own style and formatting. After a nested table
         // that just closed into the cell an empty mark adds nothing (not measured in Word).
         let after_table = self.cell.last().is_some_and(|b| b.as_table().is_some());
-        if !row_end_only && (!para.text.is_empty() || !after_table) {
-            self.cell.push(para_block(para));
-        }
-        if !row_end_only {
+        if row_end_only {
+            if anchors_only {
+                carry_row_end_anchors(&mut self.cells, para);
+            }
+        } else {
+            if !para.text.is_empty() || !after_table {
+                self.cell.push(para_block(para));
+            }
             flush_cell(&mut self.cells, &mut self.cell);
         }
         if row_end {
@@ -800,6 +809,29 @@ impl TableBuilder {
             table.props.fixed = true;
         }
         out.push(Arc::new(Block::Table(table)));
+    }
+}
+
+/// The paragraph holds nothing but the anchors of floating objects (a row-end mark Word uses to
+/// anchor drawings at the end of a table row).
+fn anchors_only(para: &Paragraph) -> bool {
+    !para.text.is_empty()
+        && para.text.chars().all(|c| c == OBJ)
+        && para.text.chars().count() == para.objects.len()
+        && para.objects.iter().all(InlineObject::is_floating)
+}
+
+/// Move the floating objects anchored in a row-end mark, in order and with their own position
+/// settings, to the end of the last paragraph of the row's last cell (after a nested table, a new
+/// empty paragraph carries them). Word's origin for their paragraph-relative offsets was not
+/// probed; the last cell keeps them on the row's page and in the row end's column.
+fn carry_row_end_anchors(cells: &mut [Cell], para: Paragraph) {
+    let Some(cell) = cells.last_mut() else { return };
+    if !cell.blocks.last().is_some_and(|b| b.as_para().is_some()) {
+        cell.blocks.push(para_block(Paragraph::new()));
+    }
+    if let Some(Block::Para(last)) = cell.blocks.last_mut().map(Arc::make_mut) {
+        last.append(Paragraph { section: None, ..para });
     }
 }
 
