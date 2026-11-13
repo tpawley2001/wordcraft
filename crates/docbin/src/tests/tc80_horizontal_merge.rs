@@ -205,3 +205,77 @@ fn the_row_counts_its_tc80_merges() {
     let d = def(3, &[P, P, P]);
     assert_eq!(table::decode(&d).overrides(), 0);
 }
+
+/// One row whose cells hold several paragraphs each (only a cell's last mark is a cell mark),
+/// with the given row-end TAP sprms.
+fn para_row(cells: &[&[&str]], tap: &[&[u8]]) -> Blocks {
+    let mut end = TTP.to_vec();
+    for part in tap {
+        end.extend_from_slice(part);
+    }
+    let mut marks: Vec<ParaOut> = Vec::new();
+    for paras in cells {
+        for (k, t) in paras.iter().enumerate() {
+            marks.push(mark(t, &[], k + 1 == paras.len()));
+        }
+    }
+    marks.push(mark("", &end, true));
+    table::assemble(marks)
+}
+
+/// The merged first cell's paragraphs, built once through the TC80 flags and once through
+/// `sprmTMerge`: both go through the same join.
+fn joined(cells: &[&[&str]]) -> [Vec<String>; 2] {
+    let n = cells.len();
+    let mut flags = vec![M; n];
+    flags[0] = F;
+    let by_tc80 = para_row(cells, &[&def(n, &flags)]);
+    let by_sprm = para_row(cells, &[&def(n, &vec![P; n]), &t_merge(0, n as u8)]);
+    [by_tc80, by_sprm].map(|b| {
+        let t = table(&b);
+        assert_eq!(spans(t, 0), [n as u32]);
+        texts(t, 0).swap_remove(0)
+    })
+}
+
+#[test]
+fn a_first_cell_with_a_leading_empty_paragraph_keeps_it() {
+    for got in joined(&[&["", "NOTE text"], &[""], &[""]]) {
+        assert_eq!(got, ["", "NOTE text"]);
+    }
+}
+
+#[test]
+fn a_first_cell_of_several_paragraphs_stays_unchanged() {
+    for got in joined(&[&["", "", "\tSUCTION", ""], &[""], &[""]]) {
+        assert_eq!(got, ["", "", "\tSUCTION", ""]);
+    }
+}
+
+#[test]
+fn a_first_cell_of_two_empty_paragraphs_keeps_both() {
+    for got in joined(&[&["", ""], &[""]]) {
+        assert_eq!(got, ["", ""]);
+    }
+}
+
+#[test]
+fn a_lone_empty_first_cell_gives_way_to_merged_text() {
+    for got in joined(&[&[""], &["text"]]) {
+        assert_eq!(got, ["text"]);
+    }
+}
+
+#[test]
+fn empty_cells_merge_into_one_empty_paragraph() {
+    for got in joined(&[&[""], &[""]]) {
+        assert_eq!(got, [""]);
+    }
+}
+
+#[test]
+fn text_in_both_cells_joins_in_order() {
+    for got in joined(&[&["a"], &["b"]]) {
+        assert_eq!(got, ["a", "b"]);
+    }
+}

@@ -833,10 +833,13 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
                 if merged_width.is_some() {
                     first.props.width = merged_width;
                 }
+                // Only a first cell that was one empty paragraph gives it up to the content the
+                // merged-away cells bring; a first cell with more paragraphs keeps them all.
+                let lone_empty = first.blocks.len() == 1 && first.blocks.first().and_then(|x| x.as_para()).is_some_and(Paragraph::is_empty);
                 for c in removed {
                     first.blocks.extend(c.blocks.into_iter().filter(|x| x.as_para().is_none_or(|p| !p.is_empty())));
                 }
-                if first.blocks.len() > 1 && first.blocks.first().and_then(|x| x.as_para()).is_some_and(Paragraph::is_empty) {
+                if lone_empty && first.blocks.len() > 1 {
                     first.blocks.remove(0);
                 }
             }
