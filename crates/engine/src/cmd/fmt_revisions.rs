@@ -360,6 +360,7 @@ pub fn resolve_containers(blocks: &mut Blocks, accept: bool, depth: usize) {
     if depth > MAX_DEPTH {
         return;
     }
+    let mut emptied = false;
     for b in blocks.iter_mut() {
         let needs = match &**b {
             Block::Para(p) => p.section.as_ref().is_some_and(|s| s.fmt_change.is_some()),
@@ -376,6 +377,8 @@ pub fn resolve_containers(blocks: &mut Blocks, accept: bool, depth: usize) {
                 }
             }
             Block::Table(t) => {
+                resolve_row_deletions(t, accept);
+                emptied |= t.rows.is_empty();
                 resolve_table(t, accept);
                 for r in &mut t.rows {
                     resolve_row(r, accept);
@@ -386,6 +389,31 @@ pub fn resolve_containers(blocks: &mut Blocks, accept: bool, depth: usize) {
                 }
             }
         }
+    }
+    if emptied {
+        drop_empty_tables(blocks);
+    }
+}
+
+/// Accept or reject the rows of `t` that are tracked deletions (`RowProps::del`): accepting one
+/// removes the row (a vertical merge starting in it starts in the row below), rejecting one keeps
+/// it as an ordinary row. A table whose rows were all removed is left with none: its container
+/// drops it ([`drop_empty_tables`]).
+pub fn resolve_row_deletions(t: &mut Table, accept: bool) {
+    for r in (0..t.rows.len()).rev() {
+        let Some(row) = t.rows.get_mut(r) else { continue };
+        if row.props.del.take().is_some() && accept {
+            t.delete_row(r);
+        }
+    }
+}
+
+/// Remove the tables left without rows from `blocks`, keeping a paragraph at the end of the list
+/// (a block list never ends with a table, nor is it empty).
+pub fn drop_empty_tables(blocks: &mut Blocks) {
+    blocks.retain(|b| !matches!(&**b, Block::Table(t) if t.rows.is_empty()));
+    if blocks.last().is_none_or(|b| matches!(&**b, Block::Table(_))) {
+        blocks.push(Arc::new(Block::Para(Paragraph::new())));
     }
 }
 
