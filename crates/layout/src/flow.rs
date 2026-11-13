@@ -2,8 +2,8 @@ use super::boxes::{BoxInput, BoxLayout, Edges, joined, layout_box, push_para};
 use super::cache::has_page_number_fields;
 use super::ctx::Ctx;
 use super::floats::{
-    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, late_floats, place_late,
-    place_objects, square_float_past,
+    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, late_floats,
+    no_room_beside_shifted, place_late, place_objects, square_float_past,
 };
 use super::notes::{DECOR_STORY, NoteBox, para_notes};
 use super::page::{PageBuilder, PageFrame, item_bottom};
@@ -615,6 +615,23 @@ impl<'a> Flow<'a> {
         square_float_past(self.p, &self.float_rects, self.anchor_y, limit, room)
     }
 
+    /// Before `compatibilityMode` 15 a `wp:wrapSquare` object that would end below the paper is
+    /// moved up onto it ([`crate::floats::onto_paper`]). When that leaves the paragraph's first
+    /// line no room beside it (the line went below it), the objects are placed again as
+    /// positioned, and [`Flow::square_float_past`] decides whether the paragraph moves on.
+    fn keep_line_room(&mut self, ctx: &mut Ctx, pb: &mut PageBuilder) {
+        if self.l0 != 0 || self.float_rects.is_empty() || ctx.doc.settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT {
+            return;
+        }
+        let Some(first) = self.pl.lines.first() else { return };
+        let line = (pb.y + first.top, first.top > 0.01);
+        if no_room_beside_shifted(self.p, &self.float_rects, line, pb.sect.page_h) {
+            pb.unshifted = Some(self.block);
+            let y0 = pb.y;
+            self.reanchor(ctx, pb, (y0, (y0 - self.anchor_y).max(0.0)), &[]);
+        }
+    }
+
     /// Put the lines `l0..fit.l1` on the page, with their notes, objects and line numbers.
     fn emit(&mut self, ctx: &mut Ctx, pb: &mut PageBuilder, rooms: Rooms, (lead, fit, notes): (f32, Fit, &[(usize, u32)])) {
         let (l0, l1, n) = (self.l0, fit.l1, self.n());
@@ -970,6 +987,9 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
         let y0 = pb.y;
         f.reanchor(ctx, pb, (y0, applied_before), &[]);
         f.anchor_y = y0 - applied_before;
+    }
+    if !pb.fresh() && !pb.web {
+        f.keep_line_room(ctx, pb);
     }
     if !pb.fresh() && !pb.web && f.square_float_past(ctx, pb) {
         f.move_on(ctx, pb);

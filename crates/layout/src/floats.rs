@@ -387,12 +387,38 @@ pub(crate) fn anchor_floats(
 pub(crate) fn square_float_past(p: &Paragraph, rects: &HashMap<usize, Rect>, top: f32, limit: f32, room: f32) -> bool {
     rects.iter().any(|(oi, r)| {
         let Some((_, _, float)) = p.objects.get(*oi).and_then(floating) else { return false };
-        float.wrap == Wrap::Square
-            && matches!(float.v_rel, Anchor::Paragraph | Anchor::Line)
-            && float.v_align.is_none()
-            && r.bottom() > limit + 0.01
-            && r.bottom() - top <= room + 0.01
+        square_down_from_para(float) && r.bottom() > limit + 0.01 && r.bottom() - top <= room + 0.01
     })
+}
+
+/// Whether `float` is a `wp:wrapSquare` object positioned down from its paragraph or line
+/// (`wp:positionV relativeFrom="paragraph"` / `"line"`, no alignment).
+fn square_down_from_para(float: &Float) -> bool {
+    float.wrap == Wrap::Square && matches!(float.v_rel, Anchor::Paragraph | Anchor::Line) && float.v_align.is_none()
+}
+
+/// Before `compatibilityMode` 15 ([MS-DOCX] 2.5.5), a `wp:wrapSquare` object positioned down
+/// from its paragraph or line, at `r`, of a paragraph with text above it on the page, that would
+/// end below the paper's bottom edge (`page_h`): it moves up to end at that edge, keeping its
+/// size and horizontal place, and text wraps around it there (measured in Word). Not one taller
+/// than the room from the body's top (`top`) to that edge.
+pub(crate) fn onto_paper(mode: u32, float: &Float, r: Rect, text_before: bool, (top, page_h): (f32, f32)) -> Option<Rect> {
+    let past = r.bottom() > page_h + 0.01 && r.h <= page_h - top;
+    (mode < wordcraft_doc::COMPAT_MODE_CURRENT && text_before && square_down_from_para(float) && past).then(|| Rect { y: page_h - r.h, ..r })
+}
+
+/// Whether the paragraph whose first line is `line_top` (page coordinates; `pushed`: moved down
+/// from the paragraph's top by what is in its way) has no room for that line beside one of its
+/// objects moved onto the paper ([`onto_paper`], at its rectangle in `rects`, ending at
+/// `page_h`): the line went below it. The paragraph then starts on the next page with the object
+/// placed as positioned ([`square_float_past`]).
+pub(crate) fn no_room_beside_shifted(p: &Paragraph, rects: &HashMap<usize, Rect>, (line_top, pushed): (f32, bool), page_h: f32) -> bool {
+    pushed
+        && rects.iter().any(|(oi, r)| {
+            p.objects.get(*oi).and_then(floating).is_some_and(|(_, _, f)| square_down_from_para(f))
+                && (r.bottom() - page_h).abs() < 0.01
+                && line_top >= r.bottom() - 0.5
+        })
 }
 
 /// The floating objects of `p` (laid out as `pl`) whose anchor line ([`anchor_lines`]) is at or
@@ -519,6 +545,13 @@ fn anchor_floats_but(
             let mut r = float_rect(Some(frame), (col_x, width), y0 - before, w, h, float);
             let outline = ctx.wrap_outline(o);
             let outline = outline.as_deref().map(Vec::as_slice);
+            // Before `compatibilityMode` 15 a `wp:wrapSquare` object that would end below the
+            // paper is moved up onto it ([`onto_paper`]), unless its paragraph keeps it as placed.
+            if pb.unshifted != Some(block)
+                && let Some(up) = onto_paper(ctx.doc.settings.compat_mode, float, r, text_before, (pb.top, pb.sect.page_h))
+            {
+                r = up;
+            }
             let mut area = wrap_area(r, float, outline);
             let seed = early.and_then(|v| v.iter().take(pb.seeded).find(|(b, k, _)| (*b, *k) == (block, oi))).map(|(_, _, a)| a);
             // A float the page started with keeps the place found for it when its paragraph moved

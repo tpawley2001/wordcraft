@@ -79,6 +79,7 @@ mod rtl_gutter_vertical;
 mod section_pages_blank;
 mod split_break_mark;
 mod square_float_page_fit;
+mod square_float_paper_shift;
 mod styleref;
 mod styleref_args;
 mod styleref_case;
