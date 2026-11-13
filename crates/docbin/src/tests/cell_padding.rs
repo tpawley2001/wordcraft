@@ -106,7 +106,8 @@ fn hostile_padding_is_clamped() {
 fn a_truncated_padding_prl_sets_nothing() {
     let tap = super::grpprl(&[(0xD634, &[3u8, 0, 1][..])]);
     let body = one_row(1, &tap);
-    assert_eq!(table(&body).props.cell_margins, None);
+    // The row defines its cells but stores no gap half: zero margins ([MS-DOC] 2.6.3).
+    assert_eq!(table(&body).props.cell_margins, Some([0.0; 4]));
 }
 
 #[test]
@@ -127,5 +128,6 @@ fn a_second_table_does_not_inherit_the_first_ones_padding() {
     let tables: Vec<&Table> = body.iter().filter_map(|b| b.as_table()).collect();
     assert_eq!(tables.len(), 2, "{body:?}");
     assert_eq!(tables[0].props.cell_margins, Some([3.0, 3.0, 3.0, 3.0]));
-    assert_eq!(tables[1].props.cell_margins, None);
+    // The second table stores no gap half: zero margins, not the first one's padding.
+    assert_eq!(tables[1].props.cell_margins, Some([0.0; 4]));
 }

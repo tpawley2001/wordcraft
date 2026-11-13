@@ -2,8 +2,8 @@ use super::boxes::{BoxInput, BoxLayout, Edges, joined, layout_box, push_para};
 use super::cache::has_page_number_fields;
 use super::ctx::Ctx;
 use super::floats::{
-    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, late_floats, place_late,
-    place_objects, square_float_past,
+    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, late_floats,
+    no_room_beside_shifted, place_late, place_objects, square_float_past,
 };
 use super::notes::{DECOR_STORY, NoteBox, para_notes};
 use super::page::{PageBuilder, PageFrame, item_bottom};
@@ -197,7 +197,7 @@ impl<'a> Flow<'a> {
         // Floating objects anchored here join the page's wrap areas before the text is laid out; if
         // the paragraph then starts somewhere else (another column or page, or contextual spacing
         // drops its space before), they are placed again there.
-        let space_before = ctx.doc.styles.resolve_para(&p.props).space_before;
+        let space_before = ctx.doc.styles.resolve_para_spaced(&p.props, None, !ctx.doc.settings.sum_paragraph_spacing).space_before;
         let excl_mark = pb.excl.len();
         let guess = pb.y + space_before;
         let label = ctx.next_label(p);
@@ -516,7 +516,8 @@ impl<'a> Flow<'a> {
             // by an earlier paragraph's object has nothing to move with and stays as before.
             let pushed =
                 fit.l1 == 0 && l.top > 0.01 && self.p.objects.iter().any(|o| floating(o).is_some_and(|(_, _, f)| f.wrap == Wrap::TopAndBottom));
-            if over && fit.l1 == l0 && !pb.fresh() && !split && (pushed || !self.stays_at_bottom(pb, l)) {
+            let fresh = pb.fresh() && !pb.pinned_room_ahead();
+            if over && fit.l1 == l0 && !fresh && !split && (pushed || !self.stays_at_bottom(pb, l)) {
                 break;
             }
             fit.notes.extend(line_notes);
@@ -613,6 +614,23 @@ impl<'a> Flow<'a> {
             (pb.sect.page_h, pb.sect.page_h - next_top)
         };
         square_float_past(self.p, &self.float_rects, self.anchor_y, limit, room)
+    }
+
+    /// Before `compatibilityMode` 15 a `wp:wrapSquare` object that would end below the paper is
+    /// moved up onto it ([`crate::floats::onto_paper`]). When that leaves the paragraph's first
+    /// line no room beside it (the line went below it), the objects are placed again as
+    /// positioned, and [`Flow::square_float_past`] decides whether the paragraph moves on.
+    fn keep_line_room(&mut self, ctx: &mut Ctx, pb: &mut PageBuilder) {
+        if self.l0 != 0 || self.float_rects.is_empty() || ctx.doc.settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT {
+            return;
+        }
+        let Some(first) = self.pl.lines.first() else { return };
+        let line = (pb.y + first.top, first.top > 0.01);
+        if no_room_beside_shifted(self.p, &self.float_rects, line, pb.sect.page_h) {
+            pb.unshifted = Some(self.block);
+            let y0 = pb.y;
+            self.reanchor(ctx, pb, (y0, (y0 - self.anchor_y).max(0.0)), &[]);
+        }
     }
 
     /// Put the lines `l0..fit.l1` on the page, with their notes, objects and line numbers.
@@ -971,6 +989,9 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
         f.reanchor(ctx, pb, (y0, applied_before), &[]);
         f.anchor_y = y0 - applied_before;
     }
+    if !pb.fresh() && !pb.web {
+        f.keep_line_room(ctx, pb);
+    }
     if !pb.fresh() && !pb.web && f.square_float_past(ctx, pb) {
         f.move_on(ctx, pb);
     }
@@ -990,7 +1011,7 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
             continue;
         }
         if fit.l1 == f.l0 {
-            if !pb.fresh() {
+            if !pb.fresh() || pb.pinned_room_ahead() {
                 f.move_on(ctx, pb);
                 continue;
             }
@@ -1131,7 +1152,7 @@ fn space_after_kept(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::Resolv
         return 0.0;
     }
     if let Some(Block::Para(next)) = ctx.doc.body.get(block + 1).map(|b| &**b) {
-        let nrp = ctx.doc.styles.resolve_para(&next.props);
+        let nrp = ctx.doc.styles.resolve_para_spaced(&next.props, None, !ctx.doc.settings.sum_paragraph_spacing);
         if nrp.style == rp.style && rp.contextual_spacing {
             return 0.0;
         }

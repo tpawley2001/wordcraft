@@ -161,6 +161,18 @@ pub(crate) fn roman_fonts<'a>(fonts: impl Iterator<Item = (u8, &'a str)>) -> Vec
         .collect()
 }
 
+/// The names (lowercase) of the fonts the font table marks as symbol fonts by their charset and
+/// PANOSE ([`wordcraft_doc::is_symbol_class_font`]), capped as [`roman_fonts`] is: Word lays out
+/// a run in one that isn't installed with Symbol.
+pub(crate) fn symbol_class_fonts(fonts: &[stsh::FontEntry]) -> Vec<String> {
+    fonts
+        .iter()
+        .filter(|f| f.symbol_class() && !f.name.trim().is_empty() && f.name.len() <= MAX_ROMAN_FONT_NAME)
+        .map(|f| f.name.trim().to_lowercase())
+        .take(MAX_ROMAN_FONTS)
+        .collect()
+}
+
 #[cfg(test)]
 thread_local! {
     /// What the last document read on this thread left out for the work budget ([`Work::log`]).
@@ -301,6 +313,8 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     // A missing font of the roman family class is drawn in a serif face, as for DOCX's
     // `w:family w:val="roman"`.
     doc.settings.roman_fonts = roman_fonts(font_entries.iter().map(|f| (f.ff, f.name.as_str())));
+    // A missing font the table marks as a symbol font is laid out as Symbol.
+    doc.settings.symbol_class_fonts = symbol_class_fonts(&font_entries);
     if let Some(core) = metadata::read(&mut comp) {
         doc.core = core;
     }
@@ -1378,6 +1392,12 @@ struct OpenField {
     /// in their code (whose characters are dropped), and those showing their result here.
     over_hidden: u32,
     over_shown: u32,
+    /// A GOTOBUTTON or MACROBUTTON field: a field nested in its code adds only its result.
+    button: bool,
+    /// Levels nested in a button field's code, only counted: those all in their results
+    /// (whose characters show), then those from the first one still in its code (dropped).
+    code_shown: u32,
+    code_hidden: u32,
 }
 
 /// A field's cached result: its text and, as runs, the formatting of that text. A run is added
@@ -1430,20 +1450,33 @@ fn is_range_instr(instr: &str) -> bool {
         || t.get(..5).is_some_and(|k| k.eq_ignore_ascii_case("ADDIN"))
 }
 
+/// A GOTOBUTTON or MACROBUTTON field code: a field nested in it shows its result, not its code.
+fn is_button_instr(instr: &str) -> bool {
+    instr.split_whitespace().next().is_some_and(|k| k.eq_ignore_ascii_case("MACROBUTTON") || k.eq_ignore_ascii_case("GOTOBUTTON"))
+}
+
 /// A field begin (0x13): a new field, or one more level in the innermost field's code. `props`
 /// gives a new field's formatting at its begin. True when a new field was opened.
 fn field_begin(fields: &mut Vec<OpenField>, props: impl FnOnce() -> CharProps) -> bool {
     let full = fields.len() >= MAX_FIELD_NEST;
     match fields.last_mut() {
         Some(f) if f.over_hidden > 0 => f.over_hidden = f.over_hidden.saturating_add(1),
-        Some(f) if f.build.sep.is_none() && !f.range => f.build.depth = f.build.depth.saturating_add(1),
+        Some(f) if f.build.sep.is_none() && !f.range => {
+            if f.build.depth == 1 {
+                f.button = is_button_instr(&f.build.instr);
+            }
+            if f.button {
+                f.code_hidden = f.code_hidden.saturating_add(1);
+            }
+            f.build.depth = f.build.depth.saturating_add(1);
+        }
         // Past the cap, a field in a result is counted, not kept: its code is
         // hidden and its result shows in the innermost kept field.
         Some(f) if full => f.over_hidden = 1,
         _ => {
             let props = props();
             let build = FieldBuild { depth: 1, instr: String::new(), sep: None, props, object: false, code: CodeMarks::default() };
-            fields.push(OpenField { build, range: false, over_hidden: 0, over_shown: 0 });
+            fields.push(OpenField { build, range: false, over_hidden: 0, over_shown: 0, button: false, code_shown: 0, code_hidden: 0 });
             return true;
         }
     }
@@ -1459,6 +1492,15 @@ fn field_separator(fields: &mut [OpenField], pb: &mut ParaBuild) {
         if f.over_hidden == 1 {
             f.over_hidden = 0;
             f.over_shown = f.over_shown.saturating_add(1);
+        }
+    } else if let Some(f) = fields.last_mut()
+        && f.button
+        && f.build.depth > 1
+    {
+        // The separator of the first nested field still in its code: its result shows.
+        if f.code_hidden == 1 {
+            f.code_hidden = 0;
+            f.code_shown = f.code_shown.saturating_add(1);
         }
     } else if let Some(f) = fields.last_mut()
         && f.build.depth == 1
@@ -1491,6 +1533,11 @@ fn field_end(fields: &mut Vec<OpenField>, pb: &mut ParaBuild, work: &Work) -> bo
     } else if let Some(mut f) = fields.pop() {
         if f.build.depth > 1 {
             f.build.depth -= 1;
+            if f.code_hidden > 0 {
+                f.code_hidden -= 1;
+            } else {
+                f.code_shown = f.code_shown.saturating_sub(1);
+            }
             fields.push(f);
         } else if f.range {
             push_field_end(pb);
@@ -1701,7 +1748,8 @@ fn num_of(ilfo: i32) -> Option<u32> {
 /// well as) the visible text.
 fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, field: Option<&mut OpenField>, st: &mut FmtState<'a>) {
     // The code of a field counted past the nesting cap is never shown.
-    if field.as_ref().is_some_and(|f| f.over_hidden > 0) {
+    // Nor is the code of a field nested in a button field's code.
+    if field.as_ref().is_some_and(|f| f.over_hidden > 0 || f.code_hidden > 0) {
         return;
     }
     // A range field's result is ordinary content.

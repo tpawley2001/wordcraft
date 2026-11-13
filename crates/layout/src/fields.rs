@@ -342,15 +342,39 @@ pub fn button_display_text(instr: &str) -> Option<String> {
         return None;
     }
     // The destination or macro name is the second word; the display text is everything after it.
-    let after_name = rest.get(name.len()..)?.trim_start();
+    // General switches before either are skipped, not applied.
+    let after_name = skip_general_switches(rest.get(name.len()..)?);
     let target = after_name.split_whitespace().next().unwrap_or("");
-    let text = after_name.get(target.len()..).unwrap_or("").trim();
+    let text = skip_general_switches(after_name.get(target.len()..).unwrap_or("")).trim();
     // A single quoted string shows without its quotes.
     let text = match text.strip_prefix('"').and_then(|t| t.strip_suffix('"')) {
         Some(inner) if !inner.contains('"') => inner,
         _ => text,
     };
     Some(text.to_string())
+}
+
+/// `s` without its leading white space and any run of general switches (ECMA-376 Part 1
+/// §17.16.4.3) at its start: `\*`, `\#` and `\@` with one argument (attached or after spaces;
+/// a quoted argument runs to its closing quote) and `\!` alone.
+fn skip_general_switches(s: &str) -> &str {
+    let mut s = s.trim_start();
+    loop {
+        let Some(after) = s.strip_prefix('\\') else { return s };
+        let mut chars = after.chars();
+        match chars.next() {
+            Some('!') if chars.next().is_none_or(char::is_whitespace) => s = after.get(1..).unwrap_or("").trim_start(),
+            Some('*' | '#' | '@') => {
+                let arg = after.get(1..).unwrap_or("").trim_start();
+                let rest = match arg.strip_prefix('"') {
+                    Some(quoted) => quoted.find('"').and_then(|i| quoted.get(i + 1..)).unwrap_or(""),
+                    None => arg.find(char::is_whitespace).and_then(|i| arg.get(i..)).unwrap_or(""),
+                };
+                s = rest.trim_start();
+            }
+            _ => return s,
+        }
+    }
 }
 
 /// The words of a field instruction: quoted text is one word (without its quotes) and a

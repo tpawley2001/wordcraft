@@ -102,3 +102,16 @@ fn a_picture_with_its_blip_is_unchanged() {
     assert_eq!((*w, *h), (72.0, 36.0));
     assert_eq!(doc.media.get(media).map(|b| b.as_slice()), Some(png.as_slice()));
 }
+
+#[test]
+fn a_cropped_linked_picture_keeps_its_scaled_goal_size() {
+    // 4000 x 2000 twips at 100 %, cropFromLeft 0.25 (16.16 fixed): the scale already holds the
+    // crop ([MS-DOC] §2.9.191 PICMID), so the box stays 200 x 100 pt, not 150 x 100.
+    let path = "c:\\web\\cropped.png";
+    let mut rest = vec![path.len() as u8];
+    rest.extend_from_slice(path.as_bytes());
+    let props = [(0x0102u16, 0x4000u32), (0x0106, 13), (0x01FF, 0x0008_0000)];
+    rest.extend(sp(&[fsp(75, 1025, 0xA00), fopt(&props, &[(0x0105, wz(path))]), client_anchor()]));
+    let doc = doc_with(picf(MM_SHAPEFILE, (4000, 2000), (1000, 1000), &rest));
+    assert_eq!(images(&doc), vec![(200.0, 100.0)]);
+}

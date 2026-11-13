@@ -446,6 +446,15 @@ impl StyleSheet {
     /// document defaults (Table Grid's single spacing beats the defaults' 8 pt after), but any
     /// property the paragraph style chain sets, Normal included, beats the table style.
     pub fn resolve_para_in(&self, p: &ParaProps, table: Option<&ParaProps>) -> ResolvedPara {
+        self.resolve_para_spaced(p, table, true)
+    }
+
+    /// [`Self::resolve_para_in`] for layout, given whether the document uses automatic (HTML-style)
+    /// paragraph spacing. With `html_auto_spacing` false (`w:doNotUseHTMLParagraphAutoSpacing`,
+    /// ECMA-376 Part 1 §17.15.1) the automatic flags are ignored: the paragraph keeps the stored
+    /// space before / after of its fully resolved properties, as any other paragraph, and
+    /// `before_auto` / `after_auto` are off so no HTML spacing rule applies to it.
+    pub fn resolve_para_spaced(&self, p: &ParaProps, table: Option<&ParaProps>, html_auto_spacing: bool) -> ResolvedPara {
         let style = p.style.clone().unwrap_or_else(|| "Normal".into());
         let mut defaults = self.effective_default_para();
         if let Some(t) = table {
@@ -459,6 +468,10 @@ impl StyleSheet {
             direct.tabs = Some(merged);
         }
         base.overlay(&direct);
+        if !html_auto_spacing {
+            base.space_before_auto = None;
+            base.space_after_auto = None;
+        }
         let mut rp = ResolvedPara::from(&base, &style);
         // Indents in characters: measured in the style's font size here; layout measures them in
         // the paragraph mark's (`set_char_unit`), which direct formatting may change.
@@ -550,6 +563,33 @@ mod tests {
         assert_ne!(s.resolve_char(None, &CharProps::default()).font, "Wingdings");
         let direct = CharProps { sym_font: Some("Wingdings".into()), ..Default::default() };
         assert_eq!(s.resolve_char(None, &direct).font, "Wingdings");
+    }
+
+    /// With automatic (HTML-style) spacing off, the automatic flags are ignored and the stored
+    /// space before / after apply, wherever in the style chain the value and the flag come from.
+    #[test]
+    fn stored_spacing_applies_when_html_auto_spacing_is_off() {
+        let mut s = StyleSheet::builtin();
+        if let Some(n) = s.get_mut("Normal") {
+            n.para.space_before = Some(5.0);
+            n.para.space_after = Some(6.0);
+        }
+        // Stored values from the style, flags from direct formatting.
+        let direct = ParaProps { space_before_auto: Some(true), space_after_auto: Some(true), ..Default::default() };
+        let on = s.resolve_para_in(&direct, None);
+        assert_eq!((on.space_before, on.space_after, on.before_auto, on.after_auto), (AUTO_SPACING, AUTO_SPACING, true, true));
+        let off = s.resolve_para_spaced(&direct, None, false);
+        assert_eq!((off.space_before, off.space_after, off.before_auto, off.after_auto), (5.0, 6.0, false, false));
+        assert_eq!(s.resolve_para_spaced(&direct, None, true), on);
+        // Flags from the style, stored values from direct formatting.
+        if let Some(n) = s.get_mut("Normal") {
+            n.para = ParaProps { space_before_auto: Some(true), space_after_auto: Some(true), ..Default::default() };
+        }
+        let direct = ParaProps { space_before: Some(3.0), space_after: Some(-4.0), ..Default::default() };
+        let on = s.resolve_para_in(&direct, None);
+        assert_eq!((on.space_before, on.space_after, on.before_auto, on.after_auto), (AUTO_SPACING, AUTO_SPACING, true, true));
+        let off = s.resolve_para_spaced(&direct, None, false);
+        assert_eq!((off.space_before, off.space_after, off.before_auto, off.after_auto), (3.0, 0.0, false, false));
     }
 
     /// #5077: a paragraph naming a style the document doesn't define is formatted as Normal,
