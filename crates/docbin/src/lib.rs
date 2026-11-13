@@ -436,7 +436,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     let build = drawing::Build { bstore: &art.bstore, delay: &word, stories: &tb_stories };
     let mut drawn = drawing::anchors(&table, fib.pair(fib::pair::PLC_SPA_MOM), 0, &art.main, &build, &mut pics);
     drawn.extend(drawing::anchors(&table, fib.pair(fib::pair::PLC_SPA_HDR), hdd_base, &art.header, &build, &mut pics));
-    drawn.sort_by_key(|(cp, _)| *cp);
+    drawn.sort_by_key(|(cp, _, _)| *cp);
     let ctx = WalkCtx { drawn: &drawn, ..ctx };
 
     // Header and footer parts: skip the six separator stories, then six stories per section
@@ -653,8 +653,9 @@ struct WalkCtx<'a> {
     own_note: Option<(NoteKind, u32)>,
     /// Bookmark boundaries (main-document CPs), sorted for a sequential walk.
     marks: &'a [(u32, notes::Mark)],
-    /// Floating shapes and pictures by anchor CP (absolute), sorted.
-    drawn: &'a [(u32, InlineObject)],
+    /// Floating shapes and pictures by anchor CP (absolute), sorted, with the room each takes
+    /// beyond its frame when it sits in line with text ([`drawing::inline_reach`]).
+    drawn: &'a [(u32, InlineObject, [f32; 4])],
     /// Where sections end (main-document CPs, sorted): the section mark (0x0C) just before
     /// each ends the section's last paragraph, it isn't a page break inside it.
     sect_ends: &'a [u32],
@@ -763,17 +764,64 @@ impl ParaBuild {
 
 /// The floating shapes and pictures anchored at `cp` (a 0x08 character), each as an object of
 /// the paragraph being built.
-fn drawn_objects(ctx: &WalkCtx<'_>, cp: u32, pb: &mut ParaBuild) {
-    let at = ctx.drawn.partition_point(|(c, _)| *c < cp);
+///
+/// In the result of a `SHAPE` field (`field`, the innermost open field), the anchor is how Word
+/// 2002 and later store a drawing placed in line with text: each object anchored there sits on
+/// the line as an inline object, with room for its outline and shadow, and the field is marked
+/// so the fallback picture (0x01) that follows in its result is dropped.
+fn drawn_objects(ctx: &WalkCtx<'_>, cp: u32, pb: &mut ParaBuild, field: Option<&mut OpenField>) {
+    let mut shape = field.filter(|f| is_shape_result(f));
+    let at = ctx.drawn.partition_point(|(c, _, _)| *c < cp);
     // Each copy (a story can be walked more than once) is charged to the work budget
     // by what a clone copies: a picture's alt text, a group with all its members (#3710).
-    for (_, obj) in ctx.drawn.get(at..).unwrap_or_default().iter().take_while(|(c, _)| *c == cp) {
+    for (_, obj, reach) in ctx.drawn.get(at..).unwrap_or_default().iter().take_while(|(c, _, _)| *c == cp) {
         if !ctx.work.charge(object_cost(obj), Cost::FloatingObject) {
             continue;
         }
         pb.push('\u{FFFC}', revised(ctx, cp));
-        pb.objects.push(obj.clone());
+        let mut obj = obj.clone();
+        if let Some(f) = shape.as_deref_mut() {
+            in_line(&mut obj, *reach);
+            f.shape_drawn = true;
+        }
+        pb.objects.push(obj);
     }
+}
+
+/// The innermost open field is a `SHAPE` field whose result is being read (not one counted past
+/// the nesting cap, nor a range).
+fn is_shape_result(f: &OpenField) -> bool {
+    f.build.sep.is_some()
+        && f.build.depth == 1
+        && !f.range
+        && f.over_hidden == 0
+        && f.over_shown == 0
+        && f.build.instr.split_whitespace().next().is_some_and(|k| k.eq_ignore_ascii_case("SHAPE"))
+}
+
+/// A drawn object placed in line with text: no offsets, alignment or wrapping of its own, and
+/// `reach` around its frame for its outline and shadow. Its size, turn, mirroring, name and
+/// alternative text stay.
+fn in_line(obj: &mut InlineObject, reach: [f32; 4]) {
+    if let Some(f) = obj.float_mut() {
+        *f = wordcraft_doc::para::Float {
+            wrap: wordcraft_doc::para::Wrap::Inline,
+            effect: reach,
+            rot: f.rot,
+            flip_h: f.flip_h,
+            flip_v: f.flip_v,
+            alt: std::mem::take(&mut f.alt),
+            name: std::mem::take(&mut f.name),
+            hidden: f.hidden,
+            ..Default::default()
+        };
+    }
+}
+
+/// A picture (0x01) in the result of a `SHAPE` field whose drawn object (0x08) was found: it is
+/// the fallback older Word versions show for that same object, so it is left out.
+fn shape_fallback(fields: &[OpenField]) -> bool {
+    fields.last().is_some_and(|f| f.shape_drawn && is_shape_result(f))
 }
 
 /// Walk a CP range, splitting paragraphs at 0x0D/0x07 marks, applying the direct character
@@ -957,6 +1005,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 cp = cp.saturating_add(1);
                 continue;
             }
+            '\u{1}' if shape_fallback(&fields) => {}
             '\u{1}' => {
                 // A range field's result is ordinary content: its pictures are not the field's.
                 // A field in another field's result collects its result there.
@@ -969,7 +1018,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 }
             }
             // Drawn object anchor: the floating shape or picture anchored at this CP.
-            '\u{8}' => drawn_objects(ctx, cp, &mut pb),
+            '\u{8}' => drawn_objects(ctx, cp, &mut pb, fields.last_mut()),
             '\u{2}' => {
                 // Footnote or endnote reference; custom symbols share the same character. In a
                 // note's own text it is that note's number, as `w:footnoteRef` is in DOCX.
@@ -1424,6 +1473,9 @@ struct OpenField {
     /// The type byte of the field's begin in its story's field table ([`fieldtype`]), until the
     /// finished code has been given its English name.
     flt: Option<u8>,
+    /// A `SHAPE` field whose result anchors a drawn object found in the drawing: the picture in
+    /// its result is that object's fallback ([`shape_fallback`]).
+    shape_drawn: bool,
 }
 
 impl OpenField {
@@ -1518,7 +1570,17 @@ fn field_begin(fields: &mut Vec<OpenField>, props: impl FnOnce() -> CharProps) -
         _ => {
             let props = props();
             let build = FieldBuild { depth: 1, instr: String::new(), sep: None, props, object: false, code: CodeMarks::default() };
-            fields.push(OpenField { build, range: false, over_hidden: 0, over_shown: 0, button: false, code_shown: 0, code_hidden: 0, flt: None });
+            fields.push(OpenField {
+                build,
+                range: false,
+                over_hidden: 0,
+                over_shown: 0,
+                button: false,
+                code_shown: 0,
+                code_hidden: 0,
+                flt: None,
+                shape_drawn: false,
+            });
             return true;
         }
     }
