@@ -468,6 +468,8 @@ fn table_frame(ctx: &mut Ctx, story: StoryRef, t: &Table, avail: f32, depth: usi
         let content = column_content(ctx, story, t, style, depth, &grid);
         ctx.eq_count = eq_count;
         if let Some(content) = content {
+            let pins = no_wrap_widths(t, grid.len());
+            pin_no_wrap(&mut grid, &pins, total);
             match preferred_autofit(t, &content, avail, depth) {
                 Some(widths) => grid.copy_from_slice(&widths),
                 None => autofit(&mut grid, &content, t, avail),
@@ -1535,7 +1537,12 @@ fn column_content(ctx: &mut Ctx, story: StoryRef, t: &Table, style: Option<&Tabl
                     blocks_content(ctx, story, &cell.blocks, text.as_ref(), depth)
                 };
                 any |= hi > 0.0;
-                let need = (lo + m[1] + m[3], hi + m[1] + m[3]);
+                let mut need = (lo + m[1] + m[3], hi + m[1] + m[3]);
+                // A cell set not to wrap keeps its column at least as wide as its point width,
+                // else as its longest paragraph on one line.
+                if span == 1 && !t.props.fixed && is_no_wrap(cell) {
+                    need.0 = need.0.max(no_wrap_dxa(cell).unwrap_or(need.1));
+                }
                 match cols.get_mut(g) {
                     Some(col) if span == 1 => *col = (col.0.max(need.0), col.1.max(need.1)),
                     _ => spanning.push((g, span, need)),
@@ -1680,6 +1687,59 @@ fn para_content(pl: &ParaLayout) -> (f32, f32) {
         }
     }
     (lo.max(word) + indents, hi.max(line) + indents)
+}
+
+/// Whether `cell` is set not to wrap (`w:noWrap`) in a way the column widths follow: not turned
+/// and with no percentage width.
+fn is_no_wrap(cell: &Cell) -> bool {
+    cell.props.no_wrap && !cell.props.text_direction.is_turned() && cell.props.width_pct.is_none()
+}
+
+/// A cell set not to wrap with a point preferred width (`w:tcW` dxa): that width.
+fn no_wrap_dxa(cell: &Cell) -> Option<f32> {
+    is_no_wrap(cell).then_some(cell.props.width).flatten().filter(|w| w.is_finite() && *w > 0.0).map(|w| w.min(1584.0))
+}
+
+/// Each grid column's no-wrap preferred width: the widest point width (`w:tcW` dxa) of a
+/// single-column cell set not to wrap in it (Word: such a column starts from that width and never
+/// gives any of it up).
+fn no_wrap_widths(t: &Table, ncols: usize) -> Vec<Option<f32>> {
+    let mut pins = vec![None; ncols];
+    if t.props.fixed {
+        return pins;
+    }
+    for row in &t.rows {
+        let mut g = row.first_grid();
+        for cell in &row.cells {
+            let span = cell.span();
+            if span == 1
+                && cell.props.vmerge != VMerge::Continue
+                && let (Some(w), Some(pin)) = (no_wrap_dxa(cell), pins.get_mut(g))
+            {
+                *pin = Some(pin.map_or(w, |p: f32| p.max(w)));
+            }
+            g = g.saturating_add(span);
+        }
+    }
+    pins
+}
+
+/// Start each column with a no-wrap preferred width (`pins`) at that width; the other columns
+/// share what is left of the table's width `total` in their current proportions.
+fn pin_no_wrap(grid: &mut [f32], pins: &[Option<f32>], total: f32) {
+    if grid.len() != pins.len() || pins.iter().all(Option::is_none) {
+        return;
+    }
+    let pinned: f32 = pins.iter().flatten().sum();
+    let free: f32 = grid.iter().zip(pins).filter(|(_, p)| p.is_none()).map(|(w, _)| *w).sum();
+    let room = if total.is_finite() { (total - pinned).max(0.0) } else { 0.0 };
+    let k = if free > 0.0 && free.is_finite() { room / free } else { 1.0 };
+    for (w, p) in grid.iter_mut().zip(pins) {
+        *w = match p {
+            Some(p) => *p,
+            None => *w * k,
+        };
+    }
 }
 
 /// Whether nothing in `t` asks for a width (its own or any cell's): its columns then follow
