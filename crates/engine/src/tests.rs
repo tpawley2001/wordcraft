@@ -48,6 +48,7 @@ mod listnum_fields;
 mod mark_final;
 mod mark_toc_entry;
 mod move_text_keys;
+mod html_auto_spacing_off_docx;
 mod negative_margins;
 mod rtl_gutter;
 mod output_header_footer_counts;

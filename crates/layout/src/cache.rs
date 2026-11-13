@@ -104,6 +104,8 @@ pub(crate) fn env_hash(doc: &Document, opts: &LayoutOptions) -> u64 {
     opts.proof.hash(&mut h);
     wordcraft_proof::dictionary_generation().hash(&mut h);
     hyphenation_key(doc).hash(&mut h);
+    // With paragraph spacing summed, automatic (HTML-style) spacing flags are ignored.
+    doc.settings.sum_paragraph_spacing.hash(&mut h);
     outline.hash(&mut h);
     opts.filename.hash(&mut h);
     opts.filepath.hash(&mut h);
