@@ -130,3 +130,30 @@ fn a_complete_grid_is_saved_unchanged() {
     assert_eq!(saved_spans(&xml), vec![vec![1, 1]], "{xml}");
     assert_texts(&xml, rows);
 }
+
+#[test]
+fn a_lone_two_column_cell_is_saved_and_read_back_as_two_columns() {
+    let body = r#"<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="4000" w:type="dxa"/><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t>r0c0</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p/>"#;
+    let d = wordcraft_docx::read(&docx(body)).unwrap();
+    let bytes = wordcraft_docx::write(&d).unwrap();
+    let xml = document_xml(&bytes);
+    assert!(xml.contains(r#"<w:gridSpan w:val="2"/>"#), "{xml}");
+    assert_eq!(saved_grid(&xml).len(), 2, "{xml}");
+    let back = wordcraft_docx::read(&bytes).unwrap();
+    let t = back.body.iter().find_map(|b| if let wordcraft_doc::Block::Table(t) = &**b { Some(t) } else { None }).expect("table read back");
+    assert_eq!(t.cols(), 2);
+    assert_eq!(t.rows[0].cells[0].props.span, 2);
+}
+
+#[test]
+fn saved_grid_columns_add_up_to_the_table_width() {
+    let rows: &[&[Option<u32>]] = &[&[None, Some(5000), None]];
+    let xml = save(&table(r#"<w:tblW w:w="10000" w:type="dxa"/>"#, &[2000], rows));
+    let tbl_w: u32 = attr(&xml[xml.find("<w:tblW").unwrap()..], "w:w").unwrap().parse().unwrap();
+    assert_eq!(tbl_w, 10000, "{xml}");
+    let grid = saved_grid(&xml);
+    assert_eq!(grid.len(), 3, "{xml}");
+    let sum: u32 = grid.iter().sum();
+    assert!(sum.abs_diff(tbl_w) <= grid.len() as u32, "{grid:?} vs {tbl_w}: {xml}");
+    assert_texts(&xml, rows);
+}

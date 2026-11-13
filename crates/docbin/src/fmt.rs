@@ -702,10 +702,24 @@ const MAX_STYLE_DEPTH: usize = 16;
 
 /// The parent of style `istd`: its zero-based `istdBase` ([MS-DOC] §2.9.260), when that names
 /// another existing, named style (0x0FFF means none).
+///
+/// A paragraph style whose stored base is not a paragraph style (a character, table or list
+/// style, an empty slot or an index past the end of the style sheet) is based on Normal (slot
+/// 0), as Word shows it: its paragraphs take Normal's size and spacing, not the 10 pt default,
+/// and none of the other style's character formatting. Other kinds keep their stored base.
 fn base_of(raw: &[crate::stsh::RawStyle], istd: usize) -> Option<usize> {
-    let b = raw.get(istd)?.istd_base;
-    let b = usize::from(b);
-    (b != 0x0FFF && b != istd && raw.get(b).is_some_and(|s| !s.name.is_empty())).then_some(b)
+    let st = raw.get(istd)?;
+    let b = usize::from(st.istd_base);
+    if b == 0x0FFF || b == istd {
+        return None;
+    }
+    let is_para = |s: &crate::stsh::RawStyle| !matches!(s.stk, 2..=4);
+    let named = |i: usize| raw.get(i).filter(|s| !s.name.is_empty());
+    match named(b) {
+        Some(base) if !is_para(st) || is_para(base) => Some(b),
+        _ if is_para(st) => (istd != 0 && named(0).is_some_and(is_para)).then_some(0),
+        _ => None,
+    }
 }
 
 /// Style `istd` and its ancestors, root first and `istd` last. Cycles and chains deeper than

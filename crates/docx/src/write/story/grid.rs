@@ -22,7 +22,9 @@ pub(super) fn saved_grid(t: &Table) -> (Vec<f32>, Vec<Vec<u32>>) {
         let grid = (0..cols).map(|g| t.grid.get(g).copied().unwrap_or(FALLBACK_COL)).collect();
         return (grid, model_spans());
     }
-    if let Some(regrid) = from_edges(t) {
+    // A grid of edges with fewer columns than the table would undo a merge whose interior edge
+    // no row draws (a lone two-column cell): keep the model's columns and spans instead.
+    if let Some(regrid) = from_edges(t).filter(|(grid, _)| grid.len() >= cols) {
         return regrid;
     }
     (filled(t, cols), model_spans())
@@ -84,17 +86,26 @@ fn nearest(edges: &[f32], e: f32) -> usize {
 }
 
 /// The table's own grid, with each missing column `g` sized from the first cell covering it that
-/// has a fixed width, else the rest of the table width, else the mean known column.
+/// has a fixed width; the others share what the table width leaves after the known and the
+/// cell-sized columns, else take the mean known column.
 fn filled(t: &Table, cols: usize) -> Vec<f32> {
     let known = t.grid.len().min(cols);
     let known_sum: f32 = t.grid.iter().take(known).map(|w| w.max(0.0)).sum();
     let positive: Vec<f32> = t.grid.iter().take(known).copied().filter(|w| *w > 0.0).collect();
-    let missing = cols - known;
-    let from_table = t.props.width.filter(|tw| tw.is_finite() && *tw > known_sum).map(|tw| (tw - known_sum) / missing.max(1) as f32);
+    let sized: Vec<Option<f32>> = (known..cols).map(|g| from_cell(t, g, cols)).collect();
+    let sized_sum: f32 = sized.iter().flatten().sum();
+    let unresolved = sized.iter().filter(|w| w.is_none()).count();
+    let from_table = t
+        .props
+        .width
+        .filter(|tw| tw.is_finite())
+        .map(|tw| tw - known_sum - sized_sum)
+        .filter(|left| *left > 0.0)
+        .map(|left| left / unresolved.max(1) as f32);
     let mean = (!positive.is_empty()).then(|| positive.iter().sum::<f32>() / positive.len() as f32);
     let rest = from_table.or(mean).unwrap_or(FALLBACK_COL);
     let mut grid: Vec<f32> = t.grid.iter().take(known).copied().collect();
-    grid.extend((known..cols).map(|g| from_cell(t, g, cols).unwrap_or(rest)));
+    grid.extend(sized.into_iter().map(|w| w.unwrap_or(rest)));
     grid
 }
 
@@ -182,6 +193,83 @@ mod tests {
     fn no_width_information_falls_back_to_an_inch() {
         let t = table(&[], &[&[None, None]]);
         assert_eq!(saved_grid(&t).0, vec![72.0, 72.0]);
+    }
+
+    fn spanned(grid: &[f32], rows: &[&[(u32, Option<f32>)]]) -> Table {
+        let mut t = table(grid, &[]);
+        t.rows = rows
+            .iter()
+            .map(|r| Row {
+                cells: r
+                    .iter()
+                    .map(|(span, w)| {
+                        let mut c = cell(*w);
+                        c.props.span = *span;
+                        c
+                    })
+                    .collect(),
+                ..Default::default()
+            })
+            .collect();
+        t
+    }
+
+    #[test]
+    fn a_lone_two_column_cell_keeps_both_columns() {
+        let t = spanned(&[100.0], &[&[(2, Some(200.0))]]);
+        assert_eq!(saved_grid(&t), (vec![100.0, 100.0], vec![vec![2]]));
+    }
+
+    #[test]
+    fn edges_short_of_the_table_columns_keep_the_model_spans() {
+        let row: &[(u32, Option<f32>)] = &[(2, Some(200.0)), (1, Some(100.0))];
+        let t = spanned(&[], &[row, row]);
+        assert_eq!(saved_grid(&t), (vec![100.0, 100.0, 100.0], vec![vec![2, 1], vec![2, 1]]));
+    }
+
+    #[test]
+    fn edges_giving_every_table_column_are_used() {
+        let t = spanned(&[100.0], &[&[(2, Some(200.0))], &[(1, Some(120.0)), (1, Some(80.0))]]);
+        assert_eq!(saved_grid(&t), (vec![120.0, 80.0], vec![vec![2], vec![1, 1]]));
+    }
+
+    fn with_width(mut t: Table, w: Option<f32>) -> Table {
+        t.props.width = w;
+        t
+    }
+
+    #[test]
+    fn unsized_columns_share_what_the_cell_sized_ones_leave() {
+        let t = with_width(table(&[100.0], &[&[None, Some(250.0), None]]), Some(500.0));
+        assert_eq!(saved_grid(&t), (vec![100.0, 250.0, 150.0], vec![vec![1, 1, 1]]));
+        let t = with_width(table(&[100.0], &[&[None, Some(250.0), None, None]]), Some(500.0));
+        assert_eq!(saved_grid(&t), (vec![100.0, 250.0, 75.0, 75.0], vec![vec![1, 1, 1, 1]]));
+    }
+
+    #[test]
+    fn a_table_width_used_up_leaves_the_mean_known_column() {
+        let t = with_width(table(&[100.0], &[&[None, Some(250.0), None]]), Some(300.0));
+        assert_eq!(saved_grid(&t).0, vec![100.0, 250.0, 100.0]);
+    }
+
+    #[test]
+    fn no_table_width_and_no_known_columns_fall_back_to_an_inch_beside_a_sized_one() {
+        let t = table(&[], &[&[None, Some(60.0), None]]);
+        assert_eq!(saved_grid(&t).0, vec![72.0, 60.0, 72.0]);
+    }
+
+    #[test]
+    fn with_no_cell_sized_columns_the_table_width_is_shared() {
+        let t = with_width(table(&[100.0], &[&[None, None, None]]), Some(500.0));
+        assert_eq!(saved_grid(&t).0, vec![100.0, 200.0, 200.0]);
+    }
+
+    #[test]
+    fn a_table_width_that_is_not_finite_counts_as_none() {
+        for w in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let t = with_width(table(&[100.0], &[&[None, Some(250.0), None]]), Some(w));
+            assert_eq!(saved_grid(&t).0, vec![100.0, 250.0, 100.0]);
+        }
     }
 
     #[test]

@@ -260,6 +260,11 @@ impl Reader<'_> {
             let cs = |n: &str| fs.child(n).and_then(|f| f.child("a:cs")).and_then(|c| c.attr("typeface")).unwrap_or_default().to_string();
             self.pc.major_cs = cs("a:majorFont");
             self.pc.minor_cs = cs("a:minorFont");
+            let ea = |n: &str| {
+                fs.child(n).and_then(|f| f.child("a:ea")).and_then(|c| c.attr("typeface")).filter(|t| t.len() < 256).unwrap_or_default().to_string()
+            };
+            self.pc.major_ea = ea("a:majorFont");
+            self.pc.minor_ea = ea("a:minorFont");
             // Per-script fonts (`a:font script="Arab"`); Office's themes list about 30.
             let scripts = |n: &str| -> Vec<(String, String)> {
                 let Some(f) = fs.child(n) else { return Vec::new() };
@@ -280,10 +285,13 @@ impl Reader<'_> {
     }
 
     /// `w:settings/w:clrSchemeMapping`: which scheme colour text1, background1… stand for. Also
-    /// `w:themeFontLang/@w:bidi`, the language whose script picks the `…Bidi` theme fonts.
+    /// `w:themeFontLang/@w:bidi` and `@w:eastAsia`, the languages whose scripts pick the `…Bidi`
+    /// and `…EastAsia` theme fonts.
     pub(super) fn read_color_mapping(&mut self, path: &str) {
         let Ok(Some(root)) = self.xml(path) else { return };
-        self.pc.bidi_script = root.child("w:themeFontLang").and_then(|l| l.attr("w:bidi")).filter(|v| !v.trim().is_empty()).map(props::lang_script);
+        let lang = |a: &str| root.child("w:themeFontLang").and_then(|l| l.attr(a)).filter(|v| !v.trim().is_empty()).map(props::lang_script);
+        self.pc.bidi_script = lang("w:bidi");
+        self.pc.ea_script = lang("w:eastAsia");
         let Some(m) = root.child("w:clrSchemeMapping") else { return };
         let names = [
             "dark1",

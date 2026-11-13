@@ -4,17 +4,20 @@ use wordcraft_doc::para::InlineObject;
 use wordcraft_doc::props::{Align, Border, BorderStyle, Borders, ParaProps, TextDirection};
 use wordcraft_doc::{Pos, Table};
 
+mod autofit_preferred;
 mod autospace;
 mod autospace_legacy_lists;
 mod balance_pinned_floats;
 mod bidi;
 mod blank_side_page;
 mod border_band;
+mod break_line_notes;
 mod break_then_float;
 mod budget;
 mod button_fields;
 mod button_switches;
 mod cell_floats;
+mod column_break_line;
 mod column_top_float;
 mod complex;
 mod continuous_resized_section;
@@ -22,6 +25,7 @@ mod custom_note_marks;
 mod deleted_cell_end;
 mod deleted_mark_join;
 mod deleted_rows;
+mod deleted_section_break;
 mod display_hide_body;
 mod early_float_stays;
 mod endnote_suppress;
@@ -39,6 +43,7 @@ mod float_table_bottom;
 mod float_table_notes;
 mod float_top;
 mod footnotes_in_columns;
+mod frame_page_break;
 mod grid;
 mod header_extent;
 mod header_extent_fixtures;
@@ -48,7 +53,9 @@ mod hf_empty_anchor_legacy;
 mod hf_float_wrap_modes;
 mod hf_frame_flow;
 mod hf_top_bottom_wrap;
+mod hidden_rows;
 mod html_auto_spacing_off;
+mod inline_drawing_reach;
 mod item_display_clip;
 mod item_display_warp;
 mod keep_next_long_chain;
@@ -60,6 +67,7 @@ pub(crate) mod linear;
 mod list_label_decorations;
 mod list_numbers_merged_cells;
 mod list_numbers_per_story;
+mod math_line_multiple;
 mod metafile_symbol_text;
 mod missing_font_line;
 mod missing_font_line_more;
@@ -75,6 +83,8 @@ mod next_column_section;
 mod next_page_restart_side;
 mod no_leading;
 mod no_leading_missing_fonts;
+mod no_tab_hang_ind;
+mod note_contextual_spacing;
 mod notes_overflow;
 mod notes_overflow_last_line;
 mod numeral;
@@ -82,15 +92,20 @@ mod pages;
 mod pct_table_legacy_width;
 mod picture_glue;
 mod picture_glue_touching;
+mod picture_line_at_least;
 mod pushed_by_earlier_float;
+mod row_end_anchor_columns;
 mod row_exception_no_borders;
+mod row_split_one_line_cell;
 mod rtf_justify_squeeze;
 mod rtf_squeeze_after_tab;
 mod rtf_squeeze_any_align;
+mod rtf_wrapped_spaces;
 mod rtf_wraptrsp_squeeze;
 mod rtl_gutter_vertical;
 mod section_pages_blank;
 mod shared_row_edge;
+mod split_break_float;
 mod split_break_mark;
 mod square_float_page_fit;
 mod square_float_paper_shift;
@@ -98,16 +113,20 @@ mod styleref;
 mod styleref_args;
 mod styleref_case;
 mod styleref_errors;
+mod symbol_advance;
 mod symbol_field;
 mod symbol_font_lines;
 mod symbol_missing_box;
 mod tab_past_margin;
 mod tab_to_right_indent;
 mod table_contact;
+mod table_no_wrap;
+mod tall_footer_leading;
 mod textbox;
 mod turned_cell_autofit;
 mod vertical;
 mod wp_justification_squeeze;
+mod wrap_trail_spaces;
 
 const WRAP_TEST_FONT: &str = "Source Sans 3";
 
@@ -3998,6 +4017,127 @@ fn hidden_drawings_are_neither_drawn_nor_take_room() {
     assert_eq!(draws.iter().filter(|x| matches!(x, display::Draw::Shape { .. })).count(), 1, "{draws:?}");
 }
 
+/// #6027: a text box inside a group (Word's cards of a coloured bar and a text box) is text to
+/// a click, as a text box on its own is: the click edits its text instead of grabbing the
+/// group. The group's other members still grab the group.
+#[test]
+fn a_grouped_text_box_is_text_to_a_click() {
+    crate::test_fonts();
+    let mut d = Document::from_text("body text");
+    let id = d.add_part(
+        wordcraft_doc::PartKind::TextBox,
+        vec![wordcraft_doc::para_block(wordcraft_doc::Paragraph::with_text("inside", Default::default()))],
+    );
+    let shape = |kind, w, h, story| InlineObject::Shape {
+        kind,
+        w,
+        h,
+        fill: None,
+        stroke: None,
+        stroke_width: 1.0,
+        float: Default::default(),
+        story,
+        freeform: None,
+        effects: Default::default(),
+        extra: Default::default(),
+    };
+    let float = wordcraft_doc::para::Float {
+        wrap: wordcraft_doc::para::Wrap::InFrontOfText,
+        h_rel: wordcraft_doc::para::Anchor::Page,
+        v_rel: wordcraft_doc::para::Anchor::Page,
+        x: 100.0,
+        y: 300.0,
+        ..Default::default()
+    };
+    let group = InlineObject::Group {
+        w: 200.0,
+        h: 100.0,
+        float,
+        ch_w: 200.0,
+        ch_h: 100.0,
+        children: vec![
+            wordcraft_doc::para::GroupChild { x: 0.0, y: 0.0, obj: shape(wordcraft_doc::para::ShapeKind::Rectangle, 200.0, 30.0, None) },
+            wordcraft_doc::para::GroupChild { x: 0.0, y: 40.0, obj: shape(wordcraft_doc::para::ShapeKind::TextBox, 200.0, 60.0, Some(id)) },
+        ],
+        canvas: None,
+    };
+    d.insert_object(&Pos::body(0, 0), group, &Default::default()).unwrap();
+    let l = lay(&d);
+    // Inside the text box: its story, and no object to grab.
+    assert_eq!(l.story_at(0, 200.0, 370.0), Some(StoryRef::Part(id)));
+    assert_eq!(l.object_at(0, 200.0, 370.0, 4.0), None);
+    assert_eq!(l.text_box_story(id, 0), Some(StoryRef::Body), "the box's text sits in the body");
+    // On the bar, and on the text box's border: the group.
+    for (x, y) in [(200.0, 315.0), (200.0, 340.5)] {
+        let hit = l.object_at(0, x, y, 4.0).unwrap_or_else(|| panic!("the group at {x}, {y}"));
+        assert_eq!((hit.path.clone(), hit.text_box), (Path::top(0), None));
+    }
+    assert_ne!(l.story_at(0, 200.0, 315.0), Some(StoryRef::Part(id)));
+    // The group keeps its text box's area relative to itself, so the area moves with it.
+    let Some(Placed::Object { rect, group_boxes, .. }) = l.pages[0].items.iter().find(|i| matches!(i, Placed::Object { .. })) else { panic!() };
+    assert_eq!((rect.x, rect.y), (100.0, 300.0));
+    assert_eq!(group_boxes.as_slice(), [(wordcraft_geom::Rect::new(0.0, 40.0, 200.0, 60.0), id)]);
+}
+
+/// #6027: a group's text box areas turn with the group (a group in a cell or text box whose
+/// text runs down the page) and are found in headers and footers too.
+#[test]
+fn grouped_text_box_areas_turn_with_the_group_and_work_in_headers() {
+    let id = 7;
+    let group = |rect| Placed::Object {
+        rect,
+        spin: Default::default(),
+        story: StoryRef::Part(1),
+        path: Path::top(0),
+        off: 0,
+        text_box: None,
+        wrap: Default::default(),
+        origin: Default::default(),
+        group_boxes: vec![(wordcraft_geom::Rect::new(0.0, 40.0, 200.0, 60.0), id)],
+    };
+    let mut g = group(wordcraft_geom::Rect::new(0.0, 0.0, 200.0, 100.0));
+    g.turn(TextDirection::Down, 300.0, 50.0);
+    let Placed::Object { rect, group_boxes, .. } = &g else { panic!() };
+    let want = crate::placed::turn_rect(TextDirection::Down, 300.0, 50.0, wordcraft_geom::Rect::new(0.0, 40.0, 200.0, 60.0));
+    let (r, _) = group_boxes[0];
+    assert_eq!(wordcraft_geom::Rect::new(rect.x + r.x, rect.y + r.y, r.w, r.h), want);
+    // A header's group: its box is where a click in the header edits text.
+    let page = Page { header: vec![group(wordcraft_geom::Rect::new(100.0, 30.0, 200.0, 100.0))], ..Default::default() };
+    let l = DocLayout { pages: vec![page], ..Default::default() };
+    assert_eq!(l.header_footer_text_box_at(0, 150.0, 100.0), Some(id));
+    assert_eq!(l.header_footer_text_box_at(0, 150.0, 40.0), None, "the group's bar is not text");
+}
+
+/// #6027: where two text boxes of one group overlap, a click enters the one painted on top (the
+/// last member), in the body and in a header alike.
+#[test]
+fn click_in_overlapping_grouped_text_boxes_enters_the_top_one() {
+    let (low, top) = (3, 4);
+    let group = |rect| Placed::Object {
+        rect,
+        spin: Default::default(),
+        story: StoryRef::Part(1),
+        path: Path::top(0),
+        off: 0,
+        text_box: None,
+        wrap: Default::default(),
+        origin: Default::default(),
+        group_boxes: vec![(wordcraft_geom::Rect::new(0.0, 0.0, 100.0, 100.0), low), (wordcraft_geom::Rect::new(50.0, 50.0, 100.0, 100.0), top)],
+    };
+    let page = Page {
+        items: vec![group(wordcraft_geom::Rect::new(100.0, 100.0, 150.0, 150.0))],
+        header: vec![group(wordcraft_geom::Rect::new(100.0, 100.0, 150.0, 150.0))],
+        ..Default::default()
+    };
+    let l = DocLayout { pages: vec![page], ..Default::default() };
+    // Overlap (page 175, 175 is inside both boxes): the top box takes the click, and typing.
+    assert_eq!(l.story_at(0, 175.0, 175.0), Some(StoryRef::Part(top)));
+    assert_eq!(l.header_footer_text_box_at(0, 175.0, 175.0), Some(top));
+    // Outside the overlap each box still answers for itself.
+    assert_eq!(l.story_at(0, 110.0, 110.0), Some(StoryRef::Part(low)));
+    assert_eq!(l.story_at(0, 240.0, 240.0), Some(StoryRef::Part(top)));
+}
+
 #[test]
 fn deleted_float_leaves_no_wrap_area_without_markup() {
     crate::test_fonts();
@@ -4479,11 +4619,14 @@ fn row_content_pieces(text: &str, props: ParaProps, room: f32) -> Vec<(usize, us
         .collect()
 }
 
+/// A one-line "Label" whose line fits but whose 8pt after doesn't would keep nothing on the
+/// page, so the whole row moves on (Word leaves no cell empty beside its neighbours' first lines;
+/// probes in `tests/row_split_one_line_cell.rs`). Two lines with room for the first split there.
 #[test]
 fn row_split_ignores_afterspace() {
     crate::test_fonts();
     let two = ["Top", "Bottom"].join(&wordcraft_doc::para::LINE_BREAK.to_string());
-    for (text, room, expected) in [("Label", 18.0, vec![(0, 1), (1, 3)]), (two.as_str(), 32.0, vec![(0, 2), (2, 2)])] {
+    for (text, room, expected) in [("Label", 18.0, vec![(0, 0), (1, 4)]), (two.as_str(), 32.0, vec![(0, 2), (2, 2)])] {
         let props = ParaProps { space_after: Some(8.0), widow_control: Some(true), ..Default::default() };
         assert_eq!(row_content_pieces(text, props, room), expected, "text={text:?}, room={room}");
     }
@@ -5909,10 +6052,11 @@ fn list_label_does_not_inflate_an_inline_picture_floor() {
         let (a, d) = label.fold((st.ascent, st.descent), |(a, d), s| (a.max(s.ascent), d.max(s.descent)));
         // Multiple spacing: the picture plus its share of the font's height, the label's being a
         // font too (Word, measured: 144 pt at 1.25 with a 24 pt label takes 144 + 0.25 * 27.6);
-        // at least: the picture and the descent.
+        // at least: the picture alone, no room for the font below it (Word, measured: at least
+        // 12 with a 400 pt picture alone takes 400, `tests::picture_line_at_least`).
         let want = match spacing {
             LineSpacing::Multiple(m) => 144.0 + (m - 1.0) * (a + d),
-            _ => 144.0 + st.descent,
+            _ => 144.0,
         };
         assert!((line.height - want).abs() < 0.01, "{spacing:?}: {} (want {want})", line.height);
         assert!((line.baseline - line.top - 144.0).abs() < 0.01);
@@ -8739,8 +8883,8 @@ fn picture_row(room: f32, min: f32, pic_h: f32, lines: usize) -> (DocLayout, Vec
         t.rows[1].props.height = Some(min);
         t.rows[1].props.height_rule = HeightRule::AtLeast;
     }
-    for c in 1..3 {
-        t.rows[1].cells[c].blocks = lines_in_cell(lines, "N/A");
+    for cell in &mut t.rows[1].cells[1..3] {
+        cell.blocks = lines_in_cell(lines, "N/A");
     }
     set_at_least_row_spacing(&mut t);
     let mut p = wordcraft_doc::Paragraph::with_text("", Default::default());
@@ -10469,8 +10613,8 @@ fn a_hidden_cell_mark_takes_no_room() {
         let mut d = Document::from_text("Above");
         let mut t = Table::new(3, 2, 300.0);
         for (r, text) in [(0, "R1"), (2, "R3")] {
-            for c in 0..2 {
-                t.rows[r].cells[c].blocks = vec![wordcraft_doc::para_block(wordcraft_doc::Paragraph::with_text(text, Default::default()))];
+            for cell in &mut t.rows[r].cells {
+                cell.blocks = vec![wordcraft_doc::para_block(wordcraft_doc::Paragraph::with_text(text, Default::default()))];
             }
         }
         for (cell, hide) in t.rows[1].cells.iter_mut().zip(hide) {
@@ -12625,6 +12769,7 @@ fn split_cell_moves_image_frame() {
             text_box: None,
             wrap: Wrap::Square,
             origin: wordcraft_geom::Point::new(3.0, 145.0),
+            group_boxes: Vec::new(),
         };
         let mut kept = image.clone();
         kept.translate(0.0, top - 150.0);
