@@ -39,6 +39,7 @@ mod footnotes_in_columns;
 mod grid;
 mod header_extent;
 mod header_extent_fixtures;
+mod header_half_page;
 mod header_space_after;
 mod hf_empty_anchor_legacy;
 mod hf_float_wrap_modes;
