@@ -89,6 +89,7 @@ mod web_divs;
 mod word_xml;
 mod wordml2003_write;
 mod wp_justification;
+mod wrap16_line_row;
 mod wrap_trail_spaces;
 mod write_protection;
 mod zero_cell_margins;
