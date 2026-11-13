@@ -331,10 +331,6 @@ pub(crate) struct Props {
     pub(crate) rot: f32,
     /// Crop fractions (left, top, right, bottom).
     pub(crate) crop: [f32; 4],
-    /// The same crop fractions signed and unclamped to `0..1` (bounded to ±100): a negative
-    /// crop adds room on that side ([MS-ODRAW] §2.3.23.2-§2.3.23.5). Used only for the size of
-    /// an inline picture; `crop` is how the picture is drawn.
-    pub(crate) crop_signed: [f32; 4],
     pub(crate) fill_color: Option<Rgb>,
     pub(crate) filled: Option<bool>,
     pub(crate) line_color: Option<Rgb>,
@@ -418,9 +414,6 @@ impl Props {
                     let slot = [1, 3, 0, 2][(pid - 0x0100) as usize];
                     let v = fixed(op);
                     self.crop[slot] = if v.is_finite() { v.clamp(0.0, 0.99) } else { 0.0 };
-                    if let Some(c) = self.crop_signed.get_mut(slot) {
-                        *c = if v.is_finite() { v.clamp(-100.0, 100.0) } else { 0.0 };
-                    }
                 }
                 0x0104 => self.pib = Some(op),
                 0x0106 => self.pib_flags = Some(op),
