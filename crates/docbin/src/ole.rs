@@ -379,7 +379,7 @@ fn pic_goal([dxa, dya, mx, my]: [u32; 4]) -> Option<(f32, f32)> {
 
 /// A Windows Metafile: its META_HEADER has type 1 or 2, headerSize 9, version 0x0100 or 0x0300,
 /// and a file size (in 16-bit words) that fits in the bytes there are ([MS-WMF] §2.3.2.2).
-fn is_wmf(b: &[u8]) -> bool {
+pub(crate) fn is_wmf(b: &[u8]) -> bool {
     let u16_at = |at: usize| b.get(at..at + 2).and_then(|s| s.try_into().ok()).map(u16::from_le_bytes);
     let size = b.get(6..10).and_then(|s| s.try_into().ok()).map(u32::from_le_bytes);
     let (Some(typ), Some(header), Some(version), Some(size)) = (u16_at(0), u16_at(2), u16_at(4), size) else {

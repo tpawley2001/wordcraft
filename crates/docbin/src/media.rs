@@ -353,6 +353,14 @@ fn locate(data: &[u8], fc_pic: u32, pics: &mut Pictures) -> Option<Found> {
     let w = (dxa_goal / 20.0 * scale(mx)).clamp(1.0, 1584.0);
     let h = (dya_goal / 20.0 * scale(my)).clamp(1.0, 1584.0);
     let body = pic.get(cb_header..end)?;
+    // Older writers and OLE servers' field results (charts, clip art) store a plain Windows
+    // Metafile ([MS-WMF] §2.3.2.2 META_HEADER, no placeable header) right after the PICF,
+    // drawn at the goal size times the scale. Checked before the raster sniff: a metafile's
+    // MaxRecord field can read as a bitmap signature.
+    if body.len() <= officeart::MAX_METAFILE && crate::ole::is_wmf(body) {
+        let start = base.checked_add(cb_header)?;
+        return Some(Found::Range(Located { w, h, range: start..start.checked_add(body.len())?, ext: "wmf" }));
+    }
     let at = sniff(body)?;
     let image = body.get(at..)?;
     let start = base.checked_add(cb_header)?.checked_add(at)?;
@@ -451,5 +459,100 @@ mod tests {
             assert_eq!(hr.align, Align::Left);
         }
         assert!(rule(&[(0x03BF, 1 << 11)]).rule.is_none());
+    }
+
+    /// META_HEADER (Type 1, HeaderSize 9, Version 0x0300, `size` words, MaxRecord) then META_EOF.
+    fn wmf(size: u32, max_record: u32) -> Vec<u8> {
+        let mut v = vec![1, 0, 9, 0, 0, 3];
+        v.extend_from_slice(&size.to_le_bytes());
+        v.extend_from_slice(&[0, 0]);
+        v.extend_from_slice(&max_record.to_le_bytes());
+        v.extend_from_slice(&[0, 0, 3, 0, 0, 0, 0, 0]);
+        v
+    }
+
+    fn picf(mm: u16, goal: (i16, i16), scale: (u16, u16), rest: &[u8]) -> Vec<u8> {
+        let mut data = vec![0u8; CB_HEADER];
+        data[0..4].copy_from_slice(&((CB_HEADER + rest.len()) as u32).to_le_bytes());
+        data[4..6].copy_from_slice(&(CB_HEADER as u16).to_le_bytes());
+        data[6..8].copy_from_slice(&mm.to_le_bytes());
+        data[28..30].copy_from_slice(&goal.0.to_le_bytes());
+        data[30..32].copy_from_slice(&goal.1.to_le_bytes());
+        data[32..34].copy_from_slice(&scale.0.to_le_bytes());
+        data[34..36].copy_from_slice(&scale.1.to_le_bytes());
+        data.extend_from_slice(rest);
+        data
+    }
+
+    fn get(data: &[u8]) -> Option<(Inline, Vec<u8>)> {
+        let mut pics = Pictures::default();
+        let pic = pics.get(data, 0)?.clone();
+        let bytes = pics.media.get(&pic.key).map(|b| b.to_vec()).unwrap_or_default();
+        Some((pic, bytes))
+    }
+
+    fn size(p: &Inline, w: f32, h: f32) -> bool {
+        (p.w - w).abs() <= 0.01 && (p.h - h).abs() <= 0.01
+    }
+
+    const CHART: (i16, i16) = (8839, 6161);
+    const FULL: (u16, u16) = (1000, 1000);
+
+    #[test]
+    fn raw_metafile_after_picf_is_a_wmf_picture_at_its_scaled_size() {
+        let (p, bytes) = get(&picf(8, CHART, FULL, &wmf(12, 3))).unwrap();
+        assert!(p.key.ends_with(".wmf"), "{}", p.key);
+        assert_eq!(bytes, wmf(12, 3));
+        assert!(size(&p, 441.95, 308.05), "{} x {}", p.w, p.h);
+        for (goal, scale, w, h) in
+            [((10920, 6082), (570, 570), 311.22, 173.337), ((5842, 4667), (850, 860), 248.285, 200.681), ((7560, 4159), (0, 0), 378.0, 207.95)]
+        {
+            let (p, _) = get(&picf(8, goal, scale, &wmf(12, 3))).unwrap();
+            assert!(size(&p, w, h), "{goal:?} {scale:?}: {} x {}", p.w, p.h);
+        }
+        let (p, _) = get(&picf(2, CHART, FULL, &wmf(12, 3))).unwrap();
+        assert!(p.key.ends_with(".wmf") && size(&p, 441.95, 308.05));
+    }
+
+    #[test]
+    fn malformed_or_cut_metafiles_are_dropped() {
+        assert!(get(&picf(8, CHART, FULL, &wmf(1000, 3))).is_none());
+        assert!(get(&picf(8, CHART, FULL, &[0u8; 24])).is_none());
+        let mut v2 = wmf(12, 3);
+        v2[4..6].copy_from_slice(&0x0200u16.to_le_bytes());
+        assert!(get(&picf(8, CHART, FULL, &v2)).is_none());
+        let mut cut = picf(8, CHART, FULL, &wmf(12, 3));
+        cut[0..4].copy_from_slice(&((CB_HEADER + 10) as u32).to_le_bytes());
+        assert!(get(&cut).is_none());
+    }
+
+    #[test]
+    fn lcb_past_the_stream_end_takes_only_what_is_there() {
+        let mut whole = picf(8, CHART, FULL, &wmf(12, 3));
+        whole[0..4].copy_from_slice(&u32::MAX.to_le_bytes());
+        let (p, bytes) = get(&whole).unwrap();
+        assert!(p.key.ends_with(".wmf"));
+        assert_eq!(bytes, wmf(12, 3));
+        let mut short = whole.clone();
+        short.truncate(CB_HEADER + 20);
+        assert!(get(&short).is_none());
+    }
+
+    #[test]
+    fn a_bm_max_record_is_still_a_metafile_and_rasters_are_unchanged() {
+        let (p, _) = get(&picf(8, CHART, FULL, &wmf(12, 0x4D42))).unwrap();
+        assert!(p.key.ends_with(".wmf"), "{}", p.key);
+        let png = [b"\x89PNG\r\n\x1a\n".as_slice(), &[0u8; 16]].concat();
+        let (p, _) = get(&picf(8, (1440, 1440), FULL, &png)).unwrap();
+        assert!(p.key.ends_with(".png"), "{}", p.key);
+        let after = [[7u8; 8].as_slice(), &png].concat();
+        let (p, _) = get(&picf(8, (1440, 1440), FULL, &after)).unwrap();
+        assert!(p.key.ends_with(".png"), "{}", p.key);
+    }
+
+    #[test]
+    fn shape_mode_pictures_do_not_take_the_metafile_rule() {
+        // MM_SHAPE with a bare WMF and no OfficeArt container: the shape path, as before.
+        assert!(get(&picf(MM_SHAPE, CHART, FULL, &wmf(12, 3))).is_none());
     }
 }
