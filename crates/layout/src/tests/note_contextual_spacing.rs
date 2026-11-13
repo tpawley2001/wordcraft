@@ -230,6 +230,6 @@ fn joined_notes_leave_room_for_body_text() {
     let notes: [Note; 3] = [&["C"], &["C"], &["C"]];
     let (d, _) = build(60, &notes, false);
     let spaced = page1_body_lines(&lay_out(&d));
-    assert!(spaced >= 20 && spaced < 60, "the page is full of body text: {spaced}");
+    assert!((20..60).contains(&spaced), "the page is full of body text: {spaced}");
     assert!(joined > spaced, "{joined} body lines with joined notes, {spaced} with spaced ones");
 }
