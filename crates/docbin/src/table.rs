@@ -98,8 +98,9 @@ pub(crate) struct RowInfo {
     indent: Option<f32>,
     borders: Option<Borders>,
     /// Default cell margins `[top, left, bottom, right]` (points), from
-    /// `sprmTCellPaddingDefault` with `sprmTDxaGapHalf` for an unset left or right side.
-    cell_margins: Option<[f32; 4]>,
+    /// `sprmTCellPaddingDefault` with `sprmTDxaGapHalf` for an unset left or right side. A row
+    /// that defines its cells but stores neither has zero margins (the gap half starts at 0).
+    pub(crate) cell_margins: Option<[f32; 4]>,
     /// The table's preferred width from `sprmTTableWidth`.
     width: Option<TableWidth>,
     /// Per-cell margin overrides from `sprmTCellPadding`, one slot per cell.
@@ -388,6 +389,10 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
             _ => {}
         }
     }
+    // A row's table properties start from zeroes ([MS-DOC] 2.6.3): a row that defines its cells
+    // without a `sprmTDxaGapHalf` has a gap half of 0, so no left or right cell margin (not the
+    // 5.4 pt that a table without margins gets in a .docx).
+    let gap_half = gap_half.or(if r.edges.is_empty() { None } else { Some(0) });
     r.cell_margins = cell_margins(padding, gap_half);
     r.indent = edge0.and_then(|e| row_indent(e, gap_half, r.cell_margins));
     r.cant_split = cant_split(prc.unwrap_or(papx), version);
@@ -670,6 +675,9 @@ impl TableBuilder {
         if self.props.cell_margins.is_none() {
             self.props.cell_margins = info.cell_margins;
         }
+        // Rows mark their own margins: a later row whose default margins differ from the table's
+        // gives them to the sides its cells leave unset.
+        let row_margins = (row_end && !self.rows.is_empty()).then_some(info.cell_margins).flatten().filter(|m| Some(*m) != self.props.cell_margins);
         if !cell_end {
             self.cell.push(para_block(para));
             return;
@@ -704,6 +712,14 @@ impl TableBuilder {
             // A row deleted with tracking: its end mark carries the deletion revision, as a
             // deleted paragraph mark does (sprmCFRMarkDel). Cell marks alone don't delete it.
             row.props.del = row_del;
+            if let Some(m) = row_margins {
+                for c in row.cells.iter_mut().filter(|c| c.props.margins.is_none()) {
+                    let sides = c.props.partial_margins.get_or_insert([None; 4]);
+                    for (side, v) in sides.iter_mut().zip(m) {
+                        side.get_or_insert(v);
+                    }
+                }
+            }
             // Each row carries its own table borders: the table takes the first row's, and a
             // later row whose borders differ keeps them as its exceptions (`w:tblPrEx`), so a
             // borderless row under a bordered first row draws no grid.

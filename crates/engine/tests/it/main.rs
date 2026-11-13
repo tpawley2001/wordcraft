@@ -26,6 +26,7 @@ mod rtf_sections;
 #[cfg(not(target_arch = "wasm32"))]
 mod safe_save;
 mod suppress_endnotes;
+mod symbol_class_font;
 mod three_column_headers;
 mod toc_page_numbers_only;
 

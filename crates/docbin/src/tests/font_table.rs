@@ -145,3 +145,26 @@ fn no_font_table_or_a_broken_one_leaves_the_list_empty() {
     // The table ends inside the roman FFN's header: nothing to list, nothing to panic on.
     assert!(read(&doc_bytes(Some(&table), Some(8))).expect("opens").settings.roman_fonts.is_empty());
 }
+
+/// An FFN with this charset (`chs`) and PANOSE.
+fn ffn_classed(name: &str, chs: u8, panose: [u8; 10]) -> Vec<u8> {
+    let mut v = ffn(ROMAN_VARIABLE, name, None);
+    v[3] = chs;
+    v[5..15].copy_from_slice(&panose);
+    v
+}
+
+#[test]
+fn symbol_class_fonts_reach_the_document_settings() {
+    // D7: a converted document's icon font (symbol charset, pictorial PANOSE) is marked, under
+    // its own name in lowercase; a text font and a symbol-charset font with no PANOSE are not.
+    let table = sttbf_ffn(&[
+        ffn_classed("Times New Roman", 0, [2, 2, 6, 3, 5, 4, 5, 2, 3, 4]),
+        ffn_classed("WP IconicSymbolsA", 2, [5, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
+        ffn_classed("Zzyzx Nopanose", 2, [0; 10]),
+    ]);
+    let d = read(&doc_bytes(Some(&table), None)).expect("opens");
+    assert_eq!(d.settings.symbol_class_fonts, ["wp iconicsymbolsa"]);
+    // Without a font table, none.
+    assert!(read(&doc_bytes(None, None)).expect("opens").settings.symbol_class_fonts.is_empty());
+}

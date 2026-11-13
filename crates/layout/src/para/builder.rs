@@ -175,7 +175,11 @@ impl<'a> Builder<'a> {
             // East Asian characters drawn from a missing East Asian font take that font's line.
             line_font
                 .and_then(|f| wordcraft_fonts::word::missing_font_line_leading(f, &wordcraft_fonts::word::resolve(f, rc.bold, rc.italic), leading))
-                .or_else(|| wordcraft_fonts::word::missing_font_line_leading(&rc.font, &r, leading))
+                .or_else(|| {
+                    // A missing font the font table marks as a symbol font has Symbol's line.
+                    let font = super::chars::symbol_class_as(self.env.doc, &rc.font).unwrap_or(&rc.font);
+                    wordcraft_fonts::word::missing_font_line_leading(font, &r, leading)
+                })
         };
         let (ascent, descent) = match line {
             Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
@@ -297,7 +301,8 @@ impl<'a> Builder<'a> {
         let resolved = wordcraft_fonts::word::resolve(family, rc.bold, rc.italic);
         let primary = resolved.face;
         // Symbol-font characters are laid out as their Unicode equivalents.
-        let sym = SymbolRun::of(&rc.font, &resolved);
+        // A missing font the font table marks as a symbol font is drawn as Symbol.
+        let sym = SymbolRun::of(super::chars::symbol_class_as(self.env.doc, &rc.font).unwrap_or(&rc.font), &resolved);
         let show = |c: char| sym.map_or(c, |m| m.show(c));
         // A code the symbol font has no glyph for is its empty box, in the paragraph's own text
         // (list labels and field results keep their characters).

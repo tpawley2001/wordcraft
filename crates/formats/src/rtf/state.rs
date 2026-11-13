@@ -63,6 +63,8 @@ pub(super) enum Dest {
     PnTxtA,
     /// The program that wrote the file (`{\*\generator …}`): its text is kept.
     Generator,
+    /// A font-table entry's PANOSE (`{\*\panose …}`): its hex digits are kept for the entry.
+    Panose,
     /// A legacy form field's definition inside a field instruction (`{\*\formfield …}`): its
     /// words are read into the field's [`super::form_field::FormField`].
     FormField,
@@ -88,6 +90,9 @@ pub(super) const MAX_TEMPLATE_CHARS: usize = 4096;
 
 /// Longest text kept of one information-group field or user property name or value (bytes).
 pub(super) const MAX_INFO_TEXT: usize = 64 * 1024;
+/// Most characters of a `{\*\panose …}` group kept: one past its 20 hex digits, so a longer
+/// one is rejected rather than cut to fit.
+pub(super) const MAX_PANOSE_TEXT: usize = 21;
 /// Most user properties one file may bring in.
 pub(super) const MAX_USER_PROPS: usize = 1_000;
 /// Most latent-style exceptions kept (`{\lsdlockedexcept …}`); Word writes about 380.

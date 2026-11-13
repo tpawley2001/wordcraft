@@ -50,6 +50,7 @@ mod ole_print;
 mod ole_result_objects;
 mod paper_source;
 mod row_edges_grid;
+mod row_no_gap_margins;
 mod row_table_borders;
 mod phonetic_guide;
 mod section_columns;

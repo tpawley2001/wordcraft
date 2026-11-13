@@ -135,6 +135,9 @@ struct Scan {
     has_tab: bool,
     /// The last tab on the line went to a custom stop (or the hanging indent's stop).
     last_tab_set: bool,
+    /// The RTF space squeeze may apply to the text after the line's last tab: true until a tab
+    /// goes to anything but a left stop.
+    rtf_after_tab: bool,
     /// A tab went past the right edge from a custom stop at it: nothing more wraps on this line.
     overflow: bool,
     /// The first word doesn't fit a span narrowed by a floating object: it moves on whole.
@@ -353,6 +356,7 @@ impl<'e> Breaker<'e> {
             text_seen: false,
             has_tab: false,
             last_tab_set: false,
+            rtf_after_tab: true,
             overflow: false,
             skip: false,
         }
@@ -649,14 +653,18 @@ impl<'e> Breaker<'e> {
         let stretch_end = sc.end == LineEnd::Wrap || (sc.end == LineEnd::LineBreak && self.expand_break);
         let justify = display.is_none() && ((rp.align == Align::Justify && stretch_end) || rp.align == Align::Distribute);
         // A line that only fits with shrunk spaces is shrunk, the last line of the paragraph too.
-        let rtf_squeeze = self.rtf_squeeze && sc.proportional_spaces == 0;
-        let shrink = display.is_none() && (self.shrink_spaces || rtf_squeeze) && slack < 0.0 && last_tab.is_none();
+        // The RTF squeeze takes only the spaces after the line's last tab (counted from there).
+        let rtf_squeeze = self.rtf_squeeze && sc.proportional_spaces == 0 && sc.rtf_after_tab && sc.pending_tab.is_none();
+        let shrink = display.is_none() && ((self.shrink_spaces && last_tab.is_none()) || rtf_squeeze) && slack < 0.0;
         if display.is_none() && self.wp_squeeze && slack < 0.0 {
             let room = wp_line_room(sc.left, sc.right_edge);
             wp_squeeze_line(pl, &mut sc.xs, (c0, c1, align_from), (content_end, slack), room);
         } else if shrink {
             let cap = if rtf_squeeze { RTF_MAX_SPACE_SHRINK } else { MAX_SPACE_SHRINK };
-            shrink_line_spaces(pl, &mut sc.xs, (c0, c1), (content_end, slack), cap, (rtf_squeeze, rtf_squeeze));
+            let from = if rtf_squeeze { align_from } else { c0 };
+            if let Some(xs) = sc.xs.get_mut(from - c0..) {
+                shrink_line_spaces(pl, xs, (from, c1), (content_end, slack), cap, (rtf_squeeze, rtf_squeeze));
+            }
         } else if justify && slack > 0.0 {
             justify_line(pl, &mut sc.xs, (c0, c1, align_from), (content_end, slack), rp.align == Align::Distribute);
         }
@@ -888,6 +896,15 @@ impl Scan {
         let rp = &bk.rp;
         let ptab = pl.ptabs.iter().find(|t| t.0 == j).map(|&(_, a, b, l)| ptab_stop(a, b, l, bk.width, (rp.indent_left, rp.indent_right)));
         let stop = ptab.unwrap_or_else(|| next_tab(self.x, &rp.tabs, bk.default_tab, bk.hanging_at, bk.tab_origin));
+        if bk.rtf_squeeze {
+            // Measured in Word: only the single spaces after the line's last (left) tab may be
+            // squeezed; spaces before it, or between two tabs, never count. After a centre,
+            // right, decimal, bar or positional tab nothing is squeezed (unverified).
+            self.rtf_after_tab = ptab.is_none() && stop.align == TabAlign::Left;
+            self.single_space_w = 0.0;
+            self.proportional_spaces = 0;
+            self.space_run = (0, 0.0, false);
+        }
         // A positional tab whose place the text has passed goes there on the next line
         // (ECMA-376 §17.3.3.23); a line with nothing but markers on it is empty.
         if ptab.is_some() && stop.pos < self.x - 0.01 && has_content(pl, self.c0, j) {
@@ -1000,7 +1017,7 @@ impl Scan {
         // each segment's font, glyphs and position for painting.
         let advance = pl.atomic_advance(j);
         let absorbs = self.absorbs(pl, advance);
-        let shrink = if bk.rtf_squeeze && !self.has_tab && self.proportional_spaces == 0 {
+        let shrink = if bk.rtf_squeeze && self.rtf_after_tab && self.pending_tab.is_none() && self.proportional_spaces == 0 {
             // The whole word decides, from the character that first crosses the edge on.
             let word_end = self.x + bk.widths.get(j).copied().unwrap_or(advance) - pl.auto_space_after(j);
             let first_end = match self.word_first_end {
