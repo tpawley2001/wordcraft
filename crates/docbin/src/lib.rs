@@ -1086,7 +1086,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 let at = ctx.notes.partition_point(|n| n.cp < cp);
                 let note = ctx.notes.get(at).filter(|n| n.cp == cp).map(|n| (n.kind, n.id)).or(ctx.own_note);
                 if let Some((kind, id)) = note {
-                    pb.push('\u{FFFC}', revised(ctx, cp));
+                    push_note_mark(&mut pb, cp, ctx, &mut fmt);
                     pb.objects.push(InlineObject::NoteRef { kind, id, custom: String::new() });
                 }
             }
@@ -2004,6 +2004,18 @@ fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, f
             None => f.instr.push(c),
         },
         None => pb.push(c, props),
+    }
+}
+
+/// The placeholder of an automatic note reference at `cp`, with the character formatting stored
+/// for it (its character style, size, font, revision marks ...), as Word shows the mark: a 10 pt
+/// mark in a 12 pt paragraph style stays 10 pt, so its line is no taller than the lines around it.
+/// Exactly one character is pushed, so the text stays in step with the objects.
+fn push_note_mark<'a>(pb: &mut ParaBuild, cp: u32, ctx: &WalkCtx<'a>, fmt: &mut FmtState<'a>) {
+    let before = pb.text.len();
+    push_formatted(pb, cp, '\u{FFFC}', ctx, None, fmt);
+    if pb.text.len() == before {
+        pb.push('\u{FFFC}', revised(ctx, cp));
     }
 }
 
