@@ -1,7 +1,7 @@
 use super::boxes::{BoxInput, layout_box};
 use super::ctx::{Ctx, with_pin};
 use super::floats::{EarlyFloats, WrapArea};
-use super::notes::{NOTE_SEP, NOTE_SEP_W, NoteBox, NoteSeps, v_span};
+use super::notes::{NOTE_SEP_W, NoteBox, NoteSeps, v_span};
 use super::para::ClKind;
 use super::placed::Placed;
 use super::{Block, Border, FloatAlign, Page, ParaLayout, Rect, SectionProps, StoryRef};
@@ -60,6 +60,8 @@ pub(crate) struct PageBuilder<'a> {
     pub(crate) page_valign: wordcraft_doc::section::PageVAlign,
     /// The document's own footnote separators, laid out for the section's text width.
     pub(crate) seps: NoteSeps,
+    /// Height of the default footnote separator (`notes::default_sep_h`), measured once per pass.
+    pub(crate) default_sep_h: Option<f32>,
     /// ... and for each column's width, when the notes go under their columns
     /// ([`Self::col_notes`]).
     pub(crate) col_seps: Vec<NoteSeps>,
@@ -313,7 +315,7 @@ impl PageBuilder<'_> {
                 })),
                 None => {
                     let len = if cont { width } else { NOTE_SEP_W.min(width) };
-                    let sy = top + NOTE_SEP / 2.0;
+                    let sy = top + seps.sep_h(cont) / 2.0;
                     pg.items.push(Placed::Rule { x0: x, y0: sy, x1: x + len, y1: sy, border: Border::single(0.5) });
                 }
             }

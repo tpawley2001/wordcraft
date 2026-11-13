@@ -98,7 +98,8 @@ pub(crate) fn footnote_pages(doc: &Document, pages: &[Page]) -> HashMap<u32, usi
     m
 }
 
-/// Gap above the footnote separator and its length.
+/// Height of the default footnote separator when the document's Normal style can't give one
+/// (see [`default_sep_h`]).
 pub(crate) const NOTE_SEP: f32 = 12.0;
 
 /// Length of the default (short) note separator line.
@@ -113,24 +114,58 @@ pub(crate) type SepBox = (Vec<Placed>, f32);
 
 /// The document's own footnote or endnote separators and continuation notice, laid out (`None`:
 /// the defaults).
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct NoteSeps {
     pub(crate) sep: Option<SepBox>,
     pub(crate) cont: Option<SepBox>,
     pub(crate) notice: Option<SepBox>,
+    /// Height of the default separator, used for `sep` / `cont` when the document has no story
+    /// for them ([`default_sep_h`]).
+    pub(crate) default_h: f32,
+}
+
+impl Default for NoteSeps {
+    fn default() -> Self {
+        NoteSeps { sep: None, cont: None, notice: None, default_h: NOTE_SEP }
+    }
+}
+
+/// Height of the default footnote separator, as Word lays it out: an empty paragraph in the
+/// document's Normal style holding the separator line, one single-spaced line of the Normal
+/// style's font at its size (the style's paragraph spacing, line spacing and the document grid
+/// don't count). [`NOTE_SEP`] when the document has no usable Normal style.
+pub(crate) fn default_sep_h(ctx: &mut Ctx, width: f32) -> f32 {
+    let styles = &ctx.doc.styles;
+    if styles.get("Normal").is_none() {
+        return NOTE_SEP;
+    }
+    // The size as stored (resolving clamps it): one that isn't a size leaves the default.
+    if styles.para_style_props("Normal").1.size.is_some_and(|s| !s.is_finite() || s <= 0.0) {
+        return NOTE_SEP;
+    }
+    let mut p = Paragraph::new().styled("Normal");
+    p.props.space_before = Some(0.0);
+    p.props.space_after = Some(0.0);
+    p.props.space_before_auto = Some(false);
+    p.props.space_after_auto = Some(false);
+    p.props.line_spacing = Some(wordcraft_doc::props::LineSpacing::Multiple(1.0));
+    p.props.snap_to_grid = Some(false);
+    let blocks: Blocks = vec![std::sync::Arc::new(Block::Para(p))];
+    let h = layout_box(ctx, BoxInput::other(DECOR_STORY, &blocks, width.max(1.0), 0, None)).height;
+    if h.is_finite() && h > 0.0 { h } else { NOTE_SEP }
 }
 
 impl NoteSeps {
     /// Lay out `seps` `width` wide.
     pub(crate) fn new(ctx: &mut Ctx, seps: &wordcraft_doc::NoteSeparators, width: f32) -> NoteSeps {
         let mut lay = |blocks: &Option<Blocks>| blocks.as_ref().map(|b| sep_box(ctx, b, width));
-        NoteSeps { sep: lay(&seps.separator), cont: lay(&seps.continuation_separator), notice: lay(&seps.continuation_notice) }
+        NoteSeps { sep: lay(&seps.separator), cont: lay(&seps.continuation_separator), notice: lay(&seps.continuation_notice), default_h: NOTE_SEP }
     }
     /// Height of the separator above a page's notes (`cont`: the continuation separator, when the
     /// first is continued from the page before).
     pub(crate) fn sep_h(&self, cont: bool) -> f32 {
         let own = if cont { &self.cont } else { &self.sep };
-        own.as_ref().map_or(NOTE_SEP, |s| s.1)
+        own.as_ref().map_or(self.default_h, |s| s.1)
     }
     /// Height of the notice below a note that continues on the next page.
     pub(crate) fn notice_h(&self) -> f32 {
