@@ -14,7 +14,15 @@ fn arial(size: f32) -> CharProps {
 
 /// Three paragraphs: an exactly `lead` pt line, then `text` and a `pic` pt tall picture at
 /// `spacing` with `font` on the run and the mark, then (when `after`) a Times New Roman 12 line.
-fn document(lead: f32, spacing: LineSpacing, font: &CharProps, mark: &CharProps, text: &str, pic: f32, after: bool, space_after: f32) -> Document {
+fn document(
+    lead: f32,
+    spacing: LineSpacing,
+    font: &CharProps,
+    mark: &CharProps,
+    (text, pic): (&str, f32),
+    after: bool,
+    space_after: f32,
+) -> Document {
     let mut d = Document::from_text(if after { "a\n\nafter" } else { "a\n" });
     d.last_section.page_w = 612.0;
     d.last_section.page_h = 792.0;
@@ -85,7 +93,7 @@ fn measure(d: &Document) -> Got {
 }
 
 fn row(spacing: LineSpacing, size: f32, text: &str, pic: f32) -> Got {
-    measure(&document(100.0, spacing, &arial(size), &arial(size), text, pic, true, 0.0))
+    measure(&document(100.0, spacing, &arial(size), &arial(size), (text, pic), true, 0.0))
 }
 
 fn near(got: f32, want: f32, what: &str) {
@@ -166,7 +174,7 @@ fn row_12_exactly_120_is_120() {
 
 /// Paragraph 1 exactly `twips` tall, paragraph 2 last with a 400 pt picture.
 fn fit(twips: f32, spacing: LineSpacing, mark: &CharProps, space_after: f32) -> Got {
-    measure(&document(twips / 20.0, spacing, &arial(10.0), mark, "", 400.0, false, space_after))
+    measure(&document(twips / 20.0, spacing, &arial(10.0), mark, ("", 400.0), false, space_after))
 }
 
 #[test]
