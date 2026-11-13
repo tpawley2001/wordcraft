@@ -14,6 +14,7 @@ mod cell_end_paragraph;
 mod cell_padding;
 mod cfb_tolerance;
 mod custom_note_marks;
+mod note_mark_format;
 mod char_spacing;
 mod char_styles;
 mod compat_mode;
@@ -1002,6 +1003,12 @@ struct StructSpec {
 }
 
 fn struct_doc(spec: &StructSpec) -> Vec<u8> {
+    struct_doc_styled(spec, &[std_bytes(1, 0x0FFF, "Normal", &Vec::new(), &Vec::new())])
+}
+
+/// [`struct_doc`] with the given STD records as its stylesheet. Character runs may start in the
+/// note or header stories (CPs past the main text), the last one then ends with the last story.
+fn struct_doc_styled(spec: &StructSpec, styles: &[Vec<u8>]) -> Vec<u8> {
     let text: String = spec.text.into();
     let ccp = text.chars().count() as u32;
     let mut all: Vec<Piece> = vec![Piece { compressed: false, text: text.clone() }];
@@ -1037,7 +1044,9 @@ fn struct_doc(spec: &StructSpec) -> Vec<u8> {
         word.extend_from_slice(&piece_bytes(piece));
     }
     word.resize(chpx_page_at, 0);
-    word.extend_from_slice(&chpx_fkp(&spec.chpx_runs, ccp));
+    let all_cps = all.iter().map(|p| p.text.chars().count() as u32).sum::<u32>();
+    let chpx_end = if spec.chpx_runs.iter().any(|r| r.0 >= ccp) { all_cps } else { ccp };
+    word.extend_from_slice(&chpx_fkp(&spec.chpx_runs, chpx_end));
     word.extend_from_slice(&papx_fkp(&spec.papx_entries));
 
     // PlcfSed: aCP[n+1] + aSed[n] (fn 2, fcSepx 4, fnMpr 2, fcMpr 4), and each Sepx after the
@@ -1095,7 +1104,7 @@ fn struct_doc(spec: &StructSpec) -> Vec<u8> {
     table.extend_from_slice(&plcf_sed);
     let hdd_plc_at = table.len();
     table.extend_from_slice(&plcf_hdd);
-    let stsh = stsh_bytes(&[std_bytes(1, 0x0FFF, "Normal", &Vec::new(), &Vec::new())]);
+    let stsh = stsh_bytes(styles);
     let stsh_at = table.len();
     table.extend_from_slice(&stsh);
     let ffn = ffn_bytes(&["Times New Roman", "Wingdings"]);

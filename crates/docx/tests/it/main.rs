@@ -44,6 +44,7 @@ mod nested_block_controls;
 mod nested_txbx;
 mod no_leading;
 mod note_comments;
+mod note_mark_format;
 mod opentype_features;
 mod passthrough;
 mod picture_link_forms;
