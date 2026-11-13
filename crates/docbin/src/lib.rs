@@ -874,48 +874,9 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 // A tracked paragraph mark: inserted, or deleted (joining the next paragraph).
                 revise(ctx, &mut pb.mark, chpx, ctx.pieces.piece_prm(cp));
                 head = None;
-                if let Some(j) = join.as_mut() {
-                    fill_code_mark(j.awaiting.take(), &mut fields, &mut pb);
-                }
                 // A paragraph mark inside a field's code is hidden with it: the paragraph runs on
                 // into the next one (outside tables, which keep every mark).
-                if c == '\r'
-                    && row.is_none()
-                    && let Some(f) = code_field(&mut fields)
-                {
-                    let after = (pb.props.space_after, pb.props.space_after_auto);
-                    let props = std::mem::take(&mut pb.props);
-                    let mark = std::mem::take(&mut pb.mark);
-                    let j = join.get_or_insert(CodeJoin { props, mark, awaiting: None });
-                    let code = &mut f.build.code;
-                    if code.marks.is_empty() {
-                        code.first_after = after;
-                    }
-                    // One space in the code where the mark is (none after white space).
-                    if !f.build.instr.is_empty() && !f.build.instr.ends_with(char::is_whitespace) {
-                        f.build.instr.push(' ');
-                    }
-                    code.marks.push(CodeMark { at: f.build.instr.len(), ..Default::default() });
-                    j.awaiting = Some(Awaiting::Open(fields.len()));
-                    cp = cp.saturating_add(units);
-                    continue;
-                }
-                if let Some(j) = join.take() {
-                    end_join(&mut pb, j);
-                }
-                let done = std::mem::take(&mut pb);
-                out.push(ParaOut {
-                    para: Paragraph {
-                        text: done.text,
-                        runs: done.runs,
-                        props: done.props,
-                        mark: done.mark,
-                        objects: done.objects,
-                        ..Default::default()
-                    },
-                    end_cp: cp.saturating_add(1),
-                    row,
-                });
+                close_paragraph(&mut out, &mut pb, (&mut join, &mut fields), c, cp, row);
             }
             // Field begin/separator/end ([MS-DOC] §2.9.84 Plcfld).
             '\u{13}' => {
@@ -944,15 +905,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 if field_end(&mut fields, &mut pb, ctx.work) {
                     object_id = None;
                 }
-                // The field holding the waiting code mark closed: the mark is in its object now.
-                if let Some(j) = join.as_mut()
-                    && let Some(Awaiting::Open(level)) = j.awaiting
-                    && fields.len() < level
-                {
-                    let last = pb.objects.len().checked_sub(1);
-                    j.awaiting =
-                        last.filter(|_| matches!(pb.objects.last(), Some(InlineObject::Field { code_paras: Some(_), .. }))).map(Awaiting::Done);
-                }
+                code_field_closed(&mut join, &fields, &pb);
                 cp = cp.saturating_add(1);
                 continue;
             }
@@ -1008,9 +961,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
     for _ in fields.iter().filter(|f| f.range) {
         push_field_end(&mut pb);
     }
-    if let Some(j) = join.take() {
-        end_join(&mut pb, j);
-    }
+    end_join(&mut pb, join.take());
     if !pb.text.is_empty() {
         let done = pb;
         out.push(ParaOut {
@@ -1022,9 +973,75 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
     out
 }
 
-/// The last paragraph of a code join: the joined paragraph takes the first one's properties and
+/// The paragraph mark `c` at `cp` ends the paragraph in `pb` (its properties resolved) and it goes
+/// to `out` with its table context `row`, unless the mark is hidden in a field's code
+/// ([`code_join_mark`]): then the paragraph runs on into the next.
+fn close_paragraph(
+    out: &mut Vec<ParaOut>,
+    pb: &mut ParaBuild,
+    (join, fields): (&mut Option<CodeJoin>, &mut [OpenField]),
+    c: char,
+    cp: u32,
+    row: Option<Box<table::RowInfo>>,
+) {
+    if code_join_mark(join, fields, pb, (c, row.is_some())) {
+        return;
+    }
+    let done = std::mem::take(pb);
+    out.push(ParaOut {
+        para: Paragraph { text: done.text, runs: done.runs, props: done.props, mark: done.mark, objects: done.objects, ..Default::default() },
+        end_cp: cp.saturating_add(1),
+        row,
+    });
+}
+
+/// At a paragraph mark (its properties resolved in `pb`): give the waiting code mark this
+/// paragraph's properties, then, when the mark (`c`, and whether it is in a table) is a paragraph
+/// mark outside a table and inside a field's code, record it
+/// on the field and keep building the same paragraph (true). Otherwise a join in progress ends
+/// here, and the caller emits the paragraph.
+fn code_join_mark(join: &mut Option<CodeJoin>, fields: &mut [OpenField], pb: &mut ParaBuild, (c, in_table): (char, bool)) -> bool {
+    if let Some(j) = join.as_mut() {
+        fill_code_mark(j.awaiting.take(), fields, pb);
+    }
+    let level = fields.len();
+    let Some(f) = code_field(fields).filter(|_| c == '\r' && !in_table) else {
+        end_join(pb, join.take());
+        return false;
+    };
+    let after = (pb.props.space_after, pb.props.space_after_auto);
+    let props = std::mem::take(&mut pb.props);
+    let mark = std::mem::take(&mut pb.mark);
+    let j = join.get_or_insert(CodeJoin { props, mark, awaiting: None });
+    let code = &mut f.build.code;
+    if code.marks.is_empty() {
+        code.first_after = after;
+    }
+    // One space in the code where the mark is (none after white space).
+    if !f.build.instr.is_empty() && !f.build.instr.ends_with(char::is_whitespace) {
+        f.build.instr.push(' ');
+    }
+    code.marks.push(CodeMark { at: f.build.instr.len(), ..Default::default() });
+    j.awaiting = Some(Awaiting::Open(level));
+    true
+}
+
+/// After a field end: when the field holding the waiting code mark closed, the mark is in its
+/// object now (the paragraph's last), or gone with it (a field that left no such object).
+fn code_field_closed(join: &mut Option<CodeJoin>, fields: &[OpenField], pb: &ParaBuild) {
+    if let Some(j) = join.as_mut()
+        && let Some(Awaiting::Open(level)) = j.awaiting
+        && fields.len() < level
+    {
+        let last = pb.objects.len().checked_sub(1);
+        j.awaiting = last.filter(|_| matches!(pb.objects.last(), Some(InlineObject::Field { code_paras: Some(_), .. }))).map(Awaiting::Done);
+    }
+}
+
+/// The last paragraph of a code join, if one is open: the joined paragraph takes the first one's properties and
 /// mark with this one's space after.
-fn end_join(pb: &mut ParaBuild, j: CodeJoin) {
+fn end_join(pb: &mut ParaBuild, j: Option<CodeJoin>) {
+    let Some(j) = j else { return };
     let (after, auto) = (pb.props.space_after, pb.props.space_after_auto);
     pb.props = j.props;
     pb.props.space_after = after;
