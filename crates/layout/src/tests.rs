@@ -32,6 +32,7 @@ mod even_first_section;
 mod even_header_missing;
 mod ext_leading_2pt;
 mod ext_leading_2pt_fonts;
+mod ext_leading_2pt_script;
 mod field_picture_overflow;
 mod first_page_once;
 mod float_row_step;
