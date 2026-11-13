@@ -66,7 +66,7 @@ fn the_probe_line_ends_just_short_of_the_edge() {
     assert_eq!(one.first_x.len(), 1);
     assert!((one.first_x[0] - LEFT).abs() < 0.01);
     assert_eq!(FULL.len(), 65);
-    assert!(EDGE - (LEFT + 65.0 * SPACE) < SPACE);
+    const { assert!(EDGE - (LEFT + 65.0 * SPACE) < SPACE) };
 }
 
 #[test]

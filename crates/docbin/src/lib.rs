@@ -420,18 +420,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
 
     // The six note separator stories come first ([MS-DOC] §2.3.4): footnote separator,
     // continuation separator and continuation notice, then the same for endnotes.
-    let sep_ctx = WalkCtx { note_sep: true, ..ctx };
-    for k in 0..6usize {
-        let Some((a, b)) = stories.get(k).and_then(|&ab| story(hdd_base, fib.ccp.hdd, ab)) else { continue };
-        let blocks = header_story_blocks(&sep_ctx, a, b, &mut pics, max_paragraphs)?;
-        let Some(blocks) = note_sep_story(blocks, k % 3) else { continue };
-        let seps = if k < 3 { &mut doc.footnote_separators } else { &mut doc.endnote_separators };
-        match k % 3 {
-            0 => seps.separator = Some(blocks),
-            1 => seps.continuation_separator = Some(blocks),
-            _ => seps.continuation_notice = Some(blocks),
-        }
-    }
+    note_separators(&mut doc, &ctx, (&stories, hdd_base, fib.ccp.hdd), &mut pics, max_paragraphs)?;
 
     // Header and footer parts: after the six separator stories, six stories per section
     // in the order even header, odd (default) header, even footer, odd (default) footer,
@@ -589,6 +578,30 @@ fn header_story_blocks(
         }
     }
     Ok(table::assemble(paras))
+}
+
+/// The six note separator stories at the start of the header document's `stories` (starting
+/// at `base`, `len` CPs long) into the document's footnote and endnote separators.
+fn note_separators(
+    doc: &mut Document,
+    ctx: &WalkCtx<'_>,
+    (stories, base, len): (&[(u32, u32)], u32, u32),
+    pics: &mut media::Pictures,
+    max_paragraphs: usize,
+) -> Result<(), DocbinError> {
+    let sep_ctx = WalkCtx { note_sep: true, ..*ctx };
+    for k in 0..6usize {
+        let Some((a, b)) = stories.get(k).and_then(|&ab| story(base, len, ab)) else { continue };
+        let blocks = header_story_blocks(&sep_ctx, a, b, pics, max_paragraphs)?;
+        let Some(blocks) = note_sep_story(blocks, k % 3) else { continue };
+        let seps = if k < 3 { &mut doc.footnote_separators } else { &mut doc.endnote_separators };
+        match k % 3 {
+            0 => seps.separator = Some(blocks),
+            1 => seps.continuation_separator = Some(blocks),
+            _ => seps.continuation_notice = Some(blocks),
+        }
+    }
+    Ok(())
 }
 
 /// A note separator story's blocks (`which`: 0 separator, 1 continuation separator, 2
