@@ -519,13 +519,53 @@ impl<'a> Flow<'a> {
             if over && fit.l1 == l0 && !pb.fresh() && !split && (pushed || !self.stays_at_bottom(pb, l)) {
                 break;
             }
+            let mine = fit.notes.len();
             fit.notes.extend(line_notes);
             fit.l1 += 1;
-            if self.ends_page(pb, l, &ctx.doc.settings, &mut fit) || split {
+            if self.ends_page(pb, l, &ctx.doc.settings, &mut fit) {
+                break;
+            }
+            if split {
+                self.keep_last_line(ctx, pb, &mut fit, notes, (lead, first_top, mine));
                 break;
             }
         }
         fit
+    }
+
+    /// The line just taken (`fit.l1` is after it) ends the page because its notes overflow
+    /// ([`notes_split`]). When only the paragraph's last line is left and widow control would take
+    /// this line back to the next page with it, Word keeps the last line here too, if it fits
+    /// above the notes that must stay: those of the lines before, whole (or, when this line's
+    /// first note starts the page's notes, that note's first piece). This line's notes then give
+    /// way to it in the same split at the page's foot ([`PageBuilder::flush_notes`]): whole while
+    /// they fit, the first that doesn't split at a line or carried whole, and the last line's own
+    /// notes are carried after them. `mine` is where this line's notes start in `fit.notes`.
+    fn keep_last_line(&self, ctx: &mut Ctx, pb: &PageBuilder, fit: &mut Fit, notes: &[(usize, u32)], (lead, first_top, mine): (f32, f32, usize)) {
+        let (pl, n) = (&self.pl, self.n());
+        if pb.web || fit.forced.is_some() || fit.l1 + 1 != n || !pl.rp.widow_control || self.settled_end(pb, fit) >= fit.l1 {
+            return;
+        }
+        let Some(last) = pl.lines.get(fit.l1).filter(|l| !l.beside) else { return };
+        let bottom = pb.y + lead + (last.top + fit_height(pb, last, &pl.rp, false) - first_top);
+        let kept = fit.notes.get(..mine).unwrap_or(&[]);
+        let before: f32 = pb.notes.iter().chain(kept).map(|n| n.h).sum();
+        // The page's first note always leaves something on it (`flush_notes`).
+        let first = if pb.notes.is_empty() && kept.is_empty() {
+            match fit.notes.get(mine) {
+                Some(f) => f.first_piece() + pb.seps().notice_h(),
+                None => return,
+            }
+        } else {
+            0.0
+        };
+        let sep = pb.seps().sep_h(pb.notes.first().is_some_and(|n| n.cont));
+        if pb.note_floor().max(bottom) + sep + before + first > pb.orig_bottom + 0.01 {
+            return;
+        }
+        let last_notes = notes_on_line(ctx, pb, last, notes, &fit.notes);
+        fit.notes.extend(last_notes);
+        fit.l1 += 1;
     }
 
     /// Whether the line may overflow the page: one holding nothing but a page or column break stays
