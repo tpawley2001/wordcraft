@@ -8,6 +8,7 @@ use proptest::prelude::*;
 use super::read;
 
 mod auto_spacing;
+mod bookmark_pairs;
 mod button_field_nested;
 mod cell_end_paragraph;
 mod cell_padding;
@@ -26,6 +27,7 @@ mod emf_font_faces;
 mod emf_header_repair;
 mod empty_inline_shape;
 mod encrypted;
+mod field_result_paragraphs;
 mod field_code_marks;
 mod field_result_paragraphs;
 mod field_result_props;
@@ -47,6 +49,7 @@ mod ole_print;
 mod ole_result_objects;
 mod paper_source;
 mod row_edges_grid;
+mod row_table_borders;
 mod phonetic_guide;
 mod section_columns;
 mod section_line_numbers_grid;
@@ -1628,8 +1631,11 @@ fn table_merges_borders_shading() {
     assert_eq!(tbl.rows[1].cells[0].props.shading, Some(wordcraft_doc::Rgb(255, 255, 0)));
     assert_eq!(tbl.rows[1].cells[0].props.vmerge, wordcraft_doc::props::VMerge::Restart);
     assert_eq!(tbl.rows[1].props.height, Some(20.0));
-    // Table borders from the first row that carries them: single 0.5pt black.
-    let b = tbl.props.borders.expect("borders");
+    // Table borders are per row: the first row has none, so the table has none and row 2 keeps
+    // its own, single 0.5pt black.
+    assert_eq!(tbl.props.borders, None);
+    assert!(tbl.rows[0].props.exceptions.is_none());
+    let b = tbl.rows[1].props.exceptions.as_ref().and_then(|e| e.borders).expect("borders");
     let top = b.top.expect("top border");
     assert_eq!(top.style, wordcraft_doc::props::BorderStyle::Single);
     assert_eq!(top.width, 0.5);

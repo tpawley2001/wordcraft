@@ -79,6 +79,10 @@ struct Breaker<'e> {
     skipped: usize,
     /// A left tab past the right indent that wrapped to start the next line.
     wrapped_tab: Option<usize>,
+    /// Below compatibility mode 15 a tab that starts at the right edge, where a custom stop put
+    /// the text, goes on to the next stop past the edge and the rest of the line overflows
+    /// instead of wrapping (see [`Scan::tab`]).
+    tab_overflow: bool,
 }
 
 /// One line being broken: where it is, and what has been put on it.
@@ -129,6 +133,10 @@ struct Scan {
     /// Whether anything but spaces and markers is on the line yet.
     text_seen: bool,
     has_tab: bool,
+    /// The last tab on the line went to a custom stop (or the hanging indent's stop).
+    last_tab_set: bool,
+    /// A tab went past the right edge from a custom stop at it: nothing more wraps on this line.
+    overflow: bool,
     /// The first word doesn't fit a span narrowed by a floating object: it moves on whole.
     skip: bool,
 }
@@ -267,6 +275,7 @@ impl<'e> Breaker<'e> {
             row_first: 0,
             skipped: 0,
             wrapped_tab: None,
+            tab_overflow: settings.compat_mode < wordcraft_doc::COMPAT_MODE_CURRENT,
         }
     }
 
@@ -343,6 +352,8 @@ impl<'e> Breaker<'e> {
             space_run: (0, 0.0, false),
             text_seen: false,
             has_tab: false,
+            last_tab_set: false,
+            overflow: false,
             skip: false,
         }
     }
@@ -884,6 +895,21 @@ impl Scan {
             return true;
         }
         self.xs.push(self.x);
+        let set = ptab.is_none() && next_set_tab(self.x, &rp.tabs, bk.hanging_at).is_some();
+        if bk.tab_overflow && ptab.is_none() && !set && self.last_tab_set && self.x >= self.right_edge - 0.01 && stop.pos > self.right_edge + 0.01 {
+            // A custom stop put the text at the right edge and this tab starts there: like Word
+            // (below compatibility mode 15), it goes on to the next default stop past the edge,
+            // and the rest of the line stays on it, overflowing, up to the next explicit break
+            // (a footer's last piece after a right tab at the margin and one more tab).
+            self.overflow = true;
+        }
+        self.last_tab_set = set;
+        if self.overflow {
+            self.place_tab(pl, stop);
+            self.last_break = Some(j);
+            self.j += 1;
+            return false;
+        }
         if ptab.is_none()
             && stop.pos > self.right_edge + 0.01
             && stop.align == TabAlign::Left
@@ -992,6 +1018,7 @@ impl Scan {
             0.0
         };
         let fits = absorbs
+            || self.overflow
             || self.x + advance - pl.auto_space_after(j) <= self.right_edge + shrink + 0.01
             || c.kind == ClKind::Space
             || c.kind == ClKind::Marker;
