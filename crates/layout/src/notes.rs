@@ -136,6 +136,14 @@ impl NoteSeps {
     pub(crate) fn notice_h(&self) -> f32 {
         self.notice.as_ref().map_or(0.0, |s| s.1)
     }
+    /// The room a page's footnotes take besides the notes themselves: the separator above them
+    /// (see [`Self::sep_h`]) and, when the document has a continuation notice, its height below
+    /// them. Word keeps the notice's room on every page with footnotes, empty when no note
+    /// continues (Word 16.0.20527: the notes of a report end the notice's height above the
+    /// bottom margin on every page), so the page holds the same lines whether or not one splits.
+    pub(crate) fn area_h(&self, cont: bool) -> f32 {
+        self.sep_h(cont) + self.notice_h()
+    }
 }
 
 /// A note separator or continuation notice story (`blocks`) laid out `width` wide.

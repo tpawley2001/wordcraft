@@ -233,11 +233,12 @@ impl PageBuilder<'_> {
     pub(crate) fn notes_h(&self) -> f32 {
         self.stack_h(&self.notes)
     }
-    /// The height of a page's note area holding `notes`, with its separator.
+    /// The height of a page's note area holding `notes`, with its separator and the room for the
+    /// document's continuation notice ([`NoteSeps::area_h`]).
     fn stack_h(&self, notes: &[NoteBox]) -> f32 {
         match notes.first() {
             None => 0.0,
-            Some(first) => self.seps().sep_h(first.cont) + notes.iter().map(|n| n.h).sum::<f32>(),
+            Some(first) => self.seps().area_h(first.cont) + notes.iter().map(|n| n.h).sum::<f32>(),
         }
     }
     /// The lowest bottom of the body text and tables on the current page.
