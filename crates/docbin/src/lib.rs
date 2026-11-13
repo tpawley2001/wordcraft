@@ -44,7 +44,7 @@ use wordcraft_doc::props::CharProps;
 use wordcraft_doc::props::NumRef;
 use wordcraft_doc::section::HeaderSet;
 use wordcraft_doc::styles::StyleSheet;
-use wordcraft_doc::{Document, PartKind};
+use wordcraft_doc::{Block, Document, PartKind};
 
 use fkp::Bins;
 use piece::{PieceTable, PrmRef};
@@ -527,7 +527,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     doc.linked_media.extend(pics.links);
     kept.into_inner().finish(&mut doc.passthrough);
     doc.revisions = revs.into_inner().into_list();
-    doc.body = table::assemble(paras);
+    doc.body = merge_drop_caps(table::assemble(paras));
     doc.ensure_nonempty();
     work.log();
     Ok(doc)
@@ -566,6 +566,29 @@ fn note_parts(
     Ok(())
 }
 
+/// Merges each drop cap's letter paragraph ([MS-DOC] §2.6.2 sprmPDcs) into the paragraph it
+/// starts, as the .docx reader does for `w:framePr w:dropCap`. Only two paragraphs next to each
+/// other in the story merge, never across a table. A letter with a size of its own is drawn at
+/// that size, as Word stores it.
+fn merge_drop_caps(blocks: wordcraft_doc::Blocks) -> wordcraft_doc::Blocks {
+    let mut out: wordcraft_doc::Blocks = Vec::with_capacity(blocks.len());
+    for b in blocks {
+        if let (Some(Block::Para(prev)), Block::Para(next)) = (out.last().map(|b| &**b), &*b)
+            && prev.merges_drop_cap_into(next)
+            && let Some(Block::Para(mut cap)) = out.pop().map(|b| (*b).clone())
+        {
+            // Word sizes the letter's run (its sprmCHps) to the size it draws the letter at.
+            if cap.runs.first().is_some_and(|r| r.props.size.is_some()) {
+                cap.props.drop_cap_sized = Some(true);
+            }
+            out.push(Arc::new(Block::Para(Paragraph::merge_drop_cap(cap, next.clone()))));
+            continue;
+        }
+        out.push(b);
+    }
+    out
+}
+
 /// Walks one story into blocks. A walk that spent the shared paragraph budget is refused before
 /// its partial list is assembled, so a flood does not build blocks it will throw away.
 fn story_blocks(ctx: &WalkCtx<'_>, a: u32, b: u32, pics: &mut media::Pictures, max_paragraphs: usize) -> Result<wordcraft_doc::Blocks, DocbinError> {
@@ -573,7 +596,7 @@ fn story_blocks(ctx: &WalkCtx<'_>, a: u32, b: u32, pics: &mut media::Pictures, m
     if ctx.paragraphs.exceeded.get() {
         return Err(paragraph_limit(max_paragraphs));
     }
-    Ok(table::assemble(paras))
+    Ok(merge_drop_caps(table::assemble(paras)))
 }
 
 /// A header or footer story's blocks without its guard paragraph mark. [MS-DOC] 2.3.3: a
@@ -603,7 +626,7 @@ fn header_story_blocks(
             paras.pop();
         }
     }
-    Ok(table::assemble(paras))
+    Ok(merge_drop_caps(table::assemble(paras)))
 }
 
 /// The six note separator stories at the start of the header document's `stories` (starting
@@ -932,6 +955,26 @@ fn apply_para_sprms(ctx: &WalkCtx<'_>, pb: &mut ParaBuild, papx: &[u8], istd: u1
         (None, Some(s)) => ilvl.map(|level| NumRef { num: s.num, level }),
         _ => None,
     };
+    drop_cap_props(ctx, pb, papx, istd);
+}
+
+/// A drop cap ([MS-DOC] §2.6.2 sprmPDcs, from the style chain or the mark's PAPX) is not a text
+/// frame: its frame sprms only place the letter, and their distance from text becomes the drop
+/// cap's distance, as `w:framePr w:dropCap` is read from .docx.
+fn drop_cap_props(ctx: &WalkCtx<'_>, pb: &mut ParaBuild, papx: &[u8], istd: u16) {
+    let (mut cap, mut margin) = fmt::style_drop_cap(ctx.raw_styles, usize::from(istd));
+    if sprm::iter(papx).any(|prl| prl.op == fmt::P_DCS) {
+        (cap, margin) = (pb.props.drop_cap, pb.props.drop_cap_margin);
+    }
+    pb.props.drop_cap = cap;
+    pb.props.drop_cap_margin = margin;
+    pb.props.drop_cap_distance = None;
+    if cap.is_none() {
+        return;
+    }
+    let frame = pb.props.frame.take().or_else(|| fmt::style_frame(ctx.raw_styles, usize::from(istd)));
+    pb.props.drop_cap_distance =
+        frame.map(|f| f.h_space).filter(|d| d.is_finite() && *d > 0.0).map(|d| d.min(wordcraft_doc::resolve::MAX_DROP_CAP_DISTANCE));
 }
 
 /// Walk a CP range, splitting paragraphs at 0x0D/0x07 marks, applying the direct character
@@ -2255,5 +2298,40 @@ mod character_style_tests {
         for grpprl in [&[0x30, 0x4A, 1][..], &[0x30, 0x4A, 0xFF, 0xFF][..]] {
             assert_eq!(char_props(grpprl, &[], &CharProps::default(), &styles, &fmt::style_ids(&styles)).style, None);
         }
+    }
+}
+
+/// A drop cap's letter with a size of its own (Word stores the size it draws the letter at, its
+/// sprmCHps) is marked as sized when it merges, so the layout does not scale it a second time.
+#[cfg(test)]
+mod drop_cap_size_tests {
+    use super::merge_drop_caps;
+    use wordcraft_doc::{CharProps, Paragraph, para_block};
+
+    fn cap(size: Option<f32>) -> Paragraph {
+        let mut p = Paragraph::with_text("T", CharProps { size, ..Default::default() });
+        p.props.drop_cap = Some(2);
+        p
+    }
+
+    fn merged(size: Option<f32>) -> Paragraph {
+        let text = Paragraph::with_text("he United States", CharProps { size: Some(12.0), ..Default::default() });
+        let out = merge_drop_caps(vec![para_block(cap(size)), para_block(text)]);
+        assert_eq!(out.len(), 1, "the letter merges into its paragraph");
+        out.first().and_then(|b| b.as_para()).cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn a_letter_with_its_own_size_is_drawn_at_it() {
+        let p = merged(Some(28.0));
+        assert_eq!(p.text, "The United States");
+        assert_eq!(p.props.drop_cap_sized, Some(true));
+        assert_eq!(p.props_of_char(0).size, Some(28.0), "the letter keeps Word's size");
+        assert_eq!(p.props_of_char(1).size, Some(12.0));
+    }
+
+    #[test]
+    fn a_letter_without_a_size_is_sized_by_the_layout() {
+        assert_eq!(merged(None).props.drop_cap_sized, None);
     }
 }

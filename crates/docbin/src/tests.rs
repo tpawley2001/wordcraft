@@ -40,6 +40,7 @@ mod field_end_in_table;
 mod field_result_props;
 mod field_type_names;
 mod font_table;
+mod drop_cap;
 mod frames;
 mod header_guard;
 mod horizontal_rules;

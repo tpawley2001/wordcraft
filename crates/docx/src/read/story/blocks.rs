@@ -44,32 +44,10 @@ impl Reader<'_> {
                     }
                     // A framed drop-cap paragraph merges into the paragraph it starts.
                     if let Some(Block::Para(prev)) = out.last().map(|b| &**b)
-                        && prev.props.drop_cap.is_some()
-                        && prev.section.is_none()
-                        && prev.text.len() <= 16
-                        && p.props.drop_cap.is_none()
-                        && let Some(Block::Para(mut first)) = out.pop().map(|b| (*b).clone())
+                        && prev.merges_drop_cap_into(&p)
+                        && let Some(Block::Para(first)) = out.pop().map(|b| (*b).clone())
                     {
-                        let mut props = p.props.clone();
-                        props.drop_cap = first.props.drop_cap;
-                        props.drop_cap_margin = first.props.drop_cap_margin;
-                        props.drop_cap_distance = first.props.drop_cap_distance;
-                        if props.drop_cap_margin == Some(true) && first.props.indent_first != props.indent_first {
-                            props.drop_cap_indent_first = first.props.indent_first;
-                        }
-                        // A letter in a font of its own: the drop cap's font, the letter itself
-                        // in the text's (so taking the drop cap away gives the letter its font back).
-                        let cap_font = first.runs.first().and_then(|r| r.props.font.clone());
-                        let text_font = p.runs.first().and_then(|r| r.props.font.clone());
-                        if cap_font.is_some() && cap_font != text_font {
-                            for r in first.runs.iter_mut().filter(|r| r.props.font == cap_font) {
-                                r.props.font = text_font.clone();
-                            }
-                            props.drop_cap_font = cap_font;
-                        }
-                        first.append(p);
-                        first.props = props;
-                        out.push(para_block(first));
+                        out.push(para_block(Paragraph::merge_drop_cap(first, p)));
                         continue;
                     }
                     out.push(para_block(p));
