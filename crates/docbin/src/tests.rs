@@ -27,6 +27,7 @@ mod emf_header_repair;
 mod empty_inline_shape;
 mod encrypted;
 mod field_result_paragraphs;
+mod field_code_marks;
 mod field_result_props;
 mod font_table;
 mod frames;
@@ -47,6 +48,7 @@ mod ole_print;
 mod ole_result_objects;
 mod paper_source;
 mod row_edges_grid;
+mod row_table_borders;
 mod phonetic_guide;
 mod section_columns;
 mod section_line_numbers_grid;
@@ -61,6 +63,7 @@ mod style_own_para_props;
 mod table_float;
 mod table_left_edge;
 mod table_row_cant_split;
+mod table_autofit;
 mod table_width;
 mod table_width_rows;
 mod tc80_cell_valign;
@@ -1627,8 +1630,11 @@ fn table_merges_borders_shading() {
     assert_eq!(tbl.rows[1].cells[0].props.shading, Some(wordcraft_doc::Rgb(255, 255, 0)));
     assert_eq!(tbl.rows[1].cells[0].props.vmerge, wordcraft_doc::props::VMerge::Restart);
     assert_eq!(tbl.rows[1].props.height, Some(20.0));
-    // Table borders from the first row that carries them: single 0.5pt black.
-    let b = tbl.props.borders.expect("borders");
+    // Table borders are per row: the first row has none, so the table has none and row 2 keeps
+    // its own, single 0.5pt black.
+    assert_eq!(tbl.props.borders, None);
+    assert!(tbl.rows[0].props.exceptions.is_none());
+    let b = tbl.rows[1].props.exceptions.as_ref().and_then(|e| e.borders).expect("borders");
     let top = b.top.expect("top border");
     assert_eq!(top.style, wordcraft_doc::props::BorderStyle::Single);
     assert_eq!(top.width, 0.5);
@@ -3208,7 +3214,7 @@ fn a_long_hyperlink_over_a_long_result_is_one_linked_run() {
     let mut result = super::FieldResult::default();
     (0..n).for_each(|_| result.push('y', wordcraft_doc::props::CharProps::default()));
     let f =
-        super::FieldBuild { depth: 1, instr: format!("HYPERLINK \"http://{target}\""), sep: Some(result), props: Default::default(), object: false };
+        super::FieldBuild { depth: 1, instr: format!("HYPERLINK \"http://{target}\""), sep: Some(result), props: Default::default(), object: false, code: Default::default() };
     let work = super::Work::new(u64::MAX);
     super::finish_field(&mut super::ParaBuild::default(), f, &work);
     assert_eq!(u64::MAX - work.left.get(), ("http://".len() + n) as u64, "one copy of the target");
@@ -3228,6 +3234,7 @@ fn hyperlink_target_copies_are_charged_to_the_work_budget() {
         sep: Some(result),
         props: Default::default(),
         object: false,
+        code: Default::default(),
     };
     let mut pb = super::ParaBuild::default();
     let budget = super::Work::new(10_000);
@@ -3333,7 +3340,7 @@ fn field_results_keep_their_text_and_runs() {
     {
         result.push(c, p);
     }
-    let f = super::FieldBuild { depth: 1, instr: "HYPERLINK \"http://x\"".into(), sep: Some(result), props: Default::default(), object: false };
+    let f = super::FieldBuild { depth: 1, instr: "HYPERLINK \"http://x\"".into(), sep: Some(result), props: Default::default(), object: false, code: Default::default() };
     let mut pb = super::ParaBuild::default();
     super::finish_field(&mut pb, f, &super::Work::new(u64::MAX));
     assert_eq!(pb.text, "a\u{e9}\u{20ac}bc");

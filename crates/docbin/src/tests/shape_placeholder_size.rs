@@ -2,8 +2,9 @@
 //! carries crop fractions ([MS-ODRAW] §2.3.23.2-5, 16.16 fixed, may be negative). A drawing
 //! placeholder (the result of a `SHAPE` field) has no picture, and its writer often stores
 //! cropFromTop = -0.99976 with cropFromBottom = +0.99976: the pair moves the absent picture
-//! and must not shrink the box, which stays goal x scale. With a picture, the size takes the
-//! signed crop sum off the goal size.
+//! and must not shrink the box, which stays goal x scale. A picture's box is goal x scale too
+//! ([MS-DOC] §2.9.191 PICMID: `mx` / `my` are the ratio of the final display size to the goal
+//! size); its crop only chooses the part of the bitmap that is drawn.
 
 use wordcraft_doc::para::{InlineObject, Wrap};
 
@@ -15,6 +16,8 @@ const F_SPEC: u16 = 0x0855;
 const MM_SHAPE: u16 = 0x0064;
 const CROP_TOP: u16 = 0x0100;
 const CROP_BOTTOM: u16 = 0x0101;
+const CROP_LEFT: u16 = 0x0102;
+const CROP_RIGHT: u16 = 0x0103;
 const PIB: u16 = 0x0104;
 const F_LINE_OFF: (u16, u32) = (0x01FF, 0x0008_0000);
 /// -0.99976 and +0.99976 as 16.16 fixed: what the placeholders store.
@@ -51,6 +54,30 @@ fn placeholder(crop: Option<(u32, u32)>) -> Vec<u8> {
 fn picture(top: u32, bottom: u32) -> Vec<u8> {
     let shape = sp(&[fsp(75, 1025, 0xA00), fopt(&[(CROP_TOP, top), (CROP_BOTTOM, bottom), (PIB, 1)], &[])]);
     [shape, fbse_png(&tiny_png())].concat()
+}
+
+/// A picture frame with its PNG and the four crops `[left, top, right, bottom]` as fractions.
+fn cropped_picture(crop: [f64; 4]) -> Vec<u8> {
+    let fixed = |f: f64| (f * 65536.0).round() as i32 as u32;
+    let [left, top, right, bottom] = crop.map(fixed);
+    let props = [(CROP_TOP, top), (CROP_BOTTOM, bottom), (CROP_LEFT, left), (CROP_RIGHT, right), (PIB, 1)];
+    let shape = sp(&[fsp(75, 1025, 0xA00), fopt(&props, &[])]);
+    [shape, fbse_png(&tiny_png())].concat()
+}
+
+/// The inline box and the drawn crop of a cropped picture with this goal (twips) and scale.
+fn cropped_size(goal: (i16, i16), scale: (u16, u16), crop: [f64; 4]) -> (Vec<(f32, f32)>, [f32; 4]) {
+    let doc = doc_with(picf(goal, scale, &cropped_picture(crop)));
+    let Some(InlineObject::Image { crop: drawn, .. }) = first_para(&doc).objects.first() else {
+        panic!("no image: {:?}", first_para(&doc).objects)
+    };
+    assert_eq!(doc.media.len(), 1);
+    (inline_sizes(&doc), *drawn)
+}
+
+/// The drawn crop is the stored one (16.16 fixed, so within a ten-thousandth).
+fn same_crop(drawn: [f32; 4], stored: [f64; 4]) -> bool {
+    drawn.iter().zip(stored).all(|(d, s)| (f64::from(*d) - s).abs() <= 1e-4)
 }
 
 /// `text` with every picture character pointing at the start of `data`.
@@ -124,11 +151,11 @@ fn a_placeholder_ignores_a_positive_crop_because_it_has_no_picture() {
 }
 
 #[test]
-fn a_cropped_picture_still_loses_its_cropped_share() {
-    // A quarter off the top and the bottom: 100 pt x (1 - 0.25 - 0.25) = 50 pt, drawn cropped.
+fn a_cropped_picture_keeps_its_scaled_goal_size() {
+    // A quarter off the top and the bottom: the box stays 200 x 100 pt, the picture is drawn cropped.
     let doc = doc_with(picf((4000, 2000), (1000, 1000), &picture(QUARTER, QUARTER)));
     let got = inline_sizes(&doc);
-    assert!(close(&got, (200.0, 50.0)), "{got:?}");
+    assert!(close(&got, (200.0, 100.0)), "{got:?}");
     let Some(InlineObject::Image { crop, .. }) = first_para(&doc).objects.first() else {
         panic!("no image: {:?}", first_para(&doc).objects)
     };
@@ -138,7 +165,7 @@ fn a_cropped_picture_still_loses_its_cropped_share() {
 
 #[test]
 fn a_picture_with_the_opposite_crop_pair_keeps_its_goal_height() {
-    // The crops are signed: 1 - (-0.99976) - 0.99976 = 1, so the picture is 100 pt tall.
+    // The crop pair moves the picture inside its box; the box is the goal size, 100 pt tall.
     let doc = doc_with(picf((4000, 2000), (1000, 1000), &picture(UP, DOWN)));
     let got = inline_sizes(&doc);
     assert!(close(&got, (200.0, 100.0)), "{got:?}");
@@ -179,4 +206,53 @@ fn a_placeholder_in_a_shape_field_result_keeps_its_full_height_and_the_field() {
         first_para(&doc).objects.iter().filter_map(|o| if let InlineObject::Field { instr, .. } = o { Some(instr.as_str()) } else { None }).collect();
     assert_eq!(fields.len(), 1, "{:?}", first_para(&doc).objects);
     assert!(fields[0].trim_start().starts_with("SHAPE"), "{fields:?}");
+}
+
+// The boxes below are goal x scale, as measured in Word's output for pictures cropped on one,
+// two, three and four sides: the crop never changes the box.
+
+#[test]
+fn a_picture_cropped_on_three_sides_is_its_goal_size_times_its_scale() {
+    let crop = [0.0, 0.0628, 0.3656, 0.1228];
+    let (got, drawn) = cropped_size((20480, 15360), (190, 243), crop);
+    assert!(close(&got, (194.56, 186.62)), "{got:?}");
+    assert!(same_crop(drawn, crop), "{drawn:?}");
+}
+
+#[test]
+fn a_picture_cropped_at_the_top_is_its_goal_size_times_its_scale() {
+    let crop = [0.0, 0.137, 0.0, 0.0];
+    let (got, drawn) = cropped_size((10368, 8640), (550, 476), crop);
+    assert!(close(&got, (285.12, 205.63)), "{got:?}");
+    assert!(same_crop(drawn, crop), "{drawn:?}");
+}
+
+#[test]
+fn a_picture_cropped_to_under_half_is_its_goal_size_times_its_scale() {
+    let crop = [0.0, 0.4625, 0.5688, 0.1263];
+    let (got, drawn) = cropped_size((8640, 8640), (347, 332), crop);
+    assert!(close(&got, (149.90, 143.42)), "{got:?}");
+    assert!(same_crop(drawn, crop), "{drawn:?}");
+}
+
+#[test]
+fn a_picture_cropped_at_the_top_and_bottom_is_its_goal_size_times_its_scale() {
+    let crop = [0.0, 0.1146, 0.0, 0.2812];
+    let (got, drawn) = cropped_size((7680, 5760), (800, 483), crop);
+    assert!(close(&got, (307.20, 139.10)), "{got:?}");
+    assert!(same_crop(drawn, crop), "{drawn:?}");
+}
+
+#[test]
+fn a_picture_with_its_right_half_cropped_keeps_its_width() {
+    let (got, drawn) = cropped_size((2000, 1000), (500, 500), [0.0, 0.0, 0.5, 0.0]);
+    assert!(close(&got, (50.0, 25.0)), "{got:?}");
+    assert_eq!(drawn, [0.0, 0.0, 0.5, 0.0]);
+}
+
+#[test]
+fn a_picture_with_a_negative_crop_keeps_its_goal_size() {
+    let (got, drawn) = cropped_size((4000, 2000), (1000, 1000), [0.0, -0.25, 0.0, 0.0]);
+    assert!(close(&got, (200.0, 100.0)), "{got:?}");
+    assert_eq!(drawn, [0.0; 4]);
 }

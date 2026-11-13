@@ -380,6 +380,21 @@ pub(crate) fn anchor_floats(
     (rects, pl, rel, fewer)
 }
 
+/// Whether one of `p`'s `wp:wrapSquare` objects positioned down from its paragraph or line
+/// (`wp:positionV relativeFrom="paragraph"` / `"line"`, no alignment), placed at its rectangle in
+/// `rects` for the paragraph's top `top`, ends below `limit` and would end within `room` below
+/// the paragraph's top on the next page: Word starts the paragraph there and the object goes with it.
+pub(crate) fn square_float_past(p: &Paragraph, rects: &HashMap<usize, Rect>, top: f32, limit: f32, room: f32) -> bool {
+    rects.iter().any(|(oi, r)| {
+        let Some((_, _, float)) = p.objects.get(*oi).and_then(floating) else { return false };
+        float.wrap == Wrap::Square
+            && matches!(float.v_rel, Anchor::Paragraph | Anchor::Line)
+            && float.v_align.is_none()
+            && r.bottom() > limit + 0.01
+            && r.bottom() - top <= room + 0.01
+    })
+}
+
 /// The floating objects of `p` (laid out as `pl`) whose anchor line ([`anchor_lines`]) is at or
 /// after `fit`, in order: Word draws them on the page their anchor line is on (#4250).
 pub(crate) fn late_floats(p: &Paragraph, pl: &ParaLayout, fit: usize) -> Vec<usize> {

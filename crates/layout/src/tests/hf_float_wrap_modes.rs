@@ -215,3 +215,38 @@ fn mode_15_header_text_goes_below_a_full_width_square_box() {
     near("HDR line top", h[0], HDR + BOX_H);
     near("BODY1 line top", b[0], HDR + BOX_H + pitch());
 }
+
+/// A letterhead: the small Top and Bottom box (paragraph + 7.2pt) and, after it, an inline
+/// 40.05 x 38.95pt picture, no text.
+fn logo_beside_box() -> Paragraph {
+    let mut p = with_object("", small(7.2));
+    p.insert_object(p.len(), rect_shape(40.05, 38.95, Float::default()), &Default::default()).unwrap();
+    p
+}
+
+/// Word, mode 15: the line holding only the inline picture goes below the box (the probe's body
+/// started 36.7pt lower than in mode 14); HNEXT follows the picture's line.
+#[test]
+fn mode_15_header_line_with_only_an_inline_picture_goes_below_a_top_and_bottom_box() {
+    let (h, b) = tops(15, vec![logo_beside_box(), para("HNEXT")]);
+    assert_eq!(h.len(), 2, "the picture's line and HNEXT: {h:?}");
+    near("picture line top", h[0], HDR + 7.2 + 30.0);
+    assert!(h[1] > h[0] + 38.95 - TOL && h[1] < h[0] + 38.95 + pitch(), "HNEXT right below the picture's line: {h:?}");
+    near("BODY1 line top", b[0], h[1] + pitch());
+}
+
+/// Word, mode 14, the same paragraph in a footer: the picture's line stays beside the box, which
+/// sits 7.2pt below the paragraph's top, and FNEXT ends at the footer distance.
+#[test]
+fn mode_14_footer_line_with_only_an_inline_picture_stays_beside_a_top_and_bottom_box() {
+    let d = doc_with(14, None, Some(vec![logo_beside_box(), para("FNEXT")]), vec![para("BODY1")]);
+    let l = lay(&d);
+    let p = &l.pages[0];
+    let f = line_tops(&p.footer);
+    assert_eq!(f.len(), 2, "the picture's line and FNEXT: {f:?}");
+    near("FNEXT line top", f[1], 792.0 - 36.0 - pitch());
+    assert!(f[1] > f[0] + 38.95 - TOL && f[1] < f[0] + 38.95 + pitch(), "FNEXT right below the picture's line: {f:?}");
+    let boxes: Vec<Rect> = super::shapes(&p.footer).into_iter().filter(|r| (r.w - 144.0).abs() < 0.5).collect();
+    assert_eq!(boxes.len(), 1, "the box is drawn in the footer: {boxes:?}");
+    near("box top", boxes[0].y, f[0] + 7.2);
+}

@@ -3,7 +3,7 @@ use super::cache::has_page_number_fields;
 use super::ctx::Ctx;
 use super::floats::{
     FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, late_floats, place_late,
-    place_objects,
+    place_objects, square_float_past,
 };
 use super::notes::{DECOR_STORY, NoteBox, para_notes};
 use super::page::{PageBuilder, PageFrame, item_bottom};
@@ -197,7 +197,7 @@ impl<'a> Flow<'a> {
         // Floating objects anchored here join the page's wrap areas before the text is laid out; if
         // the paragraph then starts somewhere else (another column or page, or contextual spacing
         // drops its space before), they are placed again there.
-        let space_before = ctx.doc.styles.resolve_para(&p.props).space_before;
+        let space_before = ctx.doc.styles.resolve_para_spaced(&p.props, None, !ctx.doc.settings.sum_paragraph_spacing).space_before;
         let excl_mark = pb.excl.len();
         let guess = pb.y + space_before;
         let label = ctx.next_label(p);
@@ -599,6 +599,22 @@ impl<'a> Flow<'a> {
         }
     }
 
+    /// Whether a `wp:wrapSquare` object this paragraph anchors with its first piece ends past the
+    /// page's limit and would fit on the next page: the body's bottom from `compatibilityMode` 15
+    /// on, the paper's bottom edge before it (an object may hang into the bottom margin there).
+    fn square_float_past(&self, ctx: &Ctx, pb: &PageBuilder) -> bool {
+        if self.l0 != 0 || self.float_rects.is_empty() {
+            return false;
+        }
+        let next_top = if pb.col + 1 < pb.cols.len() { pb.top } else { self.body_top };
+        let (limit, room) = if ctx.doc.settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT {
+            (pb.bottom, pb.next_room(self.body_top))
+        } else {
+            (pb.sect.page_h, pb.sect.page_h - next_top)
+        };
+        square_float_past(self.p, &self.float_rects, self.anchor_y, limit, room)
+    }
+
     /// Put the lines `l0..fit.l1` on the page, with their notes, objects and line numbers.
     fn emit(&mut self, ctx: &mut Ctx, pb: &mut PageBuilder, rooms: Rooms, (lead, fit, notes): (f32, Fit, &[(usize, u32)])) {
         let (l0, l1, n) = (self.l0, fit.l1, self.n());
@@ -863,13 +879,15 @@ fn fit_height(pb: &PageBuilder, l: &para::Line, rp: &wordcraft_doc::resolve::Res
 }
 
 /// Notes too long for the rest of the page continue on the next one: the line still fits if the
-/// notes before its last one, and that one's first line, fit below it. The notes then take the
-/// rest of the page.
+/// notes already on the page, and the first line of the first note it adds, fit below it (Word:
+/// a line referring to several notes stays when its first note can start). Its notes then take
+/// the rest of the page in order (whole while they fit, the first that doesn't split at a line or
+/// carried whole), and the rest continue on the next page ([`PageBuilder::flush_notes`]).
 fn notes_split(pb: &PageBuilder, (new_notes, line_notes): (&[NoteBox], &[NoteBox]), bottom: f32) -> bool {
-    line_notes.split_last().is_some_and(|(last, others)| {
-        let before: f32 = pb.notes.iter().chain(new_notes).chain(others).map(|n| n.h).sum();
+    line_notes.first().is_some_and(|first| {
+        let before: f32 = pb.notes.iter().chain(new_notes).map(|n| n.h).sum();
         let sep = pb.seps().sep_h(pb.notes.first().is_some_and(|n| n.cont));
-        pb.note_floor().max(bottom) + sep + before + last.first_piece() + pb.seps().notice_h() <= pb.orig_bottom + 0.01
+        pb.note_floor().max(bottom) + sep + before + first.first_piece() + pb.seps().notice_h() <= pb.orig_bottom + 0.01
     })
 }
 
@@ -952,6 +970,9 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
         let y0 = pb.y;
         f.reanchor(ctx, pb, (y0, applied_before), &[]);
         f.anchor_y = y0 - applied_before;
+    }
+    if !pb.fresh() && !pb.web && f.square_float_past(ctx, pb) {
+        f.move_on(ctx, pb);
     }
     while f.l0 < f.n() {
         f.place_due_late(ctx, pb);
@@ -1110,7 +1131,7 @@ fn space_after_kept(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::Resolv
         return 0.0;
     }
     if let Some(Block::Para(next)) = ctx.doc.body.get(block + 1).map(|b| &**b) {
-        let nrp = ctx.doc.styles.resolve_para(&next.props);
+        let nrp = ctx.doc.styles.resolve_para_spaced(&next.props, None, !ctx.doc.settings.sum_paragraph_spacing);
         if nrp.style == rp.style && rp.contextual_spacing {
             return 0.0;
         }
