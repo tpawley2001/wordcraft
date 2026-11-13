@@ -413,8 +413,21 @@ impl<'a> Flow<'a> {
             });
         let height = self.pl.height + rooms.top + if break_mark { 0.0 } else { rooms.bottom };
         // A chain of kept paragraphs too long for an empty column flows like ordinary
-        // paragraphs, breaking at each column end (Word).
-        let keep_next = self.pl.rp.keep_next && !self.long_keep_chain(ctx, pb, height);
+        // paragraphs, breaking at each column end (Word). A kept paragraph with nothing above it
+        // on the page (only its own space before) never moves for keep with next: Word leaves it
+        // there and the next paragraph breaks as usual.
+        let at_top = pb.y - before.max(0.0) <= pb.top + 0.01 && pb.top <= pb.page_top + 0.01;
+        // A kept paragraph holding a page or column break keeps nothing with the next one (Word):
+        // the text after the break already starts a fresh page or column, with nothing above it
+        // to move away from, and moving it would leave the page its break opens without text.
+        // With text after the break, keep lines doesn't move it either (the break splits it
+        // anyway); a break at its end still keeps the lines before it together.
+        let breaks = |l: &para::Line| matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak);
+        let has_break = self.pl.lines.iter().any(breaks);
+        if self.pl.lines.iter().position(breaks).is_some_and(|i| self.pl.lines.iter().skip(i + 1).any(|l| !only_markers(self.p, l.start..l.stop))) {
+            return before;
+        }
+        let keep_next = self.pl.rp.keep_next && !at_top && !has_break && !self.long_keep_chain(ctx, pb, height);
         let rp = &self.pl.rp;
         if !(rp.keep_lines || (keep_next && pb.y + height <= pb.bottom + 0.01)) {
             return before;
@@ -423,6 +436,13 @@ impl<'a> Flow<'a> {
             // With the table rows a kept paragraph moves with; when those cannot fit on an empty
             // column with it, the fixed start of the table, as before.
             let room = pb.next_room(self.body_top);
+            // On a page with footnotes referenced on it the space after it pushes the next
+            // paragraph's lines down toward the note area too (the part of it the next
+            // paragraph's space before, counted there, doesn't already cover). Without notes, or
+            // with only the rest of a note continued from the page before (which gives way to the
+            // text and goes on to the next page), the check stays as it was.
+            let own_notes = pb.notes.iter().any(|n| !n.cont);
+            let height = if own_notes { height + space_after_over_next(ctx, self.block, rp, self.list) } else { height };
             let rows = height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), Some(room));
             if rows <= room + 0.01 { rows } else { height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), None) }
         } else {
@@ -1347,6 +1367,18 @@ fn space_after_kept(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::Resolv
         }
     }
     after
+}
+
+/// The part of kept paragraph `block`'s space after ([`space_after_kept`]) that the next
+/// paragraph's space before, which [`next_first_line`] counts, does not cover: the larger of the
+/// two separates them unless the document sums paragraph spacing. Nothing before a table.
+fn space_after_over_next(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::ResolvedPara, list: Option<u32>) -> f32 {
+    let Some(Block::Para(next)) = ctx.doc.body.get(block + 1).map(|b| &**b) else { return 0.0 };
+    let after = space_after_kept(ctx, block, rp, list);
+    if ctx.doc.settings.sum_paragraph_spacing {
+        return after;
+    }
+    (after - ctx.doc.styles.resolve_para(&next.props).space_before.max(0.0)).max(0.0)
 }
 
 /// The room the paragraphs after `block` need on the page for keep with next: enough of the
