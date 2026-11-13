@@ -166,9 +166,9 @@ impl Session {
 
     /// [`Session::export_layout`]; with `markup` (Print Markup) each page also has the markup
     /// area with the comments in balloons. Fields Word fills in for output show their fresh
-    /// results ([`crate::cmd::references::output_fields`]).
+    /// results ([`crate::cmd::references::output_fields_in`]).
     pub fn export_layout_with(&self, markup: bool) -> Arc<DocLayout> {
-        let out = crate::cmd::references::output_fields(&self.doc);
+        let out = crate::cmd::references::output_fields_in(&self.doc, Some(&self.output_context()));
         self.export_layout_of(out.as_ref().unwrap_or(&self.doc), markup)
     }
 

@@ -536,7 +536,7 @@ impl Session {
     /// the per-user print preferences; on-screen visibility does not affect printing.
     pub fn print_layout(&self, v: &Value) -> std::sync::Arc<DocLayout> {
         let markup = crate::cmd::file::export_options(self, v);
-        let out = crate::cmd::references::output_fields(&self.doc);
+        let out = crate::cmd::references::output_fields_in(&self.doc, Some(&self.output_context()));
         self.output_layout_of(
             out.as_ref().unwrap_or(&self.doc),
             markup.markup,
@@ -587,7 +587,7 @@ impl Session {
         if p::str(v, "range") != Some("selectedText") {
             return Ok(None);
         }
-        let out = crate::cmd::references::output_fields(&self.doc);
+        let out = crate::cmd::references::output_fields_in(&self.doc, Some(&self.output_context()));
         let source = out.as_ref().unwrap_or(&self.doc);
         let Some(frag) = crate::cmd::edit::selection_fragment_in(self, source) else {
             return Err(CmdError::Params("nothing is selected to print".into()));
@@ -638,7 +638,7 @@ impl Session {
         }
         // Print Markup (File › Print) decides whether tracked changes and comments print.
         let mut markup = crate::cmd::file::export_options(self, v);
-        let out = crate::cmd::references::output_fields(&self.doc);
+        let out = crate::cmd::references::output_fields_in(&self.doc, Some(&self.output_context()));
         let report = self.print_report(v)?;
         // A Document Info job wins over the range; Print Selection prints the selection's own
         // document, all of it.

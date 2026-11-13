@@ -1242,3 +1242,27 @@ fn a_missing_summary_property_that_is_set_is_no_longer_missing() {
     assert_eq!(fields(&s).first().map(|(_, r)| r.as_str()), Some(""));
     assert_eq!(s.doc.core.in_file.title, wordcraft_doc::InFile::Present);
 }
+
+/// The layout PDF export and printing use shows a header's FILENAME and USERNAME as the session
+/// has them now, not the result stored in the file (Microsoft 365 Word's PDF export); the open
+/// document keeps its stored results.
+#[test]
+fn output_header_footer_session_export_layout_shows_the_file_name() {
+    use wordcraft_layout::display::{DisplayOptions, Draw, page_display};
+    let (mut s, hdr) = header_fields_session(wordcraft_doc::Document::from_text("body"), &["FILENAME", "USERNAME"]);
+    s.doc.last_section.headers.default = Some(hdr);
+    s.path = Some(std::path::PathBuf::from("/home/user/docs/quarterly.docx"));
+    s.author = "Ada Lovelace".into();
+    let lay = s.export_layout();
+    let page = lay.pages.first().expect("one page");
+    let mut text = String::new();
+    for d in page_display(&s.doc, page, &DisplayOptions::default()) {
+        if let Draw::Glyphs { text: t, .. } = d {
+            text.push_str(&t);
+        }
+    }
+    assert!(text.contains("quarterly.docx"), "{text:?}");
+    assert!(text.contains("Ada Lovelace"), "{text:?}");
+    assert!(!text.contains("stale"), "{text:?}");
+    assert!(story_fields(&s, StoryRef::Part(hdr)).iter().all(|(_, r)| r == "stale"), "the document keeps its results");
+}
