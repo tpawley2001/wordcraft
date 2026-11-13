@@ -16,6 +16,9 @@
 //! (rows 6 and 8), and a page whose only notes are the rest of one continued from the page before
 //! keeps the old check: that rest gives way to the text, and counting the space after there moved a
 //! heading off a page holding only a Word 97-2003 page break's mark (row 9).
+//! A kept paragraph holding a page or column break keeps nothing with the next one: its text
+//! after the break starts a fresh page anyway, and moving it on left the page its break opened
+//! without text (row 10).
 
 #[allow(unused_imports)]
 use crate::*;
@@ -342,5 +345,67 @@ fn row9_carried_note_after_a_split_break_mark() {
             page_of(&lay(&d), h)
         };
         assert_eq!(page(AFTER), page(0.0), "{carried_lines} carried note lines");
+    }
+}
+
+/// Row 10 (review): `fillers` one-line paragraphs, then a kept heading (keep with next and keep lines) whose
+/// content is a page break and then its text, then a long paragraph whose first line refers to a
+/// footnote of 10 lines and whose second and third lines refer to two more each. The break already
+/// starts the heading's text on a new page, so there is nothing above it to move away from: Word
+/// keeps it on the page its break opens, however little of the paragraph after it fits there.
+fn break_heading(fillers: usize, split: bool) -> (Document, usize) {
+    let (mut d, _) = doc_with(fillers, 0, Vec::new(), false, 0.0);
+    if split {
+        d.settings.split_pg_break_and_para_mark = true;
+        d.settings.compat_mode = 11;
+    }
+    let heading = ParaProps { keep_next: Some(true), keep_lines: Some(true), space_before: Some(12.0), space_after: Some(AFTER), ..plain() };
+    d.body.push(para(&format!("{}General Performance", wordcraft_doc::para::PAGE_BREAK), &heading));
+    let h = d.body.len() - 1;
+    d.body.push(para(&"word ".repeat(400), &plain()));
+    // The first offsets of the long paragraph's second and third lines, without notes.
+    let l = lay(&d);
+    let top = |off: usize| l.caret(&Pos::body(h + 1, off)).unwrap().top;
+    let mut starts = vec![4];
+    let mut off = 0;
+    while starts.len() < 3 && off < 2000 {
+        off += 5;
+        if top(off) > top(starts.last().copied().unwrap_or(0)) + 1.0 {
+            starts.push(off + 2);
+        }
+    }
+    assert_eq!(starts.len(), 3);
+    // Five notes of 10 lines: one on the first line, two on each of the next two.
+    let at = [starts[0], starts[1], starts[1] + 1, starts[2], starts[2] + 1];
+    let ids: Vec<_> = (0..at.len())
+        .map(|k| {
+            let note = (0..10).map(|j| para(&format!("Note {k} line {j}"), &plain())).collect();
+            d.add_part(wordcraft_doc::PartKind::Footnote, note)
+        })
+        .collect();
+    if let Some(Block::Para(p)) = d.body.get_mut(h + 1).map(Arc::make_mut) {
+        for (off, id) in at.iter().zip(ids).rev() {
+            p.insert_object(*off, InlineObject::NoteRef { kind: NoteKind::Footnote, id, custom: String::new() }, &Default::default()).unwrap();
+        }
+    }
+    (d, h)
+}
+
+#[test]
+fn row10_kept_heading_after_its_own_page_break_stays_on_the_page_it_opens() {
+    let (cap, _, _) = fill(false);
+    for (fillers, split) in [4, cap / 2, cap - 8, cap - 4, cap - 2].into_iter().flat_map(|n| [(n, false), (n, true)]) {
+        let (d, h) = break_heading(fillers, split);
+        let l = lay(&d);
+        let text_at = wordcraft_doc::para::PAGE_BREAK.len_utf8() + 1;
+        assert_eq!(page_of(&l, h - 1), 0, "{fillers} fillers, split {split}");
+        assert_eq!(l.caret(&Pos::body(h, text_at)).unwrap().page, 1, "{fillers} fillers, split {split}");
+        assert_eq!(page_of(&l, h + 1), 1, "{fillers} fillers, split {split}");
+        for (i, p) in l.pages.iter().enumerate() {
+            assert!(
+                p.items.iter().any(|it| matches!(it, Placed::Lines { story: StoryRef::Body, .. })),
+                "page {i} without body text, {fillers} fillers, split {split}"
+            );
+        }
     }
 }

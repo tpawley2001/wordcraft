@@ -417,7 +417,17 @@ impl<'a> Flow<'a> {
         // on the page (only its own space before) never moves for keep with next: Word leaves it
         // there and the next paragraph breaks as usual.
         let at_top = pb.y - before.max(0.0) <= pb.top + 0.01 && pb.top <= pb.page_top + 0.01;
-        let keep_next = self.pl.rp.keep_next && !at_top && !self.long_keep_chain(ctx, pb, height);
+        // A kept paragraph holding a page or column break keeps nothing with the next one (Word):
+        // the text after the break already starts a fresh page or column, with nothing above it
+        // to move away from, and moving it would leave the page its break opens without text.
+        // With text after the break, keep lines doesn't move it either (the break splits it
+        // anyway); a break at its end still keeps the lines before it together.
+        let breaks = |l: &para::Line| matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak);
+        let has_break = self.pl.lines.iter().any(breaks);
+        if self.pl.lines.iter().position(breaks).is_some_and(|i| self.pl.lines.iter().skip(i + 1).any(|l| !only_markers(self.p, l.start..l.stop))) {
+            return before;
+        }
+        let keep_next = self.pl.rp.keep_next && !at_top && !has_break && !self.long_keep_chain(ctx, pb, height);
         let rp = &self.pl.rp;
         if !(rp.keep_lines || (keep_next && pb.y + height <= pb.bottom + 0.01)) {
             return before;
