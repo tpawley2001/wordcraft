@@ -509,9 +509,17 @@ impl<'a> Builder<'a> {
                 } else {
                     ClKind::Text
                 });
+                // A missing Symbol font's character is as wide as Symbol makes it; the substitute's
+                // glyph is drawn at the cluster's start.
+                let sym_adv = sym
+                    .and_then(|m| m.advance(single_char(sub.get(cs..ce).unwrap_or(""))?))
+                    .map(|em| em as f32 * st.size * hscale)
+                    .filter(|w| w.is_finite());
                 // The substitute's kerning pairs aren't the missing font's: Word's advance stands.
-                let adv =
-                    boxed.or_else(|| word_advances.then(|| self.missing_font_advance(s, map, rc, st.size * hscale, g0)).flatten()).unwrap_or(adv);
+                let adv = boxed
+                    .or(sym_adv)
+                    .or_else(|| word_advances.then(|| self.missing_font_advance(s, map, rc, st.size * hscale, g0)).flatten())
+                    .unwrap_or(adv);
                 let adv = if kind == ClKind::Marker { 0.0 } else { adv + rc.spacing };
                 self.clusters.push(Cluster {
                     start: base + a + cs,

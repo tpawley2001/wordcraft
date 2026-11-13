@@ -95,6 +95,7 @@ mod styleref;
 mod styleref_args;
 mod styleref_case;
 mod styleref_errors;
+mod symbol_advance;
 mod symbol_field;
 mod symbol_font_lines;
 mod symbol_missing_box;
