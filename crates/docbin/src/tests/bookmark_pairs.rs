@@ -108,3 +108,29 @@ fn spare_bytes_after_the_end_cps_are_ignored() {
     let doc = open(TEXT, &["a", "b"], bkf(&[0, 4], CCP, &[0, 1]), plc(&[3, 7, CCP], &[0, 0, 0, 0]));
     assert_eq!(ranges(&doc), expect(&[("a", "One"), ("b", "two")]));
 }
+
+#[test]
+fn past_the_cap_each_kept_bookmark_ends_where_its_own_fbkf_says() {
+    // More bookmarks than the reader keeps: the FBKFs still start after all the CPs, not after
+    // the kept ones. Bookmark i covers character i alone (its end, PlcfBkl[i], is i + 1); every
+    // character is different, so a wrong end shows.
+    let max = crate::notes::MAX;
+    let n = max + 2;
+    let text: String = (0..n).filter_map(|i| char::from_u32(0x4E00 + i as u32)).chain(['\r']).collect();
+    let text: &'static str = Box::leak(text.into_boxed_str());
+    let ccp = text.chars().count() as u32;
+    let starts: Vec<u32> = (0..n as u32).map(|i| i % ccp).collect();
+    let ibkl: Vec<u16> = (0..n as u16).collect();
+    let ends: Vec<u32> = (1..=n as u32 + 1).collect();
+    let names: Vec<String> = (0..max).map(|i| format!("b{i}")).collect();
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    let started = std::time::Instant::now();
+    let doc = open(text, &names, bkf(&starts, ccp, &ibkl), plc(&ends, &[]));
+    assert!(started.elapsed() < std::time::Duration::from_secs(30), "{:?}", started.elapsed());
+    let got = ranges(&doc);
+    assert_eq!(got.len(), max);
+    for i in [0, 9, max - 1] {
+        let want = char::from_u32(0x4E00 + i as u32).map(String::from);
+        assert_eq!(got.get(&format!("b{i}")), want.as_ref(), "bookmark {i}");
+    }
+}

@@ -13,6 +13,7 @@ mod crypt;
 mod dop;
 mod drawing;
 mod fib;
+mod fieldtype;
 mod fkp;
 mod fmt;
 mod list;
@@ -161,6 +162,18 @@ pub(crate) fn roman_fonts<'a>(fonts: impl Iterator<Item = (u8, &'a str)>) -> Vec
         .collect()
 }
 
+/// The names (lowercase) of the fonts the font table marks as symbol fonts by their charset and
+/// PANOSE ([`wordcraft_doc::is_symbol_class_font`]), capped as [`roman_fonts`] is: Word lays out
+/// a run in one that isn't installed with Symbol.
+pub(crate) fn symbol_class_fonts(fonts: &[stsh::FontEntry]) -> Vec<String> {
+    fonts
+        .iter()
+        .filter(|f| f.symbol_class() && !f.name.trim().is_empty() && f.name.len() <= MAX_ROMAN_FONT_NAME)
+        .map(|f| f.name.trim().to_lowercase())
+        .take(MAX_ROMAN_FONTS)
+        .collect()
+}
+
 #[cfg(test)]
 thread_local! {
     /// What the last document read on this thread left out for the work budget ([`Work::log`]).
@@ -301,6 +314,8 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     // A missing font of the roman family class is drawn in a serif face, as for DOCX's
     // `w:family w:val="roman"`.
     doc.settings.roman_fonts = roman_fonts(font_entries.iter().map(|f| (f.ff, f.name.as_str())));
+    // A missing font the table marks as a symbol font is laid out as Symbol.
+    doc.settings.symbol_class_fonts = symbol_class_fonts(&font_entries);
     if let Some(core) = metadata::read(&mut comp) {
         doc.core = core;
     }
@@ -378,7 +393,9 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
         revs: &revs,
         paragraphs: &paragraphs,
         work: &work,
+        fld: (&fieldtype::NO_FIELD_TYPES, 0),
     };
+    let fld = |pair: usize| fieldtype::FieldTypes::read(&table, fib.pair(pair));
 
     // Drawings: text box stories become parts first, then the floating shapes and pictures
     // anchored in the main document and the headers, found by their anchor CP while walking.
@@ -390,7 +407,12 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
         .map(officeart::content)
         .unwrap_or_default();
     let mut tb_stories = std::collections::HashMap::new();
-    for (pair, base, len) in [(fib::pair::PLCF_TXBX_TXT, txbx_base, fib.ccp.txbx), (fib::pair::PLCF_HDR_TXBX_TXT, hdr_txbx_base, fib.ccp.hdr_txbx)] {
+    for (pair, base, len, fld_pair) in [
+        (fib::pair::PLCF_TXBX_TXT, txbx_base, fib.ccp.txbx, fib::pair::PLCF_FLD_TXBX),
+        (fib::pair::PLCF_HDR_TXBX_TXT, hdr_txbx_base, fib.ccp.hdr_txbx, fib::pair::PLCF_FLD_HDR_TXBX),
+    ] {
+        let types = fld(fld_pair);
+        let ctx = WalkCtx { fld: (&types, base), ..ctx };
         for (spid, ab) in drawing::textbox_stories(&table, fib.pair(pair)) {
             let Some((a, b)) = story(base, len, ab) else { continue };
             if doc.parts.len() >= MAX_PARTS || tb_stories.contains_key(&spid) {
@@ -421,6 +443,8 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     // in the order even header, odd (default) header, even footer, odd (default) footer,
     // first header, first footer. Empty stories inherit from the previous section.
     let mut hf_ids: Vec<(usize, usize, u32)> = Vec::new();
+    let hdr_types = fld(fib::pair::PLCF_FLD_HDR);
+    let hdr_ctx = WalkCtx { fld: (&hdr_types, hdd_base), ..ctx };
     for si in 0..sects.len() {
         for k in 0..6usize {
             let Some(&ab) = stories.get(6 + si * 6 + k) else { break };
@@ -432,7 +456,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
                 0 | 1 | 4 => PartKind::Header,
                 _ => PartKind::Footer,
             };
-            let blocks = header_story_blocks(&ctx, a, b, &mut pics, max_paragraphs)?;
+            let blocks = header_story_blocks(&hdr_ctx, a, b, &mut pics, max_paragraphs)?;
             if !blocks.is_empty() {
                 let id = doc.add_part(kind, blocks);
                 hf_ids.push((si, k, id));
@@ -443,21 +467,23 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     // Footnote and endnote stories: each text range becomes a part; the reference CPs then
     // link to the part ids during the main walk.
     let note_kinds = [
-        (fib::pair::PLCF_FND_REF, fib::pair::PLCF_FND_TXT, ftn_base, fib.ccp.ftn, NoteKind::Footnote, PartKind::Footnote),
-        (fib::pair::PLCF_END_REF, fib::pair::PLCF_END_TXT, edn_base, fib.ccp.edn, NoteKind::Endnote, PartKind::Endnote),
+        (fib::pair::PLCF_FND_REF, fib::pair::PLCF_FND_TXT, ftn_base, fib.ccp.ftn, NoteKind::Footnote, PartKind::Footnote, fib::pair::PLCF_FLD_FTN),
+        (fib::pair::PLCF_END_REF, fib::pair::PLCF_END_TXT, edn_base, fib.ccp.edn, NoteKind::Endnote, PartKind::Endnote, fib::pair::PLCF_FLD_EDN),
     ];
     let mut note_links: Vec<NoteLink> = Vec::new();
-    for (ref_pair, txt_pair, base, len, kind, part_kind) in note_kinds {
+    for (ref_pair, txt_pair, base, len, kind, part_kind, fld_pair) in note_kinds {
         let found = notes::parse_notes(&table, &fib, ref_pair, txt_pair);
         let stories = found.into_iter().filter_map(|(cp, auto, ab)| Some((cp, auto, story(base, len, ab)?)));
-        note_parts(&mut doc, &ctx, stories, (kind, part_kind), (&mut pics, max_paragraphs), &mut note_links)?;
+        let types = fld(fld_pair);
+        note_parts(&mut doc, &WalkCtx { fld: (&types, base), ..ctx }, stories, (kind, part_kind), (&mut pics, max_paragraphs), &mut note_links)?;
     }
     // Sorted so the main walk finds each reference by binary search.
     note_links.sort_by_key(|n| n.cp);
     let marks = notes::parse_bookmarks(&table, &fib);
     let mut sect_ends: Vec<u32> = sects.iter().map(|s| s.end_cp).collect();
     sect_ends.sort_unstable();
-    let ctx = WalkCtx { notes: &note_links, marks: &marks, sect_ends: &sect_ends, ..ctx };
+    let main_types = fld(fib::pair::PLCF_FLD_MOM);
+    let ctx = WalkCtx { notes: &note_links, marks: &marks, sect_ends: &sect_ends, fld: (&main_types, 0), ..ctx };
 
     // Sections: each section's properties attach to the paragraph that ends it (its story of
     // header/footer parts included); the section reaching the end of the text is the final one.
@@ -646,6 +672,8 @@ struct WalkCtx<'a> {
     paragraphs: &'a ParaBudget,
     /// Repeated-work bytes left ([`MAX_WORK`]), and what they left out.
     work: &'a Work,
+    /// The field table of the story being walked, and the CP its story starts at.
+    fld: (&'a fieldtype::FieldTypes, u32),
 }
 
 /// The paragraph and cell marks still allowed in this document, and whether a walk ran into
@@ -911,6 +939,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 };
                 if field_begin(&mut fields, props) {
                     object_id = None;
+                    field_type(ctx, cp, &mut fields);
                 }
                 cp = cp.saturating_add(1);
                 continue;
@@ -1369,6 +1398,14 @@ fn fill_code_mark(at: Option<Awaiting>, fields: &mut [OpenField], pb: &mut ParaB
     }
 }
 
+/// The just-opened field (the stack's last) at `cp` takes its type byte from the story's field table.
+fn field_type(ctx: &WalkCtx<'_>, cp: u32, fields: &mut [OpenField]) {
+    let (types, base) = ctx.fld;
+    if let Some(f) = fields.last_mut() {
+        f.flt = cp.checked_sub(base).and_then(|at| types.at(at));
+    }
+}
+
 /// An open field in the walk's stack: the field being assembled and how it nests.
 struct OpenField {
     build: FieldBuild,
@@ -1378,6 +1415,31 @@ struct OpenField {
     /// in their code (whose characters are dropped), and those showing their result here.
     over_hidden: u32,
     over_shown: u32,
+    /// A GOTOBUTTON or MACROBUTTON field: a field nested in its code adds only its result.
+    button: bool,
+    /// Levels nested in a button field's code, only counted: those all in their results
+    /// (whose characters show), then those from the first one still in its code (dropped).
+    code_shown: u32,
+    code_hidden: u32,
+    /// The type byte of the field's begin in its story's field table ([`fieldtype`]), until the
+    /// finished code has been given its English name.
+    flt: Option<u8>,
+}
+
+impl OpenField {
+    /// A finished code whose keyword is not an English field name takes the English name of the
+    /// field's type ([`fieldtype::english_keyword`]); code marks after the keyword move with it.
+    fn english_code(&mut self) {
+        let instr = &self.build.instr;
+        let flt = self.flt.take();
+        let (Some((at, name)), Some(code)) = (fieldtype::english_keyword(instr, flt), fieldtype::english_code(instr, flt)) else { return };
+        self.build.instr = code;
+        for m in &mut self.build.code.marks {
+            if m.at >= at.end {
+                m.at = m.at.saturating_sub(at.end).saturating_add(at.start).saturating_add(name.len());
+            }
+        }
+    }
 }
 
 /// A field's cached result: its text and, as runs, the formatting of that text. A run is added
@@ -1430,20 +1492,33 @@ fn is_range_instr(instr: &str) -> bool {
         || t.get(..5).is_some_and(|k| k.eq_ignore_ascii_case("ADDIN"))
 }
 
+/// A GOTOBUTTON or MACROBUTTON field code: a field nested in it shows its result, not its code.
+fn is_button_instr(instr: &str) -> bool {
+    instr.split_whitespace().next().is_some_and(|k| k.eq_ignore_ascii_case("MACROBUTTON") || k.eq_ignore_ascii_case("GOTOBUTTON"))
+}
+
 /// A field begin (0x13): a new field, or one more level in the innermost field's code. `props`
 /// gives a new field's formatting at its begin. True when a new field was opened.
 fn field_begin(fields: &mut Vec<OpenField>, props: impl FnOnce() -> CharProps) -> bool {
     let full = fields.len() >= MAX_FIELD_NEST;
     match fields.last_mut() {
         Some(f) if f.over_hidden > 0 => f.over_hidden = f.over_hidden.saturating_add(1),
-        Some(f) if f.build.sep.is_none() && !f.range => f.build.depth = f.build.depth.saturating_add(1),
+        Some(f) if f.build.sep.is_none() && !f.range => {
+            if f.build.depth == 1 {
+                f.button = is_button_instr(&f.build.instr);
+            }
+            if f.button {
+                f.code_hidden = f.code_hidden.saturating_add(1);
+            }
+            f.build.depth = f.build.depth.saturating_add(1);
+        }
         // Past the cap, a field in a result is counted, not kept: its code is
         // hidden and its result shows in the innermost kept field.
         Some(f) if full => f.over_hidden = 1,
         _ => {
             let props = props();
             let build = FieldBuild { depth: 1, instr: String::new(), sep: None, props, object: false, code: CodeMarks::default() };
-            fields.push(OpenField { build, range: false, over_hidden: 0, over_shown: 0 });
+            fields.push(OpenField { build, range: false, over_hidden: 0, over_shown: 0, button: false, code_shown: 0, code_hidden: 0, flt: None });
             return true;
         }
     }
@@ -1461,11 +1536,21 @@ fn field_separator(fields: &mut [OpenField], pb: &mut ParaBuild) {
             f.over_shown = f.over_shown.saturating_add(1);
         }
     } else if let Some(f) = fields.last_mut()
+        && f.button
+        && f.build.depth > 1
+    {
+        // The separator of the first nested field still in its code: its result shows.
+        if f.code_hidden == 1 {
+            f.code_hidden = 0;
+            f.code_shown = f.code_shown.saturating_add(1);
+        }
+    } else if let Some(f) = fields.last_mut()
         && f.build.depth == 1
         && f.build.sep.is_none()
         && !f.range
         && f.over_shown == 0
     {
+        f.english_code();
         if is_range_instr(&f.build.instr) {
             // A table of contents keeps its entries as ordinary paragraphs between
             // markers, as the DOCX reader does.
@@ -1489,8 +1574,16 @@ fn field_end(fields: &mut Vec<OpenField>, pb: &mut ParaBuild, work: &Work) -> bo
             f.over_shown -= 1;
         }
     } else if let Some(mut f) = fields.pop() {
+        if f.build.depth == 1 && f.build.sep.is_none() && !f.range {
+            f.english_code();
+        }
         if f.build.depth > 1 {
             f.build.depth -= 1;
+            if f.code_hidden > 0 {
+                f.code_hidden -= 1;
+            } else {
+                f.code_shown = f.code_shown.saturating_sub(1);
+            }
             fields.push(f);
         } else if f.range {
             push_field_end(pb);
@@ -1701,7 +1794,8 @@ fn num_of(ilfo: i32) -> Option<u32> {
 /// well as) the visible text.
 fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, field: Option<&mut OpenField>, st: &mut FmtState<'a>) {
     // The code of a field counted past the nesting cap is never shown.
-    if field.as_ref().is_some_and(|f| f.over_hidden > 0) {
+    // Nor is the code of a field nested in a button field's code.
+    if field.as_ref().is_some_and(|f| f.over_hidden > 0 || f.code_hidden > 0) {
         return;
     }
     // A range field's result is ordinary content.

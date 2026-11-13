@@ -5,7 +5,7 @@
 use wordcraft_doc::numbering::Counters;
 use wordcraft_doc::props::{Align, Border, Borders, HeightRule, Rgb, TextDirection, VAlign, VMerge};
 use wordcraft_doc::styles::{PartSet, TablePart, TableStyleProps};
-use wordcraft_doc::{Block, Blocks, Paragraph, Row, StoryRef, Table};
+use wordcraft_doc::{Block, Blocks, Cell, Paragraph, Row, StoryRef, Table};
 use wordcraft_geom::Rect;
 
 use crate::boxes::BoxContext;
@@ -399,13 +399,47 @@ fn preferred_grid(t: &Table, avail: f32) -> Vec<f32> {
     grid
 }
 
-fn table_frame(ctx: &mut Ctx, t: &Table, avail: f32, depth: usize, style: Option<&TableStyleProps>) -> TableFrame {
+/// How much wider than the text a percentage width's base is. Before Word 2013 layout
+/// (compatibility mode 15) a start-aligned table is outdented by its left cell margin so the cell
+/// text lines up with the body text, and its percentage is of the text width plus the table's
+/// left and right default cell margins, so a 100% table's cell text spans the text width.
+///
+/// Measured for top-level body tables (autofit and fixed, with and without an indent, in modes
+/// 11, 12 and 14) and assumed for top-level header and footer tables, which share the section's
+/// width. Not measured, so they keep the text width as the base: nested tables and tables in
+/// notes or text boxes, percentages over 100%, centred or end-aligned tables, floating tables,
+/// right-to-left tables and tables whose cells set their own margins.
+fn legacy_pct_margins(ctx: &Ctx, story: StoryRef, t: &Table, depth: usize, style: Option<&TableStyleProps>) -> f32 {
+    let top_level = depth <= 1
+        && match story {
+            StoryRef::Body => true,
+            StoryRef::Part(id) => {
+                ctx.doc.parts.get(&id).is_some_and(|p| matches!(p.kind, wordcraft_doc::PartKind::Header | wordcraft_doc::PartKind::Footer))
+            }
+        };
+    let measured = ctx.doc.settings.compat_mode < 15
+        && top_level
+        && t.props.width_pct.is_some_and(|p| p > 0.0 && p <= 100.0)
+        && t.props.float.is_none()
+        && !t.props.bidi_visual
+        && !matches!(t.props.align, Some(Align::Center | Align::Right))
+        && t.rows.iter().all(|r| r.cells.iter().all(|c| c.props.margins.is_none() && c.props.partial_margins.is_none()));
+    if !measured {
+        return 0.0;
+    }
+    let m = default_margins(t, style);
+    let side = |v: f32| if v.is_finite() { v.clamp(0.0, 1584.0) } else { 0.0 };
+    side(m[1]) + side(m[3])
+}
+
+fn table_frame(ctx: &mut Ctx, story: StoryRef, t: &Table, avail: f32, depth: usize, style: Option<&TableStyleProps>) -> TableFrame {
     let ncols = grid_cols(t).max(1);
     let mut grid = preferred_grid(t, avail);
     let mut total: f32 = grid.iter().sum();
     // A top-level table in an inherited header or footer takes its share of the defining
     // section's width (`Ctx::pct_base`).
     let pct_base = if depth <= 1 { ctx.pct_base.unwrap_or(avail) } else { avail };
+    let pct_base = pct_base + legacy_pct_margins(ctx, story, t, depth, style);
     let target = match (t.props.width_pct, t.props.width) {
         // Word keeps a percentage past 100%; the cap only bounds hostile input.
         (Some(p), _) if p > 0.0 => Some(pct_base * (p / 100.0).min(MAX_WIDTH_SHARE)),
@@ -431,7 +465,7 @@ fn table_frame(ctx: &mut Ctx, t: &Table, avail: f32, depth: usize, style: Option
     if !t.props.fixed {
         // Measuring lays paragraphs out once more; it mustn't count their equations twice.
         let eq_count = ctx.eq_count;
-        let content = column_content(ctx, t, style, depth, &grid);
+        let content = column_content(ctx, story, t, style, depth, &grid);
         ctx.eq_count = eq_count;
         if let Some(content) = content {
             autofit(&mut grid, &content, t, avail);
@@ -485,12 +519,86 @@ fn table_frame(ctx: &mut Ctx, t: &Table, avail: f32, depth: usize, style: Option
     TableFrame { ncols, colx, acc, total, margins_def, tborders, rtl, x }
 }
 
+/// Whether `row` is left out of the layout: it is itself a tracked deletion (`w:trPr/w:del`)
+/// and deletions are hidden. Only the row's own mark does that; deleted text in its cells
+/// leaves an empty row.
+fn row_hidden(ctx: &Ctx, row: &Row) -> bool {
+    ctx.hide_deleted.hides(ctx.doc, row.props.del)
+}
+
+/// Whether every row of `t` is left out ([`row_hidden`]): the table takes no room at all.
+pub(crate) fn hides_whole(ctx: &Ctx, t: &Table) -> bool {
+    !t.rows.is_empty() && t.rows.iter().all(|r| row_hidden(ctx, r))
+}
+
+/// The table as laid out: without the rows [`row_hidden`] leaves out (no height, borders or
+/// content, no part in header-row repeats or kept rows), with the document index of each row
+/// kept. `None` when every row is shown. A vertical merge whose first cell is in a row left
+/// out starts at the next row shown.
+pub(crate) fn shown_rows(ctx: &Ctx, t: &Table) -> Option<(Table, Vec<usize>)> {
+    if !t.rows.iter().any(|r| row_hidden(ctx, r)) {
+        return None;
+    }
+    let mut rows = Vec::new();
+    let mut map = Vec::new();
+    // Grid columns whose merge started in a row left out.
+    let mut restarts: Vec<usize> = Vec::new();
+    for (ri, row) in t.rows.iter().enumerate() {
+        let grids: Vec<(usize, VMerge)> = row
+            .cells
+            .iter()
+            .scan(row.first_grid(), |g, c| {
+                let at = *g;
+                *g = g.saturating_add(c.span());
+                Some((at, c.props.vmerge))
+            })
+            .collect();
+        if row_hidden(ctx, row) {
+            restarts.retain(|g| grids.iter().any(|&(at, v)| at == *g && v == VMerge::Continue));
+            restarts.extend(grids.iter().filter(|(_, v)| *v == VMerge::Restart).map(|(at, _)| *at));
+            continue;
+        }
+        let mut row = row.clone();
+        for (cell, (at, v)) in row.cells.iter_mut().zip(grids) {
+            if v == VMerge::Continue && restarts.contains(&at) {
+                cell.props.vmerge = VMerge::Restart;
+            }
+        }
+        restarts.clear();
+        rows.push(row);
+        map.push(ri);
+    }
+    Some((Table { props: t.props.clone(), grid: t.grid.clone(), rows, controls: t.controls.clone() }, map))
+}
+
+/// [`shown_rows`] as a table to read row properties from, alongside a layout of `t`.
+pub(crate) fn shown<'t>(ctx: &Ctx, t: &'t Table) -> std::borrow::Cow<'t, Table> {
+    match shown_rows(ctx, t) {
+        Some((shown, _)) => std::borrow::Cow::Owned(shown),
+        None => std::borrow::Cow::Borrowed(t),
+    }
+}
+
+/// Lay out table `t`. While deletions are hidden its deleted rows are left out
+/// ([`shown_rows`]); cell paths and [`Placed::Cell`] rows still name the document's rows.
 pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], avail: f32, depth: usize) -> TableLayout {
+    match shown_rows(ctx, t) {
+        Some((shown, map)) => layout_shown(ctx, story, &shown, &map, path, avail, depth),
+        None => layout_shown(ctx, story, t, &[], path, avail, depth),
+    }
+}
+
+/// The document's index of laid-out row `ri`: `map` holds them when rows were left out.
+fn doc_row(map: &[usize], ri: usize) -> u32 {
+    map.get(ri).copied().unwrap_or(ri) as u32
+}
+
+fn layout_shown(ctx: &mut Ctx, story: StoryRef, t: &Table, map: &[usize], path: &[u32], avail: f32, depth: usize) -> TableLayout {
     let style = table_style(ctx, t);
     // Cell text formatting and looks per set of style parts, built once per table.
     let mut cell_text: Vec<(Region, CellText)> = Vec::new();
     let mut looks: Vec<(Region, RegionLook)> = Vec::new();
-    let TableFrame { ncols, colx, acc, total, margins_def, tborders, rtl, x } = table_frame(ctx, t, avail, depth, style.as_ref());
+    let TableFrame { ncols, colx, acc, total, margins_def, tborders, rtl, x } = table_frame(ctx, story, t, avail, depth, style.as_ref());
     let nrows = t.rows.len();
     // First pass: lay out every cell's content.
 
@@ -538,7 +646,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
             let fill = cell.props.shading.or(look.and_then(|l| l.fill));
             let text = cell_text.iter().find(|(r, _)| *r == region).map(|(_, c)| c);
             let mut cpath = path.to_vec();
-            cpath.push(ri as u32);
+            cpath.push(doc_row(map, ri));
             cpath.push(ci as u32);
             // Effective borders: cell > table (outer vs inside).
             let tb = tborders;
@@ -696,7 +804,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
         rows.push(cells);
     }
     grow_vertical_merges(&rows, &mut heights);
-    finish_table_rows(ctx, TableRows { story, table: t, path, depth, cell_text, rows, heights, bottoms, edges, x, total })
+    finish_table_rows(ctx, TableRows { story, table: t, map, path, depth, cell_text, rows, heights, bottoms, edges, x, total })
 }
 
 /// A row in an HTML div (`w:divId`) moves right by the div's left margin, and those of the divs
@@ -740,6 +848,8 @@ fn grow_vertical_merges(rows: &[Vec<CellBox>], heights: &mut [f32]) {
 struct TableRows<'a> {
     story: StoryRef,
     table: &'a Table,
+    /// The document's index of each row laid out (empty: the same as laid out).
+    map: &'a [usize],
     path: &'a [u32],
     depth: usize,
     cell_text: Vec<(Region, CellText)>,
@@ -752,7 +862,7 @@ struct TableRows<'a> {
 }
 
 fn finish_table_rows(ctx: &mut Ctx, input: TableRows<'_>) -> TableLayout {
-    let TableRows { story, table: t, path, depth, cell_text, rows, heights, bottoms, edges, x, total } = input;
+    let TableRows { story, table: t, map, path, depth, cell_text, rows, heights, bottoms, edges, x, total } = input;
     // Grid columns holding a vertical-merge continuation, per row.
     let cont: Vec<Vec<usize>> = t
         .rows
@@ -829,7 +939,7 @@ fn finish_table_rows(ctx: &mut Ctx, input: TableRows<'_>) -> TableLayout {
                     && let Some(cell) = t.rows.get(ri).and_then(|r| r.cells.get(tn.ci))
                 {
                     let mut cpath = path.to_vec();
-                    cpath.extend([ri as u32, tn.ci as u32]);
+                    cpath.extend([doc_row(map, ri), tn.ci as u32]);
                     let text = cell_text.iter().find(|(r, _)| *r == tn.region).map(|(_, c)| c);
                     // Same list numbers as the first layout: lay it out from the same counters.
                     let now = (std::mem::replace(&mut ctx.counters, tn.snap.0), std::mem::replace(&mut ctx.eq_count, tn.snap.1));
@@ -883,7 +993,7 @@ fn finish_table_rows(ctx: &mut Ctx, input: TableRows<'_>) -> TableLayout {
                 rect: Rect::new(c.x, 0.0, c.w, if c.vmerge == VMerge::Continue { rh } else { span_h }),
                 covered: c.vmerge == VMerge::Continue,
                 table: wordcraft_doc::Path(path.to_vec()),
-                row: ri,
+                row: doc_row(map, ri) as usize,
                 cell: ci,
                 story,
                 clip: exact && c.h > span_h + 0.01,
@@ -1390,22 +1500,36 @@ fn region_text(st: &TableStyleProps, region: Region) -> CellText {
 /// Each column's narrowest and widest content, cell margins included: its longest word and its
 /// longest line. A cell spanning columns shares what they lack between them; nested tables count
 /// with their own. `None` when every cell is empty.
-fn column_content(ctx: &mut Ctx, t: &Table, style: Option<&TableStyleProps>, depth: usize, grid: &[f32]) -> Option<Vec<(f32, f32)>> {
+fn column_content(ctx: &mut Ctx, story: StoryRef, t: &Table, style: Option<&TableStyleProps>, depth: usize, grid: &[f32]) -> Option<Vec<(f32, f32)>> {
     let margins_def = default_margins(t, style);
     // The grid's width once: counting it walks every row.
     let ncols = grid_cols(t);
     let mut cols = vec![(0.0f32, 0.0f32); ncols.max(1)];
     let mut spanning = Vec::new();
     let mut any = false;
+    // Whether the grid holds preferred widths (computed once: it walks every cell).
+    let preferred = !is_automatic(t);
     for (ri, row) in t.rows.iter().enumerate() {
         let mut g = row.first_grid();
         for cell in &row.cells {
             let span = cell.span();
             if cell.props.vmerge != VMerge::Continue {
                 let text = style.map(|st| region_text(st, region_of(t, style, ri, g, cell.span(), cols.len())));
-                let (lo, hi) = blocks_content(ctx, &cell.blocks, text.as_ref(), depth);
-                any |= hi > 0.0;
                 let m = cell.props.resolved_margins(margins_def);
+                // Turned text asks for the room its lines take across the column, never for
+                // the width of its words laid flat (Word: a column of turned headers keeps its
+                // grid width when one line fits).
+                // A turned cell in a column with a preferred width doesn't give any of it up to
+                // other columns either.
+                let (lo, hi) = if cell.props.text_direction.is_turned() {
+                    let across = turned_across(ctx, story, cell, row, m, text.as_ref(), depth);
+                    let keep =
+                        grid.get(g).filter(|w| preferred && span == 1 && w.is_finite()).map_or(0.0, |w| (w - m[1] - m[3]).clamp(0.0, UNBOUNDED));
+                    (across.max(keep), across.max(keep))
+                } else {
+                    blocks_content(ctx, story, &cell.blocks, text.as_ref(), depth)
+                };
+                any |= hi > 0.0;
                 let need = (lo + m[1] + m[3], hi + m[1] + m[3]);
                 match cols.get_mut(g) {
                     Some(col) if span == 1 => *col = (col.0.max(need.0), col.1.max(need.1)),
@@ -1460,8 +1584,28 @@ fn row_gaps(row: &Row, end: usize) -> impl Iterator<Item = (usize, usize, f32)> 
         .filter_map(|(g, n, w)| w.filter(|w| w.is_finite() && *w > 0.0).map(|w| (g, n, w.min(1584.0))))
 }
 
+/// How far a turned cell's lines reach across its column: its paragraphs laid out as the turned
+/// cell is drawn (lines as long as an exact row height allows, else as long as the text needs
+/// unwrapped), the extent of their lines stacked side by side. List counters and the equation
+/// count are put back, so measuring doesn't use up numbers.
+fn turned_across(ctx: &mut Ctx, story: StoryRef, cell: &Cell, row: &Row, m: [f32; 4], text: Option<&CellText>, depth: usize) -> f32 {
+    let snap = (ctx.counters.clone(), ctx.eq_count);
+    let len = match (row.props.height, row.props.height_rule) {
+        (Some(h), HeightRule::Exact) if h > 0.0 => (h - m[0].max(0.0) - m[2].max(0.0)).clamp(4.0, TURNED_LIMIT),
+        _ => {
+            let probe = layout_box(ctx, BoxInput::cell(story, &cell.blocks, &[], TURNED_MAX, text, depth)).items;
+            (ctx.counters, ctx.eq_count) = (snap.0.clone(), snap.1);
+            natural_length(&probe).clamp(4.0, TURNED_MAX)
+        }
+    };
+    let laid = layout_box(ctx, BoxInput::cell(story, &cell.blocks, &[], len, text, depth));
+    (ctx.counters, ctx.eq_count) = snap;
+    let across = laid.height.max(laid.floats_bottom);
+    if across.is_finite() { across.clamp(0.0, UNBOUNDED) } else { 0.0 }
+}
+
 /// The narrowest and widest a block list can be laid out.
-fn blocks_content(ctx: &mut Ctx, blocks: &Blocks, text: Option<&CellText>, depth: usize) -> (f32, f32) {
+fn blocks_content(ctx: &mut Ctx, story: StoryRef, blocks: &Blocks, text: Option<&CellText>, depth: usize) -> (f32, f32) {
     let (mut lo, mut hi) = (0.0f32, 0.0f32);
     for b in blocks.iter() {
         let (l, h) = match &**b {
@@ -1479,7 +1623,7 @@ fn blocks_content(ctx: &mut Ctx, blocks: &Blocks, text: Option<&CellText>, depth
                 } else {
                     let style = table_style(ctx, nt);
                     let weights = preferred_grid(nt, width);
-                    let cols = column_content(ctx, nt, style.as_ref(), depth + 1, &weights).unwrap_or_default();
+                    let cols = column_content(ctx, story, nt, style.as_ref(), depth + 1, &weights).unwrap_or_default();
                     let (l, h) = cols.iter().fold((0.0, 0.0), |(l, h), c| (l + c.0, h + c.1));
                     (width.max(l), width.max(h))
                 }

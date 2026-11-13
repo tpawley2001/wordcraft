@@ -1,4 +1,4 @@
-use super::state::{Dest, MARK_CLOSE, MARK_OPEN, MAX_PICT, St};
+use super::state::{Dest, MARK_CLOSE, MARK_OPEN, MAX_PANOSE_TEXT, MAX_PICT, St};
 use super::{Fmt, Inline, Reader, Rgb, make_img, model};
 use std::sync::Arc;
 
@@ -15,11 +15,19 @@ impl Reader {
         if let Some(name) = model::kept_font(&name).filter(|n| !n.is_empty())
             && self.fonts.len() < 4096
         {
+            if wordcraft_doc::panose_from_hex(&self.font_panose).is_some_and(|p| wordcraft_doc::is_symbol_class_font(self.font_charset_cur, &p)) {
+                // Capped as the font table is: a redefined index adds no font but may add a name.
+                if self.doc_set.symbol_class_fonts.len() < 4096 {
+                    self.doc_set.symbol_class_fonts.push(name.to_lowercase());
+                }
+            }
             self.fonts.insert(self.font_cur, name);
             if let Some(cp) = self.font_cp_cur.take() {
                 self.font_cps.insert(self.font_cur, cp);
             }
         }
+        self.font_panose.clear();
+        self.font_charset_cur = 0;
     }
 
     /// The code page 8-bit text is read in: the current font's, else the default font's, else the
@@ -302,6 +310,10 @@ impl Reader {
             // Bounded: a path past `MAX_TEMPLATE_CHARS` is cut at the group's end.
             Dest::Template if self.template_text.len() < super::state::MAX_TEMPLATE_CHARS * 4 => self.template_text.push_str(s),
             Dest::Template => {}
+            // Bounded: one past the 20 digits of a PANOSE is enough to reject a longer one.
+            Dest::Panose => {
+                self.font_panose.extend(s.chars().filter(|c| !c.is_whitespace()).take(MAX_PANOSE_TEXT.saturating_sub(self.font_panose.len())))
+            }
             Dest::Generator => {
                 if let Some(g) = self.generator.as_mut()
                     && g.len() < 256

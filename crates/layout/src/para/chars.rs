@@ -191,7 +191,12 @@ pub(super) const MISSING_ROMAN_FONT: &str = "Cambria";
 /// A missing Thai font keeps its name: it is drawn in a Thai face, not in Cambria (#1549).
 /// A font with substitutes of its own keeps them: Times New Roman is roman in every font table,
 /// and where it isn't installed Liberation Serif has its metrics; Word never meets it missing.
+/// A missing font the document's font table marks as a symbol font is looked up as Symbol
+/// ([`symbol_class_as`]).
 pub(super) fn lookup_family<'f>(doc: &Document, font: &'f str) -> &'f str {
+    if let Some(symbol) = symbol_class_as(doc, font) {
+        return symbol;
+    }
     let db = wordcraft_fonts::FontDb::global();
     let roman = !doc.settings.roman_fonts.is_empty()
         && font.split(';').map(str::trim).filter(|f| !f.is_empty()).any(|f| doc.settings.roman_fonts.iter().any(|r| r.eq_ignore_ascii_case(f)));
@@ -209,6 +214,40 @@ pub(super) fn lookup_family<'f>(doc: &Document, font: &'f str) -> &'f str {
     } else {
         font
     }
+}
+
+/// Symbol fonts that ship with Windows or Office: Word always has them, so it never lays one out
+/// as Symbol, whatever the document's font table says of it.
+const SHIPPED_SYMBOL_FONTS: &[&str] = &[
+    "marlett",
+    "mt extra",
+    "ms outlook",
+    "ms reference specialty",
+    "bookshelf symbol 7",
+    "segoe ui symbol",
+    "segoe mdl2 assets",
+    "segoe fluent icons",
+];
+
+/// `Some("Symbol")` when a run in `font` is laid out and drawn as one in Symbol that isn't
+/// installed: Symbol's glyph for a code Symbol has, its empty box for one it lacks, its line
+/// height. Word does that for a font the document's font table marks as a symbol font
+/// ([`wordcraft_doc::Settings::symbol_class_fonts`]: the icon fonts of documents converted from
+/// other word processors) when it isn't installed, isn't one of the symbol fonts drawn from
+/// their own tables (Wingdings…), has no line of its own among the known missing fonts, and
+/// isn't a symbol font Word always has ([`SHIPPED_SYMBOL_FONTS`]). The run keeps its font name.
+pub(super) fn symbol_class_as(doc: &Document, font: &str) -> Option<&'static str> {
+    let marked = &doc.settings.symbol_class_fonts;
+    if marked.is_empty() {
+        return None;
+    }
+    let f = font.trim();
+    if f.is_empty() || wordcraft_doc::symbol_fonts::is_symbol_font(f) || SHIPPED_SYMBOL_FONTS.iter().any(|s| s.eq_ignore_ascii_case(f)) {
+        return None;
+    }
+    let r = wordcraft_fonts::word::resolve(f, false, false);
+    (r.substituted && wordcraft_fonts::word::missing_font_line(f, &r).is_none() && marked.iter().any(|m| m.eq_ignore_ascii_case(f)))
+        .then_some("Symbol")
 }
 
 /// One face for a run in a Thai font that isn't installed (#1549): Word substitutes one font
@@ -283,4 +322,12 @@ pub fn draws_something(c: char) -> bool {
             | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{206F}' | '\u{3164}' | '\u{FE00}'..='\u{FE0F}'
             | '\u{FEFF}' | '\u{FFA0}' | '\u{FFF0}'..='\u{FFF8}' | '\u{1BCA0}'..='\u{1BCA3}' | '\u{1D173}'..='\u{1D17A}'
             | '\u{E0000}'..='\u{E0FFF}')
+}
+
+/// The character drawn for `c`: a non-breaking hyphen (U+2011) is the font's own hyphen-minus,
+/// with its face, width and line height, as the reference layout draws it; many fonts have no
+/// U+2011 glyph, and a fallback face's would make the line taller. Line breaking, offsets and
+/// the text itself keep U+2011: only the face choice and the shaping use this.
+pub(super) fn drawn_hyphen(c: char) -> char {
+    if c == wordcraft_doc::para::NB_HYPHEN { '-' } else { c }
 }
