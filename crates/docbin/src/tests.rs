@@ -15,22 +15,28 @@ mod cell_padding;
 mod cell_text_flow;
 mod cfb_tolerance;
 mod deleted_row;
+mod hidden_row;
 mod custom_note_marks;
+mod note_mark_format;
 mod char_spacing;
 mod char_styles;
 mod compat_mode;
 mod contextual_spacing;
 mod dop_base;
 mod dop_options;
+mod dop_no_tab_hang_ind;
 mod dop_wp_justification;
 mod drawing;
 mod emf_blip_repair;
 mod emf_font_faces;
 mod emf_header_repair;
 mod empty_inline_shape;
+mod raw_wmf_picture;
+mod shape_field_inline;
 mod encrypted;
 mod field_result_paragraphs;
 mod field_code_marks;
+mod field_end_in_table;
 mod field_result_props;
 mod field_type_names;
 mod font_table;
@@ -54,6 +60,7 @@ mod ole_print;
 mod ole_result_objects;
 mod paper_source;
 mod row_edges_grid;
+mod row_mark_anchor;
 mod row_no_gap_margins;
 mod row_table_borders;
 mod phonetic_guide;
@@ -64,6 +71,7 @@ mod section_page_numbers;
 mod section_rtl_gutter;
 mod shape_placeholder_size;
 mod split_break_mark;
+mod style_base_kind;
 mod style_name_case;
 mod style_own_char_props;
 mod style_own_para_props;
@@ -74,6 +82,8 @@ mod table_autofit;
 mod table_width;
 mod table_width_rows;
 mod tc80_cell_valign;
+mod tc80_horizontal_merge;
+mod tc80_no_wrap;
 mod tc80_vertical_merge;
 mod text_box_flow;
 mod text_box_margins;
@@ -1007,6 +1017,12 @@ struct StructSpec {
 }
 
 fn struct_doc(spec: &StructSpec) -> Vec<u8> {
+    struct_doc_styled(spec, &[std_bytes(1, 0x0FFF, "Normal", &Vec::new(), &Vec::new())])
+}
+
+/// [`struct_doc`] with the given STD records as its stylesheet. Character runs may start in the
+/// note or header stories (CPs past the main text), the last one then ends with the last story.
+fn struct_doc_styled(spec: &StructSpec, styles: &[Vec<u8>]) -> Vec<u8> {
     let text: String = spec.text.into();
     let ccp = text.chars().count() as u32;
     let mut all: Vec<Piece> = vec![Piece { compressed: false, text: text.clone() }];
@@ -1042,7 +1058,9 @@ fn struct_doc(spec: &StructSpec) -> Vec<u8> {
         word.extend_from_slice(&piece_bytes(piece));
     }
     word.resize(chpx_page_at, 0);
-    word.extend_from_slice(&chpx_fkp(&spec.chpx_runs, ccp));
+    let all_cps = all.iter().map(|p| p.text.chars().count() as u32).sum::<u32>();
+    let chpx_end = if spec.chpx_runs.iter().any(|r| r.0 >= ccp) { all_cps } else { ccp };
+    word.extend_from_slice(&chpx_fkp(&spec.chpx_runs, chpx_end));
     word.extend_from_slice(&papx_fkp(&spec.papx_entries));
 
     // PlcfSed: aCP[n+1] + aSed[n] (fn 2, fcSepx 4, fnMpr 2, fcMpr 4), and each Sepx after the
@@ -1100,7 +1118,7 @@ fn struct_doc(spec: &StructSpec) -> Vec<u8> {
     table.extend_from_slice(&plcf_sed);
     let hdd_plc_at = table.len();
     table.extend_from_slice(&plcf_hdd);
-    let stsh = stsh_bytes(&[std_bytes(1, 0x0FFF, "Normal", &Vec::new(), &Vec::new())]);
+    let stsh = stsh_bytes(styles);
     let stsh_at = table.len();
     table.extend_from_slice(&stsh);
     let ffn = ffn_bytes(&["Times New Roman", "Wingdings"]);

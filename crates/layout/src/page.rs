@@ -37,9 +37,15 @@ pub(crate) struct PageBuilder<'a> {
     /// The previous paragraph ended with a page break (its mark stayed with the break): the next
     /// paragraph, first on the new page, gets no space before (Word).
     pub(crate) after_break_mark: bool,
+    /// Where the page break that set `after_break_mark` was: an empty closing mark of a section
+    /// starting a new page goes under it there ([`crate::flow`]'s bare section marks).
+    pub(crate) break_spot: Option<BreakSpot>,
     /// The next section starts on a new page: this section's closing mark, when empty, needs no
     /// room (Word leaves it on a full page rather than starting a page for it).
     pub(crate) next_starts_page: bool,
+    /// ... with a next page, odd page or even page break (not a continuous break to another
+    /// paper size).
+    pub(crate) next_breaks_page: bool,
     /// The number the next page takes instead of counting on: a section restarting its
     /// numbering, possibly at 0 (a cover page numbered 0).
     pub(crate) restart_at: Option<u32>,
@@ -110,6 +116,23 @@ pub(crate) struct PageBuilder<'a> {
     /// Floating objects held where the section's first, unbalanced layout put them while its
     /// columns are balanced (compatibility mode below 15, see `balance_columns`).
     pub(crate) pins: Vec<Pin>,
+    /// The bottom of the body text above a line that stays on this page without counting for the
+    /// footnote area (a page break on a line of its own kept at the foot of a full page): the
+    /// notes go below this, not below that line.
+    pub(crate) mark_floor: Option<f32>,
+}
+
+/// A page break whose paragraph mark stayed with it: the page (index) and column it is in, the
+/// paragraph holding it, the column's x and width, that page's number and the line count there.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BreakSpot {
+    pub(crate) page: usize,
+    pub(crate) col: usize,
+    pub(crate) block: usize,
+    pub(crate) x: f32,
+    pub(crate) w: f32,
+    pub(crate) number: u32,
+    pub(crate) line_no: u32,
 }
 
 /// A floating object anchored in paragraph `block` (object `oi`) that keeps `rect` on page
@@ -231,11 +254,12 @@ impl PageBuilder<'_> {
     pub(crate) fn notes_h(&self) -> f32 {
         self.stack_h(&self.notes)
     }
-    /// The height of a page's note area holding `notes`, with its separator.
+    /// The height of a page's note area holding `notes`, with its separator and the room for the
+    /// document's continuation notice ([`NoteSeps::area_h`]).
     fn stack_h(&self, notes: &[NoteBox]) -> f32 {
         match notes.first() {
             None => 0.0,
-            Some(first) => self.seps().sep_h(first.cont) + notes.iter().map(|n| n.h).sum::<f32>(),
+            Some(first) => self.seps().area_h(first.cont) + notes.iter().map(|n| n.h).sum::<f32>(),
         }
     }
     /// The lowest bottom of the body text and tables on the current page.
@@ -253,20 +277,22 @@ impl PageBuilder<'_> {
     /// that doesn't is split at a line and its rest, with the notes after it, continues on the
     /// next page.
     pub(crate) fn flush_notes(&mut self) {
+        let mark_floor = self.mark_floor.take();
         if self.notes.is_empty() {
             return;
         }
+        let floor = mark_floor.unwrap_or_else(|| self.note_floor());
         let total = self.notes_h();
         let in_col = self.col_notes();
         let (x, width) = if in_col { (self.col_x(), self.col_w()) } else { (self.sect.text_left(self.mirror), self.sect.text_width()) };
         let seps = self.seps().clone();
         // The note area starts below the text (a page of continued notes alone: at its top).
-        let area = self.bottom.max(self.note_floor());
+        let area = self.bottom.max(floor);
         let fits = total <= self.orig_bottom - area + 0.01;
         let top = match (fits, self.beneath) {
             (false, _) => area,
             // Below the page's last line of text.
-            (true, true) => self.body_floor().min(self.orig_bottom - total),
+            (true, true) => mark_floor.unwrap_or_else(|| self.body_floor()).min(self.orig_bottom - total),
             (true, false) => self.orig_bottom - total,
         };
         let notes = std::mem::take(&mut self.notes);
@@ -533,6 +559,20 @@ impl PageBuilder<'_> {
         // ODF keeps the footer's spacing above a footer too tall for the bottom margin.
         let gap = if self.sect.footer_gap.is_finite() { self.sect.footer_gap.clamp(0.0, 1584.0) } else { 0.0 };
         (self.sect.page_h - self.sect.margin_bottom).min((self.foot_top - gap).max(body_top + 36.0))
+    }
+    /// Whether the text now ends where the current page's footer starts: a footer taller than the
+    /// bottom margin pushed the page's body up ([`Self::body_bottom`]) and nothing (balanced
+    /// columns, notes, the minimum body height, an ODF gap above the footer) moved the bottom
+    /// since. The page's own body rectangle is used, so a different first page's footer counts.
+    pub(crate) fn at_footer_top(&self) -> bool {
+        if self.web || (self.sect.footer_gap.is_finite() && self.sect.footer_gap > 0.0) {
+            return false;
+        }
+        let margin = self.sect.page_h - self.sect.margin_bottom;
+        self.pages.last().is_some_and(|p| {
+            let foot = p.body.y + p.body.h;
+            p.body.h > 36.01 && foot < margin - 0.01 && (self.bottom - foot).abs() <= 0.01
+        })
     }
     /// The room for text in the next column, or on the page [`Self::advance`] starts after the
     /// last: there, below its body top (`body_top`) and above its footer and the notes carried

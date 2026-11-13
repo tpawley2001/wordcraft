@@ -589,7 +589,7 @@ pub fn trpr(w: &mut W, r: &RowProps, change: Option<&ChangeAttrs>, del: Option<&
     }
     let change = change.zip(r.fmt_change.as_ref());
     let gaps = r.grid_before > 0 || r.grid_after > 0 || r.w_before.is_some() || r.w_after.is_some();
-    if r.height.is_none() && !r.header && !r.cant_split && !gaps && r.div_id.is_none() && change.is_none() && del.is_none() {
+    if r.height.is_none() && !r.header && !r.cant_split && !r.hidden && !gaps && r.div_id.is_none() && change.is_none() && del.is_none() {
         return;
     }
     w.open("w:trPr", &[]);
@@ -685,6 +685,9 @@ fn trpr_inner(w: &mut W, r: &RowProps) {
     }
     if r.header {
         w.empty("w:tblHeader", &[]);
+    }
+    if r.hidden {
+        w.empty("w:hidden", &[]);
     }
 }
 

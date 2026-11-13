@@ -68,7 +68,8 @@ pub(crate) struct Build<'a> {
     pub(crate) stories: &'a HashMap<u32, u32>,
 }
 
-/// The floating objects anchored by `PlcfSpa` (at `pair`), as (absolute anchor CP, object),
+/// The floating objects anchored by `PlcfSpa` (at `pair`), as (absolute anchor CP, object, the
+/// room the shape takes beyond its frame when it sits in line with text: [`inline_reach`]),
 /// sorted by CP. `cp_base` turns the PLC's CPs into absolute ones (the header subdocument's
 /// start for `PlcSpaHdr`).
 pub(crate) fn anchors(
@@ -78,7 +79,7 @@ pub(crate) fn anchors(
     shapes: &HashMap<u32, Node>,
     b: &Build,
     pics: &mut Pictures,
-) -> Vec<(u32, InlineObject)> {
+) -> Vec<(u32, InlineObject, [f32; 4])> {
     let Some(pair) = pair else { return Vec::new() };
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -116,12 +117,38 @@ pub(crate) fn anchors(
             Node::Group(sp, members) => group(sp, members, w, h, float, b, pics),
         };
         match obj {
-            Some(obj) => out.push((cp_base.saturating_add(cp), obj)),
+            Some(obj) => out.push((cp_base.saturating_add(cp), obj, inline_reach(&sp.props))),
             None => pics.dropped(cp_base.saturating_add(cp)),
         }
     }
-    out.sort_by_key(|(cp, _)| *cp);
+    out.sort_by_key(|(cp, _, _)| *cp);
     out
+}
+
+/// The room a shape placed in line with text takes on its line beyond its frame (left, top,
+/// right, bottom, points), as Word lays it out: its outline's width on every side, and on each
+/// side a plain offset shadow points to, the offset and the outline's width again. Every value
+/// is finite and within 0 to [`MAX_PT`]; a missing property takes its default.
+pub(crate) fn inline_reach(p: &crate::officeart::Props) -> [f32; 4] {
+    let pt = |emu: f32| emu / 12_700.0;
+    // The outline is on unless `fLine` says otherwise, as for a floating shape's stroke; its
+    // width defaults to 0.75 pt.
+    let w = if p.line == Some(false) { 0.0 } else { p.line_width.map_or(0.75, |e| pt(e as f32)) };
+    let w = if w.is_finite() { w.clamp(0.0, MAX_PT) } else { 0.0 };
+    let mut reach = [w; 4];
+    if p.shadow == Some(true) && p.shadow_type.unwrap_or(0) == 0 {
+        let [dx, dy] = p.shadow_offset.map(|v| pt(v.unwrap_or(25_400) as f32));
+        // (side when negative, side when positive): left/right, top/bottom.
+        for (d, (neg, pos)) in [(dx, (0, 2)), (dy, (1, 3))] {
+            let side = if d < 0.0 { neg } else { pos };
+            if d != 0.0
+                && let Some(r) = reach.get_mut(side)
+            {
+                *r += d.abs() + w;
+            }
+        }
+    }
+    reach.map(|v| if v.is_finite() { v.clamp(0.0, MAX_PT) } else { 0.0 })
 }
 
 /// Placement from a `Spa`'s flags (fHdr, bx, by, wr, wrk, fRcaSimple, fBelowText, fAnchorLock)

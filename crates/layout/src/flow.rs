@@ -1,12 +1,12 @@
-use super::boxes::{BoxInput, BoxLayout, Edges, joined, layout_box, push_para};
+use super::boxes::{Edges, joined, push_para};
 use super::cache::has_page_number_fields;
 use super::ctx::Ctx;
 use super::floats::{
-    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, late_floats,
-    no_room_beside_shifted, place_late, place_objects, square_float_past,
+    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, goes_with_mark,
+    late_floats, no_room_beside_shifted, place_late, place_objects, split_mark, square_float_past,
 };
 use super::notes::{DECOR_STORY, NoteBox, para_notes};
-use super::page::{PageBuilder, PageFrame, item_bottom};
+use super::page::{BreakSpot, PageBuilder, PageFrame, item_bottom};
 use super::placed::Placed;
 use super::{
     Arc, Block, Counters, Document, HashMap, InlineObject, Level, LineEnd, Page, ParaLayout, Paragraph, Path, Rect, StoryRef, TextDirection,
@@ -68,7 +68,66 @@ pub(crate) fn place_para(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, blo
         }
         return;
     }
+    if mark_under_break(ctx, pb, p, block) {
+        return;
+    }
     place_para_in_flow(ctx, pb, p, block, body_top);
+}
+
+/// A paragraph closing a section before a next page, odd page or even page break, with nothing in
+/// it but bookmarks.
+fn bare_section_mark(pb: &PageBuilder, p: &Paragraph) -> bool {
+    p.section.is_some()
+        && pb.next_breaks_page
+        && !pb.web
+        && p.text.char_indices().all(|(i, c)| {
+            c == wordcraft_doc::para::OBJ && matches!(p.object_at(i), Some(InlineObject::BookmarkStart { .. } | InlineObject::BookmarkEnd { .. }))
+        })
+}
+
+/// A bare section mark right after a page break whose mark stayed with it, nothing on the new page
+/// yet: Word puts its line under the break, on the break's page, and the next section starts on
+/// the page the break opened (one new page, not two). The page stays empty, so the section start
+/// takes it back ([`PageBuilder::take_back_break_page`]). Its list label is not drawn.
+fn mark_under_break(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block: usize) -> bool {
+    let Some(spot) = pb.break_spot else { return false };
+    let empty = pb.after_break_mark
+        && pb.at_top()
+        && pb.notes.is_empty()
+        && pb.pages.len() == spot.page + 2
+        && pb.pages.last().is_some_and(|pg| pg.items.len() == pb.page_items_start);
+    if !empty || !bare_section_mark(pb, p) {
+        return false;
+    }
+    // The break's line where it is now (the page may have been aligned when it was finished).
+    let path = Path::top(spot.block);
+    let Some(y) = pb.pages.get(spot.page).and_then(|pg| {
+        pg.items.iter().rev().find_map(|it| match it {
+            Placed::Lines { story: StoryRef::Body, path: at, para, l0, l1, y, .. } if *at == path => item_bottom(*y, para, *l0, *l1),
+            _ => None,
+        })
+    }) else {
+        return false;
+    };
+    let _counted = ctx.next_label(p);
+    let pl = ctx.para_labelled(p, spot.w, None, &[], None);
+    let x = spot.x + mirror_shift(&pl.rp, spot.number, false);
+    let mut items = Vec::new();
+    push_para(&mut items, (StoryRef::Body, &[block as u32]), &pl, (0, pl.lines.len()), (x, y), spot.w, Edges::default());
+    let (col, line_no) = (pb.col, pb.line_no);
+    (pb.col, pb.line_no) = (spot.col, spot.line_no);
+    let numbers = line_numbers(ctx, pb, &pl, (0, pl.lines.len()), y);
+    pb.col = col;
+    if let Some(pg) = pb.pages.get_mut(spot.page) {
+        pg.items.extend(items);
+        pg.items.extend(numbers);
+    }
+    if pb.sect.line_numbers.as_ref().is_some_and(|l| l.restart == wordcraft_doc::section::LineNumberRestart::Page) {
+        pb.line_no = line_no;
+    }
+    let rp = &pl.rp;
+    pb.prev = Some((rp.style.clone(), rp.contextual_spacing, 0.0, rp.after_auto, None));
+    true
 }
 
 /// Remove the list label from a mark's lines; optionally keep its other drawing items.
@@ -189,6 +248,9 @@ struct Flow<'a> {
     /// The paragraph ended with a column break whose line took the anchors after it
     /// ([`Flow::ends_page`]): its space after stays in the column it ended in.
     ended_in_column: bool,
+    /// The column (page count, column) and y where the text before it ended, above its space
+    /// before: a first line holding only a column break ends its column there.
+    text_end: Option<((usize, usize), f32)>,
 }
 
 impl<'a> Flow<'a> {
@@ -225,11 +287,12 @@ impl<'a> Flow<'a> {
             page_relays: 0,
             wrap_relays: 0,
             l0: 0,
-            late: LateFloats::new(&late),
+            late: LateFloats::new(&late, split_mark(&ctx.doc.settings)),
             rechecked: false,
             forced: Vec::new(),
             space_here: 0.0,
             ended_in_column: false,
+            text_end: None,
         }
     }
 
@@ -249,7 +312,7 @@ impl<'a> Flow<'a> {
             )
         });
         (self.float_rects, self.pl, self.rel) = (rects, pl, rel);
-        self.late = LateFloats::new(&late);
+        self.late = LateFloats::new(&late, split_mark(&ctx.doc.settings));
         (self.laid_page, self.laid_width) = (pb.number, pb.col_w());
     }
 
@@ -517,7 +580,7 @@ impl<'a> Flow<'a> {
             let pushed =
                 fit.l1 == 0 && l.top > 0.01 && self.p.objects.iter().any(|o| floating(o).is_some_and(|(_, _, f)| f.wrap == Wrap::TopAndBottom));
             let fresh = pb.fresh() && !pb.pinned_room_ahead();
-            if over && fit.l1 == l0 && !fresh && !split && (pushed || !self.stays_at_bottom(pb, l)) {
+            if over && fit.l1 == l0 && !fresh && !split && (pushed || !self.stays_at_bottom(pb, l) || self.after_hanging_leading(pb, l)) {
                 break;
             }
             let mine = fit.notes.len();
@@ -576,11 +639,47 @@ impl<'a> Flow<'a> {
     /// one of its own).
     fn stays_at_bottom(&self, pb: &PageBuilder, l: &para::Line) -> bool {
         let p = self.p;
-        let only_break = matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak)
-            && p.text
-                .get(l.start..l.stop)
-                .is_some_and(|t| t.chars().all(|c| matches!(c, wordcraft_doc::para::PAGE_BREAK | wordcraft_doc::para::COLUMN_BREAK)));
+        let only_break = matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak) && self.only_breaks(l);
         only_break || (pb.next_starts_page && p.section.is_some() && p.text.is_empty())
+    }
+
+    /// Whether the paragraph opens with a page break and has more after it (`l` is its first
+    /// line), on a page whose last line already hangs its line-spacing leading past the bottom
+    /// ([`fit_height`]): the page is over-full, so the paragraph starts on the next page and its
+    /// break acts there, leaving that page blank (measured in Word). A paragraph holding only the
+    /// break is not affected.
+    fn after_hanging_leading(&self, pb: &PageBuilder, l: &para::Line) -> bool {
+        let p = self.p;
+        self.l0 == 0
+            && l.end == LineEnd::PageBreak
+            && pb.content_bottom > pb.bottom + 0.01
+            && p.text.get(l.start..l.stop).is_some_and(|t| !t.is_empty() && t.chars().all(|c| c == wordcraft_doc::para::PAGE_BREAK))
+            && !only_markers(p, l.stop..p.text.len())
+    }
+
+    /// Whether the line holds nothing but page and column breaks.
+    fn only_breaks(&self, l: &para::Line) -> bool {
+        self.p
+            .text
+            .get(l.start..l.stop)
+            .is_some_and(|t| t.chars().all(|c| matches!(c, wordcraft_doc::para::PAGE_BREAK | wordcraft_doc::para::COLUMN_BREAK)))
+    }
+
+    /// Whether the line holds nothing but a column break (and zero-width markers or floating
+    /// objects' anchors, which take no room in a line) in a document below compatibility mode 15,
+    /// where the rest of the paragraph goes to the next column ([`Flow::ends_page`]): the line
+    /// adds no height to the column it ends, which is exactly as tall as the text before it
+    /// (measured in Word, single and exact line heights). Mode 15 documents were not measured and
+    /// keep the line's height; lines holding only a page break are not affected.
+    fn takes_no_room(&self, ctx: &Ctx, pb: &PageBuilder, l: &para::Line) -> bool {
+        if l.end != LineEnd::ColumnBreak || pb.web || ctx.doc.settings.compat_mode >= 15 {
+            return false;
+        }
+        let p = self.p;
+        let Some(text) = p.text.get(l.start..l.stop) else { return false };
+        let empty = |i: usize| p.object_at(l.start + i).is_some_and(|o| o.is_marker() || floating(o).is_some());
+        text.contains(wordcraft_doc::para::COLUMN_BREAK)
+            && text.char_indices().all(|(i, c)| c == wordcraft_doc::para::COLUMN_BREAK || (c == wordcraft_doc::para::OBJ && empty(i)))
     }
 
     /// Whether the line (just taken, `fit.l1` is after it) forces a break, noted in `fit`.
@@ -596,8 +695,11 @@ impl<'a> Flow<'a> {
         let anchors_follow = last.is_some_and(|m| only_anchors(self.p, m.start..m.stop));
         // A Word 97-2003 document (`splitPgBreakAndParaMark`, below mode 15) puts the mark on the
         // new page instead: an empty line there with the paragraph's spacing (measured in Word).
-        let split = settings.split_pg_break_and_para_mark && settings.compat_mode < 15;
-        if anchors_follow || (l.end == LineEnd::PageBreak && mark_follows && !split) {
+        // Objects anchored after a `w:br w:type="page"` there go with the mark: they are anchored
+        // to its line on the new page (measured in Word); objects positioned from the page or a
+        // margin keep the mark with the break, as before (not measured).
+        let split = split_mark(settings) && l.end == LineEnd::PageBreak && last.is_none_or(|m| all_go_with_mark(self.p, m.start..m.stop));
+        if !split && (anchors_follow || (l.end == LineEnd::PageBreak && mark_follows)) {
             fit.l1 += 1;
             fit.mark_with_break = true;
         }
@@ -688,7 +790,15 @@ impl<'a> Flow<'a> {
             && let Some(placed_bottom) = item_bottom(y, &self.pl, l0, l1)
             && placed_bottom > pb.bottom + 0.01
         {
-            pb.bottom = pb.note_floor().max(placed_bottom).min(pb.orig_bottom);
+            // A page break on a line of its own, kept at the foot of a full page, takes no room
+            // from the notes: they are placed as if the line were not there (measured in Word).
+            let lone_break =
+                l1 == l0 + 1 && !fit.mark_with_break && self.pl.lines.get(l0).is_some_and(|l| l.end == LineEnd::PageBreak && self.only_breaks(l));
+            if lone_break {
+                pb.mark_floor = Some(pb.note_floor());
+            } else {
+                pb.bottom = pb.note_floor().max(placed_bottom).min(pb.orig_bottom);
+            }
         }
         let mut items = Vec::new();
         let mut edges = Edges { top: if l0 == 0 { rooms.top } else { 0.0 }, bottom: if l1 >= n { rooms.bottom } else { 0.0 }, up: 0.0 };
@@ -737,7 +847,18 @@ impl<'a> Flow<'a> {
         items.extend(line_numbers(ctx, pb, &self.pl, (l0, l1), y));
         add_items(pb, behind, items);
         if let (Some(f), Some(l)) = (self.pl.lines.get(l0), self.pl.lines.get(l1 - 1)) {
-            pb.y = y + (l.top + l.height - f.top);
+            pb.y = if !self.takes_no_room(ctx, pb, l) {
+                y + (l.top + l.height - f.top)
+            } else if let Some(prev) = l1.checked_sub(2).filter(|k| *k >= l0).and_then(|k| self.pl.lines.get(k)) {
+                y + (prev.top + prev.height - f.top)
+            } else {
+                // The piece is the break's line alone: the column ends where its text did, above
+                // the paragraph's space before when this is its first line.
+                match self.text_end {
+                    Some((at, end)) if l0 == 0 && at == (pb.pages.len(), pb.col) => end.min(pb.y),
+                    _ => pb.y,
+                }
+            };
             pb.content_bottom = pb.content_bottom.max(pb.y);
         }
         self.l0 = l1;
@@ -754,6 +875,15 @@ impl<'a> Flow<'a> {
             });
         match forced {
             Some(LineEnd::PageBreak) if mark_with_break => {
+                pb.break_spot = pb.pages.len().checked_sub(1).map(|page| BreakSpot {
+                    page,
+                    col: pb.col,
+                    block,
+                    x: pb.col_x(),
+                    w: pb.col_w(),
+                    number: pb.number,
+                    line_no: pb.line_no,
+                });
                 pb.new_page(block, body_top);
                 pb.after_break_mark = true;
             }
@@ -860,7 +990,10 @@ impl<'a> Flow<'a> {
         }
         if l1 < self.n() && !self.rechecked && pb.col + 1 >= pb.cols.len() {
             self.rechecked = true;
-            self.forced = late_floats(self.p, &self.pl, l1).into_iter().filter(|oi| !self.late.placed.contains_key(oi)).collect();
+            self.forced = late_floats(self.p, &self.pl, l1, split_mark(&ctx.doc.settings))
+                .into_iter()
+                .filter(|oi| !self.late.placed.contains_key(oi))
+                .collect();
             if !self.forced.is_empty() {
                 let mut force = self.forced.clone();
                 force.extend(self.late.placed.keys());
@@ -903,11 +1036,9 @@ fn notes_on_line(ctx: &mut Ctx, pb: &PageBuilder, l: &para::Line, notes: &[(usiz
         if *ci >= l.c0
             && *ci < l.c1
             && !pb.notes.iter().chain(new_notes).any(|x| x.id == *id)
-            && let Some(part) = ctx.doc.parts.get(id).filter(|p| p.kind == wordcraft_doc::PartKind::Footnote)
+            && let Some(note) = crate::notes::footnote_box(ctx, *id, pb.note_w())
         {
-            let blocks = part.blocks.clone();
-            let BoxLayout { items, height: h, .. } = layout_box(ctx, BoxInput::other(StoryRef::Part(*id), &blocks, pb.note_w(), 0, None));
-            out.push(NoteBox { id: *id, items, h, cont: false });
+            out.push(note);
         }
     }
     out
@@ -917,21 +1048,27 @@ fn notes_on_line(ctx: &mut Ctx, pb: &PageBuilder, l: &para::Line, notes: &[(usiz
 /// and those of this line (`line_notes`) at its foot.
 fn notes_limit(pb: &PageBuilder, new_notes: &[NoteBox], line_notes: &[NoteBox]) -> f32 {
     let height = |notes: &[NoteBox]| notes.iter().map(|n| n.h).sum::<f32>();
-    let extra = height(line_notes) + if pb.notes.is_empty() && new_notes.is_empty() && !line_notes.is_empty() { pb.seps().sep_h(false) } else { 0.0 };
-    pb.bottom - height(new_notes) - if pb.notes.is_empty() && !new_notes.is_empty() { pb.seps().sep_h(false) } else { 0.0 } - extra
+    let extra =
+        height(line_notes) + if pb.notes.is_empty() && new_notes.is_empty() && !line_notes.is_empty() { pb.seps().area_h(false) } else { 0.0 };
+    pb.bottom - height(new_notes) - if pb.notes.is_empty() && !new_notes.is_empty() { pb.seps().area_h(false) } else { 0.0 } - extra
 }
 
 /// How much of the line has to fit. Multiple spacing above single puts its extra leading below
-/// the text (see `baseline_offset`), and Word lets that leading of a page's last line run into the
-/// bottom margin: only the text has to fit (observed: a double-spaced 12pt line stays on the page
-/// while its text ends above the margin, about half a line lower than when the whole line must
-/// fit). Only the bottom margin takes that leading: a footer taller than the margin, or
-/// footnotes (`free` is false), keep the whole line clear of them.
+/// the text (see `baseline_offset`), and Word lets that leading of a page's last line hang past
+/// the page's bottom: only the text has to fit. That holds whether the bottom is the bottom
+/// margin or the top of a footer taller than the margin (measured in Word at 1.15 and double
+/// spacing: the line stays while its text ends at or above the footer's top, with up to all of
+/// its leading past it; the top border of the footer's first paragraph belongs to the footer).
+/// Footnotes (`free` is false) and any other bottom (balanced columns, notes carried over, the
+/// minimum body height, an ODF gap above the footer) keep the whole line clear.
 fn fit_height(pb: &PageBuilder, l: &para::Line, rp: &wordcraft_doc::resolve::ResolvedPara, free: bool) -> f32 {
     let at_margin = pb.bottom >= pb.sect.page_h - pb.sect.margin_bottom - 0.01;
+    let at_body_bottom = at_margin || pb.at_footer_top();
     match rp.line_spacing {
         // `baseline` is from the paragraph's top; the text ends a descent below it.
-        wordcraft_doc::props::LineSpacing::Multiple(m) if m > 1.0 && at_margin && free => (l.baseline - l.top + l.text_desc).clamp(0.0, l.height),
+        wordcraft_doc::props::LineSpacing::Multiple(m) if m > 1.0 && at_body_bottom && free => {
+            (l.baseline - l.top + l.text_desc).clamp(0.0, l.height)
+        }
         _ => l.height,
     }
 }
@@ -1015,11 +1152,13 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
     let spot = |pb: &PageBuilder| (pb.pages.len(), pb.col);
     let placed_at = spot(pb);
     // A continuous section's top mid-page is not a page top, so the break still applies.
-    let broke_before = f.pl.rp.page_break_before && !pb.fresh() && !pb.web;
+    // A bare section mark starts no page of its own: the section break after it starts one.
+    let broke_before = f.pl.rp.page_break_before && !pb.fresh() && !pb.web && !bare_section_mark(pb, p);
     if broke_before {
         pb.new_page(block, body_top);
     }
     let before = f.gap_before(ctx, pb, broke_before);
+    f.text_end = Some((spot(pb), pb.y));
     pb.y += before;
     let rooms = Rooms::of(ctx, block, &f.pl);
     let applied_before = f.keep_together(ctx, pb, rooms, before);
@@ -1080,6 +1219,13 @@ fn same_lines(a: &ParaLayout, b: &ParaLayout, k: usize) -> bool {
 fn only_markers(p: &Paragraph, range: std::ops::Range<usize>) -> bool {
     let Some(text) = p.text.get(range.clone()) else { return false };
     text.char_indices().all(|(i, c)| c == wordcraft_doc::para::OBJ && p.object_at(range.start + i).is_some_and(InlineObject::is_marker))
+}
+
+/// Whether every floating object anchored in `range` of `p`'s text is positioned from its
+/// paragraph ([`goes_with_mark`]).
+fn all_go_with_mark(p: &Paragraph, range: std::ops::Range<usize>) -> bool {
+    let Some(text) = p.text.get(range.clone()) else { return false };
+    text.char_indices().filter_map(|(i, _)| p.object_at(range.start + i)).filter(|o| floating(o).is_some()).all(goes_with_mark)
 }
 
 /// Whether `range` of `p`'s text holds the anchor of at least one floating object and otherwise

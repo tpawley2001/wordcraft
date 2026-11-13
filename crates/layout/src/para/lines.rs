@@ -32,8 +32,8 @@ struct Breaker<'e> {
     shrink_spaces: bool,
     /// A left, right, centred or justified paragraph of a document opened from RTF fits the word
     /// that overruns the line by shrinking its single spaces (`rtf_space_room`) instead, when
-    /// they are all in fixed-pitch fonts; never on lines with tabs. With `\wraptrsp` justified
-    /// paragraphs only (the only ones measured).
+    /// they are all in fixed-pitch fonts; never on lines with tabs. With `\wraptrsp` left and
+    /// justified paragraphs only (the only ones measured).
     rtf_squeeze: bool,
     /// WordPerfect-style justification (`Settings::wp_justification`, below compatibility mode
     /// 15): a justified line fits a word that overruns it by a small share of the line's width
@@ -260,7 +260,12 @@ impl<'e> Breaker<'e> {
             base_right: (width - rp.indent_right).max(1.0),
             first_left: rp.indent_left + rp.indent_first,
             default_tab: settings.default_tab,
-            hanging_at: if rp.indent_first < 0.0 { Some(rp.indent_left) } else { None },
+            // `w:noTabHangInd` (below compatibility mode 15) removes the hanging indent's implicit stop.
+            hanging_at: if rp.indent_first < 0.0 && !(settings.no_tab_hang_ind && settings.compat_mode < wordcraft_doc::COMPAT_MODE_CURRENT) {
+                Some(rp.indent_left)
+            } else {
+                None
+            },
             tab_origin: if settings.odf.is_some_and(|o| o.tabs_from_indent) { rp.indent_left } else { 0.0 },
             shrink_spaces: rp.align == Align::Justify && settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT && !settings.rtf_justification,
             wp_squeeze: rp.align == Align::Justify
@@ -270,7 +275,8 @@ impl<'e> Breaker<'e> {
             rtf_squeeze: settings.rtf_justification
                 && match rp.align {
                     Align::Justify => true,
-                    Align::Left | Align::Right | Align::Center => !settings.wrap_trail_spaces,
+                    Align::Left => true,
+                    Align::Right | Align::Center => !settings.wrap_trail_spaces,
                     Align::Distribute => false,
                 },
             fixed_pitch: if settings.rtf_justification { pl.styles.iter().map(|st| st.face.is_fixed_pitch()).collect() } else { Vec::new() },
@@ -516,7 +522,7 @@ impl<'e> Breaker<'e> {
     /// tallest picture on it (which sits on the baseline).
     fn extents(&self, pl: &ParaLayout, (c0, c1): (usize, usize)) -> Extents {
         let rp = &self.rp;
-        let mut ex = Extents { asc: 0.0, desc: 0.0, obj_asc: 0.0, obj_desc: 0.0, text: false };
+        let mut ex = Extents { asc: 0.0, desc: 0.0, obj_asc: 0.0, obj_desc: 0.0, text: false, font_asc: 0.0, font_desc: 0.0 };
         let mut any = false;
         let dropped = pl.drop_cap.map_or(0, |d| d.0);
         for (k, c) in pl.clusters.get(c0..c1).into_iter().flatten().enumerate() {
@@ -534,6 +540,7 @@ impl<'e> Breaker<'e> {
             let check_box = object.is_some_and(|o| pl.check_boxes.contains(&o));
             // A picture sits on the baseline of its run (raised or lowered by its position):
             // the line keeps that font's ascent and descent, and grows to fit it.
+            let (mut fa, mut fd) = (None, None);
             let (a, d) = if check_box {
                 // Word sizes a line by a legacy check box as by text of the box's size (measured
                 // with Arial at 10 and 20 pt: a 20 pt box's line is 23 pt, times the spacing).
@@ -544,6 +551,8 @@ impl<'e> Breaker<'e> {
                 if math {
                     // Exact spacing keeps the run's baseline; tall math may overflow the
                     // fixed line box without moving adjacent text up by its denominator.
+                    // Its font's height is the line's text height all the same.
+                    (fa, fd) = (Some(st.ascent), Some(st.descent));
                     if matches!(rp.line_spacing, LineSpacing::Exactly(_)) { (st.ascent, st.descent) } else { (c.obj_h, c.obj_d) }
                 } else {
                     ex.obj_asc = ex.obj_asc.max(c.obj_h);
@@ -561,6 +570,8 @@ impl<'e> Breaker<'e> {
             };
             ex.asc = ex.asc.max(a);
             ex.desc = ex.desc.max(d);
+            ex.font_asc = ex.font_asc.max(fa.unwrap_or(a));
+            ex.font_desc = ex.font_desc.max(fd.unwrap_or(d));
             any = true;
             // Text needs its descent below the line; so do inline math (an object with its own
             // descent) and a check box. A line break ending the line is no text.
@@ -572,14 +583,25 @@ impl<'e> Breaker<'e> {
             ex.asc = st.ascent;
             ex.desc = st.descent;
         }
+        if !any || (ex.font_asc == 0.0 && ex.font_desc == 0.0) {
+            (ex.font_asc, ex.font_desc) = (ex.asc, ex.desc);
+        }
         ex
     }
 
     /// The line's height, baseline and text extent.
     fn measure(&self, pl: &ParaLayout, range: (usize, usize)) -> Measure {
         let rp = &self.rp;
-        let Extents { mut asc, mut desc, obj_asc, obj_desc, text } = self.extents(pl, range);
+        let Extents { mut asc, mut desc, obj_asc, obj_desc, text, font_asc: bare_asc, font_desc: bare_desc } = self.extents(pl, range);
         let mut text_natural = asc + desc;
+        // An inline equation taller than its text is sized like a picture beside text: with
+        // multiple spacing at or above single the line takes the spacing's share of the text's
+        // height only, not of the equation's (Word, measured with a 3x3 matrix at single, 1.15,
+        // 1.5 and double spacing: 38.04 pt, then 0.15, 0.5 and 1 times the 13.8 pt text line more).
+        let math_tall = matches!(rp.line_spacing, LineSpacing::Multiple(m) if m >= 1.0) && bare_asc + bare_desc < text_natural;
+        if math_tall {
+            text_natural = bare_asc + bare_desc;
+        }
         let font_desc = desc;
         desc = desc.max(obj_desc);
         let (text_asc, text_desc) = (asc.max(obj_asc), desc);
@@ -606,7 +628,7 @@ impl<'e> Breaker<'e> {
         let below = if pictures_alone { obj_desc } else { desc };
         let text_pictures = if pictures_alone {
             obj_asc + obj_desc
-        } else if obj_asc > asc || obj_desc > font_desc {
+        } else if obj_asc > asc || obj_desc > font_desc || math_tall {
             asc.max(obj_asc) + desc
         } else {
             0.0
@@ -829,6 +851,9 @@ struct Extents {
     obj_desc: f32,
     /// Whether the line holds text besides its pictures (spaces and tabs don't count).
     text: bool,
+    /// The ascent and descent without inline equations' own extents (their runs' font instead).
+    font_asc: f32,
+    font_desc: f32,
 }
 
 /// A line's height and baseline, and the extent of its text.
@@ -1142,7 +1167,9 @@ impl Scan {
     /// more line holding only the wrapped spaces and the mark. Not measured, so trailing spaces
     /// still hang as without the option: spaces before a tab or a manual break, spaces after a
     /// word that itself overruns the line (a narrow table cell), after a right, centre or
-    /// decimal tab, and East Asian (ideographic) spaces.
+    /// decimal tab, and East Asian (ideographic) spaces. After a word kept past the edge by the
+    /// RTF space squeeze, the first space of the run after it stays and the others start the next
+    /// line (Word, justified and left-aligned RTF).
     fn space_wraps(&self, bk: &Breaker, pl: &ParaLayout, c: &Cluster) -> bool {
         // An ideographic space is three bytes, a plain one one.
         if !bk.wrap_trail_spaces
@@ -1160,11 +1187,26 @@ impl Scan {
             k -= 1;
         }
         let run_start = self.xs.get(k - self.c0).copied().unwrap_or(self.x);
-        if run_start > self.right_edge + 0.01 || !(self.c0..k).any(|i| pl.clusters.get(i).is_some_and(takes_room)) {
+        if !(self.c0..k).any(|i| pl.clusters.get(i).is_some_and(takes_room)) {
+            return false;
+        }
+        if run_start > self.right_edge + 0.01 && !(k < self.j && self.squeezed_into_line(bk, run_start)) {
             return false;
         }
         let next = pl.clusters.iter().skip(self.j + 1).find(|n| n.kind != ClKind::Space);
         !next.is_some_and(|n| matches!(n.kind, ClKind::Tab | ClKind::LineBreak | ClKind::PageBreak | ClKind::ColumnBreak))
+    }
+
+    /// Whether the text up to `end`, past the right edge, stays on the line by the RTF space
+    /// squeeze: the line's single inner spaces (not the run of spaces after `end`) can give up
+    /// the overrun.
+    fn squeezed_into_line(&self, bk: &Breaker, end: f32) -> bool {
+        if !bk.rtf_squeeze || !self.rtf_after_tab || self.proportional_spaces > 0 {
+            return false;
+        }
+        // A single space just placed after `end` is counted among the singles; it trails.
+        let trailing = if self.space_run.0 == 1 { self.space_run.1 } else { 0.0 };
+        end - self.right_edge < (self.single_space_w - trailing) * RTF_MAX_SPACE_SHRINK
     }
 
     /// Whether `c`, at `j`, ends a field whose result's last item, just before it on this line, is

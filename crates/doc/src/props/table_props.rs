@@ -266,6 +266,11 @@ pub struct RowProps {
     /// row is left out of the layout.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub del: Option<u32>,
+    /// The row's end-of-row mark is hidden text (`w:trPr/w:hidden`, ECMA-376 §17.4.20; in a
+    /// Word 97-2003 file, the row mark's hidden character property). With hidden text not shown,
+    /// a row whose cell content is all hidden too takes no room.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
 }
 
 fn is_zero(v: &u32) -> bool {

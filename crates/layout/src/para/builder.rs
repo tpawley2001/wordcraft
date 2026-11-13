@@ -185,7 +185,19 @@ impl<'a> Builder<'a> {
         };
         let (ascent, descent) = match line {
             Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
-            None if ext_2pt => size_plus_2pt_line(&r.face, f64::from(size)),
+            None if ext_2pt => {
+                // A superscript or subscript counts like the same text not raised or lowered: the
+                // line of its full size, stored at the drawn size (`StyleRun::line_extent` scales it
+                // back by size / drawn size).
+                let (full, draw) = (f64::from(rc.size), f64::from(rc.draw_size()));
+                if rc.vert_align != wordcraft_doc::props::VertAlign::Baseline && full.is_finite() && full > 0.0 && draw > 0.0 {
+                    let k = draw / full;
+                    let (a, d) = size_plus_2pt_line(&r.face, f64::from(size) / k);
+                    (a * k, d * k)
+                } else {
+                    size_plus_2pt_line(&r.face, f64::from(size))
+                }
+            }
             None => {
                 // Without leading, the line loses the part of its gap outside the font's Windows
                 // cell.
@@ -509,9 +521,17 @@ impl<'a> Builder<'a> {
                 } else {
                     ClKind::Text
                 });
+                // A missing Symbol font's character is as wide as Symbol makes it; the substitute's
+                // glyph is drawn at the cluster's start.
+                let sym_adv = sym
+                    .and_then(|m| m.advance(single_char(sub.get(cs..ce).unwrap_or(""))?))
+                    .map(|em| em as f32 * st.size * hscale)
+                    .filter(|w| w.is_finite());
                 // The substitute's kerning pairs aren't the missing font's: Word's advance stands.
-                let adv =
-                    boxed.or_else(|| word_advances.then(|| self.missing_font_advance(s, map, rc, st.size * hscale, g0)).flatten()).unwrap_or(adv);
+                let adv = boxed
+                    .or(sym_adv)
+                    .or_else(|| word_advances.then(|| self.missing_font_advance(s, map, rc, st.size * hscale, g0)).flatten())
+                    .unwrap_or(adv);
                 let adv = if kind == ClKind::Marker { 0.0 } else { adv + rc.spacing };
                 self.clusters.push(Cluster {
                     start: base + a + cs,
@@ -933,3 +953,7 @@ mod tests {
 #[cfg(test)]
 #[path = "../tests/missing_font_simsun.rs"]
 mod missing_font_simsun;
+
+#[cfg(test)]
+#[path = "../tests/missing_font_japanese_shruti.rs"]
+mod missing_font_japanese_shruti;
