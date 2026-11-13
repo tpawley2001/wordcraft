@@ -10,6 +10,7 @@ mod balance_pinned_floats;
 mod bidi;
 mod blank_side_page;
 mod border_band;
+mod break_line_notes;
 mod break_then_float;
 mod budget;
 mod button_fields;
