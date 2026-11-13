@@ -384,6 +384,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
         sheet: &sheet,
         notes: &[],
         own_note: None,
+        note_sep: false,
         marks: &[],
         drawn: &[],
         sect_ends: &[],
@@ -439,7 +440,11 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     drawn.sort_by_key(|(cp, _)| *cp);
     let ctx = WalkCtx { drawn: &drawn, ..ctx };
 
-    // Header and footer parts: skip the six separator stories, then six stories per section
+    // The six note separator stories come first ([MS-DOC] §2.3.4): footnote separator,
+    // continuation separator and continuation notice, then the same for endnotes.
+    note_separators(&mut doc, &ctx, (&stories, hdd_base, fib.ccp.hdd), &mut pics, max_paragraphs)?;
+
+    // Header and footer parts: after the six separator stories, six stories per section
     // in the order even header, odd (default) header, even footer, odd (default) footer,
     // first header, first footer. Empty stories inherit from the previous section.
     let mut hf_ids: Vec<(usize, usize, u32)> = Vec::new();
@@ -601,6 +606,56 @@ fn header_story_blocks(
     Ok(table::assemble(paras))
 }
 
+/// The six note separator stories at the start of the header document's `stories` (starting
+/// at `base`, `len` CPs long) into the document's footnote and endnote separators.
+fn note_separators(
+    doc: &mut Document,
+    ctx: &WalkCtx<'_>,
+    (stories, base, len): (&[(u32, u32)], u32, u32),
+    pics: &mut media::Pictures,
+    max_paragraphs: usize,
+) -> Result<(), DocbinError> {
+    let sep_ctx = WalkCtx { note_sep: true, ..*ctx };
+    for k in 0..6usize {
+        let Some((a, b)) = stories.get(k).and_then(|&ab| story(base, len, ab)) else { continue };
+        let blocks = header_story_blocks(&sep_ctx, a, b, pics, max_paragraphs)?;
+        let Some(blocks) = note_sep_story(blocks, k % 3) else { continue };
+        let seps = if k < 3 { &mut doc.footnote_separators } else { &mut doc.endnote_separators };
+        match k % 3 {
+            0 => seps.separator = Some(blocks),
+            1 => seps.continuation_separator = Some(blocks),
+            _ => seps.continuation_notice = Some(blocks),
+        }
+    }
+    Ok(())
+}
+
+/// A note separator story's blocks (`which`: 0 separator, 1 continuation separator, 2
+/// continuation notice), or `None` where it is the default: a separator holding only its own
+/// line (0x03 for the separator, 0x04 for the continuation separator) in one paragraph, or a
+/// notice with no content. An empty separator paragraph stays (no line), as in DOCX.
+fn note_sep_story(blocks: wordcraft_doc::Blocks, which: usize) -> Option<wordcraft_doc::Blocks> {
+    let paras: Vec<&Paragraph> = blocks.iter().filter_map(|b| b.as_para()).collect();
+    if paras.len() != blocks.len() {
+        return Some(blocks);
+    }
+    if which == 2 {
+        let empty = paras.iter().all(|p| p.text.is_empty() && p.objects.is_empty());
+        return (!empty).then_some(blocks);
+    }
+    if let [p] = paras.as_slice()
+        && p.text == "\u{FFFC}"
+        && let [obj] = p.objects.as_slice()
+        && obj.as_note_separator() == Some(which == 1)
+    {
+        return None;
+    }
+    if blocks.is_empty() {
+        return None;
+    }
+    Some(blocks)
+}
+
 /// A story's CP range `[a, b)`, relative to a subdocument starting at `base` with `len`
 /// CPs, as absolute CPs clamped to that subdocument; `None` when empty.
 fn story(base: u32, len: u32, (a, b): (u32, u32)) -> Option<(u32, u32)> {
@@ -651,6 +706,9 @@ struct WalkCtx<'a> {
     notes: &'a [NoteLink],
     /// The note whose text is being walked: its reference character is the note's own number.
     own_note: Option<(NoteKind, u32)>,
+    /// Walking a note separator story: the separator characters 0x03 (the short line) and 0x04
+    /// (the long line) are its lines.
+    note_sep: bool,
     /// Bookmark boundaries (main-document CPs), sorted for a sequential walk.
     marks: &'a [(u32, notes::Mark)],
     /// Floating shapes and pictures by anchor CP (absolute), sorted.
@@ -979,6 +1037,11 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     pb.push('\u{FFFC}', revised(ctx, cp));
                     pb.objects.push(InlineObject::NoteRef { kind, id, custom: String::new() });
                 }
+            }
+            // A note separator's line ([MS-DOC] §2.3.4), as `w:separator`/`w:continuationSeparator` are in DOCX.
+            '\u{3}' | '\u{4}' if ctx.note_sep => {
+                push_formatted(&mut pb, cp, '\u{FFFC}', ctx, None, &mut fmt);
+                pb.objects.push(InlineObject::note_separator(c == '\u{4}'));
             }
             '\t' => push_formatted(&mut pb, cp, '\t', ctx, fields.last_mut(), &mut fmt),
             '\u{B}' => push_formatted(&mut pb, cp, '\n', ctx, fields.last_mut(), &mut fmt),
