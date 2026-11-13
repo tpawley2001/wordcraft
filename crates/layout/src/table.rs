@@ -404,11 +404,17 @@ fn preferred_grid(t: &Table, avail: f32) -> Vec<f32> {
 /// text lines up with the body text, and its percentage is of the text width plus the table's
 /// left and right default cell margins, so a 100% table's cell text spans the text width.
 ///
+/// When cells set their own margins, the base adds the left margin of the first row's first cell
+/// and the right margin of the first row's last cell, each as that cell resolves it; margins of
+/// other cells do not count.
+///
 /// Measured for top-level body tables (autofit and fixed, with and without an indent, in modes
-/// 11, 12 and 14) and assumed for top-level header and footer tables, which share the section's
-/// width. Not measured, so they keep the text width as the base: nested tables and tables in
-/// notes or text boxes, percentages over 100%, centred or end-aligned tables, floating tables,
-/// right-to-left tables and tables whose cells set their own margins.
+/// 11, 12 and 14, with and without cell margins of their own) and assumed for top-level header
+/// and footer tables, which share the section's width. Not measured, so they keep the text width
+/// as the base: nested tables and tables in notes or text boxes, percentages over 100%, centred or
+/// end-aligned tables, floating tables and right-to-left tables. Also not measured, and taken from
+/// the first row as above: rows whose last cells set different margins, rows with different
+/// numbers of cells, and rows that skip grid columns before or after their cells.
 fn legacy_pct_margins(ctx: &Ctx, story: StoryRef, t: &Table, depth: usize, style: Option<&TableStyleProps>) -> f32 {
     let top_level = depth <= 1
         && match story {
@@ -422,14 +428,16 @@ fn legacy_pct_margins(ctx: &Ctx, story: StoryRef, t: &Table, depth: usize, style
         && t.props.width_pct.is_some_and(|p| p > 0.0 && p <= 100.0)
         && t.props.float.is_none()
         && !t.props.bidi_visual
-        && !matches!(t.props.align, Some(Align::Center | Align::Right))
-        && t.rows.iter().all(|r| r.cells.iter().all(|c| c.props.margins.is_none() && c.props.partial_margins.is_none()));
+        && !matches!(t.props.align, Some(Align::Center | Align::Right));
     if !measured {
         return 0.0;
     }
-    let m = default_margins(t, style);
+    let def = default_margins(t, style);
+    let cells = t.rows.first().map(|r| r.cells.as_slice()).unwrap_or_default();
+    let left = cells.first().map_or(def, |c| c.props.resolved_margins(def))[1];
+    let right = cells.last().map_or(def, |c| c.props.resolved_margins(def))[3];
     let side = |v: f32| if v.is_finite() { v.clamp(0.0, 1584.0) } else { 0.0 };
-    side(m[1]) + side(m[3])
+    side(left) + side(right)
 }
 
 fn table_frame(ctx: &mut Ctx, story: StoryRef, t: &Table, avail: f32, depth: usize, style: Option<&TableStyleProps>) -> TableFrame {
@@ -1083,16 +1091,16 @@ fn split_row_with(row: &RowLayout, cut: f32, whole_cells: bool) -> Option<(RowLa
         .collect();
     // A cell that widow/orphan control leaves with nothing on this page, though its first line
     // would fit there, takes the whole row on with it: Word doesn't leave the other cells behind
-    // beside an empty one (observed with synthetic documents). Trailing space alone can move
-    // the last paragraph without deferring the whole row.
+    // beside an empty one (observed with synthetic documents). Trailing space alone defers the
+    // row only in the case below.
+    // A cell holding only a one-line paragraph whose line fits but whose space after doesn't
+    // would keep nothing here too: Word moves the whole row on rather than leave that cell empty
+    // beside the others' first lines, in every compatibility mode and with widow control off
+    // (measured in Word 16.0 with synthetic documents). Not for a row that starts its page: it
+    // could never fit better.
     for (items, splits) in cells.iter().zip(&splits) {
-        let first = items.iter().zip(splits).find_map(|(it, &split)| text_lines(it).map(|t| (t, split)));
-        if let Some(((para, l0, l1, y), split)) = first
-            && split == l0
-            && para.rp.widow_control
-            && l1.saturating_sub(l0) > 1
-            && crate::item_bottom(y, para, l0, l1).is_some_and(|bottom| !fits(bottom))
-            && para.lines.get(l0).is_some_and(|l| fits(y + l.top - para.lines.get(l0).map_or(0.0, |f| f.top) + l.height))
+        if widow_leaves_cell_empty(items, splits, limit)
+            || (whole_cells && one_line_cell_moves_on(items, splits, limit, row.height, own_depth, &areas))
         {
             return None;
         }
@@ -1384,6 +1392,38 @@ fn shift_content(items: &mut std::borrow::Cow<[Placed]>, c: &CellPart, al: &Cell
             it.translate(0.0, dy);
         }
     }
+}
+
+/// Whether widow/orphan control leaves a cell with nothing on this page though its first line
+/// would fit there.
+fn widow_leaves_cell_empty(items: &[Placed], splits: &[usize], limit: f32) -> bool {
+    let fits = |bottom: f32| bottom <= limit + 0.01;
+    let first = items.iter().zip(splits).find_map(|(it, &split)| text_lines(it).map(|t| (t, split)));
+    let Some(((para, l0, l1, y), split)) = first else { return false };
+    split == l0
+        && para.rp.widow_control
+        && l1.saturating_sub(l0) > 1
+        && crate::item_bottom(y, para, l0, l1).is_some_and(|bottom| !fits(bottom))
+        && para.lines.get(l0).is_some_and(|l| fits(y + l.top - para.lines.get(l0).map_or(0.0, |f| f.top) + l.height))
+}
+
+/// Whether a cell's only content is a one-line paragraph (not a nested table, picture or
+/// vertically merged cell) that `line_split` moved on although its line fits above `limit`: only
+/// its space after doesn't.
+fn one_line_cell_moves_on(items: &[Placed], splits: &[usize], limit: f32, row_height: f32, own_depth: Option<usize>, areas: &[Rect]) -> bool {
+    // Everything in the cell other than its own area, rules, fills and background picture.
+    let mut content = items.iter().zip(splits.iter().copied()).filter(|(it, _)| match it {
+        Placed::Lines { .. } | Placed::Image { .. } | Placed::Shape { .. } | Placed::Graphic { .. } => true,
+        Placed::Clip { rect, .. } => !areas.contains(rect),
+        Placed::Cell { table, .. } => Some(table.0.len()) > own_depth,
+        _ => false,
+    });
+    let (Some((it, split)), None) = (content.next(), content.next()) else { return false };
+    let Some((para, l0, l1, y)) = text_lines(it) else { return false };
+    // A vertically merged cell runs past this row: not observed, left as it was.
+    let merged =
+        items.iter().any(|c| matches!(c, Placed::Cell { rect, table, .. } if Some(table.0.len()) == own_depth && rect.h > row_height + 0.01));
+    !merged && l0 == 0 && l1 == 1 && para.lines.len() == 1 && split == l0 && para.lines.first().is_some_and(|l| y + l.height <= limit + 0.01)
 }
 
 /// A cell paragraph's placed lines (not turned text): the paragraph, its lines `l0..l1` and the

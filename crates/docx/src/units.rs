@@ -137,6 +137,22 @@ pub fn tw_u16(e: &El, attr: &str) -> Option<f32> {
     }
 }
 
+/// A line spacing (`w:spacing/@w:line`, ECMA-376 Part 1 §17.3.1.33) or row height
+/// (`w:trHeight`, §17.4.81) Word keeps in one signed 16-bit number of twips, as the binary format
+/// does ([MS-DOC] `sprmPDyaLine`, `sprmTDyaRowHeight`): negative = exactly, positive = at least
+/// (a multiple in 240ths for an `auto` line). A plain integer above 32767 keeps its low 16 bits,
+/// two's complement, of `-N` for an exact rule and `N` otherwise; that signed value is returned
+/// and its sign decides the rule. `None` for every other value (in range, negative, with a unit
+/// or a fraction, unparsable), which reads as before.
+pub fn wrap_line_height(s: &str, exact: bool) -> Option<i16> {
+    let n = s.trim().parse::<i64>().ok()?;
+    if n <= i64::from(i16::MAX) {
+        return None;
+    }
+    let signed = if exact { n.wrapping_neg() } else { n };
+    Some(signed as i16)
+}
+
 /// ST_OnOff: absent `w:val` = on; `0`, `false`, `off` = off.
 pub fn on_off(e: &El) -> bool {
     match e.attr("w:val") {
@@ -185,6 +201,25 @@ mod tests {
         assert_eq!(u("65535"), Some(3276.75));
         assert_eq!(u("12pt"), Some(12.0));
         assert_eq!(u("-20"), Some(-1.0));
+    }
+
+    #[test]
+    fn line_heights_beyond_16_bits_wrap() {
+        assert_eq!(wrap_line_height("32767", true), None);
+        assert_eq!(wrap_line_height("-40000", true), None);
+        assert_eq!(wrap_line_height("40000pt", false), None);
+        assert_eq!(wrap_line_height("40000.5", false), None);
+        assert_eq!(wrap_line_height("32768", true), Some(i16::MIN));
+        assert_eq!(wrap_line_height("32768", false), Some(i16::MIN));
+        assert_eq!(wrap_line_height("65535", true), Some(1));
+        assert_eq!(wrap_line_height("65535", false), Some(-1));
+        assert_eq!(wrap_line_height("65536", true), Some(0));
+        assert_eq!(wrap_line_height("65537", true), Some(-1));
+        assert_eq!(wrap_line_height("65537", false), Some(1));
+        let max = i64::MAX.to_string();
+        assert_eq!(wrap_line_height(&max, false), Some(-1));
+        assert_eq!(wrap_line_height(&max, true), Some(1));
+        assert_eq!(wrap_line_height("123456789012345678901234567890", true), None);
     }
 
     #[test]

@@ -16,6 +16,7 @@ mod budget;
 mod button_fields;
 mod button_switches;
 mod cell_floats;
+mod column_break_line;
 mod column_top_float;
 mod complex;
 mod continuous_resized_section;
@@ -62,6 +63,7 @@ pub(crate) mod linear;
 mod list_label_decorations;
 mod list_numbers_merged_cells;
 mod list_numbers_per_story;
+mod math_line_multiple;
 mod metafile_symbol_text;
 mod missing_font_line;
 mod missing_font_line_more;
@@ -77,6 +79,7 @@ mod next_column_section;
 mod next_page_restart_side;
 mod no_leading;
 mod no_leading_missing_fonts;
+mod no_tab_hang_ind;
 mod note_contextual_spacing;
 mod notes_overflow;
 mod notes_overflow_last_line;
@@ -88,9 +91,11 @@ mod picture_glue_touching;
 mod picture_line_at_least;
 mod pushed_by_earlier_float;
 mod row_exception_no_borders;
+mod row_split_one_line_cell;
 mod rtf_justify_squeeze;
 mod rtf_squeeze_after_tab;
 mod rtf_squeeze_any_align;
+mod rtf_wrapped_spaces;
 mod rtf_wraptrsp_squeeze;
 mod rtl_gutter_vertical;
 mod section_pages_blank;
@@ -4606,11 +4611,14 @@ fn row_content_pieces(text: &str, props: ParaProps, room: f32) -> Vec<(usize, us
         .collect()
 }
 
+/// A one-line "Label" whose line fits but whose 8pt after doesn't would keep nothing on the
+/// page, so the whole row moves on (Word leaves no cell empty beside its neighbours' first lines;
+/// probes in `tests/row_split_one_line_cell.rs`). Two lines with room for the first split there.
 #[test]
 fn row_split_ignores_afterspace() {
     crate::test_fonts();
     let two = ["Top", "Bottom"].join(&wordcraft_doc::para::LINE_BREAK.to_string());
-    for (text, room, expected) in [("Label", 18.0, vec![(0, 1), (1, 3)]), (two.as_str(), 32.0, vec![(0, 2), (2, 2)])] {
+    for (text, room, expected) in [("Label", 18.0, vec![(0, 0), (1, 4)]), (two.as_str(), 32.0, vec![(0, 2), (2, 2)])] {
         let props = ParaProps { space_after: Some(8.0), widow_control: Some(true), ..Default::default() };
         assert_eq!(row_content_pieces(text, props, room), expected, "text={text:?}, room={room}");
     }
