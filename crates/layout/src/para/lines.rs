@@ -198,6 +198,25 @@ fn mirrored_exclusions(exclusions: &[Exclusion], width: f32) -> Vec<Exclusion> {
         .collect()
 }
 
+/// The first row top at or below `bottom` reached from `top` in steps of `step`: `top + k * step`
+/// for the smallest such `k` (at least 1). Without a usable step, `bottom` itself.
+fn step_below(top: f32, step: f32, bottom: f32) -> f32 {
+    if !(step.is_finite() && step > 0.0 && top.is_finite() && bottom > top) {
+        return bottom;
+    }
+    // A hair of slack so a sum that lands on `bottom` up to rounding takes no extra step.
+    let k = ((bottom - top) / step - 1e-4).ceil().max(1.0);
+    let t = top + k * step;
+    if !t.is_finite() {
+        bottom
+    } else if t < bottom {
+        // Rounding left it a hair short: the object would still meet the row.
+        bottom
+    } else {
+        t
+    }
+}
+
 /// Break a paragraph into lines, measure each line, apply the paragraph's alignment and place
 /// the list label. Fills `pl.lines`, `pl.height` and the label's position.
 pub(super) fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u32, level: Option<&Level>) {
@@ -391,7 +410,8 @@ impl<'e> Breaker<'e> {
     }
 
     /// The first word doesn't fit the span beside a floating object: try the row's next span,
-    /// or the next row.
+    /// or the next row. A row with nothing on it moves down one row height at a time until it
+    /// clears the first object that ends, so it lands up to a row height below that object.
     fn skip_row(&mut self, sc: &Scan) {
         self.skipped += 1;
         if !self.row_rest.is_empty() {
@@ -400,13 +420,21 @@ impl<'e> Breaker<'e> {
         self.top = if self.lines.len() > self.row_first {
             self.top + even_row(self.lines.get_mut(self.row_first..).unwrap_or_default())
         } else {
-            // Nothing on this row: go below the first object that ends, as when no span is wide enough.
-            self.exclusions
+            // Nothing on this row: every row above the first object that ends meets the same
+            // objects (and maybe more), so the word fits none of them either. Take the whole
+            // run of one-row steps at once. A floating table that ends first still lets the
+            // text start right below it.
+            match self
+                .exclusions
                 .iter()
                 .filter(|e| e.intersects_row(self.top, self.est_h, self.table_h, sc.row_lo, self.base_right))
-                .map(|e| e.bottom)
-                .reduce(f32::min)
-                .unwrap_or(self.top + self.est_h)
+                .map(|e| (e.bottom, e.table))
+                .reduce(|a, b| if b.0 < a.0 || (b.0 == a.0 && b.1) { b } else { a })
+            {
+                Some((bottom, true)) => bottom,
+                Some((bottom, false)) => step_below(self.top, self.est_h, bottom),
+                None => self.top + self.est_h,
+            }
         };
     }
 
@@ -565,6 +593,15 @@ impl<'e> Breaker<'e> {
         // to that height where Word's line keeps growing.
         let spacing = if let LineSpacing::Multiple(m) = rp.line_spacing { Some(m) } else { None };
         let pictures_alone = !text && obj_asc + obj_desc > 0.0 && spacing.is_some();
+        // With at-least spacing (no document grid) a line of only pictures is as tall as they
+        // reach or the minimum, whichever is more; the font's ascent, descent and height do not
+        // count, and the pictures end at the line's bottom. Word, measured with Arial at 10 and
+        // 20 pt: at least 12, a 400 pt picture alone, 400 (both sizes); a 6 pt one, 12, the
+        // picture 6-12 below the top; a 20 pt one at Arial 20, 20. At least 30: a 20 pt picture,
+        // 30, the picture 10-30 below the top; a 29 pt one, 30. Beside text, a 400 pt picture
+        // takes the text's descent too (402.1 at Arial 10). Lowered pictures and a list label
+        // were not measured: they follow the multiple-spacing rule above.
+        let least_alone = !text && obj_asc + obj_desc > 0.0 && self.grid.is_none() && matches!(rp.line_spacing, LineSpacing::AtLeast(_));
         let below = if pictures_alone { obj_desc } else { desc };
         let text_pictures = if pictures_alone {
             obj_asc + obj_desc
@@ -574,6 +611,7 @@ impl<'e> Breaker<'e> {
             0.0
         };
         let mut label_extra = 0.0;
+        let mut label_floor = false;
         if self.first
             && let Some(lab) = &pl.label
         {
@@ -582,11 +620,12 @@ impl<'e> Breaker<'e> {
                 // overflow adds room, unscaled by the automatic spacing multiplier.
                 label_extra = (lab.ascent - asc).max(0.0);
                 asc = asc.max(lab.ascent);
-                if pictures_alone {
+                if pictures_alone || least_alone {
                     let styles = lab.runs.iter().filter_map(|r| pl.styles.get(r.style as usize));
                     let (a, d) = styles.fold((asc, font_desc), |(a, d), st| (a.max(st.ascent), d.max(st.descent)));
                     text_natural = a + d;
                     label_extra = 0.0;
+                    label_floor = true;
                 }
             } else {
                 for st in lab.runs.iter().filter_map(|r| pl.styles.get(r.style as usize)) {
@@ -604,12 +643,16 @@ impl<'e> Breaker<'e> {
             (LineSpacing::Multiple(m), Some(g)) => ((g.snap_height(natural) * m).max(g.snap_height(pictures)), true),
             (LineSpacing::AtLeast(v), Some(g)) => (g.snap_height(natural.max(pictures)).max(v), true),
             (LineSpacing::Multiple(m), None) => ((text_natural * m + label_extra).max(text_pictures + (m - 1.0).max(0.0) * text_natural), false),
+            // A list label's font is a floor, as with multiple spacing (unmeasured for at-least).
+            (LineSpacing::AtLeast(v), None) if least_alone => ((obj_asc + obj_desc).max(v).max(if label_floor { text_natural } else { 0.0 }), false),
             (LineSpacing::AtLeast(v), None) => (natural.max(text_pictures).max(v), false),
             (LineSpacing::Exactly(v), _) => (v, false),
         };
         let baseline = if centred {
             let up = asc.max(obj_asc);
             self.top + ((height - up - desc) / 2.0).max(0.0) + up
+        } else if least_alone {
+            self.top + height - obj_desc
         } else if let Some(m) = spacing.filter(|_| pictures_alone) {
             self.top + (text_natural * m.min(1.0) - text_pictures).max(0.0) + obj_asc
         } else {
@@ -1314,6 +1357,20 @@ mod tests {
     use wordcraft_doc::{Document, Pos};
 
     use crate::{LayoutCache, LayoutOptions, Placed, layout};
+
+    /// A row that clears an object steps down by whole rows; a step that is zero, negative or not
+    /// finite falls back to the object's bottom instead of looping.
+    #[test]
+    fn step_below_takes_whole_rows_or_falls_back_to_the_bottom() {
+        let at = |t: f32, h: f32, b: f32| super::step_below(t, h, b);
+        assert!((at(23.0, 11.5, 228.0) - 230.0).abs() < 1e-3);
+        assert!((at(0.0, 10.0, 30.0) - 30.0).abs() < 1e-3, "an exact fit takes no extra row");
+        assert!((at(0.0, 10.0, 0.5) - 10.0).abs() < 1e-3, "at least one row");
+        for h in [0.0, -3.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(at(5.0, h, 228.0), 228.0, "step {h}");
+        }
+        assert!((at(5.0, 1e-30, 228.0) - 228.0).abs() < 0.01, "a step too small to count with");
+    }
 
     /// Two `Largest` floats on the same lines, each with its narrower side facing outwards: each
     /// keeps text off that side, so the text sits between them (as Word lays out a `.doc` whose

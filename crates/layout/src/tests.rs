@@ -34,6 +34,7 @@ mod ext_leading_2pt;
 mod ext_leading_2pt_fonts;
 mod field_picture_overflow;
 mod first_page_once;
+mod float_row_step;
 mod float_table_bottom;
 mod float_table_notes;
 mod float_top;
@@ -41,6 +42,7 @@ mod footnotes_in_columns;
 mod grid;
 mod header_extent;
 mod header_extent_fixtures;
+mod header_half_page;
 mod header_space_after;
 mod hf_empty_anchor_legacy;
 mod hf_float_wrap_modes;
@@ -65,6 +67,7 @@ mod missing_font_line_tahoma;
 mod missing_font_line_windows;
 mod missing_font_univers;
 mod missing_glyphs;
+mod nb_hyphen_glyph;
 mod nbsp;
 mod nested_cant_split;
 mod nested_tail_paragraph;
@@ -80,6 +83,7 @@ mod pages;
 mod pct_table_legacy_width;
 mod picture_glue;
 mod picture_glue_touching;
+mod picture_line_at_least;
 mod pushed_by_earlier_float;
 mod row_exception_no_borders;
 mod rtf_justify_squeeze;
@@ -88,6 +92,7 @@ mod rtf_squeeze_any_align;
 mod rtf_wraptrsp_squeeze;
 mod rtl_gutter_vertical;
 mod section_pages_blank;
+mod shared_row_edge;
 mod split_break_mark;
 mod square_float_page_fit;
 mod square_float_paper_shift;
@@ -102,6 +107,7 @@ mod tab_past_margin;
 mod tab_to_right_indent;
 mod table_contact;
 mod textbox;
+mod turned_cell_autofit;
 mod vertical;
 mod wp_justification_squeeze;
 
@@ -5905,10 +5911,11 @@ fn list_label_does_not_inflate_an_inline_picture_floor() {
         let (a, d) = label.fold((st.ascent, st.descent), |(a, d), s| (a.max(s.ascent), d.max(s.descent)));
         // Multiple spacing: the picture plus its share of the font's height, the label's being a
         // font too (Word, measured: 144 pt at 1.25 with a 24 pt label takes 144 + 0.25 * 27.6);
-        // at least: the picture and the descent.
+        // at least: the picture alone, no room for the font below it (Word, measured: at least
+        // 12 with a 400 pt picture alone takes 400, `tests::picture_line_at_least`).
         let want = match spacing {
             LineSpacing::Multiple(m) => 144.0 + (m - 1.0) * (a + d),
-            _ => 144.0 + st.descent,
+            _ => 144.0,
         };
         assert!((line.height - want).abs() < 0.01, "{spacing:?}: {} (want {want})", line.height);
         assert!((line.baseline - line.top - 144.0).abs() < 0.01);
@@ -7289,7 +7296,7 @@ fn floating_header_text_box_leaves_the_body_at_the_top_margin() {
     crate::test_fonts();
     use wordcraft_doc::para::{Anchor, Float, ShapeKind, Wrap};
     let body: Vec<String> = (1..=40).map(|i| format!("Body paragraph {i}: synthetic public test content.")).collect();
-    let make = |float: Option<Float>| {
+    let make = |float: Option<Float>, box_h: f32| {
         let mut d = Document::from_text(&body.join("\n"));
         // The header starts 18pt from the top, so its two lines end well above the 72pt top
         // margin whatever font the default text gets (the line height differs between the
@@ -7306,7 +7313,7 @@ fn floating_header_text_box_leaves_the_body_at_the_top_margin() {
             let tb = InlineObject::Shape {
                 kind: ShapeKind::TextBox,
                 w: 405.0,
-                h: 491.4,
+                h: box_h,
                 fill: None,
                 stroke: None,
                 stroke_width: 0.75,
@@ -7323,16 +7330,19 @@ fn floating_header_text_box_leaves_the_body_at_the_top_margin() {
         let l = lay(&d);
         (l.pages.len(), first_line_top(&l.pages[0].items))
     };
-    let (control_pages, control_top) = make(None);
+    let (control_pages, control_top) = make(None, 491.4);
     let behind = Float { wrap: Wrap::BehindText, h_rel: Anchor::Page, v_rel: Anchor::Page, x: 0.0, y: 80.0, ..Default::default() };
-    let (pages, top) = make(Some(behind));
+    let (pages, top) = make(Some(behind), 491.4);
     assert!(control_pages > 1, "the control needs more than one page: {control_pages}");
     assert!((control_top - 72.0).abs() < 0.5, "control body starts at the top margin: {control_top}");
     assert!((top - control_top).abs() < 0.5, "body starts at {top} with the floating box, {control_top} without");
     assert_eq!(pages, control_pages);
     // The same box inline does take room in the header, which is what the reader used to make of it.
-    let (inline_pages, inline_top) = make(Some(Float::default()));
-    assert!(inline_top > 400.0 && inline_pages > control_pages, "inline box: body at {inline_top}, {inline_pages} pages");
+    // A header stops at half the page height (396pt here: a line past that is not printed), so
+    // the inline box is 366pt tall: with the label line it stays within that, and the body
+    // starts below it.
+    let (inline_pages, inline_top) = make(Some(Float::default()), 366.0);
+    assert!(inline_top > 18.0 + 366.0 && inline_pages > control_pages, "inline box: body at {inline_top}, {inline_pages} pages");
 }
 
 /// List labels drawn, in page order (each paragraph's first line).
