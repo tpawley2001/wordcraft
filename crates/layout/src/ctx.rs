@@ -85,6 +85,9 @@ pub(crate) struct Ctx<'a> {
     /// The keep-with-next chain last looked at: its first and latest body paragraphs, the empty
     /// column it was measured against, and whether it is too long for it ([`Flow::keep_together`]).
     pub(crate) keep_chain: Option<(usize, usize, f32, bool)>,
+    /// Each footnote's previous and next footnote in document order, built from `fields.notes`
+    /// when a footnote is first laid out ([`crate::notes::footnote_box`]).
+    pub(crate) footnote_seq: Option<Arc<HashMap<u32, (Option<u32>, Option<u32>)>>>,
 }
 
 struct ParaEnvInput<'a> {
@@ -576,6 +579,7 @@ mod tests {
             alphas: Default::default(),
             header_repeats: 0,
             keep_chain: None,
+            footnote_seq: None,
         };
 
         ctx.fitted_boxes(&p);

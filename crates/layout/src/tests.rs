@@ -75,6 +75,7 @@ mod next_column_section;
 mod next_page_restart_side;
 mod no_leading;
 mod no_leading_missing_fonts;
+mod note_contextual_spacing;
 mod notes_overflow;
 mod notes_overflow_last_line;
 mod numeral;
