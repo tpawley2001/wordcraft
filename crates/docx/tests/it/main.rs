@@ -29,6 +29,7 @@ mod fixtures;
 mod glossary;
 mod heading_levels;
 mod hyperlink_screen_tips;
+mod keep_break_off;
 mod legacy_forms;
 mod level_and_section_extras;
 mod ligatures;
