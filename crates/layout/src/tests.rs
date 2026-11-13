@@ -61,6 +61,7 @@ mod inline_drawing_reach;
 mod item_display_clip;
 mod item_display_warp;
 mod keep_next_above_notes;
+mod keep_next_above_notes_rows;
 mod keep_next_long_chain;
 mod keep_next_table_chain;
 mod kept_row_chain;
