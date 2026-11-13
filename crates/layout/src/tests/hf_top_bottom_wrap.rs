@@ -127,6 +127,23 @@ fn header_inline_shape_stays_beside_a_top_and_bottom_box() {
     near("BODY1 line top", line_tops(&p.items)[0], tops[1] + pitch());
 }
 
+/// The anchor paragraph holds only an inline 40.05 x 38.95pt shape, no text (a letterhead logo
+/// beside its text box). Word keeps that line at the header distance, beside the box, as it
+/// does for a line with text: HNEXT follows the shape's line, the body follows HNEXT.
+#[test]
+fn header_line_with_only_an_inline_shape_stays_beside_a_top_and_bottom_box() {
+    let mut first = anchor_para("", Anchor::Paragraph, 7.2);
+    first.insert_object(first.len(), rect_shape(40.05, 38.95, Float::default()), &Default::default()).unwrap();
+    let d = doc_with(Some(vec![first, para("HNEXT")]), None, vec![para("BODY1")]);
+    let l = lay(&d);
+    let p = &l.pages[0];
+    let tops = line_tops(&p.header);
+    let next = *tops.last().expect("the header has lines");
+    // Pushed below the box, HNEXT would start at 36.0 + 7.2 + 30.0 + 38.95 or lower.
+    assert!(next > 36.0 + 38.95 - TOL && next < 36.0 + 38.95 + pitch(), "HNEXT right below the shape's line: {tops:?}");
+    near("BODY1 line top", line_tops(&p.items)[0], next + pitch());
+}
+
 /// Probe m: the box is anchored on the second header paragraph (57.0..87.0). Header lines stay
 /// consecutive (36.0, 49.8, 63.6); the body starts at the box's bottom, 87.0.
 #[test]

@@ -250,8 +250,8 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
     // Word, before Word 2013 (compatibility mode below 15): a Top and Bottom object anchored in a
     // header or footer doesn't move that header's or footer's own lines of text (they run as if it
     // were in front of the text); it still counts for where the body starts. From mode 15 the
-    // header's or footer's text wraps it as body text does (`text_over` below). A paragraph of only pictures still goes below it (Word's PDF: a
-    // header's inline logo under a Top and Bottom text box, `tests::header_extent`). Its table
+    // header's or footer's text wraps it as body text does (`text_over` below). From mode 15 a paragraph of only inline pictures goes below it (Word's
+    // PDF: a header's inline logo under a Top and Bottom text box, `tests::header_extent`). Its table
     // cells, like the body, keep text above and below it.
     let hf_over = !in_cell
         && matches!(story, StoryRef::Part(id) if ctx.doc.parts.get(&id).is_some_and(|p| matches!(p.kind, wordcraft_doc::PartKind::Header | wordcraft_doc::PartKind::Footer)));
@@ -320,13 +320,12 @@ fn layout_box_in(ctx: &mut Ctx, input: BoxInput<'_>) -> BoxLayout {
                 let mut floats = HashMap::new();
                 // A header or footer cell's floats placed on the page: no room taken in the cell.
                 let mut pinned = HashMap::new();
-                // Before Word 2013 (compatibility mode below 15) only: a paragraph with text, or an
-                // empty one holding only floating objects (a letterhead banner), keeps its lines in
-                // place over a Top and Bottom object; from mode 15 a line the object's band would
-                // cover goes below it, as in the body.
-                let text_over = hf_over
-                    && ctx.doc.settings.compat_mode < 15
-                    && (p.text.chars().any(|c| c != '\u{FFFC}' && !c.is_whitespace()) || p.objects.iter().all(|o| floating(o).is_some()));
+                // Before Word 2013 (compatibility mode below 15) only: the anchor paragraph keeps
+                // its lines in place over a Top and Bottom object, whether they hold text, only an
+                // inline picture (a letterhead logo beside its text box) or nothing (a letterhead
+                // banner); from mode 15 a line the object's band would cover goes below it, as in
+                // the body.
+                let text_over = hf_over && ctx.doc.settings.compat_mode < 15;
                 let left_out = left_out_objects(ctx.doc, p, table.map(|t| &t.chr), ctx.opts.show_hidden, ctx.hide_deleted);
                 for (oi, o) in p.objects.iter().enumerate() {
                     let Some((w, h, float)) = floating(o) else { continue };
