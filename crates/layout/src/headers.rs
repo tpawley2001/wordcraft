@@ -10,6 +10,33 @@ use super::{
     work,
 };
 
+/// Whether page `i` is the first page of its section (the one its First Page header and footer,
+/// `w:titlePg`, go on): the section at the top of the page starts on it, its first block being the
+/// first body content there and not continued from the page before. A section that starts part-way
+/// down a page (a Continuous break) has no first page of its own: the next page is an ordinary
+/// one, as Word prints it.
+pub(crate) fn starts_section(pages: &[Page], i: usize, sections: &[(usize, &SectionProps)]) -> bool {
+    let Some(page) = pages.get(i) else { return false };
+    let start = match page.section.checked_sub(1) {
+        None => 0,
+        Some(k) => match sections.get(k) {
+            Some((end, _)) => end.saturating_add(1),
+            None => return false,
+        },
+    };
+    if page.first_block != start {
+        return false;
+    }
+    let Some(prev) = i.checked_sub(1).and_then(|k| pages.get(k)) else { return true };
+    let continued = prev.items.iter().any(|it| match it {
+        Placed::Lines { story: StoryRef::Body, path, .. } | Placed::Image { story: StoryRef::Body, path, .. } => {
+            path.0.first().is_some_and(|&b| b as usize == start)
+        }
+        _ => false,
+    });
+    !continued
+}
+
 /// Whether a section that starts on a new page needs a blank page first so it lands on the right
 /// side, and the page number it restarts at. `last` is the number of the page before it and
 /// `pages` how many pages there are so far.
@@ -205,7 +232,7 @@ fn header_obstacles(ctx: &mut Ctx, pb: &PageBuilder) -> (Vec<Rect>, Vec<WrapArea
         return Default::default();
     }
     let Some(page) = pb.pages.last() else { return Default::default() };
-    let first = pb.pages.iter().rev().nth(1).is_none_or(|prev| prev.section != page.section);
+    let first = starts_section(&pb.pages, pb.pages.len().saturating_sub(1), &ctx.hf.sections);
     let key = (page.section, page.number, first);
     if let Some(areas) = ctx.header_tables.get(&key) {
         return areas.clone();
@@ -405,13 +432,7 @@ pub(crate) fn headers_footers(ctx: &mut Ctx, pages: &mut [Page], sections: &[(us
     let hf = Arc::clone(&ctx.hf);
     let even_odd = ctx.doc.settings.even_odd_headers;
     let styles = styleref::headers_use_styleref(ctx.doc).then(|| ctx.cache.style_index(ctx.doc));
-    let mut first_of_section: HashSet<usize> = HashSet::new();
-    let mut seen = HashSet::new();
-    for (i, p) in pages.iter().enumerate() {
-        if seen.insert(p.section) {
-            first_of_section.insert(i);
-        }
-    }
+    let first_of_section: HashSet<usize> = (0..pages.len()).filter(|&i| starts_section(pages, i, sections)).collect();
     for (i, page) in pages.iter_mut().enumerate() {
         let Some((_, sect)) = sections.get(page.section) else { continue };
         // Inherit header/footer references from earlier sections (Word's "link to previous").
