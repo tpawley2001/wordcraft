@@ -13,10 +13,16 @@
 //! ([`ParaLayout::share_view`]) under its own path, so the caret, hit testing, selection and
 //! drawing still address the paragraphs of the document.
 //!
-//! Left as they are: a paragraph carrying a section break, one followed by a table or by
-//! nothing in its container (the last paragraph of the body or of a table cell), and every
-//! story other than the body (headers, footers, notes, text boxes). Joins stay inside one
-//! container: body with body, a cell with the same cell.
+//! A paragraph carrying a section break joins too: the break is not applied, and everything in
+//! its section is laid out as part of the next section whose break survives (its page size,
+//! margins, columns, headers and footers), as Word prints a section break deleted with Track
+//! Changes. The document keeps every section; [`Joins::split`] maps each page's section back to
+//! the document's own list.
+//!
+//! Left as they are: a paragraph followed by a table or by nothing in its container (the last
+//! paragraph of the body or of a table cell), and every story other than the body (headers,
+//! footers, notes, text boxes). A paragraph at the chain cap ends its chain and keeps its section
+//! break. Joins stay inside one container: body with body, a cell with the same cell.
 
 use super::placed::Placed;
 use super::{
@@ -50,14 +56,16 @@ pub(crate) struct Joins {
     hosts: HashMap<Path, Vec<Source>>,
     /// The paragraphs joined away (laid out empty, in no room).
     away: HashSet<Path>,
+    /// Each section of `doc` → its index in the source document's `sections()` (they differ
+    /// when a joined-away paragraph carried a section break).
+    sections: Vec<usize>,
 }
 
 /// Whether paragraph `p` joins the next paragraph when deletions are hidden: its mark is a
-/// deletion, it carries no section break, and its runs and objects agree with its text (so its
+/// deletion (whether or not it carries a section break), and its runs and objects agree with its text (so its
 /// text can be put before another's without shifting what follows).
 fn joins_next(p: &Paragraph) -> bool {
     p.mark.del.is_some()
-        && p.section.is_none()
         && p.runs.iter().try_fold(0usize, |n, r| n.checked_add(r.len)) == Some(p.text.len())
         && p.text.chars().filter(|c| *c == OBJ).count() == p.objects.len()
 }
@@ -72,7 +80,15 @@ pub(crate) fn plan(doc: &Document, opts: &LayoutOptions) -> Option<Joins> {
     let body = join_blocks(&doc.body, &[], 0, (&mut hosts, &mut away))?;
     let mut out = doc.clone();
     out.body = body;
-    Some(Joins { doc: out, hosts, away })
+    // The source's sections whose break survives, in order (the body's own always does).
+    let sections = doc
+        .sections()
+        .iter()
+        .enumerate()
+        .filter(|(_, (end, _))| u32::try_from(*end).map_or(true, |e| !away.contains(&Path(vec![e]))))
+        .map(|(k, _)| k)
+        .collect();
+    Some(Joins { doc: out, hosts, away, sections })
 }
 
 type Found<'a> = (&'a mut HashMap<Path, Vec<Source>>, &'a mut HashSet<Path>);
@@ -183,7 +199,9 @@ fn join_chain(chain: &[(Path, &Paragraph)]) -> (Paragraph, Vec<Source>) {
 
 /// What stands in for a paragraph joined away: empty, with its deleted mark (so it takes no
 /// room), no list number, nothing to break a page before it, and kept with the next paragraph
-/// so a keep-with-next chain running into it reaches the joined paragraph.
+/// so a keep-with-next chain running into it reaches the joined paragraph. It starts from
+/// [`Paragraph::new`] and so carries no section break: a break on a paragraph joined away is
+/// not applied, and its section's content belongs to the next section whose break survives.
 fn placeholder(p: &Paragraph) -> Paragraph {
     let mut q = Paragraph::new();
     q.mark = p.mark.clone();
@@ -195,10 +213,14 @@ fn placeholder(p: &Paragraph) -> Paragraph {
 }
 
 impl Joins {
-    /// Give each source paragraph its own share of the joined layouts in `l`, under its own path.
+    /// Give each source paragraph its own share of the joined layouts in `l`, under its own path,
+    /// and point each page at its section in the source document.
     pub(crate) fn split(&self, l: &mut DocLayout) {
         let mut views: HashMap<usize, Vec<Option<(Arc<ParaLayout>, usize, usize)>>> = HashMap::new();
         for page in &mut l.pages {
+            if let Some(&s) = self.sections.get(page.section) {
+                page.section = s;
+            }
             let items = std::mem::take(&mut page.items);
             page.items = self.split_items(items, &mut views);
         }
@@ -344,11 +366,35 @@ mod tests {
         assert!(plan(&doc(vec![Block::Para(para("X")), Block::Para(gone("A"))]), &hidden()).is_none());
     }
 
+    /// A deleted mark carrying a section break joins the next paragraph, and the break is gone
+    /// from the document as laid out; its pages map back past the removed section.
     #[test]
-    fn a_paragraph_carrying_a_section_break_is_left_alone() {
+    fn a_deleted_mark_carrying_a_section_break_joins_and_drops_the_break() {
         let mut a = gone("A");
         a.section = Some(Box::new(SectionProps::default()));
-        assert!(plan(&doc(vec![Block::Para(a), Block::Para(para("B"))]), &hidden()).is_none());
+        let mut b = para("B");
+        b.section = Some(Box::new(SectionProps::default()));
+        let d = doc(vec![Block::Para(a), Block::Para(b), Block::Para(para("C"))]);
+        assert_eq!(joined(&d), ["AB"]);
+        let plan = plan(&d, &hidden()).unwrap();
+        assert_eq!(plan.doc.sections().len(), 2);
+        assert!(plan.doc.body[0].as_para().unwrap().section.is_none());
+        assert!(plan.doc.body[1].as_para().unwrap().section.is_some());
+        assert_eq!(plan.sections, [1, 2]);
+    }
+
+    /// At the chain cap the paragraph ends its chain as a surviving mark would: its section
+    /// break stays.
+    #[test]
+    fn a_section_break_at_the_chain_cap_stays() {
+        let mut blocks: Vec<Block> = (0..MAX_JOINED_PARAS).map(|_| Block::Para(gone("a"))).collect();
+        if let Some(Block::Para(p)) = blocks.last_mut() {
+            p.section = Some(Box::new(SectionProps::default()));
+        }
+        blocks.push(Block::Para(para("z")));
+        let plan = plan(&doc(blocks), &hidden()).unwrap();
+        assert_eq!(plan.doc.sections().len(), 2);
+        assert_eq!(plan.sections, [0, 1]);
     }
 
     #[test]

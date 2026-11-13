@@ -1,4 +1,4 @@
-use super::boxes::{BoxInput, BoxLayout, Edges, joined, layout_box, push_para};
+use super::boxes::{Edges, joined, push_para};
 use super::cache::has_page_number_fields;
 use super::ctx::Ctx;
 use super::floats::{
@@ -189,6 +189,9 @@ struct Flow<'a> {
     /// The paragraph ended with a column break whose line took the anchors after it
     /// ([`Flow::ends_page`]): its space after stays in the column it ended in.
     ended_in_column: bool,
+    /// The column (page count, column) and y where the text before it ended, above its space
+    /// before: a first line holding only a column break ends its column there.
+    text_end: Option<((usize, usize), f32)>,
 }
 
 impl<'a> Flow<'a> {
@@ -230,6 +233,7 @@ impl<'a> Flow<'a> {
             forced: Vec::new(),
             space_here: 0.0,
             ended_in_column: false,
+            text_end: None,
         }
     }
 
@@ -583,6 +587,23 @@ impl<'a> Flow<'a> {
         only_break || (pb.next_starts_page && p.section.is_some() && p.text.is_empty())
     }
 
+    /// Whether the line holds nothing but a column break (and zero-width markers or floating
+    /// objects' anchors, which take no room in a line) in a document below compatibility mode 15,
+    /// where the rest of the paragraph goes to the next column ([`Flow::ends_page`]): the line
+    /// adds no height to the column it ends, which is exactly as tall as the text before it
+    /// (measured in Word, single and exact line heights). Mode 15 documents were not measured and
+    /// keep the line's height; lines holding only a page break are not affected.
+    fn takes_no_room(&self, ctx: &Ctx, pb: &PageBuilder, l: &para::Line) -> bool {
+        if l.end != LineEnd::ColumnBreak || pb.web || ctx.doc.settings.compat_mode >= 15 {
+            return false;
+        }
+        let p = self.p;
+        let Some(text) = p.text.get(l.start..l.stop) else { return false };
+        let empty = |i: usize| p.object_at(l.start + i).is_some_and(|o| o.is_marker() || floating(o).is_some());
+        text.contains(wordcraft_doc::para::COLUMN_BREAK)
+            && text.char_indices().all(|(i, c)| c == wordcraft_doc::para::COLUMN_BREAK || (c == wordcraft_doc::para::OBJ && empty(i)))
+    }
+
     /// Whether the line (just taken, `fit.l1` is after it) forces a break, noted in `fit`.
     fn ends_page(&self, pb: &PageBuilder, l: &para::Line, settings: &wordcraft_doc::Settings, fit: &mut Fit) -> bool {
         if !matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak) || pb.web {
@@ -737,7 +758,18 @@ impl<'a> Flow<'a> {
         items.extend(line_numbers(ctx, pb, &self.pl, (l0, l1), y));
         add_items(pb, behind, items);
         if let (Some(f), Some(l)) = (self.pl.lines.get(l0), self.pl.lines.get(l1 - 1)) {
-            pb.y = y + (l.top + l.height - f.top);
+            pb.y = if !self.takes_no_room(ctx, pb, l) {
+                y + (l.top + l.height - f.top)
+            } else if let Some(prev) = l1.checked_sub(2).filter(|k| *k >= l0).and_then(|k| self.pl.lines.get(k)) {
+                y + (prev.top + prev.height - f.top)
+            } else {
+                // The piece is the break's line alone: the column ends where its text did, above
+                // the paragraph's space before when this is its first line.
+                match self.text_end {
+                    Some((at, end)) if l0 == 0 && at == (pb.pages.len(), pb.col) => end.min(pb.y),
+                    _ => pb.y,
+                }
+            };
             pb.content_bottom = pb.content_bottom.max(pb.y);
         }
         self.l0 = l1;
@@ -903,11 +935,9 @@ fn notes_on_line(ctx: &mut Ctx, pb: &PageBuilder, l: &para::Line, notes: &[(usiz
         if *ci >= l.c0
             && *ci < l.c1
             && !pb.notes.iter().chain(new_notes).any(|x| x.id == *id)
-            && let Some(part) = ctx.doc.parts.get(id).filter(|p| p.kind == wordcraft_doc::PartKind::Footnote)
+            && let Some(note) = crate::notes::footnote_box(ctx, *id, pb.note_w())
         {
-            let blocks = part.blocks.clone();
-            let BoxLayout { items, height: h, .. } = layout_box(ctx, BoxInput::other(StoryRef::Part(*id), &blocks, pb.note_w(), 0, None));
-            out.push(NoteBox { id: *id, items, h, cont: false });
+            out.push(note);
         }
     }
     out
@@ -1020,6 +1050,7 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
         pb.new_page(block, body_top);
     }
     let before = f.gap_before(ctx, pb, broke_before);
+    f.text_end = Some((spot(pb), pb.y));
     pb.y += before;
     let rooms = Rooms::of(ctx, block, &f.pl);
     let applied_before = f.keep_together(ctx, pb, rooms, before);
