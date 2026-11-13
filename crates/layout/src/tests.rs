@@ -43,6 +43,7 @@ mod float_row_step;
 mod float_table_bottom;
 mod float_table_notes;
 mod float_top;
+mod footnote_notice_room;
 mod footnotes_in_columns;
 mod frame_page_break;
 mod grid;

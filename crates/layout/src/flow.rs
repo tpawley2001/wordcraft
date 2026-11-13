@@ -1048,8 +1048,9 @@ fn notes_on_line(ctx: &mut Ctx, pb: &PageBuilder, l: &para::Line, notes: &[(usiz
 /// and those of this line (`line_notes`) at its foot.
 fn notes_limit(pb: &PageBuilder, new_notes: &[NoteBox], line_notes: &[NoteBox]) -> f32 {
     let height = |notes: &[NoteBox]| notes.iter().map(|n| n.h).sum::<f32>();
-    let extra = height(line_notes) + if pb.notes.is_empty() && new_notes.is_empty() && !line_notes.is_empty() { pb.seps().sep_h(false) } else { 0.0 };
-    pb.bottom - height(new_notes) - if pb.notes.is_empty() && !new_notes.is_empty() { pb.seps().sep_h(false) } else { 0.0 } - extra
+    let extra =
+        height(line_notes) + if pb.notes.is_empty() && new_notes.is_empty() && !line_notes.is_empty() { pb.seps().area_h(false) } else { 0.0 };
+    pb.bottom - height(new_notes) - if pb.notes.is_empty() && !new_notes.is_empty() { pb.seps().area_h(false) } else { 0.0 } - extra
 }
 
 /// How much of the line has to fit. Multiple spacing above single puts its extra leading below
