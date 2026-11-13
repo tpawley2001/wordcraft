@@ -57,6 +57,7 @@ mod east_asian_theme_line_grid;
 mod negative_margins;
 mod rtl_gutter;
 mod output_header_footer_counts;
+mod output_header_footer_session;
 mod output_header_footer_fields;
 mod para_sort_case;
 mod para_sort_keys;

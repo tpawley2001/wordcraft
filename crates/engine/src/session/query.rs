@@ -142,6 +142,13 @@ impl Session {
         if set.is_empty() { self.author.split_whitespace().filter_map(|w| w.chars().next()).collect() } else { set.to_string() }
     }
 
+    /// The file name, path and user that output (PDF export, printing, page images) shows in
+    /// header and footer fields ([`crate::cmd::references::output_fields_in`]).
+    pub fn output_context(&self) -> crate::cmd::references::OutputContext {
+        let (file_name, file_path) = self.resolved_filenames();
+        crate::cmd::references::OutputContext { file_name, file_path, user_name: self.author.clone(), user_initials: self.user_initials() }
+    }
+
     /// The document's file name and full path for fields (`FILENAME`) and layout context.
     /// Returns `(filename, filepath)`. Unsaved documents with no explicit file name default
     /// consistently to their name, `("Document1", "Document1")` for the first. Document metadata title is never used

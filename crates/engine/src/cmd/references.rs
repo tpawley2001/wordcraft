@@ -24,8 +24,8 @@ pub(crate) use captions::{add_auto_caption, below_caption};
 use captions::{auto_caption, caption_label};
 use fields::caption;
 pub use fields::{
-    BOOKMARK_SELF_REFERENCE, CHAPTER_SEPARATORS, NO_BOOKMARK_NAME, REFERENCE_NOT_FOUND, output_fields, refresh_date_fields, seq_format,
-    update_fields, update_fields_after_insert, update_fields_in, update_seq,
+    BOOKMARK_SELF_REFERENCE, CHAPTER_SEPARATORS, NO_BOOKMARK_NAME, OutputContext, REFERENCE_NOT_FOUND, output_fields, output_fields_in,
+    refresh_date_fields, seq_format, update_fields, update_fields_after_insert, update_fields_in, update_seq,
 };
 pub(crate) use fields::{page_at, page_formats, page_label, page_text};
 pub(crate) use includetext::update_source;

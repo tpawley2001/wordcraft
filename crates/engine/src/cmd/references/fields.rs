@@ -513,17 +513,40 @@ fn changed(doc: &wordcraft_doc::Document, mut results: Vec<FieldResult>) -> Vec<
     results
 }
 
+/// What output needs from the session to fill session-bound fields in headers and footers
+/// (FILENAME, USERNAME, USERINITIALS); see [`output_fields_in`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OutputContext {
+    /// The document's file name (`FILENAME`).
+    pub file_name: String,
+    /// The document's full path (`FILENAME \p`).
+    pub file_path: String,
+    /// The user's name (`USERNAME`).
+    pub user_name: String,
+    /// The user's initials (`USERINITIALS`).
+    pub user_initials: String,
+}
+
 /// The document as Word prints and exports it (PDF, print jobs, page images). Laying a document
 /// out for output, Word fills in the body's unlocked LISTNUM, SEQ, STYLEREF and REF fields, even with
 /// "Update fields before printing" off, while NUMWORDS, FILENAME, the summary properties and
 /// formulas keep their stored results (measured with Word for Windows, printing and exporting
 /// fields whose stored results were wrong). In headers and footers, the summary properties
 /// (TITLE, AUTHOR ...), LASTSAVEDBY, DATE, TIME, a QUOTE of one quoted text, NUMWORDS, NUMCHARS,
-/// REVNUM, CREATEDATE and DOCPROPERTY show their current
+/// REVNUM, CREATEDATE, DOCPROPERTY and INFO of these properties show their current
 /// values too, while the same fields in the body and in notes keep theirs (measured with
 /// Microsoft 365 Word's PDF export). The document itself keeps its stored results.
 /// `None` when every such field already shows its fresh result, so nothing is copied then.
 pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Document> {
+    output_fields_in(doc, None)
+}
+
+/// [`output_fields`] with what the session knows (`ctx`): in headers and footers, FILENAME shows
+/// the file's name (`\p`: its full path), USERNAME and USERINITIALS the user's, as in Word's PDF
+/// export (measured with Microsoft 365 Word), and DOCVARIABLE its variable's value (empty when the
+/// document has no such variable, not Update Field's error text). Without a context those keep
+/// their results.
+pub fn output_fields_in(doc: &wordcraft_doc::Document, ctx: Option<&OutputContext>) -> Option<wordcraft_doc::Document> {
     // Numbers first, then the fields that read them: a STYLEREF to a heading holding a SEQ field,
     // and a REF to a bookmarked caption, show the new number.
     let seq = changed(doc, seq_results(doc));
@@ -539,7 +562,7 @@ pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Doc
     if !refs.is_empty() {
         apply_results(out.get_or_insert_with(|| doc.clone()), refs).ok()?;
     }
-    let parts = changed(out.as_ref().unwrap_or(doc), header_footer_results(out.as_ref().unwrap_or(doc)));
+    let parts = changed(out.as_ref().unwrap_or(doc), header_footer_results(out.as_ref().unwrap_or(doc), ctx));
     if !parts.is_empty() {
         apply_results(out.get_or_insert_with(|| doc.clone()), parts).ok()?;
     }
@@ -549,11 +572,13 @@ pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Doc
 /// The fresh results output shows for the unlocked fields in every header and footer (each
 /// section's default, first-page and even-page ones, table cells included): the summary
 /// properties and LASTSAVEDBY, DATE and TIME, a QUOTE of one quoted text, and NUMWORDS,
-/// NUMCHARS, REVNUM, CREATEDATE and DOCPROPERTY (but `Pages`), each as Update
-/// Field in that header would store it (Word's PDF export shows them current, measured with
-/// Microsoft 365 Word). A summary property field that gives the property a new value keeps its
-/// result: output never changes a property. Every other field keeps what it shows.
-fn header_footer_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
+/// NUMCHARS, REVNUM, CREATEDATE and DOCPROPERTY (but `Pages`), and INFO of one of these
+/// properties, each as Update Field in that header would store it (Word's PDF export shows them
+/// current, measured with Microsoft 365 Word). With the session's `ctx`, FILENAME, USERNAME,
+/// USERINITIALS and DOCVARIABLE too ([`session_result`]). A summary property field that gives
+/// the property a new value keeps its result: output never changes a property. Every other field
+/// keeps what it shows.
+fn header_footer_results(doc: &wordcraft_doc::Document, ctx: Option<&OutputContext>) -> Vec<FieldResult> {
     use wordcraft_doc::PartKind;
     let mut out = Vec::new();
     // DOCPROPERTY's body counts, taken once when a field needs them.
@@ -568,6 +593,14 @@ fn header_footer_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
             for (k, o) in p.objects.iter().enumerate() {
                 let InlineObject::Field { instr, locked: false, .. } = o else { continue };
                 let name = wordcraft_layout::fields::field_name(instr);
+                // `INFO Title` shows what `TITLE` would; the rest of the code reads as that field's.
+                let (name, instr) = match name.as_str() {
+                    "INFO" => match info_property(instr) {
+                        Some(pair) => pair,
+                        None => continue,
+                    },
+                    _ => (name, instr.as_str()),
+                };
                 let fresh = match name.as_str() {
                     "TITLE" | "SUBJECT" | "AUTHOR" | "KEYWORDS" | "COMMENTS" if new_property_value(instr).is_none() => {
                         Some(text_result(instr, summary_property(&doc.core, &name).to_string()))
@@ -585,13 +618,42 @@ fn header_footer_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
                         let counts = counts.get_or_insert_with(|| BodyCounts::of(doc, None));
                         document_info_result(doc, &doc.core, counts, &name, instr)
                     }
-                    _ => None,
+                    _ => ctx.and_then(|ctx| session_result(doc, ctx, &name, instr)),
                 };
                 out.extend(fresh.map(|r| (story, path.clone(), k, r)));
             }
         }
     }
     out
+}
+
+/// The field an `INFO <Property>` field shows the result of, and the code read as that field's
+/// (`INFO Title \* Upper` reads as `Title \* Upper`). `None` for a property output keeps.
+fn info_property(instr: &str) -> Option<(String, &str)> {
+    let rest = instr.trim_start().split_once(char::is_whitespace)?.1.trim_start();
+    let name = wordcraft_layout::fields::field_name(rest);
+    matches!(
+        name.as_str(),
+        "TITLE" | "SUBJECT" | "AUTHOR" | "KEYWORDS" | "COMMENTS" | "LASTSAVEDBY" | "NUMWORDS" | "NUMCHARS" | "REVNUM" | "CREATEDATE"
+    )
+    .then_some((name, rest))
+}
+
+/// What output shows for a header or footer field that reads the session: FILENAME, USERNAME,
+/// USERINITIALS (one with a quoted text keeps its result: output changes no setting) and
+/// DOCVARIABLE (empty, not the error text, when the variable is not defined). `None` keeps the
+/// stored result.
+fn session_result(doc: &wordcraft_doc::Document, ctx: &OutputContext, name: &str, instr: &str) -> Option<String> {
+    let text = match name {
+        "FILENAME" if has_switch(instr, 'p') => ctx.file_path.clone(),
+        "FILENAME" => ctx.file_name.clone(),
+        "USERNAME" | "USERINITIALS" if new_property_value(instr).is_some() => return None,
+        "USERNAME" => ctx.user_name.clone(),
+        "USERINITIALS" => ctx.user_initials.clone(),
+        "DOCVARIABLE" => return Some(doc.doc_var(&doc_property_arg(instr)?).map_or_else(String::new, |v| text_result(instr, v.to_string()))),
+        _ => return None,
+    };
+    Some(text_result(instr, text))
 }
 
 /// The text of a `QUOTE "text"` field: exactly one quoted argument and no switch but `\*`.
