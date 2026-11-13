@@ -5,7 +5,9 @@ use std::sync::Arc;
 
 use wordcraft_doc::Rgb;
 use wordcraft_doc::para::{Anchor, FloatAlign, Paragraph};
-use wordcraft_doc::props::{Align, Border, Borders, CellProps, HeightRule, ParaProps, RowProps, TableFloat, TableProps, TextFrame, VAlign, VMerge};
+use wordcraft_doc::props::{
+    Align, Border, Borders, CellProps, HeightRule, ParaProps, RowProps, TableFloat, TableProps, TextDirection, TextFrame, VAlign, VMerge,
+};
 use wordcraft_doc::table::{Cell, Row, Table};
 use wordcraft_doc::{Block, Blocks, para_block};
 
@@ -68,6 +70,8 @@ const T_DYA_FROM_TEXT_BOTTOM: u16 = 0x941F;
 const T_F_NO_ALLOW_OVERLAP: u16 = 0x3465;
 /// `sprmTFAutofit` ([MS-DOC] 2.6.3): 1 lets the row's columns fit their content.
 const T_F_AUTOFIT: u16 = 0x3615;
+/// `sprmTTextFlow` ([MS-DOC] 2.6.4): itcFirst, itcLim, then a 16-bit text flow for those cells.
+const T_TEXT_FLOW: u16 = 0x7629;
 
 /// Most grid columns we build from a `sprmTDefTable` (the model's own cap is 63; one more
 /// edge is fine but merged rows can sum spans slightly over, so clamp when assembling).
@@ -117,6 +121,8 @@ pub(crate) struct RowInfo {
     widths: Vec<(u8, f32)>,
     width_pcts: Vec<(u8, f32)>,
     valign: Vec<(u8, VAlign)>,
+    /// Turned cells: the text flow of the `sprmTDefTable` TC80s, then `sprmTTextFlow`.
+    text_flow: Vec<(u8, TextDirection)>,
     /// Floating-table sprms from the TAP, as the paragraph frame sprm (opcode) each matches.
     tap_frame: Vec<(u16, [u8; 2])>,
     /// `sprmTDxaFromTextRight` / `sprmTDyaFromTextBottom`, points.
@@ -185,6 +191,7 @@ impl RowInfo {
             + self.widths.len()
             + self.width_pcts.len()
             + self.valign.len()
+            + self.text_flow.len()
             + self.merges.len()
     }
 
@@ -242,7 +249,10 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
                 edge0 = first_edge(prl.operand).map(Edge0::Center).or(edge0);
                 // The definition replaces each cell's alignment; a later sprmTVertAlign wins.
                 apply_def_table_valign(&mut r.valign, prl.operand);
+                // Likewise each cell's text flow.
+                apply_def_table_text_flow(&mut r.text_flow, prl.operand);
             }
+            T_TEXT_FLOW => apply_text_flow_sprm(&mut r.text_flow, prl.operand),
             T_TABLE_HEADER => r.header = prl.operand.first().copied().unwrap_or(0) != 0,
             // Read after the loop, from the Data-stream copy when there is one.
             T_CANT_SPLIT | T_CANT_SPLIT_90 => {}
@@ -824,6 +834,9 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
         if let Some((_, v)) = info.valign.iter().rfind(|(k, _)| *k == i) {
             c.props.valign = Some(*v);
         }
+        if let Some((_, d)) = info.text_flow.iter().rfind(|(k, _)| *k == i) {
+            c.props.text_direction = *d;
+        }
         if let Some((_, m)) = info.cell_padding.iter().find(|(k, _)| *k == i) {
             c.props.partial_margins = Some(*m);
         }
@@ -915,6 +928,52 @@ fn apply_def_table_valign(slots: &mut Vec<(u8, VAlign)>, operand: &[u8]) {
         match v {
             Some(v) => set(slots, c, v),
             None => slots.retain(|(k, _)| *k != c),
+        }
+    }
+}
+
+/// The direction a text flow value gives a cell: bits 2-4 of a TC80's TCGRF word, or a
+/// `sprmTTextFlow` operand ([MS-DOC] 2.9.313 TCGRF, TextFlow). 1 runs top to bottom, 3 bottom to
+/// top, 5 top to bottom with upright glyphs (turned like 1, as the DOCX reader turns `tbRlV`);
+/// 0, 4 (horizontal with turned glyphs) and the undefined values are horizontal.
+fn text_flow(v: u16) -> TextDirection {
+    match v {
+        1 | 5 => TextDirection::Down,
+        3 => TextDirection::Up,
+        _ => TextDirection::Horizontal,
+    }
+}
+
+/// Apply a `sprmTTextFlow` operand (itcFirst, itcLim, a 16-bit text flow) to the cells it names.
+/// A short operand, or a value past the three TextFlow bits, is ignored.
+fn apply_text_flow_sprm(slots: &mut Vec<(u8, TextDirection)>, operand: &[u8]) {
+    let [first, lim, lo, hi, ..] = operand else { return };
+    let v = u16::from_le_bytes([*lo, *hi]);
+    if v > 7 {
+        return;
+    }
+    let d = text_flow(v);
+    for c in *first..(*lim).min(MAX_COLS as u8) {
+        set(slots, c, d);
+    }
+}
+
+/// Record the text flow a `sprmTDefTable` operand's TC80s give its cells (bits 2-4 of the TCGRF
+/// word), replacing earlier ones; a horizontal cell, or one whose TC80 is missing or cut short,
+/// loses any earlier override.
+fn apply_def_table_text_flow(slots: &mut Vec<(u8, TextDirection)>, operand: &[u8]) {
+    let itc = operand.get(2).copied().unwrap_or(0) as usize;
+    let start = 3 + (itc + 1) * 2;
+    for i in 0..itc.min(MAX_COLS) {
+        let at = start + i * 20;
+        let d = match operand.get(at..at + 20) {
+            Some([lo, hi, ..]) => text_flow((u16::from_le_bytes([*lo, *hi]) >> 2) & 7),
+            _ => TextDirection::Horizontal,
+        };
+        if d.is_turned() {
+            set(slots, i as u8, d);
+        } else {
+            slots.retain(|(k, _)| *k != i as u8);
         }
     }
 }

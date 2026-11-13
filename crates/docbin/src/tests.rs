@@ -12,6 +12,7 @@ mod bookmark_pairs;
 mod button_field_nested;
 mod cell_end_paragraph;
 mod cell_padding;
+mod cell_text_flow;
 mod cfb_tolerance;
 mod deleted_row;
 mod custom_note_marks;
