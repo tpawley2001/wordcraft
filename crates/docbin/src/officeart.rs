@@ -373,6 +373,12 @@ pub(crate) struct Props {
     pub(crate) text_flow: Option<u32>,
     /// `fFitShapeToText` (Text Boolean Properties): the box grows to its text.
     pub(crate) fit_shape_to_text: Option<bool>,
+    /// `fShadow` (Shadow Style Boolean Properties, [MS-ODRAW] §2.3.13), when its use bit is set.
+    pub(crate) shadow: Option<bool>,
+    /// `shadowType` (`MSOSHADOWTYPE`): 0 is the plain offset shadow.
+    pub(crate) shadow_type: Option<u32>,
+    /// `shadowOffsetX`, `shadowOffsetY`: the shadow's offset, EMUs, signed.
+    pub(crate) shadow_offset: [Option<i32>; 2],
 }
 
 impl Props {
@@ -446,6 +452,12 @@ impl Props {
                 // fFitShapeToText (bit 1) is valid when fUsefFitShapeToText (bit 17) is set.
                 0x00BF if op & (1 << 17) != 0 => self.fit_shape_to_text = Some(op & (1 << 1) != 0),
                 0x00BF => {}
+                0x0200 => self.shadow_type = Some(op),
+                0x0205 => self.shadow_offset[0] = Some(op as i32),
+                0x0206 => self.shadow_offset[1] = Some(op as i32),
+                // fShadow (bit 1) is valid when fUsefShadow (bit 17) is set.
+                0x023F if op & (1 << 17) != 0 => self.shadow = Some(op & (1 << 1) != 0),
+                0x023F => {}
                 0x0384..=0x0387 => self.wrap_dist[(pid - 0x0384) as usize] = Some(op),
                 0x038F => self.posh = Some(op),
                 0x0390 => self.posrelh = Some(op),

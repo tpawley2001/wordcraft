@@ -53,6 +53,7 @@ mod hf_float_wrap_modes;
 mod hf_frame_flow;
 mod hf_top_bottom_wrap;
 mod html_auto_spacing_off;
+mod inline_drawing_reach;
 mod item_display_clip;
 mod item_display_warp;
 mod keep_next_long_chain;
