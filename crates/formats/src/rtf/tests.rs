@@ -98,6 +98,14 @@ fn a_malformed_hex_escape_leaves_no_stray_text() {
     let rtf = br"{\rtf1\ansi{\'}after\par}";
     let f = parse(rtf).unwrap();
     assert!(texts(&f).iter().any(|t| t.contains("after")), "{:?}", texts(&f));
+    // A second `}` closes the document: "after" is past its end and is not read (#5658).
+    let rtf = br"{\rtf1\ansi{\'}}after\par}";
+    let f = parse(rtf).unwrap();
+    assert!(!texts(&f).iter().any(|t| t.contains("after")), "{:?}", texts(&f));
+    let rtf = br"{\rtf1\ansi before{\'}}after\par}";
+    let f = parse(rtf).unwrap();
+    assert!(texts(&f).iter().any(|t| t.contains("before")), "{:?}", texts(&f));
+    assert!(!texts(&f).iter().any(|t| t.contains("after")), "{:?}", texts(&f));
 
     // A hex digit that starts a valid pair with the byte after it is part of the escape:
     // \'4} reads '4' as the escape's byte and leaves `}` to close the group.
