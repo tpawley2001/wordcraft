@@ -10,6 +10,12 @@ use wordcraft_doc::Settings;
 const OFF_COPTS60: usize = 84;
 /// `Copts60.fExpShRtn` (bit N, the 14th bit; [MS-DOC] §2.7.2 Copts60).
 const F_EXP_SH_RTN: u16 = 1 << 13;
+/// `Copts60.fNoTabForInd` (bit A, the 1st bit; [MS-DOC] §2.7.2 Copts60): no implicit tab stop at
+/// a hanging indent.
+const F_NO_TAB_FOR_IND: u16 = 1 << 0;
+/// `Copts60.fWrapTrailSpaces` (bit D, the 4th bit; [MS-DOC] §2.7.2 Copts60): spaces past the
+/// right edge wrap to the next line.
+const F_WRAP_TRAIL_SPACES: u16 = 1 << 3;
 /// Offset of `Dop95.copts80`'s second u16 (after `Copts60`; [MS-DOC] §2.7.3 Copts80).
 const OFF_COPTS80_HI: usize = 86;
 /// `Copts80.f2ptExtLeadingOnly` (bit G of the u16 at Dop offset 86; [MS-DOC] §2.7.3).
@@ -107,6 +113,8 @@ pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Setti
         && let Some(copts60) = u16_at(dop, OFF_COPTS60)
     {
         settings.do_not_expand_shift_return = copts60 & F_EXP_SH_RTN != 0;
+        settings.no_tab_hang_ind = copts60 & F_NO_TAB_FOR_IND != 0;
+        settings.wrap_trail_spaces = copts60 & F_WRAP_TRAIL_SPACES != 0;
     }
     if dop.len() >= DOP95_LEN
         && let Some(copts80) = u16_at(dop, OFF_COPTS80_HI)
