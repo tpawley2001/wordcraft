@@ -404,7 +404,7 @@ fn square_down_from_para(float: &Float) -> bool {
 /// than the room from the body's top (`top`) to that edge.
 pub(crate) fn onto_paper(mode: u32, float: &Float, r: Rect, text_before: bool, (top, page_h): (f32, f32)) -> Option<Rect> {
     let past = r.bottom() > page_h + 0.01 && r.h <= page_h - top;
-    (mode < wordcraft_doc::COMPAT_MODE_CURRENT && text_before && square_down_from_para(float) && past).then(|| Rect { y: page_h - r.h, ..r })
+    (mode < wordcraft_doc::COMPAT_MODE_CURRENT && text_before && square_down_from_para(float) && past).then_some(Rect { y: page_h - r.h, ..r })
 }
 
 /// Whether the paragraph whose first line is `line_top` (page coordinates; `pushed`: moved down
