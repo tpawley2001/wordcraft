@@ -22,6 +22,7 @@ mod column_top_float;
 mod complex;
 mod continuous_resized_section;
 mod custom_note_marks;
+mod default_note_separator;
 mod deleted_cell_end;
 mod deleted_mark_join;
 mod deleted_rows;

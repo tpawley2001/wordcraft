@@ -7,7 +7,7 @@ use super::flow::{OutlinePass, place_outline_para, place_para};
 use super::headers::{
     HfLinks, bookmark_pages, first_page_number, headers_footers, headers_footers_refer_to_pages, marks_key, mirror_even_pages, section_side,
 };
-use super::notes::{MAX_NOTE_PAGES, NoteSeps, note_info, place_endnotes};
+use super::notes::{MAX_NOTE_PAGES, NOTE_SEP, NoteSeps, default_sep_h, note_info, place_endnotes};
 use super::page::{PageBuilder, Pin, body_top_for, foot_top_for, item_bottom};
 use super::placed::Placed;
 use super::table_flow::place_table;
@@ -233,6 +233,7 @@ fn new_page_builder<'p>(
         block_marks: Vec::new(),
         page_valign: wordcraft_doc::section::PageVAlign::Top,
         seps: NoteSeps::default(),
+        default_sep_h: None,
         col_seps: Vec::new(),
         legacy_notes: false,
         col_notes_top: f32::MAX,
@@ -320,12 +321,32 @@ fn begin_section_state<'p>(
     if !web && !doc.footnote_separators.is_empty() {
         pb.seps = NoteSeps::new(ctx, &doc.footnote_separators, sect.text_width());
     }
+    let seps = &doc.footnote_separators;
+    // Measured only for a document with footnotes (the measuring paragraph is laid out anew each
+    // pass, so it must not cost documents without notes their cached layout).
+    let has_footnotes = || doc.parts.values().any(|p| p.kind == wordcraft_doc::PartKind::Footnote);
+    let default_h = if !web && (seps.separator.is_none() || seps.continuation_separator.is_none()) && has_footnotes() {
+        match pb.default_sep_h {
+            Some(h) => h,
+            None => {
+                let h = default_sep_h(ctx, sect.text_width());
+                pb.default_sep_h = Some(h);
+                h
+            }
+        }
+    } else {
+        NOTE_SEP
+    };
+    pb.seps.default_h = default_h;
     // Under their own columns (`PageBuilder::col_notes`) the notes take separators as wide as
     // each column.
     pb.col_seps = Vec::new();
     let boxes = sect.column_boxes();
     if !web && pb.legacy_notes && boxes.len() > 1 && !doc.footnote_separators.is_empty() {
         pb.col_seps = boxes.iter().map(|&(_, w)| NoteSeps::new(ctx, &doc.footnote_separators, w)).collect();
+    }
+    for s in &mut pb.col_seps {
+        s.default_h = default_h;
     }
     ctx.fields.section = u32::try_from(si).unwrap_or(u32::MAX).saturating_add(1);
     ctx.fields.section_pages = totals.section(si);

@@ -3,6 +3,7 @@
 //! the notice's height above the bottom margin). The notice is only drawn under a note that
 //! continues. A page without footnotes reserves nothing, and a document without a notice lays out
 //! as before.
+use super::default_note_separator::{normal_line, sep_height};
 use crate::notes::{DECOR_STORY, NOTE_SEP};
 use crate::page::item_bottom;
 use crate::*;
@@ -124,23 +125,32 @@ fn without_a_notice_the_footnote_ends_at_the_margin() {
     near(note_bottom(&l, 0, ids[0]).unwrap(), margin(&d), "note bottom");
 }
 
+/// The room the default separator takes above note `id` on page 0 (the fixture has no separator
+/// story, only a notice): one single-spaced line of the Normal style, not the old 12 pt.
+fn default_sep(d: &Document, l: &DocLayout, id: u32) -> f32 {
+    let h = sep_height(l, id);
+    near(h, normal_line(d), "default separator: one Normal line");
+    assert!((h - NOTE_SEP).abs() > TOL, "default separator {h} is not the 12 pt fallback");
+    h
+}
+
 fn room(d: &Document) -> f32 {
     margin(d) - d.last_section.margin_top
 }
 
 #[test]
 fn a_full_page_with_a_footnote_holds_a_line_less_for_the_notice() {
-    let (d, _) = build(60, &[0], 1, true);
+    let (d, ids) = build(60, &[0], 1, true);
     let l = lay(&d);
-    let want = ((room(&d) - NOTE_SEP - NOTE - NOTICE) / BODY + 0.001).floor() as usize;
+    let want = ((room(&d) - default_sep(&d, &l, ids[0]) - NOTE - NOTICE) / BODY + 0.001).floor() as usize;
     assert_eq!(body_lines(&l, 0), want);
 }
 
 #[test]
 fn a_full_page_with_a_footnote_and_no_notice_is_unchanged() {
-    let (d, _) = build(60, &[0], 1, false);
+    let (d, ids) = build(60, &[0], 1, false);
     let l = lay(&d);
-    let want = ((room(&d) - NOTE_SEP - NOTE) / BODY + 0.001).floor() as usize;
+    let want = ((room(&d) - default_sep(&d, &l, ids[0]) - NOTE) / BODY + 0.001).floor() as usize;
     assert_eq!(body_lines(&l, 0), want);
 }
 
@@ -166,7 +176,7 @@ fn a_split_footnote_reserves_the_notice_once() {
     assert!(bottom + NOTICE <= margin(&d) + TOL, "piece {bottom} + notice inside the page");
     near(drawn[0].1, drawn[0].0 + NOTICE, "notice height");
     // As before: the piece fills the room under the body line and separator, less the notice.
-    let top = d.last_section.margin_top + BODY + NOTE_SEP;
+    let top = d.last_section.margin_top + BODY + default_sep(&d, &l, ids[0]);
     let want = ((margin(&d) - NOTICE - top) / NOTE + 0.001).floor() as usize;
     assert_eq!(note_lines(&l, 0, ids[0]), want);
 }
