@@ -837,6 +837,12 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
             head = Some(found);
         }
         ctx.budget.set(ctx.budget.get() - 1);
+        let c = table_field_end(ctx, cp, c, &fields);
+        if c == '\u{15}' {
+            // The paragraph mark was the field's end: the paragraph runs on to the next mark,
+            // whose properties it takes.
+            head = None;
+        }
         // A custom-mark note reference: no 0x02 here, the characters at its CP are the mark
         // (outside a field's code or a result collected for the field object).
         if c != '\u{2}'
@@ -1404,6 +1410,14 @@ fn field_type(ctx: &WalkCtx<'_>, cp: u32, fields: &mut [OpenField]) {
     if let Some(f) = fields.last_mut() {
         f.flt = cp.checked_sub(base).and_then(|at| types.at(at));
     }
+}
+
+/// `c` at `cp`, or a field end (0x15) when it is a paragraph mark that the story's field table
+/// records as a field's end while a field is open: Word ends the field there, and the character
+/// is that field's end mark, not a paragraph break.
+fn table_field_end(ctx: &WalkCtx<'_>, cp: u32, c: char, fields: &[OpenField]) -> char {
+    let (types, base) = ctx.fld;
+    if c == '\r' && !fields.is_empty() && cp.checked_sub(base).is_some_and(|at| types.ends_at(at)) { '\u{15}' } else { c }
 }
 
 /// An open field in the walk's stack: the field being assembled and how it nests.
