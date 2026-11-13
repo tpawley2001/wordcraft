@@ -302,9 +302,9 @@ impl NoteBox {
 ///
 /// Word lays the footnotes of a document out as one run of paragraphs, in document order: the
 /// last paragraph of a footnote and the first of the next footnote are neighbours, wherever the
-/// two notes land. So "don't add space between paragraphs of the same style" (ECMA-376
-/// §17.3.1.9 `w:contextualSpacing`) reaches across notes, as between two paragraphs of one box
-/// (`paragraph_spacing` in `boxes.rs`): the note loses its space after when its last paragraph
+/// two notes land. So contextual spacing (ECMA-376 §17.3.1.9 `w:contextualSpacing`), which
+/// drops the space between neighbours of one style, reaches across notes, as between two
+/// paragraphs of one box (`paragraph_spacing` in `boxes.rs`): the note loses its space after when its last paragraph
 /// asks for that and the next footnote starts in the same style, and its first paragraph's space
 /// before is reduced the same way against the previous footnote's last paragraph.
 pub(crate) fn footnote_box(ctx: &mut Ctx, id: u32, width: f32) -> Option<NoteBox> {

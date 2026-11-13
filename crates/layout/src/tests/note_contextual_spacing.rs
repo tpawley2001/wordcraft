@@ -1,5 +1,5 @@
-//! "Don't add space between paragraphs of the same style" (`w:contextualSpacing`) between
-//! footnotes. Word (Microsoft 365, synthetic one-paragraph RTF files: letter, 1 in margins,
+//! Contextual spacing (`w:contextualSpacing`: no space between neighbouring paragraphs of one
+//! style) between footnotes. Word (Microsoft 365, synthetic one-paragraph RTF files: letter, 1 in margins,
 //! Times New Roman 10 pt notes at the page bottom) lays the footnotes of a document out as one
 //! run of paragraphs in document order: the last paragraph of a note and the first of the next
 //! note are spaced as two neighbouring body paragraphs, wherever the two notes land.
