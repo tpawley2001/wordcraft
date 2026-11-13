@@ -35,6 +35,14 @@ pub(crate) mod pair {
     pub(crate) const PLCF_BTE_CHPX: usize = 12;
     pub(crate) const PLCF_BTE_PAPX: usize = 13;
     pub(crate) const STTBF_FFN: usize = 15;
+    /// `fcPlcfFldMom` .. `fcPlcfFldHdrTxbx`: the field tables (Plcfld) of the main text, headers,
+    /// footnotes, comments, endnotes, text boxes and header text boxes; CPs are story-relative.
+    pub(crate) const PLCF_FLD_MOM: usize = 16;
+    pub(crate) const PLCF_FLD_HDR: usize = 17;
+    pub(crate) const PLCF_FLD_FTN: usize = 18;
+    /// Comment stories are not walked yet, so their field table is not read.
+    #[allow(dead_code)]
+    pub(crate) const PLCF_FLD_ATN: usize = 19;
     pub(crate) const STTBF_BKMK: usize = 21;
     pub(crate) const PLCF_BKF: usize = 22;
     pub(crate) const PLCF_BKL: usize = 23;
@@ -46,13 +54,16 @@ pub(crate) mod pair {
     pub(crate) const PLC_SPA_HDR: usize = 41;
     pub(crate) const PLCF_END_REF: usize = 46;
     pub(crate) const PLCF_END_TXT: usize = 47;
+    pub(crate) const PLCF_FLD_EDN: usize = 48;
     /// `fcDggInfo`: the OfficeArt drawing content (BLIP store, shapes).
     pub(crate) const DGG_INFO: usize = 50;
     /// `fcSttbfRMark`: the author names of tracked changes.
     pub(crate) const STTBF_RMARK: usize = 51;
     /// `fcPlcftxbxTxt` / `fcPlcfHdrtxbxTxt`: text box stories of the main document / headers.
     pub(crate) const PLCF_TXBX_TXT: usize = 56;
+    pub(crate) const PLCF_FLD_TXBX: usize = 57;
     pub(crate) const PLCF_HDR_TXBX_TXT: usize = 58;
+    pub(crate) const PLCF_FLD_HDR_TXBX: usize = 59;
     /// `fcPlfLst`: the list definitions (LSTF array, with the LVLs appended after the blob).
     pub(crate) const PLF_LST: usize = 73;
     /// `fcPlfLfo`: the list format overrides (LFO array with LFOData appended).

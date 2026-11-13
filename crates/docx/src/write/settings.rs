@@ -259,6 +259,9 @@ fn write_compatibility_settings(w: &mut W, doc: &Document) {
     if doc.settings.wp_justification {
         w.empty("w:wpJustification", &[]);
     }
+    if doc.settings.no_tab_hang_ind {
+        w.empty("w:noTabHangInd", &[]);
+    }
     if doc.settings.no_leading {
         w.empty("w:noLeading", &[]);
     }

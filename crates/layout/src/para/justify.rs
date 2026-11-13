@@ -40,7 +40,7 @@ pub(super) fn space_room(spaces: f32, word: f32) -> f32 {
 /// single spaces count: a run of two or more keeps its width. The caller squeezes only lines whose
 /// single spaces are all in fixed-pitch fonts: in Times New Roman an overrun of 0.125 pt wraps.
 ///
-/// With `\wraptrsp` (`Settings::wrap_trail_spaces`, measured for justified lines only) `first` is
+/// With `\wraptrsp` (`Settings::wrap_trail_spaces`, measured for justified and left-aligned lines) `first` is
 /// how far the word's first character ends past the edge and the width of the space before the
 /// word: Word keeps the word only when that character overruns by less than half that space.
 pub(super) fn rtf_space_room(spaces: f32, overrun: f32, space_from: f32, right_edge: f32, first: Option<(f32, f32)>) -> f32 {

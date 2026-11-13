@@ -1,4 +1,4 @@
-use super::boxes::{BoxInput, BoxLayout, Edges, joined, layout_box, push_para};
+use super::boxes::{Edges, joined, push_para};
 use super::cache::has_page_number_fields;
 use super::ctx::Ctx;
 use super::floats::{
@@ -189,6 +189,9 @@ struct Flow<'a> {
     /// The paragraph ended with a column break whose line took the anchors after it
     /// ([`Flow::ends_page`]): its space after stays in the column it ended in.
     ended_in_column: bool,
+    /// The column (page count, column) and y where the text before it ended, above its space
+    /// before: a first line holding only a column break ends its column there.
+    text_end: Option<((usize, usize), f32)>,
 }
 
 impl<'a> Flow<'a> {
@@ -230,6 +233,7 @@ impl<'a> Flow<'a> {
             forced: Vec::new(),
             space_here: 0.0,
             ended_in_column: false,
+            text_end: None,
         }
     }
 
@@ -520,13 +524,53 @@ impl<'a> Flow<'a> {
             if over && fit.l1 == l0 && !fresh && !split && (pushed || !self.stays_at_bottom(pb, l)) {
                 break;
             }
+            let mine = fit.notes.len();
             fit.notes.extend(line_notes);
             fit.l1 += 1;
-            if self.ends_page(pb, l, &ctx.doc.settings, &mut fit) || split {
+            if self.ends_page(pb, l, &ctx.doc.settings, &mut fit) {
+                break;
+            }
+            if split {
+                self.keep_last_line(ctx, pb, &mut fit, notes, (lead, first_top, mine));
                 break;
             }
         }
         fit
+    }
+
+    /// The line just taken (`fit.l1` is after it) ends the page because its notes overflow
+    /// ([`notes_split`]). When only the paragraph's last line is left and widow control would take
+    /// this line back to the next page with it, Word keeps the last line here too, if it fits
+    /// above the notes that must stay: those of the lines before, whole (or, when this line's
+    /// first note starts the page's notes, that note's first piece). This line's notes then give
+    /// way to it in the same split at the page's foot ([`PageBuilder::flush_notes`]): whole while
+    /// they fit, the first that doesn't split at a line or carried whole, and the last line's own
+    /// notes are carried after them. `mine` is where this line's notes start in `fit.notes`.
+    fn keep_last_line(&self, ctx: &mut Ctx, pb: &PageBuilder, fit: &mut Fit, notes: &[(usize, u32)], (lead, first_top, mine): (f32, f32, usize)) {
+        let (pl, n) = (&self.pl, self.n());
+        if pb.web || fit.forced.is_some() || fit.l1 + 1 != n || !pl.rp.widow_control || self.settled_end(pb, fit) >= fit.l1 {
+            return;
+        }
+        let Some(last) = pl.lines.get(fit.l1).filter(|l| !l.beside) else { return };
+        let bottom = pb.y + lead + (last.top + fit_height(pb, last, &pl.rp, false) - first_top);
+        let kept = fit.notes.get(..mine).unwrap_or(&[]);
+        let before: f32 = pb.notes.iter().chain(kept).map(|n| n.h).sum();
+        // The page's first note always leaves something on it (`flush_notes`).
+        let first = if pb.notes.is_empty() && kept.is_empty() {
+            match fit.notes.get(mine) {
+                Some(f) => f.first_piece() + pb.seps().notice_h(),
+                None => return,
+            }
+        } else {
+            0.0
+        };
+        let sep = pb.seps().sep_h(pb.notes.first().is_some_and(|n| n.cont));
+        if pb.note_floor().max(bottom) + sep + before + first > pb.orig_bottom + 0.01 {
+            return;
+        }
+        let last_notes = notes_on_line(ctx, pb, last, notes, &fit.notes);
+        fit.notes.extend(last_notes);
+        fit.l1 += 1;
     }
 
     /// Whether the line may overflow the page: one holding nothing but a page or column break stays
@@ -541,6 +585,23 @@ impl<'a> Flow<'a> {
                 .get(l.start..l.stop)
                 .is_some_and(|t| t.chars().all(|c| matches!(c, wordcraft_doc::para::PAGE_BREAK | wordcraft_doc::para::COLUMN_BREAK)));
         only_break || (pb.next_starts_page && p.section.is_some() && p.text.is_empty())
+    }
+
+    /// Whether the line holds nothing but a column break (and zero-width markers or floating
+    /// objects' anchors, which take no room in a line) in a document below compatibility mode 15,
+    /// where the rest of the paragraph goes to the next column ([`Flow::ends_page`]): the line
+    /// adds no height to the column it ends, which is exactly as tall as the text before it
+    /// (measured in Word, single and exact line heights). Mode 15 documents were not measured and
+    /// keep the line's height; lines holding only a page break are not affected.
+    fn takes_no_room(&self, ctx: &Ctx, pb: &PageBuilder, l: &para::Line) -> bool {
+        if l.end != LineEnd::ColumnBreak || pb.web || ctx.doc.settings.compat_mode >= 15 {
+            return false;
+        }
+        let p = self.p;
+        let Some(text) = p.text.get(l.start..l.stop) else { return false };
+        let empty = |i: usize| p.object_at(l.start + i).is_some_and(|o| o.is_marker() || floating(o).is_some());
+        text.contains(wordcraft_doc::para::COLUMN_BREAK)
+            && text.char_indices().all(|(i, c)| c == wordcraft_doc::para::COLUMN_BREAK || (c == wordcraft_doc::para::OBJ && empty(i)))
     }
 
     /// Whether the line (just taken, `fit.l1` is after it) forces a break, noted in `fit`.
@@ -697,7 +758,18 @@ impl<'a> Flow<'a> {
         items.extend(line_numbers(ctx, pb, &self.pl, (l0, l1), y));
         add_items(pb, behind, items);
         if let (Some(f), Some(l)) = (self.pl.lines.get(l0), self.pl.lines.get(l1 - 1)) {
-            pb.y = y + (l.top + l.height - f.top);
+            pb.y = if !self.takes_no_room(ctx, pb, l) {
+                y + (l.top + l.height - f.top)
+            } else if let Some(prev) = l1.checked_sub(2).filter(|k| *k >= l0).and_then(|k| self.pl.lines.get(k)) {
+                y + (prev.top + prev.height - f.top)
+            } else {
+                // The piece is the break's line alone: the column ends where its text did, above
+                // the paragraph's space before when this is its first line.
+                match self.text_end {
+                    Some((at, end)) if l0 == 0 && at == (pb.pages.len(), pb.col) => end.min(pb.y),
+                    _ => pb.y,
+                }
+            };
             pb.content_bottom = pb.content_bottom.max(pb.y);
         }
         self.l0 = l1;
@@ -863,11 +935,9 @@ fn notes_on_line(ctx: &mut Ctx, pb: &PageBuilder, l: &para::Line, notes: &[(usiz
         if *ci >= l.c0
             && *ci < l.c1
             && !pb.notes.iter().chain(new_notes).any(|x| x.id == *id)
-            && let Some(part) = ctx.doc.parts.get(id).filter(|p| p.kind == wordcraft_doc::PartKind::Footnote)
+            && let Some(note) = crate::notes::footnote_box(ctx, *id, pb.note_w())
         {
-            let blocks = part.blocks.clone();
-            let BoxLayout { items, height: h, .. } = layout_box(ctx, BoxInput::other(StoryRef::Part(*id), &blocks, pb.note_w(), 0, None));
-            out.push(NoteBox { id: *id, items, h, cont: false });
+            out.push(note);
         }
     }
     out
@@ -980,6 +1050,7 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
         pb.new_page(block, body_top);
     }
     let before = f.gap_before(ctx, pb, broke_before);
+    f.text_end = Some((spot(pb), pb.y));
     pb.y += before;
     let rooms = Rooms::of(ctx, block, &f.pl);
     let applied_before = f.keep_together(ctx, pb, rooms, before);

@@ -122,8 +122,11 @@ impl Writer<'_> {
                 open_rows += 1;
             }
             w.open("w:tr", &[]);
+            // The row's own deletion first: its `w:del` precedes `w:trPrChange`, and ids follow
+            // the file's order.
+            let del = r.props.del.filter(|&d| self.doc.revisions.get(d as usize).is_some()).map(|d| self.change_attrs(d));
             let chg = r.props.fmt_change.as_ref().map(|c| self.change_attrs(c.rev));
-            trpr(w, &r.props, chg.as_ref());
+            trpr(w, &r.props, chg.as_ref(), del.as_ref());
             let mut open_cells = 0u32;
             for (i, c) in r.cells.iter().enumerate() {
                 for ctl in &c.controls.open {

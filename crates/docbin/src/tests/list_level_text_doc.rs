@@ -100,3 +100,24 @@ fn a_lone_surrogate_becomes_a_bullet() {
     assert_eq!(text(0).as_deref(), Some("\u{2022}"));
     assert_eq!(text(1).as_deref(), Some("\u{2022}A"));
 }
+
+#[test]
+fn a_first_line_indented_level_keeps_its_list_tab() {
+    // Legal numbering: left 0, first line +720 twips, a list tab stop at 1080 twips.
+    let papx: &[u8] = &[
+        0x0F, 0x84, 0x00, 0x00, 0x11, 0x84, 0xD0, 0x02, 0x15, 0xC6, 0x05, 0x00, 0x01, 0x38, 0x04, 0x06, 0x5E, 0x84, 0x00, 0x00, 0x60, 0x84, 0xD0,
+        0x02,
+    ];
+    let mut first = lvl(0x00, &[1], &[0x0000, 0x002E]);
+    first[25] = papx.len() as u8;
+    let xst = first.split_off(28);
+    first.extend_from_slice(papx);
+    first.extend_from_slice(&xst);
+    let mut levels = vec![first];
+    levels.extend((1..9).map(|i| lvl(0x00, &[1], &[i, 0x002E])));
+    let (lst, lfo) = lists(&levels);
+    let doc = read(&doc_with_lists(&lst, &lfo)).expect("opens");
+    let l = doc.numbering.level(1, 0).expect("level 1");
+    assert_eq!((l.indent, l.hanging, l.tab), (0.0, -36.0, Some(54.0)));
+    assert_eq!(l.text, "%1.");
+}
