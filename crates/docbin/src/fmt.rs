@@ -595,19 +595,20 @@ pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
                 });
             }
         }
+        // Bool8s ([MS-DOC] §2.6.2): a stored 0 turns off what a base style turned on.
         P_KEEP => {
-            if matches!(sprm::toggle(prl), Toggle::On) {
-                p.keep_lines = Some(true);
+            if let Some(&b) = prl.operand.first() {
+                p.keep_lines = Some(b != 0);
             }
         }
         P_KEEP_FOLLOW => {
-            if matches!(sprm::toggle(prl), Toggle::On) {
-                p.keep_next = Some(true);
+            if let Some(&b) = prl.operand.first() {
+                p.keep_next = Some(b != 0);
             }
         }
         P_PAGE_BREAK_BEFORE => {
-            if matches!(sprm::toggle(prl), Toggle::On) {
-                p.page_break_before = Some(true);
+            if let Some(&b) = prl.operand.first() {
+                p.page_break_before = Some(b != 0);
             }
         }
         P_OUTLVL => {
