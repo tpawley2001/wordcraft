@@ -222,7 +222,9 @@ fn new_page_builder<'p>(
         orig_bottom: 0.0,
         prev: None,
         after_break_mark: false,
+        break_spot: None,
         next_starts_page: false,
+        next_breaks_page: false,
         restart_at: None,
         excl: Vec::new(),
         float_tables: Vec::new(),
@@ -438,6 +440,9 @@ fn prepare_section_end(pb: &mut PageBuilder, sections: &[(usize, &SectionProps)]
     let balance = !web && pb.cols.len() > 1 && pb.sect.valign == wordcraft_doc::section::PageVAlign::Top && follows;
     pb.col_break_page = None;
     pb.next_starts_page = !web && next.is_some_and(|s| s != SectionStart::Continuous);
+    // A continuous break that starts a page only for its new paper size keeps the closing mark's
+    // own page (Word: `first_page_once`).
+    pb.next_breaks_page = pb.next_starts_page && sections.get(si + 1).is_some_and(|(_, s)| s.start != SectionStart::Continuous);
     balance
 }
 

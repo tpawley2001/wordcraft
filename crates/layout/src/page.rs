@@ -37,9 +37,15 @@ pub(crate) struct PageBuilder<'a> {
     /// The previous paragraph ended with a page break (its mark stayed with the break): the next
     /// paragraph, first on the new page, gets no space before (Word).
     pub(crate) after_break_mark: bool,
+    /// Where the page break that set `after_break_mark` was: an empty closing mark of a section
+    /// starting a new page goes under it there ([`crate::flow`]'s bare section marks).
+    pub(crate) break_spot: Option<BreakSpot>,
     /// The next section starts on a new page: this section's closing mark, when empty, needs no
     /// room (Word leaves it on a full page rather than starting a page for it).
     pub(crate) next_starts_page: bool,
+    /// ... with a next page, odd page or even page break (not a continuous break to another
+    /// paper size).
+    pub(crate) next_breaks_page: bool,
     /// The number the next page takes instead of counting on: a section restarting its
     /// numbering, possibly at 0 (a cover page numbered 0).
     pub(crate) restart_at: Option<u32>,
@@ -112,6 +118,19 @@ pub(crate) struct PageBuilder<'a> {
     /// footnote area (a page break on a line of its own kept at the foot of a full page): the
     /// notes go below this, not below that line.
     pub(crate) mark_floor: Option<f32>,
+}
+
+/// A page break whose paragraph mark stayed with it: the page (index) and column it is in, the
+/// paragraph holding it, the column's x and width, that page's number and the line count there.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BreakSpot {
+    pub(crate) page: usize,
+    pub(crate) col: usize,
+    pub(crate) block: usize,
+    pub(crate) x: f32,
+    pub(crate) w: f32,
+    pub(crate) number: u32,
+    pub(crate) line_no: u32,
 }
 
 /// A floating object anchored in paragraph `block` (object `oi`) that keeps `rect` on page

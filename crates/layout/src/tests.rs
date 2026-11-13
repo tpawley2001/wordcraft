@@ -105,6 +105,7 @@ mod rtf_squeeze_any_align;
 mod rtf_wrapped_spaces;
 mod rtf_wraptrsp_squeeze;
 mod rtl_gutter_vertical;
+mod section_mark_after_break;
 mod section_pages_blank;
 mod shared_row_edge;
 mod split_break_float;
