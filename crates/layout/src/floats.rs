@@ -360,8 +360,11 @@ pub(crate) fn anchor_floats(
     let (bottom, more, col_top) = (pb.bottom, pb.cols.len().saturating_sub(pb.col + 1), pb.top);
     let fit = |pl: &ParaLayout| fitting(pl, 0, y0 + pl.lines.first().map_or(0.0, |l| l.top.max(0.0)), bottom, (more, col_top));
     let left_out = left_out_objects(ctx.doc, p, None, ctx.opts.show_hidden, ctx.hide_deleted);
-    let mut late: Vec<usize> =
-        late_floats(p, &pl, fit(&pl)).into_iter().chain(force.iter().copied()).filter(|oi| !left_out(*oi) && !seeded.contains(oi)).collect();
+    let mut late: Vec<usize> = late_floats(p, &pl, fit(&pl), split_mark(&ctx.doc.settings))
+        .into_iter()
+        .chain(force.iter().copied())
+        .filter(|oi| !left_out(*oi) && !seeded.contains(oi))
+        .collect();
     late.sort_unstable();
     late.dedup();
     if late.as_slice() == force {
@@ -370,7 +373,7 @@ pub(crate) fn anchor_floats(
     ctx.eq_count = eq0;
     let (rects, pl, rel) = anchor_floats_but(ctx, pb, anchor, &late);
     // Without them in the way more of the paragraph may fit, and some of their anchors with it.
-    let still = late_floats(p, &pl, fit(&pl));
+    let still = late_floats(p, &pl, fit(&pl), split_mark(&ctx.doc.settings));
     let fewer: Vec<usize> = late.iter().copied().filter(|oi| force.binary_search(oi).is_ok() || still.binary_search(oi).is_ok()).collect();
     if fewer.len() == late.len() {
         return (rects, pl, rel, late);
@@ -423,8 +426,8 @@ pub(crate) fn no_room_beside_shifted(p: &Paragraph, rects: &HashMap<usize, Rect>
 
 /// The floating objects of `p` (laid out as `pl`) whose anchor line ([`anchor_lines`]) is at or
 /// after `fit`, in order: Word draws them on the page their anchor line is on (#4250).
-pub(crate) fn late_floats(p: &Paragraph, pl: &ParaLayout, fit: usize) -> Vec<usize> {
-    let lines = anchor_lines(p, pl);
+pub(crate) fn late_floats(p: &Paragraph, pl: &ParaLayout, fit: usize, split: bool) -> Vec<usize> {
+    let lines = anchor_lines(p, pl, split);
     let late =
         |(oi, o): (usize, &InlineObject)| (floating(o).is_some() && lines.get(oi).copied().flatten().is_some_and(|li| li >= fit)).then_some(oi);
     p.objects.iter().enumerate().filter_map(late).collect()
@@ -482,11 +485,15 @@ pub(crate) fn place_late(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, oi:
 /// break's: Word keeps them on the page before (a cover page's title box, #1632). With text after
 /// them they are on the new page with it (#4262). The text may be in the same row's
 /// continuation on the far side of a wrapping object, not in the anchor's segment (Leaf #107).
-pub(crate) fn anchor_lines(p: &Paragraph, pl: &ParaLayout) -> Vec<Option<usize>> {
+/// With `split` ([`split_mark`]) an object positioned from its paragraph ([`goes_with_mark`])
+/// after a page break stays on its own line: the paragraph mark's line on the new page.
+pub(crate) fn anchor_lines(p: &Paragraph, pl: &ParaLayout, split: bool) -> Vec<Option<usize>> {
     let mut out = vec![None; p.objects.len()];
     for (li, l) in pl.lines.iter().enumerate() {
         let clusters = pl.clusters.get(l.c0..l.c1).unwrap_or_default();
-        let after_break = li.checked_sub(1).and_then(|k| pl.lines.get(k)).is_some_and(|l| matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak));
+        let before = li.checked_sub(1).and_then(|k| pl.lines.get(k)).map(|l| l.end);
+        let after_break = matches!(before, Some(LineEnd::PageBreak | LineEnd::ColumnBreak));
+        let stays = |oi: usize| split && before == Some(LineEnd::PageBreak) && p.objects.get(oi).is_some_and(goes_with_mark);
         // A wrap can leave only the zero-width anchor in the row's left segment, with its
         // text on the right. That is still visible content after the break, not a cover box.
         let lead = after_break
@@ -500,11 +507,24 @@ pub(crate) fn anchor_lines(p: &Paragraph, pl: &ParaLayout) -> Vec<Option<usize>>
         for c in clusters {
             let para::ClKind::Object(oi) = c.kind else { continue };
             if let Some(slot) = out.get_mut(oi).filter(|s| s.is_none()) {
-                *slot = Some(if lead { li.saturating_sub(1) } else { li });
+                *slot = Some(if lead && !stays(oi) { li.saturating_sub(1) } else { li });
             }
         }
     }
     out
+}
+
+/// Whether the paragraph mark after a `w:br w:type="page"` goes to the new page
+/// (`w:splitPgBreakAndParaMark` below `compatibilityMode` 15), and with it the objects
+/// (`wp:anchor`) anchored between the break and the mark.
+pub(crate) fn split_mark(settings: &wordcraft_doc::Settings) -> bool {
+    settings.split_pg_break_and_para_mark && settings.compat_mode < 15
+}
+
+/// Whether `o` is a floating object positioned vertically from its paragraph or line, which goes
+/// to the new page with the paragraph mark ([`split_mark`]) when anchored after the break.
+pub(crate) fn goes_with_mark(o: &InlineObject) -> bool {
+    floating(o).is_some_and(|(_, _, f)| matches!(f.v_rel, Anchor::Paragraph | Anchor::Line))
 }
 
 /// [`anchor_floats`], leaving out the floats in `late` (in order).
@@ -646,17 +666,19 @@ pub(crate) struct LateFloats {
     /// ([`LateFloats::keep_back`]): (piece, object index).
     pub(crate) held: Vec<((usize, usize), usize)>,
     pub(crate) kept: Vec<((usize, usize), usize)>,
+    /// [`split_mark`], for [`anchor_lines`].
+    pub(crate) split: bool,
 }
 
 impl LateFloats {
-    pub(crate) fn new(late: &[usize]) -> Self {
-        LateFloats { placed: late.iter().map(|oi| (*oi, None)).collect(), piece: (0, 0), lines: None, held: Vec::new(), kept: Vec::new() }
+    pub(crate) fn new(late: &[usize], split: bool) -> Self {
+        LateFloats { placed: late.iter().map(|oi| (*oi, None)).collect(), piece: (0, 0), lines: None, held: Vec::new(), kept: Vec::new(), split }
     }
 
     /// [`anchor_lines`] for `pl`.
     pub(crate) fn refresh(&mut self, p: &Paragraph, pl: &Arc<ParaLayout>) {
         if !self.lines.as_ref().is_some_and(|(of, _)| Arc::ptr_eq(of, pl)) {
-            self.lines = Some((pl.clone(), anchor_lines(p, pl)));
+            self.lines = Some((pl.clone(), anchor_lines(p, pl, self.split)));
         }
     }
 
