@@ -74,6 +74,7 @@ mod no_leading_missing_fonts;
 mod notes_overflow;
 mod numeral;
 mod pages;
+mod pct_table_legacy_width;
 mod picture_glue;
 mod picture_glue_touching;
 mod pushed_by_earlier_float;
