@@ -516,7 +516,8 @@ impl<'a> Flow<'a> {
             // by an earlier paragraph's object has nothing to move with and stays as before.
             let pushed =
                 fit.l1 == 0 && l.top > 0.01 && self.p.objects.iter().any(|o| floating(o).is_some_and(|(_, _, f)| f.wrap == Wrap::TopAndBottom));
-            if over && fit.l1 == l0 && !pb.fresh() && !split && (pushed || !self.stays_at_bottom(pb, l)) {
+            let fresh = pb.fresh() && !pb.pinned_room_ahead();
+            if over && fit.l1 == l0 && !fresh && !split && (pushed || !self.stays_at_bottom(pb, l)) {
                 break;
             }
             fit.notes.extend(line_notes);
@@ -1010,7 +1011,7 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
             continue;
         }
         if fit.l1 == f.l0 {
-            if !pb.fresh() {
+            if !pb.fresh() || pb.pinned_room_ahead() {
                 f.move_on(ctx, pb);
                 continue;
             }

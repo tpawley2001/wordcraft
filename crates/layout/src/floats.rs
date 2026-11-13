@@ -540,6 +540,12 @@ fn anchor_floats_but(
                 ctx.floats_above.remove(&(block, oi));
                 continue;
             }
+            // Held where the unbalanced layout put it (its wrap area is on the page already).
+            if let Some(r) = pb.pinned(block, oi) {
+                rects.insert(oi, r);
+                ctx.floats_above.insert((block, oi), None);
+                continue;
+            }
             let h = ctx.float_height(o, w, h);
             // Positions relative to the paragraph start above its space before (Word for Windows).
             let mut r = float_rect(Some(frame), (col_x, width), y0 - before, w, h, float);
