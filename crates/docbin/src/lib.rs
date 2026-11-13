@@ -882,6 +882,41 @@ fn shape_fallback(fields: &[OpenField]) -> bool {
     fields.last().is_some_and(|f| f.shape_drawn && is_shape_result(f))
 }
 
+/// Applies a paragraph mark's PAPX to the paragraph being built: its frame (merged over the
+/// style's), its paragraph sprms and its list (its own, or its style's at its own level).
+fn apply_para_sprms(ctx: &WalkCtx<'_>, pb: &mut ParaBuild, papx: &[u8], istd: u16) {
+    let mut ilvl: Option<u8> = None;
+    let mut ilfo: Option<i32> = None;
+    // Direct frame sprms merge into the style's frame field by field, so start from it.
+    if sprm::iter(papx).any(|prl| fmt::is_frame_sprm(prl.op)) {
+        pb.props.frame = fmt::style_frame(ctx.raw_styles, istd as usize);
+    }
+    for prl in sprm::iter(papx) {
+        if prl.op == P_ILVL {
+            ilvl = Some(ilvl_operand(prl.operand));
+            continue;
+        }
+        if prl.op == P_ILFO {
+            ilfo = Some(ilfo_operand(prl.operand));
+            continue;
+        }
+        if prl.sgc() == 1 {
+            fmt::apply_para(&mut pb.props, &prl);
+        }
+    }
+    // The paragraph's own list, or its style's list at its own level. Switching the
+    // style's list off is `num: 0`, which also drops the style's indents, so only a
+    // style that has a list gets it.
+    let style_list =
+        pb.props.style.as_deref().and_then(|id| ctx.sheet.chain(id).into_iter().rev().find_map(|s| s.para.numbering)).filter(|n| n.num != 0);
+    pb.props.numbering = match (ilfo.map(num_of), style_list) {
+        (Some(Some(num)), _) => Some(NumRef { num, level: ilvl.or(style_list.map(|n| n.level)).unwrap_or(0) }),
+        (Some(None), Some(s)) => Some(NumRef { num: 0, level: s.level }),
+        (None, Some(s)) => ilvl.map(|level| NumRef { num: s.num, level }),
+        _ => None,
+    };
+}
+
 /// Walk a CP range, splitting paragraphs at 0x0D/0x07 marks, applying the direct character
 /// formatting of each CP and the paragraph formatting of each mark. Works for the main
 /// document and for any subdocument range (headers, footers, notes…). Field characters,
@@ -982,40 +1017,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 // Only table marks keep their table context; a plain paragraph would carry
                 // a `RowInfo` (about 300 bytes) it never uses.
                 let row = row.is_table().then(|| Box::new(row));
-                let mut ilvl: Option<u8> = None;
-                let mut ilfo: Option<i32> = None;
-                // Direct frame sprms merge into the style's frame field by field, so start from it.
-                if sprm::iter(papx).any(|prl| fmt::is_frame_sprm(prl.op)) {
-                    pb.props.frame = fmt::style_frame(ctx.raw_styles, istd as usize);
-                }
-                for prl in sprm::iter(papx) {
-                    if prl.op == P_ILVL {
-                        ilvl = Some(ilvl_operand(prl.operand));
-                        continue;
-                    }
-                    if prl.op == P_ILFO {
-                        ilfo = Some(ilfo_operand(prl.operand));
-                        continue;
-                    }
-                    if prl.sgc() == 1 {
-                        fmt::apply_para(&mut pb.props, &prl);
-                    }
-                }
-                // The paragraph's own list, or its style's list at its own level. Switching the
-                // style's list off is `num: 0`, which also drops the style's indents, so only a
-                // style that has a list gets it.
-                let style_list = pb
-                    .props
-                    .style
-                    .as_deref()
-                    .and_then(|id| ctx.sheet.chain(id).into_iter().rev().find_map(|s| s.para.numbering))
-                    .filter(|n| n.num != 0);
-                pb.props.numbering = match (ilfo.map(num_of), style_list) {
-                    (Some(Some(num)), _) => Some(NumRef { num, level: ilvl.or(style_list.map(|n| n.level)).unwrap_or(0) }),
-                    (Some(None), Some(s)) => Some(NumRef { num: 0, level: s.level }),
-                    (None, Some(s)) => ilvl.map(|level| NumRef { num: s.num, level }),
-                    _ => None,
-                };
+                apply_para_sprms(ctx, &mut pb, papx, istd);
                 // A tracked paragraph formatting change (sprmPPropRMark90 / sprmPPropRMark),
                 // read once the paragraph's formatting is resolved.
                 if let Ok(mut revs) = ctx.revs.try_borrow_mut() {
