@@ -446,6 +446,7 @@ impl Reader {
     fn destination_for_word(&mut self, w: &str) -> Option<Dest> {
         match w {
             "fonttbl" => Some(Dest::FontTbl),
+            "panose" => Some(self.panose_destination()),
             "colortbl" => Some(Dest::ColorTbl),
             "stylesheet" => Some(Dest::StyleSheet),
             "generator" => {
@@ -533,7 +534,7 @@ impl Reader {
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
             | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "objdata" | "fontemb" | "fontfile"
-            | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl"
+            | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl"
             // The flat copy of nested tables, for readers without them.
             | "nonesttables" => Some(Dest::Skip),
             // Word 6.0/95 paragraph numbering: read, so the paragraph imports as a list.
@@ -759,10 +760,12 @@ impl Reader {
                 }
                 true
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template if !matches!(word, "u" | "uc") => {
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template | Dest::Panose
+                if !matches!(word, "u" | "uc") =>
+            {
                 true
             }
-            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template => false,
+            Dest::Info(_) | Dest::FldInst | Dest::Bookmark(_) | Dest::Generator | Dest::FfText(_) | Dest::Template | Dest::Panose => false,
             Dest::OldProps(false) if matches!(word, "crauth" | "crdate") => {
                 if word == "crauth" {
                     self.st.old_rev.0 = Some(value);
@@ -801,14 +804,29 @@ impl Reader {
         }
     }
 
+    /// `{\*\panose …}`: a font entry's classification, which with `\fcharset` tells a symbol
+    /// font; skipped anywhere else.
+    fn panose_destination(&mut self) -> Dest {
+        if self.st.dest != Dest::FontTbl {
+            return Dest::Skip;
+        }
+        self.font_panose.clear();
+        Dest::Panose
+    }
+
     fn font_table_word(&mut self, word: &str, value: i32) {
         match word {
             "f" => {
                 self.font_cur = value;
                 self.font_name.clear();
                 self.font_cp_cur = None;
+                self.font_charset_cur = 0;
+                self.font_panose.clear();
             }
-            "fcharset" => self.font_cp_cur = wordcraft_doc::encoding::charset_code_page(value),
+            "fcharset" => {
+                self.font_cp_cur = wordcraft_doc::encoding::charset_code_page(value);
+                self.font_charset_cur = u8::try_from(value).unwrap_or(0);
+            }
             "cpg" => {
                 if let Some(cp) = u16::try_from(value).ok().filter(|cp| wordcraft_doc::encoding::is_text_code_page(*cp)) {
                     self.font_cp_cur = Some(cp);

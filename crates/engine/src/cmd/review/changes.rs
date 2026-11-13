@@ -77,12 +77,16 @@ fn resolve_para(
 }
 
 /// Accept or reject the changes of the table cell `path` is in: the table's, its row's and the
-/// cell's own. Returns whether there were any.
-fn resolve_cell(s: &mut Session, story: StoryRef, path: &wordcraft_doc::Path, accept: bool) -> Result<bool, CmdError> {
+/// cell's own. With `whole_row`, the row's own deletion too: accepting it removes the row (and
+/// the table when no row is left), rejecting it keeps the row. Returns whether there were any.
+fn resolve_cell(s: &mut Session, story: StoryRef, path: &wordcraft_doc::Path, accept: bool, whole_row: bool) -> Result<bool, CmdError> {
     let Some((tp, r, c)) = path.cell() else { return Ok(false) };
+    let mut row_del = false;
     let has = s.doc.table(story, &tp).is_some_and(|t| {
         let row = t.rows.get(r);
-        t.props.fmt_change.is_some()
+        row_del = whole_row && row.is_some_and(|x| x.props.del.is_some());
+        row_del
+            || t.props.fmt_change.is_some()
             || row.is_some_and(|x| x.props.fmt_change.is_some())
             || row.and_then(|x| x.cells.get(c)).is_some_and(|x| x.props.fmt_change.is_some())
     });
@@ -96,6 +100,18 @@ fn resolve_cell(s: &mut Session, story: StoryRef, path: &wordcraft_doc::Path, ac
         if let Some(cell) = row.cells.get_mut(c) {
             fmt_revisions::resolve_cell(cell, accept);
         }
+        if row_del {
+            row.props.del = None;
+            if accept {
+                t.delete_row(r);
+            }
+        }
+    }
+    if t.rows.is_empty() {
+        s.doc.remove_block(story, &tp)?;
+    }
+    if row_del {
+        s.clamp_selection();
     }
     Ok(true)
 }
@@ -290,7 +306,7 @@ fn resolve_sel(s: &mut Session, accept: bool, next: bool) -> CmdResult {
                 (a.clone(), a)
             }
             None => {
-                if resolve_cell(s, a.story, &a.path, accept)? {
+                if resolve_cell(s, a.story, &a.path, accept, true)? {
                     return if next { select_next_unresolved(s) } else { sel_result(s) };
                 }
                 return nav_change(s, 1);
@@ -310,7 +326,10 @@ fn resolve_sel(s: &mut Session, accept: bool, next: bool) -> CmdResult {
         let props = (ranged && (path != b.path || to > from)) || caret_props.as_ref() == Some(&path);
         resolve_para(s, a.story, &path, (from, to), (mark, props), accept)?;
         if ranged {
-            resolve_cell(s, a.story, &path, accept)?;
+            // A row's deletion goes with the row's first paragraph: the last of the row visited
+            // here, so removing the row doesn't move the paths still to come.
+            let first = path.last() == 0 && path.cell().is_some_and(|(_, _, c)| c == 0);
+            resolve_cell(s, a.story, &path, accept, first)?;
         }
     }
     crate::cmd::moves::resolve(s, &moves, accept)?;

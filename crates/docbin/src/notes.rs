@@ -2,7 +2,7 @@
 //! and `SttbfBkmk` + `Plcfbkf`/`Plcfbkl` ([MS-DOC] §2.9).
 
 /// Cap on notes and bookmarks per document.
-const MAX: usize = 10_000;
+pub(crate) const MAX: usize = 10_000;
 
 /// Parse the note reference/story PLCs. `ref_pair`/`txt_pair` are the FIB pair indices
 /// (`(2, 3)` for footnotes, `(46, 47)` for endnotes); story ranges are relative to the
@@ -110,8 +110,10 @@ fn cps_of(table: &[u8], fc: u32, lcb: u32) -> Option<Vec<u32>> {
 /// `bkc`). Returns each bookmark's start CP with its `ibkl`, at most [`MAX`] of them.
 fn bkf_of(table: &[u8], fc: u32, lcb: u32) -> Option<Vec<(u32, u16)>> {
     let plc = table.get(fc as usize..(fc as usize).saturating_add(lcb as usize))?;
-    let n = (plc.len().checked_sub(4)? / 8).min(MAX);
-    let data = plc.get((n + 1) * 4..)?;
+    // The FBKFs follow all n + 1 CPs: locate them with the stored count, then keep at most MAX.
+    let total = plc.len().checked_sub(4)? / 8;
+    let data = plc.get(total.checked_add(1)?.checked_mul(4)?..)?;
+    let n = total.min(MAX);
     let cps = plc.as_chunks::<4>().0.iter().take(n);
     let fbkfs = data.as_chunks::<4>().0.iter().take(n);
     Some(cps.zip(fbkfs).map(|(cp, [i0, i1, _, _])| (u32::from_le_bytes(*cp), u16::from_le_bytes([*i0, *i1]))).collect())

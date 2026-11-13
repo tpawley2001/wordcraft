@@ -159,6 +159,15 @@ pub(crate) struct FontEntry {
     pub(crate) prq: u8,
     /// Character set.
     pub(crate) chs: u8,
+    /// The PANOSE classification (all zero when the FFN is too short to hold one).
+    pub(crate) panose: [u8; 10],
+}
+
+impl FontEntry {
+    /// The entry describes a symbol font ([`wordcraft_doc::is_symbol_class_font`]).
+    pub(crate) fn symbol_class(&self) -> bool {
+        wordcraft_doc::is_symbol_class_font(self.chs, &self.panose)
+    }
 }
 
 /// FFN family class `roman` ([MS-DOC] §2.9.82 `ff`).
@@ -205,7 +214,9 @@ pub(crate) fn font_entries(table: &[u8], fc: u32, lcb: u32) -> Vec<FontEntry> {
             .filter(|t| !t.is_empty())
             .map(name_of)
             .filter(|a| !a.is_empty());
-        FontEntry { name, alt, ff: (ffid >> 4) & 7, prq: ffid & 3, chs }
+        // A record cut short before its names keeps no PANOSE.
+        let panose = ffn.get(5..15).filter(|_| ffn.len() >= FFN_HEADER).and_then(|p| <[u8; 10]>::try_from(p).ok()).unwrap_or_default();
+        FontEntry { name, alt, ff: (ffid >> 4) & 7, prq: ffid & 3, chs, panose }
     };
     // STTB header: [fExtend 0xFFFF] cData(2) cbExtra(2); each entry is followed by cbExtra
     // bytes (0 for font tables, but skip them if present).
@@ -242,10 +253,16 @@ mod font_entry_tests {
 
     /// A non-extended SttbfFfn of one FFN with this FFID, chs, ixchSzAlt and name bytes.
     fn table_of(ffid: u8, chs: u8, ixch: u8, names: &[u8]) -> Vec<u8> {
+        table_with_panose(ffid, chs, ixch, [0; 10], names)
+    }
+
+    /// [`table_of`] with this PANOSE.
+    fn table_with_panose(ffid: u8, chs: u8, ixch: u8, panose: [u8; 10], names: &[u8]) -> Vec<u8> {
         let mut ffn = vec![0u8; FFN_HEADER];
         ffn[0] = ffid;
         ffn[3] = chs;
         ffn[4] = ixch;
+        ffn[5..15].copy_from_slice(&panose);
         ffn.extend_from_slice(names);
         let mut t = vec![1, 0, 0, 0, ffn.len() as u8];
         t.extend_from_slice(&ffn);
@@ -283,6 +300,38 @@ mod font_entry_tests {
             t.extend_from_slice(ffn);
             let e = font_entries(&t, 0, t.len() as u32);
             assert_eq!(e, vec![FontEntry::default()]);
+        }
+    }
+
+    fn symbol_class(chs: u8, panose: [u8; 10]) -> bool {
+        let t = table_with_panose(0x52, chs, 0, panose, &utf16z("Zzyzx Madeup"));
+        let e = font_entries(&t, 0, t.len() as u32);
+        assert_eq!(e[0].panose, panose);
+        e[0].symbol_class()
+    }
+
+    #[test]
+    fn panose_family_kind_5_or_symbol_charset_with_a_panose_is_a_symbol_class_font() {
+        // D1: a converted document's icon font; D2: pictorial PANOSE, any charset; D3: the
+        // symbol charset with a text font's PANOSE.
+        assert!(symbol_class(2, [5, 1, 1, 1, 1, 1, 1, 1, 1, 1]));
+        assert!(symbol_class(0, [5, 5, 1, 2, 1, 7, 6, 2, 5, 7]));
+        assert!(symbol_class(2, [2, 2, 6, 3, 5, 4, 5, 2, 3, 4]));
+        // D4: an all-zero PANOSE is none; D5: a text font.
+        assert!(!symbol_class(2, [0; 10]));
+        assert!(!symbol_class(0, [2, 2, 6, 3, 5, 4, 5, 2, 3, 4]));
+    }
+
+    #[test]
+    fn a_truncated_ffn_has_no_panose() {
+        // D6: an FFN shorter than its header keeps no PANOSE (the whole header: symbol-class).
+        for len in [0usize, 4, 6, 14, 20, 38, 39] {
+            let mut ffn = vec![0x52, 0, 0, 2, 0, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+            ffn.resize(len, 1);
+            let mut t = vec![1, 0, 0, 0, ffn.len() as u8];
+            t.extend_from_slice(&ffn);
+            let e = font_entries(&t, 0, t.len() as u32);
+            assert_eq!(e[0].symbol_class(), len == FFN_HEADER, "{len}");
         }
     }
 }
