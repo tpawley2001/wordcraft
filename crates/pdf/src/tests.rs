@@ -3152,3 +3152,22 @@ fn a_symbol_code_without_a_glyph_is_a_stroked_box_and_keeps_its_text() {
         stroked_paths(&bytes).concat().into_iter().filter(|r| (r.width() - 5.0).abs() < 0.6 && (r.height() - 6.8).abs() < 0.6).collect();
     assert_eq!(boxes.len(), 1, "one box about 5 x 6.8 pt");
 }
+
+/// A page break inside a text frame (`w:framePr`) starts no new page, as in Word: the exported
+/// PDF of `one`, a framed `[break]FRAME` and `two` has one page.
+#[test]
+fn page_break_in_a_text_frame_exports_one_page() {
+    use wordcraft_doc::para::PAGE_BREAK;
+    use wordcraft_doc::props::{ParaProps, TextFrame};
+    let frame = TextFrame { h_anchor: "page".into(), v_anchor: "text".into(), wrap: "around".into(), x: 29.3, y: 0.05, h_space: 9.0, ..Default::default() };
+    let mut framed = Paragraph::with_text(&format!("{PAGE_BREAK}FRAME"), Default::default());
+    framed.props = ParaProps { frame: Some(frame), ..Default::default() };
+    let mut d = Document::new();
+    d.body = vec![
+        para_block(Paragraph::with_text("one", Default::default())),
+        para_block(framed),
+        para_block(Paragraph::with_text("two", Default::default())),
+    ];
+    let bytes = export(&d, &PdfOptions::default()).unwrap();
+    assert_eq!(hayro_syntax::Pdf::new(bytes).expect("parse").pages().len(), 1);
+}
