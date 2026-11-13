@@ -34,6 +34,7 @@ use std::io::{Read, Seek};
 use std::sync::Arc;
 
 use wordcraft_doc::link::hyperlink_target;
+use wordcraft_doc::para::CodeMark;
 use wordcraft_doc::para::InlineObject;
 use wordcraft_doc::para::NoteKind;
 use wordcraft_doc::para::Paragraph;
@@ -772,6 +773,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
     // The paragraph being built has had its mark looked up ([`para_head`]): its style is known
     // before its characters are resolved, and the mark's PAPX is read once.
     let mut head: Option<Option<ParaHead<'a>>> = None;
+    let mut join: Option<CodeJoin> = None;
     while cp < cp_end {
         // Bookmark boundaries at this CP (main-document walks only; subdocument walks get
         // an empty table and `cp` never matches the main-document CPs).
@@ -890,20 +892,10 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 pb.mark = char_props(chpx, ctx.fonts, &base, ctx.raw_styles, ctx.style_ids);
                 // A tracked paragraph mark: inserted, or deleted (joining the next paragraph).
                 revise(ctx, &mut pb.mark, chpx, ctx.pieces.piece_prm(cp));
-                let done = std::mem::take(&mut pb);
                 head = None;
-                out.push(ParaOut {
-                    para: Paragraph {
-                        text: done.text,
-                        runs: done.runs,
-                        props: done.props,
-                        mark: done.mark,
-                        objects: done.objects,
-                        ..Default::default()
-                    },
-                    end_cp: cp.saturating_add(1),
-                    row,
-                });
+                // A paragraph mark inside a field's code is hidden with it: the paragraph runs on
+                // into the next one (outside tables, which keep every mark).
+                close_paragraph(&mut out, &mut pb, (&mut join, &mut fields), c, cp, row);
             }
             // Field begin/separator/end ([MS-DOC] §2.9.84 Plcfld).
             '\u{13}' => {
@@ -932,6 +924,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 if field_end(&mut fields, &mut pb, ctx.work) {
                     object_id = None;
                 }
+                code_field_closed(&mut join, &fields, &pb);
                 cp = cp.saturating_add(1);
                 continue;
             }
@@ -977,6 +970,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
     for _ in fields.iter().filter(|f| f.range) {
         push_field_end(&mut pb);
     }
+    end_join(&mut pb, join.take());
     if !pb.text.is_empty() {
         let done = pb;
         out.push(ParaOut {
@@ -986,6 +980,82 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
         });
     }
     out
+}
+
+/// The paragraph mark `c` at `cp` ends the paragraph in `pb` (its properties resolved) and it goes
+/// to `out` with its table context `row`, unless the mark is hidden in a field's code
+/// ([`code_join_mark`]): then the paragraph runs on into the next.
+fn close_paragraph(
+    out: &mut Vec<ParaOut>,
+    pb: &mut ParaBuild,
+    (join, fields): (&mut Option<CodeJoin>, &mut [OpenField]),
+    c: char,
+    cp: u32,
+    row: Option<Box<table::RowInfo>>,
+) {
+    if code_join_mark(join, fields, pb, (c, row.is_some())) {
+        return;
+    }
+    let done = std::mem::take(pb);
+    out.push(ParaOut {
+        para: Paragraph { text: done.text, runs: done.runs, props: done.props, mark: done.mark, objects: done.objects, ..Default::default() },
+        end_cp: cp.saturating_add(1),
+        row,
+    });
+}
+
+/// At a paragraph mark (its properties resolved in `pb`): give the waiting code mark this
+/// paragraph's properties, then, when the mark (`c`, and whether it is in a table) is a paragraph
+/// mark outside a table and inside a field's code, record it
+/// on the field and keep building the same paragraph (true). Otherwise a join in progress ends
+/// here, and the caller emits the paragraph.
+fn code_join_mark(join: &mut Option<CodeJoin>, fields: &mut [OpenField], pb: &mut ParaBuild, (c, in_table): (char, bool)) -> bool {
+    if let Some(j) = join.as_mut() {
+        fill_code_mark(j.awaiting.take(), fields, pb);
+    }
+    let level = fields.len();
+    let Some(f) = code_field(fields).filter(|_| c == '\r' && !in_table) else {
+        end_join(pb, join.take());
+        return false;
+    };
+    let after = (pb.props.space_after, pb.props.space_after_auto);
+    let props = std::mem::take(&mut pb.props);
+    let mark = std::mem::take(&mut pb.mark);
+    let j = join.get_or_insert(CodeJoin { props, mark, awaiting: None });
+    let code = &mut f.build.code;
+    if code.marks.is_empty() {
+        code.first_after = after;
+    }
+    // One space in the code where the mark is (none after white space).
+    if !f.build.instr.is_empty() && !f.build.instr.ends_with(char::is_whitespace) {
+        f.build.instr.push(' ');
+    }
+    code.marks.push(CodeMark { at: f.build.instr.len(), ..Default::default() });
+    j.awaiting = Some(Awaiting::Open(level));
+    true
+}
+
+/// After a field end: when the field holding the waiting code mark closed, the mark is in its
+/// object now (the paragraph's last), or gone with it (a field that left no such object).
+fn code_field_closed(join: &mut Option<CodeJoin>, fields: &[OpenField], pb: &ParaBuild) {
+    if let Some(j) = join.as_mut()
+        && let Some(Awaiting::Open(level)) = j.awaiting
+        && fields.len() < level
+    {
+        let last = pb.objects.len().checked_sub(1);
+        j.awaiting = last.filter(|_| matches!(pb.objects.last(), Some(InlineObject::Field { code_paras: Some(_), .. }))).map(Awaiting::Done);
+    }
+}
+
+/// The last paragraph of a code join, if one is open: the joined paragraph takes the first one's properties and
+/// mark with this one's space after.
+fn end_join(pb: &mut ParaBuild, j: Option<CodeJoin>) {
+    let Some(j) = j else { return };
+    let (after, auto) = (pb.props.space_after, pb.props.space_after_auto);
+    pb.props = j.props;
+    pb.props.space_after = after;
+    pb.props.space_after_auto = auto;
+    pb.mark = j.mark;
 }
 
 /// The custom-mark note (data element 0) whose reference is at `cp`, if any.
@@ -1239,6 +1309,64 @@ struct FieldBuild {
     props: CharProps,
     /// An `EMBED` field whose object is kept whole: the object replaces the field.
     object: bool,
+    /// Paragraph marks inside the code, as the DOCX reader keeps them (offsets in the untrimmed
+    /// `instr`), with the space after of the paragraph the first one ends.
+    code: CodeMarks,
+}
+
+/// Paragraph marks inside a field's code ([`wordcraft_doc::para::CodeParas`] before the code is
+/// trimmed and hashed).
+#[derive(Default)]
+struct CodeMarks {
+    marks: Vec<CodeMark>,
+    first_after: (Option<f32>, Option<bool>),
+}
+
+/// Most paragraph marks a field's code joins (the DOCX reader's cap): past it, the code's
+/// paragraphs are kept as they are.
+const MAX_CODE_PARAS: usize = 64;
+
+/// Paragraphs being joined because their marks sit inside a field's code: Word hides those marks
+/// with the code, so the paragraphs from the field's begin to its separator show as one, with the
+/// first one's properties and the last one's space after (as the DOCX reader joins them).
+struct CodeJoin {
+    props: wordcraft_doc::props::ParaProps,
+    mark: CharProps,
+    /// The last code mark, still waiting for the properties of the paragraph after it.
+    awaiting: Option<Awaiting>,
+}
+
+/// Where the code mark waiting for its paragraph's properties is.
+#[derive(Clone, Copy)]
+enum Awaiting {
+    /// In the code of the open field at this stack length.
+    Open(usize),
+    /// In the field object at this index of the paragraph's objects.
+    Done(usize),
+}
+
+/// The open field whose code a paragraph mark is in, when that mark can be joined: the innermost
+/// field (a field nested in its code is part of it), still in its code, kept and under the cap.
+fn code_field(fields: &mut [OpenField]) -> Option<&mut OpenField> {
+    fields
+        .last_mut()
+        .filter(|f| f.build.sep.is_none() && !f.range && f.over_hidden == 0 && f.over_shown == 0 && f.build.code.marks.len() < MAX_CODE_PARAS)
+}
+
+/// Give the waiting code mark the properties of the paragraph that follows it.
+fn fill_code_mark(at: Option<Awaiting>, fields: &mut [OpenField], pb: &mut ParaBuild) {
+    let mark = match at {
+        Some(Awaiting::Open(level)) => level.checked_sub(1).and_then(|i| fields.get_mut(i)).and_then(|f| f.build.code.marks.last_mut()),
+        Some(Awaiting::Done(i)) => match pb.objects.get_mut(i) {
+            Some(InlineObject::Field { code_paras: Some(c), .. }) => c.marks.last_mut(),
+            _ => None,
+        },
+        None => None,
+    };
+    if let Some(m) = mark {
+        m.props = pb.props.clone();
+        m.mark = pb.mark.clone();
+    }
 }
 
 /// An open field in the walk's stack: the field being assembled and how it nests.
@@ -1250,6 +1378,12 @@ struct OpenField {
     /// in their code (whose characters are dropped), and those showing their result here.
     over_hidden: u32,
     over_shown: u32,
+    /// A GOTOBUTTON or MACROBUTTON field: a field nested in its code adds only its result.
+    button: bool,
+    /// Levels nested in a button field's code, only counted: those all in their results
+    /// (whose characters show), then those from the first one still in its code (dropped).
+    code_shown: u32,
+    code_hidden: u32,
 }
 
 /// A field's cached result: its text and, as runs, the formatting of that text. A run is added
@@ -1302,20 +1436,33 @@ fn is_range_instr(instr: &str) -> bool {
         || t.get(..5).is_some_and(|k| k.eq_ignore_ascii_case("ADDIN"))
 }
 
+/// A GOTOBUTTON or MACROBUTTON field code: a field nested in it shows its result, not its code.
+fn is_button_instr(instr: &str) -> bool {
+    instr.split_whitespace().next().is_some_and(|k| k.eq_ignore_ascii_case("MACROBUTTON") || k.eq_ignore_ascii_case("GOTOBUTTON"))
+}
+
 /// A field begin (0x13): a new field, or one more level in the innermost field's code. `props`
 /// gives a new field's formatting at its begin. True when a new field was opened.
 fn field_begin(fields: &mut Vec<OpenField>, props: impl FnOnce() -> CharProps) -> bool {
     let full = fields.len() >= MAX_FIELD_NEST;
     match fields.last_mut() {
         Some(f) if f.over_hidden > 0 => f.over_hidden = f.over_hidden.saturating_add(1),
-        Some(f) if f.build.sep.is_none() && !f.range => f.build.depth = f.build.depth.saturating_add(1),
+        Some(f) if f.build.sep.is_none() && !f.range => {
+            if f.build.depth == 1 {
+                f.button = is_button_instr(&f.build.instr);
+            }
+            if f.button {
+                f.code_hidden = f.code_hidden.saturating_add(1);
+            }
+            f.build.depth = f.build.depth.saturating_add(1);
+        }
         // Past the cap, a field in a result is counted, not kept: its code is
         // hidden and its result shows in the innermost kept field.
         Some(f) if full => f.over_hidden = 1,
         _ => {
             let props = props();
-            let build = FieldBuild { depth: 1, instr: String::new(), sep: None, props, object: false };
-            fields.push(OpenField { build, range: false, over_hidden: 0, over_shown: 0 });
+            let build = FieldBuild { depth: 1, instr: String::new(), sep: None, props, object: false, code: CodeMarks::default() };
+            fields.push(OpenField { build, range: false, over_hidden: 0, over_shown: 0, button: false, code_shown: 0, code_hidden: 0 });
             return true;
         }
     }
@@ -1331,6 +1478,15 @@ fn field_separator(fields: &mut [OpenField], pb: &mut ParaBuild) {
         if f.over_hidden == 1 {
             f.over_hidden = 0;
             f.over_shown = f.over_shown.saturating_add(1);
+        }
+    } else if let Some(f) = fields.last_mut()
+        && f.button
+        && f.build.depth > 1
+    {
+        // The separator of the first nested field still in its code: its result shows.
+        if f.code_hidden == 1 {
+            f.code_hidden = 0;
+            f.code_shown = f.code_shown.saturating_add(1);
         }
     } else if let Some(f) = fields.last_mut()
         && f.build.depth == 1
@@ -1363,6 +1519,11 @@ fn field_end(fields: &mut Vec<OpenField>, pb: &mut ParaBuild, work: &Work) -> bo
     } else if let Some(mut f) = fields.pop() {
         if f.build.depth > 1 {
             f.build.depth -= 1;
+            if f.code_hidden > 0 {
+                f.code_hidden -= 1;
+            } else {
+                f.code_shown = f.code_shown.saturating_sub(1);
+            }
             fields.push(f);
         } else if f.range {
             push_field_end(pb);
@@ -1469,16 +1630,27 @@ fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &Work) {
         pb.objects.push(phonetic_ruby(p, &props));
         return;
     }
-    pb.push('\u{FFFC}', props);
-    pb.objects.push(InlineObject::Field {
-        instr,
-        result: result.text,
-        locked: false,
-        dirty: false,
-        code: false,
-        form: String::new(),
-        code_paras: None,
+    // Paragraph marks inside the code, at their offsets in the trimmed code.
+    let code_paras = (!f.code.marks.is_empty()).then(|| {
+        let lead = f.instr.len().saturating_sub(f.instr.trim_start().len());
+        let marks = f
+            .code
+            .marks
+            .into_iter()
+            .map(|mut m| {
+                m.at = m.at.saturating_sub(lead).min(instr.len());
+                m
+            })
+            .collect();
+        Box::new(wordcraft_doc::para::CodeParas {
+            code: wordcraft_doc::para::code_hash(&instr),
+            first_after: f.code.first_after.0,
+            first_after_auto: f.code.first_after.1,
+            marks,
+        })
     });
+    pb.push('\u{FFFC}', props);
+    pb.objects.push(InlineObject::Field { instr, result: result.text, locked: false, dirty: false, code: false, form: String::new(), code_paras });
 }
 
 /// The ruby object for a Phonetic Guide field whose object character has `props`. The ruby text
@@ -1562,7 +1734,8 @@ fn num_of(ilfo: i32) -> Option<u32> {
 /// well as) the visible text.
 fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, field: Option<&mut OpenField>, st: &mut FmtState<'a>) {
     // The code of a field counted past the nesting cap is never shown.
-    if field.as_ref().is_some_and(|f| f.over_hidden > 0) {
+    // Nor is the code of a field nested in a button field's code.
+    if field.as_ref().is_some_and(|f| f.over_hidden > 0 || f.code_hidden > 0) {
         return;
     }
     // A range field's result is ordinary content.

@@ -119,13 +119,28 @@ fn new_ctx<'a>(
     }
 }
 
+/// How section `si` starts on paper. A continuous section whose page width or height differs from
+/// the section before starts a new page, as Next Page does: one page has one paper size
+/// (ECMA-376 Part 1 §17.6.22 `continuous`, §17.6.13 `pgSz`). A change of margins alone does not.
+/// Views without paper (`paper` false: web, draft, outline, read) keep the stored start.
+fn effective_start(sections: &[(usize, &SectionProps)], si: usize, paper: bool) -> Option<SectionStart> {
+    let sect = sections.get(si)?.1;
+    let resized = |prev: &SectionProps| (prev.page_w - sect.page_w).abs() > 0.01 || (prev.page_h - sect.page_h).abs() > 0.01;
+    let prev = si.checked_sub(1).and_then(|i| sections.get(i));
+    Some(match prev {
+        Some((_, prev)) if paper && sect.start == SectionStart::Continuous && resized(prev) => SectionStart::NextPage,
+        _ => sect.start,
+    })
+}
+
 /// The blocks whose paragraph mark takes no room: the empty paragraph ending a section that a
 /// continuous break follows, and empty paragraphs with hidden marks while hidden text is not shown.
-fn section_marks(doc: &Document, opts: &LayoutOptions, sections: &[(usize, &SectionProps)]) -> (Vec<usize>, Vec<usize>) {
-    let (stacked, mut quiet): (Vec<_>, Vec<_>) = sections
-        .windows(2)
-        .filter(|w| w[1].1.start == SectionStart::Continuous)
-        .map(|w| w[0].0)
+/// A continuous break to a new paper size starts a page (see [`effective_start`]), so the
+/// paragraph before it is laid out as before a Next Page break.
+fn section_marks(doc: &Document, opts: &LayoutOptions, sections: &[(usize, &SectionProps)], paper: bool) -> (Vec<usize>, Vec<usize>) {
+    let (stacked, mut quiet): (Vec<_>, Vec<_>) = (1..sections.len())
+        .filter(|&si| effective_start(sections, si, paper) == Some(SectionStart::Continuous))
+        .filter_map(|si| sections.get(si - 1).map(|(end, _)| *end))
         .filter(|end| doc.body.get(*end).and_then(|b| b.as_para()).is_some_and(|p| p.text.is_empty()))
         .partition(|end| {
             // Only a leading run mark is quiet; later marks stack at the page bottom (Word, #3907).
@@ -408,8 +423,8 @@ fn next_column(pb: &mut PageBuilder, sect: &SectionProps, block: usize) {
 /// the builder needs to know about the sections after it. Newspaper columns are balanced when the
 /// next section starts on the same page (a continuous break), as in Word. That page is laid out
 /// again from the start of the block that reaches it, with shorter columns.
-fn prepare_section_end(pb: &mut PageBuilder, sections: &[(usize, &SectionProps)], (si, web): (usize, bool)) -> bool {
-    let next = sections.get(si + 1).map(|(_, s)| s.start);
+fn prepare_section_end(pb: &mut PageBuilder, sections: &[(usize, &SectionProps)], (si, web, paper): (usize, bool, bool)) -> bool {
+    let next = effective_start(sections, si + 1, paper);
     // An ODF section may ask for balanced columns at the end of the document too, or for none.
     let follows = match pb.sect.balance_columns {
         None => next == Some(SectionStart::Continuous),
@@ -601,7 +616,7 @@ pub(crate) fn layout_pass(
     let sections = &hf.sections;
     let mode = Mode::of(opts.view);
     ctx.mirror = doc.settings.mirror_margins && !mode.reflow;
-    (ctx.stacked_marks, ctx.quiet_marks) = section_marks(doc, opts, sections);
+    (ctx.stacked_marks, ctx.quiet_marks) = section_marks(doc, opts, sections, !mode.reflow);
     let outline = (opts.view == ViewMode::Outline).then(|| OutlinePass::new(doc, opts.outline.clone().unwrap_or_default()));
     let default_sect = SectionProps::default();
     let first_sect = sections.first().map_or(&default_sect, |(_, s)| *s);
@@ -623,7 +638,7 @@ pub(crate) fn layout_pass(
             _ if mode.reflow => sect_ref,
             _ => sect,
         };
-        let start = if si == 0 { SectionStart::NextPage } else { sect.start };
+        let start = if si == 0 { SectionStart::NextPage } else { effective_start(sections, si, !mode.reflow).unwrap_or(sect.start) };
         let next_col = !mode.web && turn == prev_turn && starts_next_column(&pb, sect, start);
         if !mode.web && !pb.pages.is_empty() && !next_col && (start != SectionStart::Continuous || turn != prev_turn) {
             // The page the section before ends on is finished with its own margins and footnote
@@ -656,7 +671,7 @@ pub(crate) fn layout_pass(
         prev_turn = turn;
         pb.foot_top = sec.tops.foot;
         let last = (*end).min(doc.body.len().saturating_sub(1));
-        let balance = prepare_section_end(&mut pb, sections, (si, mode.web));
+        let balance = prepare_section_end(&mut pb, sections, (si, mode.web, !mode.reflow));
         let (next, discarded) = place_section_blocks(&mut ctx, &mut pb, &outline, (block, last), (balance, sec.tops.body));
         (block, boxes_discarded) = (next, boxes_discarded + discarded);
         let suppressed = si + 1 < sections.len() && sections.get(si).is_some_and(|(_, s)| s.no_endnote == Some(true));

@@ -121,7 +121,7 @@ fn inline_officeart_picture_with_crop_and_alt_text() {
     let p0 = doc.body.first().and_then(|b| b.as_para()).expect("para");
     assert_eq!(p0.text, "Pic\u{FFFC}!");
     let Some(InlineObject::Image { media, w, h, alt, crop, float, .. }) = p0.objects.first() else { panic!("no image: {:?}", p0.objects) };
-    assert_eq!((*w, *h), (54.0, 36.0)); // 72 pt less a quarter, × 36 pt
+    assert_eq!((*w, *h), (72.0, 36.0)); // the goal size: the crop only picks what is drawn
     assert_eq!(*crop, [0.25, 0.0, 0.0, 0.0]);
     assert_eq!(alt, "Logo");
     assert_eq!(float.wrap, Wrap::Inline);

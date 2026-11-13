@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use wordcraft_doc::Rgb;
 use wordcraft_doc::para::{Anchor, FloatAlign, Paragraph};
-use wordcraft_doc::props::{Align, Borders, CellProps, HeightRule, ParaProps, RowProps, TableFloat, TableProps, TextFrame, VAlign, VMerge};
+use wordcraft_doc::props::{Align, Border, Borders, CellProps, HeightRule, ParaProps, RowProps, TableFloat, TableProps, TextFrame, VAlign, VMerge};
 use wordcraft_doc::table::{Cell, Row, Table};
 use wordcraft_doc::{Block, Blocks, para_block};
 
@@ -29,6 +29,8 @@ const T_DXA_LEFT: u16 = 0x9601;
 const T_DXA_GAP_HALF: u16 = 0x9602;
 const T_TABLE_HEADER: u16 = 0x3404;
 const T_TABLE_BORDERS_80: u16 = 0xD605;
+/// `sprmTTableBorders`: the same six borders as 8-byte `Brc`s ([MS-DOC] 2.6.3).
+const T_TABLE_BORDERS: u16 = 0xD613;
 const T_ROW_HEIGHT: u16 = 0x9407;
 const T_DEF_TABLE: u16 = 0xD608;
 const T_DEF_TABLE_SHD_80: u16 = 0xD609;
@@ -64,6 +66,8 @@ const T_DYA_FROM_TEXT: u16 = 0x9411;
 const T_DXA_FROM_TEXT_RIGHT: u16 = 0x941E;
 const T_DYA_FROM_TEXT_BOTTOM: u16 = 0x941F;
 const T_F_NO_ALLOW_OVERLAP: u16 = 0x3465;
+/// `sprmTFAutofit` ([MS-DOC] 2.6.3): 1 lets the row's columns fit their content.
+const T_F_AUTOFIT: u16 = 0x3615;
 
 /// Most grid columns we build from a `sprmTDefTable` (the model's own cap is 63; one more
 /// edge is fine but merged rows can sum spans slightly over, so clamp when assembling).
@@ -118,6 +122,9 @@ pub(crate) struct RowInfo {
     tap_dist_right: Option<f32>,
     tap_dist_bottom: Option<f32>,
     tap_no_overlap: Option<bool>,
+    /// `sprmTFAutofit` with operand 1: the row's columns fit their content. Without it the
+    /// stored cell widths are final (the table has fixed column widths).
+    autofit: bool,
 }
 
 /// A table's preferred width as `sprmTTableWidth` gives it.
@@ -258,7 +265,9 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
             }
             T_DXA_LEFT => edge0 = s16(&prl).map(Edge0::DxaLeft).or(edge0),
             T_DXA_GAP_HALF => gap_half = s16(&prl),
+            // The row's own table borders; when a row has both sprms the later one wins.
             T_TABLE_BORDERS_80 => r.borders = table_borders(prl.operand),
+            T_TABLE_BORDERS => r.borders = table_borders_brc(prl.operand),
             T_MERGE => {
                 // Rows apply only the first MAX_COLS merges.
                 if let [a, b, ..] = prl.operand
@@ -363,6 +372,7 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
             T_DXA_FROM_TEXT_RIGHT => r.tap_dist_right = s16(&prl).map(dist_pt),
             T_DYA_FROM_TEXT_BOTTOM => r.tap_dist_bottom = s16(&prl).map(dist_pt),
             T_F_NO_ALLOW_OVERLAP => r.tap_no_overlap = prl.operand.first().map(|b| *b != 0),
+            T_F_AUTOFIT => r.autofit = prl.operand.first() == Some(&1),
             T_VERT_ALIGN => {
                 if let [_, a, b, va, ..] = prl.operand {
                     let v = match va {
@@ -625,6 +635,8 @@ struct TableBuilder {
     width_set: bool,
     /// The frame of the table's first paragraph, the fallback when its first row-end has none.
     first_frame: Option<TextFrame>,
+    /// Some row-end carried `sprmTFAutofit` 1: the table fits its columns to their content.
+    autofit: bool,
 }
 
 impl TableBuilder {
@@ -638,9 +650,6 @@ impl TableBuilder {
         if self.grid.is_empty() {
             // Column widths from the table's first `sprmTDefTable`.
             self.grid = info.edges.windows(2).take(MAX_COLS).map(|w| (w[1] - w[0]).max(0.0)).collect();
-        }
-        if info.borders.is_some() && self.props.borders.is_none() {
-            self.props.borders = info.borders;
         }
         if self.props.align.is_none() {
             self.props.align = info.align;
@@ -695,8 +704,18 @@ impl TableBuilder {
             // A row deleted with tracking: its end mark carries the deletion revision, as a
             // deleted paragraph mark does (sprmCFRMarkDel). Cell marks alone don't delete it.
             row.props.del = row_del;
+            // Each row carries its own table borders: the table takes the first row's, and a
+            // later row whose borders differ keeps them as its exceptions (`w:tblPrEx`), so a
+            // borderless row under a bordered first row draws no grid.
+            if self.rows.is_empty() {
+                self.props.borders = info.borders;
+            } else if info.borders != self.props.borders {
+                let own = info.borders.unwrap_or_else(|| Borders::all(Border::default()));
+                row.props.exceptions = Some(Box::new(TableProps { borders: Some(own), ..Default::default() }));
+            }
             self.rows.push(row);
             self.row_edges.push(info.edges.clone());
+            self.autofit |= info.autofit;
         }
     }
 
@@ -744,6 +763,10 @@ impl TableBuilder {
         if !table.grid.is_empty() && table.cols() > table.grid.len() {
             table.props.width = None;
             table.props.width_pct = None;
+        } else if !self.autofit && !table.grid.is_empty() {
+            // No row asks to autofit (`sprmTFAutofit` 1), so the stored cell widths are final:
+            // the table has fixed column widths, and layout must not re-fit them to the text.
+            table.props.fixed = true;
         }
         out.push(Arc::new(Block::Table(table)));
     }
@@ -979,8 +1002,28 @@ fn def_table_valign(operand: &[u8]) -> impl Iterator<Item = (u8, Option<VAlign>)
 
 /// Table borders from `sprmTTableBorders80`: cb (0x18) then six Brc80s in the order top,
 /// left, bottom, right, inside-horizontal, inside-vertical, read as paragraph borders are.
+/// A truncated operand gives the row no table borders.
 fn table_borders(operand: &[u8]) -> Option<Borders> {
-    let b = |i: usize| operand.get(1 + i * 4..1 + i * 4 + 4).and_then(fmt::brc80);
+    let six = operand.get(1..25)?;
+    let b = |i: usize| six.get(i * 4..i * 4 + 4).and_then(fmt::brc80);
+    Some(Borders { top: b(0), left: b(1), bottom: b(2), right: b(3), between: b(4), inside_v: b(5) })
+}
+
+/// Table borders from `sprmTTableBorders`: cb (0x30) then six 8-byte `Brc`s in the same order
+/// as [`table_borders`]. A truncated operand gives the row no table borders.
+fn table_borders_brc(operand: &[u8]) -> Option<Borders> {
+    let six = operand.get(1..49)?;
+    let b = |i: usize| {
+        let brc = six.get(i * 8..i * 8 + 8)?;
+        // `fmt::brc` reads a `BrcOperand`: cb (8) then the Brc.
+        let op: Vec<u8> = std::iter::once(8).chain(brc.iter().copied()).collect();
+        let mut border = fmt::brc(&op)?;
+        // cv `00 00 00 FF` is cvAuto ([MS-DOC] 2.9.43 COLORREF): the automatic colour.
+        if brc.get(..4) == Some(&[0, 0, 0, 0xFF]) {
+            border.color = None;
+        }
+        Some(border)
+    };
     Some(Borders { top: b(0), left: b(1), bottom: b(2), right: b(3), between: b(4), inside_v: b(5) })
 }
 
