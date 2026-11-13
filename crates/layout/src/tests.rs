@@ -42,6 +42,7 @@ mod float_table_bottom;
 mod float_table_notes;
 mod float_top;
 mod footnotes_in_columns;
+mod frame_page_break;
 mod grid;
 mod header_extent;
 mod header_extent_fixtures;
