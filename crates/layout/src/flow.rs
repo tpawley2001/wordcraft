@@ -423,6 +423,9 @@ impl<'a> Flow<'a> {
             // With the table rows a kept paragraph moves with; when those cannot fit on an empty
             // column with it, the fixed start of the table, as before.
             let room = pb.next_room(self.body_top);
+            // The space after it pushes the next paragraph's lines down too (the part of it the
+            // next paragraph's space before, counted there, doesn't already cover).
+            let height = height + space_after_over_next(ctx, self.block, rp, self.list);
             let rows = height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), Some(room));
             if rows <= room + 0.01 { rows } else { height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), None) }
         } else {
@@ -1347,6 +1350,18 @@ fn space_after_kept(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::Resolv
         }
     }
     after
+}
+
+/// The part of kept paragraph `block`'s space after ([`space_after_kept`]) that the next
+/// paragraph's space before, which [`next_first_line`] counts, does not cover: the larger of the
+/// two separates them unless the document sums paragraph spacing. Nothing before a table.
+fn space_after_over_next(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::ResolvedPara, list: Option<u32>) -> f32 {
+    let Some(Block::Para(next)) = ctx.doc.body.get(block + 1).map(|b| &**b) else { return 0.0 };
+    let after = space_after_kept(ctx, block, rp, list);
+    if ctx.doc.settings.sum_paragraph_spacing {
+        return after;
+    }
+    (after - ctx.doc.styles.resolve_para(&next.props).space_before.max(0.0)).max(0.0)
 }
 
 /// The room the paragraphs after `block` need on the page for keep with next: enough of the
