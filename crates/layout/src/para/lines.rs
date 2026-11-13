@@ -561,6 +561,15 @@ impl<'e> Breaker<'e> {
         // to that height where Word's line keeps growing.
         let spacing = if let LineSpacing::Multiple(m) = rp.line_spacing { Some(m) } else { None };
         let pictures_alone = !text && obj_asc + obj_desc > 0.0 && spacing.is_some();
+        // With at-least spacing (no document grid) a line of only pictures is as tall as they
+        // reach or the minimum, whichever is more; the font's ascent, descent and height do not
+        // count, and the pictures end at the line's bottom. Word, measured with Arial at 10 and
+        // 20 pt: at least 12, a 400 pt picture alone, 400 (both sizes); a 6 pt one, 12, the
+        // picture 6-12 below the top; a 20 pt one at Arial 20, 20. At least 30: a 20 pt picture,
+        // 30, the picture 10-30 below the top; a 29 pt one, 30. Beside text, a 400 pt picture
+        // takes the text's descent too (402.1 at Arial 10). Lowered pictures and a list label
+        // were not measured: they follow the multiple-spacing rule above.
+        let least_alone = !text && obj_asc + obj_desc > 0.0 && self.grid.is_none() && matches!(rp.line_spacing, LineSpacing::AtLeast(_));
         let below = if pictures_alone { obj_desc } else { desc };
         let text_pictures = if pictures_alone {
             obj_asc + obj_desc
@@ -570,6 +579,7 @@ impl<'e> Breaker<'e> {
             0.0
         };
         let mut label_extra = 0.0;
+        let mut label_floor = false;
         if self.first
             && let Some(lab) = &pl.label
         {
@@ -578,11 +588,12 @@ impl<'e> Breaker<'e> {
                 // overflow adds room, unscaled by the automatic spacing multiplier.
                 label_extra = (lab.ascent - asc).max(0.0);
                 asc = asc.max(lab.ascent);
-                if pictures_alone {
+                if pictures_alone || least_alone {
                     let styles = lab.runs.iter().filter_map(|r| pl.styles.get(r.style as usize));
                     let (a, d) = styles.fold((asc, font_desc), |(a, d), st| (a.max(st.ascent), d.max(st.descent)));
                     text_natural = a + d;
                     label_extra = 0.0;
+                    label_floor = true;
                 }
             } else {
                 for st in lab.runs.iter().filter_map(|r| pl.styles.get(r.style as usize)) {
@@ -600,12 +611,16 @@ impl<'e> Breaker<'e> {
             (LineSpacing::Multiple(m), Some(g)) => ((g.snap_height(natural) * m).max(g.snap_height(pictures)), true),
             (LineSpacing::AtLeast(v), Some(g)) => (g.snap_height(natural.max(pictures)).max(v), true),
             (LineSpacing::Multiple(m), None) => ((text_natural * m + label_extra).max(text_pictures + (m - 1.0).max(0.0) * text_natural), false),
+            // A list label's font is a floor, as with multiple spacing (unmeasured for at-least).
+            (LineSpacing::AtLeast(v), None) if least_alone => ((obj_asc + obj_desc).max(v).max(if label_floor { text_natural } else { 0.0 }), false),
             (LineSpacing::AtLeast(v), None) => (natural.max(text_pictures).max(v), false),
             (LineSpacing::Exactly(v), _) => (v, false),
         };
         let baseline = if centred {
             let up = asc.max(obj_asc);
             self.top + ((height - up - desc) / 2.0).max(0.0) + up
+        } else if least_alone {
+            self.top + height - obj_desc
         } else if let Some(m) = spacing.filter(|_| pictures_alone) {
             self.top + (text_natural * m.min(1.0) - text_pictures).max(0.0) + obj_asc
         } else {

@@ -74,6 +74,7 @@ mod numeral;
 mod pages;
 mod picture_glue;
 mod picture_glue_touching;
+mod picture_line_at_least;
 mod pushed_by_earlier_float;
 mod row_exception_no_borders;
 mod rtf_justify_squeeze;
