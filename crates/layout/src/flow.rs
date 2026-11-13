@@ -2,8 +2,8 @@ use super::boxes::{Edges, joined, push_para};
 use super::cache::has_page_number_fields;
 use super::ctx::Ctx;
 use super::floats::{
-    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, late_floats,
-    no_room_beside_shifted, place_late, place_objects, square_float_past,
+    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, goes_with_mark,
+    late_floats, no_room_beside_shifted, place_late, place_objects, split_mark, square_float_past,
 };
 use super::notes::{DECOR_STORY, NoteBox, para_notes};
 use super::page::{PageBuilder, PageFrame, item_bottom};
@@ -228,7 +228,7 @@ impl<'a> Flow<'a> {
             page_relays: 0,
             wrap_relays: 0,
             l0: 0,
-            late: LateFloats::new(&late),
+            late: LateFloats::new(&late, split_mark(&ctx.doc.settings)),
             rechecked: false,
             forced: Vec::new(),
             space_here: 0.0,
@@ -253,7 +253,7 @@ impl<'a> Flow<'a> {
             )
         });
         (self.float_rects, self.pl, self.rel) = (rects, pl, rel);
-        self.late = LateFloats::new(&late);
+        self.late = LateFloats::new(&late, split_mark(&ctx.doc.settings));
         (self.laid_page, self.laid_width) = (pb.number, pb.col_w());
     }
 
@@ -617,8 +617,11 @@ impl<'a> Flow<'a> {
         let anchors_follow = last.is_some_and(|m| only_anchors(self.p, m.start..m.stop));
         // A Word 97-2003 document (`splitPgBreakAndParaMark`, below mode 15) puts the mark on the
         // new page instead: an empty line there with the paragraph's spacing (measured in Word).
-        let split = settings.split_pg_break_and_para_mark && settings.compat_mode < 15;
-        if anchors_follow || (l.end == LineEnd::PageBreak && mark_follows && !split) {
+        // Objects anchored after a `w:br w:type="page"` there go with the mark: they are anchored
+        // to its line on the new page (measured in Word); objects positioned from the page or a
+        // margin keep the mark with the break, as before (not measured).
+        let split = split_mark(settings) && l.end == LineEnd::PageBreak && last.is_none_or(|m| all_go_with_mark(self.p, m.start..m.stop));
+        if !split && (anchors_follow || (l.end == LineEnd::PageBreak && mark_follows)) {
             fit.l1 += 1;
             fit.mark_with_break = true;
         }
@@ -892,7 +895,10 @@ impl<'a> Flow<'a> {
         }
         if l1 < self.n() && !self.rechecked && pb.col + 1 >= pb.cols.len() {
             self.rechecked = true;
-            self.forced = late_floats(self.p, &self.pl, l1).into_iter().filter(|oi| !self.late.placed.contains_key(oi)).collect();
+            self.forced = late_floats(self.p, &self.pl, l1, split_mark(&ctx.doc.settings))
+                .into_iter()
+                .filter(|oi| !self.late.placed.contains_key(oi))
+                .collect();
             if !self.forced.is_empty() {
                 let mut force = self.forced.clone();
                 force.extend(self.late.placed.keys());
@@ -1111,6 +1117,13 @@ fn same_lines(a: &ParaLayout, b: &ParaLayout, k: usize) -> bool {
 fn only_markers(p: &Paragraph, range: std::ops::Range<usize>) -> bool {
     let Some(text) = p.text.get(range.clone()) else { return false };
     text.char_indices().all(|(i, c)| c == wordcraft_doc::para::OBJ && p.object_at(range.start + i).is_some_and(InlineObject::is_marker))
+}
+
+/// Whether every floating object anchored in `range` of `p`'s text is positioned from its
+/// paragraph ([`goes_with_mark`]).
+fn all_go_with_mark(p: &Paragraph, range: std::ops::Range<usize>) -> bool {
+    let Some(text) = p.text.get(range.clone()) else { return false };
+    text.char_indices().filter_map(|(i, _)| p.object_at(range.start + i)).filter(|o| floating(o).is_some()).all(goes_with_mark)
 }
 
 /// Whether `range` of `p`'s text holds the anchor of at least one floating object and otherwise
