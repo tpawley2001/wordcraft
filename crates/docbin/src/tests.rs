@@ -29,7 +29,6 @@ mod empty_inline_shape;
 mod encrypted;
 mod field_result_paragraphs;
 mod field_code_marks;
-mod field_result_paragraphs;
 mod field_result_props;
 mod font_table;
 mod frames;
