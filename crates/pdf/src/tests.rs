@@ -3159,7 +3159,8 @@ fn a_symbol_code_without_a_glyph_is_a_stroked_box_and_keeps_its_text() {
 fn page_break_in_a_text_frame_exports_one_page() {
     use wordcraft_doc::para::PAGE_BREAK;
     use wordcraft_doc::props::{ParaProps, TextFrame};
-    let frame = TextFrame { h_anchor: "page".into(), v_anchor: "text".into(), wrap: "around".into(), x: 29.3, y: 0.05, h_space: 9.0, ..Default::default() };
+    let frame =
+        TextFrame { h_anchor: "page".into(), v_anchor: "text".into(), wrap: "around".into(), x: 29.3, y: 0.05, h_space: 9.0, ..Default::default() };
     let mut framed = Paragraph::with_text(&format!("{PAGE_BREAK}FRAME"), Default::default());
     framed.props = ParaProps { frame: Some(frame), ..Default::default() };
     let mut d = Document::new();

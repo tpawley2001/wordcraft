@@ -52,8 +52,7 @@ fn doc(body: Vec<Arc<Block>>) -> Document {
 }
 
 fn caret(l: &DocLayout, block: usize, off: usize) -> crate::hit::Caret {
-    l.caret(&Pos { story: StoryRef::Body, path: Path::top(block), off })
-        .unwrap_or_else(|| panic!("no caret at block {block} offset {off}"))
+    l.caret(&Pos { story: StoryRef::Body, path: Path::top(block), off }).unwrap_or_else(|| panic!("no caret at block {block} offset {off}"))
 }
 
 const B: usize = PAGE_BREAK.len_utf8();
