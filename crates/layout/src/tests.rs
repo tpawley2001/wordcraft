@@ -46,6 +46,7 @@ pub(crate) mod linear;
 mod list_label_decorations;
 mod list_numbers_merged_cells;
 mod list_numbers_per_story;
+mod math_line_multiple;
 mod metafile_symbol_text;
 mod missing_font_line;
 mod missing_font_line_more;

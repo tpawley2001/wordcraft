@@ -1,6 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-12 · **Change:** trivial (P0367: with WordPerfect-style justification (`w:wpJustification`, `.doc` `fWPJust`) below compatibility mode 15 a justified line keeps a word overrunning it by up to 0.0391 of its width and is squeezed to end at the edge. Readiness estimates unchanged; earlier: P0342: a paragraph kept with a table whose first row keeps with the next row moves with the rows when the table flow moves them to the next page, as in Word. Readiness estimates unchanged; earlier: list numbers draw underline, strikethrough, highlight, shading and border as Word does, and are never small caps. Readiness estimates unchanged)
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-13 · **Change:** trivial (P0374: with multiple line spacing a line holding an inline equation taller than its text grows by the spacing's share of the text's line height only, not of the equation's. Readiness estimates unchanged; earlier: P0367: with WordPerfect-style justification (`w:wpJustification`, `.doc` `fWPJust`) below compatibility mode 15 a justified line keeps a word overrunning it by up to 0.0391 of its width and is squeezed to end at the edge. Readiness estimates unchanged; earlier: P0342: a paragraph kept with a table whose first row keeps with the next row moves with the rows when the table flow moves them to the next page, as in Word. Readiness estimates unchanged; earlier: list numbers draw underline, strikethrough, highlight, shading and border as Word does, and are never small caps. Readiness estimates unchanged)
 > **Floating anchor row segments:** 2026-11-07 · A floating anchor after a manual page/column break counts visible content on the far side of the same wrapped row. Marker-only cover anchors retain their previous-page rule. Synthetic picture spacing, placement and history controls; no new native Word measurement. Readiness estimates unchanged.
 
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-12 · **Change:** trivial (P0362: header and footer NUMWORDS, NUMCHARS, REVNUM, CREATEDATE and DOCPROPERTY fields show their current values on output; readiness unchanged; earlier: P0336: header and footer TITLE-family, DATE and QUOTE fields show their current values on output; readiness unchanged; earlier: SYMBOL fields: private-use symbol-font codes, Symbol 0xAD, `\j` Shift-JIS, control codes; readiness unchanged; earlier: P0105: CREATEDATE and PRINTDATE use the document's created and last-printed dates on F9; printing records Last Printed; File › Info shows it. Readiness unchanged)
@@ -20,6 +20,8 @@ font can't match Word's metrics.
 Additive paragraph spacing retains the full before-space after a section page break; ordinary overlapping spacing is unchanged. Synthetic control: `layout::tests::section_start_summed_spacing`.
 
 Exact line spacing keeps the run font baseline around tall equations; automatic and minimum spacing still grow for math. Synthetic control: `layout::tests::exact_math_keeps_run_baseline`.
+
+With multiple spacing at or above single, a line holding an inline equation taller than its text is as tall as at single spacing plus (multiple - 1) times the text's line height, as Word lays it out; the equation's own height is not multiplied. Synthetic control: `layout::tests::math_line_multiple`.
 
 ## Checklist
 
@@ -377,6 +379,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | trivial | P0374: with 1.15, 1.5 or double spacing a line holding a tall inline equation grows by the spacing's share of the text's line height only, not of the equation's height; readiness estimates unchanged |
 | 2026-11-12 | trivial | Word 97-2003 documents (and DOCX with `w:splitPgBreakAndParaMark`) below compatibility mode 15: the paragraph mark after a page break is an empty line at the top of the new page, as Word lays it out; the option is read from `.doc` DOPs and kept on DOCX open and save |
 | 2026-11-12 | trivial | List numbers draw their strikethrough, highlight and border from the paragraph mark or the level, and their underline and shading from the level only, as Word does; a list number is never small caps; readiness estimates unchanged |
 | 2026-11-11 | trivial | P0304: formula fields whose operands look different (`$5 + 3` is `$8.00`, `$5 - 10` is `($5.00)`), ranges, SUM/COUNT/AVERAGE/MAX/MIN/PRODUCT and ABOVE/LEFT carry the union of the operands' looks, and an ABOVE/LEFT run counts parenthesised cells it starts with as negatives (`(5)`, `(10)` above is `(15)`), as measured in Word; readiness estimates unchanged |
