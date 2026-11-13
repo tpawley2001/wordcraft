@@ -296,3 +296,16 @@ fn a_preset_takes_its_gradient_from_the_shapetype() {
         assert_eq!((kind, fill), (ShapeKind::Diamond, Some(want.clone())));
     }
 }
+
+#[test]
+fn a_square_wrapped_vml_group_with_no_wrap_distance_keeps_9pt_at_the_sides() {
+    // ECMA-376 Part 4: `mso-wrap-distance-left` / `-right` default to 9 pt; a group's float is
+    // read like a shape's.
+    let d = read_body(&pict(concat!(
+        r#"<v:group style="position:absolute;width:72pt;height:72pt;z-index:1" coordsize="100,100">"#,
+        r#"<v:rect style="left:0;top:0;width:100;height:100"/><w10:wrap type="square"/>"#,
+        r#"</v:group>"#,
+    )));
+    let InlineObject::Group { float, .. } = &objects(&d)[0] else { panic!("{:?}", objects(&d)) };
+    assert_eq!((float.dist, float.dist_top, float.dist_bottom), (9.0, 0.0, 0.0));
+}
