@@ -1,6 +1,6 @@
 # File-format parity with Microsoft Word
 
-> **Last updated:** 2026-11-13 · **Change:** trivial (DOCX: turning Wrap trailing spaces (`w:wrapTrailSpaces`) on or off survives saving a file whose settings part is merged; earlier: DOCX line spacing (`w:line`) and row heights (`w:trHeight`) above 32767 twips wrap to 16 bits as Word reads them, the sign deciding exact or at least. Readiness estimates unchanged; earlier: P0396: a table row deleted with tracking is read from DOCX and `.doc` and saved as `w:trPr/w:del`. Readiness estimates unchanged)
+> **Last updated:** 2026-11-13 · **Change:** trivial (`.doc`: a footnote or endnote separator story holding only its line, whose line run has a font or size of its own (sprmCHps), is kept as the document's separator with no paragraph spacing and single line spacing, so the room above the notes is one line of that run, as in Word; earlier: DOCX: turning Wrap trailing spaces (`w:wrapTrailSpaces`) on or off survives saving a file whose settings part is merged; earlier: DOCX line spacing (`w:line`) and row heights (`w:trHeight`) above 32767 twips wrap to 16 bits as Word reads them, the sign deciding exact or at least. Readiness estimates unchanged; earlier: P0396: a table row deleted with tracking is read from DOCX and `.doc` and saved as `w:trPr/w:del`. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-12 · **Change:** trivial (P0354: with `.doc` `Copts80.f2ptExtLeadingOnly` a line of any font but Courier New is its size plus 2 pt tall; earlier: `.doc`: Don't add space between paragraphs of the same style (`sprmPFContextualSpacing`) is read, so List Paragraph items sit together as in Word. Readiness estimates unchanged; earlier: `.doc`: a table's indent comes from its first cell edge (`sprmTDefTable`) plus its left cell margin, so indented and outdented tables stand where Word puts them. Readiness estimates unchanged)
 
@@ -477,6 +477,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | trivial | `.doc`: a separator story holding only its line keeps its line run's own font size (a 10-pt separator in an 11-pt document leaves one 10-pt line above the notes, as in Word, not an 11-pt one); a line run with no size or font of its own still means the default separator (`docbin::tests::note_separator_run_size`) |
 | 2026-11-13 | trivial | P0424: a hidden table row mark is read from DOCX (`w:trPr/w:hidden`) and `.doc` (sprmCFVanish on the row-end mark) and saved as `w:trPr/w:hidden`; readiness estimates unchanged |
 | 2026-11-12 | trivial | P0411: `.doc` horizontal cell merges read from the `TC80` flags in `sprmTDefTable` |
 | 2026-11-12 | trivial | P0396: a table row deleted with tracking is read from DOCX (`w:trPr/w:del`) and `.doc` (a deleted row-end mark) and saved as `w:trPr/w:del`; readiness estimates unchanged |
