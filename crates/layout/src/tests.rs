@@ -86,6 +86,7 @@ mod note_contextual_spacing;
 mod notes_overflow;
 mod notes_overflow_last_line;
 mod numeral;
+mod page_break_after_hanging_leading;
 mod pages;
 mod pct_table_legacy_width;
 mod picture_glue;
