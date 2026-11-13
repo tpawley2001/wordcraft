@@ -250,6 +250,7 @@ fn new_page_builder<'p>(
         unshifted: None,
         column_lines: None,
         pins: Vec::new(),
+        mark_floor: None,
     }
 }
 
