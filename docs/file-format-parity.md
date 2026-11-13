@@ -1,6 +1,6 @@
 # File-format parity with Microsoft Word
 
-> **Last updated:** 2026-11-13 · **Change:** trivial (DOCX line spacing (`w:line`) and row heights (`w:trHeight`) above 32767 twips wrap to 16 bits as Word reads them, the sign deciding exact or at least. Readiness estimates unchanged; earlier: P0396: a table row deleted with tracking is read from DOCX and `.doc` and saved as `w:trPr/w:del`. Readiness estimates unchanged; earlier: P0380: `.doc` bookmarks: `PlcfBkl` is read as CPs only and each start takes the end its FBKF names (`ibkl`), so every bookmark is read and nested ones keep their own end. Readiness estimates unchanged)
+> **Last updated:** 2026-11-13 · **Change:** trivial (DOCX: turning Wrap trailing spaces (`w:wrapTrailSpaces`) on or off survives saving a file whose settings part is merged; earlier: DOCX line spacing (`w:line`) and row heights (`w:trHeight`) above 32767 twips wrap to 16 bits as Word reads them, the sign deciding exact or at least. Readiness estimates unchanged; earlier: P0396: a table row deleted with tracking is read from DOCX and `.doc` and saved as `w:trPr/w:del`. Readiness estimates unchanged; earlier: P0380: `.doc` bookmarks: `PlcfBkl` is read as CPs only and each start takes the end its FBKF names (`ibkl`), so every bookmark is read and nested ones keep their own end. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-12 · **Change:** trivial (P0354: with `.doc` `Copts80.f2ptExtLeadingOnly` a line of any font but Courier New is its size plus 2 pt tall; earlier: `.doc`: Don't add space between paragraphs of the same style (`sprmPFContextualSpacing`) is read, so List Paragraph items sit together as in Word. Readiness estimates unchanged; earlier: `.doc`: a table's indent comes from its first cell edge (`sprmTDefTable`) plus its left cell margin, so indented and outdented tables stand where Word puts them. Readiness estimates unchanged)
 
@@ -307,7 +307,8 @@ hold was dropped without a warning (on 18 real-world Word documents: compatibili
 of 18; the privacy options are modelled since #1062). Now the writer merges into the
 file's original (`crates/docx/src/write/settings_merge.rs`): the original root and every child
 the model doesn't own stay byte for byte; owned children follow the model, in CT_Settings order;
-in `w:compat` only `compatibilityMode` is replaced. Caption labels and AutoCaption (`w:captions`,
+in `w:compat` only `compatibilityMode` and `w:wrapTrailSpaces` (Wrap trailing spaces, at its CT_Compat
+place, or removed when turned off) are replaced. Caption labels and AutoCaption (`w:captions`,
 §17.15.1.18) are modelled (`Settings::captions`): read, edited by `references.captionLabel` and
 `references.autoCaption`, and written once, only when the document has some. Kept children that
 point at a relationship (a mail-merge data source) are dropped. Files WordCraft wrote itself keep nothing extra. Tests:
@@ -961,6 +962,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 | 2026-11-12 | trivial | P0395: `.doc`: a field whose end entry in the story's Plcfld sits at a paragraph mark ends there, and the mark is not a paragraph break (`tests/field_end_in_table.rs`). |
 | 2026-11-12 | trivial | `.doc`: a table row that defines its cells but stores no `sprmTDxaGapHalf` or cell padding has no left or right cell margin (the gap half starts at 0), not the 5.4 pt `.docx` default, and rows of one table keep their own margins (`crates/docbin/src/tests/row_no_gap_margins.rs`) |
 | 2026-11-13 | trivial | DOCX: line spacing (`w:spacing/@w:line`) and row heights (`w:trHeight`) written as plain integers above 32767 twips are kept in one signed 16-bit number, as Word reads them: the low 16 bits of `-N` (exact rule) or `N` (any other) are kept and the sign decides the rule (negative = exactly, positive = at least or a multiple, 0 = natural), so `w:line="65535" w:lineRule="exact"` is a natural line and `w:trHeight w:val="66256" w:hRule="exact"` a 36 pt row, not a page each (`crates/docx/tests/it/wrap16_line_row.rs`). |
+| 2026-11-13 | trivial | DOCX `w:wrapTrailSpaces` follows the model on the settings merge path: removed when turned off, inserted at its CT_Compat place when turned on (`wrap_trail_spaces_merge.rs`) |
 | 2026-11-13 | trivial | `.doc`: a paragraph style whose stored `istdBase` names a character, table or list style, an empty slot or a slot past the end of the style sheet is based on Normal, as Word shows it, so its paragraphs take Normal's size and spacing instead of the 10 pt default and none of the other style's character formatting; no base (0x0FFF) stays none (`crates/docbin/src/tests/style_base_kind.rs`) |
 | 2026-11-12 | trivial | DOCX `w:noTabHangInd` (CT_Compat, after `w:wpJustification`, before `w:noLeading`) read (`w:val="0"` off) and written; `.doc` DOP `Copts60.fNoTabForInd` (bit 0 of the u16 at offset 84) read; a short DOP leaves it off |
 | 2026-11-12 | trivial | DOCX: `w:lnNumType` without a positive `w:countBy` leaves line numbering off, as Word does, instead of numbering every line on screen, in PDF export and on re-save; saving then omits the element (`section_line_numbering.rs`, #6209) |
