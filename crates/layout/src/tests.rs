@@ -104,6 +104,7 @@ mod symbol_missing_box;
 mod tab_past_margin;
 mod tab_to_right_indent;
 mod table_contact;
+mod tall_footer_leading;
 mod textbox;
 mod turned_cell_autofit;
 mod vertical;
