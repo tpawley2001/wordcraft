@@ -28,6 +28,7 @@ mod emf_blip_repair;
 mod emf_font_faces;
 mod emf_header_repair;
 mod empty_inline_shape;
+mod raw_wmf_picture;
 mod encrypted;
 mod field_result_paragraphs;
 mod field_code_marks;
