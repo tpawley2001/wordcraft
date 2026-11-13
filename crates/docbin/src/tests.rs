@@ -30,6 +30,7 @@ mod encrypted;
 mod field_result_paragraphs;
 mod field_code_marks;
 mod field_result_props;
+mod field_type_names;
 mod font_table;
 mod frames;
 mod header_guard;
