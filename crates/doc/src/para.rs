@@ -481,6 +481,38 @@ impl Paragraph {
         Ok(tail)
     }
 
+    /// Whether this paragraph is a drop cap's letter that merges into `next`, the paragraph it
+    /// starts: a short drop cap paragraph with no section break, followed by one that is not a
+    /// drop cap itself (how .docx `w:framePr w:dropCap` and .doc sprmPDcs store a drop cap).
+    pub fn merges_drop_cap_into(&self, next: &Paragraph) -> bool {
+        self.props.drop_cap.is_some() && self.section.is_none() && self.text.len() <= 16 && next.props.drop_cap.is_none()
+    }
+
+    /// The paragraph a drop cap's letter (`cap`) starts: the letter followed by `next`'s content,
+    /// with `next`'s properties plus the drop cap's. A letter in a font of its own makes that
+    /// the drop cap's font and takes the text's font itself, so taking the drop cap away gives
+    /// the letter its font back.
+    pub fn merge_drop_cap(mut cap: Paragraph, next: Paragraph) -> Paragraph {
+        let mut props = next.props.clone();
+        props.drop_cap = cap.props.drop_cap;
+        props.drop_cap_margin = cap.props.drop_cap_margin;
+        props.drop_cap_distance = cap.props.drop_cap_distance;
+        if props.drop_cap_margin == Some(true) && cap.props.indent_first != props.indent_first {
+            props.drop_cap_indent_first = cap.props.indent_first;
+        }
+        let cap_font = cap.runs.first().and_then(|r| r.props.font.clone());
+        let text_font = next.runs.first().and_then(|r| r.props.font.clone());
+        if cap_font.is_some() && cap_font != text_font {
+            for r in cap.runs.iter_mut().filter(|r| r.props.font == cap_font) {
+                r.props.font = text_font.clone();
+            }
+            props.drop_cap_font = cap_font;
+        }
+        cap.append(next);
+        cap.props = props;
+        cap
+    }
+
     /// Append `other`'s content (its paragraph properties are dropped; its section break kept).
     pub fn append(&mut self, other: Paragraph) {
         let Paragraph { text, runs, objects, section, .. } = other;

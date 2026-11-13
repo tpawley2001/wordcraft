@@ -39,6 +39,8 @@ pub(crate) const P_DYA_ABS: u16 = 0x8419;
 const P_DXA_WIDTH: u16 = 0x841A;
 const P_WR: u16 = 0x2423;
 const P_WHEIGHT_ABS: u16 = 0x442B;
+/// sprmPDcs ([MS-DOC] §2.6.2): the paragraph is a drop cap (a DCS, §2.9.61).
+pub(crate) const P_DCS: u16 = 0x442C;
 pub(crate) const P_DYA_FROM_TEXT: u16 = 0x842E;
 pub(crate) const P_DXA_FROM_TEXT: u16 = 0x842F;
 const P_JC: u16 = 0x2461;
@@ -505,6 +507,31 @@ pub(crate) fn style_frame(raw: &[crate::stsh::RawStyle], istd: usize) -> Option<
     para.frame
 }
 
+/// A DCS ([MS-DOC] §2.9.61): `fdct` in bits 0-2 (1 dropped, 2 in the margin, anything else
+/// none), the lines the letter drops in bits 3-7. A short operand changes nothing.
+fn apply_dcs(p: &mut ParaProps, prl: &Prl) {
+    let Some(v) = u16_of(prl) else { return };
+    let lines = ((v >> 3) & 0x1F).clamp(1, 10) as u8;
+    let (cap, margin) = match v & 7 {
+        1 => (Some(lines), None),
+        2 => (Some(lines), Some(true)),
+        _ => (None, None),
+    };
+    p.drop_cap = cap;
+    p.drop_cap_margin = margin;
+}
+
+/// The drop cap paragraph style `istd` gives its paragraphs: its chain's sprmPDcs, root first.
+pub(crate) fn style_drop_cap(raw: &[crate::stsh::RawStyle], istd: usize) -> (Option<u8>, Option<bool>) {
+    let mut para = ParaProps::default();
+    for s in style_chain(raw, istd).into_iter().filter_map(|i| raw.get(i)) {
+        for prl in sprm::iter(&s.papx).filter(|prl| prl.op == P_DCS) {
+            apply_dcs(&mut para, &prl);
+        }
+    }
+    (para.drop_cap, para.drop_cap_margin)
+}
+
 /// Apply a paragraph-property sprm.
 pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
     let tw = |v: i32| (v as f32 / 20.0).clamp(-1000.0, 1000.0);
@@ -512,6 +539,7 @@ pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
     match prl.op {
         op if is_frame_sprm(op) => apply_frame(p, prl),
         sprm::P_CHG_TABS | sprm::P_CHG_TABS_PAPX => change_tabs(p, prl),
+        P_DCS => apply_dcs(p, prl),
         P_JC | P_JC80 => {
             p.align = match prl.operand.first().copied().unwrap_or(0) {
                 1 => Some(Align::Center),
@@ -886,6 +914,9 @@ fn apply_chain_para(para: &mut ParaProps, grpprl: &[u8]) {
         match prl.op {
             crate::P_ILFO => ilfo = Some(crate::ilfo_operand(prl.operand)),
             crate::P_ILVL => ilvl = Some(crate::ilvl_operand(prl.operand)),
+            // A style's drop cap goes on each of its paragraphs ([`style_drop_cap`]), where a
+            // paragraph's own DCS can switch it off; a style's would show through that.
+            P_DCS => {}
             _ if prl.sgc() == 1 => apply_para(para, &prl),
             _ => {}
         }
