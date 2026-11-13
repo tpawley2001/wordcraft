@@ -1,6 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-12 · **Change:** trivial (with the "no tab stop at the hanging indent" option (`w:noTabHangInd`, `.doc` `Copts60.fNoTabForInd`) a tab on a hanging first line goes to the next custom or default stop below compatibility mode 15, as in Word; earlier: P0412: with the wrap-trailing-spaces option (`Settings::wrap_trail_spaces`) a space that starts at or past the right edge begins the next line, so a paragraph ending in two spaces at a full line gets one more line, as in Word. Readiness estimates unchanged; earlier: P0392: in compatibility modes 11, 12 and 14 a header or footer line holding only an inline picture stays beside a Top and Bottom object anchored in its paragraph. Readiness estimates unchanged)
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-13 · **Change:** trivial (P0374: with multiple line spacing a line holding an inline equation taller than its text grows by the spacing's share of the text's line height only, not of the equation's. Readiness estimates unchanged; earlier: P0367: with WordPerfect-style justification (`w:wpJustification`, `.doc` `fWPJust`) below compatibility mode 15 a justified line keeps a word overrunning it by up to 0.0391 of its width and is squeezed to end at the edge. Readiness estimates unchanged; earlier: P0342: a paragraph kept with a table whose first row keeps with the next row moves with the rows when the table flow moves them to the next page, as in Word. Readiness estimates unchanged)
 > **Floating anchor row segments:** 2026-11-07 · A floating anchor after a manual page/column break counts visible content on the far side of the same wrapped row. Marker-only cover anchors retain their previous-page rule. Synthetic picture spacing, placement and history controls; no new native Word measurement. Readiness estimates unchanged.
 
 > **Earlier change:** P0362: header and footer NUMWORDS, NUMCHARS, REVNUM, CREATEDATE and DOCPROPERTY fields show their current values on output; readiness unchanged; earlier: P0336: header and footer TITLE-family, DATE and QUOTE fields show their current values on output; readiness unchanged; earlier: SYMBOL fields: private-use symbol-font codes, Symbol 0xAD, `\j` Shift-JIS, control codes; readiness unchanged; earlier: P0105: CREATEDATE and PRINTDATE use the document's created and last-printed dates on F9; printing records Last Printed; File › Info shows it. Readiness unchanged.
@@ -20,6 +20,8 @@ font can't match Word's metrics.
 Additive paragraph spacing retains the full before-space after a section page break; ordinary overlapping spacing is unchanged. Synthetic control: `layout::tests::section_start_summed_spacing`.
 
 Exact line spacing keeps the run font baseline around tall equations; automatic and minimum spacing still grow for math. Synthetic control: `layout::tests::exact_math_keeps_run_baseline`.
+
+With multiple spacing at or above single, a line holding an inline equation taller than its text is as tall as at single spacing plus (multiple - 1) times the text's line height, as Word lays it out; the equation's own height is not multiplied. Synthetic control: `layout::tests::math_line_multiple`.
 
 ## Checklist
 
@@ -398,6 +400,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | trivial | P0374: with 1.15, 1.5 or double spacing a line holding a tall inline equation grows by the spacing's share of the text's line height only, not of the equation's height; readiness estimates unchanged |
 | 2026-11-12 | trivial | P0396: with deletions hidden, a table row that is itself a tracked deletion is left out (it printed as an empty row), and a table of only such rows takes no room; Accept removes such a row, Reject keeps it; readiness estimates unchanged |
 | 2026-11-12 | trivial | P0376: a line with several footnotes stays when its first note starts; overflowing notes are carried to the next page (it moved to the next page with all its notes, leaving part of the page blank) (`layout::tests::notes_overflow`) |
 | 2026-11-12 | trivial | P0381: an empty paragraph ending a section, or a line holding only a page break, pushed past the page foot by a Top and Bottom object anchored in an earlier paragraph stays at the foot of its page, so a next-page section after it no longer leaves a blank page; a paragraph moves to the next page with its own Top and Bottom object only |
