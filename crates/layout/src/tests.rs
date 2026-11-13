@@ -92,6 +92,7 @@ mod row_exception_no_borders;
 mod rtf_justify_squeeze;
 mod rtf_squeeze_after_tab;
 mod rtf_squeeze_any_align;
+mod rtf_wrapped_spaces;
 mod rtf_wraptrsp_squeeze;
 mod rtl_gutter_vertical;
 mod section_pages_blank;
