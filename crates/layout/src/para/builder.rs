@@ -185,7 +185,19 @@ impl<'a> Builder<'a> {
         };
         let (ascent, descent) = match line {
             Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
-            None if ext_2pt => size_plus_2pt_line(&r.face, f64::from(size)),
+            None if ext_2pt => {
+                // A superscript or subscript counts like the same text not raised or lowered: the
+                // line of its full size, stored at the drawn size (`StyleRun::line_extent` scales it
+                // back by size / drawn size).
+                let (full, draw) = (f64::from(rc.size), f64::from(rc.draw_size()));
+                if rc.vert_align != wordcraft_doc::props::VertAlign::Baseline && full.is_finite() && full > 0.0 && draw > 0.0 {
+                    let k = draw / full;
+                    let (a, d) = size_plus_2pt_line(&r.face, f64::from(size) / k);
+                    (a * k, d * k)
+                } else {
+                    size_plus_2pt_line(&r.face, f64::from(size))
+                }
+            }
             None => {
                 // Without leading, the line loses the part of its gap outside the font's Windows
                 // cell.
