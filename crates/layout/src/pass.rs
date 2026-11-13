@@ -221,6 +221,7 @@ fn new_page_builder<'p>(
         orig_bottom: 0.0,
         prev: None,
         after_break_mark: false,
+        break_spot: None,
         next_starts_page: false,
         restart_at: None,
         excl: Vec::new(),

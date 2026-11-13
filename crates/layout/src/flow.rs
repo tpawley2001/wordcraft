@@ -6,7 +6,7 @@ use super::floats::{
     no_room_beside_shifted, place_late, place_objects, square_float_past,
 };
 use super::notes::{DECOR_STORY, NoteBox, para_notes};
-use super::page::{PageBuilder, PageFrame, item_bottom};
+use super::page::{BreakSpot, PageBuilder, PageFrame, item_bottom};
 use super::placed::Placed;
 use super::{
     Arc, Block, Counters, Document, HashMap, InlineObject, Level, LineEnd, Page, ParaLayout, Paragraph, Path, Rect, StoryRef, TextDirection,
@@ -68,7 +68,65 @@ pub(crate) fn place_para(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, blo
         }
         return;
     }
+    if mark_under_break(ctx, pb, p, block) {
+        return;
+    }
     place_para_in_flow(ctx, pb, p, block, body_top);
+}
+
+/// A paragraph closing a section that starts a new page, with nothing in it but bookmarks.
+fn bare_section_mark(pb: &PageBuilder, p: &Paragraph) -> bool {
+    p.section.is_some()
+        && pb.next_starts_page
+        && !pb.web
+        && p.text.char_indices().all(|(i, c)| {
+            c == wordcraft_doc::para::OBJ && matches!(p.object_at(i), Some(InlineObject::BookmarkStart { .. } | InlineObject::BookmarkEnd { .. }))
+        })
+}
+
+/// A bare section mark right after a page break whose mark stayed with it, nothing on the new page
+/// yet: Word puts its line under the break, on the break's page, and the next section starts on
+/// the page the break opened (one new page, not two). The page stays empty, so the section start
+/// takes it back ([`PageBuilder::take_back_break_page`]). Its list label is not drawn.
+fn mark_under_break(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block: usize) -> bool {
+    let Some(spot) = pb.break_spot else { return false };
+    let empty = pb.after_break_mark
+        && pb.at_top()
+        && pb.notes.is_empty()
+        && pb.pages.len() == spot.page + 2
+        && pb.pages.last().is_some_and(|pg| pg.items.len() == pb.page_items_start);
+    if !empty || !bare_section_mark(pb, p) {
+        return false;
+    }
+    // The break's line where it is now (the page may have been aligned when it was finished).
+    let path = Path::top(spot.block);
+    let Some(y) = pb.pages.get(spot.page).and_then(|pg| {
+        pg.items.iter().rev().find_map(|it| match it {
+            Placed::Lines { story: StoryRef::Body, path: at, para, l0, l1, y, .. } if *at == path => item_bottom(*y, para, *l0, *l1),
+            _ => None,
+        })
+    }) else {
+        return false;
+    };
+    let _counted = ctx.next_label(p);
+    let pl = ctx.para_labelled(p, spot.w, None, &[], None);
+    let x = spot.x + mirror_shift(&pl.rp, spot.number, false);
+    let mut items = Vec::new();
+    push_para(&mut items, (StoryRef::Body, &[block as u32]), &pl, (0, pl.lines.len()), (x, y), spot.w, Edges::default());
+    let (col, line_no) = (pb.col, pb.line_no);
+    (pb.col, pb.line_no) = (spot.col, spot.line_no);
+    let numbers = line_numbers(ctx, pb, &pl, (0, pl.lines.len()), y);
+    pb.col = col;
+    if let Some(pg) = pb.pages.get_mut(spot.page) {
+        pg.items.extend(items);
+        pg.items.extend(numbers);
+    }
+    if pb.sect.line_numbers.as_ref().is_some_and(|l| l.restart == wordcraft_doc::section::LineNumberRestart::Page) {
+        pb.line_no = line_no;
+    }
+    let rp = &pl.rp;
+    pb.prev = Some((rp.style.clone(), rp.contextual_spacing, 0.0, rp.after_auto, None));
+    true
 }
 
 /// Remove the list label from a mark's lines; optionally keep its other drawing items.
@@ -754,6 +812,15 @@ impl<'a> Flow<'a> {
             });
         match forced {
             Some(LineEnd::PageBreak) if mark_with_break => {
+                pb.break_spot = pb.pages.len().checked_sub(1).map(|page| BreakSpot {
+                    page,
+                    col: pb.col,
+                    block,
+                    x: pb.col_x(),
+                    w: pb.col_w(),
+                    number: pb.number,
+                    line_no: pb.line_no,
+                });
                 pb.new_page(block, body_top);
                 pb.after_break_mark = true;
             }
@@ -1015,7 +1082,8 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
     let spot = |pb: &PageBuilder| (pb.pages.len(), pb.col);
     let placed_at = spot(pb);
     // A continuous section's top mid-page is not a page top, so the break still applies.
-    let broke_before = f.pl.rp.page_break_before && !pb.fresh() && !pb.web;
+    // A bare section mark starts no page of its own: the section break after it starts one.
+    let broke_before = f.pl.rp.page_break_before && !pb.fresh() && !pb.web && !bare_section_mark(pb, p);
     if broke_before {
         pb.new_page(block, body_top);
     }

@@ -287,6 +287,9 @@ fn row_start(doc: &wordcraft_doc::Document, row: &wordcraft_doc::Row, laid: &tab
 }
 
 pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, doc_table: &wordcraft_doc::Table, block: usize, body_top: f32) {
+    // A table after a page break is on the new page: a section's empty closing mark after it is
+    // not moved back across it to the break.
+    pb.after_break_mark = false;
     // A table whose rows are all tracked deletions, with deletions hidden, is not there at all.
     if table::hides_whole(ctx, doc_table) {
         return;
