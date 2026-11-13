@@ -111,6 +111,9 @@ pub(crate) struct RowInfo {
     cell_padding: Vec<(u8, [Option<f32>; 4])>,
     /// Horizontal merges: (itcFirst, itcLim) cell-index ranges.
     merges: Vec<(u8, u8)>,
+    /// Horizontal merges from the `sprmTDefTable` TC80s; a `sprmTMerge` range wins where they
+    /// overlap.
+    tc_merges: Vec<(u8, u8)>,
     /// Per-cell overrides keyed by (pre-merge) cell index.
     vmerge: Vec<(u8, VMerge)>,
     /// Vertical merges from the `sprmTDefTable` TC80s; `vmerge` wins for a cell it names.
@@ -193,6 +196,7 @@ impl RowInfo {
             + self.valign.len()
             + self.text_flow.len()
             + self.merges.len()
+            + self.tc_merges.len()
     }
 
     /// The width percentage cell `i` ends up with, for tests.
@@ -246,6 +250,7 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
             T_DEF_TABLE => {
                 r.edges = def_table_edges(prl.operand);
                 r.tc_vmerge = def_table_vmerge(prl.operand);
+                r.tc_merges = def_table_hmerge(prl.operand);
                 edge0 = first_edge(prl.operand).map(Edge0::Center).or(edge0);
                 // The definition replaces each cell's alignment; a later sprmTVertAlign wins.
                 apply_def_table_valign(&mut r.valign, prl.operand);
@@ -843,7 +848,9 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
     }
     // Rightmost merge first: a merge drains only the cells after its first one, so the original
     // indices of the merges to its left stay valid.
-    let mut merges: Vec<(u8, u8)> = info.merges.iter().take(MAX_COLS).copied().collect();
+    // The `sprmTMerge` ranges, then each TC80 range that overlaps none of them.
+    let tc = info.tc_merges.iter().filter(|&&(a2, b2)| !info.merges.iter().any(|&(a1, b1)| a1 < b2 && a2 < b1));
+    let mut merges: Vec<(u8, u8)> = info.merges.iter().chain(tc).take(MAX_COLS).copied().collect();
     merges.sort_by_key(|m| std::cmp::Reverse(m.0));
     for &(a, b) in &merges {
         let a = a as usize;
@@ -859,10 +866,13 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
                 if merged_width.is_some() {
                     first.props.width = merged_width;
                 }
+                // Only a first cell that was one empty paragraph gives it up to the content the
+                // merged-away cells bring; a first cell with more paragraphs keeps them all.
+                let lone_empty = first.blocks.len() == 1 && first.blocks.first().and_then(|x| x.as_para()).is_some_and(Paragraph::is_empty);
                 for c in removed {
                     first.blocks.extend(c.blocks.into_iter().filter(|x| x.as_para().is_none_or(|p| !p.is_empty())));
                 }
-                if first.blocks.len() > 1 && first.blocks.first().and_then(|x| x.as_para()).is_some_and(Paragraph::is_empty) {
+                if lone_empty && first.blocks.len() > 1 {
                     first.blocks.remove(0);
                 }
             }
@@ -917,6 +927,37 @@ fn def_table_vmerge(operand: &[u8]) -> Vec<(u8, VMerge)> {
             _ => continue,
         };
         out.push((i as u8, m));
+    }
+    out
+}
+
+/// Each horizontally merged set of cells from the TC80s of a `sprmTDefTable` operand, as
+/// (itcFirst, itcLim) ranges: TCGRF bit 0 (fFirstMerged) starts a set and bit 1 (fMerged) adds
+/// the cell to the set the nearest first cell to its left started ([MS-DOC] 2.9.313, 2.9.314).
+/// A merged cell with no set open stays an ordinary cell; a cell with neither bit closes the
+/// set. Only cells below MAX_COLS with a complete TC80 count.
+fn def_table_hmerge(operand: &[u8]) -> Vec<(u8, u8)> {
+    let itc = operand.get(2).copied().unwrap_or(0) as usize;
+    let start = 3 + (itc + 1) * 2;
+    let mut out: Vec<(u8, u8)> = Vec::new();
+    let mut open: Option<u8> = None;
+    for i in 0..itc.min(MAX_COLS) {
+        let at = start + i * 20;
+        let Some([lo, hi, ..]) = operand.get(at..at + 20) else { break };
+        let flags = u16::from_le_bytes([*lo, *hi]);
+        let i = i as u8;
+        if flags & 2 != 0 {
+            if let Some(a) = open {
+                match out.last_mut() {
+                    Some(last) if last.0 == a => last.1 = i + 1,
+                    _ => out.push((a, i + 1)),
+                }
+            }
+        } else if flags & 1 != 0 {
+            open = Some(i);
+        } else {
+            open = None;
+        }
     }
     out
 }

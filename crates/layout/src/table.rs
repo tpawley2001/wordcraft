@@ -404,11 +404,17 @@ fn preferred_grid(t: &Table, avail: f32) -> Vec<f32> {
 /// text lines up with the body text, and its percentage is of the text width plus the table's
 /// left and right default cell margins, so a 100% table's cell text spans the text width.
 ///
+/// When cells set their own margins, the base adds the left margin of the first row's first cell
+/// and the right margin of the first row's last cell, each as that cell resolves it; margins of
+/// other cells do not count.
+///
 /// Measured for top-level body tables (autofit and fixed, with and without an indent, in modes
-/// 11, 12 and 14) and assumed for top-level header and footer tables, which share the section's
-/// width. Not measured, so they keep the text width as the base: nested tables and tables in
-/// notes or text boxes, percentages over 100%, centred or end-aligned tables, floating tables,
-/// right-to-left tables and tables whose cells set their own margins.
+/// 11, 12 and 14, with and without cell margins of their own) and assumed for top-level header
+/// and footer tables, which share the section's width. Not measured, so they keep the text width
+/// as the base: nested tables and tables in notes or text boxes, percentages over 100%, centred or
+/// end-aligned tables, floating tables and right-to-left tables. Also not measured, and taken from
+/// the first row as above: rows whose last cells set different margins, rows with different
+/// numbers of cells, and rows that skip grid columns before or after their cells.
 fn legacy_pct_margins(ctx: &Ctx, story: StoryRef, t: &Table, depth: usize, style: Option<&TableStyleProps>) -> f32 {
     let top_level = depth <= 1
         && match story {
@@ -422,14 +428,16 @@ fn legacy_pct_margins(ctx: &Ctx, story: StoryRef, t: &Table, depth: usize, style
         && t.props.width_pct.is_some_and(|p| p > 0.0 && p <= 100.0)
         && t.props.float.is_none()
         && !t.props.bidi_visual
-        && !matches!(t.props.align, Some(Align::Center | Align::Right))
-        && t.rows.iter().all(|r| r.cells.iter().all(|c| c.props.margins.is_none() && c.props.partial_margins.is_none()));
+        && !matches!(t.props.align, Some(Align::Center | Align::Right));
     if !measured {
         return 0.0;
     }
-    let m = default_margins(t, style);
+    let def = default_margins(t, style);
+    let cells = t.rows.first().map(|r| r.cells.as_slice()).unwrap_or_default();
+    let left = cells.first().map_or(def, |c| c.props.resolved_margins(def))[1];
+    let right = cells.last().map_or(def, |c| c.props.resolved_margins(def))[3];
     let side = |v: f32| if v.is_finite() { v.clamp(0.0, 1584.0) } else { 0.0 };
-    side(m[1]) + side(m[3])
+    side(left) + side(right)
 }
 
 fn table_frame(ctx: &mut Ctx, story: StoryRef, t: &Table, avail: f32, depth: usize, style: Option<&TableStyleProps>) -> TableFrame {
