@@ -15,6 +15,7 @@ mod cell_padding;
 mod cell_text_flow;
 mod cfb_tolerance;
 mod deleted_row;
+mod hidden_row;
 mod custom_note_marks;
 mod char_spacing;
 mod char_styles;
