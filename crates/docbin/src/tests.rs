@@ -31,6 +31,7 @@ mod empty_inline_shape;
 mod encrypted;
 mod field_result_paragraphs;
 mod field_code_marks;
+mod field_end_in_table;
 mod field_result_props;
 mod field_type_names;
 mod font_table;

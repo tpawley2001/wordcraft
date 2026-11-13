@@ -15,14 +15,19 @@ const MAX_FIELD_ENTRIES: usize = 1_000_000;
 /// The field begin character, as the low five bits of `Fld.fldch` name it.
 const FIELD_BEGIN: u8 = 0x13;
 
-/// The type bytes of one story's field begins, by story-relative CP (ascending).
+/// The field end character, as the low five bits of `Fld.fldch` name it.
+const FIELD_END: u8 = 0x15;
+
+/// The type bytes of one story's field begins, and the CPs of its field ends, by story-relative
+/// CP (ascending).
 #[derive(Debug, Default)]
 pub(crate) struct FieldTypes {
     begins: Vec<(u32, u8)>,
+    ends: Vec<u32>,
 }
 
 /// No field table: every look-up finds nothing.
-pub(crate) static NO_FIELD_TYPES: FieldTypes = FieldTypes { begins: Vec::new() };
+pub(crate) static NO_FIELD_TYPES: FieldTypes = FieldTypes { begins: Vec::new(), ends: Vec::new() };
 
 impl FieldTypes {
     /// Reads the Plcfld at `pair` (`fc`, `lcb`) of the Table stream: `n + 1` CPs, then `n` Fld
@@ -37,6 +42,7 @@ impl FieldTypes {
         let Some(flds) = (total + 1).checked_mul(4).and_then(|from| plc.get(from..)) else { return Self::default() };
         let cps = plc.as_chunks::<4>().0.iter().take(n).map(|c| u32::from_le_bytes(*c));
         let mut begins = Vec::new();
+        let mut ends = Vec::new();
         let mut last = 0u32;
         for (cp, &[fldch, grffld]) in cps.zip(flds.as_chunks::<2>().0.iter().take(n)) {
             if cp < last {
@@ -45,15 +51,23 @@ impl FieldTypes {
             last = cp;
             if fldch & 0x1F == FIELD_BEGIN {
                 begins.push((cp, grffld));
+            } else if fldch & 0x1F == FIELD_END {
+                ends.push(cp);
             }
         }
-        Self { begins }
+        Self { begins, ends }
     }
 
     /// The type byte of the field that begins at story-relative `cp`, if the table has one.
     pub(crate) fn at(&self, cp: u32) -> Option<u8> {
         let i = self.begins.partition_point(|(c, _)| *c < cp);
         self.begins.get(i).filter(|(c, _)| *c == cp).map(|(_, t)| *t)
+    }
+
+    /// Whether the table has a field end entry at story-relative `cp`.
+    pub(crate) fn ends_at(&self, cp: u32) -> bool {
+        let i = self.ends.partition_point(|c| *c < cp);
+        self.ends.get(i).is_some_and(|c| *c == cp)
     }
 }
 
@@ -242,6 +256,7 @@ mod tests {
         for (fc, lcb) in [(0, 0), (0, 9), (0, 64), (60, 64), (u32::MAX, u32::MAX), (3, 13)] {
             let t = FieldTypes::read(&table, Some((fc, lcb)));
             assert_eq!(t.at(0), None);
+            assert!(!t.ends_at(0));
         }
     }
 
