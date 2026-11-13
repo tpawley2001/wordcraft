@@ -169,6 +169,10 @@ pub(crate) fn again<T>(ctx: &mut Ctx, eq_start: u32, f: impl FnOnce(&mut Ctx) ->
 /// columns and pages it runs onto (#1374).
 const MAX_WRAP_RELAYS: usize = 64;
 
+/// The most paragraphs of a keep-with-next chain measured ahead of its first one (a chain that
+/// fits on a page has far fewer; the bound keeps the cost of measuring it linear).
+const MAX_CHAIN_AHEAD: usize = 256;
+
 /// Run `f` with `map` as the field context's page map (`FieldCtx::page_from`), then take it back.
 fn with_page_map<T>(ctx: &mut Ctx, map: &mut Vec<(usize, u32)>, f: impl FnOnce(&mut Ctx) -> T) -> T {
     ctx.fields.page_from = std::mem::take(map);
@@ -504,7 +508,7 @@ impl<'a> Flow<'a> {
                 break true;
             }
             if !kept_para(ctx.doc, link + 1) {
-                total += next_first_line(ctx, link, self.width, 0, &mut counters, None);
+                total += next_first_line(ctx, link, self.width, &mut counters, None);
                 break total > room + 0.01;
             }
             link += 1;
@@ -1414,24 +1418,32 @@ fn space_after_over_next(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::R
 /// when the paragraph after it cannot start on the page (#966). A table needs a fixed start, or
 /// with `page` (the height of an empty column) the rows the table flow moves on together with
 /// its first row: a paragraph kept with the table goes with them (Word).
-fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counters: &mut Counters, page: Option<f32>) -> f32 {
-    match ctx.doc.body.get(block + 1).map(|b| &**b) {
-        Some(Block::Para(p)) => {
-            let pl = para_ahead(ctx, p, width, counters);
-            // Its border room, unless it joins the paragraph before (or after) in one box.
-            let own = Edges::own(&pl, 0, pl.lines.len());
-            let top = if joined(ctx.doc, &ctx.doc.body, block + 1, Some(block), None) { 0.0 } else { own.top };
-            if pl.rp.keep_next && depth < 8 {
-                let bottom = if joined(ctx.doc, &ctx.doc.body, block + 1, Some(block + 2), None) { 0.0 } else { own.bottom };
-                pl.rp.space_before + top + pl.height + bottom + pl.rp.space_after + next_first_line(ctx, block + 1, width, depth + 1, counters, page)
-            } else {
+fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, counters: &mut Counters, page: Option<f32>) -> f32 {
+    // A chain is measured link by link, however long (Word moves a kept chain of 17 paragraphs
+    // as one), up to a bound on the links counted.
+    let mut room = 0.0;
+    let mut at = block;
+    for links in 0..MAX_CHAIN_AHEAD {
+        match ctx.doc.body.get(at + 1).map(|b| &**b) {
+            Some(Block::Para(p)) => {
+                let pl = para_ahead(ctx, p, width, counters);
+                // Its border room, unless it joins the paragraph before (or after) in one box.
+                let own = Edges::own(&pl, 0, pl.lines.len());
+                let top = if joined(ctx.doc, &ctx.doc.body, at + 1, Some(at), None) { 0.0 } else { own.top };
+                if pl.rp.keep_next && links + 1 < MAX_CHAIN_AHEAD {
+                    let bottom = if joined(ctx.doc, &ctx.doc.body, at + 1, Some(at + 2), None) { 0.0 } else { own.bottom };
+                    room += pl.rp.space_before + top + pl.height + bottom + pl.rp.space_after;
+                    at += 1;
+                    continue;
+                }
                 // The room this one needs to start on the page with the kept paragraph before
                 // it (#966).
                 let to = |k: usize| match (pl.lines.first(), pl.lines.get(k)) {
                     (Some(first), Some(last)) => last.top + last.height - first.top,
                     _ => 0.0,
                 };
-                pl.rp.space_before
+                return room
+                    + pl.rp.space_before
                     + top
                     + if pl.rp.keep_lines {
                         pl.height
@@ -1440,12 +1452,15 @@ fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, depth: usize, counte
                         to(if pl.lines.len() == 3 { 2 } else { 1 })
                     } else {
                         to(0)
-                    }
+                    };
             }
+            Some(Block::Table(t)) => {
+                return room + page.and_then(|page| super::table_flow::kept_rows_room(ctx, t, at + 1, width, page, counters)).unwrap_or(24.0);
+            }
+            None => return room,
         }
-        Some(Block::Table(t)) => page.and_then(|page| super::table_flow::kept_rows_room(ctx, t, block + 1, width, page, counters)).unwrap_or(24.0),
-        None => 0.0,
     }
+    room
 }
 
 /// Whether body block `block` is a paragraph with keep with next.
