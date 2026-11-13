@@ -308,7 +308,11 @@ fn autotext_report(s: &Session) -> Vec<String> {
     list.sort_by_cached_key(|e| e.name.to_lowercase());
     list.into_iter()
         .flat_map(|e| {
-            let frag = wordcraft_doc::edit::Fragment { blocks: e.blocks.iter().map(|b| (**b).clone()).collect(), parts: Default::default() };
+            let frag = wordcraft_doc::edit::Fragment {
+                blocks: e.blocks.iter().map(|b| (**b).clone()).collect(),
+                parts: Default::default(),
+                media: Default::default(),
+            };
             [e.name.clone(), frag.plain_text()]
         })
         .collect()

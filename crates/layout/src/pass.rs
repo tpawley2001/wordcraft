@@ -2,13 +2,13 @@ use std::collections::VecDeque;
 
 use super::cache::{LayoutCache, Totals, env_hash, hash_of};
 use super::ctx::{Ctx, Pass, with_pct_base};
-use super::floats::{EarlyFloats, WrapArea, early_covered, left_out_objects};
+use super::floats::{EarlyFloats, WrapArea, early_covered, floating, left_out_objects, wrap_area};
 use super::flow::{OutlinePass, place_outline_para, place_para};
 use super::headers::{
     HfLinks, bookmark_pages, first_page_number, headers_footers, headers_footers_refer_to_pages, marks_key, mirror_even_pages, section_side,
 };
 use super::notes::{MAX_NOTE_PAGES, NoteSeps, note_info, place_endnotes};
-use super::page::{PageBuilder, body_top_for, foot_top_for, item_bottom};
+use super::page::{PageBuilder, Pin, body_top_for, foot_top_for, item_bottom};
 use super::placed::Placed;
 use super::table_flow::place_table;
 use super::{
@@ -116,6 +116,7 @@ fn new_ctx<'a>(
         alphas: Default::default(),
         header_repeats: 0,
         keep_chain: None,
+        footnote_seq: None,
     }
 }
 
@@ -248,6 +249,7 @@ fn new_page_builder<'p>(
         settle,
         unshifted: None,
         column_lines: None,
+        pins: Vec::new(),
     }
 }
 
@@ -773,9 +775,14 @@ fn balance_pass<'a>(
     snap: &Snap<'a>,
     (first, end): (usize, usize),
     (page, top, h): (usize, f32, f32),
-    body_top: f32,
+    (pins, body_top): (&[Pin], f32),
 ) -> bool {
     snap.restore(pb, ctx);
+    // Pinned objects are in the way from the start of the page (or of the pass, on it).
+    pb.pins = pins.to_vec();
+    if pb.pages.len() == page + 1 {
+        pb.excl.extend(pins.iter().map(|p| p.area.clone()));
+    }
     pb.balance = Some((page, h));
     pb.cap_columns();
     for block in first..end {
@@ -824,10 +831,12 @@ fn balance_columns<'a>(ctx: &mut Ctx, pb: &mut PageBuilder<'a>, blocks: (usize, 
     {
         return 0;
     }
-    let pass = |ctx: &mut Ctx, pb: &mut PageBuilder<'a>, h: f32| balance_pass(ctx, pb, snap, blocks, (page, top, h), body_top);
+    let pins = if ctx.doc.settings.compat_mode < wordcraft_doc::COMPAT_MODE_CURRENT { pinned_floats(ctx, pb, blocks, page) } else { Vec::new() };
+    let pass = |ctx: &mut Ctx, pb: &mut PageBuilder<'a>, h: f32| balance_pass(ctx, pb, snap, blocks, (page, top, h), (&pins, body_top));
     // The text on the page fills `ncols` columns at least `used / ncols` high; the original layout
-    // (`full`) fits, and so, nearly always, do columns as high as its tallest one.
-    let mut lo = (used / ncols - 1.0).max(0.0);
+    // (`full`) fits, and so, nearly always, do columns as high as its tallest one. Text pushed
+    // below a pinned object makes `used` say nothing about the text alone: search from 0.
+    let mut lo = if pins.is_empty() { (used / ncols - 1.0).max(0.0) } else { 0.0 };
     let mut hi = full;
     let mut last = None;
     let discard = |ctx: &Ctx| ctx.boxes.total().saturating_sub(snap.boxes);
@@ -861,7 +870,39 @@ fn balance_columns<'a>(ctx: &mut Ctx, pb: &mut PageBuilder<'a>, blocks: (usize, 
             pass(ctx, pb, full);
         }
     }
+    // Their wrap areas stay on the page for the next section; nothing else is held.
+    pb.pins.clear();
     thrown
+}
+
+/// The floating objects Word holds while it balances the columns on `page`, in documents in a
+/// compatibility mode below 15: those anchored in body paragraphs `first..end` that text wraps
+/// around, where the first, unbalanced layout placed them on that page. Balancing moves only
+/// the text around them, and they don't make the columns any taller.
+fn pinned_floats(ctx: &mut Ctx, pb: &PageBuilder, (first, end): (usize, usize), page: usize) -> Vec<Pin> {
+    use wordcraft_doc::para::Wrap;
+    let Some(pg) = pb.pages.get(page) else { return Vec::new() };
+    let mut pins: Vec<Pin> = Vec::new();
+    for it in &pg.items {
+        let Placed::Object { rect, story: StoryRef::Body, path, off, wrap, .. } = it else { continue };
+        if !matches!(wrap, Wrap::TopAndBottom | Wrap::Square | Wrap::Tight | Wrap::Through) {
+            continue;
+        }
+        let [b] = path.0.as_slice() else { continue };
+        let block = *b as usize;
+        if block < first || block >= end || pins.iter().any(|p| p.block == block && p.rect == *rect) {
+            continue;
+        }
+        let Some(Block::Para(p)) = ctx.doc.body.get(block).map(|b| &**b) else { continue };
+        let Some(oi) = p.objects_with_offsets().position(|(o, _)| o == *off) else { continue };
+        let Some(o) = p.objects.get(oi) else { continue };
+        let Some((_, _, float)) = floating(o) else { continue };
+        let outline = ctx.wrap_outline(o);
+        if let Some(area) = wrap_area(*rect, float, outline.as_deref().map(Vec::as_slice)) {
+            pins.push(Pin { page, block, oi, rect: *rect, area });
+        }
+    }
+    pins
 }
 
 /// Milliseconds since an arbitrary epoch (monotonic on native; the browser's clock on the web).

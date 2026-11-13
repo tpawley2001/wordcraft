@@ -105,6 +105,20 @@ pub(crate) struct PageBuilder<'a> {
     /// The lines between the columns of the section on the current page, drawn once its text
     /// there is laid out ([`PageBuilder::close_column_lines`]).
     pub(crate) column_lines: Option<ColumnLines>,
+    /// Floating objects held where the section's first, unbalanced layout put them while its
+    /// columns are balanced (compatibility mode below 15, see `balance_columns`).
+    pub(crate) pins: Vec<Pin>,
+}
+
+/// A floating object anchored in paragraph `block` (object `oi`) that keeps `rect` on page
+/// `page`, with the wrap area text keeps clear of there: its anchor doesn't place it again.
+#[derive(Clone, Debug)]
+pub(crate) struct Pin {
+    pub(crate) page: usize,
+    pub(crate) block: usize,
+    pub(crate) oi: usize,
+    pub(crate) rect: Rect,
+    pub(crate) area: WrapArea,
 }
 
 /// Where the lines between a section's columns go on a page: the page, the top of the section's
@@ -410,6 +424,8 @@ impl PageBuilder<'_> {
         // Floats placed above their anchors further down this page are known from its start.
         let early = self.early;
         self.excl.extend(early.get(&self.pages.len()).into_iter().flatten().map(|(_, _, a)| a.clone()));
+        let page = self.pages.len();
+        self.excl.extend(self.pins.iter().filter(|p| p.page == page).map(|p| p.area.clone()));
         self.seeded = self.excl.len();
         self.float_tables.clear();
         if self.sect.line_numbers.as_ref().is_some_and(|l| l.restart == wordcraft_doc::section::LineNumberRestart::Page) {
@@ -486,6 +502,18 @@ impl PageBuilder<'_> {
             return;
         }
         pg.items.extend(c.xs.iter().map(|&x| Placed::Rule { x0: x, y0: top, x1: x, y1: bottom, border: Border::single(0.5) }));
+    }
+    /// Where pinned object `oi` of paragraph `block` goes on the current page, if it is pinned
+    /// ([`Pin`]).
+    pub(crate) fn pinned(&self, block: usize, oi: usize) -> Option<Rect> {
+        let page = self.pages.len().checked_sub(1)?;
+        self.pins.iter().find(|p| (p.page, p.block, p.oi) == (page, block, oi)).map(|p| p.rect)
+    }
+    /// Balancing columns around pinned objects on this page with another column to go: a line
+    /// pushed below the column's end by one moves on, even from the top of the first column.
+    pub(crate) fn pinned_room_ahead(&self) -> bool {
+        let page = self.pages.len().saturating_sub(1);
+        self.balance.is_some_and(|(p, _)| p == page) && self.col + 1 < self.cols.len() && self.pins.iter().any(|p| p.page == page)
     }
     /// Where the columns end on this page: the page bottom above its footnotes, or higher up
     /// when the columns are balanced.
@@ -603,7 +631,11 @@ pub(crate) fn body_top_for(ctx: &mut Ctx, sect: &SectionProps, header: Option<u3
     let frame = PageFrame { sect, margin_top: None, origin: (sect.text_left(ctx.mirror), sect.header), number: 1, mirror: ctx.mirror };
     let track = std::mem::replace(&mut ctx.track_totals, false);
     let (h, ..) = with_pin(ctx, id, sect, 1, None, |ctx| {
-        let laid = layout_box(ctx, BoxInput::other(StoryRef::Part(id), &blocks, sect.text_width(), 0, Some(frame)));
+        let mut laid = layout_box(ctx, BoxInput::other(StoryRef::Part(id), &blocks, sect.text_width(), 0, Some(frame)));
+        // A header stops at half the page: the body starts below what is kept of it.
+        if let Some(cut) = super::headers::half_page_cut(&laid.items, StoryRef::Part(id), &blocks, sect.page_h) {
+            super::headers::clip_header(&mut laid.items, StoryRef::Part(id), &blocks, cut);
+        }
         let drawn = drawn_extent(&laid.items, StoryRef::Part(id));
         drawn.map_or(laid.height, |d| d.max(last_space_after_bottom(&laid.items, StoryRef::Part(id), blocks.len()).unwrap_or(0.0)))
     });

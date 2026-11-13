@@ -124,7 +124,9 @@ pub(super) fn organizer(s: &mut Session, v: &Value) -> CmdResult {
     } else if let Some(i) = index_param(s, v, "insert")? {
         let e = s.doc.glossary.get(i).ok_or_else(|| CmdError::Params(format!("no building block {i}")))?;
         let behavior = behavior_of(e).to_string();
-        let frag = Fragment { blocks: e.blocks.iter().map(|b| (**b).clone()).collect(), parts: Default::default() };
+        let blocks: Vec<_> = e.blocks.iter().map(|b| (**b).clone()).collect();
+        let media = s.doc.media_of_blocks(&blocks);
+        let frag = Fragment { blocks, parts: Default::default(), media };
         insert_with_behavior(s, &frag, &behavior)?;
     }
     Ok(json!({ "entries": entries(s) }))
@@ -221,7 +223,7 @@ pub(super) fn insert_with_behavior(s: &mut Session, frag: &Fragment, behavior: &
     }
     let here = Pos { story: at.story, path: at.path.with_last(idx), off: 0 };
     s.doc.insert_block(at.story, &here.path, Block::Para(host))?;
-    let end = s.doc.insert_fragment(&here, &Fragment { blocks, parts: frag.parts.clone() })?;
+    let end = s.doc.insert_fragment(&here, &Fragment { blocks, parts: frag.parts.clone(), media: frag.media.clone() })?;
     s.sel = Selection::caret(end);
     Ok(())
 }
@@ -250,7 +252,11 @@ pub(super) fn auto_text_by_name(s: &mut Session, _: &Value) -> CmdResult {
         .map(|e| {
             (
                 e.name.clone(),
-                Fragment { blocks: e.blocks.iter().map(|b| (**b).clone()).collect(), parts: Default::default() },
+                {
+                    let blocks: Vec<_> = e.blocks.iter().map(|b| (**b).clone()).collect();
+                    let media = s.doc.media_of_blocks(&blocks);
+                    Fragment { blocks, parts: Default::default(), media }
+                },
                 behavior_of(e).to_string(),
             )
         })

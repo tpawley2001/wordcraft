@@ -397,6 +397,10 @@ impl Reader<'_> {
                 x.look_set = e.child("w:tblLook").is_some();
                 Box::new(x)
             });
+            // The row itself deleted with tracking (§17.13.5.12); it precedes `w:trPrChange`.
+            if let Some(d) = tr.child("w:trPr").and_then(|p| p.child("w:del")) {
+                row.props.del = Some(self.revision(RevisionKind::Delete, d));
+            }
             if let Some(ch) = tr.child("w:trPr").and_then(|p| p.child("w:trPrChange")) {
                 let old = ch.child("w:trPr").map(trpr).unwrap_or_default();
                 row.props.fmt_change = PropChange::boxed(self.revision(RevisionKind::Format, ch), old);
