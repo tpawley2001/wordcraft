@@ -225,6 +225,46 @@ pub fn notdef_advance(family: &str) -> Option<f64> {
     })
 }
 
+/// Advance (em) of Symbol code `code` (0x20-0xFE) when the Symbol font itself isn't installed and
+/// its characters are drawn from another face: Word sizes them by Symbol, not by the face drawn.
+/// `family` is matched as [`notdef_advance`] matches it ("Symbol", "Symbol (PCL6)"); other fonts
+/// (Wingdings and the like included) and codes Symbol has no glyph for give `None`.
+///
+/// Source: the published Adobe font metrics for the PDF core font Symbol (Symbol.afm, "Font Metrics
+/// for PDF Core 14 Fonts", free to use, copy and distribute); no font file was read. Fifteen codes
+/// measured in the application's PDF output agree to the unit (0x44, 0x47, 0x57, 0x59, 0x61, 0x71,
+/// 0x72, 0x74, 0x79, 0x7E, 0xA3, 0xB0, 0xB1, 0xB9, 0xBA). The other codes are unverified there (the
+/// bracket pieces 0xE9-0xFB measured about 389 for 384 in runs whose size could not be pinned).
+pub fn symbol_advance(family: &str, code: u8) -> Option<f64> {
+    let symbol = family.split(';').map(str::trim).any(|f| f.eq_ignore_ascii_case("symbol") || f.eq_ignore_ascii_case("symbol (pcl6)"));
+    if !symbol {
+        return None;
+    }
+    let w = SYMBOL_WIDTHS.get(usize::from(code)).copied().unwrap_or(0);
+    (w > 0).then(|| f64::from(w) / 1000.0)
+}
+
+/// Symbol's advances in 1/1000 em by code ([`symbol_advance`]); 0 is no glyph.
+#[rustfmt::skip]
+const SYMBOL_WIDTHS: [u16; 256] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    250, 333, 713, 500, 549, 833, 778, 439, 333, 333, 500, 549, 250, 549, 250, 278,
+    500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 278, 278, 549, 549, 549, 444,
+    549, 722, 667, 722, 612, 611, 763, 603, 722, 333, 631, 722, 686, 889, 722, 722,
+    768, 741, 556, 592, 611, 690, 439, 768, 645, 795, 611, 333, 863, 333, 658, 500,
+    500, 631, 549, 549, 494, 439, 521, 411, 603, 329, 603, 549, 549, 576, 521, 549,
+    549, 521, 549, 603, 439, 576, 713, 686, 493, 686, 494, 480, 200, 480, 549, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    750, 620, 247, 549, 167, 713, 500, 753, 753, 753, 753, 1042, 987, 603, 987, 603,
+    400, 549, 411, 549, 549, 713, 494, 460, 549, 549, 549, 549, 1000, 603, 1000, 658,
+    823, 686, 795, 987, 768, 768, 823, 768, 768, 713, 713, 713, 713, 713, 713, 713,
+    768, 713, 790, 790, 890, 823, 549, 250, 713, 603, 603, 1042, 987, 603, 987, 603,
+    494, 329, 790, 790, 786, 713, 384, 384, 384, 384, 384, 384, 494, 494, 494, 494,
+    0, 329, 274, 686, 686, 686, 384, 384, 384, 384, 384, 384, 494, 494, 494, 0,
+];
+
 /// The (ascent, descent) in em Word gives a line with a run in a symbol font, when that isn't the
 /// resolved face's own: the font isn't installed (`resolved` is a substitute), or the installed
 /// face is one em tall, as Apple's Symbol is (hhea 0.701 / -0.299, no gap). Word for Mac spaces
@@ -1136,6 +1176,30 @@ fn face_line(face: &crate::FontFace, leading: bool) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn symbol_advances_are_symbols_own() {
+        let near = |a: Option<f64>, b: f64| a.is_some_and(|a| (a - b).abs() < 1e-9);
+        assert!(near(symbol_advance("Symbol", 0x79), 0.686));
+        assert!(near(symbol_advance("symbol (pcl6)", 0x44), 0.612));
+        assert!(near(symbol_advance("SYMBOL", 0x20), 0.250));
+        assert!(near(symbol_advance("Symbol", 0xB7), 0.460));
+        assert!(near(symbol_advance("Symbol", 0xE5), 0.713));
+    }
+
+    #[test]
+    fn symbol_advances_only_for_symbols_glyphs() {
+        assert_eq!(symbol_advance("Symbol", 0x80), None);
+        assert_eq!(symbol_advance("Symbol", 0xFF), None);
+        assert_eq!(symbol_advance("Symbol", 0xF0), None);
+        assert_eq!(symbol_advance("Symbol", 0x00), None);
+        assert_eq!(symbol_advance("Wingdings", 0x79), None);
+        assert_eq!(symbol_advance("Times New Roman", 0x79), None);
+        assert_eq!(symbol_advance("", 0x79), None);
+        // Every code is looked up without a panic.
+        let n = (0..=u8::MAX).filter(|c| symbol_advance("Symbol", *c).is_some()).count();
+        assert_eq!(n, 189);
+    }
 
     #[test]
     fn missing_font_advance_tables_are_sorted() {
