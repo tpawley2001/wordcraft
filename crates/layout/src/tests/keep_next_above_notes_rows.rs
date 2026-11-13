@@ -8,8 +8,11 @@
 //! With a heading without space after these rows pass as they are: what it took to fail is the
 //! heading's space after (12 pt, as the real file's Heading 1 has). The keep check measured the
 //! heading's line and the next paragraph's first two lines, but not the space after between them,
-//! so with room for the three lines and less than the space after more, the heading stayed and the
-//! paragraph went over alone, with or without notes on the page (`row3_space_after_no_notes`).
+//! so with room above the notes for the three lines and less than the space after more, the
+//! heading stayed and the paragraph went over alone.
+//!
+//! Change: on a page with notes the check counts that space after too. Without notes it is as
+//! before (row 3 here, row 7), and a kept paragraph at the top of its page never moves (row 6).
 
 #[allow(unused_imports)]
 use crate::*;
@@ -136,10 +139,13 @@ fn row2_heading_keep_next_only_moves_with_the_paragraph_above_notes() {
     assert_eq!(pages(&d, h), (1, 1, vec![0]));
 }
 
+/// Without notes the keep check is unchanged: it counts the heading's line and the next
+/// paragraph's first two lines, not the space after between them (a Word 97-2003 file with
+/// 12 pt after its paragraphs fits on a page what counting it would have moved on).
 #[test]
-fn row3_space_after_no_notes() {
+fn row3_space_after_no_notes_not_counted() {
     let (d, h) = shaped(false, 0, true, AFTER / 2.0);
-    assert_eq!(pages(&d, h), (1, 1, vec![]));
+    assert_eq!(pages(&d, h), (0, 1, vec![]));
 }
 
 #[test]
@@ -164,4 +170,59 @@ fn row5_empty_paragraphs_before_the_heading_above_notes() {
 fn row5_empty_paragraphs_all_on_the_page_when_both_fit() {
     let (d, h) = shaped(true, 12, true, AFTER + 1.0);
     assert_eq!(pages(&d, h), (0, 0, vec![0]));
+}
+
+/// A keep-with-next heading (12 pt before and after) that starts page 2, then a long paragraph
+/// whose first line refers to a footnote of `note_lines` lines.
+fn top_heading(note_lines: usize) -> (Document, usize) {
+    let (cap, lead, _) = fill(false);
+    let (mut d, h) = doc_with(cap, 0, Vec::new(), false, lead);
+    let note = (0..note_lines).map(|j| para(&format!("Long note line {j}"), &plain())).collect();
+    let id = d.add_part(wordcraft_doc::PartKind::Footnote, note);
+    let heading = ParaProps { keep_next: Some(true), space_before: Some(12.0), space_after: Some(AFTER), ..plain() };
+    let mut long = paragraph(&"word ".repeat(400), &plain());
+    long.insert_object(4, InlineObject::NoteRef { kind: NoteKind::Footnote, id, custom: String::new() }, &Default::default()).unwrap();
+    d.body.push(para("1. HEADING", &heading));
+    d.body.push(para_block(long));
+    (d, h)
+}
+
+/// Row 6: a kept heading at the top of a page stays there even when it, its space after, the next
+/// paragraph's first two lines and that paragraph's footnote cannot fit on the page together:
+/// moving on gains nothing, and Word leaves no page without text.
+#[test]
+fn row6_heading_at_the_top_of_a_page_stays_there() {
+    for note_lines in [30, 44, 48, 60] {
+        let (d, h) = top_heading(note_lines);
+        let l = lay(&d);
+        assert_eq!(page_of(&l, h), 1, "{note_lines} note lines");
+        assert_eq!(page_of(&l, h - 1), 0, "{note_lines} note lines");
+        for (i, p) in l.pages.iter().enumerate() {
+            assert!(p.items.iter().any(|it| matches!(it, Placed::Lines { story: StoryRef::Body, .. })), "page {i} empty, {note_lines} note lines");
+        }
+    }
+}
+
+/// Row 7: no notes, paragraph spacing summed (as in Word 97-2003 files), 12 pt after and 1.3
+/// line spacing, and a run of empty keep-with-next paragraphs before a heading: the keep check
+/// is the one without notes, so all of it stays on page 1 when its lines fit there.
+#[test]
+fn row7_summed_spacing_kept_empties_without_notes() {
+    let spaced = ParaProps { space_after: Some(AFTER), line_spacing: Some(LineSpacing::Multiple(1.3)), ..plain() };
+    let kept = ParaProps { keep_next: Some(true), ..spaced.clone() };
+    let tail = || vec![para("", &kept), para("", &kept), para("HEADING", &kept), para("N1\nN2", &spaced)];
+    let build = |fillers: usize| {
+        let (mut d, first) = doc_with(fillers, 0, tail(), false, 0.0);
+        d.settings.sum_paragraph_spacing = true;
+        (d, first)
+    };
+    // The most fillers that leave the whole tail on page 1.
+    let mut n = 0;
+    while n < 200 && page_of(&lay(&build(n + 1).0), build(n + 1).1 + 3) == 0 {
+        n += 1;
+    }
+    let (d, first) = build(n);
+    let l = lay(&d);
+    assert!(n > 0);
+    assert!((first..first + 4).all(|b| page_of(&l, b) == 0));
 }

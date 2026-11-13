@@ -413,8 +413,11 @@ impl<'a> Flow<'a> {
             });
         let height = self.pl.height + rooms.top + if break_mark { 0.0 } else { rooms.bottom };
         // A chain of kept paragraphs too long for an empty column flows like ordinary
-        // paragraphs, breaking at each column end (Word).
-        let keep_next = self.pl.rp.keep_next && !self.long_keep_chain(ctx, pb, height);
+        // paragraphs, breaking at each column end (Word). A kept paragraph with nothing above it
+        // on the page (only its own space before) never moves for keep with next: Word leaves it
+        // there and the next paragraph breaks as usual.
+        let at_top = pb.y - before.max(0.0) <= pb.top + 0.01 && pb.top <= pb.page_top + 0.01;
+        let keep_next = self.pl.rp.keep_next && !at_top && !self.long_keep_chain(ctx, pb, height);
         let rp = &self.pl.rp;
         if !(rp.keep_lines || (keep_next && pb.y + height <= pb.bottom + 0.01)) {
             return before;
@@ -423,9 +426,10 @@ impl<'a> Flow<'a> {
             // With the table rows a kept paragraph moves with; when those cannot fit on an empty
             // column with it, the fixed start of the table, as before.
             let room = pb.next_room(self.body_top);
-            // The space after it pushes the next paragraph's lines down too (the part of it the
-            // next paragraph's space before, counted there, doesn't already cover).
-            let height = height + space_after_over_next(ctx, self.block, rp, self.list);
+            // On a page with footnotes the space after it pushes the next paragraph's lines down
+            // toward the note area too (the part of it the next paragraph's space before, counted
+            // there, doesn't already cover). Without notes the check stays as it was.
+            let height = if pb.notes.is_empty() { height } else { height + space_after_over_next(ctx, self.block, rp, self.list) };
             let rows = height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), Some(room));
             if rows <= room + 0.01 { rows } else { height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), None) }
         } else {
