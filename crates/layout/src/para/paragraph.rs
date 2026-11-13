@@ -112,7 +112,7 @@ fn is_special(c: char) -> bool {
 /// The paragraph's formatting: its style's, the table's and the list level's indents.
 fn paragraph_props(p: &Paragraph, env: &ParaEnv) -> ResolvedPara {
     let doc = env.doc;
-    let mut rp = doc.styles.resolve_para_in(&p.props, env.table.map(|t| &t.para));
+    let mut rp = doc.styles.resolve_para_spaced(&p.props, env.table.map(|t| &t.para), !doc.settings.sum_paragraph_spacing);
     if let Some(spacing) = env.read_line_spacing.filter(|s| s.is_finite() && (1.0..=2.0).contains(s)) {
         rp.line_spacing = wordcraft_doc::props::LineSpacing::Multiple(spacing);
     }

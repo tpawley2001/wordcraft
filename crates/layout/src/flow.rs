@@ -197,7 +197,7 @@ impl<'a> Flow<'a> {
         // Floating objects anchored here join the page's wrap areas before the text is laid out; if
         // the paragraph then starts somewhere else (another column or page, or contextual spacing
         // drops its space before), they are placed again there.
-        let space_before = ctx.doc.styles.resolve_para(&p.props).space_before;
+        let space_before = ctx.doc.styles.resolve_para_spaced(&p.props, None, !ctx.doc.settings.sum_paragraph_spacing).space_before;
         let excl_mark = pb.excl.len();
         let guess = pb.y + space_before;
         let label = ctx.next_label(p);
@@ -1108,7 +1108,7 @@ fn space_after_kept(ctx: &Ctx, block: usize, rp: &wordcraft_doc::resolve::Resolv
         return 0.0;
     }
     if let Some(Block::Para(next)) = ctx.doc.body.get(block + 1).map(|b| &**b) {
-        let nrp = ctx.doc.styles.resolve_para(&next.props);
+        let nrp = ctx.doc.styles.resolve_para_spaced(&next.props, None, !ctx.doc.settings.sum_paragraph_spacing);
         if nrp.style == rp.style && rp.contextual_spacing {
             return 0.0;
         }
