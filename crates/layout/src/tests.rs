@@ -16,6 +16,7 @@ mod budget;
 mod button_fields;
 mod button_switches;
 mod cell_floats;
+mod column_break_line;
 mod column_top_float;
 mod complex;
 mod continuous_resized_section;
