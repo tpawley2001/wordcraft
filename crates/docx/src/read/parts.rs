@@ -61,6 +61,23 @@ impl Reader<'_> {
             .take(MAX_TABLE_FONTS)
             .map(str::to_string)
             .collect();
+        // The fonts it marks as symbol fonts (`w:charset w:val="02"`, `w:panose1`), laid out as
+        // Symbol when missing, as for .doc and RTF. Unverified: most likely the same in Word.
+        self.doc.settings.symbol_class_fonts = table
+            .children("w:font")
+            .filter(|f| {
+                let charset = f.child("w:charset").and_then(|c| c.attr("w:val")).and_then(|v| u8::from_str_radix(v.trim(), 16).ok()).unwrap_or(0);
+                f.child("w:panose1")
+                    .and_then(|p| p.attr("w:val"))
+                    .and_then(wordcraft_doc::panose_from_hex)
+                    .is_some_and(|p| wordcraft_doc::is_symbol_class_font(charset, &p))
+            })
+            .filter_map(|f| f.attr("w:name"))
+            .map(str::trim)
+            .filter(|n| !n.is_empty() && n.len() <= MAX_FONT_NAME)
+            .take(MAX_TABLE_FONTS)
+            .map(str::to_lowercase)
+            .collect();
     }
 
     /// The HTML divs of the web settings part (`w:divs`, ECMA-376 §17.15.2.8), nested through
