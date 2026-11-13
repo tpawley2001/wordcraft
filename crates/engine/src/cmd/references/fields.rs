@@ -523,6 +523,21 @@ fn changed(doc: &wordcraft_doc::Document, mut results: Vec<FieldResult>) -> Vec<
 /// values too, while the same fields in the body and in notes keep theirs (measured with
 /// Microsoft 365 Word's PDF export). The document itself keeps its stored results.
 /// `None` when every such field already shows its fresh result, so nothing is copied then.
+/// What output needs from the session to fill session-bound fields in headers and footers.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OutputContext {
+    pub file_name: String,
+    pub file_path: String,
+    pub user_name: String,
+    pub user_initials: String,
+}
+
+/// [`output_fields`] with the session's file name and user (STUB: ignores `ctx`).
+pub fn output_fields_in(doc: &wordcraft_doc::Document, ctx: Option<&OutputContext>) -> Option<wordcraft_doc::Document> {
+    let _ = ctx;
+    output_fields(doc)
+}
+
 pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Document> {
     // Numbers first, then the fields that read them: a STYLEREF to a heading holding a SEQ field,
     // and a REF to a bookmarked caption, show the new number.
