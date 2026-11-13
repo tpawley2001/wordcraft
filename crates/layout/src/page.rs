@@ -631,7 +631,11 @@ pub(crate) fn body_top_for(ctx: &mut Ctx, sect: &SectionProps, header: Option<u3
     let frame = PageFrame { sect, margin_top: None, origin: (sect.text_left(ctx.mirror), sect.header), number: 1, mirror: ctx.mirror };
     let track = std::mem::replace(&mut ctx.track_totals, false);
     let (h, ..) = with_pin(ctx, id, sect, 1, None, |ctx| {
-        let laid = layout_box(ctx, BoxInput::other(StoryRef::Part(id), &blocks, sect.text_width(), 0, Some(frame)));
+        let mut laid = layout_box(ctx, BoxInput::other(StoryRef::Part(id), &blocks, sect.text_width(), 0, Some(frame)));
+        // A header stops at half the page: the body starts below what is kept of it.
+        if let Some(cut) = super::headers::half_page_cut(&laid.items, StoryRef::Part(id), &blocks, sect.page_h) {
+            super::headers::clip_header(&mut laid.items, StoryRef::Part(id), &blocks, cut);
+        }
         let drawn = drawn_extent(&laid.items, StoryRef::Part(id));
         drawn.map_or(laid.height, |d| d.max(last_space_after_bottom(&laid.items, StoryRef::Part(id), blocks.len()).unwrap_or(0.0)))
     });
