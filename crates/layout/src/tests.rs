@@ -34,6 +34,7 @@ mod ext_leading_2pt;
 mod ext_leading_2pt_fonts;
 mod field_picture_overflow;
 mod first_page_once;
+mod float_row_step;
 mod float_table_bottom;
 mod float_table_notes;
 mod float_top;
