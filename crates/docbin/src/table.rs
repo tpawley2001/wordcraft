@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use wordcraft_doc::Rgb;
-use wordcraft_doc::para::{Anchor, FloatAlign, Paragraph};
+use wordcraft_doc::para::{Anchor, FloatAlign, InlineObject, OBJ, Paragraph};
 use wordcraft_doc::props::{
     Align, Border, Borders, CellProps, HeightRule, ParaProps, RowProps, TableFloat, TableProps, TextDirection, TextFrame, VAlign, VMerge,
 };
@@ -111,6 +111,9 @@ pub(crate) struct RowInfo {
     cell_padding: Vec<(u8, [Option<f32>; 4])>,
     /// Horizontal merges: (itcFirst, itcLim) cell-index ranges.
     merges: Vec<(u8, u8)>,
+    /// Horizontal merges from the `sprmTDefTable` TC80s; a `sprmTMerge` range wins where they
+    /// overlap.
+    tc_merges: Vec<(u8, u8)>,
     /// Per-cell overrides keyed by (pre-merge) cell index.
     vmerge: Vec<(u8, VMerge)>,
     /// Vertical merges from the `sprmTDefTable` TC80s; `vmerge` wins for a cell it names.
@@ -121,6 +124,8 @@ pub(crate) struct RowInfo {
     widths: Vec<(u8, f32)>,
     width_pcts: Vec<(u8, f32)>,
     valign: Vec<(u8, VAlign)>,
+    /// Cells set not to wrap (`fNoWrap`, bit 13 of a `sprmTDefTable` TC80's TCGRF word).
+    no_wrap: Vec<u8>,
     /// Turned cells: the text flow of the `sprmTDefTable` TC80s, then `sprmTTextFlow`.
     text_flow: Vec<(u8, TextDirection)>,
     /// Floating-table sprms from the TAP, as the paragraph frame sprm (opcode) each matches.
@@ -191,8 +196,10 @@ impl RowInfo {
             + self.widths.len()
             + self.width_pcts.len()
             + self.valign.len()
+            + self.no_wrap.len()
             + self.text_flow.len()
             + self.merges.len()
+            + self.tc_merges.len()
     }
 
     /// The width percentage cell `i` ends up with, for tests.
@@ -246,11 +253,14 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
             T_DEF_TABLE => {
                 r.edges = def_table_edges(prl.operand);
                 r.tc_vmerge = def_table_vmerge(prl.operand);
+                r.tc_merges = def_table_hmerge(prl.operand);
                 edge0 = first_edge(prl.operand).map(Edge0::Center).or(edge0);
                 // The definition replaces each cell's alignment; a later sprmTVertAlign wins.
                 apply_def_table_valign(&mut r.valign, prl.operand);
                 // Likewise each cell's text flow.
                 apply_def_table_text_flow(&mut r.text_flow, prl.operand);
+                // And whether each cell's text may wrap.
+                r.no_wrap = def_table_no_wrap(prl.operand);
             }
             T_TEXT_FLOW => apply_text_flow_sprm(&mut r.text_flow, prl.operand),
             T_TABLE_HEADER => r.header = prl.operand.first().copied().unwrap_or(0) != 0,
@@ -659,6 +669,8 @@ impl TableBuilder {
     /// (with `info` carrying that row's TAP).
     fn mark(&mut self, para: Paragraph, frame: Option<TextFrame>, info: &RowInfo, cell_end: bool, row_end: bool) {
         let row_del = if row_end { para.mark.del } else { None };
+        // The row mark's hidden property (sprmCFVanish) hides the row as `w:trPr/w:hidden` does.
+        let row_hidden = row_end && para.mark.hidden == Some(true);
         if row_end && self.rows.is_empty() {
             self.props.float = row_float(frame.or_else(|| self.first_frame.take()), info);
         }
@@ -693,17 +705,22 @@ impl TableBuilder {
             return;
         }
         // A row-end (TTP) mark terminates the row. Word writes rows as N content
-        // cells each ended by their own cell mark, followed by an empty row-end mark
-        // that carries the row's TDefTable (the 3GPP change history: 8 content marks
+        // cells each ended by their own cell mark, followed by a row-end mark that
+        // carries the row's TDefTable (the 3GPP change history: 8 content marks
         // + an empty TTP whose TDefTable defines itcMac = 8). When that mark ends no
-        // content of its own and the TDefTable already has a column per flushed cell,
-        // it is a pure row terminator, not the end of a phantom (N+1)th cell — such a
-        // cell has no column (width None) and shifts every real cell's span one grid
-        // column over. A TTP mark with content, or one short of the TDefTable's
-        // columns, still ends a real cell (rows without a TDefTable keep today's
-        // shape: the count is unknowable, so the mark always flushes).
-        let row_end_only =
-            row_end && para.text.is_empty() && self.cell.is_empty() && !info.edges.is_empty() && self.cells.len() + 1 >= info.edges.len();
+        // text of its own (it is empty, or holds only the anchors of floating objects
+        // Word stores at the row's end) and the TDefTable already has a column per
+        // flushed cell, it is a pure row terminator, not the end of a phantom (N+1)th
+        // cell — such a cell has no column (width None) and shifts every real cell's
+        // span one grid column over. A TTP mark with any other content, or one short
+        // of the TDefTable's columns, still ends a real cell (rows without a TDefTable
+        // keep today's shape: the count is unknowable, so the mark always flushes).
+        let anchors_only = anchors_only(&para);
+        let row_end_only = row_end
+            && (para.text.is_empty() || anchors_only)
+            && self.cell.is_empty()
+            && !info.edges.is_empty()
+            && self.cells.len() + 1 >= info.edges.len();
         // ...but a row-end mark with no cells before it still makes a (one-cell) row.
         let row_end_only = row_end_only && !self.cells.is_empty();
         // The cell mark is the paragraph mark of the cell's last paragraph ([MS-DOC] 2.4.3), so
@@ -711,10 +728,14 @@ impl TableBuilder {
         // empty cell's only paragraph with its own style and formatting. After a nested table
         // that just closed into the cell an empty mark adds nothing (not measured in Word).
         let after_table = self.cell.last().is_some_and(|b| b.as_table().is_some());
-        if !row_end_only && (!para.text.is_empty() || !after_table) {
-            self.cell.push(para_block(para));
-        }
-        if !row_end_only {
+        if row_end_only {
+            if anchors_only {
+                carry_row_end_anchors(&mut self.cells, para);
+            }
+        } else {
+            if !para.text.is_empty() || !after_table {
+                self.cell.push(para_block(para));
+            }
             flush_cell(&mut self.cells, &mut self.cell);
         }
         if row_end {
@@ -722,6 +743,7 @@ impl TableBuilder {
             // A row deleted with tracking: its end mark carries the deletion revision, as a
             // deleted paragraph mark does (sprmCFRMarkDel). Cell marks alone don't delete it.
             row.props.del = row_del;
+            row.props.hidden = row_hidden;
             if let Some(m) = row_margins {
                 for c in row.cells.iter_mut().filter(|c| c.props.margins.is_none()) {
                     let sides = c.props.partial_margins.get_or_insert([None; 4]);
@@ -798,6 +820,29 @@ impl TableBuilder {
     }
 }
 
+/// The paragraph holds nothing but the anchors of floating objects (a row-end mark Word uses to
+/// anchor drawings at the end of a table row).
+fn anchors_only(para: &Paragraph) -> bool {
+    !para.text.is_empty()
+        && para.text.chars().all(|c| c == OBJ)
+        && para.text.chars().count() == para.objects.len()
+        && para.objects.iter().all(InlineObject::is_floating)
+}
+
+/// Move the floating objects anchored in a row-end mark, in order and with their own position
+/// settings, to the end of the last paragraph of the row's last cell (after a nested table, a new
+/// empty paragraph carries them). Word's origin for their paragraph-relative offsets was not
+/// probed; the last cell keeps them on the row's page and in the row end's column.
+fn carry_row_end_anchors(cells: &mut [Cell], para: Paragraph) {
+    let Some(cell) = cells.last_mut() else { return };
+    if !cell.blocks.last().is_some_and(|b| b.as_para().is_some()) {
+        cell.blocks.push(para_block(Paragraph::new()));
+    }
+    if let Some(Block::Para(last)) = cell.blocks.last_mut().map(Arc::make_mut) {
+        last.append(Paragraph { section: None, ..para });
+    }
+}
+
 /// Close the open cell: its blocks (an empty paragraph when it has none) go onto the row's cells.
 fn flush_cell(cells: &mut Vec<Cell>, cell: &mut Blocks) {
     let mut blocks = std::mem::take(cell);
@@ -837,13 +882,18 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
         if let Some((_, d)) = info.text_flow.iter().rfind(|(k, _)| *k == i) {
             c.props.text_direction = *d;
         }
+        if info.no_wrap.contains(&i) {
+            c.props.no_wrap = true;
+        }
         if let Some((_, m)) = info.cell_padding.iter().find(|(k, _)| *k == i) {
             c.props.partial_margins = Some(*m);
         }
     }
     // Rightmost merge first: a merge drains only the cells after its first one, so the original
     // indices of the merges to its left stay valid.
-    let mut merges: Vec<(u8, u8)> = info.merges.iter().take(MAX_COLS).copied().collect();
+    // The `sprmTMerge` ranges, then each TC80 range that overlaps none of them.
+    let tc = info.tc_merges.iter().filter(|&&(a2, b2)| !info.merges.iter().any(|&(a1, b1)| a1 < b2 && a2 < b1));
+    let mut merges: Vec<(u8, u8)> = info.merges.iter().chain(tc).take(MAX_COLS).copied().collect();
     merges.sort_by_key(|m| std::cmp::Reverse(m.0));
     for &(a, b) in &merges {
         let a = a as usize;
@@ -859,10 +909,13 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
                 if merged_width.is_some() {
                     first.props.width = merged_width;
                 }
+                // Only a first cell that was one empty paragraph gives it up to the content the
+                // merged-away cells bring; a first cell with more paragraphs keeps them all.
+                let lone_empty = first.blocks.len() == 1 && first.blocks.first().and_then(|x| x.as_para()).is_some_and(Paragraph::is_empty);
                 for c in removed {
                     first.blocks.extend(c.blocks.into_iter().filter(|x| x.as_para().is_none_or(|p| !p.is_empty())));
                 }
-                if first.blocks.len() > 1 && first.blocks.first().and_then(|x| x.as_para()).is_some_and(Paragraph::is_empty) {
+                if lone_empty && first.blocks.len() > 1 {
                     first.blocks.remove(0);
                 }
             }
@@ -917,6 +970,37 @@ fn def_table_vmerge(operand: &[u8]) -> Vec<(u8, VMerge)> {
             _ => continue,
         };
         out.push((i as u8, m));
+    }
+    out
+}
+
+/// Each horizontally merged set of cells from the TC80s of a `sprmTDefTable` operand, as
+/// (itcFirst, itcLim) ranges: TCGRF bit 0 (fFirstMerged) starts a set and bit 1 (fMerged) adds
+/// the cell to the set the nearest first cell to its left started ([MS-DOC] 2.9.313, 2.9.314).
+/// A merged cell with no set open stays an ordinary cell; a cell with neither bit closes the
+/// set. Only cells below MAX_COLS with a complete TC80 count.
+fn def_table_hmerge(operand: &[u8]) -> Vec<(u8, u8)> {
+    let itc = operand.get(2).copied().unwrap_or(0) as usize;
+    let start = 3 + (itc + 1) * 2;
+    let mut out: Vec<(u8, u8)> = Vec::new();
+    let mut open: Option<u8> = None;
+    for i in 0..itc.min(MAX_COLS) {
+        let at = start + i * 20;
+        let Some([lo, hi, ..]) = operand.get(at..at + 20) else { break };
+        let flags = u16::from_le_bytes([*lo, *hi]);
+        let i = i as u8;
+        if flags & 2 != 0 {
+            if let Some(a) = open {
+                match out.last_mut() {
+                    Some(last) if last.0 == a => last.1 = i + 1,
+                    _ => out.push((a, i + 1)),
+                }
+            }
+        } else if flags & 1 != 0 {
+            open = Some(i);
+        } else {
+            open = None;
+        }
     }
     out
 }
@@ -976,6 +1060,21 @@ fn apply_def_table_text_flow(slots: &mut Vec<(u8, TextDirection)>, operand: &[u8
             slots.retain(|(k, _)| *k != i as u8);
         }
     }
+}
+
+/// The cells a `sprmTDefTable` operand's TC80s set not to wrap: bit 13 (`fNoWrap`) of each
+/// TCGRF word ([MS-DOC] 2.9.320). A TC80 missing from the operand or cut short leaves its cell
+/// wrapping.
+fn def_table_no_wrap(operand: &[u8]) -> Vec<u8> {
+    let itc = operand.get(2).copied().unwrap_or(0) as usize;
+    let start = 3 + (itc + 1) * 2;
+    (0..itc.min(MAX_COLS))
+        .filter(|i| {
+            let at = start + i * 20;
+            matches!(operand.get(at..at + 20), Some([lo, hi, ..]) if u16::from_le_bytes([*lo, *hi]) & 0x2000 != 0)
+        })
+        .map(|i| i as u8)
+        .collect()
 }
 
 /// The width between `sprmTDefTable` edges `a` and `b`, when they give a usable one.

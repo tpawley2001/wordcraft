@@ -100,12 +100,18 @@ fn the_dingbat_fonts_box_is_half_an_em() {
 
 #[test]
 fn a_symbol_code_with_a_glyph_is_unchanged() {
-    // Symbol 0x61 is alpha, drawn as U+03B1 as before.
+    // Symbol 0x61 is alpha, drawn as U+03B1 as before; a missing Symbol's alpha is as wide as
+    // Symbol's own (0.631 em, `symbol_advance`), the substitute's U+03B1 as wide as its glyph.
     let (pl, k) = a_x_b("Symbol", '\u{F061}', 20.0);
     let (alpha, ka) = a_x_b("Symbol", '\u{3B1}', 20.0);
     assert!(!has_box(&pl, k));
     assert!((pl.clusters[k].adv - 20.0 * SYMBOL_EM).abs() > 0.01);
-    assert!((pl.clusters[k].adv - alpha.clusters[ka].adv).abs() < 0.001);
+    assert_eq!(pl.glyphs[pl.clusters[k].g0 as usize].gid, alpha.glyphs[alpha.clusters[ka].g0 as usize].gid);
+    if wordcraft_fonts::word::resolve("Symbol", false, false).substituted {
+        assert!((pl.clusters[k].adv - 20.0 * 0.631).abs() < 0.01, "{}", pl.clusters[k].adv);
+    } else {
+        assert!((pl.clusters[k].adv - alpha.clusters[ka].adv).abs() < 0.001);
+    }
 }
 
 #[test]

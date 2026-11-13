@@ -349,8 +349,9 @@ impl<'a> Shaped<'a> {
         match c {
             '\t' => self.push(slot, ClKind::Tab, 0.0, 0.0),
             LINE_BREAK | '\r' => self.push(slot, ClKind::LineBreak, 0.0, 0.0),
-            // Word ignores explicit page breaks in cells, preserving their source offsets.
-            PAGE_BREAK if cx.env.table.is_some() => self.push(slot, ClKind::Marker, 0.0, 0.0),
+            // Word ignores explicit page breaks in cells and text frames (`w:framePr`), preserving
+            // their source offsets.
+            PAGE_BREAK if cx.env.table.is_some() || cx.rp.frame.is_some() => self.push(slot, ClKind::Marker, 0.0, 0.0),
             PAGE_BREAK => self.push(slot, ClKind::PageBreak, 0.0, 0.0),
             COLUMN_BREAK => self.push(slot, ClKind::ColumnBreak, 0.0, 0.0),
             _ => {

@@ -538,6 +538,20 @@ impl PageBuilder<'_> {
         let gap = if self.sect.footer_gap.is_finite() { self.sect.footer_gap.clamp(0.0, 1584.0) } else { 0.0 };
         (self.sect.page_h - self.sect.margin_bottom).min((self.foot_top - gap).max(body_top + 36.0))
     }
+    /// Whether the text now ends where the current page's footer starts: a footer taller than the
+    /// bottom margin pushed the page's body up ([`Self::body_bottom`]) and nothing (balanced
+    /// columns, notes, the minimum body height, an ODF gap above the footer) moved the bottom
+    /// since. The page's own body rectangle is used, so a different first page's footer counts.
+    pub(crate) fn at_footer_top(&self) -> bool {
+        if self.web || (self.sect.footer_gap.is_finite() && self.sect.footer_gap > 0.0) {
+            return false;
+        }
+        let margin = self.sect.page_h - self.sect.margin_bottom;
+        self.pages.last().is_some_and(|p| {
+            let foot = p.body.y + p.body.h;
+            p.body.h > 36.01 && foot < margin - 0.01 && (self.bottom - foot).abs() <= 0.01
+        })
+    }
     /// The room for text in the next column, or on the page [`Self::advance`] starts after the
     /// last: there, below its body top (`body_top`) and above its footer and the notes carried
     /// onto it (#3907 CodeRabbit: a different first page's header or footer doesn't shrink it).

@@ -1,7 +1,7 @@
 use super::boxes::{BoxInput, BoxLayout, layout_box};
 use super::ctx::Ctx;
 use super::floats::left_out_objects;
-use super::page::{PageBuilder, item_bottom};
+use super::page::PageBuilder;
 use super::placed::Placed;
 use super::{
     Block, Blocks, Border, Document, HashMap, HideDeleted, InlineObject, Page, ParaLayout, Paragraph, Rect, StoryRef, TextDirection, fields, para,
@@ -187,20 +187,7 @@ pub(crate) struct NoteBox {
 
 /// The vertical extent of an item laid out in a horizontal frame.
 pub(crate) fn v_span(it: &Placed) -> (f32, f32) {
-    if let Some(r) = it.turned_bounds() {
-        return (r.y, r.y + r.h);
-    }
-    match it {
-        Placed::Lines { para, l0, l1, y, .. } => (*y, item_bottom(*y, para, *l0, *l1).unwrap_or(*y)),
-        Placed::Fill { rect, .. }
-        | Placed::Image { rect, .. }
-        | Placed::Shape { rect, .. }
-        | Placed::Graphic { rect, .. }
-        | Placed::Clip { rect, .. }
-        | Placed::Cell { rect, .. }
-        | Placed::Object { rect, .. } => (rect.y, rect.y + rect.h),
-        Placed::Rule { y0, y1, .. } => (y0.min(*y1), y0.max(*y1)),
-    }
+    it.vertical_span()
 }
 
 impl NoteBox {
@@ -296,6 +283,91 @@ impl NoteBox {
         let rest = (self.h - start).max(0.0);
         (NoteBox { id: self.id, items: head, h: cut, cont: self.cont }, NoteBox { id: self.id, items: tail, h: rest, cont: true })
     }
+}
+
+/// Footnote `id` laid out `width` wide for the bottom of a page (`None`: no such footnote).
+///
+/// Word lays the footnotes of a document out as one run of paragraphs, in document order: the
+/// last paragraph of a footnote and the first of the next footnote are neighbours, wherever the
+/// two notes land. So contextual spacing (ECMA-376 §17.3.1.9 `w:contextualSpacing`), which
+/// drops the space between neighbours of one style, reaches across notes, as between two
+/// paragraphs of one box (`paragraph_spacing` in `boxes.rs`): the note loses its space after when its last paragraph
+/// asks for that and the next footnote starts in the same style, and its first paragraph's space
+/// before is reduced the same way against the previous footnote's last paragraph.
+pub(crate) fn footnote_box(ctx: &mut Ctx, id: u32, width: f32) -> Option<NoteBox> {
+    let doc = ctx.doc;
+    let part = doc.parts.get(&id).filter(|p| p.kind == wordcraft_doc::PartKind::Footnote)?;
+    let BoxLayout { mut items, height, .. } = layout_box(ctx, BoxInput::other(StoryRef::Part(id), &part.blocks, width, 0, None));
+    let mut h = height.max(0.0);
+    let (prev, next) = footnote_neighbours(ctx, id);
+    let end = |note: Option<u32>, last: bool| {
+        let blocks = &doc.parts.get(&note?)?.blocks;
+        let b = if last { blocks.last() } else { blocks.first() }?;
+        match &**b {
+            Block::Para(p) => Some(doc.styles.resolve_para_spaced(&p.props, None, !doc.settings.sum_paragraph_spacing)),
+            Block::Table(_) => None,
+        }
+    };
+    // The space `layout_box` adds after the box's last paragraph (none when automatic).
+    let after_of = |rp: &wordcraft_doc::resolve::ResolvedPara| if rp.after_auto { 0.0 } else { rp.space_after.max(0.0) };
+    if let (Some(last), Some(following)) = (end(Some(id), true), end(next, false))
+        && last.contextual_spacing
+        && last.style == following.style
+    {
+        // Never above the bottom of the note's own items.
+        let floor = items.iter().map(|it| v_span(it).1).fold(0.0f32, f32::max).min(h);
+        h = (h - after_of(&last)).max(floor);
+    }
+    if let (Some(first), Some(before_it)) = (end(Some(id), false), end(prev, true))
+        && first.style == before_it.style
+    {
+        let before = if first.before_auto { 0.0 } else { first.space_before.max(0.0) };
+        let mut kept = before;
+        if before_it.contextual_spacing {
+            kept = (kept - after_of(&before_it)).max(0.0);
+        }
+        if first.contextual_spacing {
+            kept = 0.0;
+        }
+        // Never above the top of the note's own items.
+        let top = items.iter().map(|it| v_span(it).0).fold(f32::MAX, f32::min);
+        let top = if top.is_finite() { top.max(0.0) } else { 0.0 };
+        let up = (before - kept).clamp(0.0, top);
+        if up > 0.0 {
+            for it in &mut items {
+                it.translate(0.0, -up);
+            }
+            h = (h - up).max(0.0);
+        }
+    }
+    Some(NoteBox { id, items, h, cont: false })
+}
+
+/// The footnotes before and after footnote `id` in document order (as numbered in
+/// `ctx.fields.notes`), worked out once per layout pass.
+fn footnote_neighbours(ctx: &mut Ctx, id: u32) -> (Option<u32>, Option<u32>) {
+    let doc = ctx.doc;
+    let seq = ctx
+        .footnote_seq
+        .get_or_insert_with(|| {
+            let mut order: Vec<(u32, u32)> = ctx
+                .fields
+                .notes
+                .iter()
+                .filter(|(n, _)| doc.parts.get(n).is_some_and(|p| p.kind == wordcraft_doc::PartKind::Footnote))
+                .map(|(n, num)| (num.order, *n))
+                .collect();
+            order.sort_unstable();
+            let mut m = HashMap::with_capacity(order.len());
+            for (i, (_, n)) in order.iter().enumerate() {
+                let prev = i.checked_sub(1).and_then(|k| order.get(k)).map(|(_, p)| *p);
+                let next = order.get(i + 1).map(|(_, x)| *x);
+                m.insert(*n, (prev, next));
+            }
+            std::sync::Arc::new(m)
+        })
+        .clone();
+    seq.get(&id).copied().unwrap_or((None, None))
 }
 
 /// Passes the layout makes at most for footnotes numbered again on each page: their numbers
@@ -412,10 +484,9 @@ pub(crate) fn table_notes(ctx: &mut Ctx, pb: &mut PageBuilder, items: &[Placed])
     }
     let before = pb.notes_h();
     for id in ids {
-        let Some(part) = ctx.doc.parts.get(&id).filter(|p| p.kind == wordcraft_doc::PartKind::Footnote) else { continue };
-        let blocks = part.blocks.clone();
-        let BoxLayout { items, height: h, .. } = layout_box(ctx, BoxInput::other(StoryRef::Part(id), &blocks, pb.note_w(), 0, None));
-        pb.notes.push(NoteBox { id, items, h, cont: false });
+        if let Some(note) = footnote_box(ctx, id, pb.note_w()) {
+            pb.notes.push(note);
+        }
     }
     pb.bottom -= pb.notes_h() - before;
 }

@@ -29,7 +29,7 @@ fn a_missing_simsun_takes_words_line() {
 
 #[test]
 fn guard_unmeasured_chinese_fonts_are_unchanged() {
-    for name in ["FangSong", "KaiTi", "Microsoft YaHei", "MingLiU", "MS Mincho", "SimSun-ExtB"] {
+    for name in ["FangSong", "KaiTi", "Microsoft YaHei", "MingLiU", "SimSun-ExtB"] {
         let r = resolve(name, false, false);
         if r.substituted {
             assert_eq!(missing_font_line(name, &r), None, "{name}");

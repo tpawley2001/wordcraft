@@ -384,6 +384,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
         sheet: &sheet,
         notes: &[],
         own_note: None,
+        note_sep: false,
         marks: &[],
         drawn: &[],
         sect_ends: &[],
@@ -436,10 +437,14 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     let build = drawing::Build { bstore: &art.bstore, delay: &word, stories: &tb_stories };
     let mut drawn = drawing::anchors(&table, fib.pair(fib::pair::PLC_SPA_MOM), 0, &art.main, &build, &mut pics);
     drawn.extend(drawing::anchors(&table, fib.pair(fib::pair::PLC_SPA_HDR), hdd_base, &art.header, &build, &mut pics));
-    drawn.sort_by_key(|(cp, _)| *cp);
+    drawn.sort_by_key(|(cp, _, _)| *cp);
     let ctx = WalkCtx { drawn: &drawn, ..ctx };
 
-    // Header and footer parts: skip the six separator stories, then six stories per section
+    // The six note separator stories come first ([MS-DOC] §2.3.4): footnote separator,
+    // continuation separator and continuation notice, then the same for endnotes.
+    note_separators(&mut doc, &ctx, (&stories, hdd_base, fib.ccp.hdd), &mut pics, max_paragraphs)?;
+
+    // Header and footer parts: after the six separator stories, six stories per section
     // in the order even header, odd (default) header, even footer, odd (default) footer,
     // first header, first footer. Empty stories inherit from the previous section.
     let mut hf_ids: Vec<(usize, usize, u32)> = Vec::new();
@@ -601,6 +606,56 @@ fn header_story_blocks(
     Ok(table::assemble(paras))
 }
 
+/// The six note separator stories at the start of the header document's `stories` (starting
+/// at `base`, `len` CPs long) into the document's footnote and endnote separators.
+fn note_separators(
+    doc: &mut Document,
+    ctx: &WalkCtx<'_>,
+    (stories, base, len): (&[(u32, u32)], u32, u32),
+    pics: &mut media::Pictures,
+    max_paragraphs: usize,
+) -> Result<(), DocbinError> {
+    let sep_ctx = WalkCtx { note_sep: true, ..*ctx };
+    for k in 0..6usize {
+        let Some((a, b)) = stories.get(k).and_then(|&ab| story(base, len, ab)) else { continue };
+        let blocks = header_story_blocks(&sep_ctx, a, b, pics, max_paragraphs)?;
+        let Some(blocks) = note_sep_story(blocks, k % 3) else { continue };
+        let seps = if k < 3 { &mut doc.footnote_separators } else { &mut doc.endnote_separators };
+        match k % 3 {
+            0 => seps.separator = Some(blocks),
+            1 => seps.continuation_separator = Some(blocks),
+            _ => seps.continuation_notice = Some(blocks),
+        }
+    }
+    Ok(())
+}
+
+/// A note separator story's blocks (`which`: 0 separator, 1 continuation separator, 2
+/// continuation notice), or `None` where it is the default: a separator holding only its own
+/// line (0x03 for the separator, 0x04 for the continuation separator) in one paragraph, or a
+/// notice with no content. An empty separator paragraph stays (no line), as in DOCX.
+fn note_sep_story(blocks: wordcraft_doc::Blocks, which: usize) -> Option<wordcraft_doc::Blocks> {
+    let paras: Vec<&Paragraph> = blocks.iter().filter_map(|b| b.as_para()).collect();
+    if paras.len() != blocks.len() {
+        return Some(blocks);
+    }
+    if which == 2 {
+        let empty = paras.iter().all(|p| p.text.is_empty() && p.objects.is_empty());
+        return (!empty).then_some(blocks);
+    }
+    if let [p] = paras.as_slice()
+        && p.text == "\u{FFFC}"
+        && let [obj] = p.objects.as_slice()
+        && obj.as_note_separator() == Some(which == 1)
+    {
+        return None;
+    }
+    if blocks.is_empty() {
+        return None;
+    }
+    Some(blocks)
+}
+
 /// A story's CP range `[a, b)`, relative to a subdocument starting at `base` with `len`
 /// CPs, as absolute CPs clamped to that subdocument; `None` when empty.
 fn story(base: u32, len: u32, (a, b): (u32, u32)) -> Option<(u32, u32)> {
@@ -651,10 +706,14 @@ struct WalkCtx<'a> {
     notes: &'a [NoteLink],
     /// The note whose text is being walked: its reference character is the note's own number.
     own_note: Option<(NoteKind, u32)>,
+    /// Walking a note separator story: the separator characters 0x03 (the short line) and 0x04
+    /// (the long line) are its lines.
+    note_sep: bool,
     /// Bookmark boundaries (main-document CPs), sorted for a sequential walk.
     marks: &'a [(u32, notes::Mark)],
-    /// Floating shapes and pictures by anchor CP (absolute), sorted.
-    drawn: &'a [(u32, InlineObject)],
+    /// Floating shapes and pictures by anchor CP (absolute), sorted, with the room each takes
+    /// beyond its frame when it sits in line with text ([`drawing::inline_reach`]).
+    drawn: &'a [(u32, InlineObject, [f32; 4])],
     /// Where sections end (main-document CPs, sorted): the section mark (0x0C) just before
     /// each ends the section's last paragraph, it isn't a page break inside it.
     sect_ends: &'a [u32],
@@ -763,17 +822,99 @@ impl ParaBuild {
 
 /// The floating shapes and pictures anchored at `cp` (a 0x08 character), each as an object of
 /// the paragraph being built.
-fn drawn_objects(ctx: &WalkCtx<'_>, cp: u32, pb: &mut ParaBuild) {
-    let at = ctx.drawn.partition_point(|(c, _)| *c < cp);
+///
+/// In the result of a `SHAPE` field (`field`, the innermost open field), the anchor is how Word
+/// 2002 and later store a drawing placed in line with text: each object anchored there sits on
+/// the line as an inline object, with room for its outline and shadow, and the field is marked
+/// so the fallback picture (0x01) that follows in its result is dropped.
+fn drawn_objects(ctx: &WalkCtx<'_>, cp: u32, pb: &mut ParaBuild, field: Option<&mut OpenField>) {
+    let mut shape = field.filter(|f| is_shape_result(f));
+    let at = ctx.drawn.partition_point(|(c, _, _)| *c < cp);
     // Each copy (a story can be walked more than once) is charged to the work budget
     // by what a clone copies: a picture's alt text, a group with all its members (#3710).
-    for (_, obj) in ctx.drawn.get(at..).unwrap_or_default().iter().take_while(|(c, _)| *c == cp) {
+    for (_, obj, reach) in ctx.drawn.get(at..).unwrap_or_default().iter().take_while(|(c, _, _)| *c == cp) {
         if !ctx.work.charge(object_cost(obj), Cost::FloatingObject) {
             continue;
         }
         pb.push('\u{FFFC}', revised(ctx, cp));
-        pb.objects.push(obj.clone());
+        let mut obj = obj.clone();
+        if let Some(f) = shape.as_deref_mut() {
+            in_line(&mut obj, *reach);
+            f.shape_drawn = true;
+        }
+        pb.objects.push(obj);
     }
+}
+
+/// The innermost open field is a `SHAPE` field whose result is being read (not one counted past
+/// the nesting cap, nor a range).
+fn is_shape_result(f: &OpenField) -> bool {
+    f.build.sep.is_some()
+        && f.build.depth == 1
+        && !f.range
+        && f.over_hidden == 0
+        && f.over_shown == 0
+        && f.build.instr.split_whitespace().next().is_some_and(|k| k.eq_ignore_ascii_case("SHAPE"))
+}
+
+/// A drawn object placed in line with text: no offsets, alignment or wrapping of its own, and
+/// `reach` around its frame for its outline and shadow. Its size, turn, mirroring, name and
+/// alternative text stay.
+fn in_line(obj: &mut InlineObject, reach: [f32; 4]) {
+    if let Some(f) = obj.float_mut() {
+        *f = wordcraft_doc::para::Float {
+            wrap: wordcraft_doc::para::Wrap::Inline,
+            effect: reach,
+            rot: f.rot,
+            flip_h: f.flip_h,
+            flip_v: f.flip_v,
+            alt: std::mem::take(&mut f.alt),
+            name: std::mem::take(&mut f.name),
+            hidden: f.hidden,
+            ..Default::default()
+        };
+    }
+}
+
+/// A picture (0x01) in the result of a `SHAPE` field whose drawn object (0x08) was found: it is
+/// the fallback older Word versions show for that same object, so it is left out.
+fn shape_fallback(fields: &[OpenField]) -> bool {
+    fields.last().is_some_and(|f| f.shape_drawn && is_shape_result(f))
+}
+
+/// Applies a paragraph mark's PAPX to the paragraph being built: its frame (merged over the
+/// style's), its paragraph sprms and its list (its own, or its style's at its own level).
+fn apply_para_sprms(ctx: &WalkCtx<'_>, pb: &mut ParaBuild, papx: &[u8], istd: u16) {
+    let mut ilvl: Option<u8> = None;
+    let mut ilfo: Option<i32> = None;
+    // Direct frame sprms merge into the style's frame field by field, so start from it.
+    if sprm::iter(papx).any(|prl| fmt::is_frame_sprm(prl.op)) {
+        pb.props.frame = fmt::style_frame(ctx.raw_styles, istd as usize);
+    }
+    for prl in sprm::iter(papx) {
+        if prl.op == P_ILVL {
+            ilvl = Some(ilvl_operand(prl.operand));
+            continue;
+        }
+        if prl.op == P_ILFO {
+            ilfo = Some(ilfo_operand(prl.operand));
+            continue;
+        }
+        if prl.sgc() == 1 {
+            fmt::apply_para(&mut pb.props, &prl);
+        }
+    }
+    // The paragraph's own list, or its style's list at its own level. Switching the
+    // style's list off is `num: 0`, which also drops the style's indents, so only a
+    // style that has a list gets it.
+    let style_list =
+        pb.props.style.as_deref().and_then(|id| ctx.sheet.chain(id).into_iter().rev().find_map(|s| s.para.numbering)).filter(|n| n.num != 0);
+    pb.props.numbering = match (ilfo.map(num_of), style_list) {
+        (Some(Some(num)), _) => Some(NumRef { num, level: ilvl.or(style_list.map(|n| n.level)).unwrap_or(0) }),
+        (Some(None), Some(s)) => Some(NumRef { num: 0, level: s.level }),
+        (None, Some(s)) => ilvl.map(|level| NumRef { num: s.num, level }),
+        _ => None,
+    };
 }
 
 /// Walk a CP range, splitting paragraphs at 0x0D/0x07 marks, applying the direct character
@@ -837,6 +978,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
             head = Some(found);
         }
         ctx.budget.set(ctx.budget.get() - 1);
+        let c = table_field_end(ctx, cp, c, &fields, &mut head);
         // A custom-mark note reference: no 0x02 here, the characters at its CP are the mark
         // (outside a field's code or a result collected for the field object).
         if c != '\u{2}'
@@ -875,40 +1017,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 // Only table marks keep their table context; a plain paragraph would carry
                 // a `RowInfo` (about 300 bytes) it never uses.
                 let row = row.is_table().then(|| Box::new(row));
-                let mut ilvl: Option<u8> = None;
-                let mut ilfo: Option<i32> = None;
-                // Direct frame sprms merge into the style's frame field by field, so start from it.
-                if sprm::iter(papx).any(|prl| fmt::is_frame_sprm(prl.op)) {
-                    pb.props.frame = fmt::style_frame(ctx.raw_styles, istd as usize);
-                }
-                for prl in sprm::iter(papx) {
-                    if prl.op == P_ILVL {
-                        ilvl = Some(ilvl_operand(prl.operand));
-                        continue;
-                    }
-                    if prl.op == P_ILFO {
-                        ilfo = Some(ilfo_operand(prl.operand));
-                        continue;
-                    }
-                    if prl.sgc() == 1 {
-                        fmt::apply_para(&mut pb.props, &prl);
-                    }
-                }
-                // The paragraph's own list, or its style's list at its own level. Switching the
-                // style's list off is `num: 0`, which also drops the style's indents, so only a
-                // style that has a list gets it.
-                let style_list = pb
-                    .props
-                    .style
-                    .as_deref()
-                    .and_then(|id| ctx.sheet.chain(id).into_iter().rev().find_map(|s| s.para.numbering))
-                    .filter(|n| n.num != 0);
-                pb.props.numbering = match (ilfo.map(num_of), style_list) {
-                    (Some(Some(num)), _) => Some(NumRef { num, level: ilvl.or(style_list.map(|n| n.level)).unwrap_or(0) }),
-                    (Some(None), Some(s)) => Some(NumRef { num: 0, level: s.level }),
-                    (None, Some(s)) => ilvl.map(|level| NumRef { num: s.num, level }),
-                    _ => None,
-                };
+                apply_para_sprms(ctx, &mut pb, papx, istd);
                 // A tracked paragraph formatting change (sprmPPropRMark90 / sprmPPropRMark),
                 // read once the paragraph's formatting is resolved.
                 if let Ok(mut revs) = ctx.revs.try_borrow_mut() {
@@ -957,6 +1066,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 cp = cp.saturating_add(1);
                 continue;
             }
+            '\u{1}' if shape_fallback(&fields) => {}
             '\u{1}' => {
                 // A range field's result is ordinary content: its pictures are not the field's.
                 // A field in another field's result collects its result there.
@@ -969,7 +1079,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 }
             }
             // Drawn object anchor: the floating shape or picture anchored at this CP.
-            '\u{8}' => drawn_objects(ctx, cp, &mut pb),
+            '\u{8}' => drawn_objects(ctx, cp, &mut pb, fields.last_mut()),
             '\u{2}' => {
                 // Footnote or endnote reference; custom symbols share the same character. In a
                 // note's own text it is that note's number, as `w:footnoteRef` is in DOCX.
@@ -979,6 +1089,11 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     pb.push('\u{FFFC}', revised(ctx, cp));
                     pb.objects.push(InlineObject::NoteRef { kind, id, custom: String::new() });
                 }
+            }
+            // A note separator's line ([MS-DOC] §2.3.4), as `w:separator`/`w:continuationSeparator` are in DOCX.
+            '\u{3}' | '\u{4}' if ctx.note_sep => {
+                push_formatted(&mut pb, cp, '\u{FFFC}', ctx, None, &mut fmt);
+                pb.objects.push(InlineObject::note_separator(c == '\u{4}'));
             }
             '\t' => push_formatted(&mut pb, cp, '\t', ctx, fields.last_mut(), &mut fmt),
             '\u{B}' => push_formatted(&mut pb, cp, '\n', ctx, fields.last_mut(), &mut fmt),
@@ -1406,6 +1521,20 @@ fn field_type(ctx: &WalkCtx<'_>, cp: u32, fields: &mut [OpenField]) {
     }
 }
 
+/// `c` at `cp`, or a field end (0x15) when it is a paragraph mark that the story's field table
+/// records as a field's end while a field is open: Word ends the field there, and the character
+/// is that field's end mark, not a paragraph break. The paragraph then runs on to the next
+/// mark, whose properties it takes, so the paragraph head found for this one is forgotten.
+fn table_field_end<'a>(ctx: &WalkCtx<'a>, cp: u32, c: char, fields: &[OpenField], head: &mut Option<Option<ParaHead<'a>>>) -> char {
+    let (types, base) = ctx.fld;
+    if c == '\r' && !fields.is_empty() && cp.checked_sub(base).is_some_and(|at| types.ends_at(at)) {
+        *head = None;
+        '\u{15}'
+    } else {
+        c
+    }
+}
+
 /// An open field in the walk's stack: the field being assembled and how it nests.
 struct OpenField {
     build: FieldBuild,
@@ -1424,6 +1553,9 @@ struct OpenField {
     /// The type byte of the field's begin in its story's field table ([`fieldtype`]), until the
     /// finished code has been given its English name.
     flt: Option<u8>,
+    /// A `SHAPE` field whose result anchors a drawn object found in the drawing: the picture in
+    /// its result is that object's fallback ([`shape_fallback`]).
+    shape_drawn: bool,
 }
 
 impl OpenField {
@@ -1518,7 +1650,17 @@ fn field_begin(fields: &mut Vec<OpenField>, props: impl FnOnce() -> CharProps) -
         _ => {
             let props = props();
             let build = FieldBuild { depth: 1, instr: String::new(), sep: None, props, object: false, code: CodeMarks::default() };
-            fields.push(OpenField { build, range: false, over_hidden: 0, over_shown: 0, button: false, code_shown: 0, code_hidden: 0, flt: None });
+            fields.push(OpenField {
+                build,
+                range: false,
+                over_hidden: 0,
+                over_shown: 0,
+                button: false,
+                code_shown: 0,
+                code_hidden: 0,
+                flt: None,
+                shape_drawn: false,
+            });
             return true;
         }
     }

@@ -116,6 +116,7 @@ fn new_ctx<'a>(
         alphas: Default::default(),
         header_repeats: 0,
         keep_chain: None,
+        footnote_seq: None,
     }
 }
 

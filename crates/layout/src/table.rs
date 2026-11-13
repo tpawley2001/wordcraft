@@ -404,11 +404,17 @@ fn preferred_grid(t: &Table, avail: f32) -> Vec<f32> {
 /// text lines up with the body text, and its percentage is of the text width plus the table's
 /// left and right default cell margins, so a 100% table's cell text spans the text width.
 ///
+/// When cells set their own margins, the base adds the left margin of the first row's first cell
+/// and the right margin of the first row's last cell, each as that cell resolves it; margins of
+/// other cells do not count.
+///
 /// Measured for top-level body tables (autofit and fixed, with and without an indent, in modes
-/// 11, 12 and 14) and assumed for top-level header and footer tables, which share the section's
-/// width. Not measured, so they keep the text width as the base: nested tables and tables in
-/// notes or text boxes, percentages over 100%, centred or end-aligned tables, floating tables,
-/// right-to-left tables and tables whose cells set their own margins.
+/// 11, 12 and 14, with and without cell margins of their own) and assumed for top-level header
+/// and footer tables, which share the section's width. Not measured, so they keep the text width
+/// as the base: nested tables and tables in notes or text boxes, percentages over 100%, centred or
+/// end-aligned tables, floating tables and right-to-left tables. Also not measured, and taken from
+/// the first row as above: rows whose last cells set different margins, rows with different
+/// numbers of cells, and rows that skip grid columns before or after their cells.
 fn legacy_pct_margins(ctx: &Ctx, story: StoryRef, t: &Table, depth: usize, style: Option<&TableStyleProps>) -> f32 {
     let top_level = depth <= 1
         && match story {
@@ -422,14 +428,16 @@ fn legacy_pct_margins(ctx: &Ctx, story: StoryRef, t: &Table, depth: usize, style
         && t.props.width_pct.is_some_and(|p| p > 0.0 && p <= 100.0)
         && t.props.float.is_none()
         && !t.props.bidi_visual
-        && !matches!(t.props.align, Some(Align::Center | Align::Right))
-        && t.rows.iter().all(|r| r.cells.iter().all(|c| c.props.margins.is_none() && c.props.partial_margins.is_none()));
+        && !matches!(t.props.align, Some(Align::Center | Align::Right));
     if !measured {
         return 0.0;
     }
-    let m = default_margins(t, style);
+    let def = default_margins(t, style);
+    let cells = t.rows.first().map(|r| r.cells.as_slice()).unwrap_or_default();
+    let left = cells.first().map_or(def, |c| c.props.resolved_margins(def))[1];
+    let right = cells.last().map_or(def, |c| c.props.resolved_margins(def))[3];
     let side = |v: f32| if v.is_finite() { v.clamp(0.0, 1584.0) } else { 0.0 };
-    side(m[1]) + side(m[3])
+    side(left) + side(right)
 }
 
 fn table_frame(ctx: &mut Ctx, story: StoryRef, t: &Table, avail: f32, depth: usize, style: Option<&TableStyleProps>) -> TableFrame {
@@ -468,7 +476,12 @@ fn table_frame(ctx: &mut Ctx, story: StoryRef, t: &Table, avail: f32, depth: usi
         let content = column_content(ctx, story, t, style, depth, &grid);
         ctx.eq_count = eq_count;
         if let Some(content) = content {
-            autofit(&mut grid, &content, t, avail);
+            let pins = no_wrap_widths(t, grid.len());
+            pin_no_wrap(&mut grid, &pins, total);
+            match preferred_autofit(t, &content, avail, depth) {
+                Some(widths) => grid.copy_from_slice(&widths),
+                None => autofit(&mut grid, &content, t, avail),
+            }
             // Never wider than the room it had, however long an unbreakable word.
             let fitted: f32 = grid.iter().sum();
             let cap = avail.max(total);
@@ -523,7 +536,33 @@ fn table_frame(ctx: &mut Ctx, story: StoryRef, t: &Table, avail: f32, depth: usi
 /// and deletions are hidden. Only the row's own mark does that; deleted text in its cells
 /// leaves an empty row.
 fn row_hidden(ctx: &Ctx, row: &Row) -> bool {
-    ctx.hide_deleted.hides(ctx.doc, row.props.del)
+    ctx.hide_deleted.hides(ctx.doc, row.props.del) || (row.props.hidden && !ctx.opts.show_hidden && hidden_row_content(ctx, row, 0))
+}
+
+/// Deepest nesting of tables [`hidden_row_content`] looks into; deeper content counts as shown.
+const MAX_HIDDEN_DEPTH: usize = 8;
+
+/// Whether everything in `row`'s cells is hidden text: every paragraph has a hidden mark and no
+/// run that is not hidden (an empty paragraph with a hidden mark counts as hidden). With its row
+/// mark hidden (`RowProps::hidden`, `w:trPr/w:hidden`) such a row takes no room, as Word lays
+/// it out; a row with any shown text or cell mark keeps its room. Not measured in Word: a cell
+/// holding a nested table counts as hidden when every row of that table is left out by the same
+/// rule, and an object counts as shown unless its run is hidden.
+fn hidden_row_content(ctx: &Ctx, row: &Row, depth: usize) -> bool {
+    if depth > MAX_HIDDEN_DEPTH {
+        return false;
+    }
+    let hidden = |c: &wordcraft_doc::props::CharProps, style: Option<&str>| ctx.doc.styles.resolve_char(style, c).hidden;
+    let para_hidden = |p: &Paragraph| {
+        let style = p.props.style.as_deref();
+        hidden(&p.mark, style) && p.run_ranges().all(|(r, c)| r.is_empty() || hidden(c, style))
+    };
+    row.cells.iter().all(|cell| {
+        cell.blocks.iter().all(|b| match &**b {
+            Block::Para(p) => para_hidden(p),
+            Block::Table(t) => t.rows.iter().all(|r| r.props.hidden && hidden_row_content(ctx, r, depth + 1)),
+        })
+    })
 }
 
 /// Whether every row of `t` is left out ([`row_hidden`]): the table takes no room at all.
@@ -1078,16 +1117,16 @@ fn split_row_with(row: &RowLayout, cut: f32, whole_cells: bool) -> Option<(RowLa
         .collect();
     // A cell that widow/orphan control leaves with nothing on this page, though its first line
     // would fit there, takes the whole row on with it: Word doesn't leave the other cells behind
-    // beside an empty one (observed with synthetic documents). Trailing space alone can move
-    // the last paragraph without deferring the whole row.
+    // beside an empty one (observed with synthetic documents). Trailing space alone defers the
+    // row only in the case below.
+    // A cell holding only a one-line paragraph whose line fits but whose space after doesn't
+    // would keep nothing here too: Word moves the whole row on rather than leave that cell empty
+    // beside the others' first lines, in every compatibility mode and with widow control off
+    // (measured in Word 16.0 with synthetic documents). Not for a row that starts its page: it
+    // could never fit better.
     for (items, splits) in cells.iter().zip(&splits) {
-        let first = items.iter().zip(splits).find_map(|(it, &split)| text_lines(it).map(|t| (t, split)));
-        if let Some(((para, l0, l1, y), split)) = first
-            && split == l0
-            && para.rp.widow_control
-            && l1.saturating_sub(l0) > 1
-            && crate::item_bottom(y, para, l0, l1).is_some_and(|bottom| !fits(bottom))
-            && para.lines.get(l0).is_some_and(|l| fits(y + l.top - para.lines.get(l0).map_or(0.0, |f| f.top) + l.height))
+        if widow_leaves_cell_empty(items, splits, limit)
+            || (whole_cells && one_line_cell_moves_on(items, splits, limit, row.height, own_depth, &areas))
         {
             return None;
         }
@@ -1381,6 +1420,38 @@ fn shift_content(items: &mut std::borrow::Cow<[Placed]>, c: &CellPart, al: &Cell
     }
 }
 
+/// Whether widow/orphan control leaves a cell with nothing on this page though its first line
+/// would fit there.
+fn widow_leaves_cell_empty(items: &[Placed], splits: &[usize], limit: f32) -> bool {
+    let fits = |bottom: f32| bottom <= limit + 0.01;
+    let first = items.iter().zip(splits).find_map(|(it, &split)| text_lines(it).map(|t| (t, split)));
+    let Some(((para, l0, l1, y), split)) = first else { return false };
+    split == l0
+        && para.rp.widow_control
+        && l1.saturating_sub(l0) > 1
+        && crate::item_bottom(y, para, l0, l1).is_some_and(|bottom| !fits(bottom))
+        && para.lines.get(l0).is_some_and(|l| fits(y + l.top - para.lines.get(l0).map_or(0.0, |f| f.top) + l.height))
+}
+
+/// Whether a cell's only content is a one-line paragraph (not a nested table, picture or
+/// vertically merged cell) that `line_split` moved on although its line fits above `limit`: only
+/// its space after doesn't.
+fn one_line_cell_moves_on(items: &[Placed], splits: &[usize], limit: f32, row_height: f32, own_depth: Option<usize>, areas: &[Rect]) -> bool {
+    // Everything in the cell other than its own area, rules, fills and background picture.
+    let mut content = items.iter().zip(splits.iter().copied()).filter(|(it, _)| match it {
+        Placed::Lines { .. } | Placed::Image { .. } | Placed::Shape { .. } | Placed::Graphic { .. } => true,
+        Placed::Clip { rect, .. } => !areas.contains(rect),
+        Placed::Cell { table, .. } => Some(table.0.len()) > own_depth,
+        _ => false,
+    });
+    let (Some((it, split)), None) = (content.next(), content.next()) else { return false };
+    let Some((para, l0, l1, y)) = text_lines(it) else { return false };
+    // A vertically merged cell runs past this row: not observed, left as it was.
+    let merged =
+        items.iter().any(|c| matches!(c, Placed::Cell { rect, table, .. } if Some(table.0.len()) == own_depth && rect.h > row_height + 0.01));
+    !merged && l0 == 0 && l1 == 1 && para.lines.len() == 1 && split == l0 && para.lines.first().is_some_and(|l| y + l.height <= limit + 0.01)
+}
+
 /// A cell paragraph's placed lines (not turned text): the paragraph, its lines `l0..l1` and the
 /// top of line `l0`.
 fn text_lines(it: &Placed) -> Option<(&ParaLayout, usize, usize, f32)> {
@@ -1532,7 +1603,12 @@ fn column_content(ctx: &mut Ctx, story: StoryRef, t: &Table, style: Option<&Tabl
                     blocks_content(ctx, story, &cell.blocks, text.as_ref(), depth)
                 };
                 any |= hi > 0.0;
-                let need = (lo + m[1] + m[3], hi + m[1] + m[3]);
+                let mut need = (lo + m[1] + m[3], hi + m[1] + m[3]);
+                // A cell set not to wrap keeps its column at least as wide as its point width,
+                // else as its longest paragraph on one line.
+                if span == 1 && !t.props.fixed && is_no_wrap(cell) {
+                    need.0 = need.0.max(no_wrap_dxa(cell).unwrap_or(need.1));
+                }
                 match cols.get_mut(g) {
                     Some(col) if span == 1 => *col = (col.0.max(need.0), col.1.max(need.1)),
                     _ => spanning.push((g, span, need)),
@@ -1679,6 +1755,59 @@ fn para_content(pl: &ParaLayout) -> (f32, f32) {
     (lo.max(word) + indents, hi.max(line) + indents)
 }
 
+/// Whether `cell` is set not to wrap (`w:noWrap`) in a way the column widths follow: not turned
+/// and with no percentage width.
+fn is_no_wrap(cell: &Cell) -> bool {
+    cell.props.no_wrap && !cell.props.text_direction.is_turned() && cell.props.width_pct.is_none()
+}
+
+/// A cell set not to wrap with a point preferred width (`w:tcW` dxa): that width.
+fn no_wrap_dxa(cell: &Cell) -> Option<f32> {
+    is_no_wrap(cell).then_some(cell.props.width).flatten().filter(|w| w.is_finite() && *w > 0.0).map(|w| w.min(1584.0))
+}
+
+/// Each grid column's no-wrap preferred width: the widest point width (`w:tcW` dxa) of a
+/// single-column cell set not to wrap in it (Word: such a column starts from that width and never
+/// gives any of it up).
+fn no_wrap_widths(t: &Table, ncols: usize) -> Vec<Option<f32>> {
+    let mut pins = vec![None; ncols];
+    if t.props.fixed {
+        return pins;
+    }
+    for row in &t.rows {
+        let mut g = row.first_grid();
+        for cell in &row.cells {
+            let span = cell.span();
+            if span == 1
+                && cell.props.vmerge != VMerge::Continue
+                && let (Some(w), Some(pin)) = (no_wrap_dxa(cell), pins.get_mut(g))
+            {
+                *pin = Some(pin.map_or(w, |p: f32| p.max(w)));
+            }
+            g = g.saturating_add(span);
+        }
+    }
+    pins
+}
+
+/// Start each column with a no-wrap preferred width (`pins`) at that width; the other columns
+/// share what is left of the table's width `total` in their current proportions.
+fn pin_no_wrap(grid: &mut [f32], pins: &[Option<f32>], total: f32) {
+    if grid.len() != pins.len() || pins.iter().all(Option::is_none) {
+        return;
+    }
+    let pinned: f32 = pins.iter().flatten().sum();
+    let free: f32 = grid.iter().zip(pins).filter(|(_, p)| p.is_none()).map(|(w, _)| *w).sum();
+    let room = if total.is_finite() { (total - pinned).max(0.0) } else { 0.0 };
+    let k = if free > 0.0 && free.is_finite() { room / free } else { 1.0 };
+    for (w, p) in grid.iter_mut().zip(pins) {
+        *w = match p {
+            Some(p) => *p,
+            None => *w * k,
+        };
+    }
+}
+
 /// Whether nothing in `t` asks for a width (its own or any cell's): its columns then follow
 /// their content alone.
 fn is_automatic(t: &Table) -> bool {
@@ -1707,6 +1836,89 @@ fn apply_cell_widths(t: &Table, grid: &mut [f32]) {
         return;
     }
     grid.copy_from_slice(&widths);
+}
+
+/// The preferred width of every grid column, when each row has one cell per column, each with a
+/// point width (`w:tcW` dxa) and every row agrees; `None` otherwise (spans, skipped columns,
+/// percentages, automatic or differing widths, turned text).
+fn column_preferred_widths(t: &Table, ncols: usize) -> Option<Vec<f32>> {
+    let first = t.rows.first()?;
+    let widths: Vec<f32> = first.cells.iter().map(|c| c.props.width.filter(|w| w.is_finite() && *w > 0.0)).collect::<Option<_>>()?;
+    if widths.len() != ncols {
+        return None;
+    }
+    let same = t.rows.iter().all(|r| {
+        r.first_grid() == 0
+            && r.grid_after() == 0
+            && r.cells.len() == ncols
+            && r.cells.iter().zip(&widths).all(|(c, w)| {
+                c.span() == 1
+                    && c.props.width_pct.is_none()
+                    && !c.props.text_direction.is_turned()
+                    && c.props.width.is_some_and(|cw| (cw - w).abs() < 0.01)
+            })
+    });
+    same.then_some(widths)
+}
+
+/// Word's autofit for a top-level table whose cells' preferred widths (`w:tcW` dxa, the same in
+/// every row) do not add up to its width. Word ignores the saved grid and starts from each
+/// column's preferred width, raised to its longest word (`p`). When the columns then ask for
+/// more than the table's width `W` (`w:tblW` dxa, or the available width when automatic), each
+/// gives up room in proportion to its slack over its longest word; when they ask for less (a
+/// point table width only), they widen to `W` in proportion to `p`. When even the longest words
+/// don't fit in `W`, `None`: the general path keeps today's handling.
+fn preferred_autofit(t: &Table, content: &[(f32, f32)], avail: f32, depth: usize) -> Option<Vec<f32>> {
+    if depth > 1 || t.props.fixed || t.props.width_pct.is_some() || !avail.is_finite() || avail <= 0.0 {
+        return None;
+    }
+    let table_w = match t.props.width {
+        Some(w) if w.is_finite() && w > 0.0 => Some(w.min(1584.0)),
+        Some(_) => return None,
+        None => None,
+    };
+    let pref = column_preferred_widths(t, content.len())?;
+    let asked: f32 = pref.iter().sum();
+    let w = table_w.unwrap_or(avail);
+    // Preferred widths that add up to the table's width keep today's handling (grid and donors).
+    // An automatic table only changes when its columns ask for more than the room and its saved
+    // grid disagrees with them (as Word saves it): a grid that matches the cells is a table
+    // deliberately widened past the margin, which keeps its widths (not measured).
+    let saved: f32 = t.grid.iter().filter(|w| w.is_finite()).sum();
+    if (asked - w).abs() < 0.5 || (table_w.is_none() && (asked <= w || (saved - asked).abs() < 0.5)) {
+        return None;
+    }
+    let mins: Vec<f32> = content.iter().map(|c| c.0).collect();
+    share_preferred(&pref, &mins, w)
+}
+
+/// The column widths for preferred widths `pref` and narrowest widths `mins` (longest word plus
+/// the cell margins) in a table `w` wide: see [`preferred_autofit`]. `None` when the narrowest
+/// widths alone don't fit.
+pub(crate) fn share_preferred(pref: &[f32], mins: &[f32], w: f32) -> Option<Vec<f32>> {
+    let clean = |v: f32| if v.is_finite() { v.clamp(0.0, 1584.0) } else { 0.0 };
+    if pref.len() != mins.len() || !w.is_finite() || w <= 0.0 {
+        return None;
+    }
+    let mins: Vec<f32> = mins.iter().map(|m| clean(*m)).collect();
+    let p: Vec<f32> = pref.iter().zip(&mins).map(|(p, m)| clean(*p).max(*m)).collect();
+    let sum_p: f32 = p.iter().sum();
+    let sum_min: f32 = mins.iter().sum();
+    if sum_min > w {
+        return None;
+    }
+    if sum_p > w {
+        let slack: f32 = p.iter().zip(&mins).map(|(p, m)| p - m).sum();
+        if slack < 0.01 {
+            return None;
+        }
+        let excess = sum_p - w;
+        return Some(p.iter().zip(&mins).map(|(p, m)| (p - excess * (p - m) / slack).max(*m)).collect());
+    }
+    if sum_p < w && sum_p > 0.0 {
+        return Some(p.iter().map(|p| p / sum_p * w).collect());
+    }
+    Some(p)
 }
 
 /// Word's autofit for a table whose widths may follow its content (`tblLayout` not fixed).
