@@ -32,8 +32,8 @@ struct Breaker<'e> {
     shrink_spaces: bool,
     /// A left, right, centred or justified paragraph of a document opened from RTF fits the word
     /// that overruns the line by shrinking its single spaces (`rtf_space_room`) instead, when
-    /// they are all in fixed-pitch fonts; never on lines with tabs. With `\wraptrsp` justified
-    /// paragraphs only (the only ones measured).
+    /// they are all in fixed-pitch fonts; never on lines with tabs. With `\wraptrsp` left and
+    /// justified paragraphs only (the only ones measured).
     rtf_squeeze: bool,
     /// WordPerfect-style justification (`Settings::wp_justification`, below compatibility mode
     /// 15): a justified line fits a word that overruns it by a small share of the line's width
@@ -270,7 +270,8 @@ impl<'e> Breaker<'e> {
             rtf_squeeze: settings.rtf_justification
                 && match rp.align {
                     Align::Justify => true,
-                    Align::Left | Align::Right | Align::Center => !settings.wrap_trail_spaces,
+                    Align::Left => true,
+                    Align::Right | Align::Center => !settings.wrap_trail_spaces,
                     Align::Distribute => false,
                 },
             fixed_pitch: if settings.rtf_justification { pl.styles.iter().map(|st| st.face.is_fixed_pitch()).collect() } else { Vec::new() },
@@ -1142,7 +1143,9 @@ impl Scan {
     /// more line holding only the wrapped spaces and the mark. Not measured, so trailing spaces
     /// still hang as without the option: spaces before a tab or a manual break, spaces after a
     /// word that itself overruns the line (a narrow table cell), after a right, centre or
-    /// decimal tab, and East Asian (ideographic) spaces.
+    /// decimal tab, and East Asian (ideographic) spaces. After a word kept past the edge by the
+    /// RTF space squeeze, the first space of the run after it stays and the others start the next
+    /// line (Word, justified and left-aligned RTF).
     fn space_wraps(&self, bk: &Breaker, pl: &ParaLayout, c: &Cluster) -> bool {
         // An ideographic space is three bytes, a plain one one.
         if !bk.wrap_trail_spaces
@@ -1160,11 +1163,26 @@ impl Scan {
             k -= 1;
         }
         let run_start = self.xs.get(k - self.c0).copied().unwrap_or(self.x);
-        if run_start > self.right_edge + 0.01 || !(self.c0..k).any(|i| pl.clusters.get(i).is_some_and(takes_room)) {
+        if !(self.c0..k).any(|i| pl.clusters.get(i).is_some_and(takes_room)) {
+            return false;
+        }
+        if run_start > self.right_edge + 0.01 && !(k < self.j && self.squeezed_into_line(bk, run_start)) {
             return false;
         }
         let next = pl.clusters.iter().skip(self.j + 1).find(|n| n.kind != ClKind::Space);
         !next.is_some_and(|n| matches!(n.kind, ClKind::Tab | ClKind::LineBreak | ClKind::PageBreak | ClKind::ColumnBreak))
+    }
+
+    /// Whether the text up to `end`, past the right edge, stays on the line by the RTF space
+    /// squeeze: the line's single inner spaces (not the run of spaces after `end`) can give up
+    /// the overrun.
+    fn squeezed_into_line(&self, bk: &Breaker, end: f32) -> bool {
+        if !bk.rtf_squeeze || !self.rtf_after_tab || self.proportional_spaces > 0 {
+            return false;
+        }
+        // A single space just placed after `end` is counted among the singles; it trails.
+        let trailing = if self.space_run.0 == 1 { self.space_run.1 } else { 0.0 };
+        end - self.right_edge < (self.single_space_w - trailing) * RTF_MAX_SPACE_SHRINK
     }
 
     /// Whether `c`, at `j`, ends a field whose result's last item, just before it on this line, is
