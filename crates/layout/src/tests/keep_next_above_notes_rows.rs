@@ -11,8 +11,11 @@
 //! so with room above the notes for the three lines and less than the space after more, the
 //! heading stayed and the paragraph went over alone.
 //!
-//! Change: on a page with notes the check counts that space after too. Without notes it is as
-//! before (row 3 here, row 7), and a kept paragraph at the top of its page never moves (row 6).
+//! Change: on a page with notes referenced on it the check counts that space after too. Without
+//! notes it is as before (row 3 here, row 7), a kept paragraph at the top of its page never moves
+//! (rows 6 and 8), and a page whose only notes are the rest of one continued from the page before
+//! keeps the old check: that rest gives way to the text, and counting the space after there moved a
+//! heading off a page holding only a Word 97-2003 page break's mark (row 9).
 
 #[allow(unused_imports)]
 use crate::*;
@@ -225,4 +228,119 @@ fn row7_summed_spacing_kept_empties_without_notes() {
     let l = lay(&d);
     assert!(n > 0);
     assert!((first..first + 4).all(|b| page_of(&l, b) == 0));
+}
+
+/// Row 8 (review): a numbered heading (list number and tab; keep with next and keep lines) that
+/// reaches page 2 because page 1 filled, then a long paragraph whose first line refers to a note
+/// of `note_lines` lines; with `carried`, a filler near page 1's end refers to a long note that goes
+/// on onto page 2's foot; `after` is the last filler's space after (used up at page 1's end). With
+/// `tail` false only the fillers (to find how many fill page 1).
+fn numbered_doc(fillers: usize, lead: f32, note_lines: usize, carried: bool, after: f32, tail: bool) -> Document {
+    let (mut d, _) = doc_with(fillers, 0, Vec::new(), false, lead);
+    if let Some(Block::Para(last)) = d.body.last_mut().map(Arc::make_mut) {
+        last.props.space_after = Some(after);
+    }
+    if carried {
+        let long = (0..30).map(|j| para(&format!("Carried note line {j}"), &plain())).collect();
+        let id = d.add_part(wordcraft_doc::PartKind::Footnote, long);
+        if let Some(Block::Para(p)) = d.body.get_mut(fillers.saturating_sub(3)).map(Arc::make_mut) {
+            let at = p.text.len();
+            p.insert_object(at, InlineObject::NoteRef { kind: NoteKind::Footnote, id, custom: String::new() }, &Default::default()).unwrap();
+        }
+    }
+    if !tail {
+        return d;
+    }
+    let note = (0..note_lines).map(|j| para(&format!("Long note line {j}"), &plain())).collect();
+    let id = d.add_part(wordcraft_doc::PartKind::Footnote, note);
+    let num = Arc::make_mut(&mut d.numbering).add_list(wordcraft_doc::ListKind::Numbered);
+    let heading = ParaProps {
+        keep_next: Some(true),
+        keep_lines: Some(true),
+        space_before: Some(12.0),
+        space_after: Some(AFTER),
+        numbering: Some(wordcraft_doc::props::NumRef { num, level: 0 }),
+        ..plain()
+    };
+    let mut long = paragraph(&"word ".repeat(400), &plain());
+    long.insert_object(4, InlineObject::NoteRef { kind: NoteKind::Footnote, id, custom: String::new() }, &Default::default()).unwrap();
+    d.body.push(para("General Performance", &heading));
+    d.body.push(para_block(long));
+    d
+}
+
+/// The document of [`numbered_doc`] whose fillers fill page 1 (to within 0.25 pt), and the heading's block.
+fn numbered_top(note_lines: usize, carried: bool, after: f32) -> (Document, usize) {
+    let on_first = |n: usize, lead: f32| {
+        let d = numbered_doc(n, lead, note_lines, carried, after, false);
+        let l = lay(&d);
+        l.pages.len() == 1
+    };
+    let mut n = 1;
+    while n < 400 && on_first(n + 1, 0.0) {
+        n += 1;
+    }
+    let mut lead = 0.0;
+    while lead < 30.0 && on_first(n, lead + 0.25) {
+        lead += 0.25;
+    }
+    (numbered_doc(n, lead, note_lines, carried, after, true), n)
+}
+
+#[test]
+fn row8_numbered_heading_at_the_top_of_a_filled_page_stays_there() {
+    for carried in [false, true] {
+        for after in [0.0, 12.0] {
+            for note_lines in [3, 10, 30, 44, 48, 60] {
+                let (d, h) = numbered_top(note_lines, carried, after);
+                let l = lay(&d);
+                let at = format!("{note_lines} note lines, carried {carried}, after {after}");
+                assert_eq!(page_of(&l, h - 1), 0, "{at}");
+                assert_eq!(page_of(&l, h), 1, "{at}");
+                for (i, p) in l.pages.iter().enumerate() {
+                    assert!(p.items.iter().any(|it| matches!(it, Placed::Lines { story: StoryRef::Body, .. })), "page {i} empty, {at}");
+                }
+            }
+        }
+    }
+}
+
+/// Row 9 (review): a Word 97-2003 page break (its paragraph mark goes to the new page as an empty
+/// line), a note continued from the page before at that page's foot, then the kept heading (12 pt
+/// before and `after`) and a long paragraph whose first line refers to a note of its own. The
+/// carried note gives way to the text, so the heading's space after does not count there.
+fn after_split_break(carried_lines: usize, after: f32) -> (Document, usize) {
+    let (mut d, _) = doc_with(2, 0, Vec::new(), false, 0.0);
+    d.settings.split_pg_break_and_para_mark = true;
+    d.settings.compat_mode = 11;
+    let carried = (0..carried_lines).map(|j| para(&format!("Carried note line {j}"), &plain())).collect();
+    let id = d.add_part(wordcraft_doc::PartKind::Footnote, carried);
+    if let Some(Block::Para(p)) = d.body.get_mut(1).map(Arc::make_mut) {
+        let at = p.text.len();
+        p.insert_object(at, InlineObject::NoteRef { kind: NoteKind::Footnote, id, custom: String::new() }, &Default::default()).unwrap();
+    }
+    d.body.push(para(&wordcraft_doc::para::PAGE_BREAK.to_string(), &plain()));
+    let note = (0..3).map(|j| para(&format!("Note line {j}"), &plain())).collect();
+    let id = d.add_part(wordcraft_doc::PartKind::Footnote, note);
+    let heading = ParaProps { keep_next: Some(true), keep_lines: Some(true), space_before: Some(12.0), space_after: Some(after), ..plain() };
+    let mut long = paragraph(&"word ".repeat(400), &plain());
+    long.insert_object(4, InlineObject::NoteRef { kind: NoteKind::Footnote, id, custom: String::new() }, &Default::default()).unwrap();
+    d.body.push(para("General Performance", &heading));
+    d.body.push(para_block(long));
+    let h = d.body.len() - 2;
+    (d, h)
+}
+
+/// Row 9: whatever the size of the carried note, the heading's space after does not decide its
+/// page there, so it never leaves the page holding only the break's mark when it would stay
+/// without that space (it did with a carried note of about 79 lines here).
+#[test]
+fn row9_carried_note_after_a_split_break_mark() {
+    for carried_lines in 60..110 {
+        let page = |after: f32| {
+            let (d, h) = after_split_break(carried_lines, after);
+            page_of(&lay(&d), h)
+        };
+        assert_eq!(page(AFTER), page(0.0), "{carried_lines} carried note lines");
+    }
 }

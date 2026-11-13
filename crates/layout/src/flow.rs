@@ -426,10 +426,13 @@ impl<'a> Flow<'a> {
             // With the table rows a kept paragraph moves with; when those cannot fit on an empty
             // column with it, the fixed start of the table, as before.
             let room = pb.next_room(self.body_top);
-            // On a page with footnotes the space after it pushes the next paragraph's lines down
-            // toward the note area too (the part of it the next paragraph's space before, counted
-            // there, doesn't already cover). Without notes the check stays as it was.
-            let height = if pb.notes.is_empty() { height } else { height + space_after_over_next(ctx, self.block, rp, self.list) };
+            // On a page with footnotes referenced on it the space after it pushes the next
+            // paragraph's lines down toward the note area too (the part of it the next
+            // paragraph's space before, counted there, doesn't already cover). Without notes, or
+            // with only the rest of a note continued from the page before (which gives way to the
+            // text and goes on to the next page), the check stays as it was.
+            let own_notes = pb.notes.iter().any(|n| !n.cont);
+            let height = if own_notes { height + space_after_over_next(ctx, self.block, rp, self.list) } else { height };
             let rows = height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), Some(room));
             if rows <= room + 0.01 { rows } else { height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), None) }
         } else {
