@@ -427,6 +427,7 @@ impl Relink<'_> {
                     }
                     for row in t.rows.iter_mut() {
                         self.shift_change(&mut row.props.fmt_change);
+                        row.props.del = row.props.del.and_then(|r| self.rev_id(r));
                         for cell in row.cells.iter_mut() {
                             self.shift_change(&mut cell.props.fmt_change);
                             todo.extend(cell.blocks.iter_mut().map(Arc::make_mut));

@@ -2,8 +2,8 @@ use super::boxes::{BoxInput, BoxLayout, Edges, joined, layout_box, push_para};
 use super::cache::has_page_number_fields;
 use super::ctx::Ctx;
 use super::floats::{
-    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, late_floats, place_late,
-    place_objects, square_float_past,
+    FloatAnchor, LateFloats, ObjFrame, ObjectPlacement, anchor_floats, body_wraps, continued_exclusions, fitting, floating, late_floats,
+    no_room_beside_shifted, place_late, place_objects, square_float_past,
 };
 use super::notes::{DECOR_STORY, NoteBox, para_notes};
 use super::page::{PageBuilder, PageFrame, item_bottom};
@@ -516,16 +516,57 @@ impl<'a> Flow<'a> {
             // by an earlier paragraph's object has nothing to move with and stays as before.
             let pushed =
                 fit.l1 == 0 && l.top > 0.01 && self.p.objects.iter().any(|o| floating(o).is_some_and(|(_, _, f)| f.wrap == Wrap::TopAndBottom));
-            if over && fit.l1 == l0 && !pb.fresh() && !split && (pushed || !self.stays_at_bottom(pb, l)) {
+            let fresh = pb.fresh() && !pb.pinned_room_ahead();
+            if over && fit.l1 == l0 && !fresh && !split && (pushed || !self.stays_at_bottom(pb, l)) {
                 break;
             }
+            let mine = fit.notes.len();
             fit.notes.extend(line_notes);
             fit.l1 += 1;
-            if self.ends_page(pb, l, &ctx.doc.settings, &mut fit) || split {
+            if self.ends_page(pb, l, &ctx.doc.settings, &mut fit) {
+                break;
+            }
+            if split {
+                self.keep_last_line(ctx, pb, &mut fit, notes, (lead, first_top, mine));
                 break;
             }
         }
         fit
+    }
+
+    /// The line just taken (`fit.l1` is after it) ends the page because its notes overflow
+    /// ([`notes_split`]). When only the paragraph's last line is left and widow control would take
+    /// this line back to the next page with it, Word keeps the last line here too, if it fits
+    /// above the notes that must stay: those of the lines before, whole (or, when this line's
+    /// first note starts the page's notes, that note's first piece). This line's notes then give
+    /// way to it in the same split at the page's foot ([`PageBuilder::flush_notes`]): whole while
+    /// they fit, the first that doesn't split at a line or carried whole, and the last line's own
+    /// notes are carried after them. `mine` is where this line's notes start in `fit.notes`.
+    fn keep_last_line(&self, ctx: &mut Ctx, pb: &PageBuilder, fit: &mut Fit, notes: &[(usize, u32)], (lead, first_top, mine): (f32, f32, usize)) {
+        let (pl, n) = (&self.pl, self.n());
+        if pb.web || fit.forced.is_some() || fit.l1 + 1 != n || !pl.rp.widow_control || self.settled_end(pb, fit) >= fit.l1 {
+            return;
+        }
+        let Some(last) = pl.lines.get(fit.l1).filter(|l| !l.beside) else { return };
+        let bottom = pb.y + lead + (last.top + fit_height(pb, last, &pl.rp, false) - first_top);
+        let kept = fit.notes.get(..mine).unwrap_or(&[]);
+        let before: f32 = pb.notes.iter().chain(kept).map(|n| n.h).sum();
+        // The page's first note always leaves something on it (`flush_notes`).
+        let first = if pb.notes.is_empty() && kept.is_empty() {
+            match fit.notes.get(mine) {
+                Some(f) => f.first_piece() + pb.seps().notice_h(),
+                None => return,
+            }
+        } else {
+            0.0
+        };
+        let sep = pb.seps().sep_h(pb.notes.first().is_some_and(|n| n.cont));
+        if pb.note_floor().max(bottom) + sep + before + first > pb.orig_bottom + 0.01 {
+            return;
+        }
+        let last_notes = notes_on_line(ctx, pb, last, notes, &fit.notes);
+        fit.notes.extend(last_notes);
+        fit.l1 += 1;
     }
 
     /// Whether the line may overflow the page: one holding nothing but a page or column break stays
@@ -613,6 +654,23 @@ impl<'a> Flow<'a> {
             (pb.sect.page_h, pb.sect.page_h - next_top)
         };
         square_float_past(self.p, &self.float_rects, self.anchor_y, limit, room)
+    }
+
+    /// Before `compatibilityMode` 15 a `wp:wrapSquare` object that would end below the paper is
+    /// moved up onto it ([`crate::floats::onto_paper`]). When that leaves the paragraph's first
+    /// line no room beside it (the line went below it), the objects are placed again as
+    /// positioned, and [`Flow::square_float_past`] decides whether the paragraph moves on.
+    fn keep_line_room(&mut self, ctx: &mut Ctx, pb: &mut PageBuilder) {
+        if self.l0 != 0 || self.float_rects.is_empty() || ctx.doc.settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT {
+            return;
+        }
+        let Some(first) = self.pl.lines.first() else { return };
+        let line = (pb.y + first.top, first.top > 0.01);
+        if no_room_beside_shifted(self.p, &self.float_rects, line, pb.sect.page_h) {
+            pb.unshifted = Some(self.block);
+            let y0 = pb.y;
+            self.reanchor(ctx, pb, (y0, (y0 - self.anchor_y).max(0.0)), &[]);
+        }
     }
 
     /// Put the lines `l0..fit.l1` on the page, with their notes, objects and line numbers.
@@ -971,6 +1029,9 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
         f.reanchor(ctx, pb, (y0, applied_before), &[]);
         f.anchor_y = y0 - applied_before;
     }
+    if !pb.fresh() && !pb.web {
+        f.keep_line_room(ctx, pb);
+    }
     if !pb.fresh() && !pb.web && f.square_float_past(ctx, pb) {
         f.move_on(ctx, pb);
     }
@@ -990,7 +1051,7 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
             continue;
         }
         if fit.l1 == f.l0 {
-            if !pb.fresh() {
+            if !pb.fresh() || pb.pinned_room_ahead() {
                 f.move_on(ctx, pb);
                 continue;
             }

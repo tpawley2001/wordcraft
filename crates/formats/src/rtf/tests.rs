@@ -1900,3 +1900,30 @@ mod underline_styles;
 mod unicode_surrogates;
 mod widow_control;
 mod wrap_trail_spaces;
+
+/// A font entry's `\fcharset` and `{\*\panose …}` mark a symbol font in the settings (lowercase
+/// name); a PANOSE that isn't exactly 20 hex digits is ignored, and the stored name is unchanged.
+#[test]
+fn panose_and_charset_mark_symbol_class_fonts() {
+    let marked = |entry: &str| {
+        let rtf = format!("{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}{{\\f1{entry} Zzyx Madeup;}}}}{{\\f1 x}}\\par}}");
+        import(rtf.as_bytes()).unwrap().settings.symbol_class_fonts
+    };
+    assert_eq!(marked("\\fnil\\fcharset2{\\*\\panose 05010101010101010101}"), ["zzyx madeup"]);
+    assert_eq!(marked("\\fnil\\fcharset0{\\*\\panose 05050102010706020507}"), ["zzyx madeup"]);
+    assert_eq!(marked("\\froman\\fcharset2{\\*\\panose 02020603050405020304}"), ["zzyx madeup"]);
+    for entry in [
+        "\\fnil\\fcharset2",
+        "\\fnil\\fcharset0",
+        "\\fnil\\fcharset2{\\*\\panose 00000000000000000000}",
+        "\\froman\\fcharset0{\\*\\panose 02020603050405020304}",
+        "\\fnil\\fcharset2{\\*\\panose 0501010101010101010}",
+        "\\fnil\\fcharset2{\\*\\panose 0501010101010101010101}",
+        "\\fnil\\fcharset2{\\*\\panose 05zz0101010101010101}",
+    ] {
+        assert!(marked(entry).is_empty(), "{entry}");
+    }
+    // The next entry starts afresh: f2 has no PANOSE of its own.
+    let rtf = br"{\rtf1\ansi{\fonttbl{\f1\fcharset2{\*\panose 05010101010101010101}Zzyx One;}{\f2\fcharset2 Zzyx Two;}}x\par}";
+    assert_eq!(import(rtf).unwrap().settings.symbol_class_fonts, ["zzyx one"]);
+}

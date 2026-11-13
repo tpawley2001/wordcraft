@@ -580,18 +580,24 @@ fn tblpr_inner(w: &mut W, t: &TableProps) {
     }
 }
 
-/// `w:trPr` (when the row has any), with a tracked change last as for [`tblpr`].
-pub fn trpr(w: &mut W, r: &RowProps, change: Option<&ChangeAttrs>) {
+/// `w:trPr` (when the row has any), with a tracked change last as for [`tblpr`]. `del` is the
+/// row's own tracked deletion (`w:del`, §17.13.5.12), written after the row properties and
+/// before `w:trPrChange` (CT_TrPr).
+pub fn trpr(w: &mut W, r: &RowProps, change: Option<&ChangeAttrs>, del: Option<&ChangeAttrs>) {
     if let Some(x) = &r.exceptions {
         tblprex(w, x);
     }
     let change = change.zip(r.fmt_change.as_ref());
     let gaps = r.grid_before > 0 || r.grid_after > 0 || r.w_before.is_some() || r.w_after.is_some();
-    if r.height.is_none() && !r.header && !r.cant_split && !gaps && r.div_id.is_none() && change.is_none() {
+    if r.height.is_none() && !r.header && !r.cant_split && !gaps && r.div_id.is_none() && change.is_none() && del.is_none() {
         return;
     }
     w.open("w:trPr", &[]);
     trpr_inner(w, r);
+    if let Some(a) = del {
+        let refs: Vec<(&str, &str)> = a.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        w.empty("w:del", &refs);
+    }
     if let Some((a, ch)) = change {
         change_el(w, "w:trPrChange", "w:trPr", a, |w| trpr_inner(w, &ch.old));
     }
