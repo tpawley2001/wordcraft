@@ -4,6 +4,7 @@ use wordcraft_doc::para::InlineObject;
 use wordcraft_doc::props::{Align, Border, BorderStyle, Borders, ParaProps, TextDirection};
 use wordcraft_doc::{Pos, Table};
 
+mod autofit_preferred;
 mod autospace;
 mod autospace_legacy_lists;
 mod balance_pinned_floats;

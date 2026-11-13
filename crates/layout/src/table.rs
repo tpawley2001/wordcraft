@@ -468,7 +468,10 @@ fn table_frame(ctx: &mut Ctx, story: StoryRef, t: &Table, avail: f32, depth: usi
         let content = column_content(ctx, story, t, style, depth, &grid);
         ctx.eq_count = eq_count;
         if let Some(content) = content {
-            autofit(&mut grid, &content, t, avail);
+            match preferred_autofit(t, &content, avail, depth) {
+                Some(widths) => grid.copy_from_slice(&widths),
+                None => autofit(&mut grid, &content, t, avail),
+            }
             // Never wider than the room it had, however long an unbreakable word.
             let fitted: f32 = grid.iter().sum();
             let cap = avail.max(total);
@@ -1707,6 +1710,89 @@ fn apply_cell_widths(t: &Table, grid: &mut [f32]) {
         return;
     }
     grid.copy_from_slice(&widths);
+}
+
+/// The preferred width of every grid column, when each row has one cell per column, each with a
+/// point width (`w:tcW` dxa) and every row agrees; `None` otherwise (spans, skipped columns,
+/// percentages, automatic or differing widths, turned text).
+fn column_preferred_widths(t: &Table, ncols: usize) -> Option<Vec<f32>> {
+    let first = t.rows.first()?;
+    let widths: Vec<f32> = first.cells.iter().map(|c| c.props.width.filter(|w| w.is_finite() && *w > 0.0)).collect::<Option<_>>()?;
+    if widths.len() != ncols {
+        return None;
+    }
+    let same = t.rows.iter().all(|r| {
+        r.first_grid() == 0
+            && r.grid_after() == 0
+            && r.cells.len() == ncols
+            && r.cells.iter().zip(&widths).all(|(c, w)| {
+                c.span() == 1
+                    && c.props.width_pct.is_none()
+                    && !c.props.text_direction.is_turned()
+                    && c.props.width.is_some_and(|cw| (cw - w).abs() < 0.01)
+            })
+    });
+    same.then_some(widths)
+}
+
+/// Word's autofit for a top-level table whose cells' preferred widths (`w:tcW` dxa, the same in
+/// every row) do not add up to its width. Word ignores the saved grid and starts from each
+/// column's preferred width, raised to its longest word (`p`). When the columns then ask for
+/// more than the table's width `W` (`w:tblW` dxa, or the available width when automatic), each
+/// gives up room in proportion to its slack over its longest word; when they ask for less (a
+/// point table width only), they widen to `W` in proportion to `p`. When even the longest words
+/// don't fit in `W`, `None`: the general path keeps today's handling.
+fn preferred_autofit(t: &Table, content: &[(f32, f32)], avail: f32, depth: usize) -> Option<Vec<f32>> {
+    if depth > 1 || t.props.fixed || t.props.width_pct.is_some() || !avail.is_finite() || avail <= 0.0 {
+        return None;
+    }
+    let table_w = match t.props.width {
+        Some(w) if w.is_finite() && w > 0.0 => Some(w.min(1584.0)),
+        Some(_) => return None,
+        None => None,
+    };
+    let pref = column_preferred_widths(t, content.len())?;
+    let asked: f32 = pref.iter().sum();
+    let w = table_w.unwrap_or(avail);
+    // Preferred widths that add up to the table's width keep today's handling (grid and donors).
+    // An automatic table only changes when its columns ask for more than the room and its saved
+    // grid disagrees with them (as Word saves it): a grid that matches the cells is a table
+    // deliberately widened past the margin, which keeps its widths (not measured).
+    let saved: f32 = t.grid.iter().filter(|w| w.is_finite()).sum();
+    if (asked - w).abs() < 0.5 || (table_w.is_none() && (asked <= w || (saved - asked).abs() < 0.5)) {
+        return None;
+    }
+    let mins: Vec<f32> = content.iter().map(|c| c.0).collect();
+    share_preferred(&pref, &mins, w)
+}
+
+/// The column widths for preferred widths `pref` and narrowest widths `mins` (longest word plus
+/// the cell margins) in a table `w` wide: see [`preferred_autofit`]. `None` when the narrowest
+/// widths alone don't fit.
+pub(crate) fn share_preferred(pref: &[f32], mins: &[f32], w: f32) -> Option<Vec<f32>> {
+    let clean = |v: f32| if v.is_finite() { v.clamp(0.0, 1584.0) } else { 0.0 };
+    if pref.len() != mins.len() || !w.is_finite() || w <= 0.0 {
+        return None;
+    }
+    let mins: Vec<f32> = mins.iter().map(|m| clean(*m)).collect();
+    let p: Vec<f32> = pref.iter().zip(&mins).map(|(p, m)| clean(*p).max(*m)).collect();
+    let sum_p: f32 = p.iter().sum();
+    let sum_min: f32 = mins.iter().sum();
+    if sum_min > w {
+        return None;
+    }
+    if sum_p > w {
+        let slack: f32 = p.iter().zip(&mins).map(|(p, m)| p - m).sum();
+        if slack < 0.01 {
+            return None;
+        }
+        let excess = sum_p - w;
+        return Some(p.iter().zip(&mins).map(|(p, m)| (p - excess * (p - m) / slack).max(*m)).collect());
+    }
+    if sum_p < w && sum_p > 0.0 {
+        return Some(p.iter().map(|p| p / sum_p * w).collect());
+    }
+    Some(p)
 }
 
 /// Word's autofit for a table whose widths may follow its content (`tblLayout` not fixed).
