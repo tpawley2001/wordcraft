@@ -79,6 +79,7 @@ mod picture_glue;
 mod picture_glue_touching;
 mod pushed_by_earlier_float;
 mod row_exception_no_borders;
+mod row_split_one_line_cell;
 mod rtf_justify_squeeze;
 mod rtf_squeeze_after_tab;
 mod rtf_squeeze_any_align;
@@ -4472,11 +4473,14 @@ fn row_content_pieces(text: &str, props: ParaProps, room: f32) -> Vec<(usize, us
         .collect()
 }
 
+/// A one-line "Label" whose line fits but whose 8pt after doesn't would keep nothing on the
+/// page, so the whole row moves on (Word leaves no cell empty beside its neighbours' first lines;
+/// probes in `tests/row_split_one_line_cell.rs`). Two lines with room for the first split there.
 #[test]
 fn row_split_ignores_afterspace() {
     crate::test_fonts();
     let two = ["Top", "Bottom"].join(&wordcraft_doc::para::LINE_BREAK.to_string());
-    for (text, room, expected) in [("Label", 18.0, vec![(0, 1), (1, 3)]), (two.as_str(), 32.0, vec![(0, 2), (2, 2)])] {
+    for (text, room, expected) in [("Label", 18.0, vec![(0, 0), (1, 4)]), (two.as_str(), 32.0, vec![(0, 2), (2, 2)])] {
         let props = ParaProps { space_after: Some(8.0), widow_control: Some(true), ..Default::default() };
         assert_eq!(row_content_pieces(text, props, room), expected, "text={text:?}, room={room}");
     }

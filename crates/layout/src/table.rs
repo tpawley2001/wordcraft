@@ -1014,6 +1014,33 @@ fn split_row_with(row: &RowLayout, cut: f32, whole_cells: bool) -> Option<(RowLa
             return None;
         }
     }
+    // A cell holding only a one-line paragraph whose line fits but whose space after doesn't
+    // would keep nothing here: Word moves the whole row on rather than leave that cell empty
+    // beside the others' first lines, in every compatibility mode (measured in Word 16.0 with
+    // synthetic documents). Not for a row that starts its page: it could never fit better.
+    if whole_cells {
+        for (items, splits) in cells.iter().zip(&splits) {
+            // Everything in the cell other than its own area, rules, fills and background.
+            let content: Vec<(&Placed, usize)> = items
+                .iter()
+                .zip(splits.iter().copied())
+                .filter(|(it, _)| match it {
+                    Placed::Lines { .. } | Placed::Image { .. } | Placed::Shape { .. } | Placed::Graphic { .. } => true,
+                    Placed::Clip { .. } => !background(it),
+                    Placed::Cell { table, .. } => Some(table.0.len()) > own_depth,
+                    _ => false,
+                })
+                .collect();
+            let [(it, split)] = content.as_slice() else { continue };
+            let Some((para, l0, l1, y)) = text_lines(it) else { continue };
+            // A vertically merged cell runs past this row: not observed, left as it was.
+            let merged =
+                items.iter().any(|c| matches!(c, Placed::Cell { rect, table, .. } if Some(table.0.len()) == own_depth && rect.h > row.height + 0.01));
+            if !merged && l0 == 0 && l1 == 1 && para.lines.len() == 1 && *split == l0 && para.lines.first().is_some_and(|l| fits(y + l.height)) {
+                return None;
+            }
+        }
+    }
     align_in_part(row, &mut cells, &splits, &realign, &mut ends, cut);
     // The top of the first thing that moves on in each cell.
     let mut moved = vec![f32::MAX; cells.len()];
