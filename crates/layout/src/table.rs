@@ -534,7 +534,33 @@ fn table_frame(ctx: &mut Ctx, story: StoryRef, t: &Table, avail: f32, depth: usi
 /// and deletions are hidden. Only the row's own mark does that; deleted text in its cells
 /// leaves an empty row.
 fn row_hidden(ctx: &Ctx, row: &Row) -> bool {
-    ctx.hide_deleted.hides(ctx.doc, row.props.del)
+    ctx.hide_deleted.hides(ctx.doc, row.props.del) || (row.props.hidden && !ctx.opts.show_hidden && hidden_row_content(ctx, row, 0))
+}
+
+/// Deepest nesting of tables [`hidden_row_content`] looks into; deeper content counts as shown.
+const MAX_HIDDEN_DEPTH: usize = 8;
+
+/// Whether everything in `row`'s cells is hidden text: every paragraph has a hidden mark and no
+/// run that is not hidden (an empty paragraph with a hidden mark counts as hidden). With its row
+/// mark hidden (`RowProps::hidden`, `w:trPr/w:hidden`) such a row takes no room, as Word lays
+/// it out; a row with any shown text or cell mark keeps its room. Not measured in Word: a cell
+/// holding a nested table counts as hidden when every row of that table is left out by the same
+/// rule, and an object counts as shown unless its run is hidden.
+fn hidden_row_content(ctx: &Ctx, row: &Row, depth: usize) -> bool {
+    if depth > MAX_HIDDEN_DEPTH {
+        return false;
+    }
+    let hidden = |c: &wordcraft_doc::props::CharProps, style: Option<&str>| ctx.doc.styles.resolve_char(style, c).hidden;
+    let para_hidden = |p: &Paragraph| {
+        let style = p.props.style.as_deref();
+        hidden(&p.mark, style) && p.run_ranges().all(|(r, c)| r.is_empty() || hidden(c, style))
+    };
+    row.cells.iter().all(|cell| {
+        cell.blocks.iter().all(|b| match &**b {
+            Block::Para(p) => para_hidden(p),
+            Block::Table(t) => t.rows.iter().all(|r| r.props.hidden && hidden_row_content(ctx, r, depth + 1)),
+        })
+    })
 }
 
 /// Whether every row of `t` is left out ([`row_hidden`]): the table takes no room at all.

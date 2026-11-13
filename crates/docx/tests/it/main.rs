@@ -30,6 +30,7 @@ mod field_code_paragraphs;
 mod fixtures;
 mod glossary;
 mod heading_levels;
+mod hidden_row;
 mod hyperlink_screen_tips;
 mod keep_break_off;
 mod legacy_forms;
