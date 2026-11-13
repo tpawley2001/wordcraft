@@ -690,8 +690,10 @@ fn layout_shown(ctx: &mut Ctx, story: StoryRef, t: &Table, map: &[usize], path: 
             // border): the border's width sits on top of the cell margin.
             let band = |b: Option<Border>| b.filter(Border::is_visible).map_or(0.0, |b| b.drawn_width().clamp(0.0, 12.0));
             let (band_t, band_b) = (band(borders.top), if ri + 1 == nrows { band(borders.bottom) } else { 0.0 });
-            // A shared edge painted by the row above still clears this cell's text and minimum.
-            let band_t = if band_t > 0.0 || cell.props.vmerge == VMerge::Continue {
+            // Where two rows meet, the edge is as thick as the wider of the row above's bottom border
+            // and this cell's top border, and this cell's text and minimum clear all of it (a thick
+            // rule under a header row pushes the next row down even when its own top line is thin).
+            let band_t = if cell.props.vmerge == VMerge::Continue {
                 band_t
             } else {
                 rows.last()
@@ -705,7 +707,7 @@ fn layout_shown(ctx: &mut Ctx, story: StoryRef, t: &Table, map: &[usize], path: 
                             })
                     })
                     .map(|above| band(above.borders.bottom))
-                    .fold(0.0, f32::max)
+                    .fold(band_t, f32::max)
             };
             let insets = margins[0] + margins[2] + band_t + band_b;
             let turn = cell.props.text_direction;

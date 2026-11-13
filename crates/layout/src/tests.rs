@@ -90,6 +90,7 @@ mod rtf_squeeze_any_align;
 mod rtf_wraptrsp_squeeze;
 mod rtl_gutter_vertical;
 mod section_pages_blank;
+mod shared_row_edge;
 mod split_break_mark;
 mod square_float_page_fit;
 mod square_float_paper_shift;
