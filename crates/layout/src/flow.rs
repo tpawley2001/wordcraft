@@ -580,11 +580,16 @@ impl<'a> Flow<'a> {
     /// one of its own).
     fn stays_at_bottom(&self, pb: &PageBuilder, l: &para::Line) -> bool {
         let p = self.p;
-        let only_break = matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak)
-            && p.text
-                .get(l.start..l.stop)
-                .is_some_and(|t| t.chars().all(|c| matches!(c, wordcraft_doc::para::PAGE_BREAK | wordcraft_doc::para::COLUMN_BREAK)));
+        let only_break = matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak) && self.only_breaks(l);
         only_break || (pb.next_starts_page && p.section.is_some() && p.text.is_empty())
+    }
+
+    /// Whether the line holds nothing but page and column breaks.
+    fn only_breaks(&self, l: &para::Line) -> bool {
+        self.p
+            .text
+            .get(l.start..l.stop)
+            .is_some_and(|t| t.chars().all(|c| matches!(c, wordcraft_doc::para::PAGE_BREAK | wordcraft_doc::para::COLUMN_BREAK)))
     }
 
     /// Whether the line holds nothing but a column break (and zero-width markers or floating
@@ -712,7 +717,15 @@ impl<'a> Flow<'a> {
             && let Some(placed_bottom) = item_bottom(y, &self.pl, l0, l1)
             && placed_bottom > pb.bottom + 0.01
         {
-            pb.bottom = pb.note_floor().max(placed_bottom).min(pb.orig_bottom);
+            // A page break on a line of its own, kept at the foot of a full page, takes no room
+            // from the notes: they are placed as if the line were not there (measured in Word).
+            let lone_break =
+                l1 == l0 + 1 && !fit.mark_with_break && self.pl.lines.get(l0).is_some_and(|l| l.end == LineEnd::PageBreak && self.only_breaks(l));
+            if lone_break {
+                pb.mark_floor = Some(pb.note_floor());
+            } else {
+                pb.bottom = pb.note_floor().max(placed_bottom).min(pb.orig_bottom);
+            }
         }
         let mut items = Vec::new();
         let mut edges = Edges { top: if l0 == 0 { rooms.top } else { 0.0 }, bottom: if l1 >= n { rooms.bottom } else { 0.0 }, up: 0.0 };

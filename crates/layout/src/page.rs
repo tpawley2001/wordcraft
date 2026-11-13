@@ -108,6 +108,10 @@ pub(crate) struct PageBuilder<'a> {
     /// Floating objects held where the section's first, unbalanced layout put them while its
     /// columns are balanced (compatibility mode below 15, see `balance_columns`).
     pub(crate) pins: Vec<Pin>,
+    /// The bottom of the body text above a line that stays on this page without counting for the
+    /// footnote area (a page break on a line of its own kept at the foot of a full page): the
+    /// notes go below this, not below that line.
+    pub(crate) mark_floor: Option<f32>,
 }
 
 /// A floating object anchored in paragraph `block` (object `oi`) that keeps `rect` on page
@@ -251,20 +255,22 @@ impl PageBuilder<'_> {
     /// that doesn't is split at a line and its rest, with the notes after it, continues on the
     /// next page.
     pub(crate) fn flush_notes(&mut self) {
+        let mark_floor = self.mark_floor.take();
         if self.notes.is_empty() {
             return;
         }
+        let floor = mark_floor.unwrap_or_else(|| self.note_floor());
         let total = self.notes_h();
         let in_col = self.col_notes();
         let (x, width) = if in_col { (self.col_x(), self.col_w()) } else { (self.sect.text_left(self.mirror), self.sect.text_width()) };
         let seps = self.seps().clone();
         // The note area starts below the text (a page of continued notes alone: at its top).
-        let area = self.bottom.max(self.note_floor());
+        let area = self.bottom.max(floor);
         let fits = total <= self.orig_bottom - area + 0.01;
         let top = match (fits, self.beneath) {
             (false, _) => area,
             // Below the page's last line of text.
-            (true, true) => self.body_floor().min(self.orig_bottom - total),
+            (true, true) => mark_floor.unwrap_or_else(|| self.body_floor()).min(self.orig_bottom - total),
             (true, false) => self.orig_bottom - total,
         };
         let notes = std::mem::take(&mut self.notes);
