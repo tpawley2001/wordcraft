@@ -192,6 +192,10 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
     wr.embeds.custom_xml_rels("P", &mut root);
     wr.embeds.unmodelled_rels("D", &mut rels);
     wr.embeds.unmodelled_rels("P", &mut root);
+    if let Some(fit) = &doc.fit_state {
+        rels.add(rt::CUSTOM_XML, &crate::package::relative("word/document.xml", crate::fit::PART), false);
+        push_part(&mut entries, &mut overrides, crate::fit::PART, crate::fit::write(fit)?, "application/xml", PartRels::default());
+    }
     // Parts of embedded objects and custom XML stores kept from the file.
     for (name, bytes, ct, prels) in std::mem::take(&mut wr.embeds.parts) {
         push_part(&mut entries, &mut overrides, &name, bytes, &ct, prels);
@@ -291,14 +295,19 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
     w.close("Types");
     entries.insert(0, ("[Content_Types].xml".into(), w.into_bytes()));
     anchor_unreferenced_comments(&wr, &mut entries, body_anchor);
-    for (name, bytes) in &mut entries {
+    modernize_beta_w15_parts(&mut entries);
+    Ok(entries)
+}
+
+/// [`modernize_beta_w15`] over every XML part of the package.
+fn modernize_beta_w15_parts(entries: &mut [(String, Vec<u8>)]) {
+    for (name, bytes) in entries {
         if name.rsplit_once('.').is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("xml"))
             && let Some(rewritten) = modernize_beta_w15(name, bytes)
         {
             *bytes = rewritten;
         }
     }
-    Ok(entries)
 }
 
 fn anchor_unreferenced_comments(wr: &Writer<'_>, entries: &mut [(String, Vec<u8>)], body_anchor: (usize, usize)) {
