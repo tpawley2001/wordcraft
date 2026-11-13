@@ -22,17 +22,18 @@ struct ListDef {
 }
 
 /// One LVL, as stored ([MS-DOC] §2.9.182): LVLF fields, the two grpprls and the number text.
-struct RawLvl {
-    start: u32,
-    nfc: u8,
-    jc: u8,
-    flags: u8,
-    ixch_follow: u8,
-    rgbxch_nums: [u8; 9],
-    papx: Vec<u8>,
-    chpx: Vec<u8>,
+#[derive(Default)]
+pub(crate) struct RawLvl {
+    pub(crate) start: u32,
+    pub(crate) nfc: u8,
+    pub(crate) jc: u8,
+    pub(crate) flags: u8,
+    pub(crate) ixch_follow: u8,
+    pub(crate) rgbxch_nums: [u8; 9],
+    pub(crate) papx: Vec<u8>,
+    pub(crate) chpx: Vec<u8>,
     /// The number text with each placeholder left as its raw char.
-    xst: Vec<u16>,
+    pub(crate) xst: Vec<u16>,
 }
 
 /// One UTF-16 unit of a level's number text ([MS-DOC] §2.9.150 LVL `xst`) as a character.
@@ -249,8 +250,32 @@ fn skip_lfodatas(table: &[u8], mut off: usize, n: u8) -> usize {
     off
 }
 
+/// The position (points) of the last list tab stop ([MS-DOC] §2.9.304 TBD, `jc` 6) that a
+/// `sprmPChgTabsPapx` or `sprmPChgTabs` Prl adds; `None` for any other Prl or no such stop.
+/// Operand: cb, itbdDelMax, rgdxaDel (sprmPChgTabs: also rgdxaClose), itbdAddMax, rgdxaAdd,
+/// rgtbdAdd. Counts are capped and every read is bounds-checked: the bytes are untrusted.
+fn list_tab(prl: &sprm::Prl) -> Option<f32> {
+    if prl.op != sprm::P_CHG_TABS && prl.op != sprm::P_CHG_TABS_PAPX {
+        return None;
+    }
+    let op = prl.operand;
+    let del = usize::from((*op.get(1)?).min(64));
+    let per_del = if prl.op == sprm::P_CHG_TABS { 4 } else { 2 };
+    let at = 2 + del * per_del;
+    let add = usize::from((*op.get(at)?).min(64));
+    let at = at + 1;
+    let mut found = None;
+    for k in 0..add {
+        let (Some(b), Some(&tbd)) = (op.get(at + 2 * k..at + 2 * k + 2), op.get(at + 2 * add + k)) else { break };
+        if tbd & 7 == 6 {
+            found = Some(f32::from(i16::from_le_bytes([b[0], b[1]])) / 20.0);
+        }
+    }
+    found
+}
+
 /// Turn a stored LVL into a model level.
-fn level_of(l: &RawLvl, lvl_index: usize, fonts: &[String]) -> Level {
+pub(crate) fn level_of(l: &RawLvl, lvl_index: usize, fonts: &[String]) -> Level {
     // Number text: characters listed in rgbxchNums are level placeholders (their value is
     // the zero-based level); symbol-font bullets carry 0xF000 flag bits to strip. The text is
     // UTF-16, so a surrogate pair is one character.
@@ -282,7 +307,10 @@ fn level_of(l: &RawLvl, lvl_index: usize, fonts: &[String]) -> Level {
         }
     }
     let indent = props.indent_left.unwrap_or(18.0 * (lvl_index as f32 + 1.0)).clamp(0.0, 1000.0);
-    let hanging = props.indent_first.map(|f| (-f).clamp(0.0, 1000.0)).unwrap_or(18.0);
+    // A positive first-line indent (the number indented like a first line) is a negative hanging.
+    let hanging = props.indent_first.map(|f| (-f).clamp(-1000.0, 1000.0)).unwrap_or(18.0);
+    // The level's list tab stop: where the text after the number starts.
+    let tab = sprm::iter(&l.papx).filter_map(|prl| list_tab(&prl)).last().map(|t| t.clamp(-1584.0, 1584.0));
     let mut chr = CharProps::default();
     let base = chr.clone();
     for prl in sprm::iter(&l.chpx) {
@@ -301,6 +329,7 @@ fn level_of(l: &RawLvl, lvl_index: usize, fonts: &[String]) -> Level {
         },
         indent,
         hanging,
+        tab,
         suffix: match l.ixch_follow {
             1 => LevelSuffix::Space,
             2 => LevelSuffix::Nothing,
