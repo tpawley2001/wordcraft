@@ -21,6 +21,7 @@ mod continuous_resized_section;
 mod custom_note_marks;
 mod deleted_cell_end;
 mod deleted_mark_join;
+mod deleted_rows;
 mod display_hide_body;
 mod early_float_stays;
 mod endnote_suppress;

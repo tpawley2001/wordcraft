@@ -648,6 +648,7 @@ impl TableBuilder {
     /// Add one paragraph mark: `cell_end` says it ends a cell, `row_end` that it ends a row
     /// (with `info` carrying that row's TAP).
     fn mark(&mut self, para: Paragraph, frame: Option<TextFrame>, info: &RowInfo, cell_end: bool, row_end: bool) {
+        let row_del = if row_end { para.mark.del } else { None };
         if row_end && self.rows.is_empty() {
             self.props.float = row_float(frame.or_else(|| self.first_frame.take()), info);
         }
@@ -708,6 +709,9 @@ impl TableBuilder {
         }
         if row_end {
             let mut row = build_row(std::mem::take(&mut self.cells), info);
+            // A row deleted with tracking: its end mark carries the deletion revision, as a
+            // deleted paragraph mark does (sprmCFRMarkDel). Cell marks alone don't delete it.
+            row.props.del = row_del;
             if let Some(m) = row_margins {
                 for c in row.cells.iter_mut().filter(|c| c.props.margins.is_none()) {
                     let sides = c.props.partial_margins.get_or_insert([None; 4]);

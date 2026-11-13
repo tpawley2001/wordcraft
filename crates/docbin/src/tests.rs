@@ -13,6 +13,7 @@ mod button_field_nested;
 mod cell_end_paragraph;
 mod cell_padding;
 mod cfb_tolerance;
+mod deleted_row;
 mod custom_note_marks;
 mod char_spacing;
 mod char_styles;
