@@ -92,6 +92,7 @@ mod tab_past_margin;
 mod tab_to_right_indent;
 mod table_contact;
 mod textbox;
+mod turned_cell_autofit;
 mod vertical;
 mod wp_justification_squeeze;
 

@@ -11,6 +11,7 @@ mod auto_spacing;
 mod bookmark_pairs;
 mod cell_end_paragraph;
 mod cell_padding;
+mod cell_text_flow;
 mod cfb_tolerance;
 mod custom_note_marks;
 mod char_spacing;

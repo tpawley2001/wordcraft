@@ -5,7 +5,7 @@
 use wordcraft_doc::numbering::Counters;
 use wordcraft_doc::props::{Align, Border, Borders, HeightRule, Rgb, TextDirection, VAlign, VMerge};
 use wordcraft_doc::styles::{PartSet, TablePart, TableStyleProps};
-use wordcraft_doc::{Block, Blocks, Paragraph, Row, StoryRef, Table};
+use wordcraft_doc::{Block, Blocks, Cell, Paragraph, Row, StoryRef, Table};
 use wordcraft_geom::Rect;
 
 use crate::boxes::BoxContext;
@@ -399,7 +399,7 @@ fn preferred_grid(t: &Table, avail: f32) -> Vec<f32> {
     grid
 }
 
-fn table_frame(ctx: &mut Ctx, t: &Table, avail: f32, depth: usize, style: Option<&TableStyleProps>) -> TableFrame {
+fn table_frame(ctx: &mut Ctx, story: StoryRef, t: &Table, avail: f32, depth: usize, style: Option<&TableStyleProps>) -> TableFrame {
     let ncols = grid_cols(t).max(1);
     let mut grid = preferred_grid(t, avail);
     let mut total: f32 = grid.iter().sum();
@@ -431,7 +431,7 @@ fn table_frame(ctx: &mut Ctx, t: &Table, avail: f32, depth: usize, style: Option
     if !t.props.fixed {
         // Measuring lays paragraphs out once more; it mustn't count their equations twice.
         let eq_count = ctx.eq_count;
-        let content = column_content(ctx, t, style, depth, &grid);
+        let content = column_content(ctx, story, t, style, depth, &grid);
         ctx.eq_count = eq_count;
         if let Some(content) = content {
             autofit(&mut grid, &content, t, avail);
@@ -490,7 +490,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
     // Cell text formatting and looks per set of style parts, built once per table.
     let mut cell_text: Vec<(Region, CellText)> = Vec::new();
     let mut looks: Vec<(Region, RegionLook)> = Vec::new();
-    let TableFrame { ncols, colx, acc, total, margins_def, tborders, rtl, x } = table_frame(ctx, t, avail, depth, style.as_ref());
+    let TableFrame { ncols, colx, acc, total, margins_def, tborders, rtl, x } = table_frame(ctx, story, t, avail, depth, style.as_ref());
     let nrows = t.rows.len();
     // First pass: lay out every cell's content.
 
@@ -1390,22 +1390,36 @@ fn region_text(st: &TableStyleProps, region: Region) -> CellText {
 /// Each column's narrowest and widest content, cell margins included: its longest word and its
 /// longest line. A cell spanning columns shares what they lack between them; nested tables count
 /// with their own. `None` when every cell is empty.
-fn column_content(ctx: &mut Ctx, t: &Table, style: Option<&TableStyleProps>, depth: usize, grid: &[f32]) -> Option<Vec<(f32, f32)>> {
+fn column_content(ctx: &mut Ctx, story: StoryRef, t: &Table, style: Option<&TableStyleProps>, depth: usize, grid: &[f32]) -> Option<Vec<(f32, f32)>> {
     let margins_def = default_margins(t, style);
     // The grid's width once: counting it walks every row.
     let ncols = grid_cols(t);
     let mut cols = vec![(0.0f32, 0.0f32); ncols.max(1)];
     let mut spanning = Vec::new();
     let mut any = false;
+    // Whether the grid holds preferred widths (computed once: it walks every cell).
+    let preferred = !is_automatic(t);
     for (ri, row) in t.rows.iter().enumerate() {
         let mut g = row.first_grid();
         for cell in &row.cells {
             let span = cell.span();
             if cell.props.vmerge != VMerge::Continue {
                 let text = style.map(|st| region_text(st, region_of(t, style, ri, g, cell.span(), cols.len())));
-                let (lo, hi) = blocks_content(ctx, &cell.blocks, text.as_ref(), depth);
-                any |= hi > 0.0;
                 let m = cell.props.resolved_margins(margins_def);
+                // Turned text asks for the room its lines take across the column, never for
+                // the width of its words laid flat (Word: a column of turned headers keeps its
+                // grid width when one line fits).
+                // A turned cell in a column with a preferred width doesn't give any of it up to
+                // other columns either.
+                let (lo, hi) = if cell.props.text_direction.is_turned() {
+                    let across = turned_across(ctx, story, cell, row, m, text.as_ref(), depth);
+                    let keep =
+                        grid.get(g).filter(|w| preferred && span == 1 && w.is_finite()).map_or(0.0, |w| (w - m[1] - m[3]).clamp(0.0, UNBOUNDED));
+                    (across.max(keep), across.max(keep))
+                } else {
+                    blocks_content(ctx, story, &cell.blocks, text.as_ref(), depth)
+                };
+                any |= hi > 0.0;
                 let need = (lo + m[1] + m[3], hi + m[1] + m[3]);
                 match cols.get_mut(g) {
                     Some(col) if span == 1 => *col = (col.0.max(need.0), col.1.max(need.1)),
@@ -1460,8 +1474,28 @@ fn row_gaps(row: &Row, end: usize) -> impl Iterator<Item = (usize, usize, f32)> 
         .filter_map(|(g, n, w)| w.filter(|w| w.is_finite() && *w > 0.0).map(|w| (g, n, w.min(1584.0))))
 }
 
+/// How far a turned cell's lines reach across its column: its paragraphs laid out as the turned
+/// cell is drawn (lines as long as an exact row height allows, else as long as the text needs
+/// unwrapped), the extent of their lines stacked side by side. List counters and the equation
+/// count are put back, so measuring doesn't use up numbers.
+fn turned_across(ctx: &mut Ctx, story: StoryRef, cell: &Cell, row: &Row, m: [f32; 4], text: Option<&CellText>, depth: usize) -> f32 {
+    let snap = (ctx.counters.clone(), ctx.eq_count);
+    let len = match (row.props.height, row.props.height_rule) {
+        (Some(h), HeightRule::Exact) if h > 0.0 => (h - m[0].max(0.0) - m[2].max(0.0)).clamp(4.0, TURNED_LIMIT),
+        _ => {
+            let probe = layout_box(ctx, BoxInput::cell(story, &cell.blocks, &[], TURNED_MAX, text, depth)).items;
+            (ctx.counters, ctx.eq_count) = (snap.0.clone(), snap.1);
+            natural_length(&probe).clamp(4.0, TURNED_MAX)
+        }
+    };
+    let laid = layout_box(ctx, BoxInput::cell(story, &cell.blocks, &[], len, text, depth));
+    (ctx.counters, ctx.eq_count) = snap;
+    let across = laid.height.max(laid.floats_bottom);
+    if across.is_finite() { across.clamp(0.0, UNBOUNDED) } else { 0.0 }
+}
+
 /// The narrowest and widest a block list can be laid out.
-fn blocks_content(ctx: &mut Ctx, blocks: &Blocks, text: Option<&CellText>, depth: usize) -> (f32, f32) {
+fn blocks_content(ctx: &mut Ctx, story: StoryRef, blocks: &Blocks, text: Option<&CellText>, depth: usize) -> (f32, f32) {
     let (mut lo, mut hi) = (0.0f32, 0.0f32);
     for b in blocks.iter() {
         let (l, h) = match &**b {
@@ -1479,7 +1513,7 @@ fn blocks_content(ctx: &mut Ctx, blocks: &Blocks, text: Option<&CellText>, depth
                 } else {
                     let style = table_style(ctx, nt);
                     let weights = preferred_grid(nt, width);
-                    let cols = column_content(ctx, nt, style.as_ref(), depth + 1, &weights).unwrap_or_default();
+                    let cols = column_content(ctx, story, nt, style.as_ref(), depth + 1, &weights).unwrap_or_default();
                     let (l, h) = cols.iter().fold((0.0, 0.0), |(l, h), c| (l + c.0, h + c.1));
                     (width.max(l), width.max(h))
                 }
