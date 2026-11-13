@@ -399,13 +399,47 @@ fn preferred_grid(t: &Table, avail: f32) -> Vec<f32> {
     grid
 }
 
-fn table_frame(ctx: &mut Ctx, t: &Table, avail: f32, depth: usize, style: Option<&TableStyleProps>) -> TableFrame {
+/// How much wider than the text a percentage width's base is. Before Word 2013 layout
+/// (compatibility mode 15) a start-aligned table is outdented by its left cell margin so the cell
+/// text lines up with the body text, and its percentage is of the text width plus the table's
+/// left and right default cell margins, so a 100% table's cell text spans the text width.
+///
+/// Measured for top-level body tables (autofit and fixed, with and without an indent, in modes
+/// 11, 12 and 14) and assumed for top-level header and footer tables, which share the section's
+/// width. Not measured, so they keep the text width as the base: nested tables and tables in
+/// notes or text boxes, percentages over 100%, centred or end-aligned tables, floating tables,
+/// right-to-left tables and tables whose cells set their own margins.
+fn legacy_pct_margins(ctx: &Ctx, story: StoryRef, t: &Table, depth: usize, style: Option<&TableStyleProps>) -> f32 {
+    let top_level = depth <= 1
+        && match story {
+            StoryRef::Body => true,
+            StoryRef::Part(id) => {
+                ctx.doc.parts.get(&id).is_some_and(|p| matches!(p.kind, wordcraft_doc::PartKind::Header | wordcraft_doc::PartKind::Footer))
+            }
+        };
+    let measured = ctx.doc.settings.compat_mode < 15
+        && top_level
+        && t.props.width_pct.is_some_and(|p| p > 0.0 && p <= 100.0)
+        && t.props.float.is_none()
+        && !t.props.bidi_visual
+        && !matches!(t.props.align, Some(Align::Center | Align::Right))
+        && t.rows.iter().all(|r| r.cells.iter().all(|c| c.props.margins.is_none() && c.props.partial_margins.is_none()));
+    if !measured {
+        return 0.0;
+    }
+    let m = default_margins(t, style);
+    let side = |v: f32| if v.is_finite() { v.clamp(0.0, 1584.0) } else { 0.0 };
+    side(m[1]) + side(m[3])
+}
+
+fn table_frame(ctx: &mut Ctx, story: StoryRef, t: &Table, avail: f32, depth: usize, style: Option<&TableStyleProps>) -> TableFrame {
     let ncols = grid_cols(t).max(1);
     let mut grid = preferred_grid(t, avail);
     let mut total: f32 = grid.iter().sum();
     // A top-level table in an inherited header or footer takes its share of the defining
     // section's width (`Ctx::pct_base`).
     let pct_base = if depth <= 1 { ctx.pct_base.unwrap_or(avail) } else { avail };
+    let pct_base = pct_base + legacy_pct_margins(ctx, story, t, depth, style);
     let target = match (t.props.width_pct, t.props.width) {
         // Word keeps a percentage past 100%; the cap only bounds hostile input.
         (Some(p), _) if p > 0.0 => Some(pct_base * (p / 100.0).min(MAX_WIDTH_SHARE)),
@@ -490,7 +524,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
     // Cell text formatting and looks per set of style parts, built once per table.
     let mut cell_text: Vec<(Region, CellText)> = Vec::new();
     let mut looks: Vec<(Region, RegionLook)> = Vec::new();
-    let TableFrame { ncols, colx, acc, total, margins_def, tborders, rtl, x } = table_frame(ctx, t, avail, depth, style.as_ref());
+    let TableFrame { ncols, colx, acc, total, margins_def, tborders, rtl, x } = table_frame(ctx, story, t, avail, depth, style.as_ref());
     let nrows = t.rows.len();
     // First pass: lay out every cell's content.
 
