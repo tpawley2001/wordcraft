@@ -17,6 +17,7 @@ mod core_dates;
 mod custom_note_marks;
 mod custom_xml;
 mod default_size;
+mod deleted_rows_tracked;
 mod doc_vars;
 mod drawing_payload;
 mod east_asian_lang;

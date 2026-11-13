@@ -209,12 +209,15 @@ const MAX_KEPT_ROWS: usize = 8;
 /// `page_height` (the table flow does not move them then): the caller's fixed start stands.
 pub(crate) fn kept_rows_room(
     ctx: &mut Ctx,
-    t: &wordcraft_doc::Table,
+    doc_table: &wordcraft_doc::Table,
     block: usize,
     width: f32,
     page_height: f32,
     counters: &Counters,
 ) -> Option<f32> {
+    // The rows as laid out: deleted ones are left out while deletions are hidden.
+    let shown = table::shown(ctx, doc_table);
+    let t: &wordcraft_doc::Table = &shown;
     if t.props.float.is_some() || t.rows.len() < 2 {
         return None;
     }
@@ -236,7 +239,7 @@ pub(crate) fn kept_rows_room(
         ctx.grid,
         ctx.track_totals,
     );
-    let tl = again(ctx, ctx.eq_count, |ctx| table::layout_table(ctx, StoryRef::Body, t, &[block as u32], width, 1));
+    let tl = again(ctx, ctx.eq_count, |ctx| table::layout_table(ctx, StoryRef::Body, doc_table, &[block as u32], width, 1));
     (ctx.counters, ctx.boxes, ctx.chains, ctx.fields, ctx.grid, ctx.track_totals) = saved;
     let mut height: f32 = tl.rows.iter().take(first).map(|r| r.height).sum();
     let mut ri = first;
@@ -283,7 +286,14 @@ fn row_start(doc: &wordcraft_doc::Document, row: &wordcraft_doc::Row, laid: &tab
     hi
 }
 
-pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc::Table, block: usize, body_top: f32) {
+pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, doc_table: &wordcraft_doc::Table, block: usize, body_top: f32) {
+    // A table whose rows are all tracked deletions, with deletions hidden, is not there at all.
+    if table::hides_whole(ctx, doc_table) {
+        return;
+    }
+    // The rows as laid out: deleted ones are left out while deletions are hidden.
+    let shown = table::shown(ctx, doc_table);
+    let t: &wordcraft_doc::Table = &shown;
     pb.prev = None;
     // A page break before the first row's paragraph moves the whole table to a new page, as
     // Word does (and as an ODT table starting a page opens). Before the table is laid out, so
@@ -294,7 +304,7 @@ pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc
         ctx.fields.page = pb.number;
     }
     let width = pb.col_w();
-    let mut tl = table::layout_table(ctx, StoryRef::Body, t, &[block as u32], width, 1);
+    let mut tl = table::layout_table(ctx, StoryRef::Body, doc_table, &[block as u32], width, 1);
     if let Some(f) = t.props.float.filter(|_| !pb.web) {
         // Before Word 2013 layout (compatibility mode 15) an offset places the first cell's text,
         // so the edge sits a cell margin further out.

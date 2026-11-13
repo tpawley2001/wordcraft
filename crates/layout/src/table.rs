@@ -485,7 +485,81 @@ fn table_frame(ctx: &mut Ctx, t: &Table, avail: f32, depth: usize, style: Option
     TableFrame { ncols, colx, acc, total, margins_def, tborders, rtl, x }
 }
 
+/// Whether `row` is left out of the layout: it is itself a tracked deletion (`w:trPr/w:del`)
+/// and deletions are hidden. Only the row's own mark does that; deleted text in its cells
+/// leaves an empty row.
+fn row_hidden(ctx: &Ctx, row: &Row) -> bool {
+    ctx.hide_deleted.hides(ctx.doc, row.props.del)
+}
+
+/// Whether every row of `t` is left out ([`row_hidden`]): the table takes no room at all.
+pub(crate) fn hides_whole(ctx: &Ctx, t: &Table) -> bool {
+    !t.rows.is_empty() && t.rows.iter().all(|r| row_hidden(ctx, r))
+}
+
+/// The table as laid out: without the rows [`row_hidden`] leaves out (no height, borders or
+/// content, no part in header-row repeats or kept rows), with the document index of each row
+/// kept. `None` when every row is shown. A vertical merge whose first cell is in a row left
+/// out starts at the next row shown.
+pub(crate) fn shown_rows(ctx: &Ctx, t: &Table) -> Option<(Table, Vec<usize>)> {
+    if !t.rows.iter().any(|r| row_hidden(ctx, r)) {
+        return None;
+    }
+    let mut rows = Vec::new();
+    let mut map = Vec::new();
+    // Grid columns whose merge started in a row left out.
+    let mut restarts: Vec<usize> = Vec::new();
+    for (ri, row) in t.rows.iter().enumerate() {
+        let grids: Vec<(usize, VMerge)> = row
+            .cells
+            .iter()
+            .scan(row.first_grid(), |g, c| {
+                let at = *g;
+                *g = g.saturating_add(c.span());
+                Some((at, c.props.vmerge))
+            })
+            .collect();
+        if row_hidden(ctx, row) {
+            restarts.retain(|g| grids.iter().any(|&(at, v)| at == *g && v == VMerge::Continue));
+            restarts.extend(grids.iter().filter(|(_, v)| *v == VMerge::Restart).map(|(at, _)| *at));
+            continue;
+        }
+        let mut row = row.clone();
+        for (cell, (at, v)) in row.cells.iter_mut().zip(grids) {
+            if v == VMerge::Continue && restarts.contains(&at) {
+                cell.props.vmerge = VMerge::Restart;
+            }
+        }
+        restarts.clear();
+        rows.push(row);
+        map.push(ri);
+    }
+    Some((Table { props: t.props.clone(), grid: t.grid.clone(), rows, controls: t.controls.clone() }, map))
+}
+
+/// [`shown_rows`] as a table to read row properties from, alongside a layout of `t`.
+pub(crate) fn shown<'t>(ctx: &Ctx, t: &'t Table) -> std::borrow::Cow<'t, Table> {
+    match shown_rows(ctx, t) {
+        Some((shown, _)) => std::borrow::Cow::Owned(shown),
+        None => std::borrow::Cow::Borrowed(t),
+    }
+}
+
+/// Lay out table `t`. While deletions are hidden its deleted rows are left out
+/// ([`shown_rows`]); cell paths and [`Placed::Cell`] rows still name the document's rows.
 pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], avail: f32, depth: usize) -> TableLayout {
+    match shown_rows(ctx, t) {
+        Some((shown, map)) => layout_shown(ctx, story, &shown, &map, path, avail, depth),
+        None => layout_shown(ctx, story, t, &[], path, avail, depth),
+    }
+}
+
+/// The document's index of laid-out row `ri`: `map` holds them when rows were left out.
+fn doc_row(map: &[usize], ri: usize) -> u32 {
+    map.get(ri).copied().unwrap_or(ri) as u32
+}
+
+fn layout_shown(ctx: &mut Ctx, story: StoryRef, t: &Table, map: &[usize], path: &[u32], avail: f32, depth: usize) -> TableLayout {
     let style = table_style(ctx, t);
     // Cell text formatting and looks per set of style parts, built once per table.
     let mut cell_text: Vec<(Region, CellText)> = Vec::new();
@@ -538,7 +612,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
             let fill = cell.props.shading.or(look.and_then(|l| l.fill));
             let text = cell_text.iter().find(|(r, _)| *r == region).map(|(_, c)| c);
             let mut cpath = path.to_vec();
-            cpath.push(ri as u32);
+            cpath.push(doc_row(map, ri));
             cpath.push(ci as u32);
             // Effective borders: cell > table (outer vs inside).
             let tb = tborders;
@@ -696,7 +770,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
         rows.push(cells);
     }
     grow_vertical_merges(&rows, &mut heights);
-    finish_table_rows(ctx, TableRows { story, table: t, path, depth, cell_text, rows, heights, bottoms, edges, x, total })
+    finish_table_rows(ctx, TableRows { story, table: t, map, path, depth, cell_text, rows, heights, bottoms, edges, x, total })
 }
 
 /// A row in an HTML div (`w:divId`) moves right by the div's left margin, and those of the divs
@@ -740,6 +814,8 @@ fn grow_vertical_merges(rows: &[Vec<CellBox>], heights: &mut [f32]) {
 struct TableRows<'a> {
     story: StoryRef,
     table: &'a Table,
+    /// The document's index of each row laid out (empty: the same as laid out).
+    map: &'a [usize],
     path: &'a [u32],
     depth: usize,
     cell_text: Vec<(Region, CellText)>,
@@ -752,7 +828,7 @@ struct TableRows<'a> {
 }
 
 fn finish_table_rows(ctx: &mut Ctx, input: TableRows<'_>) -> TableLayout {
-    let TableRows { story, table: t, path, depth, cell_text, rows, heights, bottoms, edges, x, total } = input;
+    let TableRows { story, table: t, map, path, depth, cell_text, rows, heights, bottoms, edges, x, total } = input;
     // Grid columns holding a vertical-merge continuation, per row.
     let cont: Vec<Vec<usize>> = t
         .rows
@@ -829,7 +905,7 @@ fn finish_table_rows(ctx: &mut Ctx, input: TableRows<'_>) -> TableLayout {
                     && let Some(cell) = t.rows.get(ri).and_then(|r| r.cells.get(tn.ci))
                 {
                     let mut cpath = path.to_vec();
-                    cpath.extend([ri as u32, tn.ci as u32]);
+                    cpath.extend([doc_row(map, ri), tn.ci as u32]);
                     let text = cell_text.iter().find(|(r, _)| *r == tn.region).map(|(_, c)| c);
                     // Same list numbers as the first layout: lay it out from the same counters.
                     let now = (std::mem::replace(&mut ctx.counters, tn.snap.0), std::mem::replace(&mut ctx.eq_count, tn.snap.1));
@@ -883,7 +959,7 @@ fn finish_table_rows(ctx: &mut Ctx, input: TableRows<'_>) -> TableLayout {
                 rect: Rect::new(c.x, 0.0, c.w, if c.vmerge == VMerge::Continue { rh } else { span_h }),
                 covered: c.vmerge == VMerge::Continue,
                 table: wordcraft_doc::Path(path.to_vec()),
-                row: ri,
+                row: doc_row(map, ri) as usize,
                 cell: ci,
                 story,
                 clip: exact && c.h > span_h + 0.01,

@@ -145,7 +145,9 @@ fn layout_table_block(input: TableBlockContext<'_, '_, '_>) -> bool {
         previous_after,
         previous_style,
     } = input;
-    if depth > 8 {
+    // Deeper than that is not laid out; a table whose rows are all hidden tracked deletions
+    // takes no room.
+    if depth > 8 || table::hides_whole(ctx, t) {
         return false;
     }
     // Page tables do not contribute to the footer text's intrinsic height.
