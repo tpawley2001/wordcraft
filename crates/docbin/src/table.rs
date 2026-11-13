@@ -124,6 +124,8 @@ pub(crate) struct RowInfo {
     widths: Vec<(u8, f32)>,
     width_pcts: Vec<(u8, f32)>,
     valign: Vec<(u8, VAlign)>,
+    /// Cells set not to wrap (`fNoWrap`, bit 13 of a `sprmTDefTable` TC80's TCGRF word).
+    no_wrap: Vec<u8>,
     /// Turned cells: the text flow of the `sprmTDefTable` TC80s, then `sprmTTextFlow`.
     text_flow: Vec<(u8, TextDirection)>,
     /// Floating-table sprms from the TAP, as the paragraph frame sprm (opcode) each matches.
@@ -194,6 +196,7 @@ impl RowInfo {
             + self.widths.len()
             + self.width_pcts.len()
             + self.valign.len()
+            + self.no_wrap.len()
             + self.text_flow.len()
             + self.merges.len()
             + self.tc_merges.len()
@@ -256,6 +259,8 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
                 apply_def_table_valign(&mut r.valign, prl.operand);
                 // Likewise each cell's text flow.
                 apply_def_table_text_flow(&mut r.text_flow, prl.operand);
+                // And whether each cell's text may wrap.
+                r.no_wrap = def_table_no_wrap(prl.operand);
             }
             T_TEXT_FLOW => apply_text_flow_sprm(&mut r.text_flow, prl.operand),
             T_TABLE_HEADER => r.header = prl.operand.first().copied().unwrap_or(0) != 0,
@@ -874,6 +879,9 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
         if let Some((_, d)) = info.text_flow.iter().rfind(|(k, _)| *k == i) {
             c.props.text_direction = *d;
         }
+        if info.no_wrap.contains(&i) {
+            c.props.no_wrap = true;
+        }
         if let Some((_, m)) = info.cell_padding.iter().find(|(k, _)| *k == i) {
             c.props.partial_margins = Some(*m);
         }
@@ -1049,6 +1057,21 @@ fn apply_def_table_text_flow(slots: &mut Vec<(u8, TextDirection)>, operand: &[u8
             slots.retain(|(k, _)| *k != i as u8);
         }
     }
+}
+
+/// The cells a `sprmTDefTable` operand's TC80s set not to wrap: bit 13 (`fNoWrap`) of each
+/// TCGRF word ([MS-DOC] 2.9.320). A TC80 missing from the operand or cut short leaves its cell
+/// wrapping.
+fn def_table_no_wrap(operand: &[u8]) -> Vec<u8> {
+    let itc = operand.get(2).copied().unwrap_or(0) as usize;
+    let start = 3 + (itc + 1) * 2;
+    (0..itc.min(MAX_COLS))
+        .filter(|i| {
+            let at = start + i * 20;
+            matches!(operand.get(at..at + 20), Some([lo, hi, ..]) if u16::from_le_bytes([*lo, *hi]) & 0x2000 != 0)
+        })
+        .map(|i| i as u8)
+        .collect()
 }
 
 /// The width between `sprmTDefTable` edges `a` and `b`, when they give a usable one.

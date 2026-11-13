@@ -79,6 +79,7 @@ mod table_width;
 mod table_width_rows;
 mod tc80_cell_valign;
 mod tc80_horizontal_merge;
+mod tc80_no_wrap;
 mod tc80_vertical_merge;
 mod text_box_flow;
 mod text_box_margins;
