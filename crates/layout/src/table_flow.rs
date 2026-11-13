@@ -2,7 +2,7 @@ use super::boxes::{BoxInput, clear_of_float_tables, layout_box};
 use super::ctx::{Ctx, with_pct_base};
 use super::floats::{WrapArea, align_in, body_wraps};
 use super::flow::again;
-use super::headers::{header_items_cap, header_table_areas, placed_cost};
+use super::headers::{header_items_cap, header_table_areas, placed_cost, starts_section};
 use super::notes::table_notes;
 use super::page::{PageBuilder, PageFrame, page_frame};
 use super::placed::Placed;
@@ -14,7 +14,7 @@ pub(crate) fn footer_table_wraps(ctx: &mut Ctx, pb: &PageBuilder) -> Vec<WrapAre
         return Vec::new();
     }
     let Some(page) = pb.pages.last() else { return Vec::new() };
-    let first = pb.pages.iter().rev().nth(1).is_none_or(|prev| prev.section != page.section);
+    let first = starts_section(&pb.pages, pb.pages.len().saturating_sub(1), &ctx.hf.sections);
     let key = (page.section, page.number, first);
     if let Some(areas) = ctx.footer_wraps.get(&key) {
         return areas.clone();
