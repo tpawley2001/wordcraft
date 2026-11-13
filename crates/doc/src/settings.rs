@@ -386,6 +386,11 @@ pub struct Settings {
     /// most 0.0391 of the line's width, and the line is squeezed to end at the edge.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub wp_justification: bool,
+    /// `w:noTabHangInd` / `Copts60.fNoTabForInd` (no tab stop at the hanging indent): below
+    /// compatibility mode 15 a hanging first line has no implicit tab stop at the left indent, so
+    /// a tab there goes to the next custom or default stop.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_tab_hang_ind: bool,
     /// Keep contextual paragraph spacing inside legacy table cells (`allowSpaceOfSameStyleInTable`).
     /// Word ignores the layout override in compatibility mode 15, but the flag still round-trips.
     pub allow_space_of_same_style_in_table: bool,
@@ -750,6 +755,7 @@ impl Default for Settings {
             split_pg_break_and_para_mark: false,
             no_leading: false,
             wp_justification: false,
+            no_tab_hang_ind: false,
             allow_space_of_same_style_in_table: false,
             grid_h: DEFAULT_GRID,
             grid_v: DEFAULT_GRID,

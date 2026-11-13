@@ -77,6 +77,22 @@ impl<'a> SymbolRun<'a> {
         true
     }
 
+    /// The advance (em) Word gives `c` when this is Symbol and Symbol itself isn't installed: the
+    /// width Symbol has ([`wordcraft_fonts::word::symbol_advance`]), not the drawn substitute's.
+    /// `c` is a Symbol code stored as U+F020-U+F0FF or as U+0020-U+00FF (never the soft hyphen).
+    pub(super) fn advance(&self, c: char) -> Option<f64> {
+        if self.installed {
+            return None;
+        }
+        let u = u32::from(c);
+        let code = match u {
+            0xF020..=0xF0FF => u - 0xF000,
+            0x20..=0xFF if u != 0xAD => u,
+            _ => return None,
+        };
+        wordcraft_fonts::word::symbol_advance(self.family, u8::try_from(code).ok()?)
+    }
+
     /// The box drawn for a missing code when the symbol font isn't installed, at `size` points:
     /// (advance, box width, box height, stroke), points. Symbol's box is wider and lower than
     /// the others'.

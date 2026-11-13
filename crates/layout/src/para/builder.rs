@@ -1,7 +1,7 @@
 use super::bidi::{Dir, bidi_levels, strong_rtl, visual_order};
 use super::chars::{
-    FeatureList, SegKey, caps_expands, context_digit_dirs, draws_something, is_khmer, is_mark, is_numeral_digit, ligature_features, lookup_family,
-    number_and_set_features, remap_range, reported_font_name, thai_run_face, upper_char,
+    FeatureList, SegKey, caps_expands, context_digit_dirs, drawn_hyphen, draws_something, is_khmer, is_mark, is_numeral_digit, ligature_features,
+    lookup_family, number_and_set_features, remap_range, reported_font_name, thai_run_face, upper_char,
 };
 use super::grid::east_asian;
 use super::model::{ClKind, Cluster, Enclosed, Glyph, ParaEnv, RubyLayout, StyleRun, SymbolRun};
@@ -78,7 +78,9 @@ impl<'a> Builder<'a> {
         for (i, c) in text.char_indices() {
             let rtl = use_levels && levels.get(lbase + i).is_some_and(|l| l % 2 == 1);
             let boxed = boxes && sym.is_some_and(|m| m.missing_box(c));
-            let c = show(c);
+            // A non-breaking hyphen takes the face a hyphen would ([`drawn_hyphen`]); a symbol
+            // font's codes keep their own mapping.
+            let c = if sym.is_some() { show(c) } else { drawn_hyphen(c) };
             let dc = self.numeral_char(context, i, c, rtl);
             let mark = is_mark(c);
             let complex = match cur {
@@ -423,7 +425,10 @@ impl<'a> Builder<'a> {
             let shape_text = if substituted { mapped.as_str() } else { sub };
             let map = |c: char| {
                 let d = show(c);
-                if d != c {
+                if sym.is_none() && drawn_hyphen(c) != c {
+                    // Drawn and measured as the font's own hyphen ([`drawn_hyphen`]).
+                    drawn_hyphen(c)
+                } else if d != c {
                     d
                 } else if c == '\u{a0}' {
                     // Word sets a no-break space as wide as a space; some fonts draw their own
@@ -509,9 +514,17 @@ impl<'a> Builder<'a> {
                 } else {
                     ClKind::Text
                 });
+                // A missing Symbol font's character is as wide as Symbol makes it; the substitute's
+                // glyph is drawn at the cluster's start.
+                let sym_adv = sym
+                    .and_then(|m| m.advance(single_char(sub.get(cs..ce).unwrap_or(""))?))
+                    .map(|em| em as f32 * st.size * hscale)
+                    .filter(|w| w.is_finite());
                 // The substitute's kerning pairs aren't the missing font's: Word's advance stands.
-                let adv =
-                    boxed.or_else(|| word_advances.then(|| self.missing_font_advance(s, map, rc, st.size * hscale, g0)).flatten()).unwrap_or(adv);
+                let adv = boxed
+                    .or(sym_adv)
+                    .or_else(|| word_advances.then(|| self.missing_font_advance(s, map, rc, st.size * hscale, g0)).flatten())
+                    .unwrap_or(adv);
                 let adv = if kind == ClKind::Marker { 0.0 } else { adv + rc.spacing };
                 self.clusters.push(Cluster {
                     start: base + a + cs,
@@ -936,3 +949,7 @@ mod tests {
 #[cfg(test)]
 #[path = "../tests/missing_font_simsun.rs"]
 mod missing_font_simsun;
+
+#[cfg(test)]
+#[path = "../tests/missing_font_japanese_shruti.rs"]
+mod missing_font_japanese_shruti;
