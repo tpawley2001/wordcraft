@@ -5181,6 +5181,40 @@ fn drop_cap_options_place_the_letter() {
     assert_ne!(text_style.as_deref(), Some("Liberation Mono"), "only the letter");
 }
 
+/// A drop cap whose letter is already at the size Word draws it (`drop_cap_sized`, how Word
+/// 97-2003 stores it: a 2-line cap in 12 pt Times New Roman is a 28 pt letter) keeps that size:
+/// it spans two lines from just above line 1, and lines 1-2 start right of its advance.
+#[test]
+fn a_sized_drop_cap_letter_keeps_its_size() {
+    crate::test_fonts();
+    let cp = wordcraft_doc::CharProps { size: Some(12.0), font: Some("Times New Roman".into()), ..Default::default() };
+    let mut p =
+        wordcraft_doc::Paragraph::with_text(&format!("T{}", "he first lines of this paragraph wrap beside a dropped capital. ".repeat(6)), cp);
+    p.format(0, 1, &|c| c.size = Some(28.0)).unwrap();
+    p.props.drop_cap = Some(2);
+    p.props.drop_cap_sized = Some(true);
+    let mut d = Document::from_text("x");
+    d.body = vec![wordcraft_doc::para_block(p)];
+    let l = lay(&d);
+    let Some(pl) = l.pages[0].items.iter().find_map(|i| if let Placed::Lines { para, .. } = i { Some(para.clone()) } else { None }) else {
+        panic!("no lines")
+    };
+    let sty = pl.clusters.first().and_then(|c| pl.styles.get(c.style as usize)).expect("letter style");
+    assert!((sty.size - 28.0).abs() < 0.01, "the letter keeps its 28 pt, not {}", sty.size);
+    let (l0, l1, l2) = (&pl.lines[0], &pl.lines[1], &pl.lines[2]);
+    let dy = pl.glyphs.first().map(|g| g.dy).unwrap_or(f32::NAN);
+    let baseline = l0.baseline - dy;
+    assert!((baseline - l1.baseline).abs() < 0.5, "the letter sits on line 2's baseline: {baseline} vs {}", l1.baseline);
+    let (top, bottom) = (baseline - sty.ascent, baseline + sty.descent);
+    let two_lines = l1.top + l1.height - l0.top;
+    assert!((bottom - top - two_lines).abs() < 2.0 + sty.descent, "letter {top}..{bottom}, two lines {two_lines}");
+    assert!(top >= l0.top - 6.0, "the letter's top {top} stays near line 1's top {}", l0.top);
+    let x = |l: &crate::para::Line| l.xs.first().copied().unwrap_or(f32::NAN);
+    assert!(x(l0) > 10.0 && x(l0) <= 18.0, "line 1 starts beside the letter: {}", x(l0));
+    assert!((x(l1) - x(l0)).abs() < 0.5, "line 2 too: {}", x(l1));
+    assert!(x(l2).abs() < 0.5, "line 3 is back at the indent: {}", x(l2));
+}
+
 /// #2601: the letter's own font applies to complex-script and East Asian first letters too. In
 /// margin, the letter sits in the left margin for any alignment or first-line indent: its right
 /// edge is the distance left of the text column (of the first line's start, if that hangs further

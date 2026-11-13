@@ -568,14 +568,19 @@ fn note_parts(
 
 /// Merges each drop cap's letter paragraph ([MS-DOC] §2.6.2 sprmPDcs) into the paragraph it
 /// starts, as the .docx reader does for `w:framePr w:dropCap`. Only two paragraphs next to each
-/// other in the story merge, never across a table.
+/// other in the story merge, never across a table. A letter with a size of its own is drawn at
+/// that size, as Word stores it.
 fn merge_drop_caps(blocks: wordcraft_doc::Blocks) -> wordcraft_doc::Blocks {
     let mut out: wordcraft_doc::Blocks = Vec::with_capacity(blocks.len());
     for b in blocks {
         if let (Some(Block::Para(prev)), Block::Para(next)) = (out.last().map(|b| &**b), &*b)
             && prev.merges_drop_cap_into(next)
-            && let Some(Block::Para(cap)) = out.pop().map(|b| (*b).clone())
+            && let Some(Block::Para(mut cap)) = out.pop().map(|b| (*b).clone())
         {
+            // Word sizes the letter's run (its sprmCHps) to the size it draws the letter at.
+            if cap.runs.first().is_some_and(|r| r.props.size.is_some()) {
+                cap.props.drop_cap_sized = Some(true);
+            }
             out.push(Arc::new(Block::Para(Paragraph::merge_drop_cap(cap, next.clone()))));
             continue;
         }
@@ -2276,5 +2281,40 @@ mod character_style_tests {
         for grpprl in [&[0x30, 0x4A, 1][..], &[0x30, 0x4A, 0xFF, 0xFF][..]] {
             assert_eq!(char_props(grpprl, &[], &CharProps::default(), &styles, &fmt::style_ids(&styles)).style, None);
         }
+    }
+}
+
+/// A drop cap's letter with a size of its own (Word stores the size it draws the letter at, its
+/// sprmCHps) is marked as sized when it merges, so the layout does not scale it a second time.
+#[cfg(test)]
+mod drop_cap_size_tests {
+    use super::merge_drop_caps;
+    use wordcraft_doc::{CharProps, Paragraph, para_block};
+
+    fn cap(size: Option<f32>) -> Paragraph {
+        let mut p = Paragraph::with_text("T", CharProps { size, ..Default::default() });
+        p.props.drop_cap = Some(2);
+        p
+    }
+
+    fn merged(size: Option<f32>) -> Paragraph {
+        let text = Paragraph::with_text("he United States", CharProps { size: Some(12.0), ..Default::default() });
+        let out = merge_drop_caps(vec![para_block(cap(size)), para_block(text)]);
+        assert_eq!(out.len(), 1, "the letter merges into its paragraph");
+        out.first().and_then(|b| b.as_para()).cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn a_letter_with_its_own_size_is_drawn_at_it() {
+        let p = merged(Some(28.0));
+        assert_eq!(p.text, "The United States");
+        assert_eq!(p.props.drop_cap_sized, Some(true));
+        assert_eq!(p.props_of_char(0).size, Some(28.0), "the letter keeps Word's size");
+        assert_eq!(p.props_of_char(1).size, Some(12.0));
+    }
+
+    #[test]
+    fn a_letter_without_a_size_is_sized_by_the_layout() {
+        assert_eq!(merged(None).props.drop_cap_sized, None);
     }
 }

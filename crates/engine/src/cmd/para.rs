@@ -156,6 +156,7 @@ pub fn specs() -> Vec<CommandSpec> {
                     drop_cap_margin: p.drop_cap_margin.take(),
                     drop_cap_distance: p.drop_cap_distance.take(),
                     drop_cap_font: p.drop_cap_font.take(),
+                    drop_cap_sized: p.drop_cap_sized.take(),
                     ..Default::default()
                 }
             })

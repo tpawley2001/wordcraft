@@ -497,6 +497,7 @@ impl Paragraph {
         props.drop_cap = cap.props.drop_cap;
         props.drop_cap_margin = cap.props.drop_cap_margin;
         props.drop_cap_distance = cap.props.drop_cap_distance;
+        props.drop_cap_sized = cap.props.drop_cap_sized;
         if props.drop_cap_margin == Some(true) && cap.props.indent_first != props.indent_first {
             props.drop_cap_indent_first = cap.props.indent_first;
         }

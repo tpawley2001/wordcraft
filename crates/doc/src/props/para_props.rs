@@ -534,6 +534,11 @@ pub struct ParaProps {
     /// The margin cap frame's first-line indent, points; negative = hanging.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drop_cap_indent_first: Option<f32>,
+    /// The drop cap letter's run already has the size the letter is drawn at, as Word 97-2003
+    /// stores it (its sprmCHps). Unset = the letter is in the text's size and is drawn large
+    /// enough to span its lines.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drop_cap_sized: Option<bool>,
     /// A text frame (`w:framePr` other than a drop cap): the paragraph is placed apart from the
     /// text, which may wrap around it — a footer's page number in a frame, for instance.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -592,7 +597,7 @@ impl ParaProps {
 
     fn overlay_pagination(&mut self, patch: &ParaProps) {
         overlay_fields!(self, patch; keep_next, keep_lines, page_break_before, widow_control, outline_level, numbering, suppress_hyphens, suppress_line_numbers,
-            drop_cap, drop_cap_margin, drop_cap_distance, drop_cap_font, drop_cap_indent_first, frame, snap_to_grid);
+            drop_cap, drop_cap_margin, drop_cap_distance, drop_cap_font, drop_cap_indent_first, drop_cap_sized, frame, snap_to_grid);
     }
 
     fn overlay_script_layout(&mut self, patch: &ParaProps) {
@@ -642,6 +647,7 @@ impl ParaProps {
             drop_cap_distance,
             drop_cap_font,
             drop_cap_indent_first,
+            drop_cap_sized,
             frame,
             kinsoku,
             word_wrap,
@@ -690,6 +696,7 @@ impl ParaProps {
             drop_cap_distance: keep(drop_cap_distance, &own.drop_cap_distance, &inherited.drop_cap_distance),
             drop_cap_font: keep(drop_cap_font, &own.drop_cap_font, &inherited.drop_cap_font),
             drop_cap_indent_first: keep(drop_cap_indent_first, &own.drop_cap_indent_first, &inherited.drop_cap_indent_first),
+            drop_cap_sized: keep(drop_cap_sized, &own.drop_cap_sized, &inherited.drop_cap_sized),
             frame: keep(frame, &own.frame, &inherited.frame),
             kinsoku: keep(kinsoku, &own.kinsoku, &inherited.kinsoku),
             word_wrap: keep(word_wrap, &own.word_wrap, &inherited.word_wrap),

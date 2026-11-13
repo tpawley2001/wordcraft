@@ -323,7 +323,8 @@ impl<'a> Shaped<'a> {
         // Capital height is ~0.7 em: the letter's cap spans from line 1's caps to line N's baseline.
         let mut big = (**rc).clone();
         // `clamp` would panic here when the text itself is larger than 1000 pt.
-        big.size = (((lines - 1.0) * line_h + rc.size * 0.7) / 0.7).min(1000.0).max(rc.size);
+        // A letter already at its drawn size (Word 97-2003 stores it so) keeps it.
+        big.size = if rp.drop_cap_sized { rc.size } else { (((lines - 1.0) * line_h + rc.size * 0.7) / 0.7).min(1000.0).max(rc.size) };
         if let Some(f) = &rp.drop_cap_font {
             big.font = f.clone();
             big.font_cs = f.clone();
