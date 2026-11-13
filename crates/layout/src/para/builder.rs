@@ -1,7 +1,7 @@
 use super::bidi::{Dir, bidi_levels, strong_rtl, visual_order};
 use super::chars::{
-    FeatureList, SegKey, caps_expands, context_digit_dirs, draws_something, is_khmer, is_mark, is_numeral_digit, ligature_features, lookup_family,
-    number_and_set_features, remap_range, reported_font_name, thai_run_face, upper_char,
+    FeatureList, SegKey, caps_expands, context_digit_dirs, drawn_hyphen, draws_something, is_khmer, is_mark, is_numeral_digit, ligature_features,
+    lookup_family, number_and_set_features, remap_range, reported_font_name, thai_run_face, upper_char,
 };
 use super::grid::east_asian;
 use super::model::{ClKind, Cluster, Enclosed, Glyph, ParaEnv, RubyLayout, StyleRun, SymbolRun};
@@ -78,7 +78,9 @@ impl<'a> Builder<'a> {
         for (i, c) in text.char_indices() {
             let rtl = use_levels && levels.get(lbase + i).is_some_and(|l| l % 2 == 1);
             let boxed = boxes && sym.is_some_and(|m| m.missing_box(c));
-            let c = show(c);
+            // A non-breaking hyphen takes the face a hyphen would ([`drawn_hyphen`]); a symbol
+            // font's codes keep their own mapping.
+            let c = if sym.is_some() { show(c) } else { drawn_hyphen(c) };
             let dc = self.numeral_char(context, i, c, rtl);
             let mark = is_mark(c);
             let complex = match cur {
@@ -175,7 +177,11 @@ impl<'a> Builder<'a> {
             // East Asian characters drawn from a missing East Asian font take that font's line.
             line_font
                 .and_then(|f| wordcraft_fonts::word::missing_font_line_leading(f, &wordcraft_fonts::word::resolve(f, rc.bold, rc.italic), leading))
-                .or_else(|| wordcraft_fonts::word::missing_font_line_leading(&rc.font, &r, leading))
+                .or_else(|| {
+                    // A missing font the font table marks as a symbol font has Symbol's line.
+                    let font = super::chars::symbol_class_as(self.env.doc, &rc.font).unwrap_or(&rc.font);
+                    wordcraft_fonts::word::missing_font_line_leading(font, &r, leading)
+                })
         };
         let (ascent, descent) = match line {
             Some((a, d)) => (a * f64::from(size), d * f64::from(size)),
@@ -297,7 +303,8 @@ impl<'a> Builder<'a> {
         let resolved = wordcraft_fonts::word::resolve(family, rc.bold, rc.italic);
         let primary = resolved.face;
         // Symbol-font characters are laid out as their Unicode equivalents.
-        let sym = SymbolRun::of(&rc.font, &resolved);
+        // A missing font the font table marks as a symbol font is drawn as Symbol.
+        let sym = SymbolRun::of(super::chars::symbol_class_as(self.env.doc, &rc.font).unwrap_or(&rc.font), &resolved);
         let show = |c: char| sym.map_or(c, |m| m.show(c));
         // A code the symbol font has no glyph for is its empty box, in the paragraph's own text
         // (list labels and field results keep their characters).
@@ -413,7 +420,10 @@ impl<'a> Builder<'a> {
             let shape_text = if substituted { mapped.as_str() } else { sub };
             let map = |c: char| {
                 let d = show(c);
-                if d != c {
+                if sym.is_none() && drawn_hyphen(c) != c {
+                    // Drawn and measured as the font's own hyphen ([`drawn_hyphen`]).
+                    drawn_hyphen(c)
+                } else if d != c {
                     d
                 } else if c == '\u{a0}' {
                     // Word sets a no-break space as wide as a space; some fonts draw their own

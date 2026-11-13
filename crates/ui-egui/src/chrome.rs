@@ -53,6 +53,8 @@ const QAT_MENU: [&str; 10] =
 /// Match the toolbar's enabled state for keyboard activation too.
 pub(crate) fn qat_enabled(app: &WordApp, id: &str) -> bool {
     match id {
+        // The Markdown Source pane's arrows undo its typing.
+        "edit.undo" | "edit.redo" if app.session.md_source.is_some() => crate::md_source::can_undo(app, id == "edit.redo"),
         "edit.undo" => app.session.can_undo(),
         "edit.redo" => app.session.can_redo(),
         "file.save" => app.has_document(),
@@ -82,6 +84,8 @@ fn quick_access(ui: &mut Ui, app: &mut WordApp) {
         }
         crate::theme::off_band(|| crate::widgets::command_menu(&resp, app, id));
         if id == "edit.undo" {
+            // The list is the document's steps, not the Markdown Source pane's typing.
+            let enabled = enabled && app.session.md_source.is_none();
             undo_list_button(ui, app, enabled);
         }
     }
@@ -982,8 +986,9 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                     });
                     let prompt = wordcraft_engine::cmd::move_text::pending_status(&app.session)
                         .map(|status| if status == "Move to where?" { tl!("Move to where?").to_string() } else { tl!("Copy to where?").to_string() });
-                    let message =
-                        prompt.as_ref().or_else(|| app.status_msg.as_ref().filter(|(_, at)| crate::now_ms() - at < 6000.0).map(|(msg, _)| msg));
+                    let message = prompt
+                        .as_ref()
+                        .or_else(|| app.status_msg.as_ref().filter(|(_, at)| crate::now_ms() - at < crate::app::STATUS_MS).map(|(msg, _)| msg));
                     if let Some(msg) = message {
                         let font = TypeRung::Caption.regular();
                         let track = TypeRung::Caption.tracking();

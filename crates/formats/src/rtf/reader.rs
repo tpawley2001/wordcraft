@@ -19,6 +19,10 @@ pub(super) struct Reader {
     /// Code pages of the fonts whose charset names one (`\fcharset204` → 1251).
     pub(super) font_cps: HashMap<i32, u16>,
     pub(super) font_cp_cur: Option<u16>,
+    /// The current font-table entry's `\fcharset` and `{\*\panose …}` digits (at most
+    /// [`super::state::MAX_PANOSE_TEXT`] characters kept).
+    pub(super) font_charset_cur: u8,
+    pub(super) font_panose: String,
     /// The document's code page (`\ansicpg`); 0 until it names one (Windows-1252 then).
     pub(super) ansicpg: u16,
     /// The default font (`\deff`), whose charset applies before any `\f`.
@@ -1207,11 +1211,15 @@ pub(super) struct DocSettingWords {
     track_moves: Option<bool>,
     /// The attached template (`{\*\template …}`): the last non-blank group's path.
     pub(super) template: Option<String>,
+    /// The fonts (lowercase) the font table marks as symbol fonts by `\fcharset` and
+    /// `\panose` ([`wordcraft_doc::is_symbol_class_font`]); at most one per kept font.
+    pub(super) symbol_class_fonts: Vec<String>,
 }
 
 impl DocSettingWords {
     pub(super) fn apply(&self, s: &mut wordcraft_doc::Settings) {
         s.sum_paragraph_spacing = !self.html_auto_spacing;
+        s.symbol_class_fonts.clone_from(&self.symbol_class_fonts);
         if self.percent.is_some() || self.fit.is_some() {
             let (percent, fit) = (self.percent.unwrap_or(100), self.fit.flatten());
             // 100% with no fit mode is the model's "no saved zoom".

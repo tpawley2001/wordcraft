@@ -159,3 +159,28 @@ fn ext_leading_2pt_only_needs_its_own_bit() {
     d[84] = 0xff;
     assert!(!doc_with_dop(Some(&d)).settings.ext_leading_2pt_only);
 }
+
+/// A Dop2003 whose `Copts60` word is `copts60`.
+fn dop_copts60(copts60: u16) -> Vec<u8> {
+    let mut d = vec![0u8; DOP2003];
+    d[84..86].copy_from_slice(&copts60.to_le_bytes());
+    d
+}
+
+#[test]
+fn a1_wrap_trailing_spaces_flag_is_read() {
+    assert!(doc_with_dop(Some(&dop_copts60(0xf029))).settings.wrap_trail_spaces);
+}
+
+#[test]
+fn a2_without_the_flag_trailing_spaces_hang() {
+    assert!(!doc_with_dop(Some(&dop_copts60(0xf021))).settings.wrap_trail_spaces);
+}
+
+#[test]
+fn a3_a_dop_too_short_for_copts60_keeps_the_default() {
+    let mut d = dop_copts60(0xf029);
+    d.truncate(84);
+    assert!(!doc_with_dop(Some(&d)).settings.wrap_trail_spaces);
+    assert!(!doc_with_dop(None).settings.wrap_trail_spaces);
+}
