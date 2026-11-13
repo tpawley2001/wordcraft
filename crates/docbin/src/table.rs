@@ -64,6 +64,8 @@ const T_DYA_FROM_TEXT: u16 = 0x9411;
 const T_DXA_FROM_TEXT_RIGHT: u16 = 0x941E;
 const T_DYA_FROM_TEXT_BOTTOM: u16 = 0x941F;
 const T_F_NO_ALLOW_OVERLAP: u16 = 0x3465;
+/// `sprmTFAutofit` ([MS-DOC] 2.6.3): 1 lets the row's columns fit their content.
+const T_F_AUTOFIT: u16 = 0x3615;
 
 /// Most grid columns we build from a `sprmTDefTable` (the model's own cap is 63; one more
 /// edge is fine but merged rows can sum spans slightly over, so clamp when assembling).
@@ -118,6 +120,9 @@ pub(crate) struct RowInfo {
     tap_dist_right: Option<f32>,
     tap_dist_bottom: Option<f32>,
     tap_no_overlap: Option<bool>,
+    /// `sprmTFAutofit` with operand 1: the row's columns fit their content. Without it the
+    /// stored cell widths are final (the table has fixed column widths).
+    autofit: bool,
 }
 
 /// A table's preferred width as `sprmTTableWidth` gives it.
@@ -363,6 +368,7 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
             T_DXA_FROM_TEXT_RIGHT => r.tap_dist_right = s16(&prl).map(dist_pt),
             T_DYA_FROM_TEXT_BOTTOM => r.tap_dist_bottom = s16(&prl).map(dist_pt),
             T_F_NO_ALLOW_OVERLAP => r.tap_no_overlap = prl.operand.first().map(|b| *b != 0),
+            T_F_AUTOFIT => r.autofit = prl.operand.first() == Some(&1),
             T_VERT_ALIGN => {
                 if let [_, a, b, va, ..] = prl.operand {
                     let v = match va {
@@ -625,6 +631,8 @@ struct TableBuilder {
     width_set: bool,
     /// The frame of the table's first paragraph, the fallback when its first row-end has none.
     first_frame: Option<TextFrame>,
+    /// Some row-end carried `sprmTFAutofit` 1: the table fits its columns to their content.
+    autofit: bool,
 }
 
 impl TableBuilder {
@@ -693,6 +701,7 @@ impl TableBuilder {
             let row = build_row(std::mem::take(&mut self.cells), info);
             self.rows.push(row);
             self.row_edges.push(info.edges.clone());
+            self.autofit |= info.autofit;
         }
     }
 
@@ -740,6 +749,10 @@ impl TableBuilder {
         if !table.grid.is_empty() && table.cols() > table.grid.len() {
             table.props.width = None;
             table.props.width_pct = None;
+        } else if !self.autofit && !table.grid.is_empty() {
+            // No row asks to autofit (`sprmTFAutofit` 1), so the stored cell widths are final:
+            // the table has fixed column widths, and layout must not re-fit them to the text.
+            table.props.fixed = true;
         }
         out.push(Arc::new(Block::Table(table)));
     }
