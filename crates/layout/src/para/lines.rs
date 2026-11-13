@@ -32,8 +32,8 @@ struct Breaker<'e> {
     shrink_spaces: bool,
     /// A left, right, centred or justified paragraph of a document opened from RTF fits the word
     /// that overruns the line by shrinking its single spaces (`rtf_space_room`) instead, when
-    /// they are all in fixed-pitch fonts; never on lines with tabs. With `\wraptrsp` justified
-    /// paragraphs only (the only ones measured).
+    /// they are all in fixed-pitch fonts; never on lines with tabs. With `\wraptrsp` left and
+    /// justified paragraphs only (the only ones measured).
     rtf_squeeze: bool,
     /// WordPerfect-style justification (`Settings::wp_justification`, below compatibility mode
     /// 15): a justified line fits a word that overruns it by a small share of the line's width
@@ -42,7 +42,8 @@ struct Breaker<'e> {
     /// Whether each of the paragraph's styles is in a fixed-pitch font (for `rtf_squeeze` only).
     fixed_pitch: Vec<bool>,
     /// With `\wraptrsp` (`Settings::wrap_trail_spaces`) that word stays only when its first
-    /// character overruns the edge by less than half the space before it.
+    /// character overruns the edge by less than half the space before it. In every paragraph,
+    /// the option also wraps trailing spaces ([`Scan::space_wraps`]).
     wrap_trail_spaces: bool,
     /// Word stretches a justified line ending in a manual line break unless the document says not to.
     expand_break: bool,
@@ -198,6 +199,25 @@ fn mirrored_exclusions(exclusions: &[Exclusion], width: f32) -> Vec<Exclusion> {
         .collect()
 }
 
+/// The first row top at or below `bottom` reached from `top` in steps of `step`: `top + k * step`
+/// for the smallest such `k` (at least 1). Without a usable step, `bottom` itself.
+fn step_below(top: f32, step: f32, bottom: f32) -> f32 {
+    if !(step.is_finite() && step > 0.0 && top.is_finite() && bottom > top) {
+        return bottom;
+    }
+    // A hair of slack so a sum that lands on `bottom` up to rounding takes no extra step.
+    let k = ((bottom - top) / step - 1e-4).ceil().max(1.0);
+    let t = top + k * step;
+    if !t.is_finite() {
+        bottom
+    } else if t < bottom {
+        // Rounding left it a hair short: the object would still meet the row.
+        bottom
+    } else {
+        t
+    }
+}
+
 /// Break a paragraph into lines, measure each line, apply the paragraph's alignment and place
 /// the list label. Fills `pl.lines`, `pl.height` and the label's position.
 pub(super) fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u32, level: Option<&Level>) {
@@ -240,7 +260,12 @@ impl<'e> Breaker<'e> {
             base_right: (width - rp.indent_right).max(1.0),
             first_left: rp.indent_left + rp.indent_first,
             default_tab: settings.default_tab,
-            hanging_at: if rp.indent_first < 0.0 { Some(rp.indent_left) } else { None },
+            // `w:noTabHangInd` (below compatibility mode 15) removes the hanging indent's implicit stop.
+            hanging_at: if rp.indent_first < 0.0 && !(settings.no_tab_hang_ind && settings.compat_mode < wordcraft_doc::COMPAT_MODE_CURRENT) {
+                Some(rp.indent_left)
+            } else {
+                None
+            },
             tab_origin: if settings.odf.is_some_and(|o| o.tabs_from_indent) { rp.indent_left } else { 0.0 },
             shrink_spaces: rp.align == Align::Justify && settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT && !settings.rtf_justification,
             wp_squeeze: rp.align == Align::Justify
@@ -250,7 +275,8 @@ impl<'e> Breaker<'e> {
             rtf_squeeze: settings.rtf_justification
                 && match rp.align {
                     Align::Justify => true,
-                    Align::Left | Align::Right | Align::Center => !settings.wrap_trail_spaces,
+                    Align::Left => true,
+                    Align::Right | Align::Center => !settings.wrap_trail_spaces,
                     Align::Distribute => false,
                 },
             fixed_pitch: if settings.rtf_justification { pl.styles.iter().map(|st| st.face.is_fixed_pitch()).collect() } else { Vec::new() },
@@ -391,7 +417,8 @@ impl<'e> Breaker<'e> {
     }
 
     /// The first word doesn't fit the span beside a floating object: try the row's next span,
-    /// or the next row.
+    /// or the next row. A row with nothing on it moves down one row height at a time until it
+    /// clears the first object that ends, so it lands up to a row height below that object.
     fn skip_row(&mut self, sc: &Scan) {
         self.skipped += 1;
         if !self.row_rest.is_empty() {
@@ -400,13 +427,21 @@ impl<'e> Breaker<'e> {
         self.top = if self.lines.len() > self.row_first {
             self.top + even_row(self.lines.get_mut(self.row_first..).unwrap_or_default())
         } else {
-            // Nothing on this row: go below the first object that ends, as when no span is wide enough.
-            self.exclusions
+            // Nothing on this row: every row above the first object that ends meets the same
+            // objects (and maybe more), so the word fits none of them either. Take the whole
+            // run of one-row steps at once. A floating table that ends first still lets the
+            // text start right below it.
+            match self
+                .exclusions
                 .iter()
                 .filter(|e| e.intersects_row(self.top, self.est_h, self.table_h, sc.row_lo, self.base_right))
-                .map(|e| e.bottom)
-                .reduce(f32::min)
-                .unwrap_or(self.top + self.est_h)
+                .map(|e| (e.bottom, e.table))
+                .reduce(|a, b| if b.0 < a.0 || (b.0 == a.0 && b.1) { b } else { a })
+            {
+                Some((bottom, true)) => bottom,
+                Some((bottom, false)) => step_below(self.top, self.est_h, bottom),
+                None => self.top + self.est_h,
+            }
         };
     }
 
@@ -487,7 +522,7 @@ impl<'e> Breaker<'e> {
     /// tallest picture on it (which sits on the baseline).
     fn extents(&self, pl: &ParaLayout, (c0, c1): (usize, usize)) -> Extents {
         let rp = &self.rp;
-        let mut ex = Extents { asc: 0.0, desc: 0.0, obj_asc: 0.0, obj_desc: 0.0, text: false };
+        let mut ex = Extents { asc: 0.0, desc: 0.0, obj_asc: 0.0, obj_desc: 0.0, text: false, font_asc: 0.0, font_desc: 0.0 };
         let mut any = false;
         let dropped = pl.drop_cap.map_or(0, |d| d.0);
         for (k, c) in pl.clusters.get(c0..c1).into_iter().flatten().enumerate() {
@@ -505,6 +540,7 @@ impl<'e> Breaker<'e> {
             let check_box = object.is_some_and(|o| pl.check_boxes.contains(&o));
             // A picture sits on the baseline of its run (raised or lowered by its position):
             // the line keeps that font's ascent and descent, and grows to fit it.
+            let (mut fa, mut fd) = (None, None);
             let (a, d) = if check_box {
                 // Word sizes a line by a legacy check box as by text of the box's size (measured
                 // with Arial at 10 and 20 pt: a 20 pt box's line is 23 pt, times the spacing).
@@ -515,6 +551,8 @@ impl<'e> Breaker<'e> {
                 if math {
                     // Exact spacing keeps the run's baseline; tall math may overflow the
                     // fixed line box without moving adjacent text up by its denominator.
+                    // Its font's height is the line's text height all the same.
+                    (fa, fd) = (Some(st.ascent), Some(st.descent));
                     if matches!(rp.line_spacing, LineSpacing::Exactly(_)) { (st.ascent, st.descent) } else { (c.obj_h, c.obj_d) }
                 } else {
                     ex.obj_asc = ex.obj_asc.max(c.obj_h);
@@ -532,6 +570,8 @@ impl<'e> Breaker<'e> {
             };
             ex.asc = ex.asc.max(a);
             ex.desc = ex.desc.max(d);
+            ex.font_asc = ex.font_asc.max(fa.unwrap_or(a));
+            ex.font_desc = ex.font_desc.max(fd.unwrap_or(d));
             any = true;
             // Text needs its descent below the line; so do inline math (an object with its own
             // descent) and a check box. A line break ending the line is no text.
@@ -543,14 +583,25 @@ impl<'e> Breaker<'e> {
             ex.asc = st.ascent;
             ex.desc = st.descent;
         }
+        if !any || (ex.font_asc == 0.0 && ex.font_desc == 0.0) {
+            (ex.font_asc, ex.font_desc) = (ex.asc, ex.desc);
+        }
         ex
     }
 
     /// The line's height, baseline and text extent.
     fn measure(&self, pl: &ParaLayout, range: (usize, usize)) -> Measure {
         let rp = &self.rp;
-        let Extents { mut asc, mut desc, obj_asc, obj_desc, text } = self.extents(pl, range);
+        let Extents { mut asc, mut desc, obj_asc, obj_desc, text, font_asc: bare_asc, font_desc: bare_desc } = self.extents(pl, range);
         let mut text_natural = asc + desc;
+        // An inline equation taller than its text is sized like a picture beside text: with
+        // multiple spacing at or above single the line takes the spacing's share of the text's
+        // height only, not of the equation's (Word, measured with a 3x3 matrix at single, 1.15,
+        // 1.5 and double spacing: 38.04 pt, then 0.15, 0.5 and 1 times the 13.8 pt text line more).
+        let math_tall = matches!(rp.line_spacing, LineSpacing::Multiple(m) if m >= 1.0) && bare_asc + bare_desc < text_natural;
+        if math_tall {
+            text_natural = bare_asc + bare_desc;
+        }
         let font_desc = desc;
         desc = desc.max(obj_desc);
         let (text_asc, text_desc) = (asc.max(obj_asc), desc);
@@ -565,15 +616,25 @@ impl<'e> Breaker<'e> {
         // to that height where Word's line keeps growing.
         let spacing = if let LineSpacing::Multiple(m) = rp.line_spacing { Some(m) } else { None };
         let pictures_alone = !text && obj_asc + obj_desc > 0.0 && spacing.is_some();
+        // With at-least spacing (no document grid) a line of only pictures is as tall as they
+        // reach or the minimum, whichever is more; the font's ascent, descent and height do not
+        // count, and the pictures end at the line's bottom. Word, measured with Arial at 10 and
+        // 20 pt: at least 12, a 400 pt picture alone, 400 (both sizes); a 6 pt one, 12, the
+        // picture 6-12 below the top; a 20 pt one at Arial 20, 20. At least 30: a 20 pt picture,
+        // 30, the picture 10-30 below the top; a 29 pt one, 30. Beside text, a 400 pt picture
+        // takes the text's descent too (402.1 at Arial 10). Lowered pictures and a list label
+        // were not measured: they follow the multiple-spacing rule above.
+        let least_alone = !text && obj_asc + obj_desc > 0.0 && self.grid.is_none() && matches!(rp.line_spacing, LineSpacing::AtLeast(_));
         let below = if pictures_alone { obj_desc } else { desc };
         let text_pictures = if pictures_alone {
             obj_asc + obj_desc
-        } else if obj_asc > asc || obj_desc > font_desc {
+        } else if obj_asc > asc || obj_desc > font_desc || math_tall {
             asc.max(obj_asc) + desc
         } else {
             0.0
         };
         let mut label_extra = 0.0;
+        let mut label_floor = false;
         if self.first
             && let Some(lab) = &pl.label
         {
@@ -582,11 +643,12 @@ impl<'e> Breaker<'e> {
                 // overflow adds room, unscaled by the automatic spacing multiplier.
                 label_extra = (lab.ascent - asc).max(0.0);
                 asc = asc.max(lab.ascent);
-                if pictures_alone {
+                if pictures_alone || least_alone {
                     let styles = lab.runs.iter().filter_map(|r| pl.styles.get(r.style as usize));
                     let (a, d) = styles.fold((asc, font_desc), |(a, d), st| (a.max(st.ascent), d.max(st.descent)));
                     text_natural = a + d;
                     label_extra = 0.0;
+                    label_floor = true;
                 }
             } else {
                 for st in lab.runs.iter().filter_map(|r| pl.styles.get(r.style as usize)) {
@@ -604,12 +666,16 @@ impl<'e> Breaker<'e> {
             (LineSpacing::Multiple(m), Some(g)) => ((g.snap_height(natural) * m).max(g.snap_height(pictures)), true),
             (LineSpacing::AtLeast(v), Some(g)) => (g.snap_height(natural.max(pictures)).max(v), true),
             (LineSpacing::Multiple(m), None) => ((text_natural * m + label_extra).max(text_pictures + (m - 1.0).max(0.0) * text_natural), false),
+            // A list label's font is a floor, as with multiple spacing (unmeasured for at-least).
+            (LineSpacing::AtLeast(v), None) if least_alone => ((obj_asc + obj_desc).max(v).max(if label_floor { text_natural } else { 0.0 }), false),
             (LineSpacing::AtLeast(v), None) => (natural.max(text_pictures).max(v), false),
             (LineSpacing::Exactly(v), _) => (v, false),
         };
         let baseline = if centred {
             let up = asc.max(obj_asc);
             self.top + ((height - up - desc) / 2.0).max(0.0) + up
+        } else if least_alone {
+            self.top + height - obj_desc
         } else if let Some(m) = spacing.filter(|_| pictures_alone) {
             self.top + (text_natural * m.min(1.0) - text_pictures).max(0.0) + obj_asc
         } else {
@@ -785,6 +851,9 @@ struct Extents {
     obj_desc: f32,
     /// Whether the line holds text besides its pictures (spaces and tabs don't count).
     text: bool,
+    /// The ascent and descent without inline equations' own extents (their runs' font instead).
+    font_asc: f32,
+    font_desc: f32,
 }
 
 /// A line's height and baseline, and the extent of its text.
@@ -1013,6 +1082,10 @@ impl Scan {
             self.end = LineEnd::Wrap;
             return true;
         }
+        if self.space_wraps(bk, pl, c) {
+            self.end = LineEnd::Wrap;
+            return true;
+        }
         // A grapheme can have several drawing segments; fit it as one unit while keeping
         // each segment's font, glyphs and position for painting.
         let advance = pl.atomic_advance(j);
@@ -1084,6 +1157,56 @@ impl Scan {
         }
         self.j += 1;
         false
+    }
+
+    /// With `Settings::wrap_trail_spaces`, whether the space `c` at `j` starts the next line
+    /// instead of hanging past the right edge. As measured in Word (left and justified text): a
+    /// space that starts at or past the edge, after text that fits, begins the next line and
+    /// keeps its width there (mid-paragraph the next line's text starts after it); a space that
+    /// starts before the edge stays, even when it overruns. At a paragraph's end that leaves one
+    /// more line holding only the wrapped spaces and the mark. Not measured, so trailing spaces
+    /// still hang as without the option: spaces before a tab or a manual break, spaces after a
+    /// word that itself overruns the line (a narrow table cell), after a right, centre or
+    /// decimal tab, and East Asian (ideographic) spaces. After a word kept past the edge by the
+    /// RTF space squeeze, the first space of the run after it stays and the others start the next
+    /// line (Word, justified and left-aligned RTF).
+    fn space_wraps(&self, bk: &Breaker, pl: &ParaLayout, c: &Cluster) -> bool {
+        // An ideographic space is three bytes, a plain one one.
+        if !bk.wrap_trail_spaces
+            || c.kind != ClKind::Space
+            || c.end.saturating_sub(c.start) != 1
+            || self.overflow
+            || self.pending_tab.is_some()
+            || self.x < self.right_edge - 0.001
+        {
+            return false;
+        }
+        // Where the run of spaces this one ends starts: the text before it must fit.
+        let mut k = self.j;
+        while k > self.c0 && pl.clusters.get(k - 1).is_some_and(|p| p.kind == ClKind::Space) {
+            k -= 1;
+        }
+        let run_start = self.xs.get(k - self.c0).copied().unwrap_or(self.x);
+        if !(self.c0..k).any(|i| pl.clusters.get(i).is_some_and(takes_room)) {
+            return false;
+        }
+        if run_start > self.right_edge + 0.01 && !(k < self.j && self.squeezed_into_line(bk, run_start)) {
+            return false;
+        }
+        let next = pl.clusters.iter().skip(self.j + 1).find(|n| n.kind != ClKind::Space);
+        !next.is_some_and(|n| matches!(n.kind, ClKind::Tab | ClKind::LineBreak | ClKind::PageBreak | ClKind::ColumnBreak))
+    }
+
+    /// Whether the text up to `end`, past the right edge, stays on the line by the RTF space
+    /// squeeze: the line's single inner spaces (not the run of spaces after `end`) can give up
+    /// the overrun.
+    fn squeezed_into_line(&self, bk: &Breaker, end: f32) -> bool {
+        if !bk.rtf_squeeze || !self.rtf_after_tab || self.proportional_spaces > 0 {
+            return false;
+        }
+        // A single space just placed after `end` is counted among the singles; it trails.
+        let trailing = if self.space_run.0 == 1 { self.space_run.1 } else { 0.0 };
+        end - self.right_edge < (self.single_space_w - trailing) * RTF_MAX_SPACE_SHRINK
     }
 
     /// Whether `c`, at `j`, ends a field whose result's last item, just before it on this line, is
@@ -1314,6 +1437,20 @@ mod tests {
     use wordcraft_doc::{Document, Pos};
 
     use crate::{LayoutCache, LayoutOptions, Placed, layout};
+
+    /// A row that clears an object steps down by whole rows; a step that is zero, negative or not
+    /// finite falls back to the object's bottom instead of looping.
+    #[test]
+    fn step_below_takes_whole_rows_or_falls_back_to_the_bottom() {
+        let at = |t: f32, h: f32, b: f32| super::step_below(t, h, b);
+        assert!((at(23.0, 11.5, 228.0) - 230.0).abs() < 1e-3);
+        assert!((at(0.0, 10.0, 30.0) - 30.0).abs() < 1e-3, "an exact fit takes no extra row");
+        assert!((at(0.0, 10.0, 0.5) - 10.0).abs() < 1e-3, "at least one row");
+        for h in [0.0, -3.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(at(5.0, h, 228.0), 228.0, "step {h}");
+        }
+        assert!((at(5.0, 1e-30, 228.0) - 228.0).abs() < 0.01, "a step too small to count with");
+    }
 
     /// Two `Largest` floats on the same lines, each with its narrower side facing outwards: each
     /// keeps text off that side, so the text sits between them (as Word lays out a `.doc` whose
