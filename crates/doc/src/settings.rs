@@ -774,6 +774,28 @@ impl Default for Settings {
     }
 }
 
+/// Whether a font-table entry with this character set (`chs`, `\fcharsetN`, `w:charset`) and
+/// 10-byte PANOSE describes a symbol font: the PANOSE family kind (its first byte) is 5,
+/// pictorial, or the character set is 2, symbol, with a PANOSE that isn't all zero (an all-zero
+/// PANOSE in a .doc means none was given). Without a PANOSE an entry is never one here.
+pub fn is_symbol_class_font(charset: u8, panose: &[u8; 10]) -> bool {
+    panose.first() == Some(&5) || (charset == 2 && panose.iter().any(|&b| b != 0))
+}
+
+/// The PANOSE of a font-table entry written as hex digits (RTF `\panose`, DOCX `w:panose1`):
+/// exactly 20 of them, else `None` (a malformed value is ignored).
+pub fn panose_from_hex(hex: &str) -> Option<[u8; 10]> {
+    let hex = hex.trim();
+    if hex.len() != 20 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let mut out = [0u8; 10];
+    for (i, o) in out.iter_mut().enumerate() {
+        *o = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::StylePaneSort;
@@ -800,26 +822,4 @@ mod tests {
         let back: super::Settings = serde_json::from_value(v).unwrap();
         assert!(back.wp_justification);
     }
-}
-
-/// Whether a font-table entry with this character set (`chs`, `\fcharsetN`, `w:charset`) and
-/// 10-byte PANOSE describes a symbol font: the PANOSE family kind (its first byte) is 5,
-/// pictorial, or the character set is 2, symbol, with a PANOSE that isn't all zero (an all-zero
-/// PANOSE in a .doc means none was given). Without a PANOSE an entry is never one here.
-pub fn is_symbol_class_font(charset: u8, panose: &[u8; 10]) -> bool {
-    panose.first() == Some(&5) || (charset == 2 && panose.iter().any(|&b| b != 0))
-}
-
-/// The PANOSE of a font-table entry written as hex digits (RTF `\panose`, DOCX `w:panose1`):
-/// exactly 20 of them, else `None` (a malformed value is ignored).
-pub fn panose_from_hex(hex: &str) -> Option<[u8; 10]> {
-    let hex = hex.trim();
-    if hex.len() != 20 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return None;
-    }
-    let mut out = [0u8; 10];
-    for (i, o) in out.iter_mut().enumerate() {
-        *o = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
-    }
-    Some(out)
 }

@@ -446,11 +446,7 @@ impl Reader {
     fn destination_for_word(&mut self, w: &str) -> Option<Dest> {
         match w {
             "fonttbl" => Some(Dest::FontTbl),
-            // A font entry's classification: with `\fcharset` it tells a symbol font.
-            "panose" if self.st.dest == Dest::FontTbl => {
-                self.font_panose.clear();
-                Some(Dest::Panose)
-            }
+            "panose" => Some(self.panose_destination()),
             "colortbl" => Some(Dest::ColorTbl),
             "stylesheet" => Some(Dest::StyleSheet),
             "generator" => {
@@ -538,7 +534,7 @@ impl Reader {
             | "operator" | "company" | "manager" | "category" | "hlinkbase" | "revtime" | "printim" | "buptim" | "version" | "nofpages"
             | "nofwords" | "nofchars" | "edmins" | "vern" | "themedata" | "colorschememapping" | "latentstyles" | "datastore" | "xmlnstbl"
             | "rsidtbl" | "mmathPr" | "pgdsctbl" | "filetbl" | "listpicture" | "userprops" | "objdata" | "fontemb" | "fontfile"
-            | "panose" | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl"
+            | "falt" | "mhtmltag" | "htmltag" | "pnseclvl" | "background" | "sp" | "pgptbl"
             // The flat copy of nested tables, for readers without them.
             | "nonesttables" => Some(Dest::Skip),
             // Word 6.0/95 paragraph numbering: read, so the paragraph imports as a list.
@@ -806,6 +802,16 @@ impl Reader {
             "min" => c.4 = v,
             _ => {}
         }
+    }
+
+    /// `{\*\panose …}`: a font entry's classification, which with `\fcharset` tells a symbol
+    /// font; skipped anywhere else.
+    fn panose_destination(&mut self) -> Dest {
+        if self.st.dest != Dest::FontTbl {
+            return Dest::Skip;
+        }
+        self.font_panose.clear();
+        Dest::Panose
     }
 
     fn font_table_word(&mut self, word: &str, value: i32) {
