@@ -1,4 +1,4 @@
-use super::boxes::{BoxInput, BoxLayout, Edges, joined, layout_box, push_para};
+use super::boxes::{Edges, joined, push_para};
 use super::cache::has_page_number_fields;
 use super::ctx::Ctx;
 use super::floats::{
@@ -903,11 +903,9 @@ fn notes_on_line(ctx: &mut Ctx, pb: &PageBuilder, l: &para::Line, notes: &[(usiz
         if *ci >= l.c0
             && *ci < l.c1
             && !pb.notes.iter().chain(new_notes).any(|x| x.id == *id)
-            && let Some(part) = ctx.doc.parts.get(id).filter(|p| p.kind == wordcraft_doc::PartKind::Footnote)
+            && let Some(note) = crate::notes::footnote_box(ctx, *id, pb.note_w())
         {
-            let blocks = part.blocks.clone();
-            let BoxLayout { items, height: h, .. } = layout_box(ctx, BoxInput::other(StoryRef::Part(*id), &blocks, pb.note_w(), 0, None));
-            out.push(NoteBox { id: *id, items, h, cont: false });
+            out.push(note);
         }
     }
     out
