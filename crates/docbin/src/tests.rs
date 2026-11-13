@@ -33,6 +33,7 @@ mod frames;
 mod header_guard;
 mod horizontal_rules;
 mod hps_pos;
+mod keep_break_off;
 mod linked_pictures;
 mod list_level_text;
 mod metadata;
