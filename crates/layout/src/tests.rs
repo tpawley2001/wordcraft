@@ -86,6 +86,7 @@ mod styleref_case;
 mod styleref_errors;
 mod symbol_field;
 mod symbol_font_lines;
+mod symbol_missing_box;
 mod tab_to_right_indent;
 mod table_contact;
 mod textbox;

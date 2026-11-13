@@ -3095,3 +3095,60 @@ fn chart_and_equation_text_keep_their_pdf_bytes() {
         ["B", "o", "d", "y", " ", "t", "e", "x", "R", "v", "n", "u", "2", "0", "4", "+", "1", "\u{1D465}"].into_iter().map(String::from).collect();
     assert_eq!(shown, expected);
 }
+
+/// Stroked paths on each page, as (x0, y0, x1, y1) bounding boxes in page space.
+fn stroked_paths(bytes: &[u8]) -> Vec<Vec<kurbo::Rect>> {
+    use hayro_interpret::font::Glyph;
+    use hayro_interpret::{
+        BlendMode, ClipPath, Context, Device, GlyphDrawMode, Image, InterpreterCache, InterpreterSettings, Paint, PathDrawMode, SoftMask,
+        interpret_page,
+    };
+    use hayro_syntax::Pdf;
+    use kurbo::Shape;
+    struct Ex(Vec<kurbo::Rect>);
+    impl Device<'_> for Ex {
+        fn set_soft_mask(&mut self, _: Option<SoftMask<'_>>) {}
+        fn set_blend_mode(&mut self, _: BlendMode) {}
+        fn draw_path(&mut self, p: &kurbo::BezPath, t: kurbo::Affine, _: &Paint<'_>, mode: &PathDrawMode) {
+            if matches!(mode, PathDrawMode::Stroke(_)) {
+                self.0.push((t * p.clone()).bounding_box());
+            }
+        }
+        fn push_clip_path(&mut self, _: &ClipPath) {}
+        fn push_transparency_group(&mut self, _: f32, _: Option<SoftMask<'_>>, _: BlendMode) {}
+        fn draw_glyph(&mut self, _: &Glyph<'_>, _: kurbo::Affine, _: kurbo::Affine, _: &Paint<'_>, _: &GlyphDrawMode) {}
+        fn draw_image(&mut self, _: Image<'_, '_>, _: kurbo::Affine) {}
+        fn pop_clip_path(&mut self) {}
+        fn pop_transparency_group(&mut self) {}
+    }
+    let pdf = Pdf::new(bytes.to_vec()).expect("parse");
+    let cache = InterpreterCache::new();
+    pdf.pages()
+        .iter()
+        .map(|page| {
+            let mut ctx =
+                Context::new(kurbo::Affine::IDENTITY, kurbo::Rect::new(0.0, 0.0, 1.0, 1.0), &cache, pdf.xref(), InterpreterSettings::default());
+            let mut ex = Ex(Vec::new());
+            interpret_page(page, &mut ctx, &mut ex);
+            ex.0
+        })
+        .collect()
+}
+
+#[test]
+fn a_symbol_code_without_a_glyph_is_a_stroked_box_and_keeps_its_text() {
+    // Symbol U+F08E (an old form's check box) has no glyph in the font: an empty box 1224/2048 em
+    // wide, drawn as a rectangle, while the text layer keeps the stored character.
+    let chr = |font: &str| CharProps { font: Some(font.into()), size: Some(10.0), ..Default::default() };
+    let mut p = Paragraph::with_text("A", chr("Times New Roman"));
+    p.append(Paragraph::with_text("\u{F08E}", chr("Symbol")));
+    p.append(Paragraph::with_text("B", chr("Times New Roman")));
+    let mut d = Document::new();
+    d.body = vec![para_block(p)];
+    let bytes = export(&d, &PdfOptions::default()).unwrap();
+    let text = extract_text(&bytes).concat();
+    assert!(text.contains("A\u{F08E}B"), "{text:?}");
+    let boxes: Vec<kurbo::Rect> =
+        stroked_paths(&bytes).concat().into_iter().filter(|r| (r.width() - 5.0).abs() < 0.6 && (r.height() - 6.8).abs() < 0.6).collect();
+    assert_eq!(boxes.len(), 1, "one box about 5 x 6.8 pt");
+}
