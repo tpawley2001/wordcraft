@@ -521,7 +521,7 @@ impl<'a> Flow<'a> {
             let pushed =
                 fit.l1 == 0 && l.top > 0.01 && self.p.objects.iter().any(|o| floating(o).is_some_and(|(_, _, f)| f.wrap == Wrap::TopAndBottom));
             let fresh = pb.fresh() && !pb.pinned_room_ahead();
-            if over && fit.l1 == l0 && !fresh && !split && (pushed || !self.stays_at_bottom(pb, l)) {
+            if over && fit.l1 == l0 && !fresh && !split && (pushed || !self.stays_at_bottom(pb, l) || self.after_hanging_leading(pb, l)) {
                 break;
             }
             let mine = fit.notes.len();
@@ -582,6 +582,20 @@ impl<'a> Flow<'a> {
         let p = self.p;
         let only_break = matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak) && self.only_breaks(l);
         only_break || (pb.next_starts_page && p.section.is_some() && p.text.is_empty())
+    }
+
+    /// Whether the paragraph opens with a page break and has more after it (`l` is its first
+    /// line), on a page whose last line already hangs its line-spacing leading past the bottom
+    /// ([`fit_height`]): the page is over-full, so the paragraph starts on the next page and its
+    /// break acts there, leaving that page blank (measured in Word). A paragraph holding only the
+    /// break is not affected.
+    fn after_hanging_leading(&self, pb: &PageBuilder, l: &para::Line) -> bool {
+        let p = self.p;
+        self.l0 == 0
+            && l.end == LineEnd::PageBreak
+            && pb.content_bottom > pb.bottom + 0.01
+            && p.text.get(l.start..l.stop).is_some_and(|t| !t.is_empty() && t.chars().all(|c| c == wordcraft_doc::para::PAGE_BREAK))
+            && !only_markers(p, l.stop..p.text.len())
     }
 
     /// Whether the line holds nothing but page and column breaks.
