@@ -928,3 +928,7 @@ mod tests {
 #[cfg(test)]
 #[path = "../tests/missing_font_simsun.rs"]
 mod missing_font_simsun;
+
+#[cfg(test)]
+#[path = "../tests/missing_font_japanese_shruti.rs"]
+mod missing_font_japanese_shruti;
