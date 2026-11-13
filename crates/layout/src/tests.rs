@@ -15,6 +15,7 @@ mod button_fields;
 mod cell_floats;
 mod column_top_float;
 mod complex;
+mod continuous_resized_section;
 mod custom_note_marks;
 mod deleted_cell_end;
 mod deleted_mark_join;
