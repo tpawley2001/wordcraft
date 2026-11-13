@@ -78,6 +78,7 @@ mod pct_table_legacy_width;
 mod picture_glue;
 mod picture_glue_touching;
 mod pushed_by_earlier_float;
+mod row_end_anchor_columns;
 mod row_exception_no_borders;
 mod rtf_justify_squeeze;
 mod rtf_squeeze_after_tab;
