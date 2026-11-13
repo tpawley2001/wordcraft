@@ -42,7 +42,8 @@ struct Breaker<'e> {
     /// Whether each of the paragraph's styles is in a fixed-pitch font (for `rtf_squeeze` only).
     fixed_pitch: Vec<bool>,
     /// With `\wraptrsp` (`Settings::wrap_trail_spaces`) that word stays only when its first
-    /// character overruns the edge by less than half the space before it.
+    /// character overruns the edge by less than half the space before it. In every paragraph,
+    /// the option also wraps trailing spaces ([`Scan::space_wraps`]).
     wrap_trail_spaces: bool,
     /// Word stretches a justified line ending in a manual line break unless the document says not to.
     expand_break: bool,
@@ -996,6 +997,10 @@ impl Scan {
             self.end = LineEnd::Wrap;
             return true;
         }
+        if self.space_wraps(bk, pl, c) {
+            self.end = LineEnd::Wrap;
+            return true;
+        }
         // A grapheme can have several drawing segments; fit it as one unit while keeping
         // each segment's font, glyphs and position for painting.
         let advance = pl.atomic_advance(j);
@@ -1067,6 +1072,39 @@ impl Scan {
         }
         self.j += 1;
         false
+    }
+
+    /// With `Settings::wrap_trail_spaces`, whether the space `c` at `j` starts the next line
+    /// instead of hanging past the right edge. As measured in Word (left and justified text): a
+    /// space that starts at or past the edge, after text that fits, begins the next line and
+    /// keeps its width there (mid-paragraph the next line's text starts after it); a space that
+    /// starts before the edge stays, even when it overruns. At a paragraph's end that leaves one
+    /// more line holding only the wrapped spaces and the mark. Not measured, so trailing spaces
+    /// still hang as without the option: spaces before a tab or a manual break, spaces after a
+    /// word that itself overruns the line (a narrow table cell), after a right, centre or
+    /// decimal tab, and East Asian (ideographic) spaces.
+    fn space_wraps(&self, bk: &Breaker, pl: &ParaLayout, c: &Cluster) -> bool {
+        // An ideographic space is three bytes, a plain one one.
+        if !bk.wrap_trail_spaces
+            || c.kind != ClKind::Space
+            || c.end.saturating_sub(c.start) != 1
+            || self.overflow
+            || self.pending_tab.is_some()
+            || self.x < self.right_edge - 0.001
+        {
+            return false;
+        }
+        // Where the run of spaces this one ends starts: the text before it must fit.
+        let mut k = self.j;
+        while k > self.c0 && pl.clusters.get(k - 1).is_some_and(|p| p.kind == ClKind::Space) {
+            k -= 1;
+        }
+        let run_start = self.xs.get(k - self.c0).copied().unwrap_or(self.x);
+        if run_start > self.right_edge + 0.01 || !(self.c0..k).any(|i| pl.clusters.get(i).is_some_and(takes_room)) {
+            return false;
+        }
+        let next = pl.clusters.iter().skip(self.j + 1).find(|n| n.kind != ClKind::Space);
+        !next.is_some_and(|n| matches!(n.kind, ClKind::Tab | ClKind::LineBreak | ClKind::PageBreak | ClKind::ColumnBreak))
     }
 
     /// Whether `c`, at `j`, ends a field whose result's last item, just before it on this line, is
