@@ -41,6 +41,7 @@ mod footnotes_in_columns;
 mod grid;
 mod header_extent;
 mod header_extent_fixtures;
+mod header_half_page;
 mod header_space_after;
 mod hf_empty_anchor_legacy;
 mod hf_float_wrap_modes;
@@ -7290,7 +7291,7 @@ fn floating_header_text_box_leaves_the_body_at_the_top_margin() {
     crate::test_fonts();
     use wordcraft_doc::para::{Anchor, Float, ShapeKind, Wrap};
     let body: Vec<String> = (1..=40).map(|i| format!("Body paragraph {i}: synthetic public test content.")).collect();
-    let make = |float: Option<Float>| {
+    let make = |float: Option<Float>, box_h: f32| {
         let mut d = Document::from_text(&body.join("\n"));
         // The header starts 18pt from the top, so its two lines end well above the 72pt top
         // margin whatever font the default text gets (the line height differs between the
@@ -7307,7 +7308,7 @@ fn floating_header_text_box_leaves_the_body_at_the_top_margin() {
             let tb = InlineObject::Shape {
                 kind: ShapeKind::TextBox,
                 w: 405.0,
-                h: 491.4,
+                h: box_h,
                 fill: None,
                 stroke: None,
                 stroke_width: 0.75,
@@ -7324,16 +7325,19 @@ fn floating_header_text_box_leaves_the_body_at_the_top_margin() {
         let l = lay(&d);
         (l.pages.len(), first_line_top(&l.pages[0].items))
     };
-    let (control_pages, control_top) = make(None);
+    let (control_pages, control_top) = make(None, 491.4);
     let behind = Float { wrap: Wrap::BehindText, h_rel: Anchor::Page, v_rel: Anchor::Page, x: 0.0, y: 80.0, ..Default::default() };
-    let (pages, top) = make(Some(behind));
+    let (pages, top) = make(Some(behind), 491.4);
     assert!(control_pages > 1, "the control needs more than one page: {control_pages}");
     assert!((control_top - 72.0).abs() < 0.5, "control body starts at the top margin: {control_top}");
     assert!((top - control_top).abs() < 0.5, "body starts at {top} with the floating box, {control_top} without");
     assert_eq!(pages, control_pages);
     // The same box inline does take room in the header, which is what the reader used to make of it.
-    let (inline_pages, inline_top) = make(Some(Float::default()));
-    assert!(inline_top > 400.0 && inline_pages > control_pages, "inline box: body at {inline_top}, {inline_pages} pages");
+    // A header stops at half the page height (396pt here: a line past that is not printed), so
+    // the inline box is 366pt tall: with the label line it stays within that, and the body
+    // starts below it.
+    let (inline_pages, inline_top) = make(Some(Float::default()), 366.0);
+    assert!(inline_top > 18.0 + 366.0 && inline_pages > control_pages, "inline box: body at {inline_top}, {inline_pages} pages");
 }
 
 /// List labels drawn, in page order (each paragraph's first line).
