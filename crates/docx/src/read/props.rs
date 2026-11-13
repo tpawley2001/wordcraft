@@ -15,7 +15,7 @@ use wordcraft_doc::section::{
 
 use super::MAX_FONT_NAME;
 use super::drawing_color::adjust_lum;
-use crate::units::{int, line_multiple, measure, on_off, tw, tw_i16, tw_u16, u32_of};
+use crate::units::{int, line_multiple, measure, on_off, tw, tw_i16, tw_u16, u32_of, wrap_line_height};
 
 /// A `w14:` on/off property ([MS-DOCX] `CT_OnOff`): no `w14:val` is on.
 fn w14_on_off(k: &El) -> bool {
@@ -456,11 +456,19 @@ impl PropCtx {
                     if let Some(line) = k.attr("w:line") {
                         // Word reads the rule case-insensitively (`atleast` is seen in the wild).
                         let rule = k.attr("w:lineRule").unwrap_or("auto").to_ascii_lowercase();
-                        p.line_spacing = match rule.as_str() {
-                            "exact" => measure(line, 20.0).map(|v| LineSpacing::Exactly(v.abs())),
-                            "atleast" => measure(line, 20.0).map(|v| LineSpacing::AtLeast(v.abs())),
-                            // Strict OOXML writes the height with a unit (`13.90pt`, #2329).
-                            _ => line_multiple(line).map(|v| LineSpacing::Multiple(v.abs().clamp(0.06, 132.0))),
+                        // Beyond 16 bits the wrapped value's sign decides the rule (`wrap_line_height`).
+                        let wrapped = wrap_line_height(line, rule == "exact");
+                        p.line_spacing = match (wrapped, rule.as_str()) {
+                            (Some(s), _) if s < 0 => Some(LineSpacing::Exactly(-f32::from(s) / 20.0)),
+                            (Some(0), _) => Some(LineSpacing::AtLeast(0.0)),
+                            (Some(s), "auto") => Some(LineSpacing::Multiple((f32::from(s) / 240.0).clamp(0.06, 132.0))),
+                            (Some(s), _) => Some(LineSpacing::AtLeast(f32::from(s) / 20.0)),
+                            (None, _) => match rule.as_str() {
+                                "exact" => measure(line, 20.0).map(|v| LineSpacing::Exactly(v.abs())),
+                                "atleast" => measure(line, 20.0).map(|v| LineSpacing::AtLeast(v.abs())),
+                                // Strict OOXML writes the height with a unit (`13.90pt`, #2329).
+                                _ => line_multiple(line).map(|v| LineSpacing::Multiple(v.abs().clamp(0.06, 132.0))),
+                            },
                         };
                     }
                 }
@@ -671,11 +679,21 @@ pub fn trpr(e: &El) -> RowProps {
         match k.name.as_str() {
             "w:trHeight" => {
                 r.height = tw(k, "w:val").map(|v| v.abs());
-                r.height_rule = match k.attr("w:hRule").map(str::to_ascii_lowercase).as_deref() {
+                let rule = k.attr("w:hRule").map(str::to_ascii_lowercase);
+                r.height_rule = match rule.as_deref() {
                     Some("exact") => HeightRule::Exact,
                     Some("auto") => HeightRule::Auto,
                     _ => HeightRule::AtLeast,
                 };
+                // Beyond 16 bits the wrapped value's sign decides the rule (`wrap_line_height`).
+                let wrapped = match rule.as_deref() {
+                    Some("auto") => None,
+                    r => k.attr("w:val").and_then(|v| wrap_line_height(v, r == Some("exact"))),
+                };
+                if let Some(s) = wrapped {
+                    r.height = Some(f32::from(s).abs() / 20.0);
+                    r.height_rule = if s < 0 { HeightRule::Exact } else { HeightRule::AtLeast };
+                }
             }
             "w:tblHeader" => r.header = on_off(k),
             "w:cantSplit" => r.cant_split = on_off(k),
