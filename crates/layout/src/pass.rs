@@ -246,6 +246,7 @@ fn new_page_builder<'p>(
         early,
         seeded: 0,
         settle,
+        unshifted: None,
         column_lines: None,
     }
 }

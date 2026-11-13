@@ -99,6 +99,9 @@ pub(crate) struct PageBuilder<'a> {
     /// No layout pass follows for floats found above their anchors: each is kept clear of the
     /// text laid out before it ([`settle_early`]).
     pub(crate) settle: bool,
+    /// The body paragraph whose objects are placed as positioned even past the paper's bottom
+    /// edge ([`crate::floats::onto_paper`]): moved up, they left its first line no room.
+    pub(crate) unshifted: Option<usize>,
     /// The lines between the columns of the section on the current page, drawn once its text
     /// there is laid out ([`PageBuilder::close_column_lines`]).
     pub(crate) column_lines: Option<ColumnLines>,
