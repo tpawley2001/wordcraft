@@ -170,9 +170,11 @@ fn headers_inherited_through_many_sections_lay_out_in_linear_time() {
     assert!(inherited <= 2 * named, "1000 inheriting sections took {inherited} steps, named ones {named}");
 }
 
-/// A header of `n` short paragraphs.
+/// A header of `n` short paragraphs, on a page tall enough to print them all: a header stops at
+/// half the page height, and the lines past that are not laid out.
 fn tall_header(n: usize) -> (Document, u32) {
     let mut d = Document::from_text("Body");
+    d.last_section.page_h = 400.0 + 60.0 * n as f32;
     let paras = (0..n).map(|i| wordcraft_doc::para_block(Paragraph::with_text(&format!("h{i}"), CharProps::default()))).collect();
     let id = d.add_part(wordcraft_doc::PartKind::Header, paras);
     d.last_section.headers.default = Some(id);

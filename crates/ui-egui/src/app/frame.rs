@@ -6,6 +6,11 @@ use super::{
 
 use crate::i18n;
 
+/// How long the status bar shows a message, in milliseconds.
+pub(crate) const STATUS_MS: f64 = 6000.0;
+/// How long [`WordApp::status_long`] shows one: a warning that is easy to miss in six seconds.
+const STATUS_LONG_MS: f64 = 20000.0;
+
 impl WordApp {
     /// A file that wouldn't open (#1103): log it, and say on the status bar which file and why,
     /// whatever handed it over (the command line, a macOS open event, a drop). Returns the message.
@@ -20,6 +25,12 @@ impl WordApp {
     /// are shown with the app's own name ([`crate::brand::named`]).
     pub fn status(&mut self, s: impl Into<String>) {
         self.status_msg = Some((crate::brand::named(&s.into()), now_ms()));
+    }
+
+    /// A status message that stays [`STATUS_LONG_MS`] instead of the usual six seconds: the bar
+    /// shows a message until six seconds after its time, so its time is set that much later.
+    pub fn status_long(&mut self, s: impl Into<String>) {
+        self.status_msg = Some((crate::brand::named(&s.into()), now_ms() + STATUS_LONG_MS - STATUS_MS));
     }
 
     /// Write the current preferences out through the host's hook, if it has one (#2716). The
@@ -101,7 +112,11 @@ impl WordApp {
             }
             let fill = if screen == chrome::Screen::Focus { chrome::FOCUS_CANVAS } else { t.canvas };
             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {
-                crate::split_view::show(self, ui);
+                if self.session.md_source.is_some() {
+                    crate::md_source::show(self, ui);
+                } else {
+                    crate::split_view::show(self, ui);
+                }
             });
             if self.focus_ribbon && !moved(self) {
                 chrome::focus_ribbon(self, ctx);
