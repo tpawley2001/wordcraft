@@ -210,6 +210,11 @@ pub struct ResolvedPara {
     pub outline_level: Option<u8>,
     pub numbering: Option<NumRef>,
     pub tabs: Vec<TabStop>,
+    /// The positions the paragraph's tab list clears (`TabAlign::Clear` stops left after the
+    /// style chain and direct formatting), in points. A list level's own tab stop at one of them
+    /// is not used, as in Word.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tab_clears: Vec<f32>,
     pub shading: Option<Rgb>,
     pub borders: Option<Borders>,
     /// Padding on the sides without a line (top, left, bottom, right), points. ODF's box model
@@ -283,6 +288,8 @@ impl ResolvedPara {
         let mut tabs: Vec<TabStop> =
             p.tabs.clone().unwrap_or_default().into_iter().filter(|t| t.align != TabAlign::Clear && t.pos.is_finite()).collect();
         tabs.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+        let tab_clears: Vec<f32> =
+            p.tabs.iter().flatten().filter(|t| t.align == TabAlign::Clear && t.pos.is_finite()).map(|t| t.pos).take(64).collect();
         ResolvedPara {
             style: style.to_string(),
             align: p.align.unwrap_or_default(),
@@ -308,6 +315,7 @@ impl ResolvedPara {
             outline_level: p.outline_level.filter(|l| *l < 9),
             numbering: p.numbering.filter(|n| n.num != 0),
             tabs,
+            tab_clears,
             shading: p.shading,
             borders: p.borders.filter(Borders::any_visible),
             padding: p.borders.map_or([0.0; 4], |b| {
