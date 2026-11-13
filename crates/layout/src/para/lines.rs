@@ -260,7 +260,12 @@ impl<'e> Breaker<'e> {
             base_right: (width - rp.indent_right).max(1.0),
             first_left: rp.indent_left + rp.indent_first,
             default_tab: settings.default_tab,
-            hanging_at: if rp.indent_first < 0.0 { Some(rp.indent_left) } else { None },
+            // `w:noTabHangInd` (below compatibility mode 15) removes the hanging indent's implicit stop.
+            hanging_at: if rp.indent_first < 0.0 && !(settings.no_tab_hang_ind && settings.compat_mode < wordcraft_doc::COMPAT_MODE_CURRENT) {
+                Some(rp.indent_left)
+            } else {
+                None
+            },
             tab_origin: if settings.odf.is_some_and(|o| o.tabs_from_indent) { rp.indent_left } else { 0.0 },
             shrink_spaces: rp.align == Align::Justify && settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT && !settings.rtf_justification,
             wp_squeeze: rp.align == Align::Justify
