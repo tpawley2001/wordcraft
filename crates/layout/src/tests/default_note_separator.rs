@@ -44,7 +44,7 @@ fn doc_with(normal: (&str, f32, ParaProps), body: Vec<Paragraph>) -> (Document, 
 }
 
 /// Height of one single-spaced empty line in the document's Normal style, laid out as body text.
-fn normal_line(d: &Document) -> f32 {
+pub(super) fn normal_line(d: &Document) -> f32 {
     let mut e = d.clone();
     e.parts.clear();
     let mut p = Paragraph::new().styled("Normal");
@@ -78,7 +78,7 @@ fn note_top(l: &DocLayout, id: u32) -> f32 {
 
 /// The height of the separator above note `id` on page 0: its rule is drawn half way down it and
 /// the note starts right below it.
-fn sep_height(l: &DocLayout, id: u32) -> f32 {
+pub(super) fn sep_height(l: &DocLayout, id: u32) -> f32 {
     let rule = l.pages[0]
         .items
         .iter()
