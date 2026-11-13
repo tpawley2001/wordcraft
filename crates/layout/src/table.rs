@@ -1752,9 +1752,12 @@ fn preferred_autofit(t: &Table, content: &[(f32, f32)], avail: f32, depth: usize
     let pref = column_preferred_widths(t, content.len())?;
     let asked: f32 = pref.iter().sum();
     let w = table_w.unwrap_or(avail);
-    // Preferred widths that add up to the table's width keep today's handling (grid and donors);
-    // an automatic table only changes when its columns ask for more than the room.
-    if (asked - w).abs() < 0.5 || (table_w.is_none() && asked <= w) {
+    // Preferred widths that add up to the table's width keep today's handling (grid and donors).
+    // An automatic table only changes when its columns ask for more than the room and its saved
+    // grid disagrees with them (as Word saves it): a grid that matches the cells is a table
+    // deliberately widened past the margin, which keeps its widths (not measured).
+    let saved: f32 = t.grid.iter().filter(|w| w.is_finite()).sum();
+    if (asked - w).abs() < 0.5 || (table_w.is_none() && (asked <= w || (saved - asked).abs() < 0.5)) {
         return None;
     }
     let mins: Vec<f32> = content.iter().map(|c| c.0).collect();
