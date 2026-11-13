@@ -195,6 +195,25 @@ fn mirrored_exclusions(exclusions: &[Exclusion], width: f32) -> Vec<Exclusion> {
         .collect()
 }
 
+/// The first row top at or below `bottom` reached from `top` in steps of `step`: `top + k * step`
+/// for the smallest such `k` (at least 1). Without a usable step, `bottom` itself.
+fn step_below(top: f32, step: f32, bottom: f32) -> f32 {
+    if !(step.is_finite() && step > 0.0 && top.is_finite() && bottom > top) {
+        return bottom;
+    }
+    // A hair of slack so a sum that lands on `bottom` up to rounding takes no extra step.
+    let k = ((bottom - top) / step - 1e-4).ceil().max(1.0);
+    let t = top + k * step;
+    if !t.is_finite() {
+        bottom
+    } else if t < bottom {
+        // Rounding left it a hair short: the object would still meet the row.
+        bottom
+    } else {
+        t
+    }
+}
+
 /// Break a paragraph into lines, measure each line, apply the paragraph's alignment and place
 /// the list label. Fills `pl.lines`, `pl.height` and the label's position.
 pub(super) fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u32, level: Option<&Level>) {
@@ -387,7 +406,8 @@ impl<'e> Breaker<'e> {
     }
 
     /// The first word doesn't fit the span beside a floating object: try the row's next span,
-    /// or the next row.
+    /// or the next row. A row with nothing on it moves down one row height at a time until it
+    /// clears the first object that ends, so it lands up to a row height below that object.
     fn skip_row(&mut self, sc: &Scan) {
         self.skipped += 1;
         if !self.row_rest.is_empty() {
@@ -396,13 +416,21 @@ impl<'e> Breaker<'e> {
         self.top = if self.lines.len() > self.row_first {
             self.top + even_row(self.lines.get_mut(self.row_first..).unwrap_or_default())
         } else {
-            // Nothing on this row: go below the first object that ends, as when no span is wide enough.
-            self.exclusions
+            // Nothing on this row: every row above the first object that ends meets the same
+            // objects (and maybe more), so the word fits none of them either. Take the whole
+            // run of one-row steps at once. A floating table that ends first still lets the
+            // text start right below it.
+            match self
+                .exclusions
                 .iter()
                 .filter(|e| e.intersects_row(self.top, self.est_h, self.table_h, sc.row_lo, self.base_right))
-                .map(|e| e.bottom)
-                .reduce(f32::min)
-                .unwrap_or(self.top + self.est_h)
+                .map(|e| (e.bottom, e.table))
+                .reduce(|a, b| if b.0 < a.0 || (b.0 == a.0 && b.1) { b } else { a })
+            {
+                Some((bottom, true)) => bottom,
+                Some((bottom, false)) => step_below(self.top, self.est_h, bottom),
+                None => self.top + self.est_h,
+            }
         };
     }
 
@@ -1297,6 +1325,20 @@ mod tests {
     use wordcraft_doc::{Document, Pos};
 
     use crate::{LayoutCache, LayoutOptions, Placed, layout};
+
+    /// A row that clears an object steps down by whole rows; a step that is zero, negative or not
+    /// finite falls back to the object's bottom instead of looping.
+    #[test]
+    fn step_below_takes_whole_rows_or_falls_back_to_the_bottom() {
+        let at = |t: f32, h: f32, b: f32| super::step_below(t, h, b);
+        assert!((at(23.0, 11.5, 228.0) - 230.0).abs() < 1e-3);
+        assert!((at(0.0, 10.0, 30.0) - 30.0).abs() < 1e-3, "an exact fit takes no extra row");
+        assert!((at(0.0, 10.0, 0.5) - 10.0).abs() < 1e-3, "at least one row");
+        for h in [0.0, -3.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(at(5.0, h, 228.0), 228.0, "step {h}");
+        }
+        assert!((at(5.0, 1e-30, 228.0) - 228.0).abs() < 0.01, "a step too small to count with");
+    }
 
     /// Two `Largest` floats on the same lines, each with its narrower side facing outwards: each
     /// keeps text off that side, so the text sits between them (as Word lays out a `.doc` whose
