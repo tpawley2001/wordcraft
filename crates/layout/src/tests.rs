@@ -109,6 +109,7 @@ mod textbox;
 mod turned_cell_autofit;
 mod vertical;
 mod wp_justification_squeeze;
+mod wrap_trail_spaces;
 
 const WRAP_TEST_FONT: &str = "Source Sans 3";
 
