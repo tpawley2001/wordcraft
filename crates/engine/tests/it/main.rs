@@ -10,6 +10,7 @@ mod docx_to_rtf_cell_margins;
 mod drop_cap_indents;
 mod html_div_margins;
 mod index_automark;
+mod list_tab_clear_docx;
 mod macro_packages;
 mod odt_charts;
 mod odt_fields;

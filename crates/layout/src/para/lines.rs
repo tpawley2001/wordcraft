@@ -405,8 +405,11 @@ impl<'e> Breaker<'e> {
             LevelSuffix::Tab if lab.width <= 0.01 && (end - self.rp.indent_left).abs() <= 0.01 => end,
             LevelSuffix::Tab => {
                 let t = next_tab(end, &self.rp.tabs, self.default_tab, self.hanging_at, self.tab_origin).pos;
-                // The level's own tab stop after the number, when it comes first.
-                match self.level.and_then(|l| l.tab).filter(|p| p.is_finite() && *p > end + 0.01) {
+                // The level's own tab stop after the number, when it comes first. A paragraph
+                // whose tabs clear a stop at that position (its style's or its own) doesn't use
+                // it: the text goes to the next stop, as in Word.
+                let cleared = |p: &f32| self.rp.tab_clears.iter().any(|c| (c - p).abs() <= 0.05);
+                match self.level.and_then(|l| l.tab).filter(|p| p.is_finite() && *p > end + 0.01 && !cleared(p)) {
                     Some(p) if p < t => p,
                     _ => t,
                 }
