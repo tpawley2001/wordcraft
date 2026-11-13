@@ -11,7 +11,7 @@ fn paste_special_dialog_keeps_the_clipboard_ownership_result() {
     let a = WordApp::new(Session::new(wordcraft_doc::Document::from_text("")), crate::Services::default());
     let d = Dialog::paste_special(&a, &json!({"text": "Bold", "privateClipboard": false}));
     let Dialog::PasteSpecial { formats, payload, .. } = d else { panic!("not Paste Special") };
-    assert_eq!(formats, ["text"], "another program's copy isn't our fragment");
+    assert_eq!(formats, ["text", "unicode"], "another program's copy isn't our fragment");
     assert_eq!(payload.get("privateClipboard"), Some(&json!(false)));
     assert_eq!(payload.get("text").and_then(Value::as_str), Some("Bold"));
 }
