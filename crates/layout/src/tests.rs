@@ -61,6 +61,7 @@ mod missing_font_line_tahoma;
 mod missing_font_line_windows;
 mod missing_font_univers;
 mod missing_glyphs;
+mod nb_hyphen_glyph;
 mod nbsp;
 mod nested_cant_split;
 mod nested_tail_paragraph;

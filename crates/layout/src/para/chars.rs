@@ -284,3 +284,11 @@ pub fn draws_something(c: char) -> bool {
             | '\u{FEFF}' | '\u{FFA0}' | '\u{FFF0}'..='\u{FFF8}' | '\u{1BCA0}'..='\u{1BCA3}' | '\u{1D173}'..='\u{1D17A}'
             | '\u{E0000}'..='\u{E0FFF}')
 }
+
+/// The character drawn for `c`: a non-breaking hyphen (U+2011) is the font's own hyphen-minus,
+/// with its face, width and line height, as the reference layout draws it; many fonts have no
+/// U+2011 glyph, and a fallback face's would make the line taller. Line breaking, offsets and
+/// the text itself keep U+2011: only the face choice and the shaping use this.
+pub(super) fn drawn_hyphen(c: char) -> char {
+    if c == wordcraft_doc::para::NB_HYPHEN { '-' } else { c }
+}
