@@ -633,7 +633,9 @@ fn note_separators(
 /// A note separator story's blocks (`which`: 0 separator, 1 continuation separator, 2
 /// continuation notice), or `None` where it is the default: a separator holding only its own
 /// line (0x03 for the separator, 0x04 for the continuation separator) in one paragraph, or a
-/// notice with no content. An empty separator paragraph stays (no line), as in DOCX.
+/// notice with no content. An empty separator paragraph stays (no line), as in DOCX. A
+/// separator whose line run has a font or size of its own is kept, with the default
+/// separator's paragraph spacing, so layout sizes its room from that run.
 fn note_sep_story(blocks: wordcraft_doc::Blocks, which: usize) -> Option<wordcraft_doc::Blocks> {
     let paras: Vec<&Paragraph> = blocks.iter().filter_map(|b| b.as_para()).collect();
     if paras.len() != blocks.len() {
@@ -648,7 +650,22 @@ fn note_sep_story(blocks: wordcraft_doc::Blocks, which: usize) -> Option<wordcra
         && let [obj] = p.objects.as_slice()
         && obj.as_note_separator() == Some(which == 1)
     {
-        return None;
+        // Word sizes the line's room from the line run's own font and size; only a run with
+        // neither of its own leaves the default (one line of the Normal style).
+        let run = p.props_of_char(0);
+        if run.size.is_none() && run.font.is_none() {
+            return None;
+        }
+        // Its paragraph lays out like the default separator: no space before or after, single
+        // spacing, off the document grid (Word ignores the paragraph style's spacing there).
+        let mut p = (*p).clone();
+        p.props.space_before = Some(0.0);
+        p.props.space_after = Some(0.0);
+        p.props.space_before_auto = Some(false);
+        p.props.space_after_auto = Some(false);
+        p.props.line_spacing = Some(wordcraft_doc::props::LineSpacing::Multiple(1.0));
+        p.props.snap_to_grid = Some(false);
+        return Some(vec![std::sync::Arc::new(wordcraft_doc::Block::Para(p))]);
     }
     if blocks.is_empty() {
         return None;
