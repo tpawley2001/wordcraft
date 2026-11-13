@@ -201,3 +201,18 @@ fn dropped_lines_are_not_drawn() {
     assert_eq!(shown, (0..28).collect::<Vec<u32>>());
     assert_eq!(l.pages.len(), 1);
 }
+
+/// The header's first line always prints, even when it alone is taller than half the page, so a
+/// header is never left out altogether; the lines after it are dropped.
+#[test]
+fn the_first_line_always_prints() {
+    let sect = SectionProps::default();
+    let mut tall = Paragraph::with_text("Tall", CharProps::default());
+    tall.props = ParaProps { space_before: Some(0.0), space_after: Some(0.0), line_spacing: Some(LineSpacing::Exactly(450.0)), ..Default::default() };
+    let mut blocks = vec![para_block(tall)];
+    blocks.extend(paras(3));
+    let l = lay(&doc(blocks, sect.clone()));
+    let lines = header_lines(&l);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!((body_top(&l) - (sect.header + 450.0)).abs() < EPS, "body top {}", body_top(&l));
+}

@@ -6,8 +6,8 @@ use super::flow::again;
 use super::page::{PageBuilder, PageFrame, page_border_rules};
 use super::placed::{HfSlot, Placed};
 use super::{
-    Arc, Document, HashMap, HashSet, HeaderSet, InlineObject, Page, Path, Rect, SectionProps, SectionStart, StoryRef, ViewMode, fields, styleref,
-    work,
+    Arc, Block, Document, HashMap, HashSet, HeaderSet, InlineObject, Page, Path, Rect, SectionProps, SectionStart, StoryRef, ViewMode, fields,
+    styleref, work,
 };
 
 /// Whether page `i` is the first page of its section (the one its First Page header and footer,
@@ -270,7 +270,7 @@ fn header_obstacles(ctx: &mut Ctx, pb: &PageBuilder) -> (Vec<Rect>, Vec<WrapArea
     });
     let (mut areas, mut frames) = (laid.table_areas, laid.frame_wraps);
     if !sect.top_fixed
-        && let Some(cut) = half_page_cut(&laid.items, StoryRef::Part(id), sect.page_h)
+        && let Some(cut) = half_page_cut(&laid.items, StoryRef::Part(id), &blocks, sect.page_h)
     {
         areas.retain_mut(|r| clamp_rect(r, cut, 0.01));
     }
@@ -493,9 +493,9 @@ pub(crate) fn headers_footers(ctx: &mut Ctx, pages: &mut [Page], sections: &[(us
                 with_pct_base(ctx, base, |c| layout_box(c, BoxInput::other(StoryRef::Part(id), &blocks, w, 0, Some(frame))).items)
             });
             if !sect.top_fixed
-                && let Some(cut) = half_page_cut(&items, StoryRef::Part(id), sect.page_h)
+                && let Some(cut) = half_page_cut(&items, StoryRef::Part(id), &blocks, sect.page_h)
             {
-                clip_header(&mut items, StoryRef::Part(id), cut);
+                clip_header(&mut items, StoryRef::Part(id), &blocks, cut);
             }
             for it in &mut items {
                 it.translate(x, sect.header);
@@ -551,13 +551,16 @@ pub(crate) fn mirror_even_pages(pages: &mut [Page], sections: &[(usize, &Section
 /// it is not printed, nor is anything after it, and the body starts below what is kept (a row
 /// is dropped whole, as header rows never split). `None` for a header within the limit, which
 /// lays out unchanged. Measured in Word on Letter, Letter landscape and A4 pages with header
-/// distances of 18, 36 and 72pt: the limit doesn't depend on the margins.
-pub(crate) fn half_page_cut(items: &[Placed], story: StoryRef, page_h: f32) -> Option<f32> {
+/// distances of 18, 36 and 72pt: the limit doesn't depend on the margins. The header's first
+/// line or row always stays, so a header is never left out altogether. Floating tables, text
+/// frames and turned text are positioned on their own and don't count.
+pub(crate) fn half_page_cut(items: &[Placed], story: StoryRef, blocks: &[Arc<Block>], page_h: f32) -> Option<f32> {
     let limit = page_h / 2.0;
     if !limit.is_finite() || limit <= 0.0 {
         return None;
     }
-    let mut cut = f32::INFINITY;
+    // Every in-flow line and top-level row: (top, bottom).
+    let mut units: Vec<(f32, f32)> = Vec::new();
     // Top-level tables' rows: (table, row) -> (top, bottom).
     let mut rows: HashMap<(u32, usize), (f32, f32)> = HashMap::new();
     for it in items {
@@ -569,14 +572,14 @@ pub(crate) fn half_page_cut(items: &[Placed], story: StoryRef, page_h: f32) -> O
                 let Some(first) = para.lines.get(*l0) else { continue };
                 for line in para.lines.iter().take(*l1).skip(*l0) {
                     let top = y + line.top - first.top;
-                    if top + line.height > limit + 0.01 {
-                        cut = cut.min(top);
-                        break;
-                    }
+                    units.push((top, top + line.height));
                 }
             }
             Placed::Cell { rect, table, row, story: s, .. } if *s == story && table.0.len() == 1 => {
                 let Some(&t) = table.0.first() else { continue };
+                if floating_table(blocks, t) {
+                    continue;
+                }
                 let e = rows.entry((t, *row)).or_insert((rect.y, rect.bottom()));
                 e.0 = e.0.min(rect.y);
                 e.1 = e.1.max(rect.bottom());
@@ -588,21 +591,40 @@ pub(crate) fn half_page_cut(items: &[Placed], story: StoryRef, page_h: f32) -> O
     // its cells' bottom.
     for (&(t, r), &(top, bottom)) in &rows {
         let bottom = rows.get(&(t, r.saturating_add(1))).map_or(bottom, |next| next.0);
-        if bottom > limit + 0.01 {
-            cut = cut.min(top);
-        }
+        units.push((top, bottom));
     }
+    units.retain(|(top, bottom)| top.is_finite() && bottom.is_finite());
+    units.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let first_top = units.first()?.0;
+    let cut = units.iter().filter(|(top, bottom)| *top > first_top + 0.01 && *bottom > limit + 0.01).map(|u| u.0).fold(f32::INFINITY, f32::min);
     cut.is_finite().then_some(cut)
+}
+
+/// Whether the header's top-level block `i` is a floating table.
+fn floating_table(blocks: &[Arc<Block>], i: u32) -> bool {
+    blocks.get(i as usize).is_some_and(|b| matches!(&**b, Block::Table(t) if t.props.float.is_some()))
 }
 
 /// Leaves out of a header's `items` (box coordinates) what lies below `cut` (see
 /// [`half_page_cut`]): its lines, table cells, shading, borders and inline pictures. Floating
-/// objects and text boxes anchored in the header stay as they are.
-pub(crate) fn clip_header(items: &mut Vec<Placed>, story: StoryRef, cut: f32) {
+/// objects, floating tables and text boxes anchored in the header stay as they are.
+pub(crate) fn clip_header(items: &mut Vec<Placed>, story: StoryRef, blocks: &[Arc<Block>], cut: f32) {
     const EPS: f32 = 0.01;
+    // Floating tables keep their cells, shading and borders.
+    let kept: Vec<Rect> = items
+        .iter()
+        .filter_map(|it| match it {
+            Placed::Cell { rect, table, story: s, .. } if *s == story && table.0.first().is_some_and(|&t| floating_table(blocks, t)) => Some(*rect),
+            _ => None,
+        })
+        .collect();
+    let in_kept = |x: f32, y: f32| kept.iter().any(|r| x >= r.x - EPS && x <= r.right() + EPS && y >= r.y - EPS && y <= r.bottom() + EPS);
     let mut cut_paths: Vec<Path> = Vec::new();
     items.retain_mut(|it| match it {
         Placed::Lines { story: s, path, para, l0, l1, y, .. } if *s == story => {
+            if path.0.first().is_some_and(|&t| floating_table(blocks, t)) {
+                return true;
+            }
             let Some(first) = para.lines.get(*l0) else { return true };
             let first_top = first.top;
             let keep = para.lines.iter().take(*l1).skip(*l0).take_while(|l| *y + l.top - first_top < cut - EPS).count();
@@ -613,9 +635,14 @@ pub(crate) fn clip_header(items: &mut Vec<Placed>, story: StoryRef, cut: f32) {
             }
             *l1 > *l0
         }
-        Placed::Cell { rect, story: s, .. } if *s == story => clamp_rect(rect, cut, EPS),
-        Placed::Fill { rect, .. } => clamp_rect(rect, cut, EPS),
-        Placed::Rule { y0, y1, .. } => {
+        Placed::Cell { rect, story: s, table, .. } if *s == story => {
+            table.0.first().is_some_and(|&t| floating_table(blocks, t)) || clamp_rect(rect, cut, EPS)
+        }
+        Placed::Fill { rect, .. } => in_kept(rect.x, rect.y) || clamp_rect(rect, cut, EPS),
+        Placed::Rule { x0, y0, x1, y1, .. } => {
+            if in_kept(*x0, *y0) && in_kept(*x1, *y1) {
+                return true;
+            }
             if y0.min(*y1) >= cut - EPS && y0.max(*y1) > cut + EPS {
                 return false;
             }
