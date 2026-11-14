@@ -7453,9 +7453,11 @@ fn focus_and_full_screen_replace_each_other() {
     run(&mut s, "view.focus", json!({"value": false}));
     run(&mut s, "view.fullScreen", json!({"value": false}));
 
-    // Immersive Reader is a reading view, not Focus.
+    // Immersive Reader is its own reading view: not Focus, and not Read Mode either.
     run(&mut s, "view.immersive", json!({}));
-    assert!(s.view.read_mode && !s.view.focus_mode);
+    let v = run(&mut s, "view.state", json!({}));
+    assert!(v["immersive"] == true && v["readMode"] == false && v["focusMode"] == false, "{v}");
+    run(&mut s, "view.immersive", json!({}));
 
     assert_eq!(text(&s), "Hello");
     assert_eq!(s.undo_labels(), undo);
