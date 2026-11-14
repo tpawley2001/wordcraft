@@ -103,7 +103,9 @@ fn move_marks_and_colours_change_how_moved_text_is_drawn() {
     );
     let (d, _) = draws(&mut s);
     let st = strokes(&d);
-    assert_eq!(st.iter().filter(|(c, k)| *c == MOVE_COLOR && *k == Stroke::Double).count(), 2, "green double underline and strikethrough: {st:?}");
+    assert_eq!(st.iter().filter(|(c, k)| *c == MOVE_COLOR && *k == Stroke::Double).count(), 1, "green double underline: {st:?}");
+    let dstrike = Stroke::UnderlineDouble { line: 333 };
+    assert_eq!(st.iter().filter(|(c, k)| *c == MOVE_COLOR && *k == dstrike).count(), 1, "green double strikethrough: {st:?}");
     assert!(glyph_colors(&d).contains(&(MOVE_COLOR, false)));
 
     // Red single strikethrough where it was; bold blue where it went.
@@ -213,7 +215,7 @@ fn moved_to_none_is_plain_text_with_its_change_bar() {
     let sec = seconds(&d);
     assert_eq!(sec.first().map(|c| c.0), Some(wordcraft_doc::Rgb::BLACK), "{sec:?}");
     assert_eq!(sec.get(1).map(|c| c.0), Some(MOVE_COLOR), "the moved-from end keeps its colour");
-    assert_eq!(h_strokes(&d), vec![Stroke::Double], "only the moved-from strikethrough");
+    assert_eq!(h_strokes(&d), vec![Stroke::UnderlineDouble { line: 333 }], "only the moved-from strikethrough");
     assert_eq!(bars(&d, body_x), default_bars, "the change bars stay");
 }
 
@@ -273,8 +275,10 @@ fn hidden_deletions_leave_moved_from_text_shown() {
     assert!(caret_at(&mut s, 3, 0).1 > third_accepted + 1.0, "the moved-away paragraph keeps its line");
     let (d, _) = draws(&mut s);
     assert_eq!(glyph_text(&d).matches("Second").count(), 2, "{:?}", glyph_text(&d));
-    let struck = d.iter().any(|x| matches!(x, Draw::Line { color, stroke: Stroke::Double, y0, y1, .. } if *color == MOVE_COLOR && y0 == y1));
-    assert!(struck, "green double lines");
+    let struck = d
+        .iter()
+        .any(|x| matches!(x, Draw::Line { color, stroke: Stroke::UnderlineDouble { line: 333 }, y0, y1, .. } if *color == MOVE_COLOR && y0 == y1));
+    assert!(struck, "green double strikethrough");
 }
 
 /// Gap #5: Track moves is a document setting (`w:doNotTrackMoves`): turning it off is one

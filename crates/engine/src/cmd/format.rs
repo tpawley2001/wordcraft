@@ -383,18 +383,20 @@ fn current_size(s: &Session) -> f32 {
     resolved(s).first().map(|r| r.size).unwrap_or(12.0)
 }
 
+/// Steps measured with Selection.Font.Grow/Shrink in Microsoft 365 Word 16.0.20527
+/// (Windows, en-US), 2026-11-14: one point below 8, and skip the box's 10.5 entry.
 fn step_size(s: &mut Session, dir: i32) -> CmdResult {
     resize(s, &|cur| {
+        let mut steps = SIZES.iter().copied().filter(|x| *x != 10.5);
         if dir > 0 {
-            SIZES.iter().copied().find(|x| *x > cur + 0.01).unwrap_or(((cur / 10.0).floor() + 1.0) * 10.0)
+            if cur < 8.0 { (cur + 1.0).min(8.0) } else { steps.find(|x| *x > cur + 0.01).unwrap_or(((cur / 10.0).floor() + 1.0) * 10.0) }
         } else if cur > 80.01 {
             // Mirror Increase Font Size above 72 pt: down to the next lower multiple of 10.
             (((cur - 0.01) / 10.0).ceil() - 1.0) * 10.0
         } else if cur > 72.01 {
             72.0
         } else {
-            // Below the list Word steps down one point at a time.
-            SIZES.iter().rev().copied().find(|x| *x < cur - 0.01).unwrap_or(((cur - 0.01).ceil() - 1.0).max(1.0))
+            steps.rev().find(|x| *x < cur - 0.01).unwrap_or((cur - 1.0).max(1.0))
         }
     })
 }

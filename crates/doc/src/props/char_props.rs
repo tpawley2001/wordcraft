@@ -286,6 +286,18 @@ impl Highlight {
 /// The text size, in points, of a run whose size no style or default sets.
 pub const DEFAULT_FONT_SIZE: f32 = 11.0;
 
+/// Fit Text (`w:fitText`, ECMA-376 §17.3.2.14): lay the run, or the consecutive runs with the same
+/// `id`, out exactly `width` points wide.
+#[derive(Clone, Copy, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct FitText {
+    /// The region's width, points (`w:val` / 20).
+    pub width: f32,
+    /// `w:id`: runs next to each other with the same id are one region.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<u32>,
+}
+
 /// Character formatting (direct or in a style). `None` = inherit.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -356,6 +368,10 @@ pub struct CharProps {
     /// Kerning for fonts at or above this size (points); 0 = off.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kern: Option<f32>,
+    /// Fit Text (`w:fitText`, ECMA-376 §17.3.2.14): the run, or the consecutive runs sharing its
+    /// id, are laid out exactly this wide.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fit_text: Option<FitText>,
     /// A mark over (or under) each character (`w:em`, Font › Emphasis mark), as East Asian text
     /// stresses words; `Some(EmphasisMark::None)` turns off one a style sets.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -588,7 +604,7 @@ impl CharProps {
     }
 
     fn minus_run_visibility(&mut self, base: &CharProps) {
-        drop_same_fields!(self, base; web_hidden, spec_vanish, snap_to_grid, emphasis);
+        drop_same_fields!(self, base; web_hidden, spec_vanish, snap_to_grid, emphasis, fit_text);
     }
 
     fn minus_script_style(&mut self, base: &CharProps) {
@@ -619,7 +635,7 @@ impl CharProps {
     }
 
     fn overlay_run_visibility(&mut self, patch: &CharProps) {
-        overlay_fields!(self, patch; web_hidden, spec_vanish, snap_to_grid, emphasis);
+        overlay_fields!(self, patch; web_hidden, spec_vanish, snap_to_grid, emphasis, fit_text);
     }
 
     fn overlay_script_style(&mut self, patch: &CharProps) {
@@ -664,6 +680,7 @@ impl CharProps {
             scale,
             position,
             kern,
+            fit_text,
             emphasis,
             ligatures,
             num_form,
@@ -719,6 +736,7 @@ impl CharProps {
             scale: keep(scale, &own.scale, &inherited.scale),
             position: keep(position, &own.position, &inherited.position),
             kern: keep(kern, &own.kern, &inherited.kern),
+            fit_text: keep(fit_text, &own.fit_text, &inherited.fit_text),
             emphasis: keep(emphasis, &own.emphasis, &inherited.emphasis),
             ligatures: keep(ligatures, &own.ligatures, &inherited.ligatures),
             num_form: keep(num_form, &own.num_form, &inherited.num_form),

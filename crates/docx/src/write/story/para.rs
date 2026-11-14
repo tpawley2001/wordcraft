@@ -30,7 +30,7 @@ impl Writer<'_> {
                 // The letter's own font goes on its run (`w:rFonts`).
                 if let Some(f) = p.props.drop_cap_font.as_ref().filter(|f| !f.trim().is_empty()) {
                     for r in &mut head.runs {
-                        r.props.font = Some(f.clone());
+                        r.props.font = Some(f.to_string());
                     }
                 }
                 head.section = None;

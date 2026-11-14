@@ -553,6 +553,87 @@ impl<'a> Builder<'a> {
         }
     }
 
+    /// Fit Text (`w:fitText`, ECMA-376 §17.3.2.14), once the paragraph's runs are shaped: a run,
+    /// or the runs next to each other sharing its id, take exactly the set width, as Word lays
+    /// them out (measured). `run_ends` holds each run's end byte, in order. Growing, the extra room
+    /// is split evenly after every cluster but the last (a lone cluster takes all of it); spaces
+    /// count. Shrinking, every cluster and its glyphs are squeezed by width / natural width.
+    pub(super) fn fit_text(&mut self, run_ends: &[usize]) {
+        let fit_of = |b: &Self, i: usize| {
+            let c = b.clusters.get(i)?;
+            let fit = b.styles.get(c.style as usize)?.rc.fit_text?;
+            Some((fit, run_ends.partition_point(|&e| e <= c.start)))
+        };
+        let mut i = 0;
+        while i < self.clusters.len() {
+            let Some((fit, run)) = fit_of(self, i) else {
+                i += 1;
+                continue;
+            };
+            let mut j = i + 1;
+            while let Some((next, next_run)) = fit_of(self, j) {
+                if next_run != run && (fit.id.is_none() || next.id != fit.id) {
+                    break;
+                }
+                j += 1;
+            }
+            self.fit_region(i, j, fit.width);
+            i = j;
+        }
+    }
+
+    /// Lays clusters `c0..c1` out `width` points wide (see [`Self::fit_text`]).
+    fn fit_region(&mut self, c0: usize, c1: usize, width: f32) {
+        if !(width.is_finite() && width > 0.0) {
+            return;
+        }
+        let counted: Vec<usize> = (c0..c1).filter(|&k| self.clusters.get(k).is_some_and(|c| c.kind != ClKind::Marker)).collect();
+        let natural: f32 = counted.iter().filter_map(|&k| self.clusters.get(k)).map(|c| c.adv).sum();
+        let Some(&last) = counted.last() else { return };
+        if !natural.is_finite() || natural < 0.0 {
+            return;
+        }
+        if natural <= width {
+            let extra = (width - natural) / counted.len().saturating_sub(1).max(1) as f32;
+            for &k in &counted {
+                if (k != last || counted.len() == 1)
+                    && let Some(c) = self.clusters.get_mut(k)
+                {
+                    c.adv += extra;
+                }
+            }
+            return;
+        }
+        let f = width / natural;
+        // Squeezed glyphs are drawn narrower too, as a character scale would draw them.
+        let mut restyled: Vec<(u32, u32)> = Vec::new();
+        for &k in &counted {
+            let Some(c) = self.clusters.get(k) else { continue };
+            let (style, g0, g1) = (c.style, c.g0 as usize, c.g1 as usize);
+            for g in self.glyphs.get_mut(g0..g1).unwrap_or_default() {
+                g.dx *= f;
+            }
+            let new_style = match restyled.iter().find(|(old, _)| *old == style) {
+                Some(&(_, new)) => Some(new),
+                None => self.styles.get(style as usize).cloned().and_then(|mut st| {
+                    let mut rc = (*st.rc).clone();
+                    rc.scale = (rc.scale * f).max(0.01);
+                    st.rc = Arc::new(rc);
+                    let new = u32::try_from(self.styles.len()).ok()?;
+                    self.styles.push(st);
+                    restyled.push((style, new));
+                    Some(new)
+                }),
+            };
+            if let Some(c) = self.clusters.get_mut(k) {
+                c.adv *= f;
+                if let Some(new) = new_style {
+                    c.style = new;
+                }
+            }
+        }
+    }
+
     /// Immersive Reader's Text Spacing widens each word space by a quarter em (`size`).
     fn extra_word_space(&self, kind: ClKind, size: f32) -> f32 {
         if kind == ClKind::Space && self.env.text_spacing { super::paragraph::TEXT_SPACING_WORD * size } else { 0.0 }

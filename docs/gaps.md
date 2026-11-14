@@ -1,8 +1,9 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged.)
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged; earlier: P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged; earlier: P0476: in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows, as in Word; gap #24 narrowed. Readiness estimates unchanged)
+
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged; earlier: P0461: #6 narrowed: print jobs follow Print background colors and images and Print drawings created in Word. Readiness estimates unchanged; earlier: P0266: Update Table of Contents › Update page numbers only (#1197, #2262). Readiness estimates unchanged)
 
@@ -137,7 +138,7 @@ Gap 1: `.doc` OLE EPRINT previews now repair EMF header counts before use as pic
 | 21 | **Mail merge data sources**: no Outlook/Contacts, Access or database sources, no email merge; CSV, typed lists (#247) and Excel/OpenDocument spreadsheets (#334, legacy .xls #778) only | | Select Recipients reads .csv/.tsv/.txt in any common encoding (UTF-8/16, GBK, Big5, Shift_JIS…), .xlsx/.xlsm, .xls and .ods; Edit Recipient List filters and sorts (#778), finds records and can show only the merged ones (#1576) | Office administrators | 4–8 | [target-app-parity.md](target-app-parity.md) |
 | 22 | **Ecosystem**: no VBA execution (macros preserved only), no Office add-ins, no cloud storage, no real-time co-authoring | | `.docm` keeps macros (#172) | Enterprise users with macro templates; teams | 40–80 + owner decisions | [target-app-parity.md](target-app-parity.md) |
 | 23 | **PDF Reflow** (open a PDF as an editable document, Word for Windows) | | | Users who edit PDFs they receive | 30–50 | [file-format-parity.md](file-format-parity.md) |
-| 24 | **Default shortcuts**: 140 (macOS) / 161 (Linux/Windows) of Word's ~250 (Reveal Formatting on Shift+F1; #330, #339, #343; Customize Keyboard #368 and style shortcuts #3910 (P0113), Customize Ribbon and Quick Access Toolbar #379; inspector, macros, strikethrough, file/edit keys, the Spike, Mark Table of Contents Entry; Alt, I, B opens Break; Alt+Home/End move to the first/last cell in the row; Alt+PageUp/PageDown move to the first/last cell in the column (P0072); Ctrl+F10 / Alt+F5 window keys (Linux/Windows, P0466); Ctrl+F6 / Alt+F6 and Ctrl+Shift+F6 / Alt+Shift+F6 cycle document windows; Ctrl+Shift+Q applies Symbol (Linux/Windows, P0076); F3 inserts AutoText by name, P0093; Select Browse Object on Alt+Ctrl+Home, Ctrl+PageDown / Ctrl+PageUp browse by it (Linux/Windows, P0080); Ctrl+Alt+PageUp / Ctrl+Alt+PageDown to the top / bottom of the window (Linux/Windows, P0107)) | | [ui-parity.md](ui-parity.md) | Power users | 1–3 | [ui-parity.md](ui-parity.md) |
+| 24 | **Default shortcuts**: 140 (macOS) / 161 (Linux/Windows) of Word's ~250 (Reveal Formatting on Shift+F1; #330, #339, #343; Customize Keyboard #368 and style shortcuts #3910 (P0113), Customize Ribbon and Quick Access Toolbar #379; inspector, macros, strikethrough, file/edit keys, the Spike, Mark Table of Contents Entry; Alt, I, B opens Break; Alt+Home/End move to the first/last cell in the row; Alt+PageUp/PageDown move to the first/last cell in the column (P0072); Ctrl+F10 / Alt+F5 window keys (Linux/Windows, P0466); in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows (P0476); Ctrl+F6 / Alt+F6 and Ctrl+Shift+F6 / Alt+Shift+F6 cycle document windows; Ctrl+Shift+Q applies Symbol (Linux/Windows, P0076); F3 inserts AutoText by name, P0093; Select Browse Object on Alt+Ctrl+Home, Ctrl+PageDown / Ctrl+PageUp browse by it (Linux/Windows, P0080); Ctrl+Alt+PageUp / Ctrl+Alt+PageDown to the top / bottom of the window (Linux/Windows, P0107)) | | [ui-parity.md](ui-parity.md) | Power users | 1–3 | [ui-parity.md](ui-parity.md) |
 | 25 | **In-app AI assistant** (Copilot-style draft, rewrite, summarize) | | Chat PR #178 and AI assistant PR #815 open | Users expecting Copilot | 15–30 + owner (provider) | [target-app-parity.md](target-app-parity.md) |
 | 27 | **View windows**: Switch Windows, Arrange All, View Side by Side, Synchronous Scrolling and Reset Window Position work across the native windows, one per open document or New Window (#322). Split shows two panes on one document, each with its own scroll and a draggable divider, Remove Split on Alt+Shift+C (P0114, #3254). Immersive Reader is its own view with its own tab: Column Width, Page Color, Line Focus, Text Spacing, Syllables (P0460). Left: Wayland doesn't let apps place windows | | [parity-checklist.md](parity-checklist.md) (View 32/32 ids) | Comparing documents | 2–4 | [ui-parity.md](ui-parity.md) |
 | 26 | **Minor formats**: saving MHT, Works/WordPerfect | | Word XML Document (Flat OPC) opens and saves, Word 2003 XML opens (#548) and saves (#1081, not yet checked in Word); MHT opens and documents' `w:altChunk` content is brought in | Rare | 12–23 | [file-format-parity.md](file-format-parity.md) |
@@ -209,7 +210,13 @@ Strict DOCX graphics (gap #2): chart and SmartArt children and all relationship 
 
 Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text without the clipboard on Windows/Linux. Broader shortcut and UI gaps remain open.
 
+Raised and lowered text under multiple line spacing now adds its shift growth once (P0480); broader pagination differences in gap #4 remain open.
+
 ## Revision history
+
+| Date | Change | Summary |
+|---|---|---|
+| 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged. |
 
 > 2026-11-13 · trivial · P0462: gap #7 narrowed: Table of Figures › Options… (Style, Table entry fields with Table identifier A–Z), `references.tableOfFigures` `style` / `entryFields`. Readiness estimates unchanged.
 
@@ -287,6 +294,8 @@ Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text wi
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged. |
+| 2026-11-14 | trivial | P0476: in a table Ctrl+Shift+Enter splits the table (in its first row it adds an empty paragraph above), Split Table in the first row does the same, and Alt+Shift+Up/Down move the rows the selection touches, out of the table past the paragraph next to it at its ends, as measured in Word. Gap #24 narrowed. |
 | 2026-11-14 | trivial | P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0466: Ctrl+F10 toggles window maximization; Alt+F5 restores a maximized window on Linux/Windows. Gap #24 narrowed. |

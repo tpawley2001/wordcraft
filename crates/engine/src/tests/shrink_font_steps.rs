@@ -62,7 +62,7 @@ fn shrink_above_seventy_two_steps_ten_points() {
 
 #[test]
 fn shrink_inside_the_list_is_unchanged() {
-    for (from, to) in [(72.0, 48.0), (12.0, 11.0), (9.0, 8.0), (11.0, 10.5)] {
+    for (from, to) in [(72.0, 48.0), (12.0, 11.0), (9.0, 8.0), (11.0, 10.0)] {
         assert_eq!(shrink(from), to, "Decrease Font Size from {from}");
     }
 }

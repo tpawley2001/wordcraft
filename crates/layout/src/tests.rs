@@ -20,6 +20,7 @@ mod cell_floats;
 mod char_border_room;
 mod column_break_line;
 mod column_top_float;
+mod columns_line_numbers_word;
 mod complex;
 mod compress_punct_squeeze;
 mod continuous_resized_section;
@@ -30,6 +31,7 @@ mod deleted_mark_join;
 mod deleted_rows;
 mod deleted_section_break;
 mod display_hide_body;
+mod double_strike_geometry;
 mod early_float_stays;
 mod emphasis_line_height;
 mod emphasis_under_dot;
@@ -44,6 +46,7 @@ mod ext_leading_2pt_fonts;
 mod ext_leading_2pt_script;
 mod field_picture_overflow;
 mod first_page_once;
+mod fit_text;
 mod float_row_step;
 mod float_table_bottom;
 mod float_table_notes;
@@ -74,6 +77,7 @@ mod keep_next_long_chain;
 mod keep_next_table_chain;
 mod kept_row_chain;
 mod kept_row_not_split;
+mod legacy_font_effects;
 mod ligature;
 pub(crate) mod linear;
 mod list_label_decorations;
@@ -109,6 +113,7 @@ mod pct_table_legacy_width;
 mod picture_glue;
 mod picture_glue_touching;
 mod picture_line_at_least;
+mod position_multiple_spacing;
 mod pushed_by_earlier_float;
 mod row_end_anchor_columns;
 mod row_exception_no_borders;
@@ -3603,7 +3608,7 @@ fn runs_differing_only_in_link_or_decoration_keep_their_own_style() {
     assert_eq!(link_of("Alpha"), Some(Some("https://a.example/".into())));
     assert_eq!(link_of("Beta"), Some(Some("https://b.example/".into())));
     let strokes: Vec<_> = items.iter().filter_map(|i| if let display::Draw::Line { stroke, .. } = i { Some(*stroke) } else { None }).collect();
-    assert!(strokes.contains(&display::Stroke::Solid) && strokes.contains(&display::Stroke::Double), "{strokes:?}");
+    assert!(strokes.contains(&display::Stroke::Solid) && strokes.contains(&display::Stroke::UnderlineDouble { line: 333 }), "{strokes:?}");
     // Underline colour is per run too.
     let mut d = Document::from_text("Red Blue");
     let red = wordcraft_doc::props::Rgb(0xFF, 0, 0);
@@ -4374,10 +4379,11 @@ fn line_numbers_stand_beside_each_column() {
     let in_col2 = body_xs.iter().filter(|x| (*x - col2).abs() < 0.5).count();
     let right: Vec<_> = numbers.iter().filter(|(r, _)| *r > s.margin_left + 1.0).collect();
     assert_eq!(right.len(), in_col2, "one number per second-column line");
-    // Numbers end 18 pt (auto distance) left of their column.
-    assert!(right.iter().all(|(r, _)| (r - (col2 - 18.0)).abs() < 0.5), "{right:?}");
+    // Numbers end 9 pt left of their column: Word's Auto distance in a section with columns
+    // (18 pt with one column).
+    assert!(right.iter().all(|(r, _)| (r - (col2 - 9.0)).abs() < 0.5), "{right:?}");
     let left = numbers.len() - right.len();
-    assert!(numbers.iter().filter(|(r, _)| *r <= s.margin_left + 1.0).all(|(r, _)| (r - (s.margin_left - 18.0)).abs() < 0.5));
+    assert!(numbers.iter().filter(|(r, _)| *r <= s.margin_left + 1.0).all(|(r, _)| (r - (s.margin_left - 9.0)).abs() < 0.5));
     assert!(left > 0);
 }
 
@@ -10024,9 +10030,20 @@ fn the_line_between_columns_spans_the_section_s_text() {
     assert!(boxes[1].2 > highest + 10.0, "the first column's text starts below its space before: {boxes:?}");
     assert!((top - highest).abs() < 0.5, "from the highest line, not a space before: {top} {boxes:?}");
     assert!((bottom - lowest).abs() < 0.5, "to the lowest line, not its space after: {bottom} vs {lowest}");
-    // A section of one paragraph: its line starts at the paragraph's first line, below its space
-    // before, not at the section's top.
+    // A section of one paragraph: all its text is in the first column, so there is no line (as
+    // in Word: a line only stands before a column with text).
+    let brk = wordcraft_doc::para::COLUMN_BREAK;
     let mut one = Document::from_text("Intro\nOnly paragraph\nAfter");
+    one.para_mut(StoryRef::Body, &Path::top(0)).unwrap().section = Some(Box::default());
+    one.para_mut(StoryRef::Body, &Path::top(1)).unwrap().section = Some(Box::new(two.clone()));
+    one.last_section.start = SectionStart::Continuous;
+    let l = lay(&one);
+    assert!(para_boxes(&l)[1].1 < mid, "in the first column: {:?}", para_boxes(&l));
+    assert!(vertical_rules(&l, 0).is_empty(), "no line beside an empty column: {:?}", vertical_rules(&l, 0));
+    // With a column break in it, the paragraph's line runs from the highest of its lines (the
+    // second column's, at the section's top; the first column's is below its space before) down
+    // to the lowest, not over Intro or After.
+    let mut one = Document::from_text(&format!("Intro\nOnly paragraph{brk}Next\nAfter"));
     one.para_mut(StoryRef::Body, &Path::top(0)).unwrap().section = Some(Box::default());
     let p = one.para_mut(StoryRef::Body, &Path::top(1)).unwrap();
     p.props.space_before = Some(24.0);
@@ -10036,7 +10053,21 @@ fn the_line_between_columns_spans_the_section_s_text() {
     let boxes = para_boxes(&l);
     let rules = vertical_rules(&l, 0);
     let [(_, top, bottom)] = rules[..] else { panic!("one line: {rules:?}") };
-    assert!((top - boxes[1].2).abs() < 0.5 && (bottom - boxes[1].3).abs() < 0.5, "the paragraph's lines: {top}..{bottom} {boxes:?}");
+    let pieces: Vec<(f32, f32, f32)> = l.pages[0]
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Placed::Lines { story: StoryRef::Body, path, para, l0, l1, x, y, .. } if path.0[..] == [1] => {
+                Some((*x, *y, item_bottom(*y, para, *l0, *l1)?))
+            }
+            _ => None,
+        })
+        .collect();
+    let [(x1, t1, b1), (x2, t2, b2)] = pieces[..] else { panic!("two pieces: {pieces:?}") };
+    assert!(x1 < mid && x2 > mid, "one piece in each column: {pieces:?}");
+    assert!(t1 > t2 + 10.0, "the first column's line is below its space before: {pieces:?}");
+    assert!(top >= boxes[0].3 - 0.5 && (top - t2.min(t1)).abs() < 0.5, "from the highest line: {top} {pieces:?}");
+    assert!((bottom - b1.max(b2)).abs() < 0.5 && bottom <= boxes[2].2 + 0.5, "to the lowest line: {bottom} {pieces:?}");
 
     // A section whose one line doesn't fit at the foot of the page (40 pt type) starts on the
     // next: no line where it has no text, though the flow moved down there by its space before.
@@ -10049,6 +10080,13 @@ fn the_line_between_columns_spans_the_section_s_text() {
     p.props.space_before = Some(6.0);
     p.section = Some(Box::new(two.clone()));
     late.last_section.start = SectionStart::Continuous;
+    let l = lay(&late);
+    assert_eq!(para_boxes(&l)[1].0, 1, "the paragraph moves to page 2: {:?}", para_boxes(&l));
+    assert!(vertical_rules(&l, 0).is_empty(), "no line on page 1: {:?}", vertical_rules(&l, 0));
+    // All its text is in the first column: no line on page 2 either.
+    assert!(vertical_rules(&l, 1).is_empty(), "no line beside an empty column: {:?}", vertical_rules(&l, 1));
+    // With text in the second column too, its line is on page 2 only.
+    late.para_mut(StoryRef::Body, &Path::top(1)).unwrap().insert_text(3, &format!("{brk}Two"), &Default::default()).unwrap();
     let l = lay(&late);
     assert_eq!(para_boxes(&l)[1].0, 1, "the paragraph moves to page 2: {:?}", para_boxes(&l));
     assert!(vertical_rules(&l, 0).is_empty(), "no line on page 1: {:?}", vertical_rules(&l, 0));
@@ -10079,7 +10117,12 @@ fn the_line_between_columns_spans_the_section_s_text() {
     assert!(bottom < 300.0 && bottom <= boxes[4].2 + 0.5, "the line ends with the columns, above After: {bottom} {boxes:?}");
 
     // One section of two columns: the line runs down to the bottom of the text, not the page.
+    // With all the text in the first column there is no line.
     let mut d = Document::from_text("One\nTwo\nThree");
+    d.last_section.columns = two.columns.clone();
+    let l = lay(&d);
+    assert!(vertical_rules(&l, 0).is_empty(), "no line beside an empty column: {:?}", vertical_rules(&l, 0));
+    let mut d = Document::from_text(&format!("One\nTwo\n{brk}Three"));
     d.last_section.columns = two.columns.clone();
     let l = lay(&d);
     let rules = vertical_rules(&l, 0);

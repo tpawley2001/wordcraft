@@ -360,6 +360,12 @@ impl PropCtx {
                     }
                 }
                 "w:spacing" => c.spacing = tw(k, "w:val").map(|v| v.clamp(-1584.0, 1584.0)),
+                // Fit Text (§17.3.2.14): a width in twips; without a usable one the element is ignored.
+                "w:fitText" => {
+                    c.fit_text = tw(k, "w:val")
+                        .filter(|v| v.is_finite() && *v > 0.0)
+                        .map(|v| wordcraft_doc::props::FitText { width: v.min(1584.0), id: k.attr("w:id").and_then(u32_of) })
+                }
                 "w:w" => c.scale = k.attr("w:val").and_then(|v| measure(v.trim_end_matches('%'), 1.0)).map(|v| v.clamp(1.0, 600.0)),
                 "w:kern" => c.kern = k.attr("w:val").and_then(|v| measure(v, 2.0)).map(|v| v.clamp(0.0, 1638.0)),
                 "w:position" => c.position = k.attr("w:val").and_then(|v| measure(v, 2.0)).map(|v| v.clamp(-1584.0, 1584.0)),
@@ -434,7 +440,7 @@ impl PropCtx {
                 "w:autoSpaceDE" => p.auto_space_de = Some(on_off(k)),
                 "w:autoSpaceDN" => p.auto_space_dn = Some(on_off(k)),
                 "w:snapToGrid" => p.snap_to_grid = Some(on_off(k)),
-                "w:divId" => p.div_id = div_id(k),
+                "w:divId" => p.div_id = div_id(k).map(String::into_boxed_str),
                 "w:textAlignment" => p.text_alignment = k.attr("w:val").and_then(TextAlignment::from_ooxml),
                 "w:framePr" => {
                     if let Some(kind @ ("drop" | "margin")) = k.attr("w:dropCap") {
