@@ -2510,7 +2510,15 @@ fn note_separators_and_continuation_notice_round_trip() {
         r#"<w:footnotes {W_NS}><w:footnote w:type="separator" w:id="-1"><w:p><w:pPr><w:spacing w:after="0"/></w:pPr><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:t xml:space="preserve">More: </w:t></w:r><w:r><w:continuationSeparator/></w:r></w:p></w:footnote><w:footnote w:type="continuationNotice" w:id="1"><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>(continued)</w:t></w:r></w:p></w:footnote><w:footnote w:id="2"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> The note.</w:t></w:r></w:p></w:footnote></w:footnotes>"#
     );
     let body = r#"<w:p><w:r><w:t>Text</w:t></w:r><w:r><w:footnoteReference w:id="2"/></w:r></w:p>"#;
-    let bytes = docx(body, &[("rId1", "footnotes", "footnotes.xml")], &[("word/footnotes.xml", &footnotes)]);
+    // Word uses a separator story only when the settings list its id (§17.11.12).
+    let settings = format!(
+        r#"<w:settings {W_NS}><w:footnotePr><w:footnote w:id="-1"/><w:footnote w:id="0"/><w:footnote w:id="1"/></w:footnotePr></w:settings>"#
+    );
+    let bytes = docx(
+        body,
+        &[("rId1", "footnotes", "footnotes.xml"), ("rId2", "settings", "settings.xml")],
+        &[("word/footnotes.xml", &footnotes), ("word/settings.xml", &settings)],
+    );
     let check = |d: &Document| {
         let s = &d.footnote_separators;
         let first = |b: &Option<wordcraft_doc::Blocks>| b.as_ref().unwrap()[0].as_para().unwrap().clone();

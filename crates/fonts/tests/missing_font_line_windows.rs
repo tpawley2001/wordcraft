@@ -53,13 +53,24 @@ fn the_new_names_match_trimmed_and_case_insensitively() {
 
 #[test]
 fn guard_near_names_and_the_existing_entries_are_unchanged() {
-    for name in ["Verdana Pro", "Georgia Pro", "Trebuchet", "Garamond Premier Pro", "Comic Sans", "Consolas Bold", "Century"] {
+    for name in [
+        "Verdana Pro",
+        "Georgia Pro",
+        "Trebuchet",
+        "Garamond Premier Pro",
+        "Comic Sans",
+        "Consolas Bold",
+        "Century Schoolbook",
+        "New Century Schoolbook",
+    ] {
         let r = resolve(name, false, false);
         if r.substituted {
             assert_eq!(missing_font_line(name, &r), None, "{name}");
         }
     }
-    for (family, expected) in [("Tahoma", (1.0, 0.207)), ("Lucida Console", (0.789, 0.211)), ("Palatino Linotype", (1.05, 0.30))] {
+    for (family, expected) in
+        [("Tahoma", (1.0, 0.207)), ("Lucida Console", (0.789, 0.211)), ("Palatino Linotype", (1.05, 0.30)), ("Century", (0.986, 0.216))]
+    {
         let r = resolve(family, false, false);
         if r.substituted {
             let line = missing_font_line(family, &r).unwrap_or_else(|| panic!("{family}"));
