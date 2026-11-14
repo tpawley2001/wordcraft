@@ -71,8 +71,11 @@ fn f9_numbers_listnum_fields_as_word_does() {
     assert_eq!(fields(&s), want);
 }
 
+/// Locking doesn't freeze a LISTNUM: Word renumbers a locked one and counts it (measured in
+/// Microsoft 365 Word: with the middle of three fields locked and a stale result, the update gives
+/// 1) 2) 3)).
 #[test]
-fn a_locked_listnum_keeps_its_result_and_does_not_count() {
+fn a_locked_listnum_still_renumbers_and_counts() {
     let mut s = Session::new(wordcraft_doc::Document::from_text("A\nB\nC"));
     for t in ["A", "B", "C"] {
         s.run("select.text", &json!({"text": t})).unwrap();
@@ -91,7 +94,7 @@ fn a_locked_listnum_keeps_its_result_and_does_not_count() {
     run(&mut s, "caret.docStart", json!({}));
     run(&mut s, "references.updateFields", json!({"all": true}));
     let got: Vec<String> = fields(&s).into_iter().map(|f| f.1).collect();
-    assert_eq!(got, ["1)", "OLD", "2)"]);
+    assert_eq!(got, ["1)", "2)", "3)"]);
 }
 
 #[test]
