@@ -178,6 +178,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-14: P0509: normal Find reads objects as Word does: `^f`, `^e` and `^2` find footnote and endnote marks, `^d` a whole field while field codes are shown, `^g` only drawings, `^a` and `^5` nothing; bookmark and comment anchors inside a word no longer stop it being found. Replace All deletes a matched note mark's note. Readiness estimates unchanged.
 - 2026-11-14: P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged.
 
 - 2026-11-14: P0504: nine missing East Asian and Thai fonts use Word's measured baseline and single-line height (1.301–1.950 em). Gap #4 narrowed; readiness estimates unchanged.

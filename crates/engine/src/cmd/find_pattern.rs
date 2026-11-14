@@ -14,6 +14,21 @@ use regex::escape;
 pub const PARA_MARK: char = '\r';
 /// The mark of a paragraph that ends a section (`^b`), in the searched text only.
 pub const SECT_MARK: char = '\u{1D}';
+/// An inline object that is neither a drawing, a note mark nor a field (an equation, ruby, a
+/// positional tab…), in the searched text only. Drawings stay U+FFFC (`^g`); bookmark, comment,
+/// permission and content-control anchors are left out of the searched text, as Word's Find
+/// does not see them. Every sentinel is three UTF-8 bytes, like the U+FFFC it replaces.
+pub const OBJ_MARK: char = '\u{E0F0}';
+/// A footnote reference mark (`^f`), in the searched text only.
+pub const FOOTNOTE_MARK: char = '\u{E0F1}';
+/// An endnote reference mark (`^e`), in the searched text only.
+pub const ENDNOTE_MARK: char = '\u{E0F2}';
+/// A field kept as one object (`^d`), in the searched text only.
+pub const FIELD_MARK: char = '\u{E0F3}';
+/// The start of a range field (`^d`), in the searched text only.
+pub const FIELD_START: char = '\u{E0F4}';
+/// The end of a range field (`^d`), in the searched text only.
+pub const FIELD_END: char = '\u{E0F5}';
 /// Longest Find what text, in characters.
 pub const MAX_PATTERN: usize = 1024;
 /// Largest count in `{n,m}`.
@@ -39,6 +54,8 @@ pub struct Opts {
     pub regex: bool,
     /// Take the text literally: no `^` codes.
     pub literal: bool,
+    /// Field codes are shown (View › Field Codes): only then does `^d` find fields, as in Word.
+    pub field_codes: bool,
 }
 
 /// A pattern ready for the regex engine.
@@ -72,6 +89,23 @@ fn find_code(c: char) -> Option<&'static str> {
         'g' => r"\x{FFFC}",
         '%' => "§",
         'v' => "¶",
+        _ => return None,
+    })
+}
+
+/// What a `^` code for an object stands for in normal Find what (not wildcards): `^f` / `^e`
+/// note marks, `^2` either, `^d` a field while field codes are shown, `^a` / `^5` (comment
+/// marks, which Microsoft 365 Word's Find does not stop at) nothing. A range field reads as
+/// [`FIELD_START`] [`FIELD_END`] with its content left out, so `^d` takes the outermost field
+/// whole.
+fn object_code(c: char, o: &Opts) -> Option<&'static str> {
+    const NOTHING: &str = r"[^\s\S]";
+    Some(match c {
+        'f' => r"\x{E0F1}",
+        'e' => r"\x{E0F2}",
+        '2' => r"[\x{E0F1}\x{E0F2}]",
+        'd' if o.field_codes => r"(?:\x{E0F3}|\x{E0F4}[^\x{E0F4}\x{E0F5}]*\x{E0F5})",
+        'd' | 'a' | '5' => NOTHING,
         _ => return None,
     })
 }
@@ -215,6 +249,11 @@ fn special(query: &str, o: &Opts) -> (String, bool) {
         if c == '^'
             && let Some(&n) = chars.get(i)
         {
+            if let Some(code) = object_code(n, o) {
+                atoms.push(code.to_string());
+                i += 1;
+                continue;
+            }
             if let Some(code) = find_code(n) {
                 spans |= matches!(n, 'p' | 'b' | '?');
                 atoms.push(if n == '?' { r"[^\x{AD}]".to_string() } else { code.to_string() });
@@ -554,7 +593,14 @@ pub fn resolve_names(pieces: Vec<Piece>, index: &dyn Fn(&str) -> Option<usize>) 
 
 /// Searched text as it is inserted again: marks become paragraph breaks.
 fn as_inserted(s: &str) -> String {
-    s.replace(SECT_MARK, "\r")
+    // Object sentinels go back to the object character the paragraph text holds.
+    s.chars()
+        .map(|c| match c {
+            SECT_MARK => '\r',
+            OBJ_MARK..=FIELD_END => '\u{FFFC}',
+            c => c,
+        })
+        .collect()
 }
 
 /// Fill in Replace with text for one match: `found` is the matched text, `group(n)` a group's.
