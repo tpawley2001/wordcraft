@@ -367,6 +367,9 @@ pub struct Settings {
     /// layout crate's `para::justify`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub wrap_trail_spaces: bool,
+    /// `w:characterSpacingControl` (ECMA-376 §17.15.1.18).
+    #[serde(default)]
+    pub char_spacing: CharSpacing,
     /// `Copts80.f2ptExtLeadingOnly` of a Word 97-2003 file, `w:suppressTopSpacingWP` in DOCX
     /// (Suppress extra line spacing like WordPerfect 5.x): Word adds at most 2 pt of external
     /// leading; a Courier New line is one em tall. Read and saved as `w:suppressTopSpacingWP`.
@@ -624,6 +627,40 @@ pub enum ZoomFit {
     TextWidth,
 }
 
+/// `w:characterSpacingControl` (ECMA-376 §17.15.1.18): which characters Word may compress.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CharSpacing {
+    /// `doNotCompress` (also the value when the element is absent).
+    #[default]
+    DoNotCompress,
+    /// `compressPunctuation`.
+    CompressPunctuation,
+    /// `compressPunctuationAndJapaneseKana`.
+    CompressPunctuationAndJapaneseKana,
+}
+
+impl CharSpacing {
+    /// The `w:val` this setting is saved as.
+    pub fn to_ooxml(self) -> &'static str {
+        match self {
+            Self::DoNotCompress => "doNotCompress",
+            Self::CompressPunctuation => "compressPunctuation",
+            Self::CompressPunctuationAndJapaneseKana => "compressPunctuationAndJapaneseKana",
+        }
+    }
+
+    /// The setting a `w:val` names; `None` for an unknown value.
+    pub fn from_ooxml(v: &str) -> Option<Self> {
+        match v {
+            "doNotCompress" => Some(Self::DoNotCompress),
+            "compressPunctuation" => Some(Self::CompressPunctuation),
+            "compressPunctuationAndJapaneseKana" => Some(Self::CompressPunctuationAndJapaneseKana),
+            _ => None,
+        }
+    }
+}
+
 /// Word's compatibility mode for documents that don't state one.
 pub const LEGACY_COMPAT_MODE: u32 = 12;
 
@@ -720,6 +757,15 @@ pub const THEME_COLORS: [Rgb; 12] = [
     Rgb(0x96, 0x60, 0x7D),
 ];
 
+impl Settings {
+    /// Does Word squeeze a line's spaces to keep the word that overruns it, as in a document
+    /// opened from RTF? Also below compatibility mode 15 when `w:characterSpacingControl`
+    /// compresses (Word writes `compressPunctuation` and mode 11 when it saves an RTF file as DOCX).
+    pub fn squeezes_like_rtf(&self) -> bool {
+        self.rtf_justification || (self.compat_mode < COMPAT_MODE_CURRENT && self.char_spacing != CharSpacing::DoNotCompress)
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {
@@ -756,6 +802,7 @@ impl Default for Settings {
             do_not_expand_shift_return: false,
             rtf_justification: false,
             wrap_trail_spaces: false,
+            char_spacing: CharSpacing::DoNotCompress,
             ext_leading_2pt_only: false,
             split_pg_break_and_para_mark: false,
             footnote_layout_like_ww8: false,

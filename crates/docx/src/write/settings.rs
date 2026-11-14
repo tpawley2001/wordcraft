@@ -154,7 +154,7 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
             }
         }
     }
-    w.val("w:characterSpacingControl", "doNotCompress");
+    w.val("w:characterSpacingControl", s.char_spacing.to_ooxml());
     write_note_settings(&mut w, s, s_notes, footnotes, endnotes);
     write_compatibility_settings(&mut w, doc);
     write_doc_vars(&mut w, &s.doc_vars);
