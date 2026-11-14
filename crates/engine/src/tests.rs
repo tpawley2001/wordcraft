@@ -66,6 +66,7 @@ mod seq_word;
 mod quote_date_picture;
 mod time_picture_runs;
 mod word_count_paragraphs;
+mod date_picture_literal_a;
 mod mark_final;
 mod mark_toc_entry;
 mod move_text_keys;

@@ -1,5 +1,7 @@
 # File-format parity with Microsoft Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0497: DOCX separator stories count only when the settings list their ids, as in Word. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged; earlier: P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged)
@@ -380,6 +382,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged. |
 > 2026-11-14 · P0482: DOCX `w:fitText` (§17.3.2.14) read into `CharProps::fit_text` (`w:val` twips → points, optional `w:id`; a missing or invalid width drops the element) and written once in CT_RPr order, after `w:shd`, before `w:vertAlign` (`fit_text.rs`, `roundtrip.rs`).
 > 2026-11-13 · P0464: DOCX: the run holding `w:separator` / `w:continuationSeparator` (§17.11.1, §17.11.2) in footnotes.xml and endnotes.xml is written with the separator character's own `w:rPr` (none when it has none), so its size survives save and reopen (`note_separator_run_props.rs`).
