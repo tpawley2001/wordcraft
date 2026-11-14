@@ -133,10 +133,11 @@ pub(super) fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
         Some(wordcraft_engine::KeyTarget::Style(style)) => Some(style),
         _ => None,
     });
-    // Function-key interface shortcuts yield to the keymap so Customize Keyboard can reassign
-    // them. The window commands are registered there; Ctrl+F1 keeps its UI fallback (#1678).
-    // Alt+Q and ⌘⌥R keep their place ahead of the keymap.
-    if let Some((id, params)) = ui_shortcut(key, m).filter(|_| !matches!(key, Key::F1 | Key::F5 | Key::F10) || (bound.is_none() && style.is_none())) {
+    // Window keys use the registry below so Customize Keyboard can reassign or remove them.
+    // Ctrl+F1 keeps its UI fallback when not assigned (#1678); Alt+Q and ⌘⌥R keep their priority.
+    if let Some((id, params)) =
+        ui_shortcut(key, m).filter(|_| !matches!(key, Key::F5 | Key::F10) && (key != Key::F1 || (bound.is_none() && style.is_none())))
+    {
         let _ = app.run(id, params);
         return true;
     }

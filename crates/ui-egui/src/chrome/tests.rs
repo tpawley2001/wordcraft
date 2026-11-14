@@ -532,10 +532,11 @@ fn window_commands_send_only_maximization_and_report_the_target_state() {
         input.viewports.get_mut(&egui::ViewportId::ROOT).unwrap().maximized = Some(before);
         let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
         app.ctx = Some(ctx.clone());
-        let output = ctx.run(input, |_| {
+        let output = ctx.run_ui(input, |_| {
             assert_eq!(app.run(id, json!({})).unwrap(), json!({"maximized": after}));
         });
         assert_eq!(output.viewport_output.get(&egui::ViewportId::ROOT).unwrap().commands, commands);
+        output.drop_without_applying_deltas();
         assert!(app.session.registry.get(id).is_some(), "available in Customize Keyboard");
     }
 }
