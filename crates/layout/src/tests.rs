@@ -29,6 +29,7 @@ mod deleted_mark_join;
 mod deleted_rows;
 mod deleted_section_break;
 mod display_hide_body;
+mod double_strike_geometry;
 mod early_float_stays;
 mod emphasis_line_height;
 mod endnote_suppress;
