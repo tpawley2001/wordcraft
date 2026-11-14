@@ -164,6 +164,12 @@ impl ResolvedChar {
     pub fn draw_size(&self) -> f32 {
         if self.vert_align == VertAlign::Baseline { self.size } else { (self.size * 0.65 * 2.0).round() / 2.0 }
     }
+    /// The size a small capital (a lowercase letter in a `w:smallCaps` run) is drawn and measured
+    /// at: 0.8 of [`Self::draw_size`] rounded to the half point, a size the format can store
+    /// (measured in Microsoft 365 Word for Windows: 11 pt -> 9, 12 -> 9.5, 13 -> 10.5).
+    pub fn small_caps_size(&self) -> f32 {
+        (self.draw_size() * 0.8 * 2.0).round() / 2.0
+    }
     /// Baseline shift, points (positive = up).
     pub fn baseline_shift(&self) -> f32 {
         self.position
