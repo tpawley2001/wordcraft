@@ -148,12 +148,26 @@ impl StyleRun {
         let size = if self.rc.size.is_finite() { self.rc.size.clamp(0.0, 1638.0) } else { 0.0 };
         match self.rc.emphasis {
             wordcraft_doc::props::EmphasisMark::None => {}
-            wordcraft_doc::props::EmphasisMark::UnderDot => d = d.max(size * 0.42 + (-raise).max(0.0)),
+            // Dots below add 0.2875 x the size under the run's own descent (and any `w:position`
+            // lowering), the same amount as marks above (measured: Times New Roman and Calibri
+            // within 0.03 x size at 8-36 pt).
+            wordcraft_doc::props::EmphasisMark::UnderDot => d += self.mark_room_below(),
             // Marks above add 0.2875 x the size over the run's own ascent, as Word does
             // (measured: Times New Roman and Arial exactly, Cambria and Calibri within 0.02 x size).
             _ => a += size * 0.2875,
         }
         (a, d)
+    }
+
+    /// The room dots below the text (`w:em w:val="underDot"`) add under the run's descent:
+    /// 0.2875 x the size. Multiple line spacing does not scale it (Word, single spacing; the
+    /// line after sits that much lower than after a plain line).
+    pub fn mark_room_below(&self) -> f32 {
+        if self.rc.emphasis != wordcraft_doc::props::EmphasisMark::UnderDot {
+            return 0.0;
+        }
+        let size = if self.rc.size.is_finite() { self.rc.size.clamp(0.0, 1638.0) } else { 0.0 };
+        size * 0.2875
     }
 }
 
