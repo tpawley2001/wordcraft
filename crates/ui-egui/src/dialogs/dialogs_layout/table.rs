@@ -605,18 +605,29 @@ pub(super) fn text_to_table_ui(app: &mut WordApp, ui: &mut Ui, f: &mut TextToTab
 pub struct TableToTextForm {
     pub separator: String,
     pub other_char: String,
+    pub nested: bool,
+    pub has_nested: bool,
 }
 
 impl TableToTextForm {
     /// None when the caret isn't in a table.
     pub fn read(app: &WordApp) -> Option<TableToTextForm> {
-        app.session.sel.focus.path.cell()?;
-        Some(TableToTextForm { separator: "tab".into(), other_char: "-".into() })
+        let s = &app.session;
+        let (tp, _, _) = s.sel.focus.path.cell()?;
+        let table = s.doc.table(s.sel.focus.story, &tp)?;
+        let cells = wordcraft_engine::cmd::table::selected_cells(s);
+        let selected_rows = cells.len() > 1 || s.cell_range().is_some();
+        let first = cells.iter().map(|c| c.0).min().unwrap_or(0);
+        let last = cells.iter().map(|c| c.0).max().unwrap_or(0);
+        let has_nested = table.rows.iter().enumerate().any(|(r, row)| {
+            (!selected_rows || (first..=last).contains(&r)) && row.cells.iter().flat_map(|c| &c.blocks).any(|b| b.as_table().is_some())
+        });
+        Some(TableToTextForm { separator: "tab".into(), other_char: "-".into(), nested: true, has_nested })
     }
 
     /// `table.toText` parameters for OK.
     pub fn params(&self) -> Value {
-        let mut v = json!({"separator": self.separator});
+        let mut v = json!({"separator": self.separator, "nested": self.nested});
         if self.separator == "other" {
             v["char"] = json!(self.other_char);
         }
@@ -636,6 +647,7 @@ pub(super) fn table_to_text_ui(app: &mut WordApp, ui: &mut Ui, f: &mut TableToTe
             f.separator = "other".into();
         }
     });
+    ui.add_enabled(f.has_nested, egui::Checkbox::new(&mut f.nested, tl!("Convert nested tables")));
     let ready = f.separator != "other" || !f.other_char.is_empty();
     let (ok, cancel) = buttons(ui, "OK", ready);
     if ok {

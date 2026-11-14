@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged.)
@@ -242,6 +244,8 @@ Twenty more missing Office fonts, including Algerian, Constantia, Lucida Sans Un
 
 Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei, Microsoft YaHei, PMingLiU and Yu Gothic now use Word's measured line metrics (P0504; `fonts/tests/missing_font_line_east_asian.rs`). Localized names remain unmeasured; broader pagination differences in gap #4 remain open.
 
+Convert to Text now uses comma-space separators and offers recursive nested-table conversion (P0512); the remaining dialog depth work in gap #7 is unchanged.
+
 ## Revision history
 
 > 2026-11-14 · trivial · P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged.
@@ -251,6 +255,7 @@ Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei,
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0507: Word Count counts paragraphs holding a word, preserving object-only paragraphs and treating manual line breaks as part of their paragraph. Selection counts use the selected text in each paragraph. Readiness estimates unchanged. |
