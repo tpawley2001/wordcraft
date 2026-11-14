@@ -2,6 +2,7 @@ mod alt_chunks;
 mod bidi;
 mod bidi_embeddings;
 mod bidi_runs;
+mod bidi_tracked;
 mod body_level_breaks;
 mod border_lines;
 mod border_styles;
