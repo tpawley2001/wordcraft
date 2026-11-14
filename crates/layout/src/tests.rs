@@ -3602,7 +3602,7 @@ fn runs_differing_only_in_link_or_decoration_keep_their_own_style() {
     assert_eq!(link_of("Alpha"), Some(Some("https://a.example/".into())));
     assert_eq!(link_of("Beta"), Some(Some("https://b.example/".into())));
     let strokes: Vec<_> = items.iter().filter_map(|i| if let display::Draw::Line { stroke, .. } = i { Some(*stroke) } else { None }).collect();
-    assert!(strokes.contains(&display::Stroke::Solid) && strokes.contains(&display::Stroke::Double), "{strokes:?}");
+    assert!(strokes.contains(&display::Stroke::Solid) && strokes.contains(&display::Stroke::UnderlineDouble { line: 333 }), "{strokes:?}");
     // Underline colour is per run too.
     let mut d = Document::from_text("Red Blue");
     let red = wordcraft_doc::props::Rgb(0xFF, 0, 0);
