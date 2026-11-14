@@ -167,7 +167,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         tabs.insert((*at).min(tabs.len()), (name.clone(), false));
     }
     // Tab strip.
-    egui::Panel::top("tabs")
+    let strip = egui::Panel::top("tabs")
         .exact_size(30.0)
         .frame(egui::Frame::NONE.fill(t.tab_strip).inner_margin(egui::Margin { left: 8, right: 10, top: 0, bottom: 0 }))
         .show(ui, |ui| {
@@ -303,6 +303,11 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                     crate::keytips::record_tab(r, tab, "", &mut app.keytip_rects);
                                 }
                                 let active = app.ui.tab == tab && !app.ui.backstage;
+                                if ghost.is_none() {
+                                    // F6 brings the keyboard to the selected tab (the first one shown when the
+                                    // selected tab sits in the More tabs menu).
+                                    crate::panes::note_f6_target(app, ui.ctx(), crate::panes::F6Stop::Ribbon, resp.id, active);
+                                }
                                 resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, active, shown));
                                 let hover = ui.ctx().animate_bool_responsive(resp.id.with("hover"), resp.hovered() && !active && ghost.is_none());
                                 if hover > 0.0 {
@@ -406,10 +411,11 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 });
             })
         });
+    crate::panes::note_f6_area(app, ui.ctx(), crate::panes::F6Stop::Ribbon, strip.response.rect);
     if app.ui.ribbon_collapsed {
         return;
     }
-    egui::Panel::top("ribbon")
+    let body = egui::Panel::top("ribbon")
         .exact_size(CONTENT_H + LABEL_H + 10.0)
         .frame(
             egui::Frame::NONE.fill(t.ribbon).inner_margin(egui::Margin { left: 8, right: 8, top: 4, bottom: 4 }).stroke(Stroke::new(1.0, t.border)),
@@ -539,6 +545,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 ui.ctx().request_repaint();
             }
         });
+    crate::panes::note_f6_area(app, ui.ctx(), crate::panes::F6Stop::Ribbon, body.response.rect);
 }
 
 #[cfg(test)]

@@ -33,7 +33,8 @@ fn clipboard_delete_returns_focus_to_the_document() {
     assert!(h.state().session.clip_history.items().is_empty(), "the item was deleted");
 }
 
-/// F6 past the last pane gives the document the keyboard, and typing reaches it (#1756).
+/// F6 past the last pane goes to the status bar and the ribbon, then gives the document the
+/// keyboard, and typing reaches it (#1756, P0515).
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn f6_past_the_last_pane_types_into_the_document() {
@@ -56,9 +57,14 @@ fn f6_past_the_last_pane_types_into_the_document() {
         h.run_steps(2);
         assert!(!h.state().canvas.focused, "F6 moved the keyboard to the {pane} pane");
     }
+    for stop in ["status bar", "ribbon"] {
+        h.input_mut().events.push(f6.clone());
+        h.run_steps(2);
+        assert!(!h.state().canvas.focused, "F6 past the last pane visits the {stop}");
+    }
     h.input_mut().events.push(f6);
     h.run_steps(2);
-    assert!(h.state().canvas.focused, "F6 past the last pane returns to the document");
+    assert!(h.state().canvas.focused, "F6 after the ribbon returns to the document");
     h.input_mut().events.push(egui::Event::Text("typed".into()));
     h.run_steps(2);
     assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body).trim(), "typed");
