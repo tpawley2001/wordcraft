@@ -1,5 +1,7 @@
 # Typing parity with Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0513: Change Case preserves words in capitals and follows Word’s word and sentence boundaries.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.)
 
 > **Last reviewed:** 2026-10-11 · **Last updated:** 2026-11-14 · **Change:** trivial (in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows; earlier: Decrease Font Size steps one point below 8 pt and 10 pt above 72 pt; earlier: AutoFormat Now under Track Changes records a tracked deletion and insertion, skips locked content controls and labels inside field results)
@@ -639,12 +641,15 @@ regressions cover body, header and cell containers, sections, outline/TOC member
 DOCX and Undo/Redo (Leaf #152). No new Word or native UI comparison was run.
 With an F2 / Shift+F2 source pending, Enter places that rich text at the caret instead of splitting the paragraph (Windows/Linux shortcuts). Without a source, Enter keeps its ordinary behavior.
 
+Change Case: title and sentence case keep words in capitals when the selection contains lowercase letters and follow Word’s word and sentence boundaries.
+
 ## Revision history
 
 > 2026-11-14 · trivial · P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0513: title and sentence case preserve words in capitals in selections containing lowercase letters and follow Word’s word and sentence boundaries. |
 | 2026-11-04 | trivial | Ctrl+K on a selection: a changed Text to display replaces the selected text before it is linked |
 | 2026-11-07 | trivial | Removing an already-empty paragraph preserves the following paragraph properties, mark and inline formatting. Delete, Backspace, selected marks, outline/TOC, DOCX and Undo/Redo have synthetic coverage (Leaf #152); no new Word or native acceptance run. |
 | 2026-11-06 | trivial | AutoFormat Now (Ctrl+Alt+K): quotes, dashes and typed list labels in existing text, one undo step |
