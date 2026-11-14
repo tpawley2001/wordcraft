@@ -60,7 +60,7 @@ fn line_at(size: f32) -> f32 {
 fn check(run: Option<f32>, mark: Option<f32>, want_size: f32) {
     crate::test_fonts();
     let (d, id) = doc(run, mark);
-    let got = sep_height(&lay(&d), id);
+    let got = sep_height(&d, id);
     let want = line_at(want_size);
     assert!((got - want).abs() < 0.01, "separator run {run:?} pt, mark {mark:?} pt: separator line {got}, want one {want_size} pt line ({want})");
 }
