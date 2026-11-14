@@ -1,7 +1,7 @@
 use super::boxes::{BoxInput, layout_box};
 use super::ctx::{Ctx, with_pin};
 use super::floats::{EarlyFloats, WrapArea};
-use super::notes::{NOTE_SEP_W, NoteBox, NoteSeps, v_span};
+use super::notes::{NOTE_SEP_W, NoteBox, NoteSeps, sep_rise, sep_weight, v_span};
 use super::para::ClKind;
 use super::placed::Placed;
 use super::{Block, Border, FloatAlign, Page, ParaLayout, Rect, SectionProps, StoryRef};
@@ -341,8 +341,9 @@ impl PageBuilder<'_> {
                 })),
                 None => {
                     let len = if cont { width } else { NOTE_SEP_W.min(width) };
-                    let sy = top + seps.sep_h(cont) / 2.0;
-                    pg.items.push(Placed::Rule { x0: x, y0: sy, x1: x + len, y1: sy, border: Border::single(seps.default_w) });
+                    let sy = top + seps.sep_h(cont) - sep_rise(seps.default_size);
+                    let border = Border::single(sep_weight(seps.default_size));
+                    pg.items.push(Placed::Rule { x0: x, y0: sy, x1: x + len, y1: sy, border });
                 }
             }
             for (n, ny) in placed {
