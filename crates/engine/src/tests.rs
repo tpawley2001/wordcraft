@@ -39,6 +39,7 @@ mod envelope_options;
 mod find_apostrophes;
 mod find_format;
 mod fit_one_page;
+mod font_grow_steps_word;
 mod font_sizes;
 mod shrink_font_steps;
 mod grid_settings;

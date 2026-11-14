@@ -32,7 +32,8 @@ fn sizes(s: &Session) -> Vec<f32> {
 #[test]
 fn relative_font_sizes_preserve_mixed_runs_and_one_undo() {
     for (command, expected) in [
-        ("format.growFont", [22.0, 10.5]),
+        // Word steps 10 pt to 11 (its Increase Font Size list has no 10.5; measured in M365 Word, 2026-11-14).
+        ("format.growFont", [22.0, 11.0]),
         ("format.shrinkFont", [18.0, 9.0]),
         ("format.growFont1", [21.0, 11.0]),
         ("format.shrinkFont1", [19.0, 9.0]),
