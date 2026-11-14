@@ -160,8 +160,9 @@ impl StyleRun {
     }
 
     /// The room dots below the text (`w:em w:val="underDot"`) add under the run's descent:
-    /// 0.2875 x the size. Multiple line spacing does not scale it (Word, single spacing; the
-    /// line after sits that much lower than after a plain line).
+    /// 0.2875 x the size (Word, single spacing: the line after sits that much lower than after a
+    /// plain line). Multiple line spacing leaves it unscaled, like the room for marks above,
+    /// which sits above the baseline where the spacing's extra doesn't reach (not measured).
     pub fn mark_room_below(&self) -> f32 {
         if self.rc.emphasis != wordcraft_doc::props::EmphasisMark::UnderDot {
             return 0.0;

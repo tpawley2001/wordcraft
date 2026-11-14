@@ -621,7 +621,8 @@ impl<'e> Breaker<'e> {
     fn measure(&self, pl: &ParaLayout, range: (usize, usize)) -> Measure {
         let rp = &self.rp;
         let Extents { mut asc, mut desc, obj_asc, obj_desc, text, font_asc: bare_asc, font_desc: bare_desc, unmarked_desc } = self.extents(pl, range);
-        // Room for dots below the text is added once: multiple spacing doesn't scale it.
+        // Room for dots below the text is added once: multiple spacing doesn't scale it, as it
+        // doesn't scale the room for marks above (Word measured at single spacing only).
         let mark_below = (desc - unmarked_desc).max(0.0);
         let mut text_natural = asc + desc;
         // An inline equation taller than its text is sized like a picture beside text: with
