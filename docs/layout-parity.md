@@ -413,6 +413,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | trivial | P0459: In margin also moves a first-line or hanging indent that comes from the paragraph's style to the cap frame (an explicit zero stops the text inheriting it); Dropped or None lets the text inherit it again. Readiness estimates unchanged. |
 | 2026-11-13 | trivial | The default footnote separator is one single-spaced line of the Normal style's font, not 12 pt (`layout::tests::default_note_separator`) |
 | 2026-11-13 | trivial | P0444: a numbered paragraph whose style or own tabs clear a stop at its list level's number tab (`w:tab w:val="clear"`, .doc `rgdxaDel`) sets its text at the next tab stop, as in Word (we kept the level's stop: text 18 pt too far left). A hanging indent still acts as a stop. |
 | 2026-11-13 | trivial | With a footnote continuation notice, every page with footnotes keeps the notice's room under its notes (empty when no note continues), as measured in Word; it went to the text, so each such page held a line more than Word's and a long report came out a page short. Documents without a notice are unchanged (`layout::tests::footnote_notice_room`) |
