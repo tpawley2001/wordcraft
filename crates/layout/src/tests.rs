@@ -31,6 +31,7 @@ mod deleted_section_break;
 mod display_hide_body;
 mod early_float_stays;
 mod emphasis_line_height;
+mod emphasis_under_dot;
 mod endnote_suppress;
 mod eq_fields;
 mod eq_integral_limits;
