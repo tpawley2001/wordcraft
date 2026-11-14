@@ -13,6 +13,13 @@ pub(super) const MAX_SPACE_SHRINK: f32 = 0.25;
 /// RTF: just under half (Word keeps the word at 49.2% and wraps it at 50%).
 pub(super) const RTF_MAX_SPACE_SHRINK: f32 = 0.5;
 
+/// How far one space may shrink to keep an overrunning word below compatibility mode 15 with
+/// Compress punctuation: down to half the font's average character width. Stub: the task fills it in.
+pub(crate) fn compress_space_room(space_w: f32, avg_w: f32) -> f32 {
+    let _ = (space_w, avg_w);
+    0.0
+}
+
 /// Points inside the right edge the space before the overrunning word must start, for widths
 /// summed in `f32`: Word wraps the word when that space starts exactly on the edge.
 const RTF_EDGE_TOLERANCE: f32 = 0.01;

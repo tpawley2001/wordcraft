@@ -13,6 +13,7 @@ pub mod math;
 mod script;
 mod ui_fallback;
 pub mod word;
+pub use word::twin_avg_char_width_em;
 
 pub use fontdb::{
     FALLBACK_FAMILY, FONT_FILE_EXTS, FaceRef, FontDb, FontFace, FontFormat, Installed, LocalName, MAX_FONT_FILE_BYTES, UserFont, UserFontError,

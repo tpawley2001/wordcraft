@@ -1173,6 +1173,14 @@ fn face_line(face: &crate::FontFace, leading: bool) -> (f64, f64) {
     v
 }
 
+/// Word's OS/2 average character width (em) of `requested` when its text is drawn in the metric
+/// twin `face_family` ([`METRIC_TWINS`]), whose own table holds a different average. Stub: the
+/// task fills it in (Times New Roman 821/2048, Arial 904/2048).
+pub fn twin_avg_char_width_em(requested: &str, face_family: &str) -> Option<f32> {
+    let _ = (requested, face_family);
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

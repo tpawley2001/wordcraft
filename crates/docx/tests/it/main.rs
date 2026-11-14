@@ -11,6 +11,7 @@ mod char_units;
 mod citations;
 mod comment_ids;
 mod comment_save_cost;
+mod compat_pair_flags;
 mod complex_script_inheritance;
 mod content_control_save_cost;
 mod content_controls;

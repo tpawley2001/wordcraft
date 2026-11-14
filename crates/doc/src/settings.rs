@@ -394,6 +394,14 @@ pub struct Settings {
     /// most 0.0391 of the line's width, and the line is squeezed to end at the edge.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub wp_justification: bool,
+    /// `w:balanceSingleByteDoubleByteWidth` (ECMA-376 Part 1 §17.15.3.1). With
+    /// [`Settings::use_word97_line_break_rules`], proportional fonts don't squeeze their spaces
+    /// (see [`Settings::squeezes_proportional_spaces`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub balance_sbcs_dbcs_width: bool,
+    /// `w:useWord97LineBreakRules` (ECMA-376 Part 1 §17.15.3.57).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub use_word97_line_break_rules: bool,
     /// `w:noTabHangInd` / `Copts60.fNoTabForInd` (no tab stop at the hanging indent): below
     /// compatibility mode 15 a hanging first line has no implicit tab stop at the left indent, so
     /// a tab there goes to the next custom or default stop.
@@ -764,6 +772,13 @@ impl Settings {
     pub fn squeezes_like_rtf(&self) -> bool {
         self.rtf_justification || (self.compat_mode < COMPAT_MODE_CURRENT && self.char_spacing != CharSpacing::DoNotCompress)
     }
+
+    /// Do proportional fonts squeeze their spaces too (by half the font's average character
+    /// width)? Not when `w:balanceSingleByteDoubleByteWidth` and `w:useWord97LineBreakRules` are
+    /// both on, as in documents opened from RTF.
+    pub fn squeezes_proportional_spaces(&self) -> bool {
+        self.squeezes_like_rtf() && !(self.balance_sbcs_dbcs_width && self.use_word97_line_break_rules)
+    }
 }
 
 impl Default for Settings {
@@ -808,6 +823,8 @@ impl Default for Settings {
             footnote_layout_like_ww8: false,
             no_leading: false,
             wp_justification: false,
+            balance_sbcs_dbcs_width: false,
+            use_word97_line_break_rules: false,
             no_tab_hang_ind: false,
             allow_space_of_same_style_in_table: false,
             grid_h: DEFAULT_GRID,

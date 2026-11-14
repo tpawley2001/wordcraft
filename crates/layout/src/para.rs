@@ -22,6 +22,7 @@ mod chars;
 mod eqfield;
 mod grid;
 mod justify;
+pub(crate) use justify::compress_space_room;
 mod lines;
 mod model;
 mod paragraph;
