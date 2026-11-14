@@ -1,6 +1,8 @@
 # Layout and pagination parity with Microsoft Word
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-14 · **Change:** trivial (P0503: the built-in endnote separator takes one single-spaced Normal line, as in Word (was a fixed 20 pt). Readiness estimates unchanged; earlier: P0500: only a whole word Mono or Code in a missing font's name makes its substitute monospaced. Readiness estimates unchanged; earlier: P0491: SEQ fields number as in Word: identifiers ignore case, `\r` takes any number, `\h` with a `\*` format shows the number, bookmark argument, no identifier error. Readiness estimates unchanged)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0504: nine missing East Asian and Thai fonts use Word's measured baseline and single-line height (1.301–1.950 em). Gap #4 narrowed; readiness estimates unchanged.)
+
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-14 · **Change:** trivial (P0502: twenty more missing Office fonts use Word's measured single-line metrics (1.067–1.680 em), including Segoe UI Light and Semibold sharing Segoe UI's line. Gap #4 narrowed; readiness estimates unchanged; earlier: P0503: the built-in endnote separator takes one single-spaced Normal line, as in Word (was a fixed 20 pt). Readiness estimates unchanged; earlier: P0500: only a whole word Mono or Code in a missing font's name makes its substitute monospaced. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0490: DATE and TIME pictures split letter runs longer than four, `yyy` is an error and `\*` number formats apply to a numeric date, as in Word; earlier: P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged; earlier: P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged)
 
@@ -344,6 +346,8 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 The front-of-text opt-out is retained from the earlier implementation; this patch does not establish native Word equivalence between front-of-text and behind-text pictures. Synthetic placement tests cover the two paths, while a new native comparison of those wrap modes remains open. Turned-cell layouts disable horizontal cell confinement because their frame x axis becomes page y.
 
+Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei, Microsoft YaHei, PMingLiU and Yu Gothic now use Word's measured line metrics (P0504; `fonts/tests/missing_font_line_east_asian.rs`). Localized names remain unmeasured; broader pagination differences in gap #4 remain open.
+
 ## Revision history
 
 > 2026-11-14 · P0490: DATE and TIME pictures split d, M and y runs longer than four letters, report `yyy` as Word's picture error, and apply `\*` number formats to a whole-number result, as measured in Word (`tests::date_picture_word`).
@@ -352,6 +356,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 > 2026-11-14 · P0482: Fit Text (`w:fitText`): a run, or the runs next to each other sharing its id, is exactly its set width, as Microsoft 365 Word lays it out (measured from its PDF, Times New Roman and Arial 12 and 24 pt): the extra room is split evenly after every character but the last (a single character takes it all after itself; spaces count), and text wider than the set width is squeezed, every character and glyph by width / natural width (`layout::tests::fit_text`). A region broken over two lines and justified lines are not measured. Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0504: nine missing East Asian and Thai fonts use Word's measured baseline and single-line height (1.301–1.950 em). Gap #4 narrowed; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0502: twenty more missing Office fonts use Word's measured single-line metrics (1.067–1.680 em), including Segoe UI Light and Semibold sharing Segoe UI's line. Gap #4 narrowed; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0500: a missing font takes a monospaced substitute only for a whole word Mono, Monospace, Monospaced or Code in its name; Lucida Sans Unicode and Monotype Corsiva were drawn in Courier New. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0499: missing Segoe UI, Perpetua, Gill Sans MT and Book Antiqua use Word's measured single-line metrics (1.330, 1.146, 1.160 and 1.243 em); Book Antiqua keeps its own baseline and line, separate from Palatino. Gap #4 narrowed; readiness estimates unchanged. |

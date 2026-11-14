@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0504: nine missing East Asian and Thai fonts use Word's measured baseline and single-line height (1.301–1.950 em). Gap #4 narrowed; readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0502: twenty more missing Office fonts use Word's measured single-line metrics (1.067–1.680 em), including Segoe UI Light and Semibold sharing Segoe UI's line. Gap #4 narrowed; readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0499: missing Segoe UI, Perpetua, Gill Sans MT and Book Antiqua use Word's measured single-line metrics (1.330, 1.146, 1.160 and 1.243 em); Book Antiqua keeps its own baseline and line, separate from Palatino. Gap #4 narrowed; readiness estimates unchanged.)
@@ -232,6 +234,8 @@ Missing Segoe UI, Perpetua, Gill Sans MT and Book Antiqua now use Word's measure
 
 Twenty more missing Office fonts, including Algerian, Constantia, Lucida Sans Unicode and Mangal, now use Word's measured baseline and line height (P0502). Font substitutions and advance widths are unchanged; broader pagination differences in gap #4 remain open.
 
+Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei, Microsoft YaHei, PMingLiU and Yu Gothic now use Word's measured line metrics (P0504; `fonts/tests/missing_font_line_east_asian.rs`). Localized names remain unmeasured; broader pagination differences in gap #4 remain open.
+
 ## Revision history
 
 > 2026-11-14 · trivial · P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged.
@@ -241,6 +245,7 @@ Twenty more missing Office fonts, including Algerian, Constantia, Lucida Sans Un
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0504: nine missing East Asian and Thai fonts use Word's measured baseline and single-line height (1.301–1.950 em). Gap #4 narrowed; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0502: twenty more missing Office fonts use Word's measured single-line metrics (1.067–1.680 em), including Segoe UI Light and Semibold sharing Segoe UI's line. Gap #4 narrowed; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0499: missing Segoe UI, Perpetua, Gill Sans MT and Book Antiqua use Word's measured single-line metrics (1.330, 1.146, 1.160 and 1.243 em); Book Antiqua keeps its own baseline and line, separate from Palatino. Gap #4 narrowed; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0498: a missing Century uses Word's single-line metrics (0.986 em ascent + 0.216 em descent), instead of C059's taller line. Other Century families, substitutes and advance widths are unchanged. Readiness estimates unchanged. |

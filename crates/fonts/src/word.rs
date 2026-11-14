@@ -358,6 +358,12 @@ fn missing_font_metrics_no_leading(family: &str) -> Option<(f64, f64)> {
 /// 1.3168 em and Tw Cen MT 1.0891 em. Ascent follows the PDF descriptor where it agrees with
 /// the first baseline within 0.008 em, otherwise the measured 24 pt first baseline; descent
 /// fills the measured line, with metrics rounded to 0.001 em.
+///
+/// East Asian and Thai fonts measured in Microsoft 365 Word at 12 and 24 pt (single spacing,
+/// no grid): Batang and Gulim 1.301 em, Leelawadee UI 1.330 em, Malgun Gothic 1.730 em,
+/// Meiryo 1.950 em, Microsoft JhengHei 1.730 em, Microsoft YaHei 1.716 em, PMingLiU 1.301 em
+/// and Yu Gothic 1.673 em. Ascent is the measured 24 pt first baseline; descent fills the line,
+/// rounded to 0.001 em. Localized names remain unmeasured.
 fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
     match family.trim().to_ascii_lowercase().as_str() {
         "lucida console" => Some((0.789, 0.211)),
@@ -408,6 +414,15 @@ fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
         "rockwell" => Some((0.946, 0.229)),
         "sylfaen" => Some((1.006, 0.311)),
         "tw cen mt" => Some((0.856, 0.233)),
+        "batang" => Some((1.011, 0.290)),
+        "gulim" => Some((1.011, 0.290)),
+        "leelawadee ui" => Some((1.081, 0.249)),
+        "malgun gothic" => Some((1.291, 0.439)),
+        "meiryo" => Some((1.286, 0.664)),
+        "microsoft jhenghei" => Some((1.276, 0.454)),
+        "microsoft yahei" => Some((1.256, 0.460)),
+        "pmingliu" => Some((0.951, 0.350)),
+        "yu gothic" => Some((1.181, 0.492)),
         _ => None,
     }
 }
