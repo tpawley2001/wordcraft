@@ -728,6 +728,19 @@ impl WordApp {
                 self.ui.ribbon_collapsed = !self.ui.ribbon_collapsed;
                 json!({"collapsed": self.ui.ribbon_collapsed})
             }
+            "ui.maximizeWindow" | "ui.restoreWindow" => {
+                let Some(ctx) = &self.ctx else {
+                    return Some(Err("window context is unavailable".into()));
+                };
+                let mut maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+                if let Some(command) = chrome::window_size_command(id, maximized) {
+                    if let egui::ViewportCommand::Maximized(after) = &command {
+                        maximized = *after;
+                    }
+                    ctx.send_viewport_cmd(command);
+                }
+                json!({"maximized": maximized})
+            }
             "ui.focusRibbon" => {
                 // Focus's "⋯" (#1678): `value` true drops the ribbon down over the page, false
                 // puts it away; no value toggles it. Outside Focus there is no ribbon to drop:
@@ -1308,6 +1321,8 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.dialog"
             | "ui.closeDialog"
             | "ui.collapseRibbon"
+            | "ui.maximizeWindow"
+            | "ui.restoreWindow"
             | "ui.quickAccessToolbar"
             | "ui.keytips"
             | "ui.dark"

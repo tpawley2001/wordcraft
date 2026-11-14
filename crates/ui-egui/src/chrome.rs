@@ -26,11 +26,13 @@ pub(crate) fn dictionary_problem(lang: &str, unreadable: &Option<(std::path::Pat
 
 /// The window command for Word's window keys: `ui.maximizeWindow` (Ctrl+F10) maximizes a window
 /// that isn't and restores one that is; `ui.restoreWindow` (Alt+F5) restores a maximized window.
-#[allow(dead_code)] // Stub (P0466): remove once ui.maximizeWindow / ui.restoreWindow and the title bar call it.
+#[allow(dead_code)]
 pub(crate) fn window_size_command(name: &str, maximized: bool) -> Option<egui::ViewportCommand> {
-    // Stub (P0466): the acceptance tests fail until this follows the table in the spec.
-    let _ = (name, maximized);
-    None
+    match name {
+        "ui.maximizeWindow" => Some(egui::ViewportCommand::Maximized(!maximized)),
+        "ui.restoreWindow" if maximized => Some(egui::ViewportCommand::Maximized(false)),
+        _ => None,
+    }
 }
 
 /// The Quick Access Toolbar's button for command `id`.
@@ -369,7 +371,9 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
             }
             if drag.double_clicked() {
                 let max = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!max));
+                if let Some(command) = window_size_command("ui.maximizeWindow", max) {
+                    ui.ctx().send_viewport_cmd(command);
+                }
             }
             // The free stretch between the two clusters, for the centred title. Right to left the
             // clusters swap sides: AutoSave and the Quick Access Toolbar start at the right.
