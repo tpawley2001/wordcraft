@@ -93,6 +93,7 @@ mod no_leading_missing_fonts;
 mod no_tab_hang_ind;
 mod note_contextual_spacing;
 mod note_mark_size;
+mod note_separator_mark_size;
 mod notes_overflow;
 mod notes_overflow_last_line;
 mod numeral;
