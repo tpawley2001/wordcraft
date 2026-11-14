@@ -13,11 +13,39 @@ pub(super) const MAX_SPACE_SHRINK: f32 = 0.25;
 /// RTF: just under half (Word keeps the word at 49.2% and wraps it at 50%).
 pub(super) const RTF_MAX_SPACE_SHRINK: f32 = 0.5;
 
-/// How far one space may shrink to keep an overrunning word below compatibility mode 15 with
-/// Compress punctuation: down to half the font's average character width. Stub: the task fills it in.
+/// How far one space `space_w` wide may shrink to keep an overrunning word below compatibility
+/// mode 15 with Compress punctuation: down to half the font's average character width `avg_w`
+/// (OS/2 `xAvgCharWidth` at the run's size), and not at all when that is wider than the space.
+/// Measured in Word (synthetic .docx files, mode 11): 12 pt Times New Roman about .57 pt per
+/// space, Arial about .70 pt, Calibri none; for a fixed-pitch font (space = average) half a space.
 pub(crate) fn compress_space_room(space_w: f32, avg_w: f32) -> f32 {
-    let _ = (space_w, avg_w);
-    0.0
+    (space_w - avg_w / 2.0).max(0.0)
+}
+
+/// How far a single space of one style may shrink in the RTF / Compress punctuation squeeze
+/// ([`rtf_space_room`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum SpaceRoom {
+    /// A fixed-pitch font: half the space ([`RTF_MAX_SPACE_SHRINK`]).
+    Half,
+    /// A proportional font: down to half its average character width, in points
+    /// ([`compress_space_room`]).
+    Average(f32),
+    /// A proportional font in a document whose proportional fonts don't squeeze (opened from RTF,
+    /// or with `w:balanceSingleByteDoubleByteWidth` and `w:useWord97LineBreakRules`): a single
+    /// space in it keeps the whole line from squeezing.
+    Blocks,
+}
+
+impl SpaceRoom {
+    /// The room of a space `adv` wide in this style.
+    pub(super) fn room(self, adv: f32) -> f32 {
+        match self {
+            SpaceRoom::Half => adv * RTF_MAX_SPACE_SHRINK,
+            SpaceRoom::Average(avg) => compress_space_room(adv, avg),
+            SpaceRoom::Blocks => 0.0,
+        }
+    }
 }
 
 /// Points inside the right edge the space before the overrunning word must start, for widths
@@ -37,23 +65,25 @@ pub(super) fn space_room(spaces: f32, word: f32) -> f32 {
     (spaces * MAX_SPACE_SHRINK).min(word.max(0.0) * MAX_WORD_OVERRUN)
 }
 
-/// How far a line of a document opened from RTF may run past its right edge, its inner single
-/// spaces (`spaces` wide in all, up to and including the one before the word) shrinking to make
-/// room, when the word ending the line ends `overrun` past the edge and the space before it
-/// starts at `space_from`. Measured in Word (synthetic RTF files, Courier New 8 to 20 pt, left,
+/// How far a line of a document opened from RTF (or below compatibility mode 15 with Compress
+/// punctuation) may run past its right edge, its inner single spaces (up to and including the one
+/// before the word) shrinking to make room, when the word ending the line ends `overrun` past the
+/// edge and the space before it starts at `space_from`. `room` is the spaces' summed
+/// [`SpaceRoom::room`]. Measured in Word (synthetic RTF files, Courier New 8 to 20 pt, left,
 /// right, centred and justified alike): the word stays when the space before it starts inside the
-/// line and the overrun is less than half the width of the line's single spaces, however many
-/// there are; the word's own width doesn't limit it. Otherwise nothing (the word wraps). Only
-/// single spaces count: a run of two or more keeps its width. The caller squeezes only lines whose
-/// single spaces are all in fixed-pitch fonts: in Times New Roman an overrun of 0.125 pt wraps.
+/// line and the overrun is less than that room (for fixed pitch, half the width of the line's
+/// single spaces), however many there are; the word's own width doesn't limit it. Otherwise
+/// nothing (the word wraps). Only single spaces count: a run of two or more keeps its width. In a
+/// document opened from RTF the caller squeezes only lines whose single spaces are all in
+/// fixed-pitch fonts ([`SpaceRoom::Blocks`]): in Times New Roman an overrun of 0.125 pt wraps.
 ///
 /// With `\wraptrsp` (`Settings::wrap_trail_spaces`, measured for justified and left-aligned lines) `first` is
 /// how far the word's first character ends past the edge and the width of the space before the
 /// word: Word keeps the word only when that character overruns by less than half that space.
-pub(super) fn rtf_space_room(spaces: f32, overrun: f32, space_from: f32, right_edge: f32, first: Option<(f32, f32)>) -> f32 {
+pub(super) fn rtf_space_room(room: f32, overrun: f32, space_from: f32, right_edge: f32, first: Option<(f32, f32)>) -> f32 {
     let first_ok = first.is_none_or(|(over, space)| over < space * 0.5);
     let starts_inside = space_from < right_edge - RTF_EDGE_TOLERANCE;
-    if first_ok && starts_inside && overrun > 0.0 && overrun < spaces * RTF_MAX_SPACE_SHRINK { overrun } else { 0.0 }
+    if first_ok && starts_inside && overrun > 0.0 && overrun < room { overrun } else { 0.0 }
 }
 
 /// How far past its right edge a line may run, as a share of its width, in a document with
@@ -155,7 +185,8 @@ fn single_space(pl: &ParaLayout, k: usize) -> bool {
 /// never more than `cap` of them ([`MAX_SPACE_SHRINK`], or [`RTF_MAX_SPACE_SHRINK`]). Trailing
 /// spaces hang and are left alone; with `skip_leading`, so are the spaces before the line's
 /// first character. With `singles_only` (RTF) a run of two or more spaces keeps its width and
-/// only single spaces shrink.
+/// only single spaces shrink. With `rooms` (each style's [`SpaceRoom`], RTF) each space gives up
+/// the same share of its own room instead of `cap` of its width.
 pub(super) fn shrink_line_spaces(
     pl: &ParaLayout,
     xs: &mut [f32],
@@ -163,6 +194,7 @@ pub(super) fn shrink_line_spaces(
     (content_end, slack): (f32, f32),
     cap: f32,
     (skip_leading, singles_only): (bool, bool),
+    rooms: Option<&[SpaceRoom]>,
 ) {
     let first = if skip_leading {
         (c0..c1).find(|k| pl.clusters.get(*k).is_some_and(|c| c.kind != ClKind::Space && c.kind != ClKind::Marker)).unwrap_or(c1)
@@ -175,14 +207,18 @@ pub(super) fn shrink_line_spaces(
             if singles_only && !single_space(pl, k) {
                 return None;
             }
-            (xs.get(k - c0).copied().unwrap_or(f32::MAX) < content_end - 0.01).then_some((k, c.adv))
+            let room = match rooms {
+                Some(r) => r.get(c.style as usize).map_or(0.0, |r| r.room(c.adv)),
+                None => c.adv,
+            };
+            (xs.get(k - c0).copied().unwrap_or(f32::MAX) < content_end - 0.01).then_some((k, room))
         })
         .collect();
     let total: f32 = spaces.iter().map(|s| s.1).sum();
     if total <= 0.0 || !slack.is_finite() {
         return;
     }
-    let ratio = (-slack / total).clamp(0.0, cap);
+    let ratio = (-slack / total).clamp(0.0, if rooms.is_some() { 1.0 } else { cap });
     let mut take = 0.0;
     let mut next = spaces.iter().peekable();
     for k in c0..c1 {
@@ -279,4 +315,33 @@ pub(super) fn hyphenation_points(
         .collect();
     out.dedup();
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fixed_pitch_space_keeps_half_its_width() {
+        for adv in [4.8_f32, 7.2, 12.0] {
+            assert!((SpaceRoom::Half.room(adv) - adv * RTF_MAX_SPACE_SHRINK).abs() < 1e-6);
+            // A fixed-pitch font's space is its average width: the same room either way.
+            assert!((SpaceRoom::Average(adv).room(adv) - SpaceRoom::Half.room(adv)).abs() < 1e-6);
+        }
+        assert_eq!(SpaceRoom::Blocks.room(7.2), 0.0);
+        assert_eq!(SpaceRoom::Average(f32::INFINITY).room(7.2), 0.0, "no average: no room");
+    }
+
+    #[test]
+    fn the_overrunning_word_stays_within_the_summed_room() {
+        // Ten 12 pt Times New Roman spaces (3 pt, average 4.81 pt): about 5.95 pt of room.
+        let room: f32 = (0..10).map(|_| SpaceRoom::Average(821.0 / 2048.0 * 12.0).room(3.0)).sum();
+        assert!((room - 5.947).abs() < 0.01, "{room}");
+        assert_eq!(rtf_space_room(room, 5.8, 400.0, 432.0, None), 5.8, "kept");
+        assert_eq!(rtf_space_room(room, 6.1, 400.0, 432.0, None), 0.0, "wraps");
+        assert_eq!(rtf_space_room(room, 1.0, 432.0, 432.0, None), 0.0, "the space starts at the edge");
+        // Calibri-like proportions: no room, the word wraps however small the overrun.
+        let none: f32 = (0..10).map(|_| SpaceRoom::Average(6.14).room(2.71)).sum();
+        assert_eq!(rtf_space_room(none, 0.05, 400.0, 432.0, None), 0.0);
+    }
 }

@@ -900,6 +900,11 @@ impl DocOpts {
         }
         // An RTF document squeezes spaces unless it says `\jexpand`.
         s.rtf_justification = self.expand_justification != Some(true);
+        // Word opens every RTF file with `w:balanceSingleByteDoubleByteWidth` and
+        // `w:useWord97LineBreakRules` on (its save as DOCX writes both): together they keep
+        // proportional fonts from squeezing their spaces.
+        s.balance_sbcs_dbcs_width = true;
+        s.use_word97_line_break_rules = true;
     }
 }
 

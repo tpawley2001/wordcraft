@@ -272,6 +272,9 @@ fn write_compatibility_settings(w: &mut W, doc: &Document) {
     if doc.settings.no_leading {
         w.empty("w:noLeading", &[]);
     }
+    if doc.settings.balance_sbcs_dbcs_width {
+        w.empty("w:balanceSingleByteDoubleByteWidth", &[]);
+    }
     if doc.settings.do_not_expand_shift_return {
         w.empty("w:doNotExpandShiftReturn", &[]);
     }
@@ -286,6 +289,9 @@ fn write_compatibility_settings(w: &mut W, doc: &Document) {
     }
     if doc.settings.sum_paragraph_spacing {
         w.empty("w:doNotUseHTMLParagraphAutoSpacing", &[]);
+    }
+    if doc.settings.use_word97_line_break_rules {
+        w.empty("w:useWord97LineBreakRules", &[]);
     }
     if doc.settings.allow_space_of_same_style_in_table {
         w.empty("w:allowSpaceOfSameStyleInTable", &[]);

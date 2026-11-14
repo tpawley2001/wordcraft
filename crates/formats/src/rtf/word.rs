@@ -1415,4 +1415,15 @@ mod jexpand_scope_tests {
             assert!(import(rtf.as_bytes()).unwrap().settings.rtf_justification, "{rtf}");
         }
     }
+
+    /// Word opens every RTF file with `w:balanceSingleByteDoubleByteWidth` and
+    /// `w:useWord97LineBreakRules` on, `\jexpand` or not, so its proportional fonts don't squeeze.
+    #[test]
+    fn rtf_documents_turn_on_the_sbcs_dbcs_and_word97_pair() {
+        for rtf in [r"{\rtf1\ansi\jexpand\pard Text.\par}", r"{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}\pard\f0 Text.\par}"] {
+            let d = import(rtf.as_bytes()).unwrap();
+            assert!(d.settings.balance_sbcs_dbcs_width && d.settings.use_word97_line_break_rules, "{rtf}");
+            assert!(!d.settings.squeezes_proportional_spaces(), "{rtf}");
+        }
+    }
 }

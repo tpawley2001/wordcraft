@@ -8,8 +8,9 @@
 //! tag (namespace declarations, `mc:Ignorable`) and every child the model doesn't own are kept
 //! byte for byte; owned children come from the generated part (or go, when the model turned
 //! them off); owned children the original lacks are inserted at their CT_Settings position; in
-//! `w:compat` only the `compatibilityMode` setting and the `w:suppressTopSpacingWP`, `w:wrapTrailSpaces` and
-//! `w:footnoteLayoutLikeWW8` switches are replaced. Kept children that refer to a
+//! `w:compat` only the `compatibilityMode` setting and the `w:balanceSingleByteDoubleByteWidth`,
+//! `w:suppressTopSpacingWP`, `w:wrapTrailSpaces`, `w:footnoteLayoutLikeWW8` and
+//! `w:useWord97LineBreakRules` switches are replaced. Kept children that refer to a
 //! relationship (`r:id`, e.g. a mail merge data source) are dropped: their relationships aren't
 //! carried. Anything unexpected returns `None`, and the generated part is written as before.
 
@@ -288,7 +289,29 @@ const AFTER_SUPPRESS_TOP_SPACING_WP: &[&str] = &[
     "w:compatSetting",
 ];
 
+/// CT_Compat children between `w:balanceSingleByteDoubleByteWidth` and `w:suppressTopSpacingWP`
+/// (ECMA-376 Part 1, §17.15.3, wml.xsd `CT_Compat`), in order.
+const AFTER_BALANCE_SBCS_DBCS: &[&str] = &[
+    "w:noExtraLineSpacing",
+    "w:doNotLeaveBackslashAlone",
+    "w:ulTrailSpace",
+    "w:doNotExpandShiftReturn",
+    "w:spacingInWholePoints",
+    "w:lineWrapLikeWord6",
+    "w:printBodyTextBeforeHeader",
+    "w:printColBlack",
+    "w:wpSpaceWidth",
+    "w:showBreaksInFrames",
+    "w:subFontBySize",
+    "w:suppressBottomSpacing",
+    "w:suppressTopSpacing",
+    "w:suppressSpacingAtTopOfPage",
+    "w:suppressTopSpacingWP",
+];
+
 const SUPPRESS_TOP_SPACING_WP: &str = "w:suppressTopSpacingWP";
+const BALANCE_SBCS_DBCS: &str = "w:balanceSingleByteDoubleByteWidth";
+const WORD97_LINE_BREAK_RULES: &str = "w:useWord97LineBreakRules";
 const WRAP_TRAIL_SPACES: &str = "w:wrapTrailSpaces";
 const FOOTNOTE_LAYOUT_LIKE_WW8: &str = "w:footnoteLayoutLikeWW8";
 
@@ -330,13 +353,17 @@ fn after(name: &str) -> Option<&'static [&'static str]> {
 }
 
 /// The original `w:compat` with its `compatibilityMode` and the switches the model owns
-/// (`w:suppressTopSpacingWP`, `w:wrapTrailSpaces`, `w:footnoteLayoutLikeWW8`) taken from the
+/// (`w:balanceSingleByteDoubleByteWidth`, `w:suppressTopSpacingWP`, `w:wrapTrailSpaces`,
+/// `w:footnoteLayoutLikeWW8`, `w:useWord97LineBreakRules`) taken from the
 /// generated one.
 fn merge_compat(orig: &str, generated: &str) -> Option<String> {
     let mut s = merge_compat_mode(orig, generated)?;
     s = merge_switch(&s, generated, SUPPRESS_TOP_SPACING_WP, AFTER_SUPPRESS_TOP_SPACING_WP)?;
+    let later_than_balance: Vec<&str> = AFTER_BALANCE_SBCS_DBCS.iter().chain(AFTER_SUPPRESS_TOP_SPACING_WP).copied().collect();
+    s = merge_switch(&s, generated, BALANCE_SBCS_DBCS, &later_than_balance)?;
     s = merge_switch(&s, generated, WRAP_TRAIL_SPACES, after(WRAP_TRAIL_SPACES)?)?;
-    merge_switch(&s, generated, FOOTNOTE_LAYOUT_LIKE_WW8, after(FOOTNOTE_LAYOUT_LIKE_WW8)?)
+    s = merge_switch(&s, generated, FOOTNOTE_LAYOUT_LIKE_WW8, after(FOOTNOTE_LAYOUT_LIKE_WW8)?)?;
+    merge_switch(&s, generated, WORD97_LINE_BREAK_RULES, after(WORD97_LINE_BREAK_RULES)?)
 }
 
 /// The original `w:compat` with its `compatibilityMode` taken from the generated one.
@@ -538,6 +565,23 @@ mod tests {
         assert_eq!(merged(orig, on).matches("<w:suppressTopSpacingWP").count(), 1);
         let out = merged("<w:compat><w:noLeading/><w:usePrinterMetrics/><w:wrapTrailSpaces/></w:compat>", on);
         assert!(out.contains("<w:noLeading/><w:suppressTopSpacingWP/><w:usePrinterMetrics/><w:wrapTrailSpaces/>"), "{out}");
+    }
+
+    #[test]
+    fn the_sbcs_dbcs_and_word97_pair_comes_from_the_model_once_in_ct_compat_order() {
+        let orig = "<w:compat><w:noLeading/><w:balanceSingleByteDoubleByteWidth/><w:doNotExpandShiftReturn/><w:layoutTableRowsApart/><w:useWord97LineBreakRules/><w:useFELayout/></w:compat>";
+        let out = merged(orig, "<w:compat/>");
+        assert!(!out.contains("balanceSingle") && !out.contains("useWord97"), "turned off in the model: {out}");
+        let on = "<w:compat><w:balanceSingleByteDoubleByteWidth/><w:useWord97LineBreakRules/></w:compat>";
+        let out = merged(orig, on);
+        assert_eq!(out.matches("<w:balanceSingleByteDoubleByteWidth").count(), 1, "{out}");
+        assert_eq!(out.matches("<w:useWord97LineBreakRules").count(), 1, "{out}");
+        let bare = "<w:compat><w:noLeading/><w:doNotExpandShiftReturn/><w:layoutTableRowsApart/><w:useFELayout/></w:compat>";
+        let out = merged(bare, on);
+        assert!(
+            out.contains("<w:noLeading/><w:balanceSingleByteDoubleByteWidth/><w:doNotExpandShiftReturn/><w:layoutTableRowsApart/><w:useWord97LineBreakRules/><w:useFELayout/>"),
+            "{out}"
+        );
     }
 
     #[test]
