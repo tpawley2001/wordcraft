@@ -1,4 +1,4 @@
-use super::{Align, CmdError, CmdResult, LineSpacing, NumRef, ParaProps, Pos, Session, Value, json, p, sel_result};
+use super::{Align, CmdError, CmdResult, LineSpacing, NumRef, ParaProps, Pos, Session, TabAlign, Value, json, p, sel_result};
 
 /// Resolved paragraph props of the selection: those of the paragraph the caret is in, or of the
 /// last paragraph a selection covers when it ends at the next paragraph's start.
@@ -153,15 +153,17 @@ pub fn indent(s: &mut Session, _: &Value) -> CmdResult {
     let paths = crate::cmd::selected_paths(s);
     let tab = s.doc.settings.default_tab.max(1.0);
     for path in paths {
-        let (num, left) = {
+        let (num, r) = {
             let Some(p) = s.doc.para(a.story, &path) else { continue };
-            (p.props.numbering.filter(|n| n.num != 0), s.doc.styles.resolve_para(&p.props).indent_left)
+            (p.props.numbering.filter(|n| n.num != 0), s.doc.styles.resolve_para(&p.props))
         };
         let para = s.doc.para_mut(a.story, &path)?;
         match num {
             Some(n) => para.props.numbering = Some(NumRef { num: n.num, level: n.level.saturating_add(1).min(8) }),
             None => {
-                para.props.indent_left = Some(((left / tab).floor() + 1.0) * tab);
+                let edge = r.indent_left.min(r.indent_left + r.indent_first);
+                let next = (((edge / tab).floor() + 1.0) * tab).max(0.0);
+                para.props.indent_left = Some(r.indent_left + (next - edge));
                 para.props.cancel_char_indents(true, false, false);
             }
         }
@@ -175,18 +177,53 @@ pub fn outdent(s: &mut Session, _: &Value) -> CmdResult {
     let paths = crate::cmd::selected_paths(s);
     let tab = s.doc.settings.default_tab.max(1.0);
     for path in paths {
-        let (num, left) = {
+        let (num, r) = {
             let Some(p) = s.doc.para(a.story, &path) else { continue };
-            (p.props.numbering.filter(|n| n.num != 0), s.doc.styles.resolve_para(&p.props).indent_left)
+            (p.props.numbering.filter(|n| n.num != 0), s.doc.styles.resolve_para(&p.props))
         };
         let para = s.doc.para_mut(a.story, &path)?;
         match num {
             Some(n) => para.props.numbering = Some(NumRef { num: n.num, level: n.level.saturating_sub(1) }),
             None => {
-                para.props.indent_left = Some((((left / tab).ceil() - 1.0) * tab).max(0.0));
+                let edge = r.indent_left.min(r.indent_left + r.indent_first);
+                // A hanging first line at the margin must not be pushed into it.
+                let previous = if edge > 0.0 { (((edge / tab).ceil() - 1.0) * tab).max(0.0) } else { edge };
+                para.props.indent_left = Some(r.indent_left + (previous - edge));
                 para.props.cancel_char_indents(true, false, false);
             }
         }
+        para.touch();
+    }
+    sel_result(s)
+}
+
+pub(super) fn hanging_indent(s: &mut Session, _: &Value) -> CmdResult {
+    step_hanging(s, true)
+}
+
+pub(super) fn remove_hanging(s: &mut Session, _: &Value) -> CmdResult {
+    step_hanging(s, false)
+}
+
+fn step_hanging(s: &mut Session, forward: bool) -> CmdResult {
+    let story = s.sel.focus.story;
+    let tab = s.doc.settings.default_tab.max(1.0);
+    for path in crate::cmd::selected_paths(s) {
+        let Some(para) = s.doc.para(story, &path) else { continue };
+        let r = s.doc.styles.resolve_para(&para.props);
+        let stops = || r.tabs.iter().filter(|t| !matches!(t.align, TabAlign::Bar | TabAlign::Clear) && t.pos > 0.0).map(|t| t.pos);
+        // Custom stops replace default stops up to the last custom position.
+        let last = stops().fold(0.0_f32, f32::max);
+        let left = if forward {
+            stops().filter(|&pos| pos > r.indent_left).reduce(f32::min).unwrap_or_else(|| (((r.indent_left / tab).floor() + 1.0) * tab).max(0.0))
+        } else {
+            let default = (((r.indent_left / tab).ceil() - 1.0) * tab).max(0.0);
+            if default > last { default } else { stops().filter(|&pos| pos < r.indent_left).fold(0.0_f32, f32::max) }
+        };
+        let para = s.doc.para_mut(story, &path)?;
+        para.props.indent_left = Some(left);
+        para.props.indent_first = Some(r.indent_first + (r.indent_left - left));
+        para.props.cancel_char_indents(true, false, true);
         para.touch();
     }
     sel_result(s)
