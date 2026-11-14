@@ -480,6 +480,7 @@ impl<'e> Breaker<'e> {
             baseline: v.baseline,
             text_asc: v.text_asc,
             text_desc: v.text_desc,
+            band: v.band,
             c0: sc.c0,
             c1,
             xs: sc.xs,
@@ -702,7 +703,15 @@ impl<'e> Breaker<'e> {
         } else {
             self.top + baseline_offset(rp.line_spacing, asc, height, below).max(obj_asc.min(height - below))
         };
-        Measure { height, baseline, text_asc, text_desc }
+        // Under multiple spacing above single the text sits at the top of the line (the baseline
+        // is the ascent down) and a highlight fills only the height the line has at single
+        // spacing, the extra space below staying unfilled (Word, measured with Times New Roman at
+        // 1.5, double and 3 times: the same band as single spacing). Not on a document grid.
+        let band = match (rp.line_spacing, grid) {
+            (LineSpacing::Multiple(m), None) if m > 1.0 && !pictures_alone => Some((text_natural + label_extra).max(text_pictures)),
+            _ => None,
+        };
+        Measure { height, baseline, text_asc, text_desc, band }
     }
 
     /// Alignment / justification of the line (trailing spaces hang).
@@ -805,6 +814,10 @@ impl<'e> Breaker<'e> {
             baseline: self.top + if grid.is_some() { h - desc } else { baseline_offset(rp.line_spacing, asc, h, desc) },
             text_asc: asc,
             text_desc: desc,
+            band: match (rp.line_spacing, grid) {
+                (LineSpacing::Multiple(m), None) if m > 1.0 => Some(natural),
+                _ => None,
+            },
             c0: self.n,
             c1: self.n,
             xs: vec![if self.rtl_para { x0 - shift } else { x0 + shift }],
@@ -884,6 +897,8 @@ struct Measure {
     baseline: f32,
     text_asc: f32,
     text_desc: f32,
+    /// The line's single-spacing height when multiple spacing made it taller (see `Line::band`).
+    band: Option<f32>,
 }
 
 /// How far a single space in `st` may shrink in the RTF / Compress punctuation squeeze: half a

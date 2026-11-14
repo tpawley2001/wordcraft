@@ -514,7 +514,7 @@ fn character_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
         }
         if let Some(color) = style.rc.highlight.or(style.rc.shading) {
             out.push(Draw::Fill {
-                rect: Rect::new(ctx.x + left, ctx.top, (right - left).max(0.0), ctx.line.height),
+                rect: Rect::new(ctx.x + left, ctx.top, (right - left).max(0.0), ctx.line.band_height()),
                 color,
                 alpha: ctx.alpha,
                 text_bg: true,
@@ -560,7 +560,7 @@ fn label_backgrounds(ctx: &LineContext<'_, '_, '_>, gx: f32, width: f32, st: &cr
     }
     let end = label_box_end(ctx, gx, width);
     if let Some(color) = fill {
-        out.push(Draw::Fill { rect: Rect::new(gx, ctx.top, (end - gx).max(0.0), ctx.line.height), color, alpha: ctx.alpha, text_bg: true });
+        out.push(Draw::Fill { rect: Rect::new(gx, ctx.top, (end - gx).max(0.0), ctx.line.band_height()), color, alpha: ctx.alpha, text_bg: true });
     }
     if let Some(border) = &st.rc.border {
         char_box(border, gx, end, ctx.top, ctx.bottom, ctx.alpha, out);

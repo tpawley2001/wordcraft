@@ -222,6 +222,10 @@ pub struct Line {
     /// The text's own ascent and descent on this line, without line-spacing leading (the caret's extent).
     pub text_asc: f32,
     pub text_desc: f32,
+    /// How far down from the line's top a highlight or character shading reaches, when less than
+    /// the whole line: the line's single-spacing height under multiple line spacing above single,
+    /// whose extra space Word leaves unfilled. `None`: the whole line.
+    pub band: Option<f32>,
     /// Cluster index range.
     pub c0: usize,
     pub c1: usize,
@@ -279,6 +283,11 @@ impl VisCl {
 pub const PARA_MARK_WIDTH: f32 = 5.0;
 
 impl Line {
+    /// The height a highlight or character shading fills from the line's top (see [`Line::band`]).
+    pub fn band_height(&self) -> f32 {
+        self.band.map_or(self.height, |b| if b.is_finite() { b.clamp(0.0, self.height.max(0.0)) } else { self.height })
+    }
+
     /// Left edge of cluster `k` (a paragraph cluster index on this line).
     pub fn cl_left(&self, k: usize) -> Option<f32> {
         let i = k.checked_sub(self.c0)?;
