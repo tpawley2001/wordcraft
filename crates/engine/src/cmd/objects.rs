@@ -19,6 +19,7 @@ mod picture;
 mod select;
 mod shape;
 mod specs;
+mod wrap_points;
 
 pub use arrange::moves_with_text;
 pub(crate) use arrange::{anchor_paragraph, nearest_line};
