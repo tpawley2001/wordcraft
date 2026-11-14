@@ -87,9 +87,10 @@ fn relative_font_sizes_resolve_styles_and_preserve_other_properties() {
             }
         }
     }
+    // Word grows 10 pt to 11 (no 10.5 step; measured in M365 Word, 2026-11-14).
     s.run("format.growFont", &json!({})).unwrap();
-    assert_eq!(sizes(&s), [22.0, 10.5]);
-    for (block, size) in [(0, 22.0), (1, 10.5)] {
+    assert_eq!(sizes(&s), [22.0, 11.0]);
+    for (block, size) in [(0, 22.0), (1, 11.0)] {
         let p = s.doc.para_at(&Pos::body(block, 0)).unwrap();
         assert_eq!(p.mark.size, Some(size));
         for (_, c) in p.run_ranges() {
@@ -221,7 +222,7 @@ fn relative_font_sizes_keep_paragraph_mark_link_filtering() {
         p.runs[0].props.style = Some("Hyperlink".into());
     }
     s.run("format.growFont", &json!({})).unwrap();
-    assert_eq!(sizes(&s), [22.0, 10.5]);
+    assert_eq!(sizes(&s), [22.0, 11.0]);
     for block in 0..2 {
         let p = s.doc.para_at(&Pos::body(block, 0)).unwrap();
         assert_eq!(p.mark.link, None);
