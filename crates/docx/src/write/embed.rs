@@ -882,6 +882,53 @@ fn valid_part_name(name: &str) -> String {
     if out.is_empty() { "word/embeddings/part.xml".to_string() } else { out.join("/") }
 }
 
+/// A font table (`w:fonts`, ECMA-376 Part 1 §17.8.3.11) holding the font classes a document
+/// keeps: one `w:font` (§17.8.3.10) per distinct name, roman fonts first, then symbol fonts (a
+/// symbol font named like a roman one, ignoring case, shares its entry). A symbol font gets a
+/// pictorial PANOSE (family kind 5) and the symbol character set; a roman one the roman family.
+/// `None` when there is nothing to list.
+fn generated_font_table(roman: &[String], symbol: &[String]) -> Option<Vec<u8>> {
+    // (name, roman, symbol), in order.
+    let mut fonts: Vec<(&str, bool, bool)> = Vec::new();
+    let mut index: HashMap<String, usize> = HashMap::new();
+    let names = roman.iter().map(|n| (n, true)).chain(symbol.iter().map(|n| (n, false)));
+    for (name, is_roman) in names {
+        let name = name.trim();
+        if name.is_empty() {
+            continue;
+        }
+        let key = name.to_lowercase();
+        if let Some(f) = index.get(&key).and_then(|&i| fonts.get_mut(i)) {
+            if is_roman {
+                f.1 = true;
+            } else {
+                f.2 = true;
+            }
+            continue;
+        }
+        if fonts.len() >= MAX_GENERATED_FONTS {
+            continue;
+        }
+        index.insert(key, fonts.len());
+        fonts.push((name, is_roman, !is_roman));
+    }
+    if fonts.is_empty() {
+        return None;
+    }
+    let mut x = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+    x.push_str("<w:fonts xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">");
+    for (name, is_roman, is_symbol) in fonts {
+        x.push_str(&format!("<w:font w:name=\"{}\">", xml::esc(name)));
+        if is_symbol {
+            x.push_str("<w:panose1 w:val=\"05000000000000000000\"/><w:charset w:val=\"02\"/>");
+        }
+        x.push_str(if is_roman { "<w:family w:val=\"roman\"/>" } else { "<w:family w:val=\"auto\"/>" });
+        x.push_str("</w:font>");
+    }
+    x.push_str("</w:fonts>");
+    Some(x.into_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1014,51 +1061,4 @@ mod tests {
             assert!(name.split('/').all(|s| !s.is_empty() && !s.ends_with('.')), "{name}");
         }
     }
-}
-
-/// A font table (`w:fonts`, ECMA-376 Part 1 §17.8.3.11) holding the font classes a document
-/// keeps: one `w:font` (§17.8.3.10) per distinct name, roman fonts first, then symbol fonts (a
-/// symbol font named like a roman one, ignoring case, shares its entry). A symbol font gets a
-/// pictorial PANOSE (family kind 5) and the symbol character set; a roman one the roman family.
-/// `None` when there is nothing to list.
-fn generated_font_table(roman: &[String], symbol: &[String]) -> Option<Vec<u8>> {
-    // (name, roman, symbol), in order.
-    let mut fonts: Vec<(&str, bool, bool)> = Vec::new();
-    let mut index: HashMap<String, usize> = HashMap::new();
-    let names = roman.iter().map(|n| (n, true)).chain(symbol.iter().map(|n| (n, false)));
-    for (name, is_roman) in names {
-        let name = name.trim();
-        if name.is_empty() {
-            continue;
-        }
-        let key = name.to_lowercase();
-        if let Some(f) = index.get(&key).and_then(|&i| fonts.get_mut(i)) {
-            if is_roman {
-                f.1 = true;
-            } else {
-                f.2 = true;
-            }
-            continue;
-        }
-        if fonts.len() >= MAX_GENERATED_FONTS {
-            continue;
-        }
-        index.insert(key, fonts.len());
-        fonts.push((name, is_roman, !is_roman));
-    }
-    if fonts.is_empty() {
-        return None;
-    }
-    let mut x = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
-    x.push_str("<w:fonts xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">");
-    for (name, is_roman, is_symbol) in fonts {
-        x.push_str(&format!("<w:font w:name=\"{}\">", xml::esc(name)));
-        if is_symbol {
-            x.push_str("<w:panose1 w:val=\"05000000000000000000\"/><w:charset w:val=\"02\"/>");
-        }
-        x.push_str(if is_roman { "<w:family w:val=\"roman\"/>" } else { "<w:family w:val=\"auto\"/>" });
-        x.push_str("</w:font>");
-    }
-    x.push_str("</w:fonts>");
-    Some(x.into_bytes())
 }
