@@ -48,11 +48,11 @@ fn palatino_and_palatino_linotype_have_the_same_line() {
 }
 
 #[test]
-fn guard_unmeasured_relatives_are_unchanged() {
-    for name in ["Book Antiqua", "Palatino LT Std", "Palatino nova", "Palatin"] {
+fn guard_relatives_keep_their_own_metrics() {
+    for (name, expected) in [("Book Antiqua", Some((0.964, 0.279))), ("Palatino LT Std", None), ("Palatino nova", None), ("Palatin", None)] {
         let r = resolve(name, false, false);
         if r.substituted {
-            assert_eq!(missing_font_line(name, &r), None, "{name}");
+            assert_eq!(missing_font_line(name, &r), expected, "{name}");
         }
     }
 }
