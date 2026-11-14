@@ -137,6 +137,7 @@ fn view_line(l: &Line, (k0, k1): (usize, usize), (b0, b1): (usize, usize), last:
         baseline: l.baseline,
         text_asc: l.text_asc,
         text_desc: l.text_desc,
+        band: l.band,
         c0: a.saturating_sub(k0),
         c1: b.saturating_sub(k0),
         xs,
