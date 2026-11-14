@@ -1067,7 +1067,8 @@ mod tests {
     #[test]
     fn case_conversions() {
         assert_eq!(convert("hello world. again", "sentence", true), "Hello world. Again");
-        assert_eq!(convert("hello WORLD", "title", true), "Hello World");
+        // Word keeps a word in capitals when the text also has lowercase letters (Word M365, 2026-11-14).
+        assert_eq!(convert("hello WORLD", "title", true), "Hello WORLD");
         assert_eq!(convert("Hello", "toggle", true), "hELLO");
         assert_eq!(convert("straße", "upper", true), "STRASSE");
         assert_eq!(convert("hello world", "title", false), "Hello World");
