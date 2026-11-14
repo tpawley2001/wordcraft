@@ -1359,4 +1359,17 @@ mod tests {
         });
         assert!(missing.is_empty(), "symbols without a glyph: {missing:#?}");
     }
+
+    /// The AutoCorrect dialog shows Word's Wingdings arrows as Unicode look-alikes; those must be
+    /// drawable by the interface fonts (the private-use characters are not).
+    #[test]
+    fn autocorrect_symbol_look_alikes_have_glyphs() {
+        let ctx = egui::Context::default();
+        ctx.set_fonts(super::font_definitions(false, false));
+        ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
+        let font = super::regular(12.5);
+        let missing: Vec<char> =
+            ctx.fonts_mut(|f| wordcraft_engine::cmd::tools::SYMBOL_ENTRIES.iter().map(|e| e.3).filter(|c| !f.has_glyph(&font, *c)).collect());
+        assert!(missing.is_empty(), "look-alikes without a glyph: {missing:?}");
+    }
 }
