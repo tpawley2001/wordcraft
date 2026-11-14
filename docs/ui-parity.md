@@ -553,3 +553,7 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 | 2026-11-13 | trivial | P0463: Style area pane width in Draft and Outline views (File › Options › Advanced › Display, `view.styleAreaWidth`, a user preference in points, 0 by default): each paragraph's style name in a column at the left of the text; drag the separator to resize or close it, double-click a name for Modify Style |
 | 2026-11-13 | trivial | P0460: Immersive Reader is its own view with an Immersive Reader tab (Column Width, Page Color, Line Focus, Text Spacing, Syllables, Read Aloud, Close) instead of switching to Read Mode |
 | 2026-11-13 | trivial | Layout › Arrange › Align: Align Top, Middle and Bottom, Align to Page, Align Selected Objects (the default for two or more objects) and Distribute Horizontally / Vertically (`arrange.distribute`) for floating objects, as in Word; Align only lined one object up left, centre or right of the margin |
+
+### Format Painter integration refresh, 2026-10-30
+
+Single-click release applies the armed painter to the target word without trailing spaces and disarms it. Explicit selections retain their scope (#1455, partial). Source and UI regressions are retained after the canvas/input module split. Earlier Windows pointer and browser qualification are historical; current-head hosted validation is pending, and native shortcut/Mint qualification is not newly claimed.
