@@ -671,6 +671,19 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
                 }
             });
         });
+        // Style area pane width in Draft and Outline views: 0 shows no style area (Word's default).
+        t.row(|r| {
+            let style_area_label = r.cell(|ui| ui.label(tl!("Style area pane width in Draft and Outline views:")));
+            r.cell(|ui| {
+                let unit = unit();
+                let k = unit.pt_per_unit();
+                let mut v = app.session.prefs.style_area_width / k;
+                let field = egui::DragValue::new(&mut v).speed(1.0 / k.max(0.01)).range(0.0..=1584.0 / k).measure(unit).max_decimals(2);
+                if ui.add(field.update_while_editing(false)).labelled_by(style_area_label.id).changed() {
+                    let _ = app.run("view.styleAreaWidth", json!({"value": (v * k).clamp(0.0, 1584.0)}));
+                }
+            });
+        });
         t.row(|r| {
             let units_label = r.cell(|ui| ui.label(tl!("Measurement units:")));
             r.cell(|ui| {

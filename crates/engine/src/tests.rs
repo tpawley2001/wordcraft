@@ -20,6 +20,7 @@ mod define_number_size_underline;
 mod drop_cap_in_margin;
 mod drop_cap_margin_style_indent;
 mod immersive_reader;
+mod style_area;
 mod bidi;
 mod browse_object;
 mod building_blocks;

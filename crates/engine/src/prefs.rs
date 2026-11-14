@@ -93,7 +93,14 @@ pub struct Prefs {
     /// What the Insert Table dialog opens with (Remember dimensions for new tables).
     #[serde(deserialize_with = "lenient_insert_table")]
     pub insert_table: InsertTablePrefs,
+    /// File › Options › Advanced › Display › Style area pane width in Draft and Outline views, in
+    /// points (0: no style area, Word's default). An application setting, never saved in documents.
+    #[serde(deserialize_with = "lenient_style_area_width")]
+    pub style_area_width: f32,
 }
+
+/// Widest style area, in points (22 in).
+pub const MAX_STYLE_AREA_WIDTH: f32 = 1584.0;
 
 /// Insert Table's remembered size and AutoFit behavior (`insert.table` with `remember`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -171,6 +178,7 @@ impl Default for Prefs {
             autocorrect: Default::default(),
             clipboard: Default::default(),
             insert_table: Default::default(),
+            style_area_width: 0.0,
         }
     }
 }
@@ -207,6 +215,12 @@ fn lenient_read_page_color<'de, D: serde::Deserializer<'de>>(d: D) -> Result<cra
 fn lenient_insert_table<'de, D: serde::Deserializer<'de>>(d: D) -> Result<InsertTablePrefs, D::Error> {
     let value = serde_json::Value::deserialize(d)?;
     Ok(serde_json::from_value(value).unwrap_or_default())
+}
+
+/// A damaged or out-of-range saved style area width loads as no style area.
+fn lenient_style_area_width<'de, D: serde::Deserializer<'de>>(d: D) -> Result<f32, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    Ok(value.as_f64().map(|w| w as f32).filter(|w| w.is_finite() && (0.0..=MAX_STYLE_AREA_WIDTH).contains(w)).unwrap_or(0.0))
 }
 
 #[cfg(test)]

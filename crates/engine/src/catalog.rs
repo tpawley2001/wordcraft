@@ -22,6 +22,7 @@ File|Backstage|Export PDF|file.exportPdf
 File|Backstage|Export Image|file.exportPng
 File|Backstage|Options|file.options
 File|Options|Numerals|view.numeral
+File|Options|Style area pane width|view.styleAreaWidth
 File|Backstage|Share|file.share
 File|Backstage|Protect Document|file.protect
 File|Backstage|Mark as Final|file.markAsFinal
