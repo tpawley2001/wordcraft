@@ -13765,3 +13765,4 @@ mod formula_mixed_looks;
 mod formula_operand_text;
 mod formula_plain_decimals;
 mod row_deletion_resolve;
+mod sentence_bounds_word;

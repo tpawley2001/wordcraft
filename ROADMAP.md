@@ -1,8 +1,8 @@
 # WordCraft roadmap
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.)
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged; earlier: P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged; earlier: P0507: Word Count counts paragraphs holding a word, preserving object-only paragraphs and treating manual line breaks as part of their paragraph. Selection counts use the selected text in each paragraph. Readiness estimates unchanged)
 
@@ -181,6 +181,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-14: P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
 
 - 2026-11-14: P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged.
 - 2026-11-14: P0509: normal Find reads objects as Word does: `^f`, `^e` and `^2` find footnote and endnote marks, `^d` a whole field while field codes are shown, `^g` only drawings, `^a` and `^5` nothing; bookmark and comment anchors inside a word no longer stop it being found. Replace All deletes a matched note mark's note. Readiness estimates unchanged.
@@ -1028,6 +1030,8 @@ Section page-numbering settings preserve `w:chapStyle` values across the full un
 MATH glyphs that reference the same construction now share its immutable variants and assembly data (#3630). Glyph mappings, values and the existing partial-record fallback stay unchanged. Repeated glyph IDs keep their last valid reference without retaining superseded constructions. Distinct overlapping constructions and assembly-only sharing remain separate.
 
 ## Revision history
+
+> 2026-11-14 · trivial · P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
 
 > 2026-11-14 · trivial · P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged.
 
