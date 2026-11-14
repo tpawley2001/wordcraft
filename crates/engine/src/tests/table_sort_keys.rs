@@ -84,12 +84,14 @@ fn text_type_compares_digits_as_characters_and_number_type_by_value() {
 }
 
 #[test]
-fn number_type_puts_cells_without_a_number_after_the_numbers() {
+fn number_type_puts_cells_without_a_number_below_the_numbers() {
+    // As Word does (Table.Sort, Number, measured in Microsoft 365 Word 2026-11-14): cells without a number sort
+    // below every number, so first ascending and last descending, keeping their order.
     let mut s = table(&[&["n/a"], &["7"], &["-"], &["3"]]);
     sort(&mut s, json!([{"column": 0, "type": "number"}]));
-    assert_eq!(rows(&s), ["3", "7", "n/a", "-"]);
+    assert_eq!(rows(&s), ["n/a", "-", "3", "7"]);
     sort(&mut s, json!([{"column": 0, "type": "number", "descending": true}]));
-    assert_eq!(rows(&s), ["n/a", "-", "7", "3"]);
+    assert_eq!(rows(&s), ["7", "3", "n/a", "-"]);
 }
 
 #[test]
@@ -99,10 +101,11 @@ fn date_type_orders_us_and_iso_dates_by_day() {
     assert_eq!(rows(&s), ["12/5/2025", "1/15/2026", "2026-01-20", "3/1/2026"]);
     sort(&mut s, json!([{"column": 0, "type": "date", "descending": true}]));
     assert_eq!(rows(&s), ["3/1/2026", "2026-01-20", "1/15/2026", "12/5/2025"]);
-    // An impossible date is not a date: it goes after the dates.
+    // An impossible date is not a date: it goes before the dates (Word, 2026-11-14). 13/1/2026 is
+    // 13 January: a first number over 12 is the day.
     let mut s = table(&[&["2/30/2026"], &["2/3/2026"], &["13/1/2026"], &["1/31/2026"]]);
     sort(&mut s, json!([{"column": 0, "type": "date"}]));
-    assert_eq!(rows(&s), ["1/31/2026", "2/3/2026", "2/30/2026", "13/1/2026"]);
+    assert_eq!(rows(&s), ["2/30/2026", "13/1/2026", "1/31/2026", "2/3/2026"]);
 }
 
 #[test]
