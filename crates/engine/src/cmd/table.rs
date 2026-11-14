@@ -13,6 +13,7 @@ mod convert;
 mod ends;
 pub use super::sort_keys::sort_type;
 mod layout;
+mod move_rows;
 mod select;
 mod structure;
 
@@ -26,11 +27,13 @@ use convert::{formula, from_text, quick_table, sort_table, to_text};
 pub use convert::{text_table_cells, text_table_lines};
 use layout::{autofit, borders, properties, set_column_widths};
 pub(crate) use layout::{fit_table, sync_cell_widths, text_direction, touch_cells};
+pub(crate) use move_rows::move_rows;
 pub(crate) use select::{extend_selection, grow_select_all, select_cell_first, select_range};
 use select::{select_cells, select_column};
+pub(crate) use structure::split_table;
 pub use structure::split_targets;
 pub(super) use structure::{col, row};
-use structure::{del_col, del_row, del_table, delete_cells, insert_cells, merge, split, split_table};
+use structure::{del_col, del_row, del_table, delete_cells, insert_cells, merge, split};
 pub(super) use structure::{delete_table_at, selected_table};
 
 /// A table's default cell margins (top, left, bottom, right, in points): its own, else its
