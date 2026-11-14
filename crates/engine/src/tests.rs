@@ -14,6 +14,7 @@ mod autonum_fields;
 mod auto_caption;
 mod autocorrect_symbols_word;
 mod indent_keys_word;
+mod change_case_word;
 mod convert_text_spaces_word;
 mod table_to_text_word;
 mod find_caret_word;
