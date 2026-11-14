@@ -4373,10 +4373,11 @@ fn line_numbers_stand_beside_each_column() {
     let in_col2 = body_xs.iter().filter(|x| (*x - col2).abs() < 0.5).count();
     let right: Vec<_> = numbers.iter().filter(|(r, _)| *r > s.margin_left + 1.0).collect();
     assert_eq!(right.len(), in_col2, "one number per second-column line");
-    // Numbers end 18 pt (auto distance) left of their column.
-    assert!(right.iter().all(|(r, _)| (r - (col2 - 18.0)).abs() < 0.5), "{right:?}");
+    // Numbers end 9 pt left of their column: Word's Auto distance in a section with columns
+    // (18 pt with one column).
+    assert!(right.iter().all(|(r, _)| (r - (col2 - 9.0)).abs() < 0.5), "{right:?}");
     let left = numbers.len() - right.len();
-    assert!(numbers.iter().filter(|(r, _)| *r <= s.margin_left + 1.0).all(|(r, _)| (r - (s.margin_left - 18.0)).abs() < 0.5));
+    assert!(numbers.iter().filter(|(r, _)| *r <= s.margin_left + 1.0).all(|(r, _)| (r - (s.margin_left - 9.0)).abs() < 0.5));
     assert!(left > 0);
 }
 
