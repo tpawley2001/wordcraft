@@ -612,6 +612,7 @@ impl Reader {
             "dgvspace" => d.grid_v = (pv >= 1).then(|| pv as f32 / 20.0).or(d.grid_v),
             "enforceprot" => d.enforce = Some(on),
             "expshrtn" => d.expand_shift_return = Some(on),
+            "ftnlytwnine" => d.footnote_layout_like_ww8 = Some(on),
             "formprot" => d.old_prot = on.then_some("forms"),
             "htmautsp" => d.html_auto_spacing = on,
             "linkstyles" => d.link_styles = Some(on),
@@ -1201,6 +1202,8 @@ pub(super) struct DocSettingWords {
     remove_personal_info: Option<bool>,
     remove_date_time: Option<bool>,
     expand_shift_return: Option<bool>,
+    /// `\ftnlytwnine` (emulate Word 6.0/95/97 footnote placement).
+    footnote_layout_like_ww8: Option<bool>,
     /// `\htmautsp` (Use HTML paragraph auto spacing): the space between two paragraphs is the
     /// larger of space after and space before. Without it Word adds the two.
     html_auto_spacing: bool,
@@ -1263,6 +1266,7 @@ impl DocSettingWords {
             (self.remove_personal_info, &mut s.remove_personal_info),
             (self.remove_date_time, &mut s.remove_date_time),
             (self.expand_shift_return, &mut s.do_not_expand_shift_return),
+            (self.footnote_layout_like_ww8, &mut s.footnote_layout_like_ww8),
             (self.track_changes, &mut s.track_changes),
             (self.print_forms_data, &mut s.print_forms_data),
             (self.track_moves, &mut s.track_moves),

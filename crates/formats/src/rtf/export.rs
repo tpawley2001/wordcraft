@@ -550,6 +550,7 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
         (set.remove_personal_info, "\\rempersonalinfo"),
         (set.remove_date_time, "\\remdttm"),
         (set.do_not_expand_shift_return, "\\expshrtn"),
+        (set.footnote_layout_like_ww8, "\\ftnlytwnine"),
         (set.track_changes, "\\revisions"),
         (set.print_forms_data, "\\printdata"),
     ] {

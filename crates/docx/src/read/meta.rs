@@ -81,6 +81,7 @@ impl Reader<'_> {
                 "w:compat" => {
                     s.allow_space_of_same_style_in_table = k.child("w:allowSpaceOfSameStyleInTable").is_some_and(on_off);
                     s.split_pg_break_and_para_mark = k.child("w:splitPgBreakAndParaMark").is_some_and(on_off);
+                    s.footnote_layout_like_ww8 = k.child("w:footnoteLayoutLikeWW8").is_some_and(on_off);
                     // Only Word's own setting: another `w:uri` names a different application's.
                     let mode = k
                         .children("w:compatSetting")
