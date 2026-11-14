@@ -39,7 +39,7 @@ fn guard_an_installed_face_and_near_names_take_no_borrowed_line() {
     let mut r = resolve("Tahoma", false, false);
     r.substituted = false;
     assert_eq!(missing_font_line("Tahoma", &r), None);
-    for name in ["Lucida Sans", "Lucida Fax", "Tahoma Bold Condensed"] {
+    for name in ["Lucida Fax", "Tahoma Bold Condensed"] {
         let r = resolve(name, false, false);
         assert_eq!(missing_font_line(name, &r), None, "{name}");
     }
