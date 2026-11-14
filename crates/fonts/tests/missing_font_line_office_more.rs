@@ -52,7 +52,7 @@ fn names_match_trimmed_and_case_insensitively_but_not_other_faces() {
     }
     let r = resolve("Segoe UI", false, false);
     if r.substituted {
-        for name in ["Gill Sans", "Gill Sans MT Condensed"] {
+        for name in ["Segoe UI Semibold", "Segoe UI Light", "Gill Sans", "Gill Sans MT Condensed"] {
             assert_ne!(missing_font_line(name, &r), Some((1.079, 0.251)), "{name}");
             assert_ne!(missing_font_line(name, &r), Some((0.929, 0.231)), "{name}");
         }
