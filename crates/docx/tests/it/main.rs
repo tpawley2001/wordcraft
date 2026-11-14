@@ -29,6 +29,7 @@ mod emphasis_marks;
 mod empty_inline_shape;
 mod encrypted_compound_repairs;
 mod field_code_paragraphs;
+mod fit_text;
 mod fixtures;
 mod font_table_classes;
 mod footnote_layout_ww8;

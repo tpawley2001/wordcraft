@@ -115,6 +115,7 @@ fn every_char_prop_round_trips() {
         scale: Some(150.0),
         position: Some(3.0),
         kern: Some(8.0),
+        fit_text: Some(wordcraft_doc::props::FitText { width: 72.0, id: Some(7) }),
         emphasis: Some(wordcraft_doc::props::EmphasisMark::Comma),
         ligatures: Some(wordcraft_doc::props::Ligatures { standard: true, historical: true, ..Default::default() }),
         num_form: Some(wordcraft_doc::props::NumForm::OldStyle),
