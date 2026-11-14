@@ -617,7 +617,12 @@ fn vml_float(shape: &El, style: &str, in_hf: bool) -> Float {
         s if s.eq_ignore_ascii_case("outer-margin-area") => Anchor::OutsideMargin,
         _ => Anchor::Paragraph,
     };
-    let dist = |k: &str| get(k).and_then(|v| measure(v, 1.0)).unwrap_or(0.0).clamp(0.0, 1584.0);
+    // An unstated side distance is 9 pt for a shape text wraps around (ECMA-376 Part 4, VML
+    // `mso-wrap-distance-left` / `-right`; Word keeps text that far away). Top and bottom default
+    // to 0, and the side distance has no effect for the other wraps.
+    let side_default = if matches!(wrap, Wrap::Square | Wrap::Tight | Wrap::Through) { 9.0 } else { 0.0 };
+    let dist_or = |k: &str, d: f32| get(k).and_then(|v| measure(v, 1.0)).filter(|v| v.is_finite()).unwrap_or(d).clamp(0.0, 1584.0);
+    let dist = |k: &str| dist_or(k, 0.0);
     let mut f = Float {
         wrap,
         wrap_text,
@@ -627,7 +632,7 @@ fn vml_float(shape: &El, style: &str, in_hf: bool) -> Float {
         y: (off("top") + off("margin-top")).clamp(-max, max),
         h_align: get("mso-position-horizontal").and_then(FloatAlign::from_ooxml),
         v_align: get("mso-position-vertical").and_then(FloatAlign::from_ooxml),
-        dist: dist("mso-wrap-distance-left").max(dist("mso-wrap-distance-right")),
+        dist: dist_or("mso-wrap-distance-left", side_default).max(dist_or("mso-wrap-distance-right", side_default)),
         dist_top: dist("mso-wrap-distance-top"),
         dist_bottom: dist("mso-wrap-distance-bottom"),
         hidden,
