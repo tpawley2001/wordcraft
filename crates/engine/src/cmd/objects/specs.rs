@@ -239,25 +239,12 @@ pub fn specs() -> Vec<CommandSpec> {
         .when(has_placeable),
         CommandSpec::new("arrange.bringForward", "Bring Forward", "Layout › Arrange", |s, _| with_float(s, |f| f.wrap = Wrap::InFrontOfText)).when(has_placeable),
         CommandSpec::new("arrange.sendBackward", "Send Backward", "Layout › Arrange", |s, _| with_float(s, |f| f.wrap = Wrap::BehindText)).when(has_placeable),
-        CommandSpec::new("arrange.align", "Align", "Layout › Arrange", |s, v| {
-            let h = p::str(v, "value").unwrap_or("center").to_string();
-            let tw = crate::cmd::page::sect(s).text_width();
-            let w = selected(s).map(|(_, o)| obj_size(&o).0).unwrap_or(72.0);
-            with_float(s, |f| {
-                if f.wrap == Wrap::Inline {
-                    f.wrap = Wrap::Square;
-                }
-                f.h_rel = wordcraft_doc::para::Anchor::Margin;
-                f.h_align = None;
-                f.x = match h.as_str() {
-                    "left" => 0.0,
-                    "right" => tw - w,
-                    _ => (tw - w) / 2.0,
-                };
-            })
-        })
-        .params(r#"{"value": "left|center|right"}"#)
-        .when(has_placeable),
+        CommandSpec::new("arrange.align", "Align", "Layout › Arrange", super::align::align)
+            .params(r#"{"value": "left|center|right|top|middle|bottom", "relativeTo"?: "margin|page|selected"}  (default: the margin for one object, the selected objects' bounding box for two or more)"#)
+            .when(has_placeable),
+        CommandSpec::new("arrange.distribute", "Distribute", "Layout › Arrange › Align", super::align::distribute)
+            .params(r#"{"direction": "horizontal|vertical", "relativeTo"?: "margin|page|selected"}  (equal gaps; selected (the default for two or more objects) keeps the first and last and needs three or more)"#)
+            .when(has_placeable),
         CommandSpec::new("arrange.selectionPane", "Selection Pane", "Layout › Arrange", objects_list).pure(),
         CommandSpec::new("arrange.selectObject", "Select Object", "Layout › Arrange › Selection Pane", pane_select)
             .params(r#"{"index": n}  (n: the object's entry in arrange.selectionPane, front-most first)"#)

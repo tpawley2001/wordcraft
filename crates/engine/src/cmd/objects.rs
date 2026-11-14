@@ -13,6 +13,7 @@ use wordcraft_geom::Spin;
 use super::sel_result;
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
+mod align;
 mod arrange;
 mod group;
 mod picture;
@@ -43,5 +44,7 @@ pub use specs::specs;
 mod tests;
 #[cfg(test)]
 mod tests_align;
+#[cfg(test)]
+mod tests_align_selected;
 #[cfg(test)]
 mod tests_lock_aspect;

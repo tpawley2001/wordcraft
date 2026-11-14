@@ -247,6 +247,7 @@ Layout|Arrange|Bring Forward|arrange.bringForward
 Layout|Arrange|Send Backward|arrange.sendBackward
 Layout|Arrange|Selection Pane|arrange.selectionPane
 Layout|Arrange|Align|arrange.align
+Layout|Arrange|Distribute|arrange.distribute
 Layout|Arrange|Grid Settings|view.gridSettings
 Layout|Arrange|Group|arrange.group
 Layout|Arrange|Rotate|arrange.rotate
