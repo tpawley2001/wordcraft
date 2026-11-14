@@ -149,7 +149,9 @@ impl StyleRun {
         match self.rc.emphasis {
             wordcraft_doc::props::EmphasisMark::None => {}
             wordcraft_doc::props::EmphasisMark::UnderDot => d = d.max(size * 0.42 + (-raise).max(0.0)),
-            _ => a = a.max(size * 1.32 + raise.max(0.0)),
+            // Marks above add 0.2875 x the size over the run's own ascent, as Word does
+            // (measured: Times New Roman and Arial exactly, Cambria and Calibri within 0.02 x size).
+            _ => a += size * 0.2875,
         }
         (a, d)
     }

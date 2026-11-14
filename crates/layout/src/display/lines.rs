@@ -437,10 +437,11 @@ fn decoration_lines(st: &crate::para::StyleRun) -> (f32, f32, f32, f32) {
 fn emphasis_mark(mark: wordcraft_doc::props::EmphasisMark, cx: f32, base: f32, size: f32, color: Rgb) -> Draw {
     use wordcraft_doc::props::EmphasisMark as E;
     let size = if size.is_finite() { size.clamp(1.0, 1638.0) } else { 12.0 };
-    let r = size * 0.07;
-    // Above the tallest letters, or below the descenders.
-    // Clear of full-height (East Asian) characters, inside the room the line makes for them.
-    let cy = if mark == E::UnderDot { base + size * 0.32 } else { base - size * 1.2 };
+    // Word's dot is about 0.10 x the size across; below the text the dot keeps its old size.
+    let r = if mark == E::UnderDot { size * 0.07 } else { size * 0.05 };
+    // Above the tallest letters (centre 1.065 x the size above the baseline, as Word draws it),
+    // or below the descenders.
+    let cy = if mark == E::UnderDot { base + size * 0.32 } else { base - size * 1.065 };
     let disc = |r: f32, fill: bool| Draw::Shape {
         rect: Rect::new(cx - r, cy - r, r * 2.0, r * 2.0),
         kind: ShapeKind::Ellipse,
