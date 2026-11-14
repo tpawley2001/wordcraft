@@ -22,6 +22,7 @@ pub(crate) fn overlay_open(app: &WordApp, ctx: &egui::Context) -> bool {
 }
 
 /// The part of the window that has the keyboard, for the F6 / Shift+F6 cycle.
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum KeyRegion {
     Document,
@@ -32,6 +33,7 @@ pub(crate) enum KeyRegion {
 }
 
 /// Which part of the window has the keyboard (stub: the page or something else).
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn key_region(app: &WordApp, _ctx: &egui::Context) -> KeyRegion {
     if app.canvas.focused { KeyRegion::Document } else { KeyRegion::Other }
 }
