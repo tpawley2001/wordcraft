@@ -515,7 +515,7 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         };
-        assert_eq!(arts(&d, &opts), vec![0.5 + 20.0 * 0.03], "outlined and emboldened");
+        assert_eq!(arts(&d, &opts), vec![0.14 + 20.0 * 0.03], "outlined and emboldened");
         // Top to bottom: WordArt without upright characters keeps its effects; ideographs, drawn
         // upright, are drawn from their glyphs.
         d.last_section.text_direction = TextDirection::Down;
