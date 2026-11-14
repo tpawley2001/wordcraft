@@ -18,6 +18,7 @@ mod drop_cap_from_style;
 mod define_number_format;
 mod define_number_size_underline;
 mod drop_cap_in_margin;
+mod style_area;
 mod bidi;
 mod browse_object;
 mod building_blocks;
