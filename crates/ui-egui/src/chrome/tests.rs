@@ -517,3 +517,28 @@ fn the_autosave_knob_sits_right_when_on_and_mirrors_right_to_left() {
     assert_eq!(autosave_knob_x(true, true, track), 108.0, "right to left, on: left");
     assert_eq!(autosave_knob_x(true, false, track), 122.0, "right to left, off: right");
 }
+
+#[test]
+fn window_commands_send_only_maximization_and_report_the_target_state() {
+    use egui::ViewportCommand::Maximized;
+    for (id, before, after, commands) in [
+        ("ui.maximizeWindow", false, true, vec![Maximized(true)]),
+        ("ui.maximizeWindow", true, false, vec![Maximized(false)]),
+        ("ui.restoreWindow", true, false, vec![Maximized(false)]),
+        ("ui.restoreWindow", false, false, vec![]),
+    ] {
+        let ctx = egui::Context::default();
+        // Drain egui's initial theme command before observing the window command itself.
+        ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
+        let mut input = egui::RawInput::default();
+        input.viewports.get_mut(&egui::ViewportId::ROOT).unwrap().maximized = Some(before);
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
+        app.ctx = Some(ctx.clone());
+        let output = ctx.run_ui(input, |_| {
+            assert_eq!(app.run(id, json!({})).unwrap(), json!({"maximized": after}));
+        });
+        assert_eq!(output.viewport_output.get(&egui::ViewportId::ROOT).unwrap().commands, commands);
+        output.drop_without_applying_deltas();
+        assert!(app.session.registry.get(id).is_some(), "available in Customize Keyboard");
+    }
+}

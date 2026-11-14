@@ -106,6 +106,9 @@ pub fn combo(m: Modifiers, key: &str, with_shift: bool) -> String {
 /// Shortcuts for interface commands (`ui.*`), which aren't in the engine's keymap: Alt+Q moves
 /// to "Tell me" command search, as in Word for Windows (#819). Not on macOS, where Option+Q types
 /// a character. On macOS ⌘⌥R collapses or expands the ribbon, as in Word for Mac.
+/// Ctrl+F10 toggles maximization and Alt+F5 restores the window on Linux/Windows, per Word's
+/// [function-key table](https://support.microsoft.com/en-us/accessibility/word/keyboard-shortcuts-in-word).
+/// Neither window shortcut applies on macOS.
 pub(super) fn ui_shortcut(key: Key, m: Modifiers) -> Option<(&'static str, Value)> {
     let alt_only = m.alt && !m.command && !m.ctrl && !m.mac_cmd && !m.shift;
     let mac_cmd_alt = cfg!(target_os = "macos") && m.mac_cmd && m.alt && !m.ctrl && !m.shift;
@@ -115,6 +118,8 @@ pub(super) fn ui_shortcut(key: Key, m: Modifiers) -> Option<(&'static str, Value
         // Ctrl+F1 collapses or expands the ribbon, as in Word for Windows (#1678). Not on macOS,
         // where Ctrl+F1 is the system's keyboard-access switch.
         Key::F1 if m.ctrl && !m.alt && !m.shift && !m.mac_cmd && !cfg!(target_os = "macos") => Some(("ui.collapseRibbon", json!({}))),
+        Key::F10 if m.ctrl && !m.alt && !m.shift && !m.mac_cmd && !cfg!(target_os = "macos") => Some(("ui.maximizeWindow", json!({}))),
+        Key::F5 if alt_only && !cfg!(target_os = "macos") => Some(("ui.restoreWindow", json!({}))),
         _ => None,
     }
 }
@@ -128,9 +133,11 @@ pub(super) fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
         Some(wordcraft_engine::KeyTarget::Style(style)) => Some(style),
         _ => None,
     });
-    // Ctrl+F1 collapses the ribbon only when the user hasn't given it to a command (#1678); the
-    // other interface shortcuts (Alt+Q, ⌘⌥R) keep their place ahead of the keymap.
-    if let Some((id, params)) = ui_shortcut(key, m).filter(|_| key != Key::F1 || (bound.is_none() && style.is_none())) {
+    // Window keys use the registry below so Customize Keyboard can reassign or remove them.
+    // Ctrl+F1 keeps its UI fallback when not assigned (#1678); Alt+Q and ⌘⌥R keep their priority.
+    if let Some((id, params)) =
+        ui_shortcut(key, m).filter(|_| !matches!(key, Key::F5 | Key::F10) && (key != Key::F1 || (bound.is_none() && style.is_none())))
+    {
         let _ = app.run(id, params);
         return true;
     }
