@@ -346,7 +346,8 @@ impl SeqCount {
 /// What Word shows for a SEQ field without a sequence identifier.
 pub const NO_SEQUENCE: &str = "Error! No sequence specified.";
 
-/// The fresh results of the unlocked LISTNUM and SEQ fields in the body and in the text boxes anchored there
+/// The fresh results of LISTNUM and AUTONUM* fields (locked or unlocked) and unlocked SEQ fields
+/// in the body and in the text boxes anchored there
 /// ([`update_seq`]). A text box's fields count where the box is anchored, before the fields after
 /// the anchor in its paragraph and after those before it (measured in Word for Windows). A locked
 /// SEQ keeps its result but still counts, `\r` included; a SEQ in a tracked deletion keeps its
@@ -403,10 +404,6 @@ fn count_seq(doc: &wordcraft_doc::Document, story: StoryRef, path: &Path, p: &Pa
         }
         let InlineObject::Field { instr, locked, .. } = o else { continue };
         let f = FieldCode::parse(instr);
-        // A locked LISTNUM or AUTONUM keeps its result and doesn't count; only SEQ counts locked.
-        if *locked && f.name != "SEQ" {
-            continue;
-        }
         if f.name == "LISTNUM" {
             // A LISTNUM in a tracked deletion keeps its result and doesn't count, as SEQ does.
             if in_deletion {
@@ -588,7 +585,8 @@ pub struct OutputContext {
 }
 
 /// The document as Word prints and exports it (PDF, print jobs, page images). Laying a document
-/// out for output, Word fills in the body's unlocked LISTNUM, SEQ, STYLEREF and REF fields, even with
+/// out for output, Word fills in the body's LISTNUM and AUTONUM* fields regardless of lock, and
+/// unlocked SEQ, STYLEREF and REF fields, even with
 /// "Update fields before printing" off, while NUMWORDS, FILENAME, the summary properties and
 /// formulas keep their stored results (measured with Word for Windows, printing and exporting
 /// fields whose stored results were wrong). In headers and footers, the summary properties
@@ -1309,41 +1307,48 @@ mod listnum_tests {
     use super::*;
 
     #[test]
-    fn output_refreshes_listnum_without_changing_stored_results() {
-        let mut doc = wordcraft_doc::Document::from_text("Numbers");
-        let path = Path::top(0);
-        let para = doc.para_mut(StoryRef::Body, &path).unwrap();
-        for locked in [false, true, false] {
-            para.insert_object(
-                para.len(),
-                InlineObject::Field {
-                    instr: "LISTNUM".into(),
-                    result: "stale".into(),
-                    locked,
-                    dirty: true,
-                    code: false,
-                    form: String::new(),
-                    code_paras: None,
-                },
-                &CharProps::default(),
-            )
-            .unwrap();
+    fn output_refreshes_numbering_fields_without_changing_stored_results() {
+        for (instr, expected) in [
+            ("LISTNUM", ["1)", "2)", "3)"]),
+            ("AUTONUM", ["1.", "2.", "3."]),
+            ("AUTONUMLGL", ["1.", "2.", "3."]),
+            ("AUTONUMOUT", ["I.", "II.", "III."]),
+        ] {
+            let mut doc = wordcraft_doc::Document::from_text("Numbers");
+            let path = Path::top(0);
+            let para = doc.para_mut(StoryRef::Body, &path).unwrap();
+            for locked in [false, true, false] {
+                para.insert_object(
+                    para.len(),
+                    InlineObject::Field {
+                        instr: instr.into(),
+                        result: "stale".into(),
+                        locked,
+                        dirty: true,
+                        code: false,
+                        form: String::new(),
+                        code_paras: None,
+                    },
+                    &CharProps::default(),
+                )
+                .unwrap();
+            }
+            let fresh = output_fields(&doc).unwrap();
+            let results = |doc: &wordcraft_doc::Document| {
+                doc.para(StoryRef::Body, &path)
+                    .unwrap()
+                    .objects
+                    .iter()
+                    .filter_map(|o| match o {
+                        InlineObject::Field { result, dirty, .. } => Some((result.clone(), *dirty)),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(results(&fresh), expected.map(|s| (s.to_owned(), false)), "{instr}");
+            assert_eq!(results(&doc), vec![("stale".into(), true); 3]);
+            assert!(output_fields(&fresh).is_none());
         }
-        let fresh = output_fields(&doc).unwrap();
-        let results = |doc: &wordcraft_doc::Document| {
-            doc.para(StoryRef::Body, &path)
-                .unwrap()
-                .objects
-                .iter()
-                .filter_map(|o| match o {
-                    InlineObject::Field { result, dirty, .. } => Some((result.clone(), *dirty)),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(results(&fresh), [("1)".into(), false), ("stale".into(), true), ("2)".into(), false)]);
-        assert_eq!(results(&doc), vec![("stale".into(), true); 3]);
-        assert!(output_fields(&fresh).is_none());
     }
 
     #[test]

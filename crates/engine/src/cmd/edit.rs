@@ -616,6 +616,9 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
         find_pattern::resolve_names(find_pattern::parse_replace(&f.replace, &opts), &index)
     });
     let paths = s.doc.para_paths(story);
+    // The final story mark is searchable in normal Find, but cannot be deleted. Keep its
+    // synthetic byte out of document positions and out of Replace with's matched text.
+    let final_mark = c.spans_paras && !opts.wildcards && !opts.regex && !opts.literal;
     // Paragraphs read as one text: consecutive siblings when the pattern spans paragraphs.
     let mut chunks: Vec<std::ops::Range<usize>> = Vec::new();
     for i in 0..paths.len() {
@@ -655,7 +658,7 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 hay.push_str(t);
                 expect = r.end;
             }
-            if i < last {
+            if i < last || (final_mark && i == paths.len().saturating_sub(1)) {
                 if expect != p.text.len() {
                     cuts.push(hay.len());
                 }
@@ -669,11 +672,11 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
             if (end && sg.hay >= x) || (!end && sg.hay > x) {
                 return None;
             }
-            if sg.mark && x > sg.hay {
+            if sg.mark && x > sg.hay && !(final_mark && sg.para == paths.len().saturating_sub(1)) {
                 let path = paths.get(sg.para)?;
                 return Some(Pos { story, path: path.with_last(path.last() + 1), off: 0 });
             }
-            Some(Pos { story, path: paths.get(sg.para)?.clone(), off: sg.raw + (x - sg.hay) })
+            Some(Pos { story, path: paths.get(sg.para)?.clone(), off: sg.raw + if sg.mark { 0 } else { x - sg.hay } })
         };
         cuts.push(hay.len());
         let mut from = 0;
@@ -706,7 +709,13 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 }
                 let rep = pieces.as_ref().map(|pc| {
                     let group = |n: usize| caps.get_group(n).and_then(|g| hay.get(g.range())).map(str::to_string);
-                    find_pattern::expand(pc, hay.get(m.range()).unwrap_or(""), &group, &s.clipboard_text)
+                    let end =
+                        if final_mark && m.end() == hay.len() && segs.last().is_some_and(|sg| sg.mark && sg.para == paths.len().saturating_sub(1)) {
+                            m.end().saturating_sub(1)
+                        } else {
+                            m.end()
+                        };
+                    find_pattern::expand(pc, hay.get(m.start()..end).unwrap_or(""), &group, &s.clipboard_text)
                 });
                 out.push(Found { a, b, rep });
                 if out.len() >= 100_000 {

@@ -2,7 +2,9 @@
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged.)
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged; earlier: P0493: normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes; `^?` skips optional hyphens and searches paragraph marks, including the final mark, which replacement preserves. Readiness estimates unchanged; earlier: P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged; earlier: P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged)
 
@@ -159,6 +161,8 @@ full number from ~60% to ~75%. Everything else is depth on the way to full parit
 
 > **Three-column preset update:** 2026-10-15 · the header/footer preset uses editable table cells and screen-only editing guides (#2197). Synthetic command, undo/redo and repeated DOCX save/reopen checks cover this preset; broader template/layout gaps and readiness estimates remain unchanged.
 
+Normal Find now reads decimal caret codes as ASCII (1–127 without a leading zero), Windows-1252 (with a leading zero), or Unicode (`^u`). Any-character search skips optional hyphens and includes paragraph marks; the final story mark is found but retained by replacement. Ranked gaps and readiness estimates are unchanged.
+
 Normal Find and Replace now match a keyboard apostrophe against straight and typographic single quotes (#5388), including text entered with smart quotes. Exact search modes and numeric character codes retain their character identity. This fixes a focused editing case; ranked gaps and readiness estimates are unchanged.
 
 ## By kind
@@ -222,11 +226,15 @@ Raised and lowered text under multiple line spacing now adds its shift growth on
 
 ## Revision history
 
+> 2026-11-14 · trivial · P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged.
+
+> 2026-11-14 · trivial · P0493: normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes; `^?` skips optional hyphens and searches paragraph marks, including the final mark, which replacement preserves. Readiness estimates unchanged.
 > 2026-11-14 · trivial · P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged.
 
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-14 | trivial | P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged. |
+| 2026-11-14 | trivial | P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged. |
 > 2026-11-13 · trivial · P0462: gap #7 narrowed: Table of Figures › Options… (Style, Table entry fields with Table identifier A–Z), `references.tableOfFigures` `style` / `entryFields`. Readiness estimates unchanged.
 

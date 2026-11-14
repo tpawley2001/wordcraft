@@ -97,12 +97,13 @@ fn listnum_fields_before_do_not_move_the_autonum_counters() {
     assert_eq!(got[2..], want());
 }
 
+/// Locking doesn't freeze an AUTONUM field: Word renumbers a locked one and counts it (measured in
+/// Microsoft 365 Word: a locked AUTONUM in the second of five paragraphs shows 2. after the update
+/// and the next shows 3.), so the probe numbers as if nothing were locked.
 #[test]
-fn a_locked_autonum_keeps_its_result() {
-    let mut s = probe(&[], &["A02"]);
+fn a_locked_autonum_still_renumbers_and_counts() {
+    let mut s = probe(&[], &["A02", "A10", "A12"]);
     run(&mut s, "caret.docStart", json!({}));
     run(&mut s, "references.updateFields", json!({"all": true}));
-    // Whether Word still counts a locked field was not measured: only its own result is checked.
-    let got: Vec<String> = fields(&s).into_iter().map(|f| f.1).take(2).collect();
-    assert_eq!(got, ["1.", "OLD"]);
+    assert_eq!(fields(&s), want());
 }
