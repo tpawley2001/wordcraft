@@ -376,6 +376,10 @@ pub struct Settings {
     /// staying on the break's page.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub split_pg_break_and_para_mark: bool,
+    /// `w:footnoteLayoutLikeWW8` (.doc `Copts.fFtnLayoutLikeWW8`, RTF `\ftnlytwnine`): lay out
+    /// footnotes as Word 6.x/95/97 did. Read and saved; layout does not use it yet.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub footnote_layout_like_ww8: bool,
     /// `w:noLeading` / `Copts80.fNoExtLeading` (Don't add leading (extra space) between rows of
     /// text): below compatibility mode 15 Word makes a line as tall as the font's ascent plus
     /// descent and leaves out its line gap.
@@ -753,6 +757,7 @@ impl Default for Settings {
             wrap_trail_spaces: false,
             ext_leading_2pt_only: false,
             split_pg_break_and_para_mark: false,
+            footnote_layout_like_ww8: false,
             no_leading: false,
             wp_justification: false,
             no_tab_hang_ind: false,

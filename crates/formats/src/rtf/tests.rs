@@ -1859,6 +1859,7 @@ mod frames;
 mod gutter;
 mod highlight_proof_emphasis;
 mod html_auto_spacing;
+mod footnote_layout_ww8;
 mod info_company;
 mod info_props;
 mod jexpand;

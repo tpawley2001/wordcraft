@@ -184,3 +184,29 @@ fn a3_a_dop_too_short_for_copts60_keeps_the_default() {
     assert!(!doc_with_dop(Some(&d)).settings.wrap_trail_spaces);
     assert!(!doc_with_dop(None).settings.wrap_trail_spaces);
 }
+
+/// A Dop2000-sized DOP whose 32-bit `Copts` word after `copts80` (Dop offset 512) is `flags`.
+fn dop_copts_word2(flags: u32) -> Vec<u8> {
+    let mut d = vec![0u8; DOP2000];
+    d[512..516].copy_from_slice(&flags.to_le_bytes());
+    d
+}
+
+#[test]
+fn ftn_layout_like_ww8_bit_b_is_read() {
+    // [MS-DOC] §2.7.1 Copts: A fSpLayoutLikeWW8 (bit 0), B fFtnLayoutLikeWW8 (bit 1).
+    assert!(doc_with_dop(Some(&dop_copts_word2(1 << 1))).settings.footnote_layout_like_ww8);
+}
+
+#[test]
+fn ftn_layout_like_ww8_needs_its_own_bit() {
+    assert!(!doc_with_dop(Some(&dop_copts_word2(0))).settings.footnote_layout_like_ww8);
+    assert!(!doc_with_dop(Some(&dop_copts_word2(1 << 0))).settings.footnote_layout_like_ww8);
+    assert!(!doc_with_dop(Some(&dop_copts_word2(1 << 2))).settings.footnote_layout_like_ww8);
+}
+
+#[test]
+fn ftn_layout_like_ww8_short_dop_keeps_the_default() {
+    assert!(!doc_with_dop(Some(&vec![0xffu8; DOP97])).settings.footnote_layout_like_ww8);
+    assert!(!doc_with_dop(None).settings.footnote_layout_like_ww8);
+}
