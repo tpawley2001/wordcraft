@@ -367,8 +367,9 @@ pub struct Settings {
     /// layout crate's `para::justify`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub wrap_trail_spaces: bool,
-    /// `Copts80.f2ptExtLeadingOnly` of a Word 97-2003 file: Word adds at most 2 pt of external
-    /// leading; a Courier New line is one em tall. Not saved.
+    /// `Copts80.f2ptExtLeadingOnly` of a Word 97-2003 file, `w:suppressTopSpacingWP` in DOCX
+    /// (Suppress extra line spacing like WordPerfect 5.x): Word adds at most 2 pt of external
+    /// leading; a Courier New line is one em tall. Read and saved as `w:suppressTopSpacingWP`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ext_leading_2pt_only: bool,
     /// `w:splitPgBreakAndParaMark` (set for Word 97-2003 files): below compatibility mode 15 the

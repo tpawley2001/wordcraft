@@ -96,6 +96,7 @@ impl Reader<'_> {
                     }
                     s.sum_paragraph_spacing = k.children("w:doNotUseHTMLParagraphAutoSpacing").any(on_off);
                     s.no_leading = k.children("w:noLeading").any(on_off);
+                    s.ext_leading_2pt_only = k.children("w:suppressTopSpacingWP").any(on_off);
                     s.wp_justification = k.children("w:wpJustification").any(on_off);
                     s.no_tab_hang_ind = k.children("w:noTabHangInd").any(on_off);
                     s.do_not_expand_shift_return = k.children("w:doNotExpandShiftReturn").any(on_off);

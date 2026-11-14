@@ -8,7 +8,8 @@
 //! tag (namespace declarations, `mc:Ignorable`) and every child the model doesn't own are kept
 //! byte for byte; owned children come from the generated part (or go, when the model turned
 //! them off); owned children the original lacks are inserted at their CT_Settings position; in
-//! `w:compat` only the `compatibilityMode` setting and the `w:wrapTrailSpaces` and `w:footnoteLayoutLikeWW8` switches are replaced. Kept children that refer to a
+//! `w:compat` only the `compatibilityMode` setting and the `w:suppressTopSpacingWP`, `w:wrapTrailSpaces` and
+//! `w:footnoteLayoutLikeWW8` switches are replaced. Kept children that refer to a
 //! relationship (`r:id`, e.g. a mail merge data source) are dropped: their relationships aren't
 //! carried. Anything unexpected returns `None`, and the generated part is written as before.
 
@@ -238,9 +239,17 @@ fn children(xml: &str, root: &str) -> Option<(usize, usize, Vec<Child>)> {
     Some((open_end, close, out))
 }
 
-/// CT_Compat children that come after `w:wrapTrailSpaces` (ECMA-376 Part 1, §17.15.3, wml.xsd
-/// `CT_Compat`), for placing an inserted switch.
-const AFTER_WRAP_TRAIL_SPACES: &[&str] = &[
+/// CT_Compat children that come after `w:suppressTopSpacingWP` (ECMA-376 Part 1, §17.15.3, wml.xsd
+/// `CT_Compat`), in order, for placing an inserted switch.
+const AFTER_SUPPRESS_TOP_SPACING_WP: &[&str] = &[
+    "w:suppressSpBfAfterPgBrk",
+    "w:swapBordersFacingPages",
+    "w:convMailMergeEsc",
+    "w:truncateFontHeightsLikeWP6",
+    "w:mwSmallCaps",
+    "w:usePrinterMetrics",
+    "w:doNotSuppressParagraphBorders",
+    "w:wrapTrailSpaces",
     "w:footnoteLayoutLikeWW8",
     "w:shapeLayoutLikeWW8",
     "w:alignTablesRowByRow",
@@ -279,6 +288,7 @@ const AFTER_WRAP_TRAIL_SPACES: &[&str] = &[
     "w:compatSetting",
 ];
 
+const SUPPRESS_TOP_SPACING_WP: &str = "w:suppressTopSpacingWP";
 const WRAP_TRAIL_SPACES: &str = "w:wrapTrailSpaces";
 const FOOTNOTE_LAYOUT_LIKE_WW8: &str = "w:footnoteLayoutLikeWW8";
 
@@ -313,13 +323,20 @@ fn merge_switch(orig: &str, generated: &str, name: &str, later: &[&str]) -> Opti
     Some(format!("{}{wanted}{}", s.get(..at)?, s.get(at..)?))
 }
 
+/// The CT_Compat children that come after `name` (one of [`AFTER_SUPPRESS_TOP_SPACING_WP`]).
+fn after(name: &str) -> Option<&'static [&'static str]> {
+    let i = AFTER_SUPPRESS_TOP_SPACING_WP.iter().position(|n| *n == name)?;
+    AFTER_SUPPRESS_TOP_SPACING_WP.get(i + 1..)
+}
+
 /// The original `w:compat` with its `compatibilityMode` and the switches the model owns
-/// (`w:wrapTrailSpaces`, `w:footnoteLayoutLikeWW8`) taken from the generated one.
+/// (`w:suppressTopSpacingWP`, `w:wrapTrailSpaces`, `w:footnoteLayoutLikeWW8`) taken from the
+/// generated one.
 fn merge_compat(orig: &str, generated: &str) -> Option<String> {
-    let with_mode = merge_compat_mode(orig, generated)?;
-    let with_wrap = merge_switch(&with_mode, generated, WRAP_TRAIL_SPACES, AFTER_WRAP_TRAIL_SPACES)?;
-    // `w:footnoteLayoutLikeWW8` is the first of the switches after `w:wrapTrailSpaces`.
-    merge_switch(&with_wrap, generated, FOOTNOTE_LAYOUT_LIKE_WW8, AFTER_WRAP_TRAIL_SPACES.get(1..)?)
+    let mut s = merge_compat_mode(orig, generated)?;
+    s = merge_switch(&s, generated, SUPPRESS_TOP_SPACING_WP, AFTER_SUPPRESS_TOP_SPACING_WP)?;
+    s = merge_switch(&s, generated, WRAP_TRAIL_SPACES, after(WRAP_TRAIL_SPACES)?)?;
+    merge_switch(&s, generated, FOOTNOTE_LAYOUT_LIKE_WW8, after(FOOTNOTE_LAYOUT_LIKE_WW8)?)
 }
 
 /// The original `w:compat` with its `compatibilityMode` taken from the generated one.
@@ -510,6 +527,17 @@ mod tests {
         let out = merged(r#"<w:compat><w:wrapTrailSpaces w:val="1"></w:wrapTrailSpaces><w:useFELayout/></w:compat>"#, "<w:compat></w:compat>");
         assert!(!out.contains("wrapTrailSpaces"), "{out}");
         assert!(out.contains("<w:compat><w:useFELayout/></w:compat>"), "{out}");
+    }
+
+    #[test]
+    fn suppress_top_spacing_wp_comes_from_the_model_once_in_ct_compat_order() {
+        let orig = "<w:compat><w:noLeading/><w:suppressTopSpacingWP/><w:wrapTrailSpaces/></w:compat>";
+        let out = merged(orig, "<w:compat><w:noLeading/><w:wrapTrailSpaces/></w:compat>");
+        assert!(!out.contains("suppressTopSpacingWP"), "turned off in the model: {out}");
+        let on = "<w:compat><w:noLeading/><w:suppressTopSpacingWP/><w:wrapTrailSpaces/></w:compat>";
+        assert_eq!(merged(orig, on).matches("<w:suppressTopSpacingWP").count(), 1);
+        let out = merged("<w:compat><w:noLeading/><w:usePrinterMetrics/><w:wrapTrailSpaces/></w:compat>", on);
+        assert!(out.contains("<w:noLeading/><w:suppressTopSpacingWP/><w:usePrinterMetrics/><w:wrapTrailSpaces/>"), "{out}");
     }
 
     #[test]
