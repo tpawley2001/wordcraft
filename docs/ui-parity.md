@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-13 · **Change:** trivial (P0463: File › Options › Advanced › Display › Style area pane width in Draft and Outline views: a column of paragraph style names at the left of the text (`view.styleAreaWidth`). Readiness estimates unchanged; earlier: P0337: Insert › Text from File with a Range brings only the comments, replies and footnotes/endnotes that range refers to, not every one of the other file. Readiness estimates unchanged)
@@ -164,6 +166,8 @@ Insert Hyperlink › E-mail Address accepts an address and subject and lists rec
 
 The table Formula dialog (Table Layout › Data › Formula) has Formula, Number format, Paste function and Paste bookmark. Number format lists Word's seven formats and also takes a typed picture; OK adds it to the field as a `\#` switch (`=SUM(ABOVE) \# "#,##0.00"`), and an empty box adds none. Paste bookmark lists the document's bookmarks by name (hidden `_` names left out) and adds the chosen name to the formula, and is greyed out when there are none (#1201).
 
+Convert Text to Table (`table.fromText`) keeps spaces, tabs and no-break spaces in every cell; only one U+0020 directly after each comma separator is dropped, as measured in Microsoft 365 Word 16.0.20527.
+
 ## Revision history
 
 > 2026-11-11 · trivial · Formula dialog: Number format lists Word's seven formats, takes a typed picture and adds the `\#` switch to the field, as in Word (#1201)
@@ -195,6 +199,7 @@ The table Formula dialog (Table Layout › Data › Formula) has Formula, Number
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0466: Ctrl+F10 toggles window maximization; Alt+F5 restores a maximized window on Linux/Windows. Gap #24 narrowed. |
 | 2026-11-12 | trivial | P0337: Insert › Text from File with a Range brings only the comments, replies and footnotes/endnotes that range refers to, not every one of the other file. Readiness estimates unchanged. |
 | 2026-11-11 | trivial | P0279: Home › Font › Font… Advanced has Word's OpenType Features group (Ligatures, Number spacing, Number forms, Stylistic sets, Use Contextual Alternates), each set on OK only when changed and blank while the selected text differs; Scale is one editable combo box (type a whole percent 1–600 or pick from the list); `format.state` reports `ligatures`, `numSpacing`, `numForm`, `stylisticSet` and `contextualAlternates`. Readiness estimates unchanged. |
