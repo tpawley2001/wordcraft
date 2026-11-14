@@ -97,3 +97,5 @@ pub fn specs() -> Vec<CommandSpec> {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_figures_options;
