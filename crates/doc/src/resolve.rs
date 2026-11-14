@@ -165,12 +165,13 @@ impl ResolvedChar {
         if self.vert_align == VertAlign::Baseline { self.size } else { (self.size * 0.65 * 2.0).round() / 2.0 }
     }
     /// Baseline shift, points (positive = up).
+    /// measured in Microsoft 365 Word for Windows from its PDF export: superscript 0.35, subscript 0.08 of the size.
     pub fn baseline_shift(&self) -> f32 {
         self.position
             + match self.vert_align {
                 VertAlign::Baseline => 0.0,
-                VertAlign::Superscript => self.size * 0.33,
-                VertAlign::Subscript => -self.size * 0.14,
+                VertAlign::Superscript => self.size * 0.35,
+                VertAlign::Subscript => -self.size * 0.08,
             }
     }
 }

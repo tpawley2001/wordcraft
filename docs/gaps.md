@@ -1,8 +1,8 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged.)
 
-> **Last updated:** 2026-11-13 · **Change:** trivial (P0460: #27: View › Immersive Reader is its own view with its own tab (Column Width, Page Color, Line Focus, Text Spacing, Syllables), not Read Mode. Readiness estimates unchanged; earlier: P0266: Update Table of Contents › Update page numbers only (#1197, #2262). Readiness estimates unchanged; earlier: P0226: #6 narrowed: Print Selection prints only the selected text, without headers and footers, as in Word. Readiness estimates unchanged)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged; earlier: P0461: #6 narrowed: print jobs follow Print background colors and images and Print drawings created in Word. Readiness estimates unchanged; earlier: P0266: Update Table of Contents › Update page numbers only (#1197, #2262). Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-08 · **Change:** trivial (P0134: Custom Properties Modify preserves unedited imported types and values; renames that cannot reproduce the stored value are refused (#5541 review). Date validation uses chrono with strict YYYY-MM-DD widths. Readiness estimates unchanged.)
 
@@ -285,6 +285,7 @@ Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text wi
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0466: Ctrl+F10 toggles window maximization; Alt+F5 restores a maximized window on Linux/Windows. Gap #24 narrowed. |
 | 2026-11-09 | trivial | P0163: #6 narrowed: File › Print › Document Info › Key Assignments prints the keyboard customizations, command or style name and key, by name (`print::document_info(s, "keys")`). Readiness estimates unchanged. |
 | 2026-11-09 | trivial | P0162: Go To (F5) adds Line: the n-th layout line of the main text (wrapped lines and manual line breaks count, headers and notes don't), +n/-n from the caret's line, clamped |
