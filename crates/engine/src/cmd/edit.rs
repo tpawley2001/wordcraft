@@ -570,7 +570,7 @@ pub(crate) fn search(s: &Session, story: StoryRef) -> Result<Vec<(Pos, Pos)>, Cm
     Ok(search_full(s, story, false)?.into_iter().map(|f| (f.a, f.b)).collect())
 }
 
-fn find_opts(f: &crate::session::FindState) -> find_pattern::Opts {
+fn find_opts(f: &crate::session::FindState, field_codes: bool) -> find_pattern::Opts {
     find_pattern::Opts {
         match_case: f.match_case,
         whole_word: f.whole_word,
@@ -581,6 +581,7 @@ fn find_opts(f: &crate::session::FindState) -> find_pattern::Opts {
         wildcards: f.wildcards,
         regex: f.regex,
         literal: f.literal,
+        field_codes,
     }
 }
 
@@ -594,7 +595,7 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
     if f.query.is_empty() {
         // No text and a format: each stretch of text with the format.
         let Some(cond) = cond else { return Ok(Vec::new()) };
-        let opts = find_opts(f);
+        let opts = find_opts(f, s.view.field_codes);
         let pieces = find_pattern::resolve_names(find_pattern::parse_replace(&f.replace, &opts), &|_| None);
         let out = cond.stretches(s, story, 100_000).into_iter().map(|(a, b)| {
             let rep = with_rep.then(|| {
@@ -604,7 +605,7 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
         });
         return Ok(out.collect());
     }
-    let opts = find_opts(f);
+    let opts = find_opts(f, s.view.field_codes);
     let c = find_pattern::compile(&f.query, &opts).map_err(CmdError::Params)?;
     let re = meta::Regex::builder()
         .syntax(syntax::Config::new().case_insensitive(c.case_insensitive))
@@ -642,6 +643,8 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 cuts.push(hay.len());
                 continue;
             };
+            let objs = search_objects(p, opts.field_codes);
+            let mut next_obj = 0;
             let mut expect = 0;
             for (r, ch) in p.run_ranges() {
                 let Some(t) = p.text.get(r.clone()).filter(|_| ch.del.is_none()) else { continue };
@@ -651,11 +654,34 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 if r.start != expect {
                     cuts.push(hay.len());
                 }
-                match segs.last_mut() {
-                    Some(sg) if !sg.mark && sg.para == i && sg.raw + sg.len == r.start => sg.len += t.len(),
-                    _ => segs.push(Seg { hay: hay.len(), para: i, raw: r.start, len: t.len(), mark: false }),
+                // The run's text, each object as what Find sees of it; left-out pieces are skipped.
+                let mut at = r.start;
+                while at < r.end {
+                    while objs.get(next_obj).is_some_and(|o| o.end <= at) {
+                        next_obj += 1;
+                    }
+                    let obj = objs.get(next_obj).filter(|o| o.at < r.end);
+                    let (piece_end, sentinel) = match obj {
+                        Some(o) if o.at <= at => (o.end.min(r.end), o.ch),
+                        Some(o) => (o.at, None),
+                        None => (r.end, None),
+                    };
+                    let skip = obj.is_some_and(|o| o.at <= at) && sentinel.is_none();
+                    if !skip {
+                        let Some(piece) = p.text.get(at..piece_end) else { break };
+                        let len = piece.len();
+                        match segs.last_mut() {
+                            Some(sg) if !sg.mark && sg.para == i && sg.raw + sg.len == at && sg.hay + sg.len == hay.len() => sg.len += len,
+                            _ => segs.push(Seg { hay: hay.len(), para: i, raw: at, len, mark: false }),
+                        }
+                        match sentinel {
+                            // Every sentinel is as long as the U+FFFC it stands for.
+                            Some(c) if c.len_utf8() == len => hay.push(c),
+                            _ => hay.push_str(piece),
+                        }
+                    }
+                    at = piece_end;
                 }
-                hay.push_str(t);
                 expect = r.end;
             }
             if i < last || (final_mark && i == paths.len().saturating_sub(1)) {
@@ -725,6 +751,74 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
         }
     }
     Ok(out)
+}
+
+/// One stretch of a paragraph's text that Find reads as an object: `at..end`, read as the
+/// sentinel `ch`, or left out of the searched text when `ch` is `None`.
+struct SearchObj {
+    at: usize,
+    end: usize,
+    ch: Option<char>,
+}
+
+/// What Find sees of each object in `p`, in text order: drawings stay U+FFFC (`^g`), note marks
+/// and fields become their sentinels (`^f`, `^e`, `^d`), bookmark, comment, permission and
+/// content-control anchors are not there at all (a word with a bookmark in it is still found,
+/// as in Word). A range field shows as a start and an end sentinel while field codes are shown,
+/// with its result (and any field nested in it) left out, so `^d` takes the outermost field
+/// whole; hidden, its markers are left out and its result is searched as text. Fields are
+/// paired within the paragraph: a range field running on into the next paragraph is left open.
+fn search_objects(p: &wordcraft_doc::Paragraph, field_codes: bool) -> Vec<SearchObj> {
+    use wordcraft_doc::para::NoteKind;
+    const W: usize = '\u{FFFC}'.len_utf8();
+    let mut out: Vec<SearchObj> = Vec::new();
+    let mut depth: usize = 0;
+    for (at, o) in p.objects_with_offsets() {
+        let end = at + W;
+        if field_codes {
+            match o {
+                InlineObject::FieldStart { .. } => {
+                    depth = depth.saturating_add(1);
+                    if depth == 1 {
+                        out.push(SearchObj { at, end, ch: Some(find_pattern::FIELD_START) });
+                    }
+                    continue;
+                }
+                InlineObject::FieldEnd if depth > 0 => {
+                    depth -= 1;
+                    if depth == 0 {
+                        // Everything since the start (the result) is left out.
+                        if let Some(start) = out.last().map(|s| s.end)
+                            && start < at
+                        {
+                            out.push(SearchObj { at: start, end: at, ch: None });
+                        }
+                        out.push(SearchObj { at, end, ch: Some(find_pattern::FIELD_END) });
+                    }
+                    continue;
+                }
+                _ if depth > 0 => continue,
+                _ => {}
+            }
+        }
+        let ch = match o {
+            InlineObject::NoteRef { kind: NoteKind::Footnote, .. } => Some(find_pattern::FOOTNOTE_MARK),
+            InlineObject::NoteRef { .. } => Some(find_pattern::ENDNOTE_MARK),
+            InlineObject::Field { .. } => Some(find_pattern::FIELD_MARK),
+            o if o.is_drawing() => Some('\u{FFFC}'),
+            o if o.is_marker() => None,
+            _ => Some(find_pattern::OBJ_MARK),
+        };
+        out.push(SearchObj { at, end, ch });
+    }
+    // A range field still open at the paragraph's end: its result here is left out too.
+    if depth > 0
+        && let Some(start) = out.iter().rev().find(|s| s.ch == Some(find_pattern::FIELD_START)).map(|s| s.end)
+        && start < p.text.len()
+    {
+        out.push(SearchObj { at: start, end: p.text.len(), ch: None });
+    }
+    out
 }
 
 fn read_opts(s: &mut Session, v: &Value) -> Result<(), CmdError> {
