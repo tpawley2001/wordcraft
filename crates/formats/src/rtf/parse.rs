@@ -105,9 +105,10 @@ fn info_date(d: Option<(u32, u32, u32, u32, u32)>) -> String {
     }
 }
 
-/// Where the document `{\rtf…}` starting at `start` ends: just past the `}` that first brings the
-/// depth back to 0, or the end of the bytes if the outer group never closes (RTF spec, "RTF
-/// Syntax": the file is one group). Anything after that brace is not part of the document: text,
+/// Where the document `{\rtf…}` starting at `start` ends: at the `}` that first brings the depth
+/// back to 0 (left for `finalize`, which ends a last paragraph without `\par` before the outer
+/// group's state is restored), or the end of the bytes if the outer group never closes (RTF
+/// spec, "RTF Syntax": the file is one group). Anything after that brace is not part of the document: text,
 /// control words, raw bytes and groups, another `{\rtf` group included. A stray `}` inside the
 /// document closes the outer group there, so what follows it is ignored too. `\binN` data is
 /// skipped by the count the parser reads, so braces in it don't count.
@@ -121,11 +122,11 @@ fn document_end(bytes: &[u8], start: usize) -> usize {
                 i += 1;
             }
             b'}' => {
-                i += 1;
                 if depth <= 1 {
                     return i;
                 }
                 depth -= 1;
+                i += 1;
             }
             b'\\' => i = past_control(bytes, i),
             _ => i += 1,
@@ -181,7 +182,8 @@ fn parse_full(bytes: &[u8], marks: bool) -> Result<Parsed, String> {
     if !bytes.get(start..).is_some_and(|b| b.starts_with(b"{\\rtf")) {
         return Err("not an RTF document (it doesn't start with {\\rtf)".into());
     }
-    // Whatever follows the document's closing brace isn't part of it, as in Word.
+    // Whatever follows the document's closing brace isn't part of it, as in Word. The brace
+    // itself is closed by `finalize`.
     let bytes = bytes.get(..document_end(bytes, start)).unwrap_or(bytes);
     let mut r = Reader::default();
     r.marks_on = marks;
@@ -390,6 +392,12 @@ fn finalize(mut r: Reader) -> Parsed {
     // truncated file.
     r.flush_high_surrogate();
     r.finish_multibyte();
+    // A last paragraph with no `\par` (it ends at the closing brace, or the file is cut short)
+    // takes the paragraph properties in force there, as in Word, not those the open groups
+    // restore when they close.
+    if r.st.dest == Dest::Body && r.sub.is_none() && r.hf.is_none() && !r.in_shape_text() && (r.para_has || !r.para.inlines.is_empty()) {
+        r.end_para(false);
+    }
     while r.depth() > 0 {
         r.close();
     }
