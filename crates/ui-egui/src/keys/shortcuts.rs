@@ -133,9 +133,10 @@ pub(super) fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
         Some(wordcraft_engine::KeyTarget::Style(style)) => Some(style),
         _ => None,
     });
-    // Ctrl+F1 collapses the ribbon only when the user hasn't given it to a command (#1678); the
-    // other interface shortcuts (Alt+Q, ⌘⌥R) keep their place ahead of the keymap.
-    if let Some((id, params)) = ui_shortcut(key, m).filter(|_| key != Key::F1 || (bound.is_none() && style.is_none())) {
+    // Function-key interface shortcuts yield to the keymap so Customize Keyboard can reassign
+    // them. The window commands are registered there; Ctrl+F1 keeps its UI fallback (#1678).
+    // Alt+Q and ⌘⌥R keep their place ahead of the keymap.
+    if let Some((id, params)) = ui_shortcut(key, m).filter(|_| !matches!(key, Key::F1 | Key::F5 | Key::F10) || (bound.is_none() && style.is_none())) {
         let _ = app.run(id, params);
         return true;
     }

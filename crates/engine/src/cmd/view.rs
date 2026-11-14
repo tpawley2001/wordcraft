@@ -82,6 +82,17 @@ fn grid_settings(s: &mut Session, v: &Value) -> CmdResult {
 /// Returns the command specifications for the View ribbon tab and window management commands.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
+        // The UI intercepts these commands to size its viewport; headless sessions have no window.
+        CommandSpec::new("ui.maximizeWindow", "Maximize or Restore Window", "View › Window", |_, _| {
+            Err(CmdError::Failed("window context is unavailable".into()))
+        })
+        .key(super::mac_or("", "Mod+F10"))
+        .pure(),
+        CommandSpec::new("ui.restoreWindow", "Restore Window", "View › Window", |_, _| {
+            Err(CmdError::Failed("window context is unavailable".into()))
+        })
+        .key(super::mac_or("", "Alt+F5"))
+        .pure(),
         CommandSpec::new("view.marks", "Show/Hide ¶", "Home › Paragraph", |s, v| {
             let r = toggle(s, v, |x| &mut x.marks);
             s.relayout();
