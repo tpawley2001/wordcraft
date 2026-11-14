@@ -105,7 +105,10 @@ fn bookmarks_and_comment_anchors_are_not_characters() {
     assert_eq!(hits(&mut s, "four"), ["four"]);
     assert_eq!(hits(&mut s, "fo^?"), ["fou"]);
     assert_eq!(hits(&mut s, " three "), [" three "]);
-    // A field counts as one character.
+    // With field codes shown a field is one character to `^?` (Word: `^?` selects the whole
+    // `{ QUOTE "red fox" }`). With codes hidden Word searches the field's result text instead
+    // ("red" inside a QUOTE result is found); that is not covered here.
+    s.run("view.fieldCodes", &json!({ "value": true })).unwrap();
     assert_eq!(hits(&mut s, "ve^?"), ["ve{field}", "ven"]);
 }
 
