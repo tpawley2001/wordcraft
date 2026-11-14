@@ -23,6 +23,7 @@ mod paint;
 
 pub(crate) use glyphs::author_order;
 pub use glyphs::{CHECK_BOX_INSET, check_box, text_color, upright_in_vertical};
+#[cfg(test)]
 pub(crate) use lines::underline_band;
 #[cfg(test)]
 pub(crate) use lines::{leader_pitch, leader_xs};
