@@ -71,6 +71,7 @@ mod keep_next_long_chain;
 mod keep_next_table_chain;
 mod kept_row_chain;
 mod kept_row_not_split;
+mod legacy_font_effects;
 mod ligature;
 pub(crate) mod linear;
 mod list_label_decorations;
