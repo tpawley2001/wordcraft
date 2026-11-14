@@ -1435,7 +1435,8 @@ fn arrow_bullets() {
 #[test]
 fn smileys_are_replaced_inside_words_too() {
     let s = typed("so ok:) sad:( meh:| :) fine:-) ");
-    assert_eq!(s.doc.plain_text(StoryRef::Body), "So ok\u{263A} sad\u{2639} meh\u{1F610} \u{263A} fine\u{263A} ");
+    // Word's :) is U+1F60A (M365 Word's AutoCorrect entry, 2026-11-14; autocorrect_symbols_word.rs).
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "So ok\u{1F60A} sad\u{2639} meh\u{1F610} \u{1F60A} fine\u{1F60A} ");
 }
 
 #[test]
