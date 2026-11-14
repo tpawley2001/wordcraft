@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0493: normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes; `^?` skips optional hyphens and searches paragraph marks, including the final mark, which replacement preserves. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0488: Find with Use wildcards: `@` takes as few characters as it can, `{,n}` is refused, and `?`, `*` and `[!…]` match a paragraph mark, as in Word. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged; earlier: P0486: Distribute Rows shares the selected rows' laid-out height equally, At least. P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged; earlier: P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged)
@@ -112,6 +114,10 @@ Evidence: engine `screen_paper_color_is_a_persistent_preference_not_document_for
 canvas `screen_paper_color_changes_raster_and_cache_without_changing_export_paper`, and
 options `screen_paper_color_options_round_trip_and_work_without_a_document` tests.
 
+## Find and Replace: normal caret codes
+
+Without Use wildcards or Regular expressions, `^nnn` without a leading zero finds codes 1–127 (including controls); higher values find nothing. `^0nnn` keeps Windows-1252 decoding, while `^u` reads a Unicode scalar in decimal, with leading zeros allowed. `^?` matches characters and paragraph marks across paragraphs, skipping optional hyphens. `^p` and `^?` also find the final story mark: Find selects to the text end, replacement inserts before the retained mark, and `^&` excludes that final mark.
+
 ## Find and Replace: regular expressions (#4177)
 
 With **Regular expressions** on (Search Options), Replace with expands capture groups: `$1`…`$n`, `${n}`, `${name}` and `$name` (the longest run of letters, digits and `_`), `$0` / `${0}` (the whole match), and `\1`…`\9` as in wildcard Replace; `$$` is a dollar sign, `\t` a tab, `\\` a backslash, `\$` and `\^` a `$` or `^` as typed, and `\n` a paragraph mark, which splits the paragraph as `^p` does (Replace All stays one undo step). Word's `^&`, `^p`, `^t`, `^c` and the other `^` codes work there too (with Special characters off, only the `^` codes are taken literally). A group that doesn't exist, didn't take part in the match or is out of range expands to nothing; a `$` that starts no group, an unclosed `${`, and other `\` escapes stay as written. Plain and wildcard Replace are unchanged. Word has no regular-expression mode; this follows the Rust `regex` crate's Replace syntax.
@@ -173,6 +179,8 @@ The table Formula dialog (Table Layout › Data › Formula) has Formula, Number
 Convert Text to Table (`table.fromText`) keeps spaces, tabs and no-break spaces in every cell; only one U+0020 directly after each comma separator is dropped, as measured in Microsoft 365 Word 16.0.20527.
 
 ## Revision history
+
+> 2026-11-14 · trivial · P0493: normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes; `^?` skips optional hyphens and searches paragraph marks, including the final mark, which replacement preserves. Readiness estimates unchanged.
 
 > 2026-11-11 · trivial · Formula dialog: Number format lists Word's seven formats, takes a typed picture and adds the `\#` switch to the field, as in Word (#1201)
 
