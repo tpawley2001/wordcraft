@@ -1,6 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged.)
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-14 · **Change:** trivial (P0482: Fit Text lays a run, or the runs next to it sharing its id, out exactly the set width, as in Word. Readiness estimates unchanged; earlier: P0472: double, thick and wavy underlines fill a band worked out from the font's underline, dotted and dashed underlines use Word's fixed dash lengths in points, and waves turn every 1.20 pt with a 0.24 pt pen, as in Word. Readiness estimates unchanged; earlier: P0470: underlines and strikethroughs take their position and thickness from the font (`post` underline, `OS/2` strikeout), as in Word)
 
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged; earlier: P0472: double, thick and wavy underlines fill a band worked out from the font's underline, dotted and dashed underlines use Word's fixed dash lengths in points, and waves turn every 1.20 pt with a 0.24 pt pen, as in Word. Readiness estimates unchanged; earlier: P0470: underlines and strikethroughs take their position and thickness from the font (`post` underline, `OS/2` strikeout), as in Word)
 
@@ -336,6 +336,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 
 ## Revision history
 
+> 2026-11-14 · P0482: Fit Text (`w:fitText`): a run, or the runs next to each other sharing its id, is exactly its set width, as Microsoft 365 Word lays it out (measured from its PDF, Times New Roman and Arial 12 and 24 pt): the extra room is split evenly after every character but the last (a single character takes it all after itself; spaces count), and text wider than the set width is squeezed, every character and glyph by width / natural width (`layout::tests::fit_text`). A region broken over two lines and justified lines are not measured. Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged. |

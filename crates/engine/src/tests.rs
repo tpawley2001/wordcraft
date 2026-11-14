@@ -12752,7 +12752,7 @@ fn drop_cap_options_set_position_lines_distance_and_font() {
     let props = |s: &Session| s.doc.body.first().and_then(|b| b.as_para()).map(|p| p.props.clone()).unwrap_or_default();
     let cap = |s: &Session| {
         let p = props(s);
-        (p.drop_cap, p.drop_cap_margin, p.drop_cap_distance, p.drop_cap_font)
+        (p.drop_cap, p.drop_cap_margin, p.drop_cap_distance, p.drop_cap_font.map(String::from))
     };
     let mut s = s();
     assert!(s.run("insert.dropCap", &json!({})).is_err(), "off in an empty paragraph");
@@ -12825,7 +12825,7 @@ fn drop_cap_keep_leaves_each_paragraphs_options() {
             .body
             .iter()
             .filter_map(|b| b.as_para())
-            .map(|p| (p.props.drop_cap, p.props.drop_cap_margin, p.props.drop_cap_distance, p.props.drop_cap_font.clone()))
+            .map(|p| (p.props.drop_cap, p.props.drop_cap_margin, p.props.drop_cap_distance, p.props.drop_cap_font.as_deref().map(String::from)))
             .collect::<Vec<_>>()
     };
     let mut s = s();

@@ -783,6 +783,8 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     for (range, props) in p.run_ranges() {
         sh.run(&cx, range, props);
     }
+    let run_ends: Vec<usize> = p.run_ranges().map(|(range, _)| range.end).collect();
+    sh.b.fit_text(&run_ends);
     if rp.snap_to_grid {
         snap_chars(&mut sh.b, &p.text, &env.grid);
     }

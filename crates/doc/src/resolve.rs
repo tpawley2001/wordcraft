@@ -41,6 +41,10 @@ pub struct ResolvedChar {
     /// Kerning: the smallest font size, in points, that is kerned (`w:kern`); 0 = never kerned.
     #[serde(default)]
     pub kern: f32,
+    /// Fit Text (`w:fitText`): the run, or the runs next to it sharing the id, laid out exactly this
+    /// wide. `None` when unset or without a usable width.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fit_text: Option<crate::props::FitText>,
     /// A mark over or under each character (Font › Emphasis mark).
     #[serde(default)]
     pub emphasis: crate::props::EmphasisMark,
@@ -115,6 +119,10 @@ impl ResolvedChar {
             scale: c.scale.unwrap_or(100.0).clamp(1.0, 600.0),
             position: c.position.unwrap_or(0.0).clamp(-800.0, 800.0),
             kern: c.kern.filter(|k| k.is_finite()).unwrap_or(0.0).clamp(0.0, 1638.0),
+            fit_text: c
+                .fit_text
+                .filter(|f| f.width.is_finite() && f.width > 0.0)
+                .map(|f| crate::props::FitText { width: f.width.clamp(0.0, 1584.0), id: f.id }),
             emphasis: c.emphasis.unwrap_or_default(),
             ligatures: c.ligatures,
             num_form: c.num_form,
@@ -336,7 +344,7 @@ impl ResolvedPara {
             drop_cap: p.drop_cap.unwrap_or(0).min(10),
             drop_cap_margin: p.drop_cap_margin.unwrap_or(false),
             drop_cap_distance: p.drop_cap_distance.filter(|d| d.is_finite()).unwrap_or(0.0).clamp(0.0, MAX_DROP_CAP_DISTANCE),
-            drop_cap_font: p.drop_cap_font.clone().filter(|f| !f.trim().is_empty()),
+            drop_cap_font: p.drop_cap_font.as_deref().filter(|f| !f.trim().is_empty()).map(str::to_string),
             drop_cap_indent_first: p.drop_cap_indent_first.filter(|v| v.is_finite()).map(|v| v.clamp(-MAX_INDENT, MAX_INDENT)),
             drop_cap_sized: p.drop_cap_sized.unwrap_or(false),
             // Explicit zero dimensions cancel a frame; omitted dimensions still fit its text.
@@ -356,7 +364,7 @@ impl ResolvedPara {
             snap_to_grid: p.snap_to_grid.unwrap_or(true),
             indent_chars: [p.indent_left_chars, p.indent_right_chars, p.indent_first_chars]
                 .map(|c| c.filter(|c| c.is_finite()).unwrap_or(0.0).clamp(-MAX_CHARS, MAX_CHARS)),
-            div_id: p.div_id.clone(),
+            div_id: p.div_id.as_deref().map(str::to_string),
         }
     }
 }

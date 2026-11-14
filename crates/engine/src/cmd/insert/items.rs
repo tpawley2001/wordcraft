@@ -539,7 +539,7 @@ pub(super) fn drop_cap(s: &mut Session, v: &Value) -> CmdResult {
         p.drop_cap_margin = (!none && margin).then_some(true);
         let d = if kept && !distance_given { resolved.drop_cap_distance } else { distance };
         p.drop_cap_distance = (!none && d > 0.0).then_some(d);
-        p.drop_cap_font = if kept && !font_given { resolved.drop_cap_font } else { font.clone().filter(|_| !none) };
+        p.drop_cap_font = if kept && !font_given { resolved.drop_cap_font } else { font.clone().filter(|_| !none) }.map(String::into_boxed_str);
     })
 }
 
