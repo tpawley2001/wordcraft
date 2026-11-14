@@ -4,13 +4,17 @@ use std::sync::Arc;
 
 /// Move Paragraph Up / Down (Alt+Shift+Up/Down, ⌃⇧↑/↓ on macOS): the paragraphs the selection
 /// touches swap places with the paragraph above or below, in their own container (the story or
-/// a table cell), keeping their formatting and list membership; the selection moves with them.
-/// A selection that ends at the very start of a paragraph doesn't touch that paragraph (a
+/// a text box or note), keeping their formatting and list membership; the selection moves with
+/// them. A selection that ends at the very start of a paragraph doesn't touch that paragraph (a
 /// selected paragraph includes its mark). Refused at the top or bottom of the container, next to
-/// a table, across a section break and for a selection across table cells.
+/// a table and across a section break. In a table, as in Word, the rows the selection touches
+/// move instead, whatever paragraph of a cell the caret is in (`crate::cmd::table::move_rows`).
 pub(super) fn move_paras(s: &mut Session, up: bool) -> CmdResult {
     // Outline view: what's collapsed moves with its heading, past whole shown paragraphs.
     if let Some(r) = crate::cmd::outline::move_shown(s, up) {
+        return r;
+    }
+    if let Some(r) = crate::cmd::table::move_rows(s, up) {
         return r;
     }
     let (a, b) = s.sel.ordered();

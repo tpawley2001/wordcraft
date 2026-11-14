@@ -23,6 +23,7 @@ mod immersive_reader;
 mod style_area;
 mod bidi;
 mod browse_object;
+mod table_keys;
 mod building_blocks;
 mod clipboard_options;
 mod custom_prop_types;

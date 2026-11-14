@@ -31,7 +31,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("text.newParagraph", "New Paragraph", "Editing", new_paragraph).key("Enter"),
         CommandSpec::new("text.lineBreak", "Line Break", "Editing", |s, _| ins_char(s, '\n')).key("Shift+Enter"),
         CommandSpec::new("text.pageBreak", "Page Break", "Insert › Pages", |s, _| ins_char(s, PAGE_BREAK)).key("Mod+Enter"),
-        CommandSpec::new("text.columnBreak", "Column Break", "Layout › Breaks", |s, _| ins_char(s, COLUMN_BREAK)).key("Mod+Shift+Enter"),
+        CommandSpec::new("text.columnBreak", "Column Break", "Layout › Breaks", column_break).key("Mod+Shift+Enter"),
         CommandSpec::new("text.tab", "Tab", "Editing", tab).key("Tab"),
         CommandSpec::new("text.backTab", "Shift+Tab", "Editing", back_tab).key("Shift+Tab"),
         // A tab character even in a table cell, where Tab moves to the next cell (#3137); ⌥Tab on macOS.
@@ -73,4 +73,13 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("text.invertedExclamation", "Inverted Exclamation Mark", "Insert › Symbols", |s, _| ins_char(s, '¡'))
             .key(non_mac("Mod+Alt+Shift+1")),
     ]
+}
+
+/// Ctrl+Shift+Enter: a column break, but in a table cell Word splits the table there (in its
+/// first row it adds an empty paragraph above the table), as Table Layout › Split Table does.
+fn column_break(s: &mut Session, v: &Value) -> CmdResult {
+    if s.sel.focus.path.cell().is_some() {
+        return crate::cmd::table::split_table(s, v);
+    }
+    ins_char(s, COLUMN_BREAK)
 }

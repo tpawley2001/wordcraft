@@ -780,7 +780,8 @@ fn dark_page_inverts_lightness() {
 }
 
 /// #2534: legacy font effects are drawn: outlined letters are hollow; shadowed and embossed
-/// ones have a grey copy down-right, imprinted ones up-left.
+/// ones have a grey copy down-right (light grey a 24th of the size away for a shadow, darker grey
+/// 0.96 pt away for emboss), imprinted ones a darker grey copy 0.96 pt up-left.
 #[test]
 fn legacy_font_effects_are_drawn() {
     use wordcraft_doc::CharProps;
@@ -795,18 +796,19 @@ fn legacy_font_effects_are_drawn() {
         let l = layout(&d, &mut LayoutCache::new(), &LayoutOptions::default());
         render_area(&d, &l.pages[0], wordcraft_geom::Rect::new(-offset, -offset, 400.0, 150.0), SCALE, &RenderOptions::default())
     };
-    let counts = |img: &Rendered| {
+    let counts = |img: &Rendered, grey_value: u8| {
         let (mut dark, mut grey) = (0usize, 0usize);
         for (x, y) in (100..800).flat_map(|x| (100..300).map(move |y| (x, y))) {
             let v = img.pixel(x, y)[0];
             dark += usize::from(v < 60);
-            grey += usize::from((120..=136).contains(&v));
+            grey += usize::from(v.abs_diff(grey_value) <= 8);
         }
         (dark, grey)
     };
-    let (plain_dark, plain_grey) = counts(&shot(CharProps::default(), 0.0));
+    let plain = shot(CharProps::default(), 0.0);
+    let (plain_dark, _) = counts(&plain, 0);
     assert!(plain_dark > 2000, "plain {plain_dark}");
-    let (dark, _) = counts(&shot(CharProps { outline: Some(true), ..Default::default() }, 0.0));
+    let (dark, _) = counts(&shot(CharProps { outline: Some(true), ..Default::default() }, 0.0), 0);
     assert!(dark < plain_dark / 3, "outline is hollow: {dark} vs {plain_dark}");
     // An explicit fill keeps the reference on the same Art path as legacy effects.
     let reference = || CharProps {
@@ -814,23 +816,27 @@ fn legacy_font_effects_are_drawn() {
         ..Default::default()
     };
     let base = shot(reference(), 0.0);
-    for (c, sign) in [
-        (CharProps { shadow: Some(true), ..Default::default() }, 1.0),
-        (CharProps { emboss: Some(true), ..Default::default() }, 1.0),
-        (CharProps { engrave: Some(true), ..Default::default() }, -1.0),
+    // (effect, grey of its copy, the grey copy's offset on each axis in points)
+    for (c, grey_value, offset) in [
+        (CharProps { shadow: Some(true), ..Default::default() }, 192u8, SIZE / 24.0),
+        (CharProps { emboss: Some(true), ..Default::default() }, 153, 0.96),
+        (CharProps { engrave: Some(true), ..Default::default() }, 153, -0.96),
     ] {
+        let sign = offset.signum();
         let img = shot(c, 0.0);
-        let (_, grey) = counts(&img);
+        let (_, grey) = counts(&img, grey_value);
+        let (_, plain_grey) = counts(&plain, grey_value);
         assert!(grey > plain_grey * 2, "a grey copy: {grey} vs {plain_grey}");
-        // A 2pt diagonal displacement at 40pt has sqrt(2)pt on each axis.
         // Check the visible copy against its translated mask, accounting for occlusion.
-        let offset = sign * std::f32::consts::SQRT_2;
         let expected = shot(reference(), offset);
         let opposite = shot(reference(), -offset);
         let (mut visible, mut directional) = (0usize, 0usize);
         for (x, y) in (100..800).flat_map(|x| (100..300).map(move |y| (x, y))) {
             let v = img.pixel(x, y)[0];
-            if !(120..=136).contains(&v) || base.pixel(x, y)[0] != 255 {
+            // Emboss and engrave also draw a text-colour copy on the opposite side; its
+            // anti-aliased edges are not the grey copy.
+            let relief_copy = offset.abs() < 1.0 && opposite.pixel(x, y)[0] != 255;
+            if v.abs_diff(grey_value) > 8 || base.pixel(x, y)[0] != 255 || relief_copy {
                 continue;
             }
             visible += 1;
