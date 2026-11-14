@@ -24,6 +24,15 @@ pub(crate) fn dictionary_problem(lang: &str, unreadable: &Option<(std::path::Pat
     }
 }
 
+/// The window command for Word's window keys: `ui.maximizeWindow` (Ctrl+F10) maximizes a window
+/// that isn't and restores one that is; `ui.restoreWindow` (Alt+F5) restores a maximized window.
+#[allow(dead_code)] // Stub (P0466): remove once ui.maximizeWindow / ui.restoreWindow and the title bar call it.
+pub(crate) fn window_size_command(name: &str, maximized: bool) -> Option<egui::ViewportCommand> {
+    // Stub (P0466): the acceptance tests fail until this follows the table in the spec.
+    let _ = (name, maximized);
+    None
+}
+
 /// The Quick Access Toolbar's button for command `id`.
 pub(crate) fn qat_button_id(id: &str) -> egui::Id {
     egui::Id::unique(("qat_button", id))

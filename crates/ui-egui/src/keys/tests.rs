@@ -1396,3 +1396,37 @@ fn delete_previous_sentence_shortcut_dispatches_and_can_be_reassigned() {
     assert!(!app.session.sel.is_collapsed());
     assert_eq!(app.session.doc.para_at(&app.session.sel.focus).unwrap().text, "First. Second sentence.");
 }
+
+/// Word for Windows: Ctrl+F10 maximizes or restores the window, Alt+F5 restores it
+/// (support.microsoft.com, "Keyboard shortcuts in Word", function keys). Not on macOS.
+#[test]
+fn ctrl_f10_and_alt_f5_size_the_window() {
+    let ctrl = Modifiers { ctrl: true, command: true, ..Default::default() };
+    let alt = Modifiers { alt: true, ..Default::default() };
+    let mac = cfg!(target_os = "macos");
+    let max = (!mac).then(|| ("ui.maximizeWindow", json!({})));
+    let restore = (!mac).then(|| ("ui.restoreWindow", json!({})));
+    assert_eq!(ui_shortcut(Key::F10, ctrl), max);
+    assert_eq!(ui_shortcut(Key::F5, alt), restore);
+    // Other modifiers keep their own meanings (F10 KeyTips, Shift+F10 menu, Alt+F10 Selection pane, F5 Go To).
+    assert_eq!(ui_shortcut(Key::F10, Modifiers::NONE), None);
+    assert_eq!(ui_shortcut(Key::F10, Modifiers { shift: true, ..Default::default() }), None);
+    assert_eq!(ui_shortcut(Key::F10, alt), None);
+    assert_eq!(ui_shortcut(Key::F10, Modifiers { shift: true, ..ctrl }), None);
+    assert_eq!(ui_shortcut(Key::F5, Modifiers::NONE), None);
+    assert_eq!(ui_shortcut(Key::F5, ctrl), None);
+    assert_eq!(ui_shortcut(Key::F5, Modifiers { shift: true, ..alt }), None);
+}
+
+/// Ctrl+F10 toggles maximized; Alt+F5 only un-maximizes; anything else sends nothing.
+#[test]
+fn window_size_command_follows_word() {
+    use crate::chrome::window_size_command as cmd;
+    use egui::ViewportCommand::Maximized;
+    assert_eq!(cmd("ui.maximizeWindow", false), Some(Maximized(true)));
+    assert_eq!(cmd("ui.maximizeWindow", true), Some(Maximized(false)));
+    assert_eq!(cmd("ui.restoreWindow", true), Some(Maximized(false)));
+    assert_eq!(cmd("ui.restoreWindow", false), None);
+    assert_eq!(cmd("ui.collapseRibbon", true), None);
+    assert_eq!(cmd("ui.collapseRibbon", false), None);
+}
