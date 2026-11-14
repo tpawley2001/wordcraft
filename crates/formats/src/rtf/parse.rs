@@ -198,6 +198,11 @@ fn parse_full(bytes: &[u8], marks: bool) -> Result<Parsed, String> {
                 continue;
             }
             b'}' => {
+                // The document's own closing brace: `finalize` ends the last paragraph before
+                // the group's state is restored.
+                if r.depth() == 1 {
+                    break;
+                }
                 r.close();
                 if r.info_depth.is_some_and(|d| r.depth() < d) {
                     r.info_depth = None;
@@ -390,6 +395,12 @@ fn finalize(mut r: Reader) -> Parsed {
     // truncated file.
     r.flush_high_surrogate();
     r.finish_multibyte();
+    // A last paragraph with no `\par` (it ends at the closing brace, or the file is cut short)
+    // takes the paragraph properties in force there, as in Word, not those the open groups
+    // restore when they close.
+    if r.st.dest == Dest::Body && r.sub.is_none() && r.hf.is_none() && !r.in_shape_text() && (r.para_has || !r.para.inlines.is_empty()) {
+        r.end_para(false);
+    }
     while r.depth() > 0 {
         r.close();
     }

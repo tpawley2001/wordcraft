@@ -113,6 +113,11 @@ impl Reader {
         }
     }
 
+    /// Whether a shape's text is being read (its group is still open).
+    pub(super) fn in_shape_text(&self) -> bool {
+        self.shapes.iter().any(|s| s.parent.is_some())
+    }
+
     pub(super) fn close_shape_group(&mut self) {
         let depth = self.depth();
         if self.st.dest == Dest::ShapeValue
