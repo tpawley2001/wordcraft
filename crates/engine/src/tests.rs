@@ -16,6 +16,7 @@ mod indent_keys_word;
 mod convert_text_spaces_word;
 mod find_wildcards_word;
 mod formula_result_word;
+mod date_picture_word;
 mod insert_table_autofit;
 mod insert_table_remember;
 mod drop_cap_from_style;
