@@ -42,6 +42,7 @@ mod find_format;
 mod fit_one_page;
 mod font_sizes;
 mod shrink_font_steps;
+mod sort_number_date_word;
 mod grid_settings;
 mod fonts;
 mod includetext;
