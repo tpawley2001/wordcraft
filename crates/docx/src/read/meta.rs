@@ -104,6 +104,11 @@ impl Reader<'_> {
                 }
                 "w:trackRevisions" => s.track_changes = on_off(k),
                 "w:doNotTrackMoves" => s.track_moves = !on_off(k),
+                "w:characterSpacingControl" => {
+                    if let Some(v) = k.attr("w:val").and_then(wordcraft_doc::CharSpacing::from_ooxml) {
+                        s.char_spacing = v;
+                    }
+                }
                 "w:defaultTabStop" => {
                     if let Some(v) = tw(k, "w:val").filter(|v| *v > 0.0) {
                         s.default_tab = v.clamp(1.0, 1584.0);

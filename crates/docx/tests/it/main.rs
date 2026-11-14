@@ -6,6 +6,7 @@ mod body_level_breaks;
 mod border_lines;
 mod border_styles;
 mod cell_margin_inheritance;
+mod char_spacing_control;
 mod char_units;
 mod citations;
 mod comment_ids;

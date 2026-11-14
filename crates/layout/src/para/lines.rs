@@ -267,19 +267,19 @@ impl<'e> Breaker<'e> {
                 None
             },
             tab_origin: if settings.odf.is_some_and(|o| o.tabs_from_indent) { rp.indent_left } else { 0.0 },
-            shrink_spaces: rp.align == Align::Justify && settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT && !settings.rtf_justification,
+            shrink_spaces: rp.align == Align::Justify && settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT && !settings.squeezes_like_rtf(),
             wp_squeeze: rp.align == Align::Justify
                 && settings.wp_justification
                 && settings.compat_mode < wordcraft_doc::COMPAT_MODE_CURRENT
-                && !settings.rtf_justification,
-            rtf_squeeze: settings.rtf_justification
+                && !settings.squeezes_like_rtf(),
+            rtf_squeeze: settings.squeezes_like_rtf()
                 && match rp.align {
                     Align::Justify => true,
                     Align::Left => true,
                     Align::Right | Align::Center => !settings.wrap_trail_spaces,
                     Align::Distribute => false,
                 },
-            fixed_pitch: if settings.rtf_justification { pl.styles.iter().map(|st| st.face.is_fixed_pitch()).collect() } else { Vec::new() },
+            fixed_pitch: if settings.squeezes_like_rtf() { pl.styles.iter().map(|st| st.face.is_fixed_pitch()).collect() } else { Vec::new() },
             wrap_trail_spaces: settings.wrap_trail_spaces,
             expand_break: !settings.do_not_expand_shift_return,
             zone: Some(settings.hyphenation_zone).filter(|z| z.is_finite() && *z >= 0.0).unwrap_or(HYPHENATION_ZONE).min(1584.0),

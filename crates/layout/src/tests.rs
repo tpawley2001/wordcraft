@@ -20,6 +20,7 @@ mod cell_floats;
 mod column_break_line;
 mod column_top_float;
 mod complex;
+mod compress_punct_squeeze;
 mod continuous_resized_section;
 mod custom_note_marks;
 mod default_note_separator;
