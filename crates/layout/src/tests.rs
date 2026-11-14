@@ -60,6 +60,7 @@ mod hf_frame_flow;
 mod hf_top_bottom_wrap;
 mod hidden_mark_join;
 mod hidden_rows;
+mod highlight_at_least;
 mod highlight_band;
 mod html_auto_spacing_off;
 mod inline_drawing_reach;

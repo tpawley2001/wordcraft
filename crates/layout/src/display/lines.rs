@@ -506,6 +506,14 @@ fn comment_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
 
 /// Paint highlights and shading before glyphs, grouping adjacent equal character borders.
 fn character_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
+    // At-least spacing adds room above the text. Keep that room unfilled, using the
+    // tallest text's single-spacing extent and aligning the band with the line bottom.
+    let (band_top, band_height) = if matches!(ctx.pl.rp.line_spacing, wordcraft_doc::props::LineSpacing::AtLeast(_)) {
+        let height = (ctx.line.text_asc + ctx.line.text_desc).clamp(0.0, ctx.line.height.max(0.0));
+        (ctx.bottom - height, height)
+    } else {
+        (ctx.top, ctx.line.band_height())
+    };
     let mut open: Option<(Border, f32, f32)> = None;
     for k in ctx.line.c0..ctx.line.c1 {
         let (Some(cluster), Some(left), Some(right)) = (ctx.pl.clusters.get(k), ctx.line.cl_left(k), ctx.line.cl_right(k)) else { continue };
@@ -515,7 +523,7 @@ fn character_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
         }
         if let Some(color) = style.rc.highlight.or(style.rc.shading) {
             out.push(Draw::Fill {
-                rect: Rect::new(ctx.x + left, ctx.top, (right - left).max(0.0), ctx.line.band_height()),
+                rect: Rect::new(ctx.x + left, band_top, (right - left).max(0.0), band_height),
                 color,
                 alpha: ctx.alpha,
                 text_bg: true,
