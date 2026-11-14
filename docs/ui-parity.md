@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0485: Sort by Number and by Date read numbers and dates as Word does. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-13 · **Change:** trivial (P0463: File › Options › Advanced › Display › Style area pane width in Draft and Outline views: a column of paragraph style names at the left of the text (`view.styleAreaWidth`). Readiness estimates unchanged; earlier: P0337: Insert › Text from File with a Range brings only the comments, replies and footnotes/endnotes that range refers to, not every one of the other file. Readiness estimates unchanged)
@@ -195,6 +197,7 @@ The table Formula dialog (Table Layout › Data › Formula) has Formula, Number
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0485: Sort Text and Table Sort by Number and by Date as in Word: text without a number or date sorts first (last descending); a Number key reads the text arithmetically (`12 13` is 25, `3,5` is 8, `5%` is 0.05, `3-4` is -1, `(2)` is -2; `+4`, `2e3` and `x7y` are no number); a Date key also reads two-digit years, English month names, day-first dates (a first number over 12) and times. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0466: Ctrl+F10 toggles window maximization; Alt+F5 restores a maximized window on Linux/Windows. Gap #24 narrowed. |
 | 2026-11-12 | trivial | P0337: Insert › Text from File with a Range brings only the comments, replies and footnotes/endnotes that range refers to, not every one of the other file. Readiness estimates unchanged. |
 | 2026-11-11 | trivial | P0279: Home › Font › Font… Advanced has Word's OpenType Features group (Ligatures, Number spacing, Number forms, Stylistic sets, Use Contextual Alternates), each set on OK only when changed and blank while the selected text differs; Scale is one editable combo box (type a whole percent 1–600 or pick from the list); `format.state` reports `ligatures`, `numSpacing`, `numForm`, `stylisticSet` and `contextualAlternates`. Readiness estimates unchanged. |
