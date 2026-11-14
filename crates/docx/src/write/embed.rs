@@ -26,6 +26,11 @@ const MAX_MARKUP_BYTES: u64 = 128 * 1024 * 1024;
 /// What one part copy costs at least against [`MAX_COPY_BYTES`] (its relationships, entry…).
 const PART_COST: u64 = 4096;
 
+/// Content type of a font table part (ECMA-376 Part 1 §17.8.3.11).
+const CT_FONT_TABLE: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml";
+/// Most entries in a generated font table.
+const MAX_GENERATED_FONTS: usize = 4096;
+
 /// Where the stories' parts live: every story this writer makes is a part in `word/`.
 const STORY_PART: &str = "word/document.xml";
 
@@ -107,9 +112,18 @@ impl<'d> EmbedWriter<'d> {
     }
 
     /// Write the font table kept from a file, with the fonts it embeds, relating it from `rels`.
-    pub fn font_table(&mut self, rels: &mut PartRels) {
+    /// Without a kept table, a document whose settings class some fonts (roman, symbol; read from
+    /// a .doc, Word 6 or RTF font table) gets a generated one holding those classes.
+    pub fn font_table(&mut self, settings: &wordcraft_doc::Settings, rels: &mut PartRels) {
         let mut written = Vec::new();
-        let Some(root) = crate::package::font_table_key(self.passthrough).map(str::to_string) else { return };
+        let Some(root) = crate::package::font_table_key(self.passthrough).map(str::to_string) else {
+            if let Some(xml) = generated_font_table(&settings.roman_fonts, &settings.symbol_class_fonts) {
+                let name = self.alloc(crate::package::FONT_TABLE_PART);
+                rels.add(rt::FONT_TABLE, &relative(STORY_PART, &name), false);
+                self.parts.push((name, xml, CT_FONT_TABLE.to_string(), PartRels::default()));
+            }
+            return;
+        };
         if let Some(name) = self.copy_tree(&root, &mut HashMap::new(), &mut written) {
             rels.add(rt::FONT_TABLE, &relative(STORY_PART, &name), false);
         }
@@ -866,6 +880,54 @@ fn valid_part_name(name: &str) -> String {
         out.push(seg);
     }
     if out.is_empty() { "word/embeddings/part.xml".to_string() } else { out.join("/") }
+}
+
+/// A font table (`w:fonts`, ECMA-376 Part 1 §17.8.3.11) holding the font classes a document
+/// keeps: one `w:font` (§17.8.3.10) per distinct name, roman fonts first, then symbol fonts (a
+/// symbol font named like a roman one, ignoring case, shares its entry). A symbol font gets a
+/// pictorial PANOSE (family kind 5) and the symbol character set; a roman one the roman family.
+/// `None` when there is nothing to list.
+fn generated_font_table(roman: &[String], symbol: &[String]) -> Option<Vec<u8>> {
+    // (name, roman, symbol), in order.
+    let mut fonts: Vec<(&str, bool, bool)> = Vec::new();
+    let mut index: HashMap<String, usize> = HashMap::new();
+    let names = roman.iter().map(|n| (n, true)).chain(symbol.iter().map(|n| (n, false)));
+    for (name, is_roman) in names {
+        let name = name.trim();
+        if name.is_empty() {
+            continue;
+        }
+        let key = name.to_lowercase();
+        if let Some(f) = index.get(&key).and_then(|&i| fonts.get_mut(i)) {
+            if is_roman {
+                f.1 = true;
+            } else {
+                f.2 = true;
+            }
+            continue;
+        }
+        if fonts.len() >= MAX_GENERATED_FONTS {
+            continue;
+        }
+        index.insert(key, fonts.len());
+        fonts.push((name, is_roman, !is_roman));
+    }
+    if fonts.is_empty() {
+        return None;
+    }
+    let mut x = String::with_capacity(fonts.len().saturating_mul(96).saturating_add(160));
+    x.push_str(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#);
+    x.push_str("<w:fonts xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">");
+    for (name, is_roman, is_symbol) in fonts {
+        x.push_str(&format!("<w:font w:name=\"{}\">", xml::esc(name)));
+        if is_symbol {
+            x.push_str("<w:panose1 w:val=\"05000000000000000000\"/><w:charset w:val=\"02\"/>");
+        }
+        x.push_str(if is_roman { "<w:family w:val=\"roman\"/>" } else { "<w:family w:val=\"auto\"/>" });
+        x.push_str("</w:font>");
+    }
+    x.push_str("</w:fonts>");
+    Some(x.into_bytes())
 }
 
 #[cfg(test)]

@@ -173,7 +173,7 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
     );
     push_theme(doc, &mut rels, &mut entries, &mut overrides);
 
-    wr.embeds.font_table(&mut rels);
+    wr.embeds.font_table(&doc.settings, &mut rels);
 
     // Media referenced by some drawing (orphan parts would make the package suspect).
     let mut media_types: BTreeMap<String, &str> = BTreeMap::new();
