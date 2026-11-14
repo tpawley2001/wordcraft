@@ -222,14 +222,11 @@ Raised and lowered text under multiple line spacing now adds its shift growth on
 
 ## Revision history
 
-| Date | Change | Summary |
-|---|---|---|
-| 2026-11-14 | trivial | P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged. |
-
 > 2026-11-14 · trivial · P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged. |
 > 2026-11-13 · trivial · P0462: gap #7 narrowed: Table of Figures › Options… (Style, Table entry fields with Table identifier A–Z), `references.tableOfFigures` `style` / `entryFields`. Readiness estimates unchanged.
 

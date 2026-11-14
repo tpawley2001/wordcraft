@@ -42,6 +42,14 @@ fn cell_date(t: &str) -> Option<f64> {
 /// full or three letters, any case. A bare year, an impossible date or words are not dates.
 /// `now` gives (this year, today as days since 1970-01-01) and is only asked when needed.
 fn date_value(t: &str, now: &dyn Fn() -> (i64, i64)) -> Option<f64> {
+    let t = t.trim();
+    // Preserve Sort's existing ISO-prefix behavior: a trailing time is ignored for ISO dates.
+    // QUOTE needs the clock components, so date_parts_with tries the trailing time first.
+    if time_of_day(t).is_none()
+        && let Some((y, m, d)) = calendar_date(t, now)
+    {
+        return Some(crate::cmd::controls::days_from_civil(y, m, d) as f64);
+    }
     let date = date_parts_with(t, now)?;
     let (h, m, s) = date.time;
     Some(crate::cmd::controls::days_from_civil(date.year, date.month, date.day) as f64 + f64::from(h * 3600 + m * 60 + s) / 86_400.0)
@@ -68,9 +76,6 @@ fn date_parts_with(t: &str, now: &dyn Fn() -> (i64, i64)) -> Option<DateParts> {
         let (year, month, day) = crate::cmd::civil_from_days(now().1);
         return Some(DateParts { year, month, day, time });
     }
-    if let Some((year, month, day)) = calendar_date(t, now) {
-        return Some(DateParts { year, month, day, time: (0, 0, 0) });
-    }
     // A date followed by a time: the time is the last word, or the last two (`10:30 AM`).
     let words: Vec<&str> = t.split_whitespace().collect();
     for n in [1usize, 2] {
@@ -80,7 +85,8 @@ fn date_parts_with(t: &str, now: &dyn Fn() -> (i64, i64)) -> Option<DateParts> {
             return Some(DateParts { year, month, day, time });
         }
     }
-    None
+    let (year, month, day) = calendar_date(t, now)?;
+    Some(DateParts { year, month, day, time: (0, 0, 0) })
 }
 
 /// `t` when it is only digits, `len` of them.
@@ -458,6 +464,16 @@ mod tests {
 
     fn day(y: i64, m: u32, d: u32) -> Option<f64> {
         Some(days_from_civil(y, m, d) as f64)
+    }
+
+    #[test]
+    fn date_parts_keep_iso_time_without_changing_sort_values() {
+        let text = "2026-11-14 13:05:09";
+        assert_eq!(date_value(text, &now), day(2026, 11, 14));
+        let date = super::date_parts_with(text, &now).unwrap();
+        assert_eq!((date.year, date.month, date.day, date.time), (2026, 11, 14, (13, 5, 9)));
+        let date = super::date_parts_with("00:05", &now).unwrap();
+        assert_eq!((date.year, date.month, date.day, date.time), (2026, 11, 14, (0, 5, 0)));
     }
 
     #[test]

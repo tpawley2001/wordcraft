@@ -374,10 +374,6 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 ## Revision history
 
-| Date | Change | Summary |
-|---|---|---|
-| 2026-11-14 | trivial | P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged. |
-
 > 2026-11-14 · P0482: DOCX `w:fitText` (§17.3.2.14) read into `CharProps::fit_text` (`w:val` twips → points, optional `w:id`; a missing or invalid width drops the element) and written once in CT_RPr order, after `w:shd`, before `w:vertAlign` (`fit_text.rs`, `roundtrip.rs`).
 > 2026-11-13 · P0464: DOCX: the run holding `w:separator` / `w:continuationSeparator` (§17.11.1, §17.11.2) in footnotes.xml and endnotes.xml is written with the separator character's own `w:rPr` (none when it has none), so its size survives save and reopen (`note_separator_run_props.rs`).
 > 2026-11-13 · P0452: DOCX `w:suppressTopSpacingWP` (CT_Compat, after `w:noLeading`, before `w:wrapTrailSpaces`) read into `Settings::ext_leading_2pt_only` (`w:val="0"` off) and written once; on the settings merge path the model owns it like `w:wrapTrailSpaces`. A `.doc` with `Copts80.f2ptExtLeadingOnly` saved as DOCX had lost it, so its 12 pt Times New Roman lines were 13.8 pt instead of 14 pt and long files changed page count (234 -> 248 pages) (`crates/docx/tests/it/suppress_top_spacing_wp.rs`). Readiness estimates unchanged.
@@ -493,6 +489,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged. |
 | 2026-11-13 | trivial | P0465: `w:specVanish` read and written (Word's style separator) |
 | 2026-11-13 | trivial | P0464: DOCX: a note separator run keeps its own `w:rPr` (font, size) on save and reopen; a run without one is still written bare (`note_separator_run_props.rs`) |
 | 2026-11-13 | trivial | `.doc`: a separator story holding only its line keeps its line run's own font size (a 10-pt separator in an 11-pt document leaves one 10-pt line above the notes, as in Word, not an 11-pt one); a line run with no size or font of its own still means the default separator (`docbin::tests::note_separator_run_size`) |
