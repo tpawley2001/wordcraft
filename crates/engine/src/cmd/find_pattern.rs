@@ -20,6 +20,9 @@ pub const MAX_PATTERN: usize = 1024;
 const MAX_COUNT: u32 = 1000;
 /// Any character except a paragraph mark (`?`, `^?`, `*`).
 const ANY: &str = r"[^\r\x{1D}]";
+/// Any character in "Use wildcards" (`?`, `*`, `[!…]`): Word's wildcards match a paragraph mark
+/// too, so such a match can run into the next paragraph.
+const WILD_ANY: &str = r"[^\x{1D}]";
 
 /// How the Find what text is read.
 #[derive(Clone, Copy, Debug, Default)]
@@ -224,19 +227,34 @@ fn wildcards(query: &str) -> Result<(String, bool), String> {
     let chars: Vec<char> = query.chars().collect();
     let mut out = String::new();
     let mut spans = false;
+    // How many `(` groups are open.
+    let mut depth: u32 = 0;
     let mut i = 0;
     while let Some(&c) = chars.get(i) {
         i += 1;
         match c {
-            '?' => out.push_str(ANY),
+            '?' => {
+                spans = true;
+                out.push_str(WILD_ANY);
+            }
             '*' => {
-                out.push_str(ANY);
+                spans = true;
+                out.push_str(WILD_ANY);
                 out.push_str("*?");
             }
-            '@' => out.push('+'),
+            // One or more: as few as it can (Word's `@`; `{n,}` is greedy), but as many as it can
+            // inside a group, so `([A-Z][a-z]@)` captures a whole word for `\1`.
+            '@' => out.push_str(if depth > 0 { "+" } else { "+?" }),
             '<' => out.push_str(r"\b{start}"),
             '>' => out.push_str(r"\b{end}"),
-            '(' | ')' => out.push(c),
+            '(' => {
+                depth = depth.saturating_add(1);
+                out.push(c);
+            }
+            ')' => {
+                depth = depth.saturating_sub(1);
+                out.push(c);
+            }
             '{' => {
                 let end = chars.get(i..).and_then(|r| r.iter().position(|c| *c == '}')).ok_or("a { needs a closing }")?;
                 let body: String = chars.get(i..i + end).unwrap_or(&[]).iter().collect();
@@ -245,6 +263,7 @@ fn wildcards(query: &str) -> Result<(String, bool), String> {
             }
             '[' => {
                 let end = chars.get(i..).and_then(|r| r.iter().position(|c| *c == ']')).ok_or("a [ needs a closing ]")?;
+                spans |= chars.get(i) == Some(&'!');
                 out.push_str(&class(chars.get(i..i + end).unwrap_or(&[]))?);
                 i += end + 1;
             }
@@ -279,7 +298,8 @@ fn wildcards(query: &str) -> Result<(String, bool), String> {
     Ok((out, spans))
 }
 
-/// `{n}`, `{n,}`, `{n,m}` (and `{,m}`).
+/// `{n}`, `{n,}`, `{n,m}` (`;` also separates); `{,m}` has no lower bound and is refused, as
+/// in Word.
 fn count(body: &str) -> Result<String, String> {
     let bad = || format!("{{{body}}} is not a valid count");
     let num = |s: &str| -> Result<Option<u32>, String> {
@@ -296,7 +316,7 @@ fn count(body: &str) -> Result<String, String> {
     match body.split_once([',', ';']) {
         None => Ok(format!("{{{}}}", num(body)?.ok_or_else(bad)?)),
         Some((a, b)) => {
-            let a = num(a)?.unwrap_or(0);
+            let a = num(a)?.ok_or_else(bad)?;
             match num(b)? {
                 Some(b) if b < a => Err(bad()),
                 Some(b) => Ok(format!("{{{a},{b}}}")),
@@ -306,7 +326,8 @@ fn count(body: &str) -> Result<String, String> {
     }
 }
 
-/// `[abc]`, `[a-z]`, `[!x]`: the characters inside are literal.
+/// `[abc]`, `[a-z]`, `[!x]`: the characters inside are literal; `[!x]` also matches a paragraph
+/// mark.
 fn class(inner: &[char]) -> Result<String, String> {
     let (neg, inner) = match inner.split_first() {
         Some(('!', rest)) => (true, rest),
@@ -315,7 +336,7 @@ fn class(inner: &[char]) -> Result<String, String> {
     if inner.is_empty() {
         return Err("[ ] needs at least one character".into());
     }
-    let mut out = String::from(if neg { r"[^\r\x{1D}" } else { "[" });
+    let mut out = String::from(if neg { r"[^\x{1D}" } else { "[" });
     let mut i = 0;
     while let Some(&c) = inner.get(i) {
         let c = if c == '\\' && i + 1 < inner.len() {

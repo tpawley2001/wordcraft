@@ -316,3 +316,144 @@ pub(super) fn borders(s: &mut Session, v: &Value) -> CmdResult {
         }
     })
 }
+
+/// Table Layout › Distribute Rows, as in Word: the selected rows (every row of the table with just
+/// a caret in it) share the total of their laid-out heights equally, each set to that height At
+/// least (`w:trHeight w:hRule="atLeast"`); the other rows keep theirs.
+pub(super) fn distribute_rows(s: &mut Session) -> CmdResult {
+    let (tp, _, _) = cell(s)?;
+    let story = s.sel.focus.story;
+    let count = s.doc.table(story, &tp).map_or(0, |t| t.rows.len());
+    let mut rows: Vec<usize> = if s.sel.is_collapsed() && s.cell_range().is_none() {
+        (0..count).collect()
+    } else {
+        selected_cells(s).into_iter().map(|(r, _)| r).filter(|r| *r < count).collect()
+    };
+    rows.sort_unstable();
+    rows.dedup();
+    if rows.is_empty() {
+        return sel_result(s);
+    }
+    let total: f32 = laid_out_heights(s, story, &tp, &rows).iter().sum();
+    let h = (total / rows.len() as f32).clamp(1.0, 1584.0);
+    with_table(s, |t| {
+        for r in &rows {
+            if let Some(row) = t.rows.get_mut(*r) {
+                row.props.height = Some(h);
+                row.props.height_rule = HeightRule::AtLeast;
+            }
+        }
+    })
+}
+
+/// The heights `rows` of the table at `tp` have as laid out, in row height units (what an At
+/// least height would need to show them so): an exact row's set height; an auto or at-least row's
+/// content height or set height, whichever is larger. The layout draws an at-least or auto row
+/// with its cells' margins and border bands added, so a second layout with each such row set At
+/// least a little taller than drawn shows how much that adds. A row the layout doesn't draw
+/// counts its set height.
+fn laid_out_heights(s: &Session, story: wordcraft_doc::StoryRef, tp: &Path, rows: &[usize]) -> Vec<f32> {
+    let Some(t) = s.doc.table(story, tp) else { return Vec::new() };
+    let count = t.rows.len();
+    let set = |r: usize| t.rows.get(r).and_then(|row| row.props.height).filter(|h| h.is_finite() && *h > 0.0);
+    let exact = |r: usize| t.rows.get(r).is_some_and(|row| row.props.height_rule == HeightRule::Exact) && set(r).is_some();
+    let drawn = drawn_row_heights(&s.output_layout_of(&s.doc, false, false, false), &s.doc, story, tp, count);
+    // The probe: every measured auto or at-least row set At least 1pt taller than drawn.
+    let mut probe = s.doc.clone();
+    let mut probed: Vec<Option<f32>> = vec![None; count];
+    if let Ok(pt) = probe.table_mut(story, tp) {
+        for &r in rows {
+            if let (false, Some(Some(d)), Some(row), Some(slot)) = (exact(r), drawn.get(r), pt.rows.get_mut(r), probed.get_mut(r)) {
+                let h = (d + 1.0).min(1584.0);
+                row.props.height = Some(h);
+                row.props.height_rule = HeightRule::AtLeast;
+                *slot = Some(h);
+            }
+        }
+    }
+    let after = if probed.iter().any(Option::is_some) {
+        drawn_row_heights(&s.output_layout_of(&probe, false, false, false), &probe, story, tp, count)
+    } else {
+        Vec::new()
+    };
+    rows.iter()
+        .map(|&r| {
+            if exact(r) {
+                return set(r).unwrap_or(0.0);
+            }
+            let inner = match (drawn.get(r).copied().flatten(), probed.get(r).copied().flatten(), after.get(r).copied().flatten()) {
+                (Some(d), Some(h), Some(a)) => Some(d - (a - h).max(0.0)),
+                _ => None,
+            };
+            match (inner, set(r)) {
+                (Some(i), Some(h)) => i.max(h),
+                (Some(i), None) => i.max(0.0),
+                (None, h) => h.unwrap_or(0.0),
+            }
+        })
+        .collect()
+}
+
+/// Each row's height as drawn in `l` (summed over the pages a row splits across; a repeated
+/// header row counts once), or `None` for a row the layout doesn't draw.
+fn drawn_row_heights(
+    l: &wordcraft_layout::DocLayout,
+    doc: &wordcraft_doc::Document,
+    story: wordcraft_doc::StoryRef,
+    tp: &Path,
+    count: usize,
+) -> Vec<Option<f32>> {
+    let mut out: Vec<Option<f32>> = vec![None; count];
+    let mut seen: Vec<bool> = vec![false; count];
+    let header = |r: usize| doc.table(story, tp).and_then(|t| t.rows.get(r)).is_some_and(|row| row.props.header);
+    for page in 0..l.pages.len() {
+        for t in crate::cmd::table_resize::tables_on(l, doc, page) {
+            if t.story != story || t.table != *tp {
+                continue;
+            }
+            for d in &t.rows {
+                let hgt = (d.bottom - d.top).max(0.0);
+                let (Some(slot), Some(was)) = (out.get_mut(d.row), seen.get_mut(d.row)) else { continue };
+                if !hgt.is_finite() || (*was && header(d.row)) {
+                    continue;
+                }
+                *was = true;
+                *slot = Some(slot.unwrap_or(0.0) + hgt);
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod distribute_tests {
+    use serde_json::json;
+    use wordcraft_doc::props::HeightRule;
+    use wordcraft_doc::{Document, Path, StoryRef};
+
+    use crate::Session;
+
+    /// Auto rows count as tall as the layout draws their content: (2 empty auto rows + 50) / 3, At least.
+    #[test]
+    fn auto_rows_count_their_laid_out_height() {
+        let mut s = Session::new(Document::new());
+        s.run("insert.table", &json!({"rows": 3, "cols": 1})).unwrap();
+        let ti = s.doc.body.iter().position(|b| b.as_table().is_some()).unwrap();
+        s.run("caret.set", &json!({"pos": {"story": "body", "path": [ti, 2, 0, 0], "off": 0}})).unwrap();
+        s.run("table.rowHeight", &json!({"height": 50.0, "rule": "exact"})).unwrap();
+        let heights = super::laid_out_heights(&s, StoryRef::Body, &Path::top(ti), &[0, 1, 2]);
+        let (a, b) = (heights[0], heights[1]);
+        assert!(a > 5.0 && a < 40.0, "an empty auto row is a line tall, got {a}");
+        assert!((a - b).abs() < 0.01 && (heights[2] - 50.0).abs() < 0.01, "{heights:?}");
+        s.run("table.distributeRows", &json!({})).unwrap();
+        let want = (a + b + 50.0) / 3.0;
+        let t = s.doc.body[ti].as_table().unwrap();
+        for r in &t.rows {
+            assert!((r.props.height.unwrap() - want).abs() < 0.01, "{:?} vs {want}", r.props.height);
+            assert_eq!(r.props.height_rule, HeightRule::AtLeast);
+        }
+        // Each row now shows that height: the empty rows' content is shorter than it.
+        let after = super::laid_out_heights(&s, StoryRef::Body, &Path::top(ti), &[0, 1, 2]);
+        assert!(after.iter().all(|h| (h - want).abs() < 0.01), "{after:?} vs {want}");
+    }
+}

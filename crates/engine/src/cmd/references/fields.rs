@@ -1,6 +1,6 @@
 use super::numbers::{body_bookmark_paths, para_numbers, ref_number};
 use super::properties::{
-    BodyCounts, bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property_arg,
+    BodyCounts, bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_field_result, date_picture, doc_property_arg,
     doc_property_names_pages, doc_property_names_text_count, doc_property_result, new_property_value, set_summary_property, summary_property,
     text_result,
 };
@@ -281,8 +281,70 @@ struct SeqCount {
     seq: std::collections::HashMap<String, (u32, u32)>,
     /// Text boxes already counted: a story shown twice, or inside itself, counts once.
     boxes: std::collections::HashSet<u32>,
+    /// Per bookmark (lower-cased name): every sequence's number where the bookmark ends.
+    marks: std::collections::HashMap<String, std::collections::HashMap<String, u32>>,
+    /// The bookmark numbers of an earlier walk, for a SEQ naming a bookmark that ends after it.
+    known: Option<std::collections::HashMap<String, std::collections::HashMap<String, u32>>>,
+    /// Whether a SEQ named a bookmark, so the walk runs again with [`SeqCount::known`].
+    wants_marks: bool,
     out: Vec<FieldResult>,
 }
+
+impl SeqCount {
+    /// Count one SEQ field and give its new result (`None` when it is locked). Identifiers ignore
+    /// case; `\r n` takes `n` without its sign or fraction; `\h` hides the result unless a `\*`
+    /// number format is there; a bookmark argument gives the sequence's number at the end of that
+    /// bookmark and doesn't count; no identifier gives [`NO_SEQUENCE`] (measured in Word 365).
+    fn seq_result(&mut self, f: &FieldCode, instr: &str, locked: bool) -> Option<String> {
+        let Some(id) = f.args.first().map(|a| a.to_lowercase()) else {
+            return (!locked).then(|| NO_SEQUENCE.to_string());
+        };
+        let fmt = wordcraft_layout::fields::format_switch(instr);
+        let show = |n: u32| match f.arg('#') {
+            Some(picture) => crate::cmd::table_formula::format_picture(f64::from(n), picture),
+            None => wordcraft_layout::fields::field_number(instr, fmt.unwrap_or_default(), n),
+        };
+        if let Some(mark) = f.args.get(1) {
+            self.wants_marks = true;
+            if locked {
+                return None;
+            }
+            let Some(known) = &self.known else { return Some(String::new()) };
+            return Some(match known.get(&mark.to_lowercase()) {
+                Some(at) => show(at.get(&id).copied().unwrap_or(0)),
+                None => BOOKMARK_NOT_DEFINED.to_string(),
+            });
+        }
+        let restart = f.arg('s').and_then(|l| l.parse::<usize>().ok()).and_then(|l| l.checked_sub(1)).and_then(|l| self.headings.get(l)).copied();
+        let n = self.seq.entry(id).or_insert((0, 0));
+        if let Some(epoch) = restart
+            && n.1 != epoch
+        {
+            *n = (0, epoch);
+        }
+        let reset = f.arg('r').and_then(|r| r.parse::<f64>().ok()).filter(|r| r.is_finite());
+        if let Some(r) = reset {
+            // In range after the clamp, so the cast neither wraps nor saturates unexpectedly.
+            n.0 = r.abs().trunc().min(f64::from(u32::MAX)) as u32;
+        } else if !f.has('c') {
+            n.0 = n.0.saturating_add(1);
+        }
+        let value = n.0;
+        if locked {
+            return None;
+        }
+        Some(if f.has('h') && fmt.is_none() { String::new() } else { show(value) })
+    }
+
+    /// Record every sequence's number where bookmark `name` ends.
+    fn mark(&mut self, name: &str) {
+        let at = self.seq.iter().map(|(k, v)| (k.clone(), v.0)).collect();
+        self.marks.insert(name.to_lowercase(), at);
+    }
+}
+
+/// What Word shows for a SEQ field without a sequence identifier.
+pub const NO_SEQUENCE: &str = "Error! No sequence specified.";
 
 /// The fresh results of LISTNUM and AUTONUM* fields (locked or unlocked) and unlocked SEQ fields
 /// in the body and in the text boxes anchored there
@@ -291,7 +353,18 @@ struct SeqCount {
 /// SEQ keeps its result but still counts, `\r` included; a SEQ in a tracked deletion keeps its
 /// result and doesn't count, with markup shown or not (measured in Word for Windows, exporting).
 fn seq_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
-    let mut count = SeqCount::default();
+    let first = seq_walk(doc, None);
+    if !first.wants_marks {
+        return first.out;
+    }
+    // A SEQ naming a bookmark shows the number where the bookmark ends, which may come later:
+    // walk again with the first walk's bookmark numbers (such a SEQ doesn't count, so they hold).
+    seq_walk(doc, Some(first.marks)).out
+}
+
+/// One walk of the body in order, numbering its SEQ, LISTNUM and AUTONUM fields ([`seq_results`]).
+fn seq_walk(doc: &wordcraft_doc::Document, known: Option<std::collections::HashMap<String, std::collections::HashMap<String, u32>>>) -> SeqCount {
+    let mut count = SeqCount { known, ..SeqCount::default() };
     for path in doc.para_paths(StoryRef::Body) {
         let Some(p) = doc.para(StoryRef::Body, &path) else { continue };
         if let Some(l) = heading_style_level(p) {
@@ -306,7 +379,7 @@ fn seq_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
         }
         count_seq(doc, StoryRef::Body, &path, p, &mut count);
     }
-    count.out
+    count
 }
 
 /// Number the SEQ fields of paragraph `p` (at `path` in `story`) and of the text boxes anchored in it.
@@ -325,6 +398,9 @@ fn count_seq(doc: &wordcraft_doc::Document, story: StoryRef, path: &Path, p: &Pa
                     }
                 }
             }
+        }
+        if let InlineObject::BookmarkEnd { name } = o {
+            count.mark(name);
         }
         let InlineObject::Field { instr, locked, .. } = o else { continue };
         let f = FieldCode::parse(instr);
@@ -345,25 +421,9 @@ fn count_seq(doc: &wordcraft_doc::Document, story: StoryRef, path: &Path, p: &Pa
         if f.name != "SEQ" || in_deletion {
             continue;
         }
-        let Some(id) = f.args.first() else { continue };
-        let restart = f.arg('s').and_then(|l| l.parse::<usize>().ok()).and_then(|l| l.checked_sub(1)).and_then(|l| count.headings.get(l)).copied();
-        let n = count.seq.entry(id.clone()).or_insert((0, 0));
-        if let Some(epoch) = restart
-            && n.1 != epoch
-        {
-            *n = (0, epoch);
+        if let Some(r) = count.seq_result(&f, instr, *locked) {
+            count.out.push((story, path.clone(), k, r));
         }
-        if let Some(r) = f.arg('r').and_then(|r| r.parse::<u32>().ok()) {
-            n.0 = r;
-        } else if !f.has('c') {
-            n.0 = n.0.saturating_add(1);
-        }
-        if *locked {
-            continue;
-        }
-        let fmt = wordcraft_layout::fields::format_switch(instr).unwrap_or_default();
-        let r = if f.has('h') { String::new() } else { wordcraft_layout::fields::field_number(instr, fmt, n.0) };
-        count.out.push((story, path.clone(), k, r));
     }
 }
 
@@ -607,7 +667,7 @@ fn header_footer_results(doc: &wordcraft_doc::Document, ctx: Option<&OutputConte
                     "DATE" | "TIME" => {
                         let lang = field_lang(doc, p, k);
                         let pic = date_picture(instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
-                        Some(text_result(instr, crate::cmd::insert::format_date_in(&pic, lang.as_deref())))
+                        Some(date_field_result(instr, &pic, lang.as_deref()))
                     }
                     "QUOTE" => quote_literal(instr).map(|text| text_result(instr, text)),
                     // Output has no layout to count pages from: DOCPROPERTY Pages keeps its result.
@@ -997,7 +1057,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
                 "DATE" | "TIME" | "SAVEDATE" => {
                     let lang = field_lang(&s.doc, p, k);
                     let pic = date_picture(instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
-                    updates.push((k, text_result(instr, crate::cmd::insert::format_date_in(&pic, lang.as_deref()))));
+                    updates.push((k, date_field_result(instr, &pic, lang.as_deref())));
                 }
                 // After Insert › Field only a count field with no result yet (the new one) is counted.
                 "DOCPROPERTY" if !explicit && shows_text_count(o) => {}
@@ -1148,7 +1208,7 @@ pub fn refresh_date_fields(doc: &mut wordcraft_doc::Document) {
                 // Word's default picture when the code carries no `\@` switch.
                 let lang = field_lang(doc, p, k);
                 let pic = date_picture(instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
-                updates.push((k, text_result(instr, crate::cmd::insert::format_date_in(&pic, lang.as_deref()))));
+                updates.push((k, date_field_result(instr, &pic, lang.as_deref())));
             }
             if updates.is_empty() {
                 continue;

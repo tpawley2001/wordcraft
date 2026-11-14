@@ -90,15 +90,13 @@ pub fn format_result(v: f64) -> String {
 }
 
 /// A result with no `\#` picture and no operand look, in `lang`: two decimals at most, trailing
-/// zeros and a bare decimal point dropped, for English or no language. Other languages keep their
+/// zeros dropped (a fractional result rounded to zero keeps `0.0`), for English or no language. Other languages keep their
 /// two decimals (`3,50`), as before (not measured).
 fn format_plain(v: f64, lang: Option<&str>) -> String {
-    let text = wordcraft_doc::locale_number::format_number(v, lang);
-    if !scans_text(lang) || !text.contains('.') {
-        return text;
+    if !scans_text(lang) {
+        return wordcraft_doc::locale_number::format_number(v, lang);
     }
-    let trimmed = text.trim_end_matches('0').trim_end_matches('.');
-    if trimmed == "-0" || trimmed.is_empty() { "0".to_string() } else { trimmed.to_string() }
+    format_look(v, Look { decimals: 2, literal_only: true, ..Look::default() })
 }
 
 /// The text a formula field shows: its result under its `\#` numeric picture when it has one (see
@@ -325,6 +323,8 @@ struct Look {
     parens: bool,
     /// The most decimals written in one number (a `%` adds two).
     decimals: usize,
+    /// Only literal decimals: no minimum of two places from cell or bookmark formatting.
+    literal_only: bool,
 }
 
 /// Whether operand text in `lang` is read number by number with [`scan_operand`]: English, or no
@@ -414,19 +414,48 @@ fn scan_operand(text: &str) -> (f64, Look) {
     (sum, look)
 }
 
+/// Round the shortest decimal representation, so binary approximation does not move a half
+/// below the tie. Finite f64 display and the bounded precision keep the digit buffer small.
+fn decimal_digits(value: f64, places: usize) -> String {
+    let text = value.abs().to_string();
+    let (whole, frac) = text.split_once('.').unwrap_or((&text, ""));
+    let mut digits: Vec<u8> = whole.bytes().chain(frac.bytes().take(places)).collect();
+    digits.resize(whole.len() + places, b'0');
+    if frac.as_bytes().get(places).is_some_and(|d| *d >= b'5') {
+        let mut carry = true;
+        for digit in digits.iter_mut().rev() {
+            if *digit == b'9' {
+                *digit = b'0';
+            } else {
+                *digit += 1;
+                carry = false;
+                break;
+            }
+        }
+        if carry {
+            digits.insert(0, b'1');
+        }
+    }
+    let mut result: String = digits.into_iter().map(char::from).collect();
+    if places > 0 {
+        result.insert(result.len().saturating_sub(places), '.');
+    }
+    result
+}
+
 /// The text of a formula result with the look of the operands it came from: a `$` operand gives
 /// `$` and at least two decimals (more when the operand wrote more), a thousands separator groups
 /// the result's whole part, parentheses show a negative result as `(4)` (and so does a currency
 /// result: `$5 - 10` is `($5.00)`), and otherwise the result keeps at least as many decimals as the
-/// operand wrote, trailing zeros dropped. A plain look shows as [`format_result`] does.
+/// operand wrote, trailing zeros dropped. Literal-only looks use exactly their written precision.
 fn format_look(value: f64, look: Look) -> String {
-    if look == Look::default() {
-        return format_result(value);
-    }
-    let places = look.decimals.clamp(2, 15);
-    let digits = format!("{:.*}", places, value.abs());
+    let minimum = if look.literal_only { 0 } else { 2 };
+    let places = look.decimals.clamp(minimum, MAX_FORMULA);
+    let digits = decimal_digits(value, places);
     let (whole, frac) = digits.split_once('.').unwrap_or((digits.as_str(), ""));
     let frac = if look.currency { frac } else { frac.trim_end_matches('0') };
+    let zero = digits.chars().all(|c| matches!(c, '0' | '.'));
+    let frac = if frac.is_empty() && zero && value.fract() != 0.0 { "0" } else { frac };
     let mut body = if look.thousands { group_thousands(whole) } else { whole.to_string() };
     if !frac.is_empty() {
         body.push('.');
@@ -435,7 +464,6 @@ fn format_look(value: f64, look: Look) -> String {
     if look.currency {
         body.insert(0, '$');
     }
-    let zero = digits.chars().all(|c| matches!(c, '0' | '.'));
     match (value < 0.0 && !zero, look.parens || look.currency) {
         (true, true) => format!("({body})"),
         (true, false) => format!("-{body}"),
@@ -446,8 +474,8 @@ fn format_look(value: f64, look: Look) -> String {
 /// The look of a result worked out from two operands (or a function's arguments): the union of
 /// their looks, as Word shows it. A `$` on either makes it a currency, a thousands separator on
 /// either groups it, parentheses on either show a negative in parentheses, and it keeps the most
-/// decimals either wrote (`$5 + 3` is `$8.00`, `1,234.50 + 3` is `1,237.5`). A literal number has
-/// no look, so the other operand's look is kept.
+/// decimals either wrote (`$5 + 3` is `$8.00`, `1,234.50 + 3` is `1,237.5`). Literals contribute only their
+/// written decimal places; integer literals leave the other operand's look unchanged.
 fn merge_looks(a: Option<Look>, b: Option<Look>) -> Option<Look> {
     match (a, b) {
         (Some(x), Some(y)) => Some(Look {
@@ -455,6 +483,7 @@ fn merge_looks(a: Option<Look>, b: Option<Look>) -> Option<Look> {
             thousands: x.thousands || y.thousands,
             parens: x.parens || y.parens,
             decimals: x.decimals.max(y.decimals),
+            literal_only: x.literal_only && y.literal_only,
         }),
         (x, None) => x,
         (None, y) => y,
@@ -468,7 +497,7 @@ fn syntax(msg: String) -> CmdError {
 /// Word's error for a token where an operand is expected: `Syntax Error, ` and the token as typed.
 fn misplaced(tok: &Tok) -> CmdError {
     let text = match tok {
-        Tok::Num(x) => format_result(*x),
+        Tok::Num(x, _) => format_result(*x),
         Tok::Name(name) => name.clone(),
         Tok::Op(c) => c.to_string(),
         Tok::Cmp(op) => (*op).to_string(),
@@ -480,7 +509,7 @@ fn misplaced(tok: &Tok) -> CmdError {
 /// `Missing Operator`, anything else is `Syntax Error, ` and the token.
 fn leftover(tok: &Tok) -> CmdError {
     match tok {
-        Tok::Num(_) | Tok::Name(_) => CmdError::Failed("Missing Operator".into()),
+        Tok::Num(..) | Tok::Name(_) => CmdError::Failed("Missing Operator".into()),
         _ => misplaced(tok),
     }
 }
@@ -506,7 +535,7 @@ fn finite(x: f64) -> Result<f64, CmdError> {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Tok {
-    Num(f64),
+    Num(f64, usize),
     /// A name: a function, a keyword, a cell reference (letters then digits) or a bookmark,
     /// upper-cased.
     Name(String),
@@ -526,7 +555,8 @@ fn parse_num_token(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Resu
         }
     }
     let x = lit.parse::<f64>().map_err(|_| syntax(format!("`{lit}` isn't a number")))?;
-    Ok(Tok::Num(x))
+    let decimals = lit.split_once('.').map_or(0, |(_, frac)| frac.len());
+    Ok(Tok::Num(x, decimals))
 }
 
 fn parse_name_token(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Tok {
@@ -593,7 +623,7 @@ enum Side {
 
 #[derive(Clone, Debug)]
 enum Expr {
-    Num(f64),
+    Num(f64, usize),
     /// A cell: (row, grid column).
     Cell(usize, usize, String),
     /// A rectangle of cells: (row0, grid col0, row1, grid col1), inclusive.
@@ -711,7 +741,7 @@ impl Parser {
         };
         self.pos += 1;
         match tok {
-            Tok::Num(x) => Ok(Expr::Num(x)),
+            Tok::Num(x, decimals) => Ok(Expr::Num(x, decimals)),
             Tok::Op('(') => {
                 self.enter()?;
                 let inner = self.compare()?;
@@ -937,7 +967,13 @@ impl<'a> Here<'a> {
         let t = text.trim();
         let parens = t.starts_with('(') && t.ends_with(')');
         let (_, seen) = scan_operand(t);
-        let look = Look { currency: seen.currency, thousands: seen.thousands, parens, decimals: if seen.currency { seen.decimals } else { 0 } };
+        let look = Look {
+            currency: seen.currency,
+            thousands: seen.thousands,
+            parens,
+            decimals: if seen.currency { seen.decimals } else { 0 },
+            literal_only: false,
+        };
         Some(SideCell { x, look: Some(look), parens })
     }
 
@@ -978,7 +1014,7 @@ struct SideCell {
 }
 
 enum Val {
-    /// A number, with the look of the operands it came from (none for literals and functions).
+    /// A number, with the look of the operands it came from (literals contribute decimals only).
     Num(f64, Option<Look>),
     /// The numbers of a range or ABOVE/LEFT/RIGHT/BELOW, with the look of the cells they came from.
     List(Vec<f64>, Option<Look>),
@@ -986,7 +1022,7 @@ enum Val {
 
 fn eval(e: &Expr, here: &Here) -> Result<Val, CmdError> {
     Ok(match e {
-        Expr::Num(x) => Val::Num(*x, None),
+        Expr::Num(x, decimals) => Val::Num(*x, literal_look(*decimals)),
         Expr::Cell(row, col, name) => {
             let (x, look) = here.cell_operand(*row, *col, name)?;
             Val::Num(x, look)
@@ -1168,7 +1204,7 @@ fn gather(args: &[Expr], here: &Here) -> Result<Vec<f64>, CmdError> {
 
 /// A function's result and its look: SUM, COUNT, AVERAGE, MAX, MIN and PRODUCT carry the union of
 /// their arguments' looks (`SUM($5, 3)` is `$8.00`, `COUNT($5, 3)` is `$2.00`, as in Word); the
-/// other functions give a plain number.
+/// other functions retain only literal decimal precision.
 fn call(name: &str, args: &[Expr], here: &Here) -> Result<(f64, Option<Look>), CmdError> {
     if matches!(name, "SUM" | "COUNT" | "AVERAGE" | "MAX" | "MIN" | "PRODUCT") && !args.is_empty() {
         let (v, look) = gather_look(args, here)?;
@@ -1189,7 +1225,24 @@ fn call(name: &str, args: &[Expr], here: &Here) -> Result<(f64, Option<Look>), C
         };
         return Ok((x, look));
     }
-    call_plain(name, args, here).map(|x| (x, None))
+    let decimals = args.iter().map(literal_decimals).max().unwrap_or(0);
+    call_plain(name, args, here).map(|x| (x, literal_look(decimals)))
+}
+
+fn literal_look(decimals: usize) -> Option<Look> {
+    (decimals > 0).then_some(Look { decimals, literal_only: true, ..Look::default() })
+}
+
+/// Non-aggregate functions retain literal precision without inheriting cell adornments.
+/// The formula length and parser depth bound this walk.
+fn literal_decimals(expr: &Expr) -> usize {
+    match expr {
+        Expr::Num(_, decimals) => *decimals,
+        Expr::Neg(inner) => literal_decimals(inner),
+        Expr::Bin(_, a, b) | Expr::Cmp(_, a, b) => literal_decimals(a).max(literal_decimals(b)),
+        Expr::Call(_, args) => args.iter().map(literal_decimals).max().unwrap_or(0),
+        _ => 0,
+    }
 }
 
 /// The one number a single-argument function takes.
@@ -1239,7 +1292,7 @@ fn call_plain(name: &str, args: &[Expr], here: &Here) -> Result<f64, CmdError> {
         },
         // SUM, COUNT, AVERAGE, MAX, MIN and PRODUCT are worked out in `call`, with their look.
         "ABS" => Ok(one(name, args, here)?.abs()),
-        "INT" => Ok(one(name, args, here)?.floor()),
+        "INT" => Ok(one(name, args, here)?.trunc()),
         "SIGN" => {
             let x = one(name, args, here)?;
             Ok(if x == 0.0 { 0.0 } else { x.signum() })
@@ -1264,7 +1317,7 @@ fn call_plain(name: &str, args: &[Expr], here: &Here) -> Result<f64, CmdError> {
                 if y == 0.0 {
                     return Err(CmdError::Failed("division by zero".into()));
                 }
-                Ok(x - y * (x / y).floor())
+                Ok(x - y * (x / y).trunc())
             }
             _ => Err(CmdError::Failed("MOD takes two arguments".into())),
         },
@@ -1298,7 +1351,7 @@ mod tests {
         assert_eq!(format_result(0.1 + 0.2), "0.3");
         assert_eq!(format_result(5.0), "5");
         assert_eq!(format_result(-2.5), "-2.5");
-        assert_eq!(format_result(-0.001), "0", "a result that rounds to zero is 0");
+        assert_eq!(format_result(-0.001), "0.0", "a fractional result that rounds to zero keeps one decimal");
         assert_eq!(format_plain(3.5, Some("en-GB")), "3.5");
         assert_eq!(format_plain(3.5, Some("pl-PL")), "3,50", "other languages keep two decimals");
     }
@@ -1725,11 +1778,40 @@ mod tests {
     }
 
     #[test]
+    fn literal_precision_and_decimal_rounding_apply_in_table_fields() {
+        for (code, want) in [
+            ("=1/8", "0.13"),
+            ("=-1/8", "-0.13"),
+            ("=1/400", "0.0"),
+            ("=2^0.5", "1.4"),
+            ("=ABS(-1.005)", "1.005"),
+            ("=MOD(-7.5,2)", "-1.5"),
+            ("=INT(-0.5)", "0"),
+            ("=A1+0.005", "$5.005"),
+        ] {
+            assert_eq!(cell_field("$5", code), want, "{code}");
+        }
+        assert_eq!(cell_field("0.125", "=A1*1"), "0.125");
+        assert_eq!(cell_field("1.5", "=A1/4"), "0.38", "cell looks retain their two-place minimum");
+        assert_eq!(cell_field("0.125", "=A1+0.5"), "0.625", "the most operand decimals win");
+    }
+
+    #[test]
+    fn decimal_rounding_carries_and_normalizes_zero() {
+        assert_eq!(format_result(9.995), "10");
+        assert_eq!(format_result(-9.995), "-10");
+        assert_eq!(format_result(1.005), "1.01");
+        assert_eq!(format_result(-1.005), "-1.01");
+        assert_eq!(format_result(-0.0), "0");
+        assert_eq!(format_result(f64::MIN_POSITIVE), "0.0");
+    }
+
+    #[test]
     fn looks_merge_as_a_union_and_a_currency_negative_shows_in_parentheses() {
         let dollar = Look { currency: true, ..Look::default() };
         let comma = Look { thousands: true, decimals: 2, ..Look::default() };
         let merged = merge_looks(Some(dollar), Some(comma));
-        assert_eq!(merged, Some(Look { currency: true, thousands: true, parens: false, decimals: 2 }), "union of both");
+        assert_eq!(merged, Some(Look { currency: true, thousands: true, parens: false, decimals: 2, literal_only: false }), "union of both");
         assert_eq!(merge_looks(None, Some(dollar)), Some(dollar), "a literal keeps the other look");
         assert_eq!(merge_looks(None, None), None);
         assert_eq!(format_look(-5.0, dollar), "($5.00)", "a currency negative is in parentheses");

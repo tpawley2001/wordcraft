@@ -18,7 +18,8 @@ mod objects;
 pub(crate) use header_footer::saved_copy;
 use header_footer::{alignment_tab, create_hf, edit_hf, header_footer, new_empty_headers, strip_headers};
 pub use items::{
-    DropCapState, default_date_picture, drop_cap_state, format_date, format_date_at, format_date_in, format_date_parts, format_date_parts_in,
+    DropCapState, default_date_picture, drop_cap_state, format_date, format_date_at, format_date_field_in, format_date_in, format_date_parts,
+    format_date_parts_in,
 };
 use items::{cover_page, date_time, drop_cap, drop_cap_off, field, page_number, symbol};
 pub use links::{MAX_SCREEN_TIP, bookmark_name_ok, bookmark_range, bookmark_span, selected_link_tip};
