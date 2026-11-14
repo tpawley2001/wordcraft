@@ -8,7 +8,7 @@
 //! [`wordcraft_doc::effects::bands`], as for shapes.
 
 use kurbo::{Affine, BezPath, PathEl, Point, Shape};
-use wordcraft_doc::effects::Shadow;
+use wordcraft_doc::effects::{Shadow, ShadowCopy, ShadowExtra};
 use wordcraft_doc::props::Rgb;
 use wordcraft_doc::resolve::ResolvedChar;
 use wordcraft_doc::wordart::{TextEffects, TextFill, TextOutline, TextWarp};
@@ -145,10 +145,17 @@ fn shadow_transform(t: &wordcraft_doc::effects::ShadowTransform, b: kurbo::Rect)
     Affine::translate(o.to_vec2()) * m * Affine::translate(-o.to_vec2())
 }
 
+/// How far emboss and engrave move their two copies (points, each way), at every size.
+const RELIEF_OFFSET: f32 = 0.96;
+/// The largest size a legacy shadow's offset follows (guards absurd sizes; Word's sizes stop at 1638 pt).
+const MAX_LEGACY_SHADOW_SIZE: f32 = 1638.0;
+
 /// The effects a run is drawn with: its WordArt effects on top of the legacy font effects
 /// (`w:outline`, `w:shadow`, `w:emboss`, `w:imprint`, ECMA-376 §17.3.2), as Word's PDFs draw
-/// them: hollow letters outlined in `color`; a sharp grey copy behind, down-right (shadow,
-/// emboss) or up-left (imprint). `None`: plain text.
+/// them: hollow letters outlined with a 0.14 pt hairline in `color`; a sharp light grey copy a
+/// 24th of the size down-right (shadow); two sharp copies 0.96 pt either side, `color` up-left
+/// over grey down-right (emboss) or grey up-left over `color` down-right (imprint). `None`:
+/// plain text.
 pub fn run_effects(rc: &ResolvedChar, color: Rgb) -> Option<TextEffects> {
     if !(rc.outline || rc.shadow || rc.emboss || rc.engrave) {
         return rc.text_effects.as_deref().cloned();
@@ -156,12 +163,24 @@ pub fn run_effects(rc: &ResolvedChar, color: Rgb) -> Option<TextEffects> {
     let mut fx = TextEffects::default();
     if rc.outline {
         fx.fill = Some(TextFill::None);
-        fx.outline = Some(TextOutline { color: Some(color), width: 0.5, transparency: 0.0 });
+        // Word strokes hollow letters with a hairline at every size.
+        fx.outline = Some(TextOutline { color: Some(color), width: 0.14, transparency: 0.0 });
     }
-    if rc.shadow || rc.emboss || rc.engrave {
-        let distance = (rc.size / 20.0).clamp(0.5, 6.0);
-        let angle = if rc.engrave { 225.0 } else { 45.0 };
-        fx.shadow = Some(Shadow { color: Rgb(128, 128, 128), transparency: 0.0, blur: 0.0, distance, angle, rot_with_shape: false });
+    let copy = |color: Rgb, distance: f32, angle: f32| Shadow { color, transparency: 0.0, blur: 0.0, distance, angle, rot_with_shape: false };
+    if rc.emboss || rc.engrave {
+        // Two crisp copies a fixed 0.96 pt either side at every size: emboss puts the text
+        // colour up-left over a grey copy down-right; engrave swaps the two colours.
+        const GREY: Rgb = Rgb(153, 153, 153);
+        let (up_left, down_right) = if rc.emboss { (color, GREY) } else { (GREY, color) };
+        fx.shadow = Some(copy(up_left, RELIEF_OFFSET * std::f32::consts::SQRT_2, 225.0));
+        fx.shadow_extra = Some(ShadowExtra {
+            second: Some(ShadowCopy { dx: RELIEF_OFFSET, dy: RELIEF_OFFSET, color: down_right, transparency: 0.0 }),
+            transform: None,
+        });
+    } else if rc.shadow {
+        // A light grey copy moved a 24th of the size down and right (each way).
+        let size = if rc.size.is_finite() { rc.size.clamp(0.0, MAX_LEGACY_SHADOW_SIZE) } else { 0.0 };
+        fx.shadow = Some(copy(Rgb(192, 192, 192), size / 24.0 * std::f32::consts::SQRT_2, 45.0));
     }
     if let Some(w) = &rc.text_effects {
         fx.overlay(w);
@@ -425,7 +444,8 @@ mod tests {
         let off = |c: CharProps| run_effects(&rc(c), red).and_then(|f| f.shadow).map(|s| s.offset()).unwrap();
         let (sx, sy) = off(CharProps { shadow: Some(true), ..Default::default() });
         assert!(sx > 0.5 && sy > 0.5, "down-right {sx} {sy}");
-        assert_eq!(off(CharProps { emboss: Some(true), ..Default::default() }), (sx, sy));
+        let (ex, ey) = off(CharProps { emboss: Some(true), ..Default::default() });
+        assert!((ex + 0.96).abs() < 0.01 && (ey + 0.96).abs() < 0.01, "emboss: a fixed 0.96 pt up-left {ex} {ey}");
         let (ix, iy) = off(CharProps { engrave: Some(true), ..Default::default() });
         assert!(ix < -0.5 && iy < -0.5, "up-left {ix} {iy}");
         // WordArt effects win over the legacy ones.
@@ -495,7 +515,7 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         };
-        assert_eq!(arts(&d, &opts), vec![0.5 + 20.0 * 0.03], "outlined and emboldened");
+        assert_eq!(arts(&d, &opts), vec![0.14 + 20.0 * 0.03], "outlined and emboldened");
         // Top to bottom: WordArt without upright characters keeps its effects; ideographs, drawn
         // upright, are drawn from their glyphs.
         d.last_section.text_direction = TextDirection::Down;
