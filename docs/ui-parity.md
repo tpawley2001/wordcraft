@@ -195,6 +195,7 @@ The table Formula dialog (Table Layout › Data › Formula) has Formula, Number
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0483: Increase/Decrease Font Size step by one point below 8 pt, preserving fractional sizes and stopping at 1 and 8; their steps skip 10.5 pt, as measured in Word. The Font Size box and one-point commands are unchanged. |
 | 2026-11-14 | trivial | P0484: Ctrl+T / Ctrl+Shift+T step the left indent over paragraph tab stops while preserving the first line; Ctrl+M / Ctrl+Shift+M step the leftmost edge over default stops, keeping hanging paragraphs out of the margin. List level changes and readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0466: Ctrl+F10 toggles window maximization; Alt+F5 restores a maximized window on Linux/Windows. Gap #24 narrowed. |
 | 2026-11-12 | trivial | P0337: Insert › Text from File with a Range brings only the comments, replies and footnotes/endnotes that range refers to, not every one of the other file. Readiness estimates unchanged. |
