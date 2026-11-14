@@ -1,6 +1,8 @@
 # WordCraft roadmap
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged; earlier: P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged; earlier: P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged)
 
@@ -182,8 +184,9 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
-- 2026-11-14: P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
+- 2026-11-14: P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged.
 
+- 2026-11-14: P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
 - 2026-11-14: P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged.
 - 2026-11-14: P0509: normal Find reads objects as Word does: `^f`, `^e` and `^2` find footnote and endnote marks, `^d` a whole field while field codes are shown, `^g` only drawings, `^a` and `^5` nothing; bookmark and comment anchors inside a word no longer stop it being found. Replace All deletes a matched note mark's note. Readiness estimates unchanged.
 - 2026-11-14: P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged.
@@ -1040,6 +1043,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0507: Word Count counts paragraphs holding a word, preserving object-only paragraphs and treating manual line breaks as part of their paragraph. Selection counts use the selected text in each paragraph. Readiness estimates unchanged. |
