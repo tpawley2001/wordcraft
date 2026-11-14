@@ -915,7 +915,8 @@ fn generated_font_table(roman: &[String], symbol: &[String]) -> Option<Vec<u8>> 
     if fonts.is_empty() {
         return None;
     }
-    let mut x = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
+    let mut x = String::with_capacity(fonts.len().saturating_mul(96).saturating_add(160));
+    x.push_str(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#);
     x.push_str("<w:fonts xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">");
     for (name, is_roman, is_symbol) in fonts {
         x.push_str(&format!("<w:font w:name=\"{}\">", xml::esc(name)));
