@@ -611,7 +611,8 @@ fn character_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
 
 /// A run border's box over one line of its group. The group's clusters already hold the
 /// border's room (space plus width) at its ends and the line holds it above and below, so the
-/// box's outer edge is the clusters' edge and the line's; the stroke lies inside it.
+/// box's sides stand inside the clusters' outer edges (their strokes reach exactly to them) and
+/// its top and bottom run along the line's edges between them.
 fn run_box(b: &Border, x0: f32, x1: f32, top: f32, bottom: f32, alpha: f32, out: &mut Vec<Draw>) {
     if crate::para::border_room(Some(b)) <= 0.0 {
         // No room was taken (an invisible border): the box as before.
@@ -620,9 +621,10 @@ fn run_box(b: &Border, x0: f32, x1: f32, top: f32, bottom: f32, alpha: f32, out:
     }
     let half = super::page::rule_width(b) / 2.0;
     let (l, r) = (x0 + half, (x1 - half).max(x0 + half));
-    let (t, bt) = (top + half, (bottom - half).max(top + half));
-    let flat = Border { space: 0.0, ..*b };
-    char_box(&flat, l, r, t, bt, alpha, out);
+    out.push(super::page::rule(x0, top, x1, top, b, alpha));
+    out.push(super::page::rule(x0, bottom, x1, bottom, b, alpha));
+    out.push(super::page::rule(l, top, l, bottom, b, alpha));
+    out.push(super::page::rule(r, top, r, bottom, b, alpha));
 }
 
 /// Where a list number's highlight, shading and border end: the line's text start when that lies
