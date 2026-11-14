@@ -143,7 +143,8 @@ const MAX_NEST: usize = 32;
 /// The explicit formatting characters of `p` (U+202A LRE, U+202B RLE, U+202D LRO, U+202E RLO
 /// and their U+202C PDF) written as `w:dir` / `w:bdo` elements, by byte offset. A pair is
 /// written so only when both ends are in the same hyperlink and no field, content control or
-/// comment range boundary lies between them; other characters stay text.
+/// comment range boundary lies between them, and neither end carries a tracked insertion or
+/// deletion (so the revision is written with the character); other characters stay text.
 pub(super) fn direction_elements(p: &Paragraph) -> HashMap<usize, DirElement> {
     let mut out = HashMap::new();
     if !p.text.chars().any(|c| ('\u{202A}'..='\u{202E}').contains(&c)) {
@@ -157,11 +158,16 @@ pub(super) fn direction_elements(p: &Paragraph) -> HashMap<usize, DirElement> {
     let mut k = 0usize;
     // Open characters: (offset, element, w:val, segment, written as an element).
     let mut stack: Vec<(usize, &'static str, &'static str, usize, bool)> = Vec::new();
+    // How many stack entries are written as elements, kept as we go so each check is O(1).
+    let mut nested = 0usize;
     for (at, c) in p.text.char_indices() {
         while runs.get(ri).is_some_and(|(r, _)| r.end <= at) {
             ri += 1;
         }
-        let here = runs.get(ri).filter(|(r, _)| r.start <= at).map(|(_, props)| &props.link);
+        let props = runs.get(ri).filter(|(r, _)| r.start <= at).map(|(_, props)| *props);
+        // A tracked insertion or deletion of the character itself must stay with it as text.
+        let revised = props.is_some_and(|c| c.ins.is_some() || c.del.is_some());
+        let here = props.map(|props| &props.link);
         if here.is_some() && link.is_some() && here != link {
             seg += 1;
         }
@@ -176,14 +182,20 @@ pub(super) fn direction_elements(p: &Paragraph) -> HashMap<usize, DirElement> {
             _ => None,
         };
         if let Some((tag, val)) = open {
-            let ok = stack.iter().filter(|e| e.4).count() < MAX_NEST;
+            let ok = !revised && nested < MAX_NEST;
+            if ok {
+                nested = nested.saturating_add(1);
+            }
             stack.push((at, tag, val, seg, ok));
         } else if c == '\u{202C}' {
-            if let Some((from, tag, val, s, true)) = stack.pop()
-                && s == seg
-            {
-                out.insert(from, DirElement::Open(tag, val));
-                out.insert(at, DirElement::Close(tag));
+            if let Some((from, tag, val, s, ok)) = stack.pop() {
+                if ok {
+                    nested = nested.saturating_sub(1);
+                }
+                if ok && s == seg && !revised {
+                    out.insert(from, DirElement::Open(tag, val));
+                    out.insert(at, DirElement::Close(tag));
+                }
             }
         } else if c == wordcraft_doc::para::OBJ {
             if matches!(
@@ -235,6 +247,34 @@ mod tests {
         let text = format!("{}x{}", "\u{202B}".repeat(1000), "\u{202C}".repeat(1000));
         let d = direction_elements(&Paragraph::with_text(&text, CharProps::default()));
         assert_eq!(d.len(), 2 * MAX_NEST);
+    }
+
+    #[test]
+    fn many_unpaired_openers_are_counted_in_linear_time() {
+        let text = format!("{}x", "\u{202B}".repeat(200_000));
+        let p = Paragraph::with_text(&text, CharProps::default());
+        let t = std::time::Instant::now();
+        let d = direction_elements(&p);
+        assert!(d.is_empty(), "no opener is closed: {}", d.len());
+        assert!(t.elapsed() < std::time::Duration::from_secs(1), "took {:?}", t.elapsed());
+    }
+
+    #[test]
+    fn sibling_pairs_never_count_toward_nesting() {
+        let text = "\u{202B}a\u{202C}".repeat(40);
+        let d = direction_elements(&Paragraph::with_text(&text, CharProps::default()));
+        assert_eq!(d.len(), 80);
+    }
+
+    #[test]
+    fn revised_ends_stay_text() {
+        let mut p = Paragraph::with_text("x\u{202B}abc\u{202C}y", CharProps::default());
+        let pdf = p.text.find('\u{202C}').unwrap();
+        p.format(pdf, pdf + 3, &|c| c.del = Some(1)).unwrap();
+        assert!(direction_elements(&p).is_empty());
+        let mut p = Paragraph::with_text("x\u{202B}abc\u{202C}y", CharProps::default());
+        p.format(4, 7, &|c| c.ins = Some(1)).unwrap();
+        assert_eq!(direction_elements(&p).len(), 2, "revised text between the ends is fine");
     }
 
     #[test]
