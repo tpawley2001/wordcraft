@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged; earlier: P0507: Word Count counts paragraphs holding a word, preserving object-only paragraphs and treating manual line breaks as part of their paragraph. Selection counts use the selected text in each paragraph. Readiness estimates unchanged)
@@ -239,6 +241,8 @@ Twenty more missing Office fonts, including Algerian, Constantia, Lucida Sans Un
 Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei, Microsoft YaHei, PMingLiU and Yu Gothic now use Word's measured line metrics (P0504; `fonts/tests/missing_font_line_east_asian.rs`). Localized names remain unmeasured; broader pagination differences in gap #4 remain open.
 
 ## Revision history
+
+> 2026-11-14 · trivial · P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
 
 > 2026-11-14 · trivial · P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged.
 

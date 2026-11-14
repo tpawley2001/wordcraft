@@ -1,5 +1,7 @@
 # Typing parity with Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.)
+
 > **Last reviewed:** 2026-10-11 · **Last updated:** 2026-11-14 · **Change:** trivial (in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows; earlier: Decrease Font Size steps one point below 8 pt and 10 pt above 72 pt; earlier: AutoFormat Now under Track Changes records a tracked deletion and insertion, skips locked content controls and labels inside field results; earlier: AutoFormat Now, Ctrl+Alt+K, applies quotes, dashes and list labels to existing text in one undo step)
 
 What Word does when you type, observed black-box (same keystrokes typed into Word and
@@ -14,7 +16,8 @@ overall picture is in [`target-app-parity.md`](target-app-parity.md).
 (Cmd+Shift+Backspace on macOS), not an observed Word default. It deletes from the caret
 back to the start of its sentence; at the start of a sentence it deletes the previous
 sentence, including its trailing spaces. It uses the same boundaries as Select Sentence
-(`.`, `!`, `?` and following spaces), not a new language-specific sentence segmenter.
+(`.`, `!`, `?` runs, closing `”`, `)` and `]`, then spaces, tabs or line breaks).
+Select Sentence (Ctrl+click) and F8 share these boundaries, including closers without a following space (`sentence_bounds_word::closing_quotes_and_brackets_end_the_sentence`, `a_closer_ends_the_sentence_even_without_a_space`, `tabs_and_line_breaks_after_the_end_belong_to_the_sentence`, `terminator_runs_abbreviations_and_quotes_as_word`).
 An existing selection is deleted normally. At the start of a paragraph or table cell it
 does nothing: paragraph marks and cell boundaries are preserved. Deletion uses the normal
 undo, tracked-changes and protection paths. The shortcut can be reassigned in Customize Keyboard.
@@ -632,6 +635,8 @@ DOCX and Undo/Redo (Leaf #152). No new Word or native UI comparison was run.
 With an F2 / Shift+F2 source pending, Enter places that rich text at the caret instead of splitting the paragraph (Windows/Linux shortcuts). Without a source, Enter keeps its ordinary behavior.
 
 ## Revision history
+
+> 2026-11-14 · trivial · P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
 
 | Date | Change | Summary |
 |---|---|---|

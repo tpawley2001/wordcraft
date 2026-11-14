@@ -616,39 +616,39 @@ impl Paragraph {
         }
         (a, e)
     }
-    /// Sentence around `off` (Ctrl+click): ends after `.`, `!`, `?` and following spaces.
+    /// Sentence around `off` (Ctrl+click): a run of `.`, `!`, `?`, then optional
+    /// closers (`”`, `)`, `]`) and spaces, tabs or line breaks ends a sentence if at
+    /// least one closer or whitespace follows. Trailing whitespace belongs to that
+    /// sentence; the paragraph end always ends the last sentence.
     pub fn sentence_at(&self, off: usize) -> (usize, usize) {
         let off = self.clamp(off);
-        let t = &self.text;
+        let mut chars = self.text.char_indices().peekable();
         let mut a = 0;
-        let mut prev_end = false;
-        for (i, c) in t.char_indices() {
-            if i > off {
+        while let Some((_, c)) = chars.next() {
+            if !matches!(c, '.' | '!' | '?') {
+                continue;
+            }
+            while chars.next_if(|(_, c)| matches!(c, '.' | '!' | '?')).is_some() {}
+            let mut separated = false;
+            while chars.next_if(|(_, c)| matches!(c, '”' | ')' | ']')).is_some() {
+                separated = true;
+            }
+            while chars.next_if(|(_, c)| matches!(*c, ' ' | '\t' | LINE_BREAK)).is_some() {
+                separated = true;
+            }
+            let Some(&(end, _)) = chars.peek() else {
                 break;
+            };
+            if separated && off < end {
+                return (a, end);
             }
-            if prev_end && c != ' ' {
-                a = i;
-            }
-            if matches!(c, '.' | '!' | '?') {
-                prev_end = true;
-            } else if c != ' ' {
-                prev_end = false;
+            // Preserve the existing caret-start behavior after an unseparated terminator
+            // ("Hello.World"), without ending a selection that starts before it.
+            if end <= off {
+                a = end;
             }
         }
-        let mut b = t.len();
-        // A caret on the space right after a sentence's end belongs to that sentence; a terminator
-        // directly followed by text ("Hello.World") doesn't end the sentence the caret is in.
-        let mut ended = t.get(..off).unwrap_or("").ends_with(['.', '!', '?']) && t.get(off..).unwrap_or("").starts_with(' ');
-        for (i, c) in t.get(off..).unwrap_or("").char_indices() {
-            if ended && c != ' ' {
-                b = off + i;
-                break;
-            }
-            if matches!(c, '.' | '!' | '?') {
-                ended = true;
-            }
-        }
-        (a, b)
+        (a, self.text.len())
     }
 }
 
