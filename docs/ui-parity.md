@@ -417,3 +417,4 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 ### Format Painter integration refresh, 2026-10-30
 
 Single-click release applies the armed painter to the target word without trailing spaces and disarms it. Explicit selections retain their scope (#1455, partial). Source and UI regressions are retained after the canvas/input module split. Earlier Windows pointer and browser qualification are historical; current-head hosted validation is pending, and native shortcut/Mint qualification is not newly claimed.
+| 2026-11-10 | trivial | P0191: Home › Font › Font… has Word's Underline style box ((none), Words only and the nine line styles), an Underline color field (Automatic or a colour, disabled with no underline) and Double strikethrough, which excludes Strikethrough; `format.state` reports `underlineStyle` and `doubleStrike`. Readiness estimates unchanged. |
