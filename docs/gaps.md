@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged.)
@@ -210,6 +212,10 @@ Strict DOCX graphics (gap #2): chart and SmartArt children and all relationship 
 Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text without the clipboard on Windows/Linux. Broader shortcut and UI gaps remain open.
 
 ## Revision history
+
+| Date | Change | Summary |
+|---|---|---|
+| 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged. |
 
 > 2026-11-13 · trivial · P0462: gap #7 narrowed: Table of Figures › Options… (Style, Table entry fields with Table identifier A–Z), `references.tableOfFigures` `style` / `entryFields`. Readiness estimates unchanged.
 

@@ -1136,7 +1136,13 @@ fn line_numbers(ctx: &mut Ctx, pb: &mut PageBuilder, pl: &ParaLayout, (l0, l1): 
             }
             let num = ctx.number_para(n);
             let w = num.lines.first().and_then(|l| l.xs.last().copied()).unwrap_or(10.0);
-            let dist = if ln.distance > 0.0 { ln.distance } else { 18.0 };
+            let dist = if ln.distance > 0.0 {
+                ln.distance
+            } else if pb.sect.columns.count >= 2 {
+                9.0
+            } else {
+                18.0
+            };
             let ly = y + (line.top - first.top) + (line.baseline - line.top) - num.lines.first().map(|l| l.baseline).unwrap_or(10.0);
             items.push(Placed::Lines {
                 story: DECOR_STORY,
