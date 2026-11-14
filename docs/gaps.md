@@ -1,6 +1,6 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0514: Ctrl+Space and Clear All Formatting keep highlighting; Ctrl+Space also removes the character style and Ctrl+Q a directly applied bullet or number, as measured in Word. Readiness estimates unchanged. Earlier: P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged; earlier: P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged)
 
@@ -243,6 +243,8 @@ Twenty more missing Office fonts, including Algerian, Constantia, Lucida Sans Un
 Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei, Microsoft YaHei, PMingLiU and Yu Gothic now use Word's measured line metrics (P0504; `fonts/tests/missing_font_line_east_asian.rs`). Localized names remain unmeasured; broader pagination differences in gap #4 remain open.
 
 ## Revision history
+
+> 2026-11-14 · trivial · P0514: Ctrl+Space and Clear All Formatting keep highlighting; Ctrl+Space also removes the character style and Ctrl+Q a directly applied bullet or number, as measured in Word. Readiness estimates unchanged.
 
 > 2026-11-14 · trivial · P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
 
