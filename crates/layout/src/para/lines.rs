@@ -1,7 +1,7 @@
 use super::bidi::{even_row, reorder_line};
 use super::grid::{Exclusion, Grid};
 use super::justify::{
-    HYPHENATION_ZONE, MAX_SPACE_SHRINK, RTF_MAX_SPACE_SHRINK, hyphen_glyph, rtf_space_room, shrink_line_spaces, space_room, wp_line_room,
+    HYPHENATION_ZONE, MAX_SPACE_SHRINK, RTF_MAX_SPACE_SHRINK, SpaceRoom, hyphen_glyph, rtf_space_room, shrink_line_spaces, space_room, wp_line_room,
     wp_squeeze_line,
 };
 use super::model::{ClKind, Cluster, Line, LineEnd, ParaEnv};
@@ -31,16 +31,18 @@ struct Breaker<'e> {
     /// spaces (`space_room`); never on lines with tabs.
     shrink_spaces: bool,
     /// A left, right, centred or justified paragraph of a document opened from RTF fits the word
-    /// that overruns the line by shrinking its single spaces (`rtf_space_room`) instead, when
-    /// they are all in fixed-pitch fonts; never on lines with tabs. With `\wraptrsp` left and
+    /// that overruns the line by shrinking its single spaces (`rtf_space_room`) instead, as far as
+    /// their fonts allow (`space_rooms`); never on lines with tabs. With `\wraptrsp` left and
     /// justified paragraphs only (the only ones measured).
     rtf_squeeze: bool,
     /// WordPerfect-style justification (`Settings::wp_justification`, below compatibility mode
     /// 15): a justified line fits a word that overruns it by a small share of the line's width
     /// (`wp_line_room`) and is squeezed to end at its edge (`wp_squeeze_line`); tabs or not.
     wp_squeeze: bool,
-    /// Whether each of the paragraph's styles is in a fixed-pitch font (for `rtf_squeeze` only).
-    fixed_pitch: Vec<bool>,
+    /// How far a single space in each of the paragraph's styles may shrink (for `rtf_squeeze`
+    /// only): half a space in a fixed-pitch font, down to half the average character width in a
+    /// proportional one, unless the document's proportional fonts don't squeeze.
+    space_rooms: Vec<SpaceRoom>,
     /// With `\wraptrsp` (`Settings::wrap_trail_spaces`) that word stays only when its first
     /// character overruns the edge by less than half the space before it. In every paragraph,
     /// the option also wraps trailing spaces ([`Scan::space_wraps`]).
@@ -124,12 +126,12 @@ struct Scan {
     space_w: f32,
     /// The width of the spaces before the line's first character.
     lead_space_w: f32,
-    /// The width of the line's single inner spaces so far (a run of two or more spaces doesn't
-    /// count: in RTF it keeps its width), how many of them are in a font that isn't fixed-pitch,
-    /// and the length, first space's width and whether that space is in a proportional font, of
-    /// the run of spaces just placed.
-    single_space_w: f32,
-    proportional_spaces: usize,
+    /// The room of the line's single inner spaces so far ([`SpaceRoom::room`]; a run of two or
+    /// more spaces doesn't count: in RTF it keeps its width), how many of them are in a font that
+    /// keeps the line from squeezing ([`SpaceRoom::Blocks`]), and the length, first space's room
+    /// and whether that space blocks, of the run of spaces just placed.
+    single_space_room: f32,
+    blocking_spaces: usize,
     space_run: (usize, f32, bool),
     /// Whether anything but spaces and markers is on the line yet.
     text_seen: bool,
@@ -279,7 +281,12 @@ impl<'e> Breaker<'e> {
                     Align::Right | Align::Center => !settings.wrap_trail_spaces,
                     Align::Distribute => false,
                 },
-            fixed_pitch: if settings.squeezes_like_rtf() { pl.styles.iter().map(|st| st.face.is_fixed_pitch()).collect() } else { Vec::new() },
+            space_rooms: if settings.squeezes_like_rtf() {
+                let proportional = settings.squeezes_proportional_spaces();
+                pl.styles.iter().map(|st| style_space_room(st, proportional)).collect()
+            } else {
+                Vec::new()
+            },
             wrap_trail_spaces: settings.wrap_trail_spaces,
             expand_break: !settings.do_not_expand_shift_return,
             zone: Some(settings.hyphenation_zone).filter(|z| z.is_finite() && *z >= 0.0).unwrap_or(HYPHENATION_ZONE).min(1584.0),
@@ -376,8 +383,8 @@ impl<'e> Breaker<'e> {
             decimal: None,
             space_w: 0.0,
             lead_space_w: 0.0,
-            single_space_w: 0.0,
-            proportional_spaces: 0,
+            single_space_room: 0.0,
+            blocking_spaces: 0,
             space_run: (0, 0.0, false),
             text_seen: false,
             has_tab: false,
@@ -723,7 +730,7 @@ impl<'e> Breaker<'e> {
         let justify = display.is_none() && ((rp.align == Align::Justify && stretch_end) || rp.align == Align::Distribute);
         // A line that only fits with shrunk spaces is shrunk, the last line of the paragraph too.
         // The RTF squeeze takes only the spaces after the line's last tab (counted from there).
-        let rtf_squeeze = self.rtf_squeeze && sc.proportional_spaces == 0 && sc.rtf_after_tab && sc.pending_tab.is_none();
+        let rtf_squeeze = self.rtf_squeeze && sc.blocking_spaces == 0 && sc.rtf_after_tab && sc.pending_tab.is_none();
         let shrink = display.is_none() && ((self.shrink_spaces && last_tab.is_none()) || rtf_squeeze) && slack < 0.0;
         if display.is_none() && self.wp_squeeze && slack < 0.0 {
             let room = wp_line_room(sc.left, sc.right_edge);
@@ -732,7 +739,8 @@ impl<'e> Breaker<'e> {
             let cap = if rtf_squeeze { RTF_MAX_SPACE_SHRINK } else { MAX_SPACE_SHRINK };
             let from = if rtf_squeeze { align_from } else { c0 };
             if let Some(xs) = sc.xs.get_mut(from - c0..) {
-                shrink_line_spaces(pl, xs, (from, c1), (content_end, slack), cap, (rtf_squeeze, rtf_squeeze));
+                let rooms = rtf_squeeze.then_some(self.space_rooms.as_slice());
+                shrink_line_spaces(pl, xs, (from, c1), (content_end, slack), cap, (rtf_squeeze, rtf_squeeze), rooms);
             }
         } else if justify && slack > 0.0 {
             justify_line(pl, &mut sc.xs, (c0, c1, align_from), (content_end, slack), rp.align == Align::Distribute);
@@ -867,6 +875,27 @@ struct Measure {
     text_desc: f32,
 }
 
+/// How far a single space in `st` may shrink in the RTF / Compress punctuation squeeze: half a
+/// space in a fixed-pitch font; in a proportional one down to half the font's average character
+/// width (OS/2 `xAvgCharWidth`) when `proportional` squeezing is on, else the line doesn't
+/// squeeze. A metric twin drawn for Times New Roman or Arial uses Word's average of the requested
+/// font: the twins store a wider one, which would leave no room where Word has some. A
+/// proportional face without an average has no room.
+fn style_space_room(st: &super::model::StyleRun, proportional: bool) -> SpaceRoom {
+    if st.face.is_fixed_pitch() {
+        return SpaceRoom::Half;
+    }
+    if !proportional {
+        return SpaceRoom::Blocks;
+    }
+    let avg_em = wordcraft_fonts::twin_avg_char_width_em(&st.rc.font, &st.face.family).or_else(|| st.face.avg_char_width_em());
+    let scale = if st.rc.scale.is_finite() && st.rc.scale > 0.0 { st.rc.scale / 100.0 } else { 1.0 };
+    match avg_em {
+        Some(em) if em.is_finite() && st.size.is_finite() => SpaceRoom::Average(em * st.size * scale),
+        _ => SpaceRoom::Average(f32::INFINITY),
+    }
+}
+
 /// Where the line's content ends: trailing spaces and markers hang.
 fn content_end(pl: &ParaLayout, sc: &Scan, c1: usize) -> f32 {
     let mut content_end = sc.xs.last().copied().unwrap_or(sc.line_start_x);
@@ -973,8 +1002,8 @@ impl Scan {
             // squeezed; spaces before it, or between two tabs, never count. After a centre,
             // right, decimal, bar or positional tab nothing is squeezed (unverified).
             self.rtf_after_tab = ptab.is_none() && stop.align == TabAlign::Left;
-            self.single_space_w = 0.0;
-            self.proportional_spaces = 0;
+            self.single_space_room = 0.0;
+            self.blocking_spaces = 0;
             self.space_run = (0, 0.0, false);
         }
         // A positional tab whose place the text has passed goes there on the next line
@@ -1093,7 +1122,7 @@ impl Scan {
         // each segment's font, glyphs and position for painting.
         let advance = pl.atomic_advance(j);
         let absorbs = self.absorbs(pl, advance);
-        let shrink = if bk.rtf_squeeze && self.rtf_after_tab && self.pending_tab.is_none() && self.proportional_spaces == 0 {
+        let shrink = if bk.rtf_squeeze && self.rtf_after_tab && self.pending_tab.is_none() && self.blocking_spaces == 0 {
             // The whole word decides, from the character that first crosses the edge on.
             let word_end = self.x + bk.widths.get(j).copied().unwrap_or(advance) - pl.auto_space_after(j);
             let first_end = match self.word_first_end {
@@ -1102,7 +1131,7 @@ impl Scan {
                 None => f32::NEG_INFINITY,
             };
             let first = bk.wrap_trail_spaces.then_some((first_end - self.right_edge, self.word_space));
-            rtf_space_room(self.single_space_w, word_end - self.right_edge, self.word_from, self.right_edge, first)
+            rtf_space_room(self.single_space_room, word_end - self.right_edge, self.word_from, self.right_edge, first)
         } else if bk.wp_squeeze {
             wp_line_room(self.left, self.right_edge)
         } else if bk.shrink_spaces && !self.has_tab {
@@ -1128,15 +1157,17 @@ impl Scan {
                 // A space joining a single one makes a run: neither counts any more.
                 match self.space_run.0 {
                     0 => {
-                        let proportional = bk.rtf_squeeze && !bk.fixed_pitch.get(c.style as usize).copied().unwrap_or(false);
-                        self.single_space_w += c.adv;
-                        self.proportional_spaces = self.proportional_spaces.saturating_add(usize::from(proportional));
-                        self.space_run.1 = c.adv;
-                        self.space_run.2 = proportional;
+                        let kind = if bk.rtf_squeeze { bk.space_rooms.get(c.style as usize).copied() } else { None };
+                        let blocks = kind == Some(SpaceRoom::Blocks);
+                        let room = kind.map_or(0.0, |k| k.room(c.adv));
+                        self.single_space_room += room;
+                        self.blocking_spaces = self.blocking_spaces.saturating_add(usize::from(blocks));
+                        self.space_run.1 = room;
+                        self.space_run.2 = blocks;
                     }
                     1 => {
-                        self.single_space_w -= self.space_run.1;
-                        self.proportional_spaces = self.proportional_spaces.saturating_sub(usize::from(self.space_run.2));
+                        self.single_space_room -= self.space_run.1;
+                        self.blocking_spaces = self.blocking_spaces.saturating_sub(usize::from(self.space_run.2));
                     }
                     _ => {}
                 }
@@ -1204,12 +1235,12 @@ impl Scan {
     /// squeeze: the line's single inner spaces (not the run of spaces after `end`) can give up
     /// the overrun.
     fn squeezed_into_line(&self, bk: &Breaker, end: f32) -> bool {
-        if !bk.rtf_squeeze || !self.rtf_after_tab || self.proportional_spaces > 0 {
+        if !bk.rtf_squeeze || !self.rtf_after_tab || self.blocking_spaces > 0 {
             return false;
         }
         // A single space just placed after `end` is counted among the singles; it trails.
         let trailing = if self.space_run.0 == 1 { self.space_run.1 } else { 0.0 };
-        end - self.right_edge < (self.single_space_w - trailing) * RTF_MAX_SPACE_SHRINK
+        end - self.right_edge < self.single_space_room - trailing
     }
 
     /// Whether `c`, at `j`, ends a field whose result's last item, just before it on this line, is

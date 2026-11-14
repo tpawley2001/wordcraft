@@ -1864,6 +1864,7 @@ mod info_company;
 mod info_props;
 mod jexpand;
 mod justification_flag;
+mod compat_pair;
 mod last_para_no_par;
 mod latent_styles;
 mod legacy_pn;

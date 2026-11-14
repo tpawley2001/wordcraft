@@ -161,3 +161,115 @@ fn a_proportional_font_keeps_todays_wrapping() {
         assert_eq!(line(align, ri, CharSpacing::CompressPunctuation), &S30[..S30.rfind(' ').unwrap()], "{align:?}: 0.125 pt overrun wraps");
     }
 }
+
+// Proportional fonts (P02-271). Microsoft 365 Word 16.0.20527, synthetic .docx files, mode 11 with
+// `compressPunctuation`: a space may shrink down to half the font's OS/2 average character width
+// (`xAvgCharWidth`) to keep the overrunning word; fixed-pitch fonts (space = average) keep the
+// half-a-space rule above. Word measured per space at 12 pt: Times New Roman .567-.575 pt, Arial
+// .697-.720 pt, Calibri none. `w:balanceSingleByteDoubleByteWidth` together with
+// `w:useWord97LineBreakRules` switches the proportional squeeze off (either alone doesn't); fixed
+// pitch still squeezes with both.
+
+const TNR_SPACE_EM: f32 = 512.0 / 2048.0;
+const TNR_AVG_EM: f32 = 821.0 / 2048.0;
+const ARIAL_SPACE_EM: f32 = 569.0 / 2048.0;
+const ARIAL_AVG_EM: f32 = 904.0 / 2048.0;
+
+#[test]
+fn compress_space_room_by_font() {
+    // (space width, average character width, room per space), all in points.
+    let cases = [
+        (TNR_SPACE_EM * 12.0, TNR_AVG_EM * 12.0, 0.594_727),
+        (TNR_SPACE_EM * 10.0, TNR_AVG_EM * 10.0, 0.495_605),
+        (TNR_SPACE_EM * 20.0, TNR_AVG_EM * 20.0, 0.991_211),
+        (ARIAL_SPACE_EM * 12.0, ARIAL_AVG_EM * 12.0, 0.685_547),
+        // Calibri at 12 pt: space 463/2048 em, average above twice that: no room.
+        (463.0 / 2048.0 * 12.0, 1048.0 / 2048.0 * 12.0, 0.0),
+        // Courier New at 12 pt: space = average = 1229/2048 em: half a space.
+        (1229.0 / 2048.0 * 12.0, 1229.0 / 2048.0 * 12.0, 3.600_586),
+    ];
+    for (space, avg, want) in cases {
+        let got = crate::para::compress_space_room(space, avg);
+        assert!((got - want).abs() < 1e-4, "space {space}, average {avg}: room {got}, want {want}");
+    }
+}
+
+#[test]
+fn twin_average_widths() {
+    use wordcraft_fonts::twin_avg_char_width_em as twin;
+    for face in ["Liberation Serif", "Tinos", "liberation serif"] {
+        assert_eq!(twin("Times New Roman", face), Some(TNR_AVG_EM), "Times New Roman drawn in {face}");
+    }
+    assert_eq!(twin("times new roman", "Tinos"), Some(TNR_AVG_EM));
+    for face in ["Liberation Sans", "Arimo"] {
+        assert_eq!(twin("Arial", face), Some(ARIAL_AVG_EM), "Arial drawn in {face}");
+    }
+    // The font itself, fonts that aren't twins, and twins whose own average already matches Word's.
+    for (req, face) in [
+        ("Times New Roman", "Times New Roman"),
+        ("Arial", "Arial"),
+        ("Times New Roman", "Source Serif 4"),
+        ("Arial", "Liberation Serif"),
+        ("Calibri", "Carlito"),
+        ("Georgia", "Liberation Serif"),
+    ] {
+        assert_eq!(twin(req, face), None, "{req} drawn in {face}");
+    }
+}
+
+#[test]
+fn squeezes_proportional_spaces_switches() {
+    let s = |mode: u32, cs: CharSpacing, rtf: bool, balance: bool, word97: bool| {
+        let mut s = wordcraft_doc::Settings { compat_mode: mode, char_spacing: cs, rtf_justification: rtf, ..Default::default() };
+        s.balance_sbcs_dbcs_width = balance;
+        s.use_word97_line_break_rules = word97;
+        s.squeezes_proportional_spaces()
+    };
+    assert!(s(11, CharSpacing::CompressPunctuation, false, false, false));
+    assert!(s(14, CharSpacing::CompressPunctuationAndJapaneseKana, false, false, false));
+    assert!(s(11, CharSpacing::CompressPunctuation, false, true, false), "balance alone still squeezes");
+    assert!(s(11, CharSpacing::CompressPunctuation, false, false, true), "Word 97 rules alone still squeeze");
+    assert!(!s(11, CharSpacing::CompressPunctuation, false, true, true), "the pair switches it off");
+    assert!(!s(15, CharSpacing::CompressPunctuation, false, false, false), "mode 15");
+    assert!(!s(11, CharSpacing::DoNotCompress, false, false, false), "no compression");
+    assert!(!s(15, CharSpacing::DoNotCompress, true, true, true), "RTF documents carry the pair");
+}
+
+/// [`first_line`] in Courier New with both pair flags on.
+fn probe_line_with_pair(p: &Probe, compat_mode: u32, char_spacing: CharSpacing) -> String {
+    let text = format!("{}{TAIL}", p.line);
+    let mut para = wordcraft_doc::Paragraph::with_text(&text, props("Courier New", p.size));
+    para.runs = vec![Run { len: text.len(), props: props("Courier New", p.size) }];
+    para.props.align = Some(p.align);
+    para.props.indent_right = Some(p.indent_right);
+    para.props.space_after = Some(0.0);
+    let mut d = Document::new();
+    d.last_section.page_w = p.page_width;
+    d.last_section.margin_left = LEFT;
+    d.last_section.margin_right = 36.0;
+    d.settings.rtf_justification = false;
+    d.settings.compat_mode = compat_mode;
+    d.settings.char_spacing = char_spacing;
+    d.settings.balance_sbcs_dbcs_width = true;
+    d.settings.use_word97_line_break_rules = true;
+    d.body = vec![wordcraft_doc::para_block(para)];
+    let l = layout(&d, &mut LayoutCache::new(), &LayoutOptions::default());
+    let para = l.pages[0].items.iter().find_map(|it| if let Placed::Lines { para, .. } = it { Some(para.clone()) } else { None }).unwrap();
+    let line = &para.lines[0];
+    text[line.start..line.stop].trim_end().to_string()
+}
+
+#[test]
+fn the_pair_keeps_fixed_pitch_squeezing() {
+    crate::test_fonts();
+    for p in PROBES {
+        let want = if p.kept { p.line } else { &p.line[..p.line.rfind(' ').unwrap()] };
+        assert_eq!(probe_line_with_pair(p, 11, CharSpacing::CompressPunctuation), want, "{} with the pair", p.name);
+        assert_eq!(
+            probe_line_with_pair(p, 11, CharSpacing::CompressPunctuation),
+            probe_line(p, 11, CharSpacing::CompressPunctuation).0,
+            "{}",
+            p.name
+        );
+    }
+}

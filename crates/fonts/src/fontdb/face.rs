@@ -391,6 +391,15 @@ impl FontFace {
     pub fn is_east_asian(&self) -> bool {
         self.skrifa().is_some_and(|f| east_asian_font(&f))
     }
+    /// The OS/2 table's average character width (`xAvgCharWidth`) in em, if the font has an OS/2
+    /// table with a usable value.
+    pub fn avg_char_width_em(&self) -> Option<f32> {
+        use skrifa::raw::TableProvider;
+        let f = self.skrifa()?;
+        let upem = f32::from(f.head().ok()?.units_per_em());
+        let avg = f32::from(f.os2().ok()?.x_avg_char_width());
+        (upem > 0.0 && avg > 0.0).then(|| avg / upem)
+    }
     /// Is this a fixed-pitch (monospaced) font? Its `post` table says so (`isFixedPitch`), or,
     /// without one, every printable ASCII character it maps has the same advance.
     pub fn is_fixed_pitch(&self) -> bool {

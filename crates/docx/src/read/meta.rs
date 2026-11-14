@@ -98,6 +98,8 @@ impl Reader<'_> {
                     s.no_leading = k.children("w:noLeading").any(on_off);
                     s.ext_leading_2pt_only = k.children("w:suppressTopSpacingWP").any(on_off);
                     s.wp_justification = k.children("w:wpJustification").any(on_off);
+                    s.balance_sbcs_dbcs_width = k.children("w:balanceSingleByteDoubleByteWidth").any(on_off);
+                    s.use_word97_line_break_rules = k.children("w:useWord97LineBreakRules").any(on_off);
                     s.no_tab_hang_ind = k.children("w:noTabHangInd").any(on_off);
                     s.do_not_expand_shift_return = k.children("w:doNotExpandShiftReturn").any(on_off);
                     s.wrap_trail_spaces = k.children("w:wrapTrailSpaces").any(on_off);

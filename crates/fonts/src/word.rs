@@ -1173,6 +1173,19 @@ fn face_line(face: &crate::FontFace, leading: bool) -> (f64, f64) {
     v
 }
 
+/// Word's OS/2 average character width (em) of `requested` when its text is drawn in the metric
+/// twin `face_family` ([`METRIC_TWINS`]), whose own table holds a different average: Times New
+/// Roman 821/2048 (Liberation Serif and Tinos store about .55 em), Arial 904/2048 (Liberation Sans
+/// and Arimo about .58 em). `None` for the font itself and for any other pair: their own field
+/// is used (Carlito's already gives no room, like Calibri's).
+pub fn twin_avg_char_width_em(requested: &str, face_family: &str) -> Option<f32> {
+    const AVERAGES: &[(&str, f32)] = &[("Times New Roman", 821.0 / 2048.0), ("Arial", 904.0 / 2048.0)];
+    let base = charset_base_family(requested.trim()).trim();
+    let face = face_family.trim();
+    let &(_, avg) = AVERAGES.iter().find(|(name, _)| name.eq_ignore_ascii_case(base))?;
+    (!face.eq_ignore_ascii_case(base) && metric_twins(base).any(|t| t.eq_ignore_ascii_case(face))).then_some(avg)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
