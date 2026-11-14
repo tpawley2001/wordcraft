@@ -337,6 +337,10 @@ fn missing_font_metrics_no_leading(family: &str) -> Option<(f64, f64)> {
 /// SimSun: `/Ascent` 859, `/Descent` -141; 10.5, 12 and 14 pt lines 13.62, 15.56 and 18.16 pt apart (1.297 em), the extra split evenly above and below.
 /// MS Mincho, MS PMincho, MS Gothic, MS PGothic and MS UI Gothic (also as written in Japanese): SimSun's descriptor and line; 10, 10.5, 12 and 14 pt lines 12.96, 13.64, 15.57 and 18.16 pt apart (1.297 em).
 /// Shruti: `/Ascent` 1021, `/Descent` -660; 10, 12 and 14 pt lines 16.80, 20.16 and 23.57 pt apart (1.681 em), the first baseline 1.021 em below the top of the body.
+/// Segoe UI: `/Ascent` 1079, the descent the rest of the line; 12 and 24 pt lines 15.96 and 31.93 pt apart (1.330 em).
+/// Perpetua: `/Ascent` 820, the descent the rest of the line; 12 and 24 pt lines 13.75 and 27.51 pt apart (1.146 em).
+/// Gill Sans MT: `/Ascent` 929, the descent the rest of the line; 12 and 24 pt lines 13.92 and 27.83 pt apart (1.160 em).
+/// Book Antiqua: first baseline 0.962–0.966 em below the top (not `/Ascent` 923); 12 and 24 pt lines 14.92 and 29.82 pt apart (1.2427 em).
 fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
     match family.trim().to_ascii_lowercase().as_str() {
         "lucida console" => Some((0.789, 0.211)),
@@ -365,6 +369,10 @@ fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
         | "ＭＳ Ｐゴシック"
         | "ms ui gothic" => Some((1.007, 0.290)),
         "shruti" => Some((1.021, 0.660)),
+        "segoe ui" => Some((1.079, 0.251)),
+        "perpetua" => Some((0.820, 0.326)),
+        "gill sans mt" => Some((0.929, 0.231)),
+        "book antiqua" => Some((0.964, 0.279)),
         _ => None,
     }
 }
