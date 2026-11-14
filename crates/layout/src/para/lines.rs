@@ -875,7 +875,6 @@ struct Measure {
     text_desc: f32,
 }
 
-/// Where the line's content ends: trailing spaces and markers hang.
 /// How far a single space in `st` may shrink in the RTF / Compress punctuation squeeze: half a
 /// space in a fixed-pitch font; in a proportional one down to half the font's average character
 /// width (OS/2 `xAvgCharWidth`) when `proportional` squeezing is on, else the line doesn't
@@ -897,6 +896,7 @@ fn style_space_room(st: &super::model::StyleRun, proportional: bool) -> SpaceRoo
     }
 }
 
+/// Where the line's content ends: trailing spaces and markers hang.
 fn content_end(pl: &ParaLayout, sc: &Scan, c1: usize) -> f32 {
     let mut content_end = sc.xs.last().copied().unwrap_or(sc.line_start_x);
     for k in (sc.c0..c1).rev() {
