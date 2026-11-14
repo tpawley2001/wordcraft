@@ -475,14 +475,16 @@ pub(crate) fn place_endnotes(ctx: &mut Ctx, pb: &mut PageBuilder, ids: Vec<u32>,
         }
         pb.y += h;
     } else {
+        // Word's built-in endnote separator is one single-spaced line of the Normal style, like
+        // the footnote one (measured in Word 16.0.20527: Normal 10 / 12 / 20 pt).
         let size = default_sep_size(ctx.doc);
-        let (x, ry) = (pb.col_x(), pb.y + 12.0 - sep_rise(size));
-        pb.y += 12.0;
+        let h = default_sep_h(ctx, width);
+        let (x, ry) = (pb.col_x(), pb.y + h - sep_rise(size));
         if let Some(pg) = pb.page() {
             let border = Border::single(sep_weight(size));
             pg.items.push(Placed::Rule { x0: x, y0: ry, x1: x + NOTE_SEP_W, y1: ry, border });
         }
-        pb.y += 8.0;
+        pb.y += h;
     }
     let mut added = 0usize;
     for id in ids {
