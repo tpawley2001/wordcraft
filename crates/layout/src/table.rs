@@ -230,6 +230,7 @@ pub fn measure_table_columns(doc: &wordcraft_doc::Document, t: &Table) -> Vec<(f
                 exclusions: &[],
                 eq_number: 0,
                 read_line_spacing: None,
+                text_spacing: false,
                 grid: crate::para::Grid::default(),
                 fit_objects: false,
                 fitted: &[],

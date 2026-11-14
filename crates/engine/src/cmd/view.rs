@@ -139,6 +139,32 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"value"?: bool}"#)
         .pure(),
+        // Immersive Reader: its own view and tab (View › Immersive). Its settings are screen only
+        // and work whether it is open or not.
+        CommandSpec::new("view.immersive", "Immersive Reader", "View › Immersive", |s, v| {
+            let on = p::bool(v, "value").unwrap_or(!s.view.immersive);
+            set_immersive(s, on)
+        })
+        .params(r#"{"value"?: bool} — no value toggles. Opening leaves Read Mode, Focus and Full Screen View; the view under it (Print Layout, Web Layout, Draft, Outline) is kept for Close."#)
+        .pure(),
+        CommandSpec::new("view.closeImmersive", "Close Immersive Reader", "Immersive Reader › Close", |s, _| set_immersive(s, false)).pure(),
+        CommandSpec::new("view.immersiveColumnWidth", "Column Width", "Immersive Reader › Immersive Reader", immersive_column_width)
+            .params(r#"{"value": "veryNarrow" | "narrow" | "moderate" | "wide"}"#)
+            .pure(),
+        CommandSpec::new("view.immersivePageColor", "Page Color", "Immersive Reader › Immersive Reader", immersive_page_color)
+            .params(r##"{"value": "none" | "sepia" | "inverse" | "#RRGGBB"}"##)
+            .pure(),
+        CommandSpec::new("view.lineFocus", "Line Focus", "Immersive Reader › Immersive Reader", line_focus)
+            .params(r#"{"value": 0 | 1 | 3 | 5} — the number of lines left uncovered (0: none)"#)
+            .pure(),
+        CommandSpec::new("view.textSpacing", "Text Spacing", "Immersive Reader › Immersive Reader", |s, v| {
+            toggle(s, v, |x| &mut x.text_spacing)
+        })
+        .params(r#"{"value"?: bool}"#)
+        .pure(),
+        CommandSpec::new("view.syllables", "Syllables", "Immersive Reader › Immersive Reader", |s, v| toggle(s, v, |x| &mut x.syllables))
+            .params(r#"{"value"?: bool}"#)
+            .pure(),
         CommandSpec::new("view.ruler", "Ruler", "View › Show", |s, v| toggle(s, v, |x| &mut x.ruler)).pure(),
         // The drawing grid over the page (screen only; never printed or exported).
         CommandSpec::new("view.gridlines", "Gridlines", "View › Show", |s, v| toggle(s, v, |x| &mut x.gridlines))
@@ -431,6 +457,8 @@ fn mode(s: &mut Session, m: ViewMode, read: bool) -> CmdResult {
     }
     s.view.mode = m;
     s.view.read_mode = read;
+    // Read Mode and the other views close Immersive Reader.
+    s.view.immersive = false;
     s.relayout();
     Ok(json!({"mode": m, "readMode": read}))
 }
@@ -478,6 +506,123 @@ fn read_line_spacing(s: &mut Session, v: &Value) -> CmdResult {
     };
     s.view.read_line_spacing = spacing;
     Ok(json!({"spacing": spacing}))
+}
+
+/// Opens or closes Immersive Reader. Opening leaves Read Mode, Focus and Full Screen View and
+/// keeps `mode`, the view Close goes back to.
+fn set_immersive(s: &mut Session, on: bool) -> CmdResult {
+    if on {
+        s.view.read_mode = false;
+        s.view.focus_mode = false;
+        s.view.full_screen_view = false;
+    }
+    s.view.immersive = on;
+    Ok(json!({"value": on}))
+}
+
+/// Immersive Reader › Column Width: how long the reading lines are.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ImmersiveColumnWidth {
+    VeryNarrow,
+    Narrow,
+    Moderate,
+    /// The window's width less an inch each side.
+    #[default]
+    Wide,
+}
+
+impl ImmersiveColumnWidth {
+    pub const ALL: [Self; 4] = [Self::VeryNarrow, Self::Narrow, Self::Moderate, Self::Wide];
+
+    /// `veryNarrow`, `narrow`, `moderate` or `wide`; anything else is `None`.
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|w| w.name() == name)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::VeryNarrow => "veryNarrow",
+            Self::Narrow => "narrow",
+            Self::Moderate => "moderate",
+            Self::Wide => "wide",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::VeryNarrow => "Very Narrow",
+            Self::Narrow => "Narrow",
+            Self::Moderate => "Moderate",
+            Self::Wide => "Wide",
+        }
+    }
+
+    /// The column's width in points in a window `window` points wide: fixed for the first
+    /// three, the window less 72 pt each side for Wide, never below Very Narrow's 252 pt.
+    pub fn points(self, window: f32) -> f32 {
+        match self {
+            Self::VeryNarrow => 252.0,
+            Self::Narrow => 360.0,
+            Self::Moderate => 468.0,
+            Self::Wide => {
+                let w = window - 144.0;
+                if w.is_finite() { w.clamp(252.0, 20_000.0) } else { 252.0 }
+            }
+        }
+    }
+}
+
+fn immersive_column_width(s: &mut Session, v: &Value) -> CmdResult {
+    let Some(w) = v.get("value").and_then(Value::as_str).and_then(ImmersiveColumnWidth::parse) else {
+        return Err(CmdError::Params("column width must be veryNarrow, narrow, moderate or wide".into()));
+    };
+    s.view.immersive_column_width = w;
+    Ok(json!({"columnWidth": w.name()}))
+}
+
+/// An Immersive Reader page colour as it is stored: `none`, `sepia`, `inverse`, or `#RRGGBB`
+/// with upper-case digits. `None` for anything else.
+pub fn immersive_page_color_name(value: &str) -> Option<String> {
+    match value {
+        "none" | "sepia" | "inverse" => Some(value.to_string()),
+        _ => {
+            let hex = value.strip_prefix('#')?;
+            (hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit())).then(|| format!("#{}", hex.to_ascii_uppercase()))
+        }
+    }
+}
+
+fn immersive_page_color(s: &mut Session, v: &Value) -> CmdResult {
+    let Some(color) = v.get("value").and_then(Value::as_str).and_then(immersive_page_color_name) else {
+        return Err(CmdError::Params("page color must be none, sepia, inverse or #RRGGBB".into()));
+    };
+    s.view.immersive_page_color = color.clone();
+    Ok(json!({"pageColor": color}))
+}
+
+fn line_focus(s: &mut Session, v: &Value) -> CmdResult {
+    let Some(n) = v.get("value").and_then(Value::as_u64).filter(|n| matches!(n, 0 | 1 | 3 | 5)) else {
+        return Err(CmdError::Params("line focus must be 0, 1, 3 or 5 lines".into()));
+    };
+    s.view.line_focus = n as u8;
+    Ok(json!({"lineFocus": n}))
+}
+
+/// Immersive Reader › Syllables: where `word`, written in `lang` (a BCP 47 tag; `None` is US
+/// English), breaks between syllables, as byte offsets strictly inside the word. They are the
+/// automatic hyphenation points of the language's patterns, with at least two letters before
+/// the first and after the last. A language without patterns gives none.
+pub fn syllable_breaks(word: &str, lang: Option<&str>) -> Vec<usize> {
+    use wordcraft_proof::hyphen::{Limits, Source, hyphen_points_in, word_breaks_in};
+    let lang = wordcraft_proof::ProofLang::from_tag(Some(lang.unwrap_or("en-US")));
+    // The heuristic fallback guesses; only a language's own patterns, dictionary or rules count.
+    if matches!(word_breaks_in(word, lang).1, Source::Heuristic | Source::None) {
+        return Vec::new();
+    }
+    let lim = Limits { min_word: 4, after_first: 2, before_last: 2, capitalized: true };
+    let offs: Vec<usize> = word.char_indices().map(|(o, _)| o).collect();
+    hyphen_points_in(word, &lim, lang).into_iter().filter_map(|i| offs.get(i).copied()).filter(|&b| b > 0 && b < word.len()).collect()
 }
 
 /// Screen-only paper presets, saved with user preferences, never in the document.
@@ -642,4 +787,50 @@ fn cycle_window(s: &mut Session, previous: bool) -> CmdResult {
         }
     }
     switch_windows(s, &Value::Null)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::syllable_breaks;
+
+    #[test]
+    fn syllable_breaks_fall_strictly_inside_the_word_on_char_boundaries() {
+        let word = "information";
+        let breaks = syllable_breaks(word, Some("en-US"));
+        assert!(!breaks.is_empty(), "in-for-ma-tion has syllable breaks");
+        for b in &breaks {
+            assert!(*b > 0 && *b < word.len() && word.is_char_boundary(*b), "{b}");
+        }
+        assert!(syllable_breaks("a", Some("en-US")).is_empty());
+        let accented = "désinformation";
+        for b in syllable_breaks(accented, Some("fr-FR")) {
+            assert!(b >= 3 && b < accented.len() && accented.is_char_boundary(b), "{b}");
+        }
+    }
+
+    /// Immersive Reader lays the text out in one column as wide as Column Width, and Text
+    /// Spacing widens it; each change lays the text out again. Print Layout and export don't move.
+    #[test]
+    fn immersive_column_width_and_text_spacing_lay_the_text_out_again() {
+        use serde_json::json;
+        let text = "Reading is easier with fewer distractions on the page. ".repeat(20);
+        let mut s = crate::Session::new(wordcraft_doc::Document::from_text(&text));
+        let print = s.layout();
+        let export = s.export_layout().pages.len();
+        s.run("view.immersive", &json!({"value": true})).unwrap();
+        s.run("view.immersiveColumnWidth", &json!({"value": "veryNarrow"})).unwrap();
+        let narrow = s.layout();
+        assert!(narrow.pages.iter().all(|p| p.w == 252.0), "one column 252 pt wide");
+        s.run("view.immersiveColumnWidth", &json!({"value": "moderate"})).unwrap();
+        assert!(s.layout().pages.iter().all(|p| p.w == 468.0));
+        let lines = |l: &wordcraft_layout::DocLayout| -> usize {
+            l.pages.iter().flat_map(|p| &p.items).map(|i| if let wordcraft_layout::Placed::Lines { l0, l1, .. } = i { l1 - l0 } else { 0 }).sum()
+        };
+        let plain = lines(&s.layout());
+        s.run("view.textSpacing", &json!({"value": true})).unwrap();
+        assert!(lines(&s.layout()) > plain, "wider letters and words take more lines");
+        s.run("view.closeImmersive", &json!({})).unwrap();
+        assert_eq!(s.layout().pages[0].w, print.pages[0].w);
+        assert_eq!(s.export_layout().pages.len(), export);
+    }
 }

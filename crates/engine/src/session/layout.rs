@@ -15,14 +15,19 @@ impl Session {
     fn layout_with(&mut self, typing: Option<wordcraft_layout::TypingWord>) -> Arc<DocLayout> {
         // Read Mode's Paper Layout shows the printed pages: Print Layout's layout, unchanged.
         let paper = self.view.read_layout == crate::cmd::view::ReadLayout::Paper;
-        let mode = if self.view.read_mode && !paper { ViewMode::Read } else { self.view.mode };
+        // Immersive Reader lays the text out in Read Mode's columns, one at a time, as wide as its
+        // Column Width, with the document's own line spacing (Text Spacing adds to it).
+        let immersive = self.view.immersive;
+        let mode = if immersive || (self.view.read_mode && !paper) { ViewMode::Read } else { self.view.mode };
         let width = match mode {
+            ViewMode::Read if immersive => self.view.immersive_column_width.points(self.view.immersive_window),
             ViewMode::Read => self.view.read_width,
             ViewMode::Web => self.view.web_width,
             _ => DRAFT_WIDTH,
         };
         let height = if mode == ViewMode::Read { self.view.read_height } else { 0.0 };
-        let spacing = if mode == ViewMode::Read { self.view.read_line_spacing.map(f32::to_bits) } else { None };
+        let line_spacing = if mode == ViewMode::Read && !immersive { self.view.read_line_spacing.map(f32::to_bits) } else { None };
+        let spacing = (line_spacing, immersive && self.view.text_spacing);
         // Deletions in balloons depend on the view (the Comments pane, Read Mode, side by side), so
         // a view change that moves them in or out of the text lays it out again.
         let hide_deleted = !self.view.show_markup;
@@ -62,7 +67,8 @@ impl Session {
             view: mode,
             web_width: width,
             read_height: height,
-            read_line_spacing: spacing.map(f32::from_bits),
+            read_line_spacing: spacing.0.map(f32::from_bits),
+            read_text_spacing: spacing.1,
             show_hidden: shown.0,
             hide_deleted,
             hide_marked: deleted.1,

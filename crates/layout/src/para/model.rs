@@ -445,6 +445,9 @@ pub struct ParaEnv<'a> {
     /// Automatic equation numbers used before this paragraph.
     pub eq_number: u32,
     pub read_line_spacing: Option<f32>,
+    /// Immersive Reader's Text Spacing: 0.05 em more between letters, 0.25 em more per word
+    /// space and 1.2 times the line spacing (screen only).
+    pub text_spacing: bool,
     /// The section's document grid (`Grid::default()`: none).
     pub grid: Grid,
     /// Shrink inline drawings wider than the line to fit it: in text boxes, which don't clip what

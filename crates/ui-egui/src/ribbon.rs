@@ -80,7 +80,7 @@ pub use tabs::{
 };
 #[cfg(test)]
 use underline::{UNDERLINE_STYLES, underline_menu};
-use view::{outlining, view};
+use view::{immersive_reader, outlining, view};
 
 /// Draws the Read toolbar or the full ribbon, switching to and from the contextual Equation and
 /// Outlining tabs and showing the available tab strip.
@@ -112,6 +112,20 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     {
         app.ui.tab = prev;
     }
+    // Opening Immersive Reader brings up its tab; closing it goes back to the tab before.
+    let prev_id = egui::Id::unique("immersive_prev_tab");
+    let prev: Option<String> = ui.ctx().data(|d| d.get_temp(prev_id));
+    if app.session.view.immersive {
+        if prev.is_none() {
+            ui.ctx().data_mut(|d| d.insert_temp(prev_id, app.ui.tab.clone()));
+            app.ui.tab = "Immersive Reader".into();
+        }
+    } else if let Some(prev) = prev {
+        ui.ctx().data_mut(|d| d.remove::<String>(prev_id));
+        if app.ui.tab == "Immersive Reader" {
+            app.ui.tab = prev;
+        }
+    }
     // The tabs shown: File, the user's tabs in their order (Customize Ribbon, #379), then the
     // contextual ones (the Outlining tab right after File). A contextual tab (Table, Picture
     // Format) may be stored while the selection moved away, and a tab may have been hidden.
@@ -119,7 +133,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let mut tabs: Vec<(String, bool)> = vec![("File".to_string(), false)];
     tabs.extend(user_tabs.iter().filter(|e| !e.hidden).map(|e| (e.name.clone(), e.custom)));
     for ct in contextual_tabs(&app.session) {
-        if ct == "Outlining" {
+        if ct == "Outlining" || ct == "Immersive Reader" {
             tabs.insert(1.min(tabs.len()), (ct.to_string(), false));
         } else if !tabs.iter().any(|(n, _)| n == ct) {
             tabs.push((ct.to_string(), false));
@@ -468,6 +482,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                         "Shape Format" => shape_format(app, ui),
                         "SmartArt Design" => smart_art_design(app, ui),
                         "Outlining" => outlining(app, ui),
+                        "Immersive Reader" => immersive_reader(app, ui),
                         "Chart Design" => chart_design(app, ui),
                         _ => home(app, ui),
                     }
