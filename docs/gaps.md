@@ -1,9 +1,8 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged.)
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged.)
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0476: in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows, as in Word; gap #24 narrowed. Readiness estimates unchanged; earlier: P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged; earlier: P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged; earlier: P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged; earlier: P0476: in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows, as in Word; gap #24 narrowed. Readiness estimates unchanged)
 
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged; earlier: P0461: #6 narrowed: print jobs follow Print background colors and images and Print drawings created in Word. Readiness estimates unchanged; earlier: P0266: Update Table of Contents › Update page numbers only (#1197, #2262). Readiness estimates unchanged)
@@ -214,6 +213,10 @@ Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text wi
 Raised and lowered text under multiple line spacing now adds its shift growth once (P0480); broader pagination differences in gap #4 remain open.
 
 ## Revision history
+
+| Date | Change | Summary |
+|---|---|---|
+| 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged. |
 
 > 2026-11-13 · trivial · P0462: gap #7 narrowed: Table of Figures › Options… (Style, Table entry fields with Table identifier A–Z), `references.tableOfFigures` `style` / `entryFields`. Readiness estimates unchanged.
 

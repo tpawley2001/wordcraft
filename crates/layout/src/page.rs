@@ -148,12 +148,12 @@ pub(crate) struct Pin {
 
 /// Where the lines between a section's columns go on a page: the page, the top of the section's
 /// text there (the body's top, or below the text before a continuous section break), and each
-/// line's x.
+/// line's x and the following column's horizontal bounds in reading order.
 #[derive(Clone, Debug)]
 pub(crate) struct ColumnLines {
     page: usize,
     top: f32,
-    xs: Vec<f32>,
+    xs: Vec<(f32, f32, f32)>,
     /// The first top-level block of the section's text on the page: its text is the page's
     /// items from there on.
     first_block: usize,
@@ -504,7 +504,11 @@ impl PageBuilder<'_> {
             .windows(2)
             .filter_map(|w| match w {
                 // Midway across the space between neighbours (leftwards in an RTL section).
-                [(ax, aw), (bx, bw)] => Some(s.text_left(self.mirror) + if bx >= ax { (ax + aw + bx) / 2.0 } else { (bx + bw + ax) / 2.0 }),
+                [(ax, aw), (bx, bw)] => {
+                    let left = s.text_left(self.mirror);
+                    let x = left + if bx >= ax { (ax + aw + bx) / 2.0 } else { (bx + bw + ax) / 2.0 };
+                    Some((x, left + bx, left + bx + bw))
+                }
                 _ => None,
             })
             .collect();
@@ -524,12 +528,17 @@ impl PageBuilder<'_> {
         }
         let flow_bottom = self.text_bottom();
         let Some(pg) = self.pages.get_mut(c.page) else { return };
-        let Some((top, bottom)) = text_extent(&pg.items, c.first_block) else { return };
+        let Some((top, bottom)) = text_extent(&pg.items, c.first_block, None) else { return };
         let (top, bottom) = (top.max(c.top), bottom.min(flow_bottom));
         if bottom <= top + 0.5 {
             return;
         }
-        pg.items.extend(c.xs.iter().map(|&x| Placed::Rule { x0: x, y0: top, x1: x, y1: bottom, border: Border::single(0.5) }));
+        for (x, left, right) in c.xs {
+            // An empty following column gets no separator, even if an earlier column has text.
+            if text_extent(&pg.items, c.first_block, Some((left, right))).is_some() {
+                pg.items.push(Placed::Rule { x0: x, y0: top, x1: x, y1: bottom, border: Border::single(0.72) });
+            }
+        }
     }
     /// Where pinned object `oi` of paragraph `block` goes on the current page, if it is pinned
     /// ([`Pin`]).
@@ -639,15 +648,18 @@ impl PageBuilder<'_> {
 /// what overflows an exact row height. Items are picked by the block they belong to, not by their
 /// order (objects behind the text go first) or place (a floating table of an earlier section can
 /// sit lower).
-fn text_extent(items: &[Placed], first_block: usize) -> Option<(f32, f32)> {
+fn text_extent(items: &[Placed], first_block: usize, column: Option<(f32, f32)>) -> Option<(f32, f32)> {
+    let in_column = |x: f32| column.is_none_or(|(left, right)| x >= left - 0.5 && x < right);
     let ours = |path: &wordcraft_doc::Path| path.0.first().is_some_and(|b| *b as usize >= first_block);
     items
         .iter()
         .filter_map(|it| match it {
-            Placed::Lines { story: StoryRef::Body, path, y, para, l0, l1, .. } if path.depth() == 0 && ours(path) => {
+            Placed::Lines { story: StoryRef::Body, path, x, y, para, l0, l1, .. } if path.depth() == 0 && ours(path) && in_column(*x) => {
                 Some((*y, item_bottom(*y, para, *l0, *l1)?))
             }
-            Placed::Cell { story: StoryRef::Body, table, rect, .. } if ours(table) => Some((rect.y, rect.bottom())),
+            Placed::Cell { story: StoryRef::Body, table, rect, .. } if ours(table) && in_column(rect.x + rect.w / 2.0) => {
+                Some((rect.y, rect.bottom()))
+            }
             _ => None,
         })
         .filter(|(t, b)| t.is_finite() && b.is_finite())
