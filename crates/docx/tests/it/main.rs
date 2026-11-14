@@ -63,6 +63,7 @@ mod privacy;
 mod roundtrip;
 mod row_exception_sides;
 mod row_property_exceptions;
+mod rtf_saved_compat;
 mod run_content_in_text;
 mod run_props;
 mod section_form_protection;

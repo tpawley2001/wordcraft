@@ -154,7 +154,14 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
             }
         }
     }
-    w.val("w:characterSpacingControl", s.char_spacing.to_ooxml());
+    // Word saves a document opened from RTF with Compress punctuation in compatibility mode 11
+    // (see `write_compatibility_settings`), so the reopened copy keeps squeezing spaces like RTF.
+    let char_spacing = if s.rtf_justification && s.char_spacing == wordcraft_doc::CharSpacing::DoNotCompress {
+        wordcraft_doc::CharSpacing::CompressPunctuation
+    } else {
+        s.char_spacing
+    };
+    w.val("w:characterSpacingControl", char_spacing.to_ooxml());
     write_note_settings(&mut w, s, s_notes, footnotes, endnotes);
     write_compatibility_settings(&mut w, doc);
     write_doc_vars(&mut w, &s.doc_vars);
@@ -288,8 +295,12 @@ fn write_compatibility_settings(w: &mut W, doc: &Document) {
     }
     // An absent source mode uses legacy layout internally, but must stay absent so
     // reopening still selects the application-defined document defaults.
-    if !doc.styles.builtin_word_defaults || doc.settings.compat_mode >= 15 {
-        let mode = doc.settings.compat_mode.clamp(11, 15).to_string();
+    // A document opened from RTF is saved in mode 11 (a lower mode is kept), as Word saves an RTF
+    // file; with Compress punctuation that keeps its space squeezing (`Settings::squeezes_like_rtf`).
+    let rtf = doc.settings.rtf_justification;
+    if !doc.styles.builtin_word_defaults || doc.settings.compat_mode >= 15 || rtf {
+        let mode = if rtf && doc.settings.compat_mode >= 15 { 11 } else { doc.settings.compat_mode };
+        let mode = mode.clamp(11, 15).to_string();
         w.empty("w:compatSetting", &[("w:name", "compatibilityMode"), ("w:uri", "http://schemas.microsoft.com/office/word"), ("w:val", &mode)]);
     }
     w.close("w:compat");
