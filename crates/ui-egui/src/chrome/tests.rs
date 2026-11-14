@@ -528,6 +528,8 @@ fn window_commands_send_only_maximization_and_report_the_target_state() {
         ("ui.restoreWindow", false, false, vec![]),
     ] {
         let ctx = egui::Context::default();
+        // Drain egui's initial theme command before observing the window command itself.
+        ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
         let mut input = egui::RawInput::default();
         input.viewports.get_mut(&egui::ViewportId::ROOT).unwrap().maximized = Some(before);
         let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
