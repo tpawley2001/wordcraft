@@ -235,6 +235,13 @@ pub struct FiguresForm {
     pub hyperlinks: bool,
     pub right_align: bool,
     pub leader: String,
+    /// Options: build the list from this paragraph style (`\t`) instead of captions.
+    pub style: Option<String>,
+    /// Options: build the list from the table entry fields with this identifier (`\f`).
+    pub entry_fields: Option<char>,
+    /// Options: the style and identifier picked, kept while their boxes are cleared.
+    pub style_choice: String,
+    pub entry_choice: char,
 }
 
 impl FiguresForm {
@@ -253,19 +260,37 @@ impl FiguresForm {
             hyperlinks: true,
             right_align: true,
             leader: "dot".into(),
+            style: None,
+            entry_fields: None,
+            style_choice: "Caption".into(),
+            entry_choice: 'F',
         }
+    }
+
+    /// Whether Options builds the list from a style or table entry fields, not captions.
+    pub fn from_options(&self) -> bool {
+        self.style.is_some() || self.entry_fields.is_some()
     }
 
     /// `references.tableOfFigures` parameters.
     pub fn params(&self) -> Value {
-        json!({
+        let mut v = json!({
             "label": self.label,
             "includeLabel": self.include_label,
             "hyperlinks": self.hyperlinks,
             "pageNumbers": self.page_numbers,
             "rightAlign": self.right_align,
             "tabLeader": self.leader,
-        })
+        });
+        if let Some(o) = v.as_object_mut() {
+            if let Some(style) = &self.style {
+                o.insert("style".into(), json!(style));
+            }
+            if let Some(id) = self.entry_fields {
+                o.insert("entryFields".into(), json!(id.to_string()));
+            }
+        }
+        v
     }
 }
 
@@ -281,18 +306,22 @@ pub(super) fn figures_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FiguresForm) ->
         .collect();
     sample(ui, &lines, f.right_align, leader_char(&f.leader));
     ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        let label_label = ui.label(tl!("Label:"));
-        let labels: Vec<(String, &str)> = f.labels.iter().map(|l| (l.clone(), l.as_str())).collect();
-        let combo = craft_ui::ComboBox::from_id_salt("tof_label").selected_text(tl!(&f.label)).width(150.0).show_ui(ui, |ui| {
-            for (v, l) in &labels {
-                ui.selectable_value(&mut f.label, v.clone(), tl!(l));
-            }
+    // Built from a style or table entry fields (Options), the caption label has no say.
+    let captions = !f.from_options();
+    ui.add_enabled_ui(captions, |ui| {
+        ui.horizontal(|ui| {
+            let label_label = ui.label(tl!("Label:"));
+            let labels: Vec<(String, &str)> = f.labels.iter().map(|l| (l.clone(), l.as_str())).collect();
+            let combo = craft_ui::ComboBox::from_id_salt("tof_label").selected_text(tl!(&f.label)).width(150.0).show_ui(ui, |ui| {
+                for (v, l) in &labels {
+                    ui.selectable_value(&mut f.label, v.clone(), tl!(l));
+                }
+            });
+            combo.response.labelled_by(label_label.id);
         });
-        combo.response.labelled_by(label_label.id);
     });
     ui.checkbox(&mut f.hyperlinks, tl!("Use hyperlinks instead of page numbers"));
-    ui.checkbox(&mut f.include_label, tl!("Include label and number"));
+    ui.add_enabled_ui(captions, |ui| ui.checkbox(&mut f.include_label, tl!("Include label and number")));
     ui.checkbox(&mut f.page_numbers, tl!("Include page numbers"));
     ui.add_enabled_ui(f.page_numbers, |ui| {
         ui.checkbox(&mut f.right_align, tl!("Page numbers at the right margin"));
@@ -305,9 +334,65 @@ pub(super) fn figures_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FiguresForm) ->
         });
     });
     ui.add_space(4.0);
+    let options = ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| ui.button(tl!("Options…")).clicked()).inner;
+    if options {
+        return go(RefsDialog::FiguresOptions { form: f.clone(), was: Box::new(f.clone()) });
+    }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     if ok && let Err(e) = app.run("references.tableOfFigures", f.params()) {
         app.status(e);
     }
     if ok || cancel { Next::Close } else { Next::Stay }
+}
+
+/// Table of Figures › Options…: build the list from a paragraph style and/or the table entry
+/// fields with an identifier instead of from captions. OK and Cancel go back to Table of Figures.
+pub(super) fn figures_options_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FiguresForm, was: &FiguresForm) -> Next {
+    heading(ui, "Build table of figures from:");
+    let styles: Vec<(String, String)> = app
+        .session
+        .doc
+        .styles
+        .styles
+        .iter()
+        .filter(|st| st.kind == StyleKind::Paragraph && !st.hidden)
+        .map(|st| (st.name.clone(), crate::i18n::style_name(st)))
+        .collect();
+    ui.horizontal(|ui| {
+        let mut on = f.style.is_some();
+        let check = ui.checkbox(&mut on, tl!("Style:"));
+        ui.add_enabled_ui(on, |ui| {
+            let shown = styles.iter().find(|(n, _)| *n == f.style_choice).map_or_else(|| f.style_choice.clone(), |(_, s)| s.clone());
+            let combo = craft_ui::ComboBox::from_id_salt("tof_style").selected_text(shown).width(180.0).show_ui(ui, |ui| {
+                for (name, shown) in &styles {
+                    ui.selectable_value(&mut f.style_choice, name.clone(), shown);
+                }
+            });
+            combo.response.labelled_by(check.id);
+        });
+        f.style = on.then(|| f.style_choice.clone());
+    });
+    let mut on = f.entry_fields.is_some();
+    ui.checkbox(&mut on, tl!("Table entry fields"));
+    ui.add_enabled_ui(on, |ui| {
+        ui.horizontal(|ui| {
+            let id_label = ui.label(tl!("Table identifier:"));
+            let combo = craft_ui::ComboBox::from_id_salt("tof_identifier").selected_text(f.entry_choice.to_string()).width(60.0).show_ui(ui, |ui| {
+                for c in 'A'..='Z' {
+                    ui.selectable_value(&mut f.entry_choice, c, c.to_string());
+                }
+            });
+            combo.response.labelled_by(id_label.id);
+        });
+    });
+    f.entry_fields = on.then_some(f.entry_choice);
+    ui.add_space(4.0);
+    let (ok, cancel) = buttons(ui, tl!("OK"));
+    if ok {
+        return go(RefsDialog::Figures(f.clone()));
+    }
+    if cancel {
+        return go(RefsDialog::Figures(was.clone()));
+    }
+    Next::Stay
 }

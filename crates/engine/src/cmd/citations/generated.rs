@@ -12,14 +12,31 @@ use wordcraft_doc::section::NumFormat;
 
 /// The TOC field for `references.tableOfFigures` (ECMA-376 §17.16.5.68): `\c "<label>"` lists the
 /// captions that label's SEQ field numbers, `\a "<label>"` lists them without their label and
-/// number; `\n` leaves page numbers out and `\p " "` puts them right after the text.
+/// number; `\n` leaves page numbers out and `\p " "` puts them right after the text. With
+/// `style` (`\t "<style>"`) and/or `entryFields` (`\f <ID>`), Table of Figures Options, it lists
+/// that style's paragraphs and the TC fields with that identifier instead, a bare `\c` marking it a
+/// table of figures.
 pub fn figures_instr(v: &Value) -> String {
-    let label: String = p::str(v, "label").unwrap_or("Figure").chars().filter(|c| !matches!(c, '"' | '\\') && !c.is_control()).take(40).collect();
-    let ident = seq_ident(&label);
-    let ident = if ident.is_empty() { "Figure".to_string() } else { ident };
     let on = |k: &str| p::bool(v, k).unwrap_or(true);
     let links = if on("hyperlinks") { " \\h \\z" } else { "" };
-    let mut s = format!("TOC{links} \\{} \"{ident}\"", if on("includeLabel") { 'c' } else { 'a' });
+    let style = p::str(v, "style").map(figures_style_name).filter(|n| !n.is_empty());
+    let entry = p::str(v, "entryFields").and_then(entry_identifier);
+    let mut s = if style.is_some() || entry.is_some() {
+        let mut s = format!("TOC{links}");
+        if let Some(style) = style {
+            s.push_str(&format!(" \\t \"{style}\""));
+        }
+        if let Some(id) = entry {
+            s.push_str(&format!(" \\f {id}"));
+        }
+        s.push_str(" \\c");
+        s
+    } else {
+        let label: String = p::str(v, "label").unwrap_or("Figure").chars().filter(|c| !matches!(c, '"' | '\\') && !c.is_control()).take(40).collect();
+        let ident = seq_ident(&label);
+        let ident = if ident.is_empty() { "Figure".to_string() } else { ident };
+        format!("TOC{links} \\{} \"{ident}\"", if on("includeLabel") { 'c' } else { 'a' })
+    };
     if !on("pageNumbers") {
         s.push_str(" \\n");
     } else if !on("rightAlign") {
@@ -28,13 +45,46 @@ pub fn figures_instr(v: &Value) -> String {
     s
 }
 
+/// A style name as `\t` holds it: no quotes, backslashes or control characters, at most 253
+/// characters.
+fn figures_style_name(name: &str) -> String {
+    name.chars().filter(|c| !matches!(c, '"' | '\\') && !c.is_control()).take(253).collect::<String>().trim().to_string()
+}
+
+/// A table entry field identifier: one ASCII letter, upper case.
+fn entry_identifier(id: &str) -> Option<char> {
+    let mut c = id.chars();
+    match (c.next(), c.next()) {
+        (Some(l), None) if l.is_ascii_alphabetic() => Some(l.to_ascii_uppercase()),
+        _ => None,
+    }
+}
+
 /// The SEQ identifier of a caption label: Word joins a multi-word label with underscores.
 fn seq_ident(label: &str) -> String {
     label.split_whitespace().collect::<Vec<_>>().join("_")
 }
 
 pub(super) fn table_of_figures(s: &mut Session, v: &Value) -> CmdResult {
-    generated_list_with(s, &figures_instr(v), "", p::str(v, "tabLeader").map(crate::cmd::references::leader))?;
+    let mut v = v.clone();
+    if let Some(id) = p::str(&v, "entryFields")
+        && entry_identifier(id).is_none()
+    {
+        return Err(CmdError::Params(format!("`entryFields` must be one letter A-Z, not `{id}`")));
+    }
+    if let Some(name) = p::str(&v, "style") {
+        let st = s
+            .doc
+            .styles
+            .find(&figures_style_name(name))
+            .filter(|st| st.kind == wordcraft_doc::StyleKind::Paragraph)
+            .ok_or_else(|| CmdError::Params(format!("unknown style `{name}`")))?;
+        let shown = figures_style_name(&st.name);
+        if let Some(o) = v.as_object_mut() {
+            o.insert("style".into(), Value::String(shown));
+        }
+    }
+    generated_list_with(s, &figures_instr(&v), "", p::str(&v, "tabLeader").map(crate::cmd::references::leader))?;
     sel_result(s)
 }
 
@@ -88,7 +138,7 @@ fn wrapped_list(s: &Session, i: usize) -> Option<(String, usize, usize, usize)> 
     let (k, off, instr) = p.objects_with_offsets().enumerate().find_map(|(k, (off, o))| match o {
         InlineObject::FieldStart { instr, .. } => {
             let t = instr.trim_start();
-            (t.starts_with("BIBLIOGRAPHY") || t.starts_with("INDEX") || t.starts_with("TOA") || figures_label(t).is_some())
+            (t.starts_with("BIBLIOGRAPHY") || t.starts_with("INDEX") || t.starts_with("TOA") || figures_of(t).is_some())
                 .then(|| (k, off, t.to_string()))
         }
         _ => None,
@@ -127,19 +177,98 @@ fn list_field(o: &InlineObject) -> Option<String> {
     match o {
         InlineObject::Field { instr, .. } => {
             let t = instr.trim_start();
-            (t.starts_with("BIBLIOGRAPHY") || t.starts_with("INDEX") || t.starts_with("TOA") || figures_label(t).is_some()).then(|| t.to_string())
+            (t.starts_with("BIBLIOGRAPHY") || t.starts_with("INDEX") || t.starts_with("TOA") || figures_of(t).is_some()).then(|| t.to_string())
         }
         _ => None,
     }
 }
 
-/// The caption label (SEQ identifier) a table-of-figures field lists, `\c` or `\a`.
-fn figures_label(instr: &str) -> Option<String> {
+/// What a table-of-figures field (`TOC \c` or `\a`) lists.
+#[derive(Clone, Debug, PartialEq)]
+enum Figures {
+    /// The captions a caption label's SEQ identifier numbers.
+    Captions(String),
+    /// Paragraphs in the `\t` styles and `TC` fields with the `\f` identifier (Table of Figures
+    /// Options): a bare `\c` then lists no captions.
+    Marked { styles: Vec<String>, entries: Option<String> },
+}
+
+/// Most style names a `\t` list is read for.
+const MAX_STYLES: usize = 64;
+
+/// What table-of-figures field `instr` lists; `None` for anything else.
+fn figures_of(instr: &str) -> Option<Figures> {
     let f = FieldCode::parse(instr);
     if !f.is_table_of_figures() {
         return None;
     }
-    Some(f.arg('c').or_else(|| f.arg('a')).map_or_else(|| "Figure".to_string(), seq_ident))
+    if f.has('t') || f.has('f') {
+        // `\t "Style,Level,Style,Level"`: every second item is a level, which a flat list ignores.
+        let styles = f
+            .arg('t')
+            .map(|list| list.split(',').step_by(2).map(str::trim).filter(|n| !n.is_empty()).take(MAX_STYLES).map(str::to_string).collect())
+            .unwrap_or_default();
+        // A TC field without `\f` has identifier C, as does a bare `\f`.
+        let entries = f.has('f').then(|| f.arg('f').unwrap_or("C").to_string());
+        return Some(Figures::Marked { styles, entries });
+    }
+    Some(Figures::Captions(f.arg('c').or_else(|| f.arg('a')).map_or_else(|| "Figure".to_string(), seq_ident)))
+}
+
+/// The caption label (SEQ identifier) a caption table of figures lists, `\c` or `\a`; `None`
+/// for a list built from styles or table entry fields.
+#[cfg(test)]
+fn figures_label(instr: &str) -> Option<String> {
+    match figures_of(instr)? {
+        Figures::Captions(ident) => Some(ident),
+        Figures::Marked { .. } => None,
+    }
+}
+
+/// Whether paragraph `p`'s style is one of `styles` (display name or id, any case).
+fn styled_as(doc: &Document, p: &Paragraph, styles: &[String]) -> bool {
+    let id = p.props.style.as_deref().unwrap_or("Normal");
+    let name = doc.styles.get(id).map(|st| st.name.as_str());
+    styles.iter().any(|w| w.eq_ignore_ascii_case(id) || name.is_some_and(|n| w.eq_ignore_ascii_case(n)))
+}
+
+/// The entries a table of figures lists, in document order: (text, position).
+fn figure_marks(doc: &Document, figures: &Figures, bare: bool) -> Vec<(String, Pos)> {
+    let mut marks = Vec::new();
+    for path in doc.para_paths(StoryRef::Body) {
+        let Some(p) = doc.para(StoryRef::Body, &path) else { continue };
+        match figures {
+            Figures::Captions(ident) => {
+                if captioned_as(doc, p, ident) {
+                    let text = if bare { caption_body(p, &ident.replace('_', " ")) } else { p.plain_text() };
+                    marks.push((text, Pos { story: StoryRef::Body, path: path.clone(), off: 0 }));
+                }
+            }
+            Figures::Marked { styles, entries } => {
+                // The list's own paragraphs are never listed.
+                if p.props.style.as_deref() == Some(ENTRY_STYLE) || list_kind(p).is_some() {
+                    continue;
+                }
+                if styled_as(doc, p, styles) {
+                    marks.push((p.plain_text(), Pos { story: StoryRef::Body, path: path.clone(), off: 0 }));
+                }
+                let Some(want) = entries else { continue };
+                for off in p.object_offsets() {
+                    let instr = match p.object_at(off) {
+                        Some(InlineObject::Field { instr, .. } | InlineObject::FieldStart { instr, .. }) => instr,
+                        _ => continue,
+                    };
+                    let tc = FieldCode::parse(instr);
+                    if tc.name != "TC" || !tc.arg('f').unwrap_or("C").eq_ignore_ascii_case(want) {
+                        continue;
+                    }
+                    let text = tc.args.first().cloned().unwrap_or_default();
+                    marks.push((text, Pos { story: StoryRef::Body, path: path.clone(), off }));
+                }
+            }
+        }
+    }
+    marks
 }
 
 /// Whether `p` is a caption numbered by SEQ identifier `ident` (any case, as Word matches it). A
@@ -274,7 +403,7 @@ pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
         // A table of figures from Word can hold the list it saved as the field's result, in the
         // field's own paragraph: the rebuilt entries replace it, keeping its leader.
         let mut saved_leader = None;
-        if figures_label(&kind).is_some()
+        if figures_of(&kind).is_some()
             && let Ok(p) = s.doc.para_mut(StoryRef::Body, &Path::top(i))
         {
             let leader = p.props.tabs.as_ref().and_then(|t| t.last()).map(|t| t.leader);
@@ -282,7 +411,7 @@ pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
             for o in &mut p.objects {
                 if let InlineObject::Field { instr, result, .. } = o
                     && !result.is_empty()
-                    && figures_label(instr).is_some()
+                    && figures_of(instr).is_some()
                 {
                     result.clear();
                     cleared = true;
@@ -356,25 +485,23 @@ fn entries_for(s: &mut Session, kind: &str) -> Result<Vec<Paragraph>, CmdError> 
             .collect());
     }
     // Collect marks with positions.
-    let mut marks: Vec<(String, Pos)> = Vec::new();
-    let figures = figures_label(kind);
+    let figures = figures_of(kind);
     let bare = FieldCode::parse(kind).has('a');
-    for path in s.doc.para_paths(StoryRef::Body) {
-        let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
-        if let Some(ident) = &figures {
-            if captioned_as(&s.doc, p, ident) {
-                let text = if bare { caption_body(p, &ident.replace('_', " ")) } else { p.plain_text() };
-                marks.push((text, Pos { story: StoryRef::Body, path: path.clone(), off: 0 }));
-            }
-            continue;
-        }
-        for off in p.object_offsets() {
-            if let Some(InlineObject::Field { instr, .. }) = p.object_at(off) {
-                let t = instr.trim_start();
-                let want = if kind.starts_with("INDEX") { "XE" } else { "TA" };
-                if t.starts_with(want) {
-                    let e = t.split('"').nth(1).unwrap_or("").to_string();
-                    marks.push((e, Pos { story: StoryRef::Body, path: path.clone(), off }));
+    let mut marks: Vec<(String, Pos)> = match &figures {
+        Some(fig) => figure_marks(&s.doc, fig, bare),
+        None => Vec::new(),
+    };
+    if figures.is_none() {
+        for path in s.doc.para_paths(StoryRef::Body) {
+            let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
+            for off in p.object_offsets() {
+                if let Some(InlineObject::Field { instr, .. }) = p.object_at(off) {
+                    let t = instr.trim_start();
+                    let want = if kind.starts_with("INDEX") { "XE" } else { "TA" };
+                    if t.starts_with(want) {
+                        let e = t.split('"').nth(1).unwrap_or("").to_string();
+                        marks.push((e, Pos { story: StoryRef::Body, path: path.clone(), off }));
+                    }
                 }
             }
         }
@@ -391,26 +518,23 @@ fn entries_for(s: &mut Session, kind: &str) -> Result<Vec<Paragraph>, CmdError> 
     }
     let mut with_pages: Vec<(String, (usize, String))> = marks.into_iter().map(|(e, _)| (e, (0, String::new()))).collect();
     // Pages (layout once).
-    let positions: Vec<Pos> = {
-        let mut v = Vec::new();
-        for path in s.doc.para_paths(StoryRef::Body) {
-            let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
-            if let Some(ident) = &figures {
-                if captioned_as(&s.doc, p, ident) {
-                    v.push(Pos { story: StoryRef::Body, path: path.clone(), off: 0 });
-                }
-                continue;
-            }
-            for off in p.object_offsets() {
-                if let Some(InlineObject::Field { instr, .. }) = p.object_at(off) {
-                    let want = if kind.starts_with("INDEX") { "XE" } else { "TA" };
-                    if instr.trim_start().starts_with(want) {
-                        v.push(Pos { story: StoryRef::Body, path: path.clone(), off });
+    let positions: Vec<Pos> = match &figures {
+        Some(fig) => figure_marks(&s.doc, fig, bare).into_iter().map(|(_, pos)| pos).collect(),
+        None => {
+            let mut v = Vec::new();
+            for path in s.doc.para_paths(StoryRef::Body) {
+                let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
+                for off in p.object_offsets() {
+                    if let Some(InlineObject::Field { instr, .. }) = p.object_at(off) {
+                        let want = if kind.starts_with("INDEX") { "XE" } else { "TA" };
+                        if instr.trim_start().starts_with(want) {
+                            v.push(Pos { story: StoryRef::Body, path: path.clone(), off });
+                        }
                     }
                 }
             }
+            v
         }
-        v
     };
     let formats = page_formats(s);
     for (i, pos) in positions.iter().enumerate() {
@@ -490,6 +614,20 @@ fn plain_entry(text: String, hanging: bool) -> Paragraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A bare `\c` beside `\t` or `\f` marks a table of figures, not captions labelled Figure.
+    #[test]
+    fn a_bare_c_with_styles_or_entries_lists_no_captions() {
+        assert_eq!(figures_label(r#"TOC \h \z \c "Table""#), Some("Table".to_string()));
+        assert_eq!(figures_label(r#"TOC \c"#), Some("Figure".to_string()));
+        assert_eq!(figures_label(r#"TOC \h \z \t "Caption" \c"#), None);
+        assert_eq!(figures_label(r#"TOC \f T \c"#), None);
+        assert_eq!(
+            figures_of(r#"TOC \t "Heading 2,1,Caption,2" \f t \c"#),
+            Some(Figures::Marked { styles: vec!["Heading 2".into(), "Caption".into()], entries: Some("t".into()) })
+        );
+        assert_eq!(figures_of(r#"TOC \o "1-3""#), None);
+    }
 
     /// A field before a list's in its paragraph (an empty `PAGE`) closes first: the list still
     /// ends at its own field end, paragraphs below, not in its first paragraph.
