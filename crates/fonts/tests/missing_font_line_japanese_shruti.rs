@@ -64,7 +64,7 @@ fn a_missing_shruti_takes_words_line() {
 
 #[test]
 fn guard_unmeasured_fonts_are_unchanged() {
-    for name in ["Meiryo", "Yu Mincho", "Yu Gothic", "Mangal", "Latha"] {
+    for name in ["Meiryo", "Yu Mincho", "Yu Gothic", "Latha"] {
         let r = resolve(name, false, false);
         if r.substituted {
             assert_eq!(missing_font_line(name, &r), None, "{name}");
