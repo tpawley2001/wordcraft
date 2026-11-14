@@ -463,7 +463,10 @@ fn autocorrect_tab(app: &mut WordApp, ui: &mut Ui, f: &mut AutoCorrectForm) {
         });
     });
     // The list, filtered to what's typed in Replace (as Word scrolls to it).
-    let list = f.options.list();
+    // Symbol-font entries (Word's Wingdings arrows) show a Unicode look-alike: the interface
+    // fonts have no glyph for their private-use characters.
+    let list: Vec<(String, String, bool)> =
+        f.options.list().into_iter().map(|(a, b, builtin)| (a, wordcraft_engine::cmd::tools::symbol_display_text(&b), builtin)).collect();
     let typed = f.from.trim().to_lowercase();
     let mut picked: Option<(String, String)> = None;
     egui::ScrollArea::vertical().id_salt("ac_list").max_height(170.0).auto_shrink([false, true]).show(ui, |ui| {

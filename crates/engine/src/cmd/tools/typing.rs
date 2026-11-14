@@ -85,11 +85,15 @@ pub fn autocorrect_word(s: &mut Session, on_enter: bool) -> Result<(), CmdError>
     // same way (#835); every English (en-GB, en-CA…) counts (#1281).
     let english = s.doc.para_at(&f).is_none_or(|_| wordcraft_proof::ProofLang::from_tag(lang.as_deref()).is_english());
     let found = if ac.replace_text { ac.replacement_in(&word, english) } else { None };
+    // A symbol-font entry ("-->" → Wingdings' arrow) puts its character in that font, as Insert ›
+    // Symbol does; the text around it keeps its own.
+    let sym = if ac.replace_text && found.is_none() { ac.symbol_replacement(&word) } else { None };
     let (from, rep) = match found {
         Some(r) => (start, Some(r)),
+        None if sym.is_some() => (start, sym.map(|(c, _)| c.to_string())),
         None if ac.replace_text && word.len() > 3 && word.ends_with("...") => (start + word.len() - 3, Some("…".to_string())),
         None if ac.replace_text => match SMILEYS.iter().find(|m| word.len() > m.len() && word.ends_with(**m)) {
-            // "ok:)" → "ok☺": only the smiley at the end of the word is replaced.
+            // "ok:)" → "ok😊": only the smiley at the end of the word is replaced.
             Some(m) => (start + word.len() - m.len(), AUTOCORRECT.iter().find(|(a, _)| a == m).map(|(_, b)| b.to_string())),
             None => (start, None),
         },
@@ -101,7 +105,11 @@ pub fn autocorrect_word(s: &mut Session, on_enter: bool) -> Result<(), CmdError>
         let end = start + word.len();
         let para = s.doc.para_mut(f.story, &f.path)?;
         // The replacement is text: a symbol it replaces doesn't give it its symbol font (#2036).
-        let props = para.props_of_char(from).clone().without_symbol();
+        let mut props = para.props_of_char(from).clone().without_symbol();
+        if let Some((_, font)) = sym {
+            props.font = Some(font.to_string());
+            props.sym_font = Some(font.to_string());
+        }
         para.delete(from, end)?;
         para.insert_text(from, &rep, &props)?;
         caret = (f.off + rep.len()).saturating_sub(end - from);

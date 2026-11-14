@@ -432,18 +432,19 @@ fn smart_quotes_nested_and_opening_delimiters() {
     assert_eq!(s.doc.plain_text(StoryRef::Body), "«‘french’» „‘german’“");
 }
 
-/// #2223: the double-hyphen arrow is a replacement, not the existing arrow bullet.
+/// #2223: the double-hyphen arrow is a replacement, not the existing arrow bullet. Word types it as
+/// the Wingdings arrow (U+F0E0 in Wingdings), measured in Microsoft 365 Word 2026-11-14.
 #[test]
 fn double_hyphen_arrow_autocorrect_preserves_typing_scope_and_undo() {
     let mut s = typed("go --> ");
-    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go → ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go \u{F0E0} ");
     assert_eq!(paras(&s)[0].1, None);
     run(&mut s, "edit.undo", json!({}));
     assert_eq!(s.doc.plain_text(StoryRef::Body), "Go --> ");
     let s = typed("go --> here");
-    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go → here");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go \u{F0E0} here");
     let s = typed("--> ");
-    assert_eq!(s.doc.plain_text(StoryRef::Body), "→ ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "\u{F0E0} ");
     assert_eq!(paras(&s)[0].1, None);
 }
 
@@ -458,7 +459,7 @@ fn double_hyphen_arrow_respects_autocorrect_preferences() {
     let mut s = s();
     run(&mut s, "review.language", json!({"lang": "pl-PL", "default": true}));
     typ(&mut s, "go --> here");
-    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go → here");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go \u{F0E0} here");
     let mut s = self::s();
     run(&mut s, "tools.autocorrect", json!({"add": {"from": "-->", "to": "custom"}}));
     typ(&mut s, "go --> here");
@@ -1435,7 +1436,8 @@ fn arrow_bullets() {
 #[test]
 fn smileys_are_replaced_inside_words_too() {
     let s = typed("so ok:) sad:( meh:| :) fine:-) ");
-    assert_eq!(s.doc.plain_text(StoryRef::Body), "So ok\u{263A} sad\u{2639} meh\u{1F610} \u{263A} fine\u{263A} ");
+    // Word's :) is U+1F60A (M365 Word's AutoCorrect entry, 2026-11-14; autocorrect_symbols_word.rs).
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "So ok\u{1F60A} sad\u{2639} meh\u{1F610} \u{1F60A} fine\u{1F60A} ");
 }
 
 #[test]
