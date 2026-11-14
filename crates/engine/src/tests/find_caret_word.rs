@@ -47,7 +47,7 @@ fn ansi_and_unicode_codes() {
 
 #[test]
 fn any_character_takes_paragraph_marks_but_not_optional_hyphens() {
-    assert_eq!(bracket("s\u{AD}t", "^?"), ["[s]\u{AD}[t]"]);
+    assert_eq!(bracket("s\u{AD}t", "^?"), ["[s]\u{AD}[t][]"]);
     assert_eq!(bracket("ab\ncd", "^?"), ["[a][b][", "][c][d][]"]);
 }
 
