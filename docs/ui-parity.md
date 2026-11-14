@@ -1,7 +1,7 @@
 # UI parity with Microsoft Word
 
-
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0493: normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes; `^?` skips optional hyphens and searches paragraph marks, including the final mark, which replacement preserves. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0488: Find with Use wildcards: `@` takes as few characters as it can, `{,n}` is refused, and `?`, `*` and `[!…]` match a paragraph mark, as in Word. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged; earlier: P0486: Distribute Rows shares the selected rows' laid-out height equally, At least. P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged; earlier: P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged)

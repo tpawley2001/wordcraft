@@ -18,7 +18,7 @@ pub const SECT_MARK: char = '\u{1D}';
 pub const MAX_PATTERN: usize = 1024;
 /// Largest count in `{n,m}`.
 const MAX_COUNT: u32 = 1000;
-/// Any character except a paragraph mark (`?`, `^?`, `*`).
+/// The `^?` atom in wildcard search, excluding paragraph and section marks.
 const ANY: &str = r"[^\r\x{1D}]";
 /// Any character in "Use wildcards" (`?`, `*`, `[!…]`): Word's wildcards match a paragraph mark
 /// too, so such a match can run into the next paragraph.
@@ -130,10 +130,7 @@ fn numeric_code(chars: &[char], i: usize) -> Option<(char, usize)> {
     let n: u32 = digits.parse().ok()?;
     // `^0nnn` is a Windows-1252 (ANSI) code; `^nnn` and `^unnnn` are Unicode.
     let n = if start == i && digits.starts_with('0') { ansi(n) } else { n };
-    Some((
-        code_char(n).filter(|c| !c.is_control() || matches!(*c, PARA_MARK | '\n' | '\t' | '\u{0C}' | '\u{0E}'))?,
-        start - i + digits.chars().count(),
-    ))
+    Some((code_char(n).filter(|c| !c.is_control() || *c == '\t' || matches!(n, 11..=14))?, start - i + digits.chars().count()))
 }
 
 /// Normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes. Invalid
@@ -220,7 +217,7 @@ fn special(query: &str, o: &Opts) -> (String, bool) {
         {
             if let Some(code) = find_code(n) {
                 spans |= matches!(n, 'p' | 'b' | '?');
-                atoms.push(if n == '?' { r"[^\x{1D}\x{AD}]".to_string() } else { code.to_string() });
+                atoms.push(if n == '?' { r"[^\x{AD}]".to_string() } else { code.to_string() });
                 i += 1;
                 continue;
             }
@@ -597,7 +594,7 @@ mod tests {
             assert!(!finds(query, query), "invalid numeric code {query} must not become literal text");
         }
         // Wildcard and Replace with decoding retain their existing control filtering.
-        for query in ["^127", "^u150"] {
+        for query in ["^10", "^127", "^u150"] {
             let c = compile(query, &Opts { wildcards: true, ..Opts::default() }).unwrap();
             assert!(regex::Regex::new(&c.pattern).unwrap().is_match(query));
             assert_eq!(replaced(query), query);

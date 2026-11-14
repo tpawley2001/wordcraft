@@ -1,7 +1,7 @@
 # Where WordCraft falls short of Word
 
-
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0493: normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes; `^?` skips optional hyphens and searches paragraph marks, including the final mark, which replacement preserves. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged; earlier: P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged)
