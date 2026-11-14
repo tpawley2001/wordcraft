@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0493: normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes; `^?` skips optional hyphens and searches paragraph marks, including the final mark, which replacement preserves. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0488: Find with Use wildcards: `@` takes as few characters as it can, `{,n}` is refused, and `?`, `*` and `[!…]` match a paragraph mark, as in Word. Readiness estimates unchanged.)
@@ -178,6 +180,8 @@ The table Formula dialog (Table Layout › Data › Formula) has Formula, Number
 
 Convert Text to Table (`table.fromText`) keeps spaces, tabs and no-break spaces in every cell; only one U+0020 directly after each comma separator is dropped, as measured in Microsoft 365 Word 16.0.20527.
 
+Word Count's shared counters follow the 2026-11-14 Word for Windows measurements for symbols, dash/bullet separators, spaces and invisible characters. U+2028/U+2029 as breaks, invisible-only tokens and the retained CJK punctuation exception remain unverified in Word.
+
 ## Revision history
 
 > 2026-11-14 · trivial · P0493: normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes; `^?` skips optional hyphens and searches paragraph marks, including the final mark, which replacement preserves. Readiness estimates unchanged.
@@ -211,6 +215,7 @@ Convert Text to Table (`table.fromText`) keeps spaces, tabs and no-break spaces 
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0485: Sort Text and Table Sort by Number and by Date as in Word: text without a number or date sorts first (last descending); a Number key reads the text arithmetically (`12 13` is 25, `3,5` is 8, `5%` is 0.05, `3-4` is -1, `(2)` is -2; `+4`, `2e3` and `x7y` are no number); a Date key also reads two-digit years, English month names, day-first dates (a first number over 12) and times. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0483: Increase/Decrease Font Size step by one point below 8 pt, preserving fractional sizes and stopping at 1 and 8; their steps skip 10.5 pt, as measured in Word. The Font Size box and one-point commands are unchanged. |

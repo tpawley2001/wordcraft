@@ -1,8 +1,8 @@
 # WordCraft roadmap
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0504: nine missing East Asian and Thai fonts use Word's measured baseline and single-line height (1.301–1.950 em). Gap #4 narrowed; readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged.)
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0502: twenty more missing Office fonts use Word's measured single-line metrics (1.067–1.680 em), including Segoe UI Light and Semibold sharing Segoe UI's line. Gap #4 narrowed; readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0504: nine missing East Asian and Thai fonts use Word's measured baseline and single-line height (1.301–1.950 em). Gap #4 narrowed; readiness estimates unchanged; earlier: P0502: twenty more missing Office fonts use Word's measured single-line metrics (1.067–1.680 em), including Segoe UI Light and Semibold sharing Segoe UI's line. Gap #4 narrowed; readiness estimates unchanged)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0499: missing Segoe UI, Perpetua, Gill Sans MT and Book Antiqua use Word's measured single-line metrics (1.330, 1.146, 1.160 and 1.243 em); Book Antiqua keeps its own baseline and line, separate from Palatino. Gap #4 narrowed; readiness estimates unchanged.)
 
@@ -178,8 +178,9 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
-- 2026-11-14: P0504: nine missing East Asian and Thai fonts use Word's measured baseline and single-line height (1.301–1.950 em). Gap #4 narrowed; readiness estimates unchanged.
+- 2026-11-14: P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged.
 
+- 2026-11-14: P0504: nine missing East Asian and Thai fonts use Word's measured baseline and single-line height (1.301–1.950 em). Gap #4 narrowed; readiness estimates unchanged.
 - 2026-11-14: P0502: twenty more missing Office fonts use Word's measured single-line metrics (1.067–1.680 em), including Segoe UI Light and Semibold sharing Segoe UI's line. Gap #4 narrowed; readiness estimates unchanged.
 
 - 2026-11-14: P0499: missing Segoe UI, Perpetua, Gill Sans MT and Book Antiqua use Word's measured single-line metrics (1.330, 1.146, 1.160 and 1.243 em); Book Antiqua keeps its own baseline and line, separate from Palatino. Gap #4 narrowed; readiness estimates unchanged.
@@ -1026,6 +1027,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0504: nine missing East Asian and Thai fonts use Word's measured baseline and single-line height (1.301–1.950 em). Gap #4 narrowed; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0502: twenty more missing Office fonts use Word's measured single-line metrics (1.067–1.680 em), including Segoe UI Light and Semibold sharing Segoe UI's line. Gap #4 narrowed; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0499: missing Segoe UI, Perpetua, Gill Sans MT and Book Antiqua use Word's measured single-line metrics (1.330, 1.146, 1.160 and 1.243 em); Book Antiqua keeps its own baseline and line, separate from Palatino. Gap #4 narrowed; readiness estimates unchanged. |

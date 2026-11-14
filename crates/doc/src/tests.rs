@@ -2,6 +2,7 @@ use super::*;
 use std::sync::Arc;
 
 mod note_conversion;
+mod word_count_word;
 
 #[test]
 fn new_document_is_valid() {
@@ -16,7 +17,8 @@ fn new_document_is_valid() {
 fn word_count() {
     let d = Document::from_text("Hello, world!\nThis is — a test 42.\n\n");
     assert_eq!(d.word_count(), 7);
-    assert_eq!(count_words(" -- "), 0);
+    // Word counts a token of symbols as a word (`alfa -- beta` is 3 words; word_count_word.rs).
+    assert_eq!(count_words(" -- "), 1);
 }
 
 /// #2797: the status bar's character counts, worded like the Word Count dialog's: characters
