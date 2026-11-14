@@ -59,6 +59,9 @@ pub struct DisplayOptions {
     /// result, a drop-down's selected entry and check boxes, each where the full page has it;
     /// nothing else (other text, fills, lines, pictures, shapes, marks). The layout is unchanged.
     pub forms_data_only: bool,
+    /// Print drawings created in Word off: nothing is drawn for shapes (ink excepted), text boxes
+    /// and their text, WordArt and drawing canvases. The layout is unchanged.
+    pub hide_drawings: bool,
 }
 
 impl Default for DisplayOptions {
@@ -76,6 +79,7 @@ impl Default for DisplayOptions {
             hide_object: None,
             picture_placeholders: false,
             forms_data_only: false,
+            hide_drawings: false,
         }
     }
 }

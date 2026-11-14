@@ -23,6 +23,10 @@ pub(crate) struct Exporter<'a> {
     /// [`PdfOptions::forms_data_only`] for the sheets being drawn: on only for the main
     /// document's pages, so an appendix (the properties page) prints in full.
     pub(crate) forms_data_only: bool,
+    /// [`PdfOptions::background`] and [`PdfOptions::drawings`] for the sheets being drawn, as
+    /// `forms_data_only`: an appendix prints in full.
+    pub(crate) background: bool,
+    pub(crate) drawings: bool,
     /// Layout page index to the first output sheet side and its placement transform.
     pub(crate) out_index: HashMap<usize, (usize, Fit)>,
     /// Embedded fonts by face id (`None`: krilla can't read it).
@@ -226,7 +230,10 @@ impl Exporter<'_> {
     pub(crate) fn page(&mut self, s: &mut Surface, page: &Page, w: f32, h: f32) {
         // Only the form data: the page's background and watermark aren't drawn either.
         let data_only = self.forms_data_only;
-        if let Some(c) = self.doc.settings.page_color.filter(|_| !data_only)
+        // Print background colors and images off: no page colour or page picture (the watermark
+        // is not part of the background and still prints).
+        let background = self.background && !data_only;
+        if let Some(c) = self.doc.settings.page_color.filter(|_| background)
             && let Some(p) = rect_path(&Rect::new(0.0, 0.0, w, h))
         {
             self.tagged(s, Role::Artifact(ArtifactType::Other), None, |_, s| {
@@ -236,7 +243,7 @@ impl Exporter<'_> {
                 s.set_fill(None);
             });
         }
-        if let Some(pic) = self.doc.settings.page_picture.clone().filter(|_| !data_only) {
+        if let Some(pic) = self.doc.settings.page_picture.clone().filter(|_| background) {
             self.tagged(s, Role::Artifact(ArtifactType::Other), None, |me, s| me.page_picture(s, &pic, w, h));
         }
         if let Some(wm) = self.doc.settings.watermark.clone()
@@ -248,6 +255,7 @@ impl Exporter<'_> {
         }
         let mut dopts = self.opts.display_options();
         dopts.forms_data_only = data_only;
+        dopts.hide_drawings = !self.drawings;
         // What the items share (the authors' colours, the clipped cells) is worked out once per page.
         let shown = ItemDisplay::new(self.doc, page);
         for it in page.header.iter().chain(page.footer.iter()) {

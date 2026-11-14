@@ -152,6 +152,10 @@ pub fn contextual_tabs(s: &wordcraft_engine::Session) -> Vec<&'static str> {
     if s.math.is_some() {
         tabs.push("Equation");
     }
+    // Immersive Reader (next to File).
+    if s.view.immersive {
+        tabs.push("Immersive Reader");
+    }
     // Outline view (drawn first, next to File, as Word does).
     if s.view.mode == wordcraft_layout::ViewMode::Outline {
         tabs.push("Outlining");

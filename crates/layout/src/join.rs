@@ -1,19 +1,28 @@
-//! Paragraphs whose mark is a tracked deletion, joined to the next paragraph where the layout
-//! hides deletions (the final text: PDF export, print, no markup; deletions in balloons).
+//! Paragraphs laid out joined to the next paragraph: those whose mark is a tracked deletion,
+//! where the layout hides deletions (the final text: PDF export, print, no markup; deletions in
+//! balloons), and those whose mark is hidden (Word's style separator), while hidden text is not
+//! shown.
 //!
-//! Word lays such a paragraph out as part of the paragraph after it: the break is gone, its text
-//! runs on into the next paragraph's, and the joined paragraph takes the paragraph formatting
-//! (alignment, indents, spacing, numbering…) of the chain's last paragraph, whose mark survives.
-//! Each run keeps its own character formatting.
+//! Word lays a paragraph with a deleted mark out as part of the paragraph after it: the break is
+//! gone, its text runs on into the next paragraph's, and the joined paragraph takes the paragraph
+//! formatting (alignment, indents, spacing, numbering…) of the chain's last paragraph, whose mark
+//! survives. Each run keeps its own character formatting.
 //!
-//! The join is a matter of layout only. [`plan`] builds the document as laid out: the chain's
-//! last paragraph holds the text and objects of the whole chain, and each paragraph joined
-//! away is an empty paragraph with its deleted mark, which takes no room. After the layout,
-//! [`Joins::split`] gives each source paragraph its own share of the joined lines
-//! ([`ParaLayout::share_view`]) under its own path, so the caret, hit testing, selection and
-//! drawing still address the paragraphs of the document.
+//! A paragraph whose mark is hidden (`w:vanish` on the mark, with or without `w:specVanish`)
+//! runs on into the next paragraph the same way, but the joined paragraph takes the paragraph
+//! formatting of the chain's FIRST paragraph (alignment, indents, space before, numbering), with
+//! the space after of the last (measured in Word 16.0.20527). The other paragraphs' list numbers
+//! are counted but not drawn. Only body paragraphs with text join this way: an empty paragraph
+//! with a hidden mark takes no room as before, and one carrying a section break stays.
 //!
-//! A paragraph carrying a section break joins too: the break is not applied, and everything in
+//! The join is a matter of layout only. [`plan`] builds the document as laid out: one paragraph
+//! of the chain (the last for deleted marks, the first for hidden ones) holds the text and
+//! objects of the whole chain, and each other paragraph is an empty paragraph whose mark takes no
+//! room. After the layout, [`Joins::split`] gives each source paragraph its own share of the
+//! joined lines ([`ParaLayout::share_view`]) under its own path, so the caret, hit testing,
+//! selection and drawing still address the paragraphs of the document.
+//!
+//! A paragraph with a deleted mark carrying a section break joins too: the break is not applied, and everything in
 //! its section is laid out as part of the next section whose break survives (its page size,
 //! margins, columns, headers and footers), as Word prints a section break deleted with Track
 //! Changes. The document keeps every section; [`Joins::split`] maps each page's section back to
@@ -61,23 +70,64 @@ pub(crate) struct Joins {
     sections: Vec<usize>,
 }
 
-/// Whether paragraph `p` joins the next paragraph when deletions are hidden: its mark is a
-/// deletion (whether or not it carries a section break), and its runs and objects agree with its text (so its
-/// text can be put before another's without shifting what follows).
-fn joins_next(p: &Paragraph) -> bool {
-    p.mark.del.is_some()
-        && p.runs.iter().try_fold(0usize, |n, r| n.checked_add(r.len)) == Some(p.text.len())
-        && p.text.chars().filter(|c| *c == OBJ).count() == p.objects.len()
+/// Why a paragraph joins the next one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    /// Its mark is a tracked deletion and deletions are hidden: the chain's last paragraph's
+    /// formatting holds.
+    Deleted,
+    /// Its mark is hidden and hidden text is not shown: the chain's first paragraph's formatting
+    /// holds.
+    Hidden,
+}
+
+/// What joins in the container being planned.
+#[derive(Clone, Copy)]
+struct Modes {
+    deleted: bool,
+    hidden: bool,
+}
+
+/// Why paragraph `p` joins the next paragraph, if it does. Its runs and objects must agree with
+/// its text (so its text can be put before another's without shifting what follows). A deleted
+/// mark joins whether or not it carries a section break; a hidden mark joins when the paragraph
+/// has text (an empty one takes no room as before) and carries no section break.
+fn join_kind(p: &Paragraph, modes: Modes) -> Option<Kind> {
+    let sound = p.runs.iter().try_fold(0usize, |n, r| n.checked_add(r.len)) == Some(p.text.len())
+        && p.text.chars().filter(|c| *c == OBJ).count() == p.objects.len();
+    if !sound {
+        return None;
+    }
+    if modes.deleted && p.mark.del.is_some() {
+        Some(Kind::Deleted)
+    } else if modes.hidden && p.mark.hidden == Some(true) && p.section.is_none() && shows_text(p) {
+        Some(Kind::Hidden)
+    } else {
+        None
+    }
+}
+
+/// Whether `p` has text that is not hidden: a paragraph with a hidden mark and no text shown
+/// takes no room and joins nothing (its list number is still counted).
+fn shows_text(p: &Paragraph) -> bool {
+    let mut at = 0usize;
+    p.runs.iter().any(|r| {
+        let start = at;
+        at = at.saturating_add(r.len);
+        r.props.hidden != Some(true) && p.text.get(start..at).is_some_and(|t| t.chars().any(|c| c != OBJ))
+    })
 }
 
 /// The joins to make in `doc` laid out with `opts`, or `None` when there are none.
 pub(crate) fn plan(doc: &Document, opts: &LayoutOptions) -> Option<Joins> {
-    if opts.hides_deleted(StoryRef::Body) != HideDeleted::ALL {
+    let modes = Modes { deleted: opts.hides_deleted(StoryRef::Body) == HideDeleted::ALL, hidden: !opts.show_hidden };
+    if !modes.deleted && !modes.hidden {
         return None;
     }
     let mut hosts = HashMap::new();
     let mut away = HashSet::new();
-    let body = join_blocks(&doc.body, &[], 0, (&mut hosts, &mut away))?;
+    let mut dropped = HashSet::new();
+    let body = join_blocks(doc, &doc.body, &[], 0, modes, (&mut hosts, &mut away, &mut dropped))?;
     let mut out = doc.clone();
     out.body = body;
     // The source's sections whose break survives, in order (the body's own always does).
@@ -85,17 +135,19 @@ pub(crate) fn plan(doc: &Document, opts: &LayoutOptions) -> Option<Joins> {
         .sections()
         .iter()
         .enumerate()
-        .filter(|(_, (end, _))| u32::try_from(*end).map_or(true, |e| !away.contains(&Path(vec![e]))))
+        .filter(|(_, (end, _))| u32::try_from(*end).map_or(true, |e| !dropped.contains(&Path(vec![e]))))
         .map(|(k, _)| k)
         .collect();
     Some(Joins { doc: out, hosts, away, sections })
 }
 
-type Found<'a> = (&'a mut HashMap<Path, Vec<Source>>, &'a mut HashSet<Path>);
+type Found<'a> = (&'a mut HashMap<Path, Vec<Source>>, &'a mut HashSet<Path>, &'a mut HashSet<Path>);
 
 /// `blocks` (at `prefix`) with their chains joined, or `None` when nothing in them joins.
-fn join_blocks(blocks: &Blocks, prefix: &[u32], depth: usize, found: Found<'_>) -> Option<Blocks> {
-    let (hosts, away) = found;
+/// Hidden marks join only in the body itself: an empty paragraph with a hidden mark takes no room
+/// there alone, so a paragraph joined away in a cell would keep a line.
+fn join_blocks(doc: &Document, blocks: &Blocks, prefix: &[u32], depth: usize, modes: Modes, found: Found<'_>) -> Option<Blocks> {
+    let (hosts, away, dropped) = found;
     let mut out: Option<Blocks> = None;
     let path = |i: usize| u32::try_from(i).ok().map(|i| Path(prefix.iter().copied().chain([i]).collect()));
     let para = |i: usize| blocks.get(i).and_then(|b| b.as_para());
@@ -110,7 +162,8 @@ fn join_blocks(blocks: &Blocks, prefix: &[u32], depth: usize, found: Found<'_>) 
                         let (Ok(r32), Ok(c32)) = (u32::try_from(r), u32::try_from(c)) else { continue };
                         let mut at = here.0.clone();
                         at.extend([r32, c32]);
-                        if let Some(b) = join_blocks(&cell.blocks, &at, depth + 1, (&mut *hosts, &mut *away))
+                        let modes = Modes { hidden: false, ..modes };
+                        if let Some(b) = join_blocks(doc, &cell.blocks, &at, depth + 1, modes, (&mut *hosts, &mut *away, &mut *dropped))
                             && let Some(cell) = table.get_or_insert_with(|| t.clone()).rows.get_mut(r).and_then(|row| row.cells.get_mut(c))
                         {
                             cell.blocks = b;
@@ -126,29 +179,43 @@ fn join_blocks(blocks: &Blocks, prefix: &[u32], depth: usize, found: Found<'_>) 
             }
             Block::Table(_) => i += 1,
             Block::Para(p) => {
-                if !joins_next(p) || para(i + 1).is_none() {
+                let Some(kind) = join_kind(p, modes).filter(|_| para(i + 1).is_some()) else {
                     i += 1;
                     continue;
-                }
-                // The chain is i..=j: every paragraph but j joins the next; j's mark survives
-                // (or the chain is at its cap).
+                };
+                // The chain is i..=j: every paragraph but j joins the next for the same reason;
+                // j's mark survives (or the chain is at its cap).
                 let mut j = i + 1;
-                while j + 1 - i < MAX_JOINED_PARAS && para(j).is_some_and(joins_next) && para(j + 1).is_some() {
+                while j + 1 - i < MAX_JOINED_PARAS && para(j).and_then(|p| join_kind(p, modes)) == Some(kind) && para(j + 1).is_some() {
                     j += 1;
                 }
-                let Some(host_path) = path(j) else { break };
+                let host = match kind {
+                    Kind::Deleted => j,
+                    Kind::Hidden => i,
+                };
+                let Some(host_path) = path(host) else { break };
                 let chain: Vec<(Path, &Paragraph)> = (i..=j).filter_map(|k| Some((path(k)?, para(k)?))).collect();
-                let (joined, sources) = join_chain(&chain);
+                let (joined, sources) = match kind {
+                    Kind::Deleted => join_chain(&chain),
+                    Kind::Hidden => join_hidden(doc, &chain),
+                };
                 let slots = out.get_or_insert_with(|| blocks.clone());
-                for (k, (src, p)) in (i..j).zip(&chain) {
-                    if let Some(slot) = slots.get_mut(k) {
-                        *slot = Arc::new(Block::Para(placeholder(p)));
-                        away.insert(src.clone());
+                for (k, (src, p)) in (i..=j).zip(&chain) {
+                    let Some(slot) = slots.get_mut(k) else { continue };
+                    if k == host {
+                        *slot = Arc::new(Block::Para(joined.clone()));
+                        hosts.insert(host_path.clone(), sources.clone());
+                        continue;
                     }
-                }
-                if let Some(slot) = slots.get_mut(j) {
-                    *slot = Arc::new(Block::Para(joined));
-                    hosts.insert(host_path, sources);
+                    let q = match kind {
+                        Kind::Deleted => {
+                            dropped.insert(src.clone());
+                            placeholder(p)
+                        }
+                        Kind::Hidden => hidden_placeholder(p),
+                    };
+                    *slot = Arc::new(Block::Para(q));
+                    away.insert(src.clone());
                 }
                 i = j + 1;
             }
@@ -195,6 +262,38 @@ fn join_chain(chain: &[(Path, &Paragraph)]) -> (Paragraph, Vec<Source>) {
         rev: rev_of(1, chain.iter().map(|(_, p)| p.rev)),
     };
     (joined, sources)
+}
+
+/// The paragraphs of `chain` (joined at hidden marks) as one: their text, runs and objects in
+/// order, with the first paragraph's paragraph formatting except the space after, which is the
+/// last paragraph's, and the last paragraph's mark (the one shown); and where each one's text went.
+fn join_hidden(doc: &Document, chain: &[(Path, &Paragraph)]) -> (Paragraph, Vec<Source>) {
+    let (Some((_, first)), Some((_, last))) = (chain.first(), chain.last()) else { return (Paragraph::new(), Vec::new()) };
+    let (mut joined, sources) = join_chain(chain);
+    joined.props = first.props.clone();
+    if first.props != last.props {
+        let after = doc.styles.resolve_para(&last.props);
+        joined.props.space_after = Some(after.space_after);
+        joined.props.space_after_auto = Some(after.after_auto);
+    }
+    joined.section = None;
+    joined.rev = rev_of(3, chain.iter().map(|(_, p)| p.rev));
+    (joined, sources)
+}
+
+/// What stands in for a paragraph joined at a hidden mark, after the joined paragraph: empty,
+/// with its mark hidden (so it takes no room) and its own paragraph formatting, so its list
+/// number is counted though not drawn and a section break it carries still applies; nothing
+/// breaks a page before it.
+fn hidden_placeholder(p: &Paragraph) -> Paragraph {
+    let mut q = Paragraph::new();
+    q.props = p.props.clone();
+    q.props.page_break_before = Some(false);
+    q.mark = p.mark.clone();
+    q.mark.hidden = Some(true);
+    q.section = p.section.clone();
+    q.rev = rev_of(4, std::iter::once(p.rev));
+    q
 }
 
 /// What stands in for a paragraph joined away: empty, with its deleted mark (so it takes no
@@ -443,5 +542,98 @@ mod tests {
         }
         let after = width(&crate::layout(&d, &mut cache, &opts)).unwrap();
         assert!(after > before + 10.0, "Beta starts at {before}, then at {after}");
+    }
+
+    fn hid(text: &str) -> Paragraph {
+        let mut p = para(text);
+        p.mark.hidden = Some(true);
+        p
+    }
+
+    /// The tops and list labels of the body lines laid out with hidden text not shown.
+    fn lines(d: &Document) -> Vec<(Path, f32, Option<String>)> {
+        crate::test_fonts();
+        let l = crate::layout(d, &mut crate::LayoutCache::new(), &LayoutOptions::default());
+        l.pages
+            .iter()
+            .flat_map(|p| &p.items)
+            .filter_map(|it| match it {
+                Placed::Lines { path, y, para, .. } => Some((path.clone(), *y, para.label.as_ref().map(|l| l.text.clone()))),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Word 16.0.20527: `Alpha` (mark hidden), `Omega` is `AlphaOmega`, no space added; the joined
+    /// line takes the first paragraph's place (no space before, left, no indent) and the last
+    /// paragraph's space after (0 pt, not the first's 12 pt).
+    #[test]
+    fn a_hidden_mark_joins_with_the_first_paragraphs_formatting_and_the_last_space_after() {
+        use wordcraft_doc::props::{Align, LineSpacing};
+        let spaced = |mut p: Paragraph, before: f32, after: f32, align: Align, indent: f32| {
+            p.props.space_before = Some(before);
+            p.props.space_after = Some(after);
+            p.props.align = Some(align);
+            p.props.indent_left = Some(indent);
+            p.props.line_spacing = Some(LineSpacing::Multiple(1.0));
+            p
+        };
+        let a = spaced(hid("Alpha"), 0.0, 12.0, Align::Left, 0.0);
+        let b = spaced(para("Omega"), 24.0, 0.0, Align::Right, 72.0);
+        let z = spaced(para("Zed"), 0.0, 0.0, Align::Left, 0.0);
+        let d = doc(vec![Block::Para(a), Block::Para(b), Block::Para(z.clone())]);
+        let plan = plan(&d, &LayoutOptions::default()).unwrap();
+        let host = plan.doc.body[0].as_para().unwrap();
+        assert_eq!(host.text, "AlphaOmega");
+        assert_eq!((host.props.align, host.props.indent_left, host.props.space_before), (Some(Align::Left), Some(0.0), Some(0.0)));
+        assert_eq!(host.props.space_after, Some(0.0));
+        assert_eq!(host.mark.hidden, None, "the joined paragraph ends with the visible mark");
+        assert!(plan.away.contains(&Path(vec![1])));
+        assert_eq!(plan.sections, [0], "a hidden join drops no section");
+        let joined = lines(&d);
+        let plain = lines(&doc(vec![Block::Para(spaced(para("Alpha"), 0.0, 0.0, Align::Left, 0.0)), Block::Para(z)]));
+        let top = |ls: &[(Path, f32, Option<String>)], b: u32| ls.iter().find(|l| l.0 == Path(vec![b])).map(|l| l.1).unwrap();
+        // Alpha and Omega share the first line, at the page top; Zed is one line below with no space.
+        assert!((top(&joined, 0) - top(&plain, 0)).abs() < 0.1);
+        assert!((top(&joined, 1) - top(&joined, 0)).abs() < 0.1);
+        assert!((top(&joined, 2) - top(&plain, 1)).abs() < 0.1, "{} vs {}", top(&joined, 2), top(&plain, 1));
+        // With hidden text shown the paragraphs keep their own lines.
+        assert!(plan_shown(&d).is_none());
+    }
+
+    fn plan_shown(d: &Document) -> Option<Joins> {
+        plan(d, &LayoutOptions { show_hidden: true, ..Default::default() })
+    }
+
+    /// Word 16.0.20527: list items `1.` (mark hidden), `2.`, `3.` show `1. AlphaOmega`, then
+    /// `3.`: the joined item is counted, its number not drawn.
+    #[test]
+    fn a_list_item_joined_at_a_hidden_mark_is_counted_but_not_numbered() {
+        let mut d = Document::from_text("Alpha\nOmega\nGamma");
+        let id = Arc::make_mut(&mut d.numbering).add_list(wordcraft_doc::ListKind::Numbered);
+        d.format_paragraphs(&wordcraft_doc::Pos::body(0, 0), &wordcraft_doc::Pos::body(2, 5), &|p| {
+            p.numbering = Some(NumRef { num: id, level: 0 });
+        })
+        .unwrap();
+        d.para_mut(StoryRef::Body, &Path(vec![0])).unwrap().mark.hidden = Some(true);
+        let labels: Vec<String> = lines(&d).into_iter().filter_map(|l| l.2).map(|t| t.trim().to_string()).collect();
+        assert_eq!(labels, ["1.", "3."]);
+    }
+
+    /// A hidden mark on an empty paragraph, on one whose text is all hidden, or on one carrying a
+    /// section break joins nothing; nor does a hidden mark in a table cell.
+    #[test]
+    fn hidden_marks_that_join_nothing() {
+        assert!(plan(&doc(vec![Block::Para(hid("")), Block::Para(para("B"))]), &LayoutOptions::default()).is_none());
+        let mut all_hidden = hid("A");
+        all_hidden.runs[0].props.hidden = Some(true);
+        assert!(plan(&doc(vec![Block::Para(all_hidden), Block::Para(para("B"))]), &LayoutOptions::default()).is_none());
+        let mut sect = hid("A");
+        sect.section = Some(Box::new(SectionProps::default()));
+        assert!(plan(&doc(vec![Block::Para(sect), Block::Para(para("B"))]), &LayoutOptions::default()).is_none());
+        let mut t = wordcraft_doc::Table::new(1, 1, 100.0);
+        t.rows[0].cells[0].blocks = vec![para_block(hid("A")), para_block(para("B"))];
+        assert!(plan(&doc(vec![Block::Table(t), Block::Para(para("C"))]), &LayoutOptions::default()).is_none());
+        assert!(plan(&doc(vec![Block::Para(para("X")), Block::Para(hid("A"))]), &LayoutOptions::default()).is_none());
     }
 }

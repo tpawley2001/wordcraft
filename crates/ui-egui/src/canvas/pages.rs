@@ -296,7 +296,32 @@ pub(crate) fn preview_sel(app: &WordApp) -> Option<&wordcraft_engine::Selection>
 pub(crate) fn dark_page(app: &WordApp) -> bool {
     use wordcraft_engine::cmd::view::ReadPageColor;
     let v = &app.session.view;
-    if v.read_mode { v.read_page_color == ReadPageColor::Inverse } else { v.dark_mode }
+    if v.immersive {
+        v.immersive_page_color == "inverse"
+    } else if v.read_mode {
+        v.read_page_color == ReadPageColor::Inverse
+    } else {
+        v.dark_mode
+    }
+}
+
+/// The paper Immersive Reader's Page Color draws: `none` is the screen tint `none_paper`, Sepia
+/// Read Mode's sepia, Inverse white (drawn inverted, as Read Mode's Inverse is), `#RRGGBB` that
+/// colour. Anything else is the screen tint.
+pub(crate) fn immersive_paper(color: &str, none_paper: wordcraft_doc::props::Rgb) -> wordcraft_doc::props::Rgb {
+    use wordcraft_doc::props::Rgb;
+    match color {
+        "sepia" => wordcraft_render::SEPIA_PAPER,
+        "inverse" => Rgb::WHITE,
+        _ => {
+            let hex = color.strip_prefix('#').filter(|h| h.len() == 6 && h.is_ascii());
+            let byte = |i: usize| hex.and_then(|h| h.get(i..i + 2)).and_then(|b| u8::from_str_radix(b, 16).ok());
+            match (byte(0), byte(2), byte(4)) {
+                (Some(r), Some(g), Some(b)) => Rgb(r, g, b),
+                _ => none_paper,
+            }
+        }
+    }
 }
 
 /// Render options for this view's page rasters: marks, markup, dark page, header/body dimming.
@@ -324,6 +349,10 @@ pub(super) fn page_render_options(app: &WordApp, dim_body: bool) -> wordcraft_re
             ReadPageColor::Sepia => wordcraft_render::SEPIA_PAPER,
             ReadPageColor::Inverse => wordcraft_doc::props::Rgb::WHITE,
         });
+    }
+    // Immersive Reader's Page Color paints the reading background the same way.
+    if app.session.view.immersive {
+        opts.read_paper = Some(immersive_paper(&app.session.view.immersive_page_color, app.session.prefs.paper_color.color()));
     }
     opts.display.dim_header = !dim_body;
     opts.display.dim_body = dim_body;

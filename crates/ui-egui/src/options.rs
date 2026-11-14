@@ -339,9 +339,10 @@ fn display(app: &mut WordApp, ui: &mut Ui) {
     status_count_picker(app, ui);
     ui.add_space(8.0);
     section(ui, "Printing");
+    flag(app, ui, "Print drawings created in Word", "printDrawings", app.session.prefs.print_drawings);
+    flag(app, ui, "Print background colors and images", "printBackground", app.session.prefs.print_background);
     flag(app, ui, "Print document properties", "printProperties", app.session.prefs.print_properties);
     flag(app, ui, "Print hidden text", "printHiddenText", app.session.prefs.print_hidden_text);
-    ui.checkbox(&mut app.ui.print_backgrounds, tl!("Print the page color"));
     ui.checkbox(&mut app.ui.update_fields_before_print, tl!("Update fields before printing"));
 }
 
@@ -667,6 +668,19 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
                 let mut n = app.ui.recent_shown();
                 if ui.add(egui::DragValue::new(&mut n).range(0..=crate::MAX_RECENT).speed(0.2)).labelled_by(recent_label.id).changed() {
                     app.ui.recent_count = n;
+                }
+            });
+        });
+        // Style area pane width in Draft and Outline views: 0 shows no style area (Word's default).
+        t.row(|r| {
+            let style_area_label = r.cell(|ui| ui.label(tl!("Style area pane width in Draft and Outline views:")));
+            r.cell(|ui| {
+                let unit = unit();
+                let k = unit.pt_per_unit();
+                let mut v = app.session.prefs.style_area_width / k;
+                let field = egui::DragValue::new(&mut v).speed(1.0 / k.max(0.01)).range(0.0..=1584.0 / k).measure(unit).max_decimals(2);
+                if ui.add(field.update_while_editing(false)).labelled_by(style_area_label.id).changed() {
+                    let _ = app.run("view.styleAreaWidth", json!({"value": (v * k).clamp(0.0, 1584.0)}));
                 }
             });
         });

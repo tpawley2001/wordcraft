@@ -1465,6 +1465,7 @@ fn para_ahead(ctx: &mut Ctx, p: &Paragraph, width: f32, counters: &mut Counters)
                 exclusions: &[],
                 eq_number: ctx.eq_count,
                 read_line_spacing: if ctx.opts.view == ViewMode::Read { ctx.opts.read_line_spacing } else { None },
+                text_spacing: ctx.opts.view == ViewMode::Read && ctx.opts.read_text_spacing,
                 grid: ctx.grid,
                 fit_objects: false,
                 fitted: &[],

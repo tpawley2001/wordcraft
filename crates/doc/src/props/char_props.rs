@@ -336,6 +336,11 @@ pub struct CharProps {
     /// Hidden in Web Layout (`w:webHidden`); distinct from `w:vanish` (`hidden`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub web_hidden: Option<bool>,
+    /// On a paragraph mark: the mark is always hidden, whatever the hidden-text settings, and the
+    /// paragraph runs on into the next one (`w:specVanish`, ECMA-376 §17.3.2.36; Word's style
+    /// separator sets it with `hidden`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spec_vanish: Option<bool>,
     /// Snap characters to the document grid (`w:snapToGrid`). Unset inherits; Word's default is on.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snap_to_grid: Option<bool>,
@@ -583,7 +588,7 @@ impl CharProps {
     }
 
     fn minus_run_visibility(&mut self, base: &CharProps) {
-        drop_same_fields!(self, base; web_hidden, snap_to_grid, emphasis);
+        drop_same_fields!(self, base; web_hidden, spec_vanish, snap_to_grid, emphasis);
     }
 
     fn minus_script_style(&mut self, base: &CharProps) {
@@ -614,7 +619,7 @@ impl CharProps {
     }
 
     fn overlay_run_visibility(&mut self, patch: &CharProps) {
-        overlay_fields!(self, patch; web_hidden, snap_to_grid, emphasis);
+        overlay_fields!(self, patch; web_hidden, spec_vanish, snap_to_grid, emphasis);
     }
 
     fn overlay_script_style(&mut self, patch: &CharProps) {
@@ -653,6 +658,7 @@ impl CharProps {
             small_caps,
             hidden,
             web_hidden,
+            spec_vanish,
             snap_to_grid,
             spacing,
             scale,
@@ -707,6 +713,7 @@ impl CharProps {
             small_caps: keep(small_caps, &own.small_caps, &inherited.small_caps),
             hidden: keep(hidden, &own.hidden, &inherited.hidden),
             web_hidden: keep(web_hidden, &own.web_hidden, &inherited.web_hidden),
+            spec_vanish: keep(spec_vanish, &own.spec_vanish, &inherited.spec_vanish),
             snap_to_grid: keep(snap_to_grid, &own.snap_to_grid, &inherited.snap_to_grid),
             spacing: keep(spacing, &own.spacing, &inherited.spacing),
             scale: keep(scale, &own.scale, &inherited.scale),

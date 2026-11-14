@@ -517,6 +517,18 @@ pub fn sheets(v: &Value, lay: &DocLayout, current: (usize, usize)) -> Result<Vec
 }
 
 impl Session {
+    /// A print job's `(background, drawings)`: whether it draws the page colour and page picture
+    /// (File › Options › Display › Print background colors and images, off) and shapes, text boxes,
+    /// WordArt and drawing canvases (Print drawings created in Word, on). Job params `background`
+    /// and `drawings` override the preferences; any other type than a bool is a params error.
+    pub fn print_background_and_drawings(&self, v: &Value) -> Result<(bool, bool), CmdError> {
+        let flag = |key: &str, pref: bool| match v.get(key) {
+            None => Ok(pref),
+            Some(b) => b.as_bool().ok_or_else(|| CmdError::Params(format!("{key} must be true or false"))),
+        };
+        Ok((flag("background", self.prefs.print_background)?, flag("drawings", self.prefs.print_drawings)?))
+    }
+
     /// The pages the caret (or selection) is on, in the output layout: (first, last).
     pub fn current_pages(&self, lay: &DocLayout) -> (usize, usize) {
         let (a, b) = self.sel.ordered();
@@ -668,6 +680,9 @@ impl Session {
         single["copies"] = json!(1);
         let single_plan = plan_in(&single, &ids, current)?;
         let paper = imposed_paper(v, &lay, &single_plan.pages)?;
+        // File › Options › Display: Print background colors and images, Print drawings created
+        // in Word. The properties appendix prints in full.
+        let (background, drawings) = self.print_background_and_drawings(v)?;
         let opts = wordcraft_pdf::PdfOptions {
             pages: Some(single_plan.pages),
             imposition: imposition(v)?,
@@ -682,6 +697,8 @@ impl Session {
             // Print only the data from a form (File › Options › Advanced): the document's own
             // setting; a Document Info report prints in full.
             forms_data_only: report.is_none() && self.doc.settings.print_forms_data,
+            background,
+            drawings,
             ..Default::default()
         };
         let bytes = match self.properties_appendix(v, report.is_some())? {

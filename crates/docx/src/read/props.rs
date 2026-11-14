@@ -348,6 +348,7 @@ impl PropCtx {
                 "w:noProof" => c.no_proof = Some(on_off(k)),
                 "w:vanish" => c.hidden = Some(on_off(k)),
                 "w:webHidden" => c.web_hidden = Some(on_off(k)),
+                "w:specVanish" => c.spec_vanish = Some(on_off(k)),
                 "w:snapToGrid" => c.snap_to_grid = Some(on_off(k)),
                 "w:rtl" => c.rtl = Some(on_off(k)),
                 "w:color" => {

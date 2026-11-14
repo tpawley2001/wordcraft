@@ -21,6 +21,7 @@ mod context_menu;
 pub(crate) use context_menu::issue_heading;
 mod cursor;
 mod geometry;
+mod immersive;
 mod input;
 mod links;
 mod margins;
@@ -29,6 +30,7 @@ mod pages;
 mod reading;
 mod rulers;
 mod story;
+mod style_area;
 
 #[cfg(test)]
 use balloons::balloon_text;
@@ -519,6 +521,20 @@ fn update_viewport(app: &mut WordApp, ui: &Ui, full: Rect, now: f64) -> Option<P
             reflow_anchor = app.canvas.read_first_visible.clone();
         }
     } else {
+        if app.session.view.immersive {
+            // Immersive Reader's Wide column follows the window; each page of its single column
+            // is a window high. Only a real change lays the text out again.
+            let scale = app.session.view.zoom.clamp(0.1, 5.0) * PX_PER_PT;
+            let window = ((full.width() - SCROLLBAR) / scale).max(0.0);
+            let height = ((full.height() - 2.0 * GAP) / scale).max(192.0);
+            let v = &mut app.session.view;
+            if window.is_finite() && (v.immersive_window - window).abs() > 0.5 {
+                v.immersive_window = window;
+            }
+            if height.is_finite() && (v.read_height - height).abs() > 0.5 {
+                v.read_height = height;
+            }
+        }
         if app.session.view.mode == wordcraft_layout::ViewMode::Web {
             // Web Layout wraps to the work area (#1876): at once on entry or a zoom (the viewport
             // holds still), after a window drag has settled, and only on a real change.
@@ -574,6 +590,7 @@ fn prepare_view(app: &mut WordApp, ui: &Ui, full: Rect, layout: &DocLayout) -> C
     let show_ruler = app.session.view.ruler
         && app.session.view.mode == wordcraft_layout::ViewMode::Print
         && !read_mode
+        && !app.session.view.immersive
         && crate::chrome::Screen::of(&app.session.view) == crate::chrome::Screen::Normal;
     let (hruler, vruler, area) = if show_ruler {
         let h = Rect::from_min_max(pos2(full.min.x + RULER, full.min.y), pos2(full.max.x, full.min.y + RULER));
@@ -722,6 +739,17 @@ fn scroll_motion(app: &mut WordApp, ui: &Ui, full: Rect, view: &CanvasView) -> S
             }
         }
         // Discard any pixel-scroll inertia left from editing mode.
+        app.canvas.wheel = Default::default();
+        egui::Vec2::ZERO
+    } else if app.session.view.immersive && app.session.view.line_focus > 0 {
+        // Line Focus: each wheel notch moves the caret, and the band with it, one line.
+        let turns = ui.input(|i| read_wheel_turns(&i.events, hovered, &mut app.canvas.read_wheel_accum));
+        for _ in 0..turns.unsigned_abs() {
+            let _ = app.run(if turns > 0 { "caret.down" } else { "caret.up" }, json!({}));
+        }
+        if turns != 0 {
+            app.canvas.scroll_to_caret = true;
+        }
         app.canvas.wheel = Default::default();
         egui::Vec2::ZERO
     } else {
@@ -1829,6 +1857,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             grid_story,
         });
         paint_white_space_seams(&painter, &rects, &geo, &t);
+        style_area::show(app, ui, &layout, &rects, geo.scale, paper, &t);
         if rendered > 0 {
             app.canvas.render_ms = crate::now_ms() - t0;
         }
@@ -1914,6 +1943,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         // Content controls: the frame of the one the caret is in (all of them in Design Mode).
         crate::content_controls::paint(app, &painter, &t, &layout, &rects, geo.scale);
         paint_read_aloud_highlight(app, &painter, &layout, &rects, &geo, &t);
+        // Immersive Reader's Syllables and Line Focus.
+        immersive::paint(app, &painter, &layout, &rects, geo.scale, caret, visible_clip);
         // Caret.
         let focused = resp.has_focus() || app.canvas.focused;
         // After an automatic change the web's text agent starts afresh

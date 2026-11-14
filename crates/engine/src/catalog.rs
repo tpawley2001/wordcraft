@@ -22,6 +22,7 @@ File|Backstage|Export PDF|file.exportPdf
 File|Backstage|Export Image|file.exportPng
 File|Backstage|Options|file.options
 File|Options|Numerals|view.numeral
+File|Options|Style area pane width|view.styleAreaWidth
 File|Backstage|Share|file.share
 File|Backstage|Protect Document|file.protect
 File|Backstage|Mark as Final|file.markAsFinal
@@ -247,6 +248,7 @@ Layout|Arrange|Bring Forward|arrange.bringForward
 Layout|Arrange|Send Backward|arrange.sendBackward
 Layout|Arrange|Selection Pane|arrange.selectionPane
 Layout|Arrange|Align|arrange.align
+Layout|Arrange|Distribute|arrange.distribute
 Layout|Arrange|Grid Settings|view.gridSettings
 Layout|Arrange|Group|arrange.group
 Layout|Arrange|Rotate|arrange.rotate
@@ -367,6 +369,12 @@ View|SharePoint|Properties|file.properties
 Read Mode|View|Column Width|view.readColumnWidth
 Read Mode|View|Page Color|view.readPageColor
 Read Mode|View|Layout|view.readLayout
+Immersive Reader|Immersive Reader|Column Width|view.immersiveColumnWidth
+Immersive Reader|Immersive Reader|Page Color|view.immersivePageColor
+Immersive Reader|Immersive Reader|Line Focus|view.lineFocus
+Immersive Reader|Immersive Reader|Text Spacing|view.textSpacing
+Immersive Reader|Immersive Reader|Syllables|view.syllables
+Immersive Reader|Close|Close Immersive Reader|view.closeImmersive
 Developer|Controls|Rich Text Content Control|developer.richText
 Developer|Controls|Plain Text Content Control|developer.plainText
 Developer|Controls|Picture Content Control|developer.picture

@@ -226,3 +226,85 @@ fn window_list(ui: &mut Ui, app: &mut WordApp, others: &[wordcraft_engine::cmd::
         }
     }
 }
+
+/// Immersive Reader's Page Color grid: four rows of six of our own soft reading tints.
+pub(crate) const IMMERSIVE_COLORS: [[(u8, u8, u8); 6]; 4] = [
+    [(0xF8, 0xF1, 0xE3), (0xF6, 0xE7, 0xD3), (0xF4, 0xEC, 0xC8), (0xE6, 0xF0, 0xD2), (0xD9, 0xEE, 0xE1), (0xDA, 0xEC, 0xF3)],
+    [(0xE3, 0xE5, 0xF6), (0xEF, 0xE1, 0xF2), (0xF6, 0xDF, 0xE6), (0xF0, 0xF0, 0xF0), (0xE4, 0xE4, 0xE0), (0xFF, 0xF8, 0xDC)],
+    [(0xE8, 0xD5, 0xB5), (0xD9, 0xC4, 0x9E), (0xC9, 0xDB, 0xB0), (0xB3, 0xD6, 0xC6), (0xB4, 0xCF, 0xE0), (0xC6, 0xC3, 0xE6)],
+    [(0x3A, 0x34, 0x2C), (0x2E, 0x3B, 0x33), (0x27, 0x34, 0x40), (0x33, 0x2C, 0x40), (0x40, 0x2C, 0x33), (0x24, 0x24, 0x24)],
+];
+
+/// The Immersive Reader tab (View › Immersive Reader): Column Width, Page Color, Line Focus, Text
+/// Spacing and Syllables, Read Aloud, and Close Immersive Reader. Screen settings only.
+pub(super) fn immersive_reader(app: &mut WordApp, ui: &mut Ui) {
+    use wordcraft_engine::cmd::view::ImmersiveColumnWidth;
+    let v = app.session.view.clone();
+    group(ui, "Immersive Reader", None, app, |ui, app| {
+        menu_button(
+            ui,
+            app,
+            crate::widgets::MenuButtonOptions::new("columns", Some("Column\nWidth"), "Column Width", true, "view.immersiveColumnWidth"),
+            |ui, app| {
+                for w in ImmersiveColumnWidth::ALL {
+                    if ui.selectable_label(v.immersive_column_width == w, tl!(w.label())).clicked() {
+                        let _ = app.run("view.immersiveColumnWidth", json!({"value": w.name()}));
+                        ui.close();
+                    }
+                }
+            },
+        );
+        menu_button(
+            ui,
+            app,
+            crate::widgets::MenuButtonOptions::new("pageColor", Some("Page\nColor"), "Page Color", true, "view.immersivePageColor"),
+            |ui, app| {
+                for (value, name) in [("none", tl!("None")), ("sepia", tl!("Sepia")), ("inverse", tl!("Inverse"))] {
+                    if ui.selectable_label(v.immersive_page_color == value, name).clicked() {
+                        let _ = app.run("view.immersivePageColor", json!({"value": value}));
+                        ui.close();
+                    }
+                }
+                ui.separator();
+                for row in IMMERSIVE_COLORS {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = vec2(3.0, 3.0);
+                        for (r, g, b) in row {
+                            let hex = format!("#{r:02X}{g:02X}{b:02X}");
+                            let chosen = v.immersive_page_color == hex;
+                            let stroke = if chosen {
+                                egui::Stroke::new(2.0, ui.visuals().selection.stroke.color)
+                            } else {
+                                egui::Stroke::new(1.0, egui::Color32::GRAY)
+                            };
+                            let swatch = egui::Button::new("").fill(egui::Color32::from_rgb(r, g, b)).stroke(stroke).min_size(vec2(18.0, 18.0));
+                            if ui.add(swatch).on_hover_text(&hex).clicked() {
+                                let _ = app.run("view.immersivePageColor", json!({"value": hex}));
+                                ui.close();
+                            }
+                        }
+                    });
+                }
+            },
+        );
+        menu_button(
+            ui,
+            app,
+            crate::widgets::MenuButtonOptions::new("focus", Some("Line\nFocus"), "Line Focus", true, "view.lineFocus"),
+            |ui, app| {
+                for (n, name) in [(0u8, tl!("None")), (1, tl!("One Line")), (3, tl!("Three Lines")), (5, tl!("Five Lines"))] {
+                    if ui.selectable_label(v.line_focus == n, name).clicked() {
+                        let _ = app.run("view.lineFocus", json!({"value": n}));
+                        ui.close();
+                    }
+                }
+            },
+        );
+        big_toggle(ui, app, "lineSpacing", "Text\nSpacing", "view.textSpacing", v.text_spacing);
+        big_toggle(ui, app, "hyphenation", "Syllables", "view.syllables", v.syllables);
+        big(ui, app, "readAloud", "Read\nAloud", "review.readAloud", json!({}), false);
+    });
+    group(ui, "Close", None, app, |ui, app| {
+        big(ui, app, "close", "Close Immersive\nReader", "view.closeImmersive", json!({}), false);
+    });
+}

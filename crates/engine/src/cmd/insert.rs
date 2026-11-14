@@ -27,6 +27,24 @@ pub use objects::{base64_decode, base64_encode};
 use objects::{icon, shape, table, text_box};
 pub(crate) use objects::{image_ext, picture};
 
+/// Insert Style Separator (Word's Ctrl+Alt+Enter): split the paragraph at the caret unless the
+/// caret is at its end, then hide the mark of the paragraph the caret was in (`w:vanish` and
+/// `w:specVanish`), so it is laid out on one line with the next paragraph. The caret ends at the
+/// start of the paragraph after a split. One undo step.
+fn style_separator(s: &mut Session, _: &Value) -> CmdResult {
+    let at = s.sel.focus.clone();
+    let at_end = s.doc.para_at(&at).map(|p| at.off >= p.len()).ok_or_else(|| CmdError::Failed("no paragraph at caret".into()))?;
+    let next = if at_end { None } else { Some(split_para(s, &at)?) };
+    let p = s.doc.para_mut(at.story, &at.path)?;
+    p.mark.hidden = Some(true);
+    p.mark.spec_vanish = Some(true);
+    p.touch();
+    if let Some(next) = next {
+        s.sel = Selection::caret(next);
+    }
+    sel_result(s)
+}
+
 /// Command specifications for the Insert ribbon tab and menu.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
@@ -42,6 +60,9 @@ pub fn specs() -> Vec<CommandSpec> {
             s.sel = Selection::caret(at);
             sel_result(s)
         }),
+        // Word's Insert Style Separator: the paragraph runs on into the next one when hidden
+        // text isn't shown, so a heading can lead into body text on one line.
+        CommandSpec::new("insert.styleSeparator", "Style Separator", "Home › Styles", style_separator).key("Mod+Alt+Enter"),
         CommandSpec::new("insert.coverPage", "Cover Page", "Insert › Pages", cover_page).params(r#"{"title"?: string, "subtitle"?: string, "author"?: string}"#),
         CommandSpec::new("insert.table", "Table", "Insert › Tables", table)
             .params(r#"{"rows": n, "cols": n, "style"?: string, "autofit"?: "fixed"|"contents"|"window" (as table.autofit; omit for equal columns across the text width), "colWidth"?: pt (with "fixed"; 0 = Auto), "remember"?: bool (true: the Insert Table dialog opens with these next time; false forgets them)}"#),

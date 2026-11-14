@@ -134,6 +134,31 @@ pub struct ViewState {
     /// carries it to the window.
     #[serde(default)]
     pub full_screen: bool,
+    /// View › Immersive Reader: the text alone in one reading column, with the Immersive Reader
+    /// tab. Never on together with Read Mode, Focus or Full Screen View; `mode` keeps the view
+    /// Close Immersive Reader goes back to. This and the Immersive Reader settings below are
+    /// screen only: never saved in the document and never an undo step.
+    #[serde(default)]
+    pub immersive: bool,
+    /// Immersive Reader › Column Width.
+    #[serde(default)]
+    pub immersive_column_width: crate::cmd::view::ImmersiveColumnWidth,
+    /// The width (points) Immersive Reader's Wide column is measured from; the desktop app
+    /// keeps it at the window's. Never saved.
+    #[serde(skip, default = "default_web_width")]
+    pub immersive_window: f32,
+    /// Immersive Reader › Page Color: `none`, `sepia`, `inverse` or `#RRGGBB` (upper case).
+    #[serde(default = "no_page_color")]
+    pub immersive_page_color: String,
+    /// Immersive Reader › Line Focus: 0 (none), 1, 3 or 5 lines left uncovered.
+    #[serde(default)]
+    pub line_focus: u8,
+    /// Immersive Reader › Text Spacing: more space between letters, words and lines.
+    #[serde(default)]
+    pub text_spacing: bool,
+    /// Immersive Reader › Syllables: dots between the syllables of each word.
+    #[serde(default)]
+    pub syllables: bool,
 }
 
 /// Where the Styles pane sits (`view.stylesPaneDock`, #1756).
@@ -170,6 +195,10 @@ impl StylesPaneDock {
 
 fn on() -> bool {
     true
+}
+
+fn no_page_color() -> String {
+    "none".into()
 }
 
 /// The text column of Draft and Outline, and of Web Layout in a headless session.
@@ -254,6 +283,13 @@ impl Default for ViewState {
             outline: Default::default(),
             design_mode: false,
             full_screen: false,
+            immersive: false,
+            immersive_column_width: Default::default(),
+            immersive_window: default_web_width(),
+            immersive_page_color: no_page_color(),
+            line_focus: 0,
+            text_spacing: false,
+            syllables: false,
         }
     }
 }

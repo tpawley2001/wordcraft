@@ -8081,11 +8081,11 @@ fn focus_hides_the_ribbon_and_escape_brings_it_back() {
     assert!(!h.state().session.view.focus_mode, "Escape leaves Focus");
     assert!(shown(&h, "Ruler"), "and the ribbon is back");
     assert!(shown(&h, "Move Pane: Navigation"), "with the pane");
-    // Immersive Reader is Read Mode, not Focus: its status bar stays.
+    // Immersive Reader is its own view, not Focus: its status bar stays.
     h.state_mut().run("view.immersive", json!({})).unwrap();
     h.step();
     h.step();
-    assert!(h.state().session.view.read_mode && shown(&h, "Focus"), "Immersive Reader keeps the status bar");
+    assert!(h.state().session.view.immersive && shown(&h, "Focus"), "Immersive Reader keeps the status bar");
 }
 
 #[test]

@@ -16,6 +16,8 @@ impl WordApp {
         ui.initials = self.session.initials.clone();
         ui.dictionary = wordcraft_engine::proof::user_dictionary();
         ui.editing = self.session.prefs.clone();
+        // Kept for older versions, which read the option from here.
+        ui.print_backgrounds = self.session.prefs.print_background;
         ui.read_aloud_rate = self.session.read_aloud.rate();
         ui.read_aloud_skip_citations = self.session.read_aloud.skip_citations;
         ui.dark_page = self.session.view.dark_mode;
@@ -61,6 +63,11 @@ impl WordApp {
             }
         }
         self.session.prefs = std::mem::take(&mut self.ui.editing);
+        // A `ui.json` from before Print background colors and images was an editing preference:
+        // its "Print the page color" turns it on.
+        if self.ui.print_backgrounds {
+            self.session.prefs.print_background = true;
+        }
         // Check spelling as you type follows the saved preference (#1792).
         self.session.view.proofing = self.session.prefs.check_spelling;
         self.session.view.read_page_color = self.session.prefs.read_page_color;

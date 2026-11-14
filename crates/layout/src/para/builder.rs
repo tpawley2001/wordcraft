@@ -532,7 +532,7 @@ impl<'a> Builder<'a> {
                     .or(sym_adv)
                     .or_else(|| word_advances.then(|| self.missing_font_advance(s, map, rc, st.size * hscale, g0)).flatten())
                     .unwrap_or(adv);
-                let adv = if kind == ClKind::Marker { 0.0 } else { adv + rc.spacing };
+                let adv = if kind == ClKind::Marker { 0.0 } else { adv + rc.spacing + self.extra_word_space(kind, rc.size) };
                 self.clusters.push(Cluster {
                     start: base + a + cs,
                     end: base + a + ce,
@@ -551,6 +551,11 @@ impl<'a> Builder<'a> {
                 self.split_ligature_advances(seg_c0, rc.spacing, key.rtl);
             }
         }
+    }
+
+    /// Immersive Reader's Text Spacing widens each word space by a quarter em (`size`).
+    fn extra_word_space(&self, kind: ClKind, size: f32) -> f32 {
+        if kind == ClKind::Space && self.env.text_spacing { super::paragraph::TEXT_SPACING_WORD * size } else { 0.0 }
     }
 
     /// A code a missing symbol font has no glyph for, as the one-character cluster `s` whose

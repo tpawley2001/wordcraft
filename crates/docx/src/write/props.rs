@@ -129,6 +129,8 @@ pub fn rpr_inner(w: &mut W, c: &CharProps) {
     if let Some(l) = &c.east_asian_layout {
         east_asian_layout(w, l);
     }
+    // After w:eastAsianLayout (CT_RPr's sequence, ECMA-376 §17.3.2.36).
+    toggle(w, "w:specVanish", c.spec_vanish);
     if let Some(fx) = &c.text_effects {
         super::wordart::rpr_effects(w, fx);
     }

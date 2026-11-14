@@ -518,16 +518,20 @@ pub(super) fn drop_cap(s: &mut Session, v: &Value) -> CmdResult {
             })
             .drop_cap;
         let was_margin = resolved.drop_cap > 0 && resolved.drop_cap_margin;
+        // The first-line indent the paragraph's style alone gives it, without its own.
+        let style_first =
+            styles.resolve_para(&wordcraft_doc::props::ParaProps { indent_first: None, indent_first_chars: None, ..p.clone() }).indent_first;
         if !none && margin && !was_margin {
-            // Character-unit indents must become points before leaving the text paragraph.
-            p.drop_cap_indent_first =
-                if p.indent_first_chars.is_some_and(|c| c.is_finite() && c != 0.0) { Some(resolved.indent_first) } else { p.indent_first };
-            p.indent_first = None;
+            // The effective indent moves to the cap, in points, whether set directly (points or
+            // character units) or inherited from the style, which an explicit zero then overrides.
+            p.drop_cap_indent_first = (resolved.indent_first.is_finite() && resolved.indent_first != 0.0).then_some(resolved.indent_first);
+            p.indent_first = (style_first != 0.0).then_some(0.0);
             p.indent_first_chars = None;
         } else if (none || !margin)
             && let Some(indent) = p.drop_cap_indent_first.take()
         {
-            p.indent_first = Some(indent);
+            // Back to the text paragraph; one the style gives anyway is inherited again.
+            p.indent_first = (indent != style_first).then_some(indent);
             p.indent_first_chars = None;
         }
         let kept = keep && resolved.drop_cap > 0;

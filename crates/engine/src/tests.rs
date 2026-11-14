@@ -18,6 +18,9 @@ mod drop_cap_from_style;
 mod define_number_format;
 mod define_number_size_underline;
 mod drop_cap_in_margin;
+mod drop_cap_margin_style_indent;
+mod immersive_reader;
+mod style_area;
 mod bidi;
 mod browse_object;
 mod building_blocks;
@@ -68,6 +71,7 @@ mod manual_duplex;
 mod print_document_properties;
 mod print_forms_data;
 mod print_options;
+mod print_display_options;
 mod print_selection;
 mod reveal_formatting;
 mod reveal_compare;
@@ -7452,9 +7456,11 @@ fn focus_and_full_screen_replace_each_other() {
     run(&mut s, "view.focus", json!({"value": false}));
     run(&mut s, "view.fullScreen", json!({"value": false}));
 
-    // Immersive Reader is a reading view, not Focus.
+    // Immersive Reader is its own reading view: not Focus, and not Read Mode either.
     run(&mut s, "view.immersive", json!({}));
-    assert!(s.view.read_mode && !s.view.focus_mode);
+    let v = run(&mut s, "view.state", json!({}));
+    assert!(v["immersive"] == true && v["readMode"] == false && v["focusMode"] == false, "{v}");
+    run(&mut s, "view.immersive", json!({}));
 
     assert_eq!(text(&s), "Hello");
     assert_eq!(s.undo_labels(), undo);

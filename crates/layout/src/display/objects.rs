@@ -398,6 +398,14 @@ pub(super) fn spun(spin: Spin, rect: Rect, items: Vec<Draw>, out: &mut Vec<Draw>
 /// drawn inside (its group's). Nothing for anything else.
 pub(super) fn object_draws(o: &InlineObject, rect: Rect, outer: Spin, alpha: f32, opts: &DisplayOptions, out: &mut Vec<Draw>) {
     let own = o.frame().map(|(_, _, f)| f.spin()).unwrap_or_default();
+    // Print drawings created in Word off: an inline shape (ink excepted) or drawing canvas draws
+    // nothing; a plain group still draws its pictures.
+    if opts.hide_drawings {
+        let ink = |o: &InlineObject| matches!(o, InlineObject::Shape { freeform: Some(f), .. } if f.ink.is_some());
+        if (matches!(o, InlineObject::Shape { .. }) && !ink(o)) || o.canvas_style().is_some() {
+            return;
+        }
+    }
     match o {
         InlineObject::Image { media, crop, alt, fx, .. } => {
             let alpha = alpha * fx.opacity();

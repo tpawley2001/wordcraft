@@ -83,6 +83,8 @@ mod tests;
 
 #[cfg(test)]
 mod appendix_forms_tests;
+#[cfg(test)]
+mod print_background_tests;
 
 #[cfg(test)]
 mod fill_alpha_tests;
