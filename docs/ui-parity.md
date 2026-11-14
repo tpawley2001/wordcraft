@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0488: Find with Use wildcards: `@` takes as few characters as it can, `{,n}` is refused, and `?`, `*` and `[!…]` match a paragraph mark, as in Word. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-13 · **Change:** trivial (P0463: File › Options › Advanced › Display › Style area pane width in Draft and Outline views: a column of paragraph style names at the left of the text (`view.styleAreaWidth`). Readiness estimates unchanged; earlier: P0337: Insert › Text from File with a Range brings only the comments, replies and footnotes/endnotes that range refers to, not every one of the other file. Readiness estimates unchanged)
@@ -113,6 +115,10 @@ options `screen_paper_color_options_round_trip_and_work_without_a_document` test
 ## Find and Replace: regular expressions (#4177)
 
 With **Regular expressions** on (Search Options), Replace with expands capture groups: `$1`…`$n`, `${n}`, `${name}` and `$name` (the longest run of letters, digits and `_`), `$0` / `${0}` (the whole match), and `\1`…`\9` as in wildcard Replace; `$$` is a dollar sign, `\t` a tab, `\\` a backslash, `\$` and `\^` a `$` or `^` as typed, and `\n` a paragraph mark, which splits the paragraph as `^p` does (Replace All stays one undo step). Word's `^&`, `^p`, `^t`, `^c` and the other `^` codes work there too (with Special characters off, only the `^` codes are taken literally). A group that doesn't exist, didn't take part in the match or is out of range expands to nothing; a `$` that starts no group, an unclosed `${`, and other `\` escapes stay as written. Plain and wildcard Replace are unchanged. Word has no regular-expression mode; this follows the Rust `regex` crate's Replace syntax.
+
+## Find and Replace: Use wildcards as in Word
+
+`@` (one or more) takes as few characters as it can, as in Word (`a@a` in `aaab` finds `aa`); inside a `( )` group it takes as many, so `([A-Z][a-z]@)` still captures a whole word for `\1`. `{n,}` and `{n,m}` stay greedy. `{,n}` has no lower bound and is refused. `?`, `*` and `[!…]` also match a paragraph mark, so a match can run into the next paragraph (`b?c` finds `b¶c`), but never out of a table cell or story.
 
 ## Find and Replace by formatting (#4893)
 
@@ -552,6 +558,7 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 | 2026-11-13 | trivial | P0462: Table of Figures › Options… opens Table of Figures Options: Style (the document's paragraph styles, Caption by default) and Table entry fields with Table identifier (A–Z, F by default); either greys out the caption label and Include label and number, and the list is built from that style's paragraphs and those TC fields (`TOC \t "Style" \f ID \c`) |
 | 2026-11-13 | trivial | P0463: Style area pane width in Draft and Outline views (File › Options › Advanced › Display, `view.styleAreaWidth`, a user preference in points, 0 by default): each paragraph's style name in a column at the left of the text; drag the separator to resize or close it, double-click a name for Modify Style |
 | 2026-11-13 | trivial | P0460: Immersive Reader is its own view with an Immersive Reader tab (Column Width, Page Color, Line Focus, Text Spacing, Syllables, Read Aloud, Close) instead of switching to Read Mode |
+| 2026-11-14 | trivial | Find with Use wildcards: `@` is lazy, `{,n}` is refused, and `?`, `*`, `[!…]` match a paragraph mark, as in Word (P0488) |
 | 2026-11-13 | trivial | Layout › Arrange › Align: Align Top, Middle and Bottom, Align to Page, Align Selected Objects (the default for two or more objects) and Distribute Horizontally / Vertically (`arrange.distribute`) for floating objects, as in Word; Align only lined one object up left, centre or right of the margin |
 
 ### Format Painter integration refresh, 2026-10-30
