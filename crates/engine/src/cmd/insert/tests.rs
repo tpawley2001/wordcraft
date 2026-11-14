@@ -499,3 +499,35 @@ fn removing_a_link_clears_its_screen_tip() {
     s.run("insert.removeLink", &json!({})).unwrap();
     assert!(link_tips(&s).iter().all(|(l, t)| l.is_none() && t.is_none()));
 }
+
+/// Insert Style Separator (Word's Ctrl+Alt+Enter) splits the paragraph at the caret and hides the
+/// first part's mark with `w:specVanish`; the document keeps two paragraphs, a DOCX save keeps
+/// the flag, and one Undo takes it all back.
+#[test]
+fn style_separator_hides_the_mark_in_one_undo_step() {
+    let mut s = Session::new(wordcraft_doc::Document::from_text("HeadingBody text"));
+    s.sel = Selection::caret(Pos::body(0, 7));
+    s.run("insert.styleSeparator", &json!({})).unwrap();
+    assert_eq!(s.doc.body.len(), 2);
+    let first = s.doc.body[0].as_para().unwrap();
+    assert_eq!(first.text, "Heading");
+    assert_eq!((first.mark.hidden, first.mark.spec_vanish), (Some(true), Some(true)));
+    let second = s.doc.body[1].as_para().unwrap();
+    assert_eq!(second.text, "Body text");
+    assert_ne!(second.mark.hidden, Some(true));
+    assert_eq!(s.sel.focus, Pos::body(1, 0));
+    let bytes = crate::io::save_bytes("a.docx", &s.doc).unwrap();
+    let back = crate::io::open_bytes("a.docx", &bytes).unwrap();
+    let p = back.body[0].as_para().unwrap();
+    assert_eq!((p.mark.hidden, p.mark.spec_vanish), (Some(true), Some(true)));
+    s.run("edit.undo", &json!({})).unwrap();
+    assert_eq!(s.doc.body.len(), 1);
+    let p = s.doc.body[0].as_para().unwrap();
+    assert_eq!(p.text, "HeadingBody text");
+    assert_eq!((p.mark.hidden, p.mark.spec_vanish), (None, None));
+    // At the end of a paragraph nothing is split: only the mark is hidden.
+    s.sel = Selection::caret(Pos::body(0, 16));
+    s.run("insert.styleSeparator", &json!({})).unwrap();
+    assert_eq!(s.doc.body.len(), 1);
+    assert_eq!(s.doc.body[0].as_para().unwrap().mark.hidden, Some(true));
+}

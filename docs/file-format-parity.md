@@ -1,6 +1,6 @@
 # File-format parity with Microsoft Word
 
-> **Last updated:** 2026-11-13 · **Change:** trivial (P0452: DOCX reads and saves Suppress extra line spacing like WordPerfect 5.x (`w:suppressTopSpacingWP`), so a `.doc` with it keeps its 14 pt lines for 12 pt text when saved as DOCX. Readiness estimates unchanged)
+> **Last updated:** 2026-11-13 · **Change:** trivial (P0465: DOCX reads and saves `w:specVanish` (Word's style separator). Readiness estimates unchanged; earlier: P0452: DOCX reads and saves Suppress extra line spacing like WordPerfect 5.x (`w:suppressTopSpacingWP`), so a `.doc` with it keeps its 14 pt lines for 12 pt text when saved as DOCX. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-13 · **Change:** trivial (P0447: `.doc` drop caps (sprmPDcs) open as drop caps on the paragraph they start, as DOCX `w:framePr w:dropCap` does, not as a text frame above it, its letter at the size Word stores. Readiness estimates unchanged)
 
@@ -186,6 +186,7 @@ Measured by grepping `crates/docx/src/read` and `src/write` for the OOXML elemen
 | Section text direction (`w:textDirection` in `w:sectPr`, §17.6.20) | ✅ | ✅ | `tbRl`, `btLr` (and `tbRlV`/`tbLrV`, read as `tbRl`); `lrTbV` and unknown values read as horizontal (#491) |
 | Section vertical alignment (`w:vAlign` in `w:sectPr`, §17.6.23) | ✅ | ✅ | `top`, `center`, `bottom` and `both` (Justified, read as Center before #1320); unknown values read as top, top writes nothing (`crates/docx/tests/it/section_valign.rs`). ODT/RTF don't carry it |
 | Section line numbering (`w:lnNumType` in `w:sectPr`, §17.6.8) | ✅ | ✅ | `w:countBy` 1–100; absent, 0 or unreadable leaves line numbering off whatever `w:start`, `w:distance` and `w:restart` say, as Word does — the RTF-to-DOCX converter in #6209 writes the element without it (`crates/docx/tests/it/section_line_numbering.rs`); `w:start` 0–32767 held as 1–32768, `w:distance` in points (0 = auto), `w:restart` `newPage` (default), `newSection` or `continuous`; saving writes them and omits `w:lnNumType` while numbering is off. ODT states on/off with `text:number-lines` instead |
+| Special vanish (`w:specVanish`, §17.3.2.36) on runs and paragraph marks | ✅ | ✅ | Word's style separator: a paragraph mark with `w:vanish` and `w:specVanish` runs on into the next paragraph (see layout parity); absent/true/false kept |
 | Ruby (`w:ruby`: `w:rubyPr`, `w:rt`, `w:rubyBase`) | ✅ | ✅ | #288; base and ruby text with their run formatting, alignment, sizes, raise, language |
 | Document grid (`w:docGrid`: type, line pitch, `w:charSpace`), `w:snapToGrid` on paragraphs, runs and styles | ✅ | ✅ | #391; run and character-style flags keep absent/true/false across repeated saves; inherited true remains explicit false when overridden. `w:webHidden` remains distinct from `w:vanish` and preserves absent/true/false through runs, styles and repeated saves; Print Layout still shows web-hidden text |
 | Alternative format chunks (`w:altChunk`) | ✅ | — | Brought into the document where they stand when it opens, as Word does: MHT, HTML and XHTML as web pages, RTF and plain text through their readers, a nested WordprocessingML package by the docx reader (at most 4 deep, 256 chunks and 512 MB of chunk data a file). The chunk's pictures, lists, styles, notes, comments and tracked changes come along (the document's own styles win by id, unless the chunk asks to keep its source formatting, `w:matchSrc`: then its styles come along under new ids, carrying its own defaults); its section breaks don't. Saving writes the content as ordinary paragraphs, as Word does. In a Word XML (Flat OPC) file only WordprocessingML chunks come in |
@@ -484,6 +485,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | trivial | P0465: `w:specVanish` read and written (Word's style separator) |
 | 2026-11-13 | trivial | `.doc`: a separator story holding only its line keeps its line run's own font size (a 10-pt separator in an 11-pt document leaves one 10-pt line above the notes, as in Word, not an 11-pt one); a line run with no size or font of its own still means the default separator (`docbin::tests::note_separator_run_size`) |
 | 2026-11-13 | trivial | P0424: a hidden table row mark is read from DOCX (`w:trPr/w:hidden`) and `.doc` (sprmCFVanish on the row-end mark) and saved as `w:trPr/w:hidden`; readiness estimates unchanged |
 | 2026-11-12 | trivial | P0411: `.doc` horizontal cell merges read from the `TC80` flags in `sprmTDefTable` |
