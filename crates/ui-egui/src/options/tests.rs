@@ -154,7 +154,7 @@ fn options_survive_a_restart_and_junk_in_ui_json() {
     )
     .unwrap();
     a.ui.recent_count = 30;
-    a.ui.print_backgrounds = true;
+    a.session.prefs.print_background = true;
     a.ui.status_count = StatusCount::CharactersNoSpaces;
     let saved = serde_json::to_vec(&a.prefs()).unwrap();
     let mut b = app();
@@ -178,6 +178,18 @@ fn options_survive_a_restart_and_junk_in_ui_json() {
     assert!(!ui.editing.typing_replaces_selection);
     assert!(ui.editing.marks.spaces && !ui.editing.marks.tabs);
     assert!(UiState::from_json(b"[1, 2]").is_none() && UiState::from_json(b"not json").is_none());
+}
+
+/// A `ui.json` from before Print background colors and images was an editing preference keeps
+/// its "Print the page color" choice; one without either prints no background (Word's default).
+#[test]
+fn an_old_print_the_page_color_choice_turns_print_background_on() {
+    let mut b = app();
+    b.apply_prefs(UiState::from_json(br#"{"printBackgrounds": true, "editing": {}}"#).unwrap());
+    assert!(b.session.prefs.print_background);
+    let mut c = app();
+    c.apply_prefs(UiState::from_json(br#"{"editing": {}}"#).unwrap());
+    assert!(!c.session.prefs.print_background && c.session.prefs.print_drawings);
 }
 
 /// The dictionaries folder (#1063) is saved with the settings and searched again after a

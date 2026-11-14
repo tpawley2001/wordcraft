@@ -522,9 +522,11 @@ impl Session {
     /// WordArt and drawing canvases (Print drawings created in Word, on). Job params `background`
     /// and `drawings` override the preferences; any other type than a bool is a params error.
     pub fn print_background_and_drawings(&self, v: &Value) -> Result<(bool, bool), CmdError> {
-        let _ = v;
-        // Stub (P0461): the acceptance tests fail until this resolves the params over the prefs.
-        Err(CmdError::Failed("print background/drawings options are not implemented yet".into()))
+        let flag = |key: &str, pref: bool| match v.get(key) {
+            None => Ok(pref),
+            Some(b) => b.as_bool().ok_or_else(|| CmdError::Params(format!("{key} must be true or false"))),
+        };
+        Ok((flag("background", self.prefs.print_background)?, flag("drawings", self.prefs.print_drawings)?))
     }
 
     /// The pages the caret (or selection) is on, in the output layout: (first, last).
@@ -678,6 +680,9 @@ impl Session {
         single["copies"] = json!(1);
         let single_plan = plan_in(&single, &ids, current)?;
         let paper = imposed_paper(v, &lay, &single_plan.pages)?;
+        // File › Options › Display: Print background colors and images, Print drawings created
+        // in Word. The properties appendix prints in full.
+        let (background, drawings) = self.print_background_and_drawings(v)?;
         let opts = wordcraft_pdf::PdfOptions {
             pages: Some(single_plan.pages),
             imposition: imposition(v)?,
@@ -692,6 +697,8 @@ impl Session {
             // Print only the data from a form (File › Options › Advanced): the document's own
             // setting; a Document Info report prints in full.
             forms_data_only: report.is_none() && self.doc.settings.print_forms_data,
+            background,
+            drawings,
             ..Default::default()
         };
         let bytes = match self.properties_appendix(v, report.is_some())? {

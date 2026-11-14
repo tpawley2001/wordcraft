@@ -78,6 +78,7 @@ impl PdfOptions {
             markup: self.include_markup,
             placeholders: false,
             forms_data_only: self.forms_data_only,
+            hide_drawings: !self.drawings,
             ..Default::default()
         }
     }

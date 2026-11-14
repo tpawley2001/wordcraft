@@ -242,8 +242,18 @@ fn page_texture(app: &WordApp, ctx: &egui::Context, shown: &Previewed, page: usi
     let lay = &shown.lay;
     let id = egui::Id::unique(("print_page_texture", cache_slot));
     let what = preview_key(app);
-    let key = (app.session.rev(), app.session.prefs.print_markup, what, page, width as u32, (ctx.pixels_per_point() * 100.0) as u32);
-    if let Some((k, t)) = ctx.data(|d| d.get_temp::<((u64, bool, Option<String>, usize, u32, u32), TextureHandle)>(id))
+    // File › Options › Display: the preview shows the background and drawings only if they print.
+    let (background, drawings) = (app.session.prefs.print_background, app.session.prefs.print_drawings);
+    let key = (
+        app.session.rev(),
+        app.session.prefs.print_markup,
+        what,
+        page,
+        width as u32,
+        (ctx.pixels_per_point() * 100.0) as u32,
+        (background, drawings),
+    );
+    if let Some((k, t)) = ctx.data(|d| d.get_temp::<((u64, bool, Option<String>, usize, u32, u32, (bool, bool)), TextureHandle)>(id))
         && k == key
     {
         return Some(t);
@@ -253,7 +263,14 @@ fn page_texture(app: &WordApp, ctx: &egui::Context, shown: &Previewed, page: usi
     let max_side = ctx.input(|i| i.max_texture_side) as f32 / pg.w.max(pg.h).max(1.0);
     let scale = (width / pg.w.max(1.0) * ctx.pixels_per_point()).clamp(0.05, 4.0).min(max_side);
     let doc = shown.report.as_deref().unwrap_or(&app.session.doc);
-    let img = wordcraft_render::render_page(doc, pg, scale, &Default::default());
+    let base = wordcraft_render::RenderOptions::default();
+    let opts = wordcraft_render::RenderOptions {
+        display: wordcraft_layout::display::DisplayOptions { hide_drawings: !drawings, ..base.display.clone() },
+        // Plain paper stands in for the page colour and page picture.
+        read_paper: (!background).then_some(base.paper),
+        ..base
+    };
+    let img = wordcraft_render::render_page(doc, pg, scale, &opts);
     let color = egui::ColorImage::from_rgba_unmultiplied([img.width as usize, img.height as usize], &img.to_straight());
     let tex = ctx.load_texture("print_page_preview", color, egui::TextureOptions::LINEAR);
     ctx.data_mut(|d| d.insert_temp(id, (key, tex.clone())));
