@@ -12,6 +12,7 @@ use crate::{Session, cmd};
 
 mod autonum_fields;
 mod auto_caption;
+mod convert_text_spaces_word;
 mod insert_table_autofit;
 mod insert_table_remember;
 mod drop_cap_from_style;
