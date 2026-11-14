@@ -114,6 +114,22 @@ pub enum Stroke {
     BorderDotted,
     BorderDashed,
     BorderDotDash,
+    /// Underline styles as Word draws them: dash patterns of fixed lengths in points (see
+    /// [`Stroke::underline_pattern`]), whatever the text size and line width.
+    UnderlineDotted,
+    UnderlineDash,
+    UnderlineDotDash,
+    UnderlineDotDotDash,
+    /// A double underline: two lines filling the band the line's width covers, each `line`
+    /// thousandths of that band thick (see [`Stroke::underline_double`]).
+    UnderlineDouble {
+        line: u16,
+    },
+    /// A wavy underline: a zig-zag whose centre line spans the band the line's width covers,
+    /// drawn with a thin pen (see [`underline_waves`]).
+    UnderlineWave,
+    /// Two wavy underlines, one at the top and one at the bottom of the band.
+    UnderlineDoubleWave,
 }
 
 impl Stroke {
@@ -126,7 +142,101 @@ impl Stroke {
             Stroke::BorderDotted => Some(&[1.0, 1.0]),
             Stroke::BorderDashed => Some(&[3.0, 1.0]),
             Stroke::BorderDotDash => Some(&[3.0, 1.0, 1.0, 1.0]),
-            Stroke::Solid | Stroke::Double | Stroke::Triple | Stroke::Wave => None,
+            Stroke::Solid
+            | Stroke::Double
+            | Stroke::Triple
+            | Stroke::Wave
+            | Stroke::UnderlineDotted
+            | Stroke::UnderlineDash
+            | Stroke::UnderlineDotDash
+            | Stroke::UnderlineDotDotDash
+            | Stroke::UnderlineDouble { .. }
+            | Stroke::UnderlineWave
+            | Stroke::UnderlineDoubleWave => None,
         }
     }
+
+    /// An underline's dash and gap lengths, alternately, in points; `None` for the strokes that
+    /// aren't dashed underlines. Measured 2026-11-14 in Microsoft 365 Word's PDF export (16.0,
+    /// Times New Roman and Arial, 8-36 pt): the lengths are the same at every size and in every
+    /// font, and the pattern starts at the underline's left end (the last dash is cut off at
+    /// its right end).
+    pub fn underline_pattern(self) -> Option<&'static [f32]> {
+        match self {
+            Stroke::UnderlineDotted => Some(&[1.44, 1.44]),
+            Stroke::UnderlineDash => Some(&[3.96, 1.92]),
+            Stroke::UnderlineDotDash => Some(&[3.0, 0.96, 0.96, 0.96]),
+            Stroke::UnderlineDotDotDash => Some(&[2.16, 0.72, 0.72, 0.72, 0.72, 0.72]),
+            _ => None,
+        }
+    }
+
+    /// A double underline drawn along a line `width` thick: each of its two lines as (offset of
+    /// its centre from the line's centre, across the line; thickness). `None` for other strokes.
+    pub fn underline_double(self, width: f32) -> Option<[(f32, f32); 2]> {
+        let Stroke::UnderlineDouble { line } = self else { return None };
+        if !width.is_finite() || width <= 0.0 {
+            return None;
+        }
+        let t = width * f32::from(line.min(500)) / 1000.0;
+        let off = (width - t) / 2.0;
+        Some([(-off, t), (off, t)])
+    }
+}
+
+/// Half a wavy underline's period along the line, in points (Word: 1.20 pt at every size).
+pub const UNDERLINE_WAVE_HALF_PERIOD: f32 = 1.2;
+/// The pen a wavy underline is drawn with, in points (Word: 0.24 pt at every size).
+pub const UNDERLINE_WAVE_PEN: f32 = 0.24;
+/// The room between the two waves of a double wavy underline, in points.
+pub const UNDERLINE_DOUBLE_WAVE_GAP: f32 = 0.3;
+/// At most this many points in one wave (a hostile extent can't make it endless).
+const MAX_WAVE_POINTS: usize = 20_000;
+
+/// The zig-zags of a wavy (`UnderlineWave`) or double wavy (`UnderlineDoubleWave`) underline drawn
+/// from `(x0, y0)` to `(x1, y1)` with `width`, the height of the band the wave's centre line spans:
+/// one polyline per wave, to be stroked with [`UNDERLINE_WAVE_PEN`]. The centre line starts at
+/// the top of its band and turns every [`UNDERLINE_WAVE_HALF_PERIOD`]; the last half-wave is cut
+/// off at the end. A double wave puts one wave at the top and one at the bottom of the band, each
+/// `(width - UNDERLINE_DOUBLE_WAVE_GAP) / 2` tall. Empty for other strokes and unusable values.
+pub fn underline_waves(stroke: Stroke, (x0, y0, x1, y1): (f32, f32, f32, f32), width: f32) -> Vec<Vec<(f32, f32)>> {
+    let (dx, dy) = (x1 - x0, y1 - y0);
+    let len = dx.hypot(dy);
+    if ![x0, y0, x1, y1, width, len].iter().all(|v| v.is_finite()) || len < 1e-3 || width < 0.0 {
+        return Vec::new();
+    }
+    // Along the line, and across it (downwards for a line drawn left to right).
+    let (ux, uy) = (dx / len, dy / len);
+    let (nx, ny) = (-uy, ux);
+    // Each wave: (offset of its band's top from the line's centre, its height).
+    let bands: Vec<(f32, f32)> = match stroke {
+        Stroke::UnderlineWave => vec![(-width / 2.0, width)],
+        Stroke::UnderlineDoubleWave => {
+            let h = ((width - UNDERLINE_DOUBLE_WAVE_GAP) / 2.0).max(0.0);
+            vec![(-width / 2.0, h), (width / 2.0 - h, h)]
+        }
+        _ => return Vec::new(),
+    };
+    let point = |t: f32, off: f32| (x0 + ux * t + nx * off, y0 + uy * t + ny * off);
+    bands
+        .into_iter()
+        .map(|(top, h)| {
+            let mut pts = vec![point(0.0, top)];
+            let mut t = 0.0f32;
+            let mut down = true;
+            while t < len && pts.len() < MAX_WAVE_POINTS {
+                let nt = t + UNDERLINE_WAVE_HALF_PERIOD;
+                if nt <= t {
+                    break;
+                }
+                // The far end of this half-wave, or where the line ends partway through it.
+                let (end, k) = if nt > len { (len, (len - t) / UNDERLINE_WAVE_HALF_PERIOD) } else { (nt, 1.0) };
+                let off = if down { top + h * k } else { top + h * (1.0 - k) };
+                pts.push(point(end, off));
+                t = nt;
+                down = !down;
+            }
+            pts
+        })
+        .collect()
 }

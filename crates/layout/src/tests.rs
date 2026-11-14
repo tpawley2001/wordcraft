@@ -141,6 +141,7 @@ mod tall_footer_leading;
 mod textbox;
 mod turned_cell_autofit;
 mod underline_from_font;
+mod underline_style_geometry;
 mod vertical;
 mod wp_justification_squeeze;
 mod wrap_trail_spaces;

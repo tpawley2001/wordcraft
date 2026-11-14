@@ -394,8 +394,11 @@ fn run_decorations(
                     out.push(Draw::Line { x0: a, y0: uy, x1: b, y1: uy, width: uthick, color: ucolor, stroke: Stroke::Solid, alpha, text_bg });
                 }
             } else {
-                let w = if underline == Underline::Thick { uthick * 2.0 } else { uthick };
-                out.push(Draw::Line { x0, y0: uy, x1, y1: uy, width: w, color: ucolor, stroke: stroke_of(underline), alpha, text_bg });
+                // A revision mark's double underline keeps its own double line.
+                let marked = matches!((ins_mark, del_mark), (Some(InsertMark::DoubleUnderline), _) | (_, Some(DeleteMark::DoubleUnderline)));
+                let (centre, w, stroke) = if marked { (ucentre, uthick, Stroke::Double) } else { underline_line(underline, st, ucentre, uthick) };
+                let uy = base - st.shift + centre;
+                out.push(Draw::Line { x0, y0: uy, x1, y1: uy, width: w, color: ucolor, stroke, alpha, text_bg });
             }
         }
         if struck {
@@ -430,6 +433,65 @@ fn decoration_lines(st: &crate::para::StyleRun) -> (f32, f32, f32, f32) {
     let (uc, ut) = face.underline_metrics().map_or((size * 0.12, fallback), |(c, t)| (c as f32 * size, (t as f32 * size).max(MIN_THICK)));
     let (sc, sw) = face.strikeout_metrics().map_or((size * 0.28, fallback), |(c, t)| (c as f32 * size, (t as f32 * size).max(MIN_THICK)));
     (uc, ut, sc, sw)
+}
+
+/// An underline of `style` for the run `st` whose single underline is centred `ucentre` below
+/// the baseline and is `uthick` thick: (centre below the baseline, line width, stroke). Single,
+/// words-only and dashed underlines use the single underline's line; double, thick and wavy
+/// underlines the band from [`underline_band`].
+fn underline_line(style: Underline, st: &crate::para::StyleRun, ucentre: f32, uthick: f32) -> (f32, f32, Stroke) {
+    let stroke = stroke_of(style);
+    if !matches!(style, Underline::Double | Underline::Thick | Underline::Wave | Underline::DoubleWave) {
+        return (ucentre, uthick, stroke);
+    }
+    let b = underline_band(ucentre - uthick / 2.0, uthick, st.size);
+    match style {
+        Underline::Double => {
+            let height = 2.0 * b.line + b.gap;
+            // Each line's share of the band, in thousandths (at most a half).
+            let line = (b.line / height * 1000.0).round().clamp(0.0, 500.0) as u16;
+            (b.top + height / 2.0, height, Stroke::UnderlineDouble { line })
+        }
+        Underline::Thick => (b.top + (b.line + b.gap) / 2.0, b.line + b.gap, Stroke::Solid),
+        _ => (b.top + b.wave / 2.0, b.wave, stroke),
+    }
+}
+
+/// The band a double, thick or wavy underline fills, in points below the baseline.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct UnderlineBand {
+    /// The top of the band (of a double underline's upper line).
+    pub top: f32,
+    /// The thickness of each of a double underline's lines.
+    pub line: f32,
+    /// The room between a double underline's lines.
+    pub gap: f32,
+    /// The height a wavy underline's centre line spans, from `top`.
+    pub wave: f32,
+}
+
+/// The band of a double, thick or wavy underline for a font whose single underline's top is
+/// `top` below the baseline and which is `thick` thick, at `size` points. A double underline is
+/// two lines `line` thick, `gap` apart, from `top`; a thick underline runs from `top` to the top
+/// of the double's lower line; a wavy underline's centre line runs from `top` down `wave`.
+///
+/// Fitted to Microsoft 365 Word (16.0, compatibility mode 15), measured 2026-11-14 in its PDF
+/// export of synthetic documents: Times New Roman (`post` underline position -223, thickness
+/// 100, 2048 units per em) and Arial (-217, 150) at 8, 11, 14, 24 and 36 pt, double, thick,
+/// wave and wavyDouble underlines. Word puts every edge on a 0.12 pt grid; this rule gives every
+/// measured edge to within 0.10 pt:
+/// - `line = max(0.52 x thick, 0.24)`, `gap = max(size / 20, 0.96)`;
+/// - `top` is the single underline's top raised by `max(0.052 x size, min(1.2 x thick, 0.66))`
+///   (but never above the baseline);
+/// - `wave = max(0.75 x (line + gap) - 0.27, 0.36)`.
+pub(crate) fn underline_band(top: f32, thick: f32, size: f32) -> UnderlineBand {
+    let finite = |v: f32| if v.is_finite() { v.clamp(0.0, 1638.0) } else { 0.0 };
+    let (top, thick, size) = (finite(top), finite(thick), finite(size));
+    let line = (0.52 * thick).max(0.24);
+    let gap = (size / 20.0).max(0.96);
+    let top = (top - (0.052 * size).max((1.2 * thick).min(0.66))).max(0.0);
+    let wave = (0.75 * (line + gap) - 0.27).max(0.36);
+    UnderlineBand { top, line, gap, wave }
 }
 
 /// An emphasis mark `mark` for a character centred at `cx` on baseline `base`, in a font of
@@ -588,9 +650,8 @@ fn label_decorations(ctx: &LineContext<'_, '_, '_>, gx: f32, width: f32, st: &cr
     let color = ctx.ink(&rc.color, fill);
     let (ucentre, uthick, scentre, sthick) = decoration_lines(st);
     if rc.underline != Underline::None {
-        let uy = ctx.base - st.shift + ucentre;
-        let w = if rc.underline == Underline::Thick { uthick * 2.0 } else { uthick };
-        let stroke = if rc.underline == Underline::Words { Stroke::Solid } else { stroke_of(rc.underline) };
+        let (centre, w, stroke) = underline_line(rc.underline, st, ucentre, uthick);
+        let uy = ctx.base - st.shift + centre;
         let ucolor = rc.underline_color.unwrap_or(color);
         out.push(Draw::Line { x0, y0: uy, x1, y1: uy, width: w, color: ucolor, stroke, alpha: ctx.alpha, text_bg: fill });
     }

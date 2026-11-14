@@ -13,7 +13,7 @@ use wordcraft_doc::props::Rgb;
 use wordcraft_fonts::FontDb;
 use wordcraft_layout::Page;
 use wordcraft_layout::display::Paint;
-use wordcraft_layout::display::{DisplayOptions, Draw, Stroke, page_layers};
+use wordcraft_layout::display::{DisplayOptions, Draw, Stroke, UNDERLINE_WAVE_PEN, page_layers, underline_waves};
 use wordcraft_metafile::{Item, Picture, PlacedItem, Seg};
 
 mod media;
@@ -681,9 +681,32 @@ fn draw_line(ctx: &mut RenderContext, fr: &Frame, it: &Draw) {
     if let Some(d) = stroke.dashes() {
         st = st.with_dashes(0.0, safe_dashes(d.iter().map(|k| f64::from(*k) * w), (x1 - x0).hypot(y1 - y0)));
     }
+    // Underline patterns are in points, not line widths.
+    if let Some(d) = stroke.underline_pattern() {
+        st = st.with_dashes(0.0, safe_dashes(d.iter().map(|k| f64::from(*k)), (x1 - x0).hypot(y1 - y0)));
+    }
     let (dx, dy) = (x1 - x0, y1 - y0);
     let len = (dx * dx + dy * dy).sqrt().max(1e-3);
     match *stroke {
+        Stroke::UnderlineWave | Stroke::UnderlineDoubleWave => {
+            ctx.set_stroke(kurbo::Stroke::new(f64::from(UNDERLINE_WAVE_PEN)).with_caps(kurbo::Cap::Butt));
+            let ends = (x0 as f32, y0 as f32, x1 as f32, y1 as f32);
+            for wave in underline_waves(*stroke, ends, *width) {
+                let mut p = BezPath::new();
+                for (i, (x, y)) in wave.into_iter().enumerate() {
+                    let pt = (f64::from(x), f64::from(y));
+                    if i == 0 { p.move_to(pt) } else { p.line_to(pt) }
+                }
+                ctx.stroke_path(&p);
+            }
+        }
+        Stroke::UnderlineDouble { .. } => {
+            for (off, t) in stroke.underline_double(*width).into_iter().flatten() {
+                let (off, t) = (f64::from(off), f64::from(t));
+                ctx.set_stroke(kurbo::Stroke::new(t).with_caps(kurbo::Cap::Butt));
+                stroke_segment(ctx, (x0, y0, x1, y1), (-dy / len * off, dx / len * off));
+            }
+        }
         Stroke::Wave => {
             let amp = (w * 1.2).max(0.8);
             ctx.set_stroke(kurbo::Stroke::new(w * 0.8));

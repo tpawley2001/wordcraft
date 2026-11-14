@@ -24,13 +24,15 @@ mod paint;
 pub(crate) use glyphs::author_order;
 pub use glyphs::{CHECK_BOX_INSET, check_box, text_color, upright_in_vertical};
 #[cfg(test)]
+pub(crate) use lines::underline_band;
+#[cfg(test)]
 pub(crate) use lines::{leader_pitch, leader_xs};
 pub use lines::{mark_text_width, section_break_label};
 pub(crate) use objects::inline_rect;
 pub use objects::seg_path;
 pub use options::{BalloonMode, ChangeBar, CommentDisplay, DeleteMark, DisplayOptions, FormattingMarks, InsertMark, MarkupOptions};
 pub use page::{CHANGE_BAR, ItemDisplay, MOVE_COLOR, object_display, page_display, page_layers, revision_color};
-pub use paint::{Paint, Stroke, paint_for};
+pub use paint::{Paint, Stroke, UNDERLINE_DOUBLE_WAVE_GAP, UNDERLINE_WAVE_HALF_PERIOD, UNDERLINE_WAVE_PEN, paint_for, underline_waves};
 
 #[derive(Clone, Debug)]
 pub enum Draw {
