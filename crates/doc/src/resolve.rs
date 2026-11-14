@@ -41,6 +41,10 @@ pub struct ResolvedChar {
     /// Kerning: the smallest font size, in points, that is kerned (`w:kern`); 0 = never kerned.
     #[serde(default)]
     pub kern: f32,
+    /// Fit Text (`w:fitText`): the run, or the runs next to it sharing the id, laid out exactly this
+    /// wide. `None` when unset or without a usable width.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fit_text: Option<crate::props::FitText>,
     /// A mark over or under each character (Font › Emphasis mark).
     #[serde(default)]
     pub emphasis: crate::props::EmphasisMark,
@@ -115,6 +119,10 @@ impl ResolvedChar {
             scale: c.scale.unwrap_or(100.0).clamp(1.0, 600.0),
             position: c.position.unwrap_or(0.0).clamp(-800.0, 800.0),
             kern: c.kern.filter(|k| k.is_finite()).unwrap_or(0.0).clamp(0.0, 1638.0),
+            fit_text: c
+                .fit_text
+                .filter(|f| f.width.is_finite() && f.width > 0.0)
+                .map(|f| crate::props::FitText { width: f.width.clamp(0.0, 1584.0), id: f.id }),
             emphasis: c.emphasis.unwrap_or_default(),
             ligatures: c.ligatures,
             num_form: c.num_form,

@@ -604,7 +604,7 @@ impl CharProps {
     }
 
     fn minus_run_visibility(&mut self, base: &CharProps) {
-        drop_same_fields!(self, base; web_hidden, spec_vanish, snap_to_grid, emphasis);
+        drop_same_fields!(self, base; web_hidden, spec_vanish, snap_to_grid, emphasis, fit_text);
     }
 
     fn minus_script_style(&mut self, base: &CharProps) {
@@ -635,7 +635,7 @@ impl CharProps {
     }
 
     fn overlay_run_visibility(&mut self, patch: &CharProps) {
-        overlay_fields!(self, patch; web_hidden, spec_vanish, snap_to_grid, emphasis);
+        overlay_fields!(self, patch; web_hidden, spec_vanish, snap_to_grid, emphasis, fit_text);
     }
 
     fn overlay_script_style(&mut self, patch: &CharProps) {
