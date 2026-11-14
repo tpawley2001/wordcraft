@@ -348,6 +348,16 @@ fn missing_font_metrics_no_leading(family: &str) -> Option<(f64, f64)> {
 /// Perpetua: `/Ascent` 820, the descent the rest of the line; 12 and 24 pt lines 13.75 and 27.51 pt apart (1.146 em).
 /// Gill Sans MT: `/Ascent` 929, the descent the rest of the line; 12 and 24 pt lines 13.92 and 27.83 pt apart (1.160 em).
 /// Book Antiqua: first baseline 0.962–0.966 em below the top (not `/Ascent` 923); 12 and 24 pt lines 14.92 and 29.82 pt apart (1.2427 em).
+///
+/// Additional Office fonts measured in Word at 12 and 24 pt (single spacing, no grid): Algerian
+/// 1.3202 em, Baskerville Old Face 1.1409 em, Bauhaus 93 1.4604 em, Bodoni MT 1.1993 em,
+/// Constantia 1.2211 em, Cooper Black 1.1468 em, Copperplate Gothic Bold 1.1129 em, DokChampa
+/// 1.3448 em, Ebrima 1.3577 em, Goudy Old Style 1.2002 em, Haettenschweiler 1.0668 em,
+/// Lucida Sans 1.1777 em, Lucida Sans Unicode 1.5369 em, Mangal 1.6800 em, Nirmala UI
+/// 1.3302 em, Rockwell 1.1745 em, Segoe UI Light and Segoe UI Semibold 1.3302 em, Sylfaen
+/// 1.3168 em and Tw Cen MT 1.0891 em. Ascent follows the PDF descriptor where it agrees with
+/// the first baseline within 0.008 em, otherwise the measured 24 pt first baseline; descent
+/// fills the measured line, with metrics rounded to 0.001 em.
 fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
     match family.trim().to_ascii_lowercase().as_str() {
         "lucida console" => Some((0.789, 0.211)),
@@ -376,10 +386,28 @@ fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
         | "ＭＳ Ｐゴシック"
         | "ms ui gothic" => Some((1.007, 0.290)),
         "shruti" => Some((1.021, 0.660)),
-        "segoe ui" => Some((1.079, 0.251)),
+        "segoe ui" | "segoe ui light" | "segoe ui semibold" => Some((1.079, 0.251)),
         "perpetua" => Some((0.820, 0.326)),
         "gill sans mt" => Some((0.929, 0.231)),
         "book antiqua" => Some((0.964, 0.279)),
+        "algerian" => Some((1.096, 0.224)),
+        "baskerville old face" => Some((0.881, 0.260)),
+        "bauhaus 93" => Some((1.226, 0.234)),
+        "bodoni mt" => Some((0.917, 0.282)),
+        "constantia" => Some((0.951, 0.270)),
+        "cooper black" => Some((0.918, 0.229)),
+        "copperplate gothic bold" => Some((0.885, 0.228)),
+        "dokchampa" => Some((1.076, 0.269)),
+        "ebrima" => Some((1.111, 0.247)),
+        "goudy old style" => Some((0.966, 0.234)),
+        "haettenschweiler" => Some((0.946, 0.121)),
+        "lucida sans" => Some((0.967, 0.211)),
+        "lucida sans unicode" => Some((1.097, 0.440)),
+        "mangal" => Some((1.241, 0.439)),
+        "nirmala ui" => Some((1.079, 0.251)),
+        "rockwell" => Some((0.946, 0.229)),
+        "sylfaen" => Some((1.006, 0.311)),
+        "tw cen mt" => Some((0.856, 0.233)),
         _ => None,
     }
 }

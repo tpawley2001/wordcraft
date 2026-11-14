@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0502: twenty more missing Office fonts use Word's measured single-line metrics (1.067–1.680 em), including Segoe UI Light and Semibold sharing Segoe UI's line. Gap #4 narrowed; readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0499: missing Segoe UI, Perpetua, Gill Sans MT and Book Antiqua use Word's measured single-line metrics (1.330, 1.146, 1.160 and 1.243 em); Book Antiqua keeps its own baseline and line, separate from Palatino. Gap #4 narrowed; readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0498: a missing Century uses Word's single-line metrics (0.986 em ascent + 0.216 em descent), instead of C059's taller line. Other Century families, substitutes and advance widths are unchanged. Readiness estimates unchanged; earlier: P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged)
@@ -173,6 +175,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-14: P0502: twenty more missing Office fonts use Word's measured single-line metrics (1.067–1.680 em), including Segoe UI Light and Semibold sharing Segoe UI's line. Gap #4 narrowed; readiness estimates unchanged.
 
 - 2026-11-14: P0499: missing Segoe UI, Perpetua, Gill Sans MT and Book Antiqua use Word's measured single-line metrics (1.330, 1.146, 1.160 and 1.243 em); Book Antiqua keeps its own baseline and line, separate from Palatino. Gap #4 narrowed; readiness estimates unchanged.
 
@@ -1018,6 +1022,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0502: twenty more missing Office fonts use Word's measured single-line metrics (1.067–1.680 em), including Segoe UI Light and Semibold sharing Segoe UI's line. Gap #4 narrowed; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0499: missing Segoe UI, Perpetua, Gill Sans MT and Book Antiqua use Word's measured single-line metrics (1.330, 1.146, 1.160 and 1.243 em); Book Antiqua keeps its own baseline and line, separate from Palatino. Gap #4 narrowed; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0498: a missing Century uses Word's single-line metrics (0.986 em ascent + 0.216 em descent), instead of C059's taller line. Other Century families, substitutes and advance widths are unchanged. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged. |
