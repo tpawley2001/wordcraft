@@ -80,16 +80,20 @@ fn a_words_only_underline_uses_the_same_line() {
     }
 }
 
-/// A thick underline is twice the font's thickness, centred where the single line is centred.
+/// A thick underline fills the band from the top of a double underline's upper line to the top
+/// of its lower line, worked out from the font's underline (`underline_style_geometry.rs`).
 #[test]
-fn a_thick_underline_doubles_the_font_thickness() {
+fn a_thick_underline_fills_the_band_from_the_font() {
     for (font, centre, thick) in FONTS {
         let size = 20.0;
         let (base, lines) = lay(font, size, Underline::Thick);
         assert_eq!(lines.len(), 1, "{font}: {lines:?}");
         let (y, w) = lines[0];
-        assert!((y - base - centre * size).abs() < 0.02, "{font}: centre {} below the baseline", y - base);
-        assert!((w - 2.0 * thick * size).abs() < 0.02, "{font}: thickness {w}");
+        let b = crate::display::underline_band((centre - thick / 2.0) * size, thick * size, size);
+        let (top, height) = (b.top, b.line + b.gap);
+        assert!((y - base - (top + height / 2.0)).abs() < 0.02, "{font}: centre {} below the baseline", y - base);
+        assert!((w - height).abs() < 0.02, "{font}: thickness {w}, want {height}");
+        assert!(w > thick * size, "{font}: thicker than a single underline");
     }
 }
 

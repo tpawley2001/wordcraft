@@ -18,12 +18,17 @@ pub fn revision_color(i: u32) -> Rgb {
     C.get(i as usize % C.len()).copied().unwrap_or(C[0])
 }
 
+/// The stroke an underline of style `u` is drawn with. A double underline's stroke carries its
+/// lines' thickness, which comes from the font (`lines::underline_line`); this one is a stand-in.
 pub(super) fn stroke_of(u: Underline) -> Stroke {
     match u {
-        Underline::Dotted => Stroke::Dotted,
-        Underline::Dash | Underline::DotDash | Underline::DotDotDash => Stroke::Dashed,
-        Underline::Double => Stroke::Double,
-        Underline::Wave | Underline::DoubleWave => Stroke::Wave,
+        Underline::Dotted => Stroke::UnderlineDotted,
+        Underline::Dash => Stroke::UnderlineDash,
+        Underline::DotDash => Stroke::UnderlineDotDash,
+        Underline::DotDotDash => Stroke::UnderlineDotDotDash,
+        Underline::Double => Stroke::UnderlineDouble { line: 250 },
+        Underline::Wave => Stroke::UnderlineWave,
+        Underline::DoubleWave => Stroke::UnderlineDoubleWave,
         _ => Stroke::Solid,
     }
 }

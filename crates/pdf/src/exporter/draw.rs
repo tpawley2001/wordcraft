@@ -4,6 +4,7 @@ use super::{
     append_path, fill, grown, krilla, norm, ok, paint_fill, pdf_line_cap, rect_path, rgb, shape_effects, shape_path, vector_picture,
 };
 use wordcraft_doc::picfx::PicFx;
+use wordcraft_layout::display::{UNDERLINE_WAVE_PEN, underline_waves};
 
 impl Exporter<'_> {
     /// Paint one display item on the PDF surface in its current point-coordinate system.
@@ -221,6 +222,32 @@ impl Exporter<'_> {
                 let array = style.dashes().unwrap_or(&[]).iter().map(|k| k * w).collect();
                 s.set_stroke(Some(stroke(w, Some(StrokeDash { array, offset: 0.0 }), LineCap::Butt)));
                 seg(s, 0.0, 0.0);
+            }
+            LineStyle::UnderlineDotted | LineStyle::UnderlineDash | LineStyle::UnderlineDotDash | LineStyle::UnderlineDotDotDash => {
+                // Underline patterns are in points, not line widths.
+                let array = style.underline_pattern().unwrap_or(&[]).to_vec();
+                s.set_stroke(Some(stroke(w, Some(StrokeDash { array, offset: 0.0 }), LineCap::Butt)));
+                seg(s, 0.0, 0.0);
+            }
+            LineStyle::UnderlineDouble { .. } => {
+                let (dx, dy) = (x1 - x0, y1 - y0);
+                let len = (dx * dx + dy * dy).sqrt().max(1e-3);
+                for (off, t) in style.underline_double(width).into_iter().flatten() {
+                    s.set_stroke(Some(stroke(t, None, LineCap::Butt)));
+                    seg(s, -dy / len * off, dx / len * off);
+                }
+            }
+            LineStyle::UnderlineWave | LineStyle::UnderlineDoubleWave => {
+                s.set_stroke(Some(stroke(UNDERLINE_WAVE_PEN, None, LineCap::Butt)));
+                for wave in underline_waves(style, (x0, y0, x1, y1), width) {
+                    let mut pb = PathBuilder::new();
+                    for (i, (x, y)) in wave.into_iter().enumerate() {
+                        if i == 0 { pb.move_to(x, y) } else { pb.line_to(x, y) }
+                    }
+                    if let Some(p) = pb.finish() {
+                        s.draw_path(&p);
+                    }
+                }
             }
             LineStyle::Double => {
                 // Two thinner lines either side of the centre line.

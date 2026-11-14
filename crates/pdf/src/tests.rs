@@ -3174,3 +3174,20 @@ fn page_break_in_a_text_frame_exports_one_page() {
     let bytes = export(&d, &PdfOptions::default()).unwrap();
     assert_eq!(hayro_syntax::Pdf::new(bytes).expect("parse").pages().len(), 1);
 }
+
+/// Word's dotted underline is 1.44 pt on, 1.44 pt off at every size (Microsoft 365 Word's PDF,
+/// 2026-11-14), not a pattern scaled by the line's width; a wavy underline is drawn with a 0.24 pt pen.
+#[test]
+fn underline_patterns_export_in_points() {
+    use wordcraft_doc::props::Underline;
+    let underlined = |u: Underline| {
+        let mut d = Document::new();
+        let run = CharProps { size: Some(11.0), underline: Some(u), ..CharProps::default() };
+        d.body = vec![para_block(Paragraph::with_text("Hxgabcdefgh", run))];
+        raw_pdf(&d)
+    };
+    let raw = underlined(Underline::Dotted);
+    assert!(raw.contains("[1.44 1.44]0 d") || raw.contains("[1.44 1.44] 0 d"), "the dotted underline's dash array");
+    let raw = underlined(Underline::Wave);
+    assert!(raw.contains("0.24 w"), "the wave's pen");
+}
