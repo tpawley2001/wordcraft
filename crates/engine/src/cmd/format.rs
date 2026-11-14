@@ -779,7 +779,7 @@ fn convert_sentence_char(
     let is_decimal = c == '.'
         && i.checked_sub(1).and_then(|j| chars.get(j)).is_some_and(char::is_ascii_digit)
         && chars.get(i + 1).is_some_and(char::is_ascii_digit);
-    if (matches!(c, '!' | '?') || (c == '.' && !is_decimal)) && chars.get(i + 1).is_some_and(char::is_whitespace) {
+    if (matches!(c, '!' | '?') || (c == '.' && !is_decimal)) && chars.get(i + 1).is_some_and(|next| next.is_whitespace()) {
         *up = true;
     }
     n
