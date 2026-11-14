@@ -28,6 +28,7 @@ mod empty_inline_shape;
 mod encrypted_compound_repairs;
 mod field_code_paragraphs;
 mod fixtures;
+mod font_table_classes;
 mod footnote_layout_ww8;
 mod glossary;
 mod heading_levels;
