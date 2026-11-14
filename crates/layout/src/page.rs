@@ -342,7 +342,7 @@ impl PageBuilder<'_> {
                 None => {
                     let len = if cont { width } else { NOTE_SEP_W.min(width) };
                     let sy = top + seps.sep_h(cont) / 2.0;
-                    pg.items.push(Placed::Rule { x0: x, y0: sy, x1: x + len, y1: sy, border: Border::single(0.5) });
+                    pg.items.push(Placed::Rule { x0: x, y0: sy, x1: x + len, y1: sy, border: Border::single(seps.default_w) });
                 }
             }
             for (n, ny) in placed {

@@ -88,6 +88,11 @@ pub(crate) struct Reader<'p> {
     /// Reading a footnote or endnote separator or continuation notice (where the `w:separator`
     /// and `w:continuationSeparator` run elements belong).
     in_note_sep: bool,
+    /// The special footnote and endnote ids the settings list (`w:footnotePr` / `w:endnotePr`
+    /// `w:footnote` / `w:endnote` children, ECMA-376 Part 1 §17.11.11, §17.11.12): a separator
+    /// story counts only when its id is listed.
+    footnote_sep_ids: HashSet<i64>,
+    endnote_sep_ids: HashSet<i64>,
     pub comment_map: HashMap<String, std::collections::VecDeque<u32>>,
     pub bookmarks: HashMap<String, String>,
     /// Restrict Editing exception ranges (`w:permStart`): the file's id → ours.
@@ -176,6 +181,8 @@ fn read_opened_in(pkg: &Package, chunks: ChunkState) -> Result<(Document, usize,
         endnotes: HashMap::new(),
         current_note: None,
         in_note_sep: false,
+        footnote_sep_ids: HashSet::new(),
+        endnote_sep_ids: HashSet::new(),
         comment_map: HashMap::new(),
         bookmarks: HashMap::new(),
         perms: HashMap::new(),

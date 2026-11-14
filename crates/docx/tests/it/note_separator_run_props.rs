@@ -24,7 +24,11 @@ fn package(foot_sep: &str, foot_cont: &str, end_sep: &str) -> Vec<u8> {
     let doc = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document {W_NS}><w:body><w:p><w:r><w:t>Text</w:t></w:r><w:r><w:footnoteReference w:id="2"/></w:r><w:r><w:endnoteReference w:id="2"/></w:r></w:p></w:body></w:document>"#
     );
-    let rels = r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes" Target="endnotes.xml"/></Relationships>"#;
+    let rels = r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes" Target="endnotes.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/></Relationships>"#;
+    // Word uses a separator story only when the settings list its id (§17.11.12).
+    let settings = format!(
+        r#"<w:settings {W_NS}><w:footnotePr><w:footnote w:id="-1"/><w:footnote w:id="0"/></w:footnotePr><w:endnotePr><w:endnote w:id="-1"/><w:endnote w:id="0"/></w:endnotePr></w:settings>"#
+    );
     let notes = |root: &str, tag: &str, sep: &str, cont: &str| {
         format!(
             r#"<w:{root} {W_NS}><w:{tag} w:type="separator" w:id="-1"><w:p><w:pPr><w:spacing w:after="0"/></w:pPr>{sep}</w:p></w:{tag}><w:{tag} w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0"/></w:pPr>{cont}</w:p></w:{tag}><w:{tag} w:id="2"><w:p><w:r><w:t xml:space="preserve"> The note.</w:t></w:r></w:p></w:{tag}></w:{root}>"#
@@ -38,6 +42,7 @@ fn package(foot_sep: &str, foot_cont: &str, end_sep: &str) -> Vec<u8> {
         ("word/_rels/document.xml.rels", rels),
         ("word/footnotes.xml", &foot),
         ("word/endnotes.xml", &end),
+        ("word/settings.xml", &settings),
     ])
 }
 

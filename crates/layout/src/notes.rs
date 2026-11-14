@@ -122,12 +122,30 @@ pub(crate) struct NoteSeps {
     /// Height of the default separator, used for `sep` / `cont` when the document has no story
     /// for them ([`default_sep_h`]).
     pub(crate) default_h: f32,
+    /// Thickness of the default separator line ([`default_sep_w`]).
+    pub(crate) default_w: f32,
 }
 
 impl Default for NoteSeps {
     fn default() -> Self {
-        NoteSeps { sep: None, cont: None, notice: None, default_h: NOTE_SEP }
+        NoteSeps { sep: None, cont: None, notice: None, default_h: NOTE_SEP, default_w: sep_weight(NORMAL_SIZE) }
     }
+}
+
+/// The font size Word gives text with no size of its own (ECMA-376 Part 1 §17.3.2.38), points.
+const NORMAL_SIZE: f32 = 10.0;
+
+/// Thickness of a note separator line drawn at `size` pt: Word draws it 1/20 of the separator's
+/// font size thick (measured in Word 16.0.20527: 8 pt -> 0.36, 12 pt -> 0.60, 24 pt -> 1.20 pt,
+/// on its 0.12 pt device grid).
+pub(crate) fn sep_weight(size: f32) -> f32 {
+    let size = if size.is_finite() && size > 0.0 { size.min(1638.0) } else { NORMAL_SIZE };
+    size / 20.0
+}
+
+/// Thickness of the built-in separator line: [`sep_weight`] of the Normal style's font size.
+pub(crate) fn default_sep_w(doc: &wordcraft_doc::Document) -> f32 {
+    sep_weight(doc.styles.para_style_props("Normal").1.size.unwrap_or(NORMAL_SIZE))
 }
 
 /// Height of the default footnote separator, as Word lays it out: an empty paragraph in the
@@ -159,7 +177,13 @@ impl NoteSeps {
     /// Lay out `seps` `width` wide.
     pub(crate) fn new(ctx: &mut Ctx, seps: &wordcraft_doc::NoteSeparators, width: f32) -> NoteSeps {
         let mut lay = |blocks: &Option<Blocks>| blocks.as_ref().map(|b| sep_box(ctx, b, width));
-        NoteSeps { sep: lay(&seps.separator), cont: lay(&seps.continuation_separator), notice: lay(&seps.continuation_notice), default_h: NOTE_SEP }
+        NoteSeps {
+            sep: lay(&seps.separator),
+            cont: lay(&seps.continuation_separator),
+            notice: lay(&seps.continuation_notice),
+            default_h: NOTE_SEP,
+            default_w: default_sep_w(ctx.doc),
+        }
     }
     /// Height of the separator above a page's notes (`cont`: the continuation separator, when the
     /// first is continued from the page before).
@@ -207,7 +231,9 @@ fn separator_rules(blocks: &Blocks, items: &[Placed]) -> Vec<Placed> {
                 }
                 let (Some(a), Some(b)) = (line.cl_left(k), line.cl_right(k)) else { continue };
                 let ry = y + line.top - first.top + line.height / 2.0;
-                rules.push(Placed::Rule { x0: x + a.min(b), y0: ry, x1: x + a.max(b), y1: ry, border: Border::single(0.5) });
+                let size = para.clusters.get(k).and_then(|c| para.styles.get(c.style as usize)).map_or(NORMAL_SIZE, |st| st.rc.size);
+                let border = Border::single(sep_weight(size));
+                rules.push(Placed::Rule { x0: x + a.min(b), y0: ry, x1: x + a.max(b), y1: ry, border });
             }
         }
     }
@@ -438,7 +464,8 @@ pub(crate) fn place_endnotes(ctx: &mut Ctx, pb: &mut PageBuilder, ids: Vec<u32>,
         pb.y += 12.0;
         let (x, ry) = (pb.col_x(), pb.y);
         if let Some(pg) = pb.page() {
-            pg.items.push(Placed::Rule { x0: x, y0: ry, x1: x + NOTE_SEP_W, y1: ry, border: Border::single(0.5) });
+            let border = Border::single(default_sep_w(ctx.doc));
+            pg.items.push(Placed::Rule { x0: x, y0: ry, x1: x + NOTE_SEP_W, y1: ry, border });
         }
         pb.y += 8.0;
     }
