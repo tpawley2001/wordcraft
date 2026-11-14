@@ -19,6 +19,8 @@ struct Resolver<'a> {
     style: Option<&'a str>,
     table: Option<&'a CharProps>,
     draft_font: Option<(&'a str, f32)>,
+    /// Immersive Reader's Text Spacing: 0.05 em more after each letter.
+    text_spacing: bool,
 }
 
 impl Resolver<'_> {
@@ -31,6 +33,9 @@ impl Resolver<'_> {
             rc.font_ea = None;
             rc.size = size;
             rc.size_cs = size;
+        }
+        if self.text_spacing {
+            rc.spacing += TEXT_SPACING_LETTER * rc.size;
         }
         Arc::new(rc)
     }
@@ -105,6 +110,13 @@ struct Shaped<'a> {
     shown_floor: usize,
 }
 
+/// Immersive Reader's Text Spacing: extra space after each letter (em).
+const TEXT_SPACING_LETTER: f32 = 0.05;
+/// Immersive Reader's Text Spacing: extra width of each word space (em), on top of the letter's.
+pub(super) const TEXT_SPACING_WORD: f32 = 0.25;
+/// Immersive Reader's Text Spacing: line spacing is this many times the paragraph's.
+const TEXT_SPACING_LINES: f32 = 1.2;
+
 fn is_special(c: char) -> bool {
     matches!(c, '\t' | LINE_BREAK | PAGE_BREAK | COLUMN_BREAK | OBJ | '\r')
 }
@@ -115,6 +127,14 @@ fn paragraph_props(p: &Paragraph, env: &ParaEnv) -> ResolvedPara {
     let mut rp = doc.styles.resolve_para_spaced(&p.props, env.table.map(|t| &t.para), !doc.settings.sum_paragraph_spacing);
     if let Some(spacing) = env.read_line_spacing.filter(|s| s.is_finite() && (1.0..=2.0).contains(s)) {
         rp.line_spacing = wordcraft_doc::props::LineSpacing::Multiple(spacing);
+    }
+    if env.text_spacing {
+        use wordcraft_doc::props::LineSpacing;
+        rp.line_spacing = match rp.line_spacing {
+            LineSpacing::Multiple(m) => LineSpacing::Multiple(m * TEXT_SPACING_LINES),
+            LineSpacing::AtLeast(pt) => LineSpacing::AtLeast(pt * TEXT_SPACING_LINES),
+            LineSpacing::Exactly(pt) => LineSpacing::Exactly(pt * TEXT_SPACING_LINES),
+        };
     }
     // Indents in characters are measured in the paragraph mark's font size.
     if rp.indent_chars.iter().any(|c| *c != 0.0) {
@@ -732,7 +752,13 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     crate::test_fonts();
     let doc = env.doc;
     let rp = paragraph_props(p, env);
-    let res = Resolver { doc, style: p.props.style.as_deref(), table: env.table.map(|t| &t.chr), draft_font: env.draft_font };
+    let res = Resolver {
+        doc,
+        style: p.props.style.as_deref(),
+        table: env.table.map(|t| &t.chr),
+        draft_font: env.draft_font,
+        text_spacing: env.text_spacing,
+    };
     let levels = bidi_levels(&p.text, rp.bidi);
     let b = Builder {
         env,

@@ -368,6 +368,12 @@ View|SharePoint|Properties|file.properties
 Read Mode|View|Column Width|view.readColumnWidth
 Read Mode|View|Page Color|view.readPageColor
 Read Mode|View|Layout|view.readLayout
+Immersive Reader|Immersive Reader|Column Width|view.immersiveColumnWidth
+Immersive Reader|Immersive Reader|Page Color|view.immersivePageColor
+Immersive Reader|Immersive Reader|Line Focus|view.lineFocus
+Immersive Reader|Immersive Reader|Text Spacing|view.textSpacing
+Immersive Reader|Immersive Reader|Syllables|view.syllables
+Immersive Reader|Close|Close Immersive Reader|view.closeImmersive
 Developer|Controls|Rich Text Content Control|developer.richText
 Developer|Controls|Plain Text Content Control|developer.plainText
 Developer|Controls|Picture Content Control|developer.picture

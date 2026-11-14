@@ -367,11 +367,6 @@ pub fn specs() -> Vec<CommandSpec> {
                 format!("{} ({})", s.doc.settings.theme_name.split(" (").next().unwrap_or("Craft"), p::str(v, "name").unwrap_or("Subtle"));
             sel_result(s)
         }),
-        CommandSpec::new("view.immersive", "Immersive Reader", "View › Immersive", |s, _| {
-            s.view.read_mode = !s.view.read_mode;
-            Ok(json!({"value": s.view.read_mode}))
-        })
-        .pure(),
         CommandSpec::new("view.vertical", "Vertical", "View › Page Movement", |s, _| {
             s.view.multi_page = false;
             s.view.fit.clear();

@@ -202,6 +202,8 @@ pub struct LayoutOptions {
     pub read_height: f32,
     /// Transient read-only line-spacing override; ignored by print/export views.
     pub read_line_spacing: Option<f32>,
+    /// Immersive Reader's Text Spacing (Read view only): wider letters, word spaces and lines.
+    pub read_text_spacing: bool,
     pub show_hidden: bool,
     /// Final text ("No Markup"): tracked deletions take no space and draw nothing.
     pub hide_deleted: bool,

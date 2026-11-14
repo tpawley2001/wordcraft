@@ -1164,3 +1164,17 @@ fn accept_and_reject_are_split_buttons() {
     h.run_steps(4);
     assert!(has(&h, "Keep Text Only"), "Paste Options opens the paste menu");
 }
+
+/// View › Immersive Reader brings up the Immersive Reader tab, and only while it is open.
+#[test]
+fn immersive_reader_tab_shows_only_while_immersive_reader_is_open() {
+    let mut a = crate::WordApp::new(Session::new(wordcraft_doc::Document::from_text("Text")), crate::Services::default());
+    assert!(!super::contextual_tabs(&a.session).contains(&"Immersive Reader"));
+    a.run("view.immersive", json!({})).unwrap();
+    assert!(super::contextual_tabs(&a.session).contains(&"Immersive Reader"));
+    a.run("view.closeImmersive", json!({})).unwrap();
+    assert!(!super::contextual_tabs(&a.session).contains(&"Immersive Reader"));
+    a.run("view.immersive", json!({})).unwrap();
+    a.run("view.readMode", json!({})).unwrap();
+    assert!(!super::contextual_tabs(&a.session).contains(&"Immersive Reader"), "Read Mode closes it");
+}

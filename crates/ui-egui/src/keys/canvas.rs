@@ -540,13 +540,14 @@ fn handle_event(app: &mut WordApp, ctx: &egui::Context, e: egui::Event) {
     }
 }
 
-/// Escape leaves Focus or Full Screen View (#1678), then Full Screen (#980), once nothing nearer
+/// Escape leaves Focus or Full Screen View (#1678), then Immersive Reader, then Full Screen (#980), once nothing nearer
 /// took it: a pen, a text box, a header, a dialog, a menu or a popup, a drag on the page, and in
 /// the document (`canvas`) a selection, which Escape collapses first (`select.collapse`), as in a
 /// normal window.
 pub(super) fn leave_full_screen(app: &mut WordApp, ctx: &egui::Context, key: Key, m: Modifiers, canvas: bool) -> bool {
     let screen = crate::chrome::Screen::of(&app.session.view).exit_command();
-    let Some(id) = screen.or(app.session.view.full_screen.then_some("view.fullScreen")) else { return false };
+    let immersive = app.session.view.immersive.then_some("view.closeImmersive");
+    let Some(id) = screen.or(immersive).or(app.session.view.full_screen.then_some("view.fullScreen")) else { return false };
     if key != Key::Escape || !m.is_none() || !app.escape_free {
         return false;
     }

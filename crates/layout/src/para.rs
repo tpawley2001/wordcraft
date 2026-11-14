@@ -366,6 +366,7 @@ mod label_spacing_tests {
             eq_number: 0,
             numeral: crate::NumeralMode::default(),
             read_line_spacing: None,
+            text_spacing: false,
             fit_objects: false,
             fitted: &[],
             draft_font: None,
