@@ -834,7 +834,7 @@ fn convert_chars(src: &str, mode: &str, para_start: bool, turkic: &[bool]) -> Ve
 fn clear(s: &mut Session, _: &Value) -> CmdResult {
     match selected_text_box(s).or_else(|| target(s)) {
         Some((a, b)) => {
-            s.doc.format_range(&a, &b, &|c| *c = CharProps { highlight: c.highlight.clone(), ..c.cleared() })?;
+            s.doc.format_range(&a, &b, &|c| *c = CharProps { highlight: c.highlight, ..c.cleared() })?;
             // Clear Formatting also resets the paragraph to Normal.
             s.doc.format_paragraphs(&a, &b, &|p| {
                 let num = p.numbering;
@@ -855,7 +855,7 @@ fn clear(s: &mut Session, _: &Value) -> CmdResult {
 /// (Emphasis, Strong…) go, as in Word; highlighting, links and revision marks stay.
 fn reset_char(s: &mut Session, _: &Value) -> CmdResult {
     match selected_text_box(s).or_else(|| target(s)) {
-        Some((a, b)) => s.doc.format_range(&a, &b, &|c| *c = CharProps { highlight: c.highlight.clone(), ..c.cleared() })?,
+        Some((a, b)) => s.doc.format_range(&a, &b, &|c| *c = CharProps { highlight: c.highlight, ..c.cleared() })?,
         None => s.pending = Some(CharProps::default()),
     }
     sel_result(s)
