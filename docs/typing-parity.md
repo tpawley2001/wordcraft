@@ -1,8 +1,7 @@
 # Typing parity with Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0513: Change Case preserves words in capitals and follows Word’s word and sentence boundaries.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0514: Ctrl+Space and Clear All Formatting keep highlighting; Ctrl+Space also removes the character style and Ctrl+Q a directly applied bullet or number, as measured in Word. Readiness estimates unchanged. Earlier: P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged; earlier: P0513: Change Case preserves words in capitals and follows Word’s word and sentence boundaries)
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.)
 
 > **Last reviewed:** 2026-10-11 · **Last updated:** 2026-11-14 · **Change:** trivial (in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows; earlier: Decrease Font Size steps one point below 8 pt and 10 pt above 72 pt; earlier: AutoFormat Now under Track Changes records a tracked deletion and insertion, skips locked content controls and labels inside field results)
 
@@ -35,6 +34,15 @@ Evidence: `crates/engine/src/tests/typing.rs::delete_previous_sentence_respects_
 Ordinary Find and Replace treat a keyboard apostrophe (`'`) as a straight or typographic single quote (`‘`, `’`), so a search for `Tau'va` finds `Tau’va` typed with smart quotes. Partial queries, case options and whole-word matching still apply. Wildcards, regular expressions, literal searches (`special: false`) and numeric character codes such as `^u39` remain exact. A curly-quote query also stays exact, and the modifier-letter apostrophe `ʼ` is distinct. Replacement `^&` keeps the original matched spelling. This behavior is covered by original engine and CLI/MCP controls; no fresh Word or native desktop comparison is claimed.
 
 
+
+## Reset formatting shortcuts (P0514)
+
+Measured in Microsoft 365 Word through its object model. Ctrl+Space (`format.resetChar`)
+removes direct character formatting and the character style (Emphasis, Strong) but keeps
+highlighting and hyperlinks. Ctrl+Q (`para.reset`) returns the paragraph to its style's
+alignment, indents, spacing, tabs, borders and shading and removes a directly applied bullet or
+number; the paragraph style stays. Clear All Formatting (`format.clear`) also keeps highlighting.
+Regressions: `crates/engine/src/tests/reset_formatting_word.rs`.
 
 ## Highlight shortcut (#4085)
 
@@ -644,6 +652,8 @@ With an F2 / Shift+F2 source pending, Enter places that rich text at the caret i
 Change Case: title and sentence case keep words in capitals when the selection contains lowercase letters and follow Word’s word and sentence boundaries.
 
 ## Revision history
+
+> 2026-11-14 · trivial · P0514: Ctrl+Space and Clear All Formatting keep highlighting; Ctrl+Space also removes the character style and Ctrl+Q a directly applied bullet or number, as measured in Word. Readiness estimates unchanged.
 
 > 2026-11-14 · trivial · P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
 

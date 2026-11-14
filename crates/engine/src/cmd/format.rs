@@ -843,12 +843,13 @@ fn convert_chars(src: &str, mode: &str, para_start: bool, turkic: &[bool], keep_
     out
 }
 
-/// `format.clear` (Clear All Formatting): direct character formatting off and the paragraphs back
-/// to Normal, for the selection or a selected text box's text; at a caret, for what's typed next.
+/// `format.clear` (Clear All Formatting): direct character formatting and the character style off
+/// (highlighting stays, as in Word) and the paragraphs back to Normal, for the selection or a
+/// selected text box's text; at a caret, for what's typed next.
 fn clear(s: &mut Session, _: &Value) -> CmdResult {
     match selected_text_box(s).or_else(|| target(s)) {
         Some((a, b)) => {
-            s.doc.format_range(&a, &b, &|c| *c = c.cleared())?;
+            s.doc.format_range(&a, &b, &|c| *c = CharProps { highlight: c.highlight, ..c.cleared() })?;
             // Clear Formatting also resets the paragraph to Normal.
             s.doc.format_paragraphs(&a, &b, &|p| {
                 let num = p.numbering;
@@ -865,10 +866,11 @@ fn clear(s: &mut Session, _: &Value) -> CmdResult {
     sel_result(s)
 }
 
-/// Remove direct character formatting, keeping the paragraph and any character style.
+/// Reset Character Formatting (Ctrl+Space): direct character formatting and the character style
+/// (Emphasis, Strong…) go, as in Word; highlighting, links and revision marks stay.
 fn reset_char(s: &mut Session, _: &Value) -> CmdResult {
     match selected_text_box(s).or_else(|| target(s)) {
-        Some((a, b)) => s.doc.format_range(&a, &b, &|c| *c = CharProps { style: c.style.clone(), ..c.cleared() })?,
+        Some((a, b)) => s.doc.format_range(&a, &b, &|c| *c = CharProps { highlight: c.highlight, ..c.cleared() })?,
         None => s.pending = Some(CharProps::default()),
     }
     sel_result(s)

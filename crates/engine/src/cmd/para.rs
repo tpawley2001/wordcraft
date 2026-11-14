@@ -130,13 +130,13 @@ pub fn specs() -> Vec<CommandSpec> {
                 }
             })
         }),
-        // Back to the paragraph style: direct indents, spacing, alignment… go; the style, list
-        // membership and drop cap stay. ⌘Q quits on macOS, so Word for Mac uses ⌃Q.
+        // Back to the paragraph style: direct indents, spacing, alignment and a directly applied
+        // bullet or number go (as in Word); the style and drop cap stay. A list the style
+        // carries isn't stored on the paragraph, so it is untouched. ⌘Q quits on macOS, so Word for Mac uses ⌃Q.
         CommandSpec::new("para.reset", "Reset Paragraph Formatting", "Home › Paragraph", |s, _| {
             fmt(s, &|p| {
                 *p = ParaProps {
                     style: p.style.take(),
-                    numbering: p.numbering.take(),
                     drop_cap: p.drop_cap.take(),
                     drop_cap_margin: p.drop_cap_margin.take(),
                     drop_cap_distance: p.drop_cap_distance.take(),
