@@ -1,6 +1,6 @@
 # Typing parity with Word
 
-> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-11-14 · **Change:** trivial (in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows; earlier: Decrease Font Size steps one point below 8 pt and 10 pt above 72 pt; earlier: AutoFormat Now under Track Changes records a tracked deletion and insertion, skips locked content controls and labels inside field results; earlier: AutoFormat Now, Ctrl+Alt+K, applies quotes, dashes and list labels to existing text in one undo step)
+> **Last reviewed:** 2026-10-11 · **Last updated:** 2026-11-14 · **Change:** trivial (AutoCorrect's symbol entries as Word's: `(e)` → €, Word's smileys, Wingdings arrows, no `->` `<-` `=>`; earlier: in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows; earlier: Decrease Font Size steps one point below 8 pt and 10 pt above 72 pt; earlier: AutoFormat Now under Track Changes records a tracked deletion and insertion, skips locked content controls and labels inside field results; earlier: AutoFormat Now, Ctrl+Alt+K, applies quotes, dashes and list labels to existing text in one undo step)
 
 What Word does when you type, observed black-box (same keystrokes typed into Word and
 WordCraft, results read back paragraph by paragraph) and pinned by tests in
@@ -320,8 +320,13 @@ no-break space, a figure space or an ideographic space (`autocorrect_finds_the_w
   still moves to the next cell (`with_tab_indents_on_tab_in_a_table_cell_moves_to_the_next_cell`).
   With the option off, Backspace at the start of a paragraph with its own left indent joins it to
   the paragraph before (`with_tab_indents_off_backspace_before_an_indented_paragraph_joins_it`).
-- Smileys `:)` `:-)` `:(` `:-(` `:|` → ☺ ☹ 😐, also straight after a word (`ok:)` → `ok☺`) ¹
-  (`smileys_are_replaced_inside_words_too`).
+- Smileys as Microsoft 365 Word's built-in entries: `:)` `:-)` → 😊, `;)` `;-)` → 😉, `:(` `:-(` → ☹,
+  `:|` `:-|` → 😐, plain characters with no font set; also straight after a word (`ok:)` → `ok😊`)
+  (`smileys_are_replaced_inside_words_too`, `smileys_match_word`). `(e)` → €.
+- Arrows as Word's entries: `-->` `<--` `==>` `<==` `<=>` become Wingdings arrows (U+F0E0, U+F0DF,
+  U+F0E8, U+F0E7, U+F0F3 in a Wingdings run, as Insert › Symbol stores them; saved as `w:sym`); the
+  text typed after keeps its font. `->`, `<-` and `=>` stay as typed: Word has no such entries
+  (`arrows_are_word_wingdings_symbols`, `arrows_word_has_no_entry_for_stay_as_typed`).
 
 - Turkish, Azerbaijani and Crimean Tatar text (the word's language, else the editing language)
   maps `i` → `İ` and `ı` → `I` when a sentence or day is capitalised, and `I` → `ı` when
@@ -342,7 +347,7 @@ no-break space, a figure space or an ideographic space (`autocorrect_finds_the_w
   in English text (the run's `w:lang`, then its style, then the document default; text with no
   language at all is in the editing language, so with a Polish interface a `.docx` without
   `w:lang` is Polish). English is decided as proofing decides it (`ProofLang`: `en`, `eng`).
-  Polish `Ala i kot` keeps its `i` ("and"); symbols (`(c)`, `->`, `1/2`) and the user's own
+  Polish `Ala i kot` keeps its `i` ("and"); symbols (`(c)`, `-->`, `1/2`) and the user's own
   entries apply in every language (#835; `autocorrect_replacement_list_follows_the_texts_language`).
   Croatian, Bosnian and Serbian `i` is kept only when the text is tagged with that language: those
   interfaces don't set an editing language yet. Per-language lists for other languages aren't
@@ -721,3 +726,4 @@ With an F2 / Shift+F2 source pending, Enter places that rich text at the caret i
 
 | 2026-10-27 | trivial | Backspace after a floating shape's anchor at a paragraph start joins paragraphs and keeps the shape (#4592) |
 | 2026-10-31 | trivial | `*bold*` and `_italic_` also convert when a closing bracket or quote follows the closing mark: `(*see note*)` (#4098) |
+| 2026-11-14 | trivial | AutoCorrect's symbol entries as Microsoft 365 Word's: `(e)` → €, `:)` → 😊, `;)` `;-)` → 😉, `:-|` → 😐, `-->` `<--` `==>` `<==` `<=>` → Wingdings arrows; `->` `<-` `=>` stay as typed |

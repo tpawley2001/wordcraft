@@ -21,7 +21,7 @@ mod inspect;
 mod specs;
 mod typing;
 
-pub use autocorrect::{AUTOCORRECT, AutoCap, AutoCorrectPrefs, lenient_autocorrect};
+pub use autocorrect::{AUTOCORRECT, AutoCap, AutoCorrectPrefs, SYMBOL_ENTRIES, lenient_autocorrect};
 #[cfg(test)]
 use compare::{Op, collapse_noise_matches, lcs_ops};
 pub use compat::{compatibility_mode, mode_version};

@@ -2,9 +2,21 @@ use super::typing::{INITIAL_CAPS_EXCEPTIONS, NOT_SENTENCE_END};
 use super::{CmdError, CmdResult, Deserialize, Pos, Serialize, Session, Value, json, p};
 
 /// Smileys replaced even when typed straight after a word ("ok:)"), as Word does.
-pub(super) const SMILEYS: &[&str] = &[":-)", ":-(", ":)", ":(", ":|"];
+pub(super) const SMILEYS: &[&str] = &[":-)", ":-(", ":-|", ";-)", ":)", ":(", ":|", ";)"];
 
-/// Built-in AutoCorrect replacements (our own list of common typos and symbols).
+/// Built-in entries whose replacement is a character of a symbol font: `(typed, char, font)`.
+/// Word's arrows are Wingdings characters, stored as U+F000 + the font's code, as Insert ›
+/// Symbol stores them (observed in Microsoft 365 Word, English (US)).
+pub const SYMBOL_ENTRIES: &[(&str, char, &str)] = &[
+    ("-->", '\u{F0E0}', "Wingdings"),
+    ("<--", '\u{F0DF}', "Wingdings"),
+    ("==>", '\u{F0E8}', "Wingdings"),
+    ("<==", '\u{F0E7}', "Wingdings"),
+    ("<=>", '\u{F0F3}', "Wingdings"),
+];
+
+/// Built-in AutoCorrect replacements (our own list of common typos; the symbols as Word has them,
+/// besides [`SYMBOL_ENTRIES`]; Word has no entry for "->", "<-" or "=>").
 pub const AUTOCORRECT: &[(&str, &str)] = &[
     ("teh", "the"),
     ("adn", "and"),
@@ -36,15 +48,15 @@ pub const AUTOCORRECT: &[(&str, &str)] = &[
     ("(r)", "®"),
     ("(tm)", "™"),
     ("...", "…"),
-    ("->", "→"),
-    ("-->", "→"),
-    ("<-", "←"),
-    ("=>", "⇒"),
-    (":)", "☺"),
-    (":-)", "☺"),
-    (":(", "☹"),
-    (":-(", "☹"),
+    ("(e)", "\u{20AC}"),
+    (":)", "\u{1F60A}"),
+    (":-)", "\u{1F60A}"),
+    (";)", "\u{1F609}"),
+    (";-)", "\u{1F609}"),
+    (":(", "\u{2639}"),
+    (":-(", "\u{2639}"),
     (":|", "\u{1F610}"),
+    (":-|", "\u{1F610}"),
     ("1/2", "½"),
     ("1/4", "¼"),
     ("3/4", "¾"),
@@ -213,12 +225,27 @@ impl AutoCorrectPrefs {
             })
     }
 
+    /// The built-in symbol-font entry for `word` (the character and its font), unless the user
+    /// deleted it or replaced it with their own entry.
+    pub fn symbol_replacement(&self, word: &str) -> Option<(char, &'static str)> {
+        if self.removed.iter().any(|r| r == word) || self.entries.iter().any(|(e, _)| e == word) {
+            return None;
+        }
+        SYMBOL_ENTRIES.iter().find(|(a, _, _)| *a == word).map(|(_, c, f)| (*c, *f))
+    }
+
     /// The replacement list as the dialog shows it, sorted: `(from, to, built in)`.
     pub fn list(&self) -> Vec<(String, String, bool)> {
         let mut v: Vec<(String, String, bool)> = AUTOCORRECT
             .iter()
             .filter(|(a, _)| !self.removed.iter().any(|r| r == a) && !self.entries.iter().any(|(e, _)| e == a))
             .map(|(a, b)| (a.to_string(), b.to_string(), true))
+            .chain(
+                SYMBOL_ENTRIES
+                    .iter()
+                    .filter(|(a, _, _)| !self.removed.iter().any(|r| r == a) && !self.entries.iter().any(|(e, _)| e == a))
+                    .map(|(a, c, _)| (a.to_string(), c.to_string(), true)),
+            )
             .chain(self.entries.iter().map(|(a, b)| (a.clone(), b.clone(), false)))
             .collect();
         v.sort_by(|x, y| x.0.to_lowercase().cmp(&y.0.to_lowercase()).then(x.0.cmp(&y.0)));
@@ -362,7 +389,8 @@ pub(super) fn autocorrect_options(s: &mut Session, v: &Value) -> CmdResult {
     if let Some(f) = p::str(v, "delete") {
         let n = ac.entries.len();
         ac.entries.retain(|(a, _)| a != f);
-        if AUTOCORRECT.iter().any(|(a, _)| *a == f) && !ac.removed.iter().any(|r| r == f) {
+        let built_in = AUTOCORRECT.iter().any(|(a, _)| *a == f) || SYMBOL_ENTRIES.iter().any(|(a, _, _)| *a == f);
+        if built_in && !ac.removed.iter().any(|r| r == f) {
             ac.removed.push(f.to_string());
         } else if n == ac.entries.len() {
             return Err(CmdError::Params(format!("no AutoCorrect entry {f:?}")));
@@ -421,4 +449,31 @@ pub(super) fn autocorrect_options(s: &mut Session, v: &Value) -> CmdResult {
         "exceptions": ac.exception_list(),
         "initialCapsExceptions": INITIAL_CAPS_EXCEPTIONS.iter().map(|e| e.to_string()).chain(ac.initial_caps_exceptions.iter().cloned()).collect::<Vec<_>>(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wordcraft_doc::{Document, StoryRef};
+
+    #[test]
+    fn one_undo_gives_back_a_typed_wingdings_arrow() {
+        let mut s = Session::new(Document::new());
+        for c in "so ==> ".chars() {
+            s.run("text.insert", &json!({"text": c.to_string()})).unwrap();
+        }
+        assert_eq!(s.doc.plain_text(StoryRef::Body), "So \u{F0E8} ");
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(s.doc.plain_text(StoryRef::Body), "So ==> ");
+    }
+
+    #[test]
+    fn symbol_entries_are_listed_and_can_be_deleted() {
+        let mut ac = AutoCorrectPrefs::default();
+        assert!(ac.list().iter().any(|(a, b, builtin)| a == "<=>" && b == "\u{F0F3}" && *builtin));
+        assert!(!ac.list().iter().any(|(a, _, _)| a == "->" || a == "<-" || a == "=>"));
+        ac.removed.push("<=>".into());
+        assert_eq!(ac.symbol_replacement("<=>"), None);
+        assert_eq!(ac.symbol_replacement("<=="), Some(('\u{F0E7}', "Wingdings")));
+    }
 }
