@@ -62,15 +62,28 @@ pub(super) fn apply_style(s: &mut Session, v: &Value) -> CmdResult {
         return crate::cmd::format::apply(s, &|c| c.style = Some(c_id.clone()));
     }
     let (a, b) = s.sel.ordered();
-    // A style linked to a list level (a heading in a numbered-headings list) brings its number.
-    let numbered = s.doc.styles.resolve_para(&ParaProps { style: Some(id.clone()), ..Default::default() }).numbering.is_some();
+    // Applying a paragraph style leaves the paragraph as the style defines it, as in Word: direct
+    // indents, alignment, spacing, keeps, tabs, borders, shading, outline level and a direct
+    // bullet or number all go (a numbered style's own number shows through the style). A drop cap
+    // or frame is an object, and tracked changes, the HTML div and the reading direction are not
+    // formatting: they stay.
     fmt(s, &|p| {
-        p.style = Some(id.clone());
-        // Applying a heading or Normal removes direct list numbering (except list styles); a
-        // numbered style's own number replaces any direct numbering, even numbering switched off.
-        if numbered || ((id.starts_with("Heading") || id == "Title" || id == "Normal") && p.numbering.is_some_and(|n| n.num != 0)) {
-            p.numbering = None;
-        }
+        *p = ParaProps {
+            style: Some(id.clone()),
+            drop_cap: p.drop_cap.take(),
+            drop_cap_margin: p.drop_cap_margin.take(),
+            drop_cap_distance: p.drop_cap_distance.take(),
+            drop_cap_font: p.drop_cap_font.take(),
+            drop_cap_indent_first: p.drop_cap_indent_first.take(),
+            drop_cap_sized: p.drop_cap_sized.take(),
+            frame: p.frame.take(),
+            num_change: p.num_change.take(),
+            fmt_change: p.fmt_change.take(),
+            div_id: p.div_id.take(),
+            bidi: p.bidi.take(),
+            text_direction: p.text_direction.take(),
+            ..Default::default()
+        };
     })?;
     // A paragraph style resets direct character formatting that matches nothing (Word keeps
     // direct formatting unless it covers most of the paragraph; we clear font/size/colour).

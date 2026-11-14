@@ -13771,3 +13771,4 @@ mod formula_operand_text;
 mod formula_plain_decimals;
 mod row_deletion_resolve;
 mod sentence_bounds_word;
+mod apply_style_resets_para;
