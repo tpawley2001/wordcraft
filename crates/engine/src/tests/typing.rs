@@ -432,18 +432,19 @@ fn smart_quotes_nested_and_opening_delimiters() {
     assert_eq!(s.doc.plain_text(StoryRef::Body), "«‘french’» „‘german’“");
 }
 
-/// #2223: the double-hyphen arrow is a replacement, not the existing arrow bullet.
+/// #2223: the double-hyphen arrow is a replacement, not the existing arrow bullet. Word types it as
+/// the Wingdings arrow (U+F0E0 in Wingdings), measured in Microsoft 365 Word 2026-11-14.
 #[test]
 fn double_hyphen_arrow_autocorrect_preserves_typing_scope_and_undo() {
     let mut s = typed("go --> ");
-    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go → ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go \u{F0E0} ");
     assert_eq!(paras(&s)[0].1, None);
     run(&mut s, "edit.undo", json!({}));
     assert_eq!(s.doc.plain_text(StoryRef::Body), "Go --> ");
     let s = typed("go --> here");
-    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go → here");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go \u{F0E0} here");
     let s = typed("--> ");
-    assert_eq!(s.doc.plain_text(StoryRef::Body), "→ ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "\u{F0E0} ");
     assert_eq!(paras(&s)[0].1, None);
 }
 
@@ -458,7 +459,7 @@ fn double_hyphen_arrow_respects_autocorrect_preferences() {
     let mut s = s();
     run(&mut s, "review.language", json!({"lang": "pl-PL", "default": true}));
     typ(&mut s, "go --> here");
-    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go → here");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Go \u{F0E0} here");
     let mut s = self::s();
     run(&mut s, "tools.autocorrect", json!({"add": {"from": "-->", "to": "custom"}}));
     typ(&mut s, "go --> here");
