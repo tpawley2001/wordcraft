@@ -156,12 +156,14 @@ impl Reader<'_> {
                         s.footnote_format = NumFormat::from_ooxml(f);
                     }
                     s.footnote_pr = props::note_pr(k, false);
+                    self.footnote_sep_ids.extend(k.children("w:footnote").filter_map(|f| f.attr("w:id").and_then(int)));
                 }
                 "w:endnotePr" => {
                     if let Some(f) = k.child_val("w:numFmt") {
                         s.endnote_format = NumFormat::from_ooxml(f);
                     }
                     s.endnote_pr = props::note_pr(k, false);
+                    self.endnote_sep_ids.extend(k.children("w:endnote").filter_map(|f| f.attr("w:id").and_then(int)));
                 }
                 "w:documentProtection" => read_protection(k, s),
                 "w:writeProtection" => read_write_protection(k, s),
@@ -225,8 +227,13 @@ impl Reader<'_> {
     }
 
     /// A document's own separator, continuation separator or continuation notice (`kind`, the
-    /// note's `w:type`) for its footnotes or endnotes. The first of each kind counts.
+    /// note's `w:type`) for its footnotes or endnotes. The first of each kind counts, and only
+    /// when the settings list its id (Word draws its built-in separator for an unlisted story).
     fn read_note_sep(&mut self, n: &El, rels: &Rels, foot: bool, kind: &str) {
+        let listed = if foot { &self.footnote_sep_ids } else { &self.endnote_sep_ids };
+        if !n.attr("w:id").and_then(int).is_some_and(|id| listed.contains(&id)) {
+            return;
+        }
         let seps = if foot { &self.doc.footnote_separators } else { &self.doc.endnote_separators };
         let taken = match kind {
             "separator" => seps.separator.is_some(),
