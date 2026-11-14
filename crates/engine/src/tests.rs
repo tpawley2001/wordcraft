@@ -68,6 +68,7 @@ mod manual_duplex;
 mod print_document_properties;
 mod print_forms_data;
 mod print_options;
+mod print_display_options;
 mod print_selection;
 mod reveal_formatting;
 mod reveal_compare;

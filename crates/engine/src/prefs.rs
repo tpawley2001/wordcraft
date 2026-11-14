@@ -27,6 +27,12 @@ pub struct Prefs {
     /// File › Options › Display › Print document properties (off): a print of the document is
     /// followed by the Document Properties report on its own page.
     pub print_properties: bool,
+    /// File › Options › Display › Print background colors and images (off): print jobs leave out
+    /// the page colour and page picture unless it is on. Ordinary PDF export always draws them.
+    pub print_background: bool,
+    /// File › Options › Display › Print drawings created in Word (on): off, print jobs draw nothing
+    /// for shapes, text boxes, WordArt and drawing canvases (their space stays).
+    pub print_drawings: bool,
     /// File › Options › Advanced › Print on front of the sheet for duplex printing (off): a manual
     /// duplex job prints the fronts in reverse order.
     pub print_duplex_front: bool,
@@ -140,6 +146,8 @@ impl Default for Prefs {
             print_field_codes: false,
             print_reverse: false,
             print_properties: false,
+            print_background: false,
+            print_drawings: true,
             print_duplex_front: false,
             print_duplex_back: false,
             always_create_backup: false,

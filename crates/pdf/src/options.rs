@@ -55,6 +55,12 @@ pub struct PdfOptions {
     /// borders, shading or pictures. Print jobs only. Applies to the document's own pages: the
     /// appendix of [`crate::export_layout_with_appendix`] is drawn in full.
     pub forms_data_only: bool,
+    /// Draw the page background (page colour and page picture). Print jobs follow File › Options ›
+    /// Display › Print background colors and images; export keeps it on (the default).
+    pub background: bool,
+    /// Draw shapes, text boxes, WordArt and drawing canvases (File › Options › Display › Print
+    /// drawings created in Word). On by default.
+    pub drawings: bool,
 }
 
 /// How many characters of the watermark text the PDF draws.
@@ -105,6 +111,8 @@ impl Default for PdfOptions {
             paper: None,
             numeral: NumeralMode::Arabic,
             forms_data_only: false,
+            background: true,
+            drawings: true,
         }
     }
 }

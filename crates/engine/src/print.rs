@@ -517,6 +517,16 @@ pub fn sheets(v: &Value, lay: &DocLayout, current: (usize, usize)) -> Result<Vec
 }
 
 impl Session {
+    /// A print job's `(background, drawings)`: whether it draws the page colour and page picture
+    /// (File › Options › Display › Print background colors and images, off) and shapes, text boxes,
+    /// WordArt and drawing canvases (Print drawings created in Word, on). Job params `background`
+    /// and `drawings` override the preferences; any other type than a bool is a params error.
+    pub fn print_background_and_drawings(&self, v: &Value) -> Result<(bool, bool), CmdError> {
+        let _ = v;
+        // Stub (P0461): the acceptance tests fail until this resolves the params over the prefs.
+        Err(CmdError::Failed("print background/drawings options are not implemented yet".into()))
+    }
+
     /// The pages the caret (or selection) is on, in the output layout: (first, last).
     pub fn current_pages(&self, lay: &DocLayout) -> (usize, usize) {
         let (a, b) = self.sel.ordered();
