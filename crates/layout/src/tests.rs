@@ -17,6 +17,7 @@ mod budget;
 mod button_fields;
 mod button_switches;
 mod cell_floats;
+mod char_border_room;
 mod column_break_line;
 mod column_top_float;
 mod complex;
