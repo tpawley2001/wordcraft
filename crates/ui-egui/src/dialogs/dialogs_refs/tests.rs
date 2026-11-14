@@ -304,6 +304,92 @@ fn table_of_figures_dialog_picks_the_caption_label() {
     assert!(a.session.doc.plain_text(StoryRef::Body).contains("Rock 1"));
 }
 
+/// Table of Figures › Options… builds the list from a paragraph style: its Style box and style
+/// list, OK back to Table of Figures (where the caption label is then greyed), OK inserts
+/// `TOC \h \z \t "<style>" \c` listing that style's paragraphs.
+#[test]
+fn table_of_figures_options_build_from_a_style() {
+    use egui::accesskit::Role;
+    use egui_kittest::kittest::{NodeT, Queryable};
+    let mut a = app("Kiln\nPress\nRock\n");
+    a.run("select.text", json!({"text": "Press"})).unwrap();
+    a.run("styles.apply", json!({"style": "Heading 2"})).unwrap();
+    a.run("caret.docEnd", json!({})).unwrap();
+    a.run("ui.dialog", json!({"name": "tableOfFigures"})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        a,
+    );
+    h.run_steps(4);
+    h.get_by_role_and_label(Role::Button, "Options…").click();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::Window, "Table of Figures Options");
+    h.get_by_role_and_label(Role::CheckBox, "Style:").click();
+    h.run_steps(3);
+    let RefsDialog::FiguresOptions { form: f, .. } = form(h.state()) else { panic!("no Options dialog") };
+    assert_eq!((f.style.as_deref(), f.entry_fields), (Some("Caption"), None), "the style list starts at Caption");
+    // Pick Heading 2 from the style list.
+    h.get_by_role_and_label(Role::ComboBox, "Style:").click();
+    h.run_steps(3);
+    h.get_by_label("Heading 2").click();
+    h.run_steps(3);
+    h.get_all_by_role_and_label(Role::Button, "OK").last().expect("the Options OK button").click();
+    h.run_steps(3);
+    let RefsDialog::Figures(f) = form(h.state()) else { panic!("OK goes back to Table of Figures") };
+    assert_eq!(f.style.as_deref(), Some("Heading 2"));
+    assert!(h.get_by_role_and_label(Role::CheckBox, "Include label and number").accesskit_node().is_disabled());
+    h.get_all_by_role_and_label(Role::Button, "OK").last().expect("the dialog's OK button").click();
+    h.run_steps(3);
+    assert!(h.state().dialog.is_none(), "OK closes the dialog");
+    let a = h.into_state();
+    assert!(instrs(&a).contains(&r#"TOC \h \z \t "Heading 2" \c"#.to_string()), "{:?}", instrs(&a));
+    let entries: Vec<String> = a
+        .session
+        .doc
+        .body
+        .iter()
+        .filter_map(|b| b.as_para())
+        .filter(|p| p.props.style.as_deref() == Some("ListEntry"))
+        .map(|p| p.plain_text())
+        .collect();
+    assert_eq!(entries.len(), 1, "{entries:?}");
+    assert!(entries.iter().all(|e| e.starts_with("Press\t")), "{entries:?}");
+}
+
+/// Cancel in Table of Figures › Options… goes back with the choice the dialog had.
+#[test]
+fn table_of_figures_options_cancel_keeps_the_old_choice() {
+    use egui::accesskit::Role;
+    use egui_kittest::kittest::Queryable;
+    let mut a = app("Kiln\n");
+    a.run("ui.dialog", json!({"name": "tableOfFigures"})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        a,
+    );
+    h.run_steps(4);
+    h.get_by_role_and_label(Role::Button, "Options…").click();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::CheckBox, "Table entry fields").click();
+    h.run_steps(3);
+    let RefsDialog::FiguresOptions { form: f, .. } = form(h.state()) else { panic!("no Options dialog") };
+    assert_eq!(f.entry_fields, Some('F'), "the identifier starts at F");
+    assert_eq!(f.params()["entryFields"], "F");
+    h.get_all_by_role_and_label(Role::Button, "Cancel").last().expect("the Options Cancel button").click();
+    h.run_steps(3);
+    let RefsDialog::Figures(f) = form(h.state()) else { panic!("Cancel goes back to Table of Figures") };
+    assert_eq!((f.style.as_deref(), f.entry_fields), (None, None));
+    assert!(f.params().get("entryFields").is_none() && f.params().get("style").is_none());
+}
+
 /// #402: Insert Citation without a source opens Create Source; the type picks the fields,
 /// "show all" adds the rest, and Edit Source from the Source Manager updates the citation.
 #[test]

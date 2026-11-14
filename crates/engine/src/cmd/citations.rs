@@ -57,7 +57,7 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"title"?: string}"#),
         CommandSpec::new("references.tableOfFigures", "Insert Table of Figures", "References › Captions", table_of_figures).params(
-            r#"{"label"?: "Figure|Table|Equation" or a caption label of your own, "includeLabel"?: bool, "hyperlinks"?: bool (default true), "pageNumbers"?: bool, "rightAlign"?: bool, "tabLeader"?: "dot|hyphen|underscore|none"}"#,
+            r#"{"label"?: "Figure|Table|Equation" or a caption label of your own, "includeLabel"?: bool, "hyperlinks"?: bool (default true), "pageNumbers"?: bool, "rightAlign"?: bool, "tabLeader"?: "dot|hyphen|underscore|none", "style"?: paragraph style name (list that style's paragraphs, `\t`), "entryFields"?: "A".."Z" (list the TC fields with that identifier, `\f`); with either, label and includeLabel are ignored}"#,
         ),
         CommandSpec::new("references.updateFigures", "Update Table", "References › Captions", |s, _| {
             update_generated(s)?;
