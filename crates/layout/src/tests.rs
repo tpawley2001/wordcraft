@@ -35,6 +35,7 @@ mod double_strike_geometry;
 mod early_float_stays;
 mod emphasis_line_height;
 mod emphasis_under_dot;
+mod endnote_default_separator;
 mod endnote_suppress;
 mod eq_fields;
 mod eq_integral_limits;
