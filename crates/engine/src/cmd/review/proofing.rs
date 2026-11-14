@@ -14,7 +14,7 @@ pub(super) fn word_count(s: &mut Session, v: &Value) -> CmdResult {
     };
     let chars = wordcraft_doc::count_chars(&text);
     let chars_no_spaces = wordcraft_doc::count_chars_no_spaces(&text);
-    let paragraphs = text.split('\n').filter(|l| !l.trim().is_empty()).count();
+    let paragraphs = counted_paragraphs(s, &stories);
     let lines: usize = {
         let l = s.layout();
         l.pages
@@ -36,6 +36,37 @@ pub(super) fn word_count(s: &mut Session, v: &Value) -> CmdResult {
         "pages": pages, "words": words, "characters": chars_no_spaces, "charactersWithSpaces": chars, "paragraphs": paragraphs, "lines": lines,
         "includeTextBoxes": s.prefs.count_notes,
     }))
+}
+
+/// Use paragraph boundaries from the model: a manual line break is also `\n` in plain text.
+fn counted_paragraphs(s: &Session, stories: &[StoryRef]) -> usize {
+    let holds_word = |text: &str| wordcraft_doc::count_words(text) > 0 || text.contains(wordcraft_doc::para::OBJ);
+    if s.sel.is_collapsed() || crate::cmd::objects::object_selection(s).is_some() {
+        return stories
+            .iter()
+            .flat_map(|story| s.doc.para_paths(*story).into_iter().filter_map(|path| s.doc.para(*story, &path)))
+            .filter(|para| holds_word(&para.text))
+            .count();
+    }
+    let ordered = [s.sel.ordered()];
+    let ranges = s.column_segments().unwrap_or(&ordered);
+    let mut counted = std::collections::BTreeSet::new();
+    for (a, b) in ranges {
+        let (a, b) = (a.min(b), a.max(b));
+        if a.story != b.story {
+            continue;
+        }
+        for path in s.doc.para_paths(a.story).into_iter().filter(|path| *path >= a.path && *path <= b.path) {
+            let Some(para) = s.doc.para(a.story, &path) else { continue };
+            let start = if path == a.path { a.off } else { 0 };
+            let end = if path == b.path { b.off } else { para.len() };
+            if para.text.get(start..end).is_some_and(holds_word) {
+                // Several column-selection line pieces may belong to the same paragraph.
+                counted.insert((a.story, path));
+            }
+        }
+    }
+    counted.len()
 }
 
 /// Issues (spelling + grammar) in one paragraph as positions, each in its run's language and
@@ -172,4 +203,29 @@ pub(super) fn thesaurus(s: &mut Session, v: &Value) -> CmdResult {
     };
     let syn = T.iter().find(|(w, _)| *w == word).map(|(_, l)| l.to_vec()).unwrap_or_default();
     Ok(json!({"word": word, "synonyms": syn}))
+}
+
+#[cfg(test)]
+mod paragraph_count_tests {
+    use super::*;
+    use wordcraft_doc::{Document, para::OBJ};
+
+    #[test]
+    fn selected_paragraphs_use_selected_words_and_preserve_line_breaks() {
+        let mut s = Session::new(Document::from_text("first\n—\nlast"));
+        s.doc.para_mut(StoryRef::Body, &wordcraft_doc::Path::top(0)).unwrap().text = "x\ny".into();
+        for (anchor, focus, expected) in
+            [(Pos::body(0, 0), Pos::body(2, 4), 2), (Pos::body(2, 4), Pos::body(0, 0), 2), (Pos::body(1, 0), Pos::body(1, 3), 0)]
+        {
+            s.sel = Selection { anchor, focus };
+            assert_eq!(counted_paragraphs(&s, &[StoryRef::Body]), expected);
+        }
+    }
+
+    #[test]
+    fn object_only_paragraph_still_counts() {
+        let mut s = Session::new(Document::new());
+        s.doc.para_mut(StoryRef::Body, &wordcraft_doc::Path::top(0)).unwrap().text = OBJ.to_string();
+        assert_eq!(counted_paragraphs(&s, &[StoryRef::Body]), 1);
+    }
 }

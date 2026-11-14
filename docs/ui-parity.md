@@ -1,6 +1,6 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0507: Word Count counts paragraphs holding a word, preserving object-only paragraphs and treating manual line breaks as part of their paragraph. Selection counts use the selected text in each paragraph. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0493: normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes; `^?` skips optional hyphens and searches paragraph marks, including the final mark, which replacement preserves. Readiness estimates unchanged.)
 
@@ -215,6 +215,7 @@ Word Count's shared counters follow the 2026-11-14 Word for Windows measurements
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0507: Word Count counts paragraphs holding a word, preserving object-only paragraphs and treating manual line breaks as part of their paragraph. Selection counts use the selected text in each paragraph. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0485: Sort Text and Table Sort by Number and by Date as in Word: text without a number or date sorts first (last descending); a Number key reads the text arithmetically (`12 13` is 25, `3,5` is 8, `5%` is 0.05, `3-4` is -1, `(2)` is -2; `+4`, `2e3` and `x7y` are no number); a Date key also reads two-digit years, English month names, day-first dates (a first number over 12) and times. Readiness estimates unchanged. |
