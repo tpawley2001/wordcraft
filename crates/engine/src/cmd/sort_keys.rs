@@ -42,20 +42,42 @@ fn cell_date(t: &str) -> Option<f64> {
 /// full or three letters, any case. A bare year, an impossible date or words are not dates.
 /// `now` gives (this year, today as days since 1970-01-01) and is only asked when needed.
 fn date_value(t: &str, now: &dyn Fn() -> (i64, i64)) -> Option<f64> {
+    let date = date_parts_with(t, now)?;
+    let (h, m, s) = date.time;
+    Some(crate::cmd::controls::days_from_civil(date.year, date.month, date.day) as f64 + f64::from(h * 3600 + m * 60 + s) / 86_400.0)
+}
+
+/// Calendar and clock components read by Sort by Date, without floating-point time rounding.
+pub(crate) struct DateParts {
+    pub year: i64,
+    pub month: u32,
+    pub day: u32,
+    pub time: (u32, u32, u32),
+}
+
+pub(crate) fn date_parts(t: &str) -> Option<DateParts> {
+    date_parts_with(t, &|| {
+        let (y, _, _, _, days) = crate::cmd::local_now();
+        (y, days)
+    })
+}
+
+fn date_parts_with(t: &str, now: &dyn Fn() -> (i64, i64)) -> Option<DateParts> {
     let t = t.trim();
-    if let Some(secs) = time_of_day(t) {
-        return Some(now().1 as f64 + secs);
+    if let Some(time) = time_of_day(t) {
+        let (year, month, day) = crate::cmd::civil_from_days(now().1);
+        return Some(DateParts { year, month, day, time });
     }
-    if let Some((y, m, d)) = calendar_date(t, now) {
-        return Some(crate::cmd::controls::days_from_civil(y, m, d) as f64);
+    if let Some((year, month, day)) = calendar_date(t, now) {
+        return Some(DateParts { year, month, day, time: (0, 0, 0) });
     }
     // A date followed by a time: the time is the last word, or the last two (`10:30 AM`).
     let words: Vec<&str> = t.split_whitespace().collect();
     for n in [1usize, 2] {
         let Some(split) = words.len().checked_sub(n).filter(|&k| k > 0) else { continue };
         let (date, time) = (words.get(..split)?.join(" "), words.get(split..)?.join(" "));
-        if let (Some(secs), Some((y, m, d))) = (time_of_day(&time), calendar_date(&date, now)) {
-            return Some(crate::cmd::controls::days_from_civil(y, m, d) as f64 + secs);
+        if let (Some(time), Some((year, month, day))) = (time_of_day(&time), calendar_date(&date, now)) {
+            return Some(DateParts { year, month, day, time });
         }
     }
     None
@@ -67,8 +89,8 @@ fn digits(t: &str, len: std::ops::RangeInclusive<usize>) -> Option<u32> {
 }
 
 /// A time of day `H:mm` or `H:mm:ss`, optionally with `AM`/`PM` (attached or after a space), as a
-/// fraction of a day.
-fn time_of_day(t: &str) -> Option<f64> {
+/// (hour, minute, second).
+fn time_of_day(t: &str) -> Option<(u32, u32, u32)> {
     let lower = t.trim().to_ascii_lowercase();
     let (clock, pm) = match lower.strip_suffix("am").or_else(|| lower.strip_suffix('a')) {
         Some(c) => (c.trim_end(), Some(false)),
@@ -91,7 +113,7 @@ fn time_of_day(t: &str) -> Option<f64> {
         Some(pm) if (1..=12).contains(&h) => h % 12 + if pm { 12 } else { 0 },
         _ => return None,
     };
-    Some(f64::from(h * 3600 + m * 60 + s) / 86_400.0)
+    Some((h, m, s))
 }
 
 /// An English month name, full or its first three letters, any case, a trailing point allowed.

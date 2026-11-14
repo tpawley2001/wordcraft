@@ -1266,3 +1266,44 @@ fn output_header_footer_session_export_layout_shows_the_file_name() {
     assert!(!text.contains("stale"), "{text:?}");
     assert!(story_fields(&s, StoryRef::Part(hdr)).iter().all(|(_, r)| r == "stale"), "the document keeps its results");
 }
+
+#[test]
+fn quote_update_preserves_unsupported_forms_and_locked_results() {
+    let mut s = Session::new(wordcraft_doc::Document::new());
+    let cases = [
+        (r#"QUOTE "hello" \* Upper"#, "HELLO"),
+        (r#"QUOTE "14 November 2026 21:07:09" \@ "dddd HH:mm:ss" \* Upper"#, "SATURDAY 21:07:09"),
+        (r#"QUOTE "hello" \@ "d MMMM yyyy""#, "stale"),
+        (r#"QUOTE "2026-02-30" \@ "yyyy""#, "stale"),
+        (r#"QUOTE unquoted"#, "stale"),
+        (r#"QUOTE { DATE }"#, "stale"),
+        (r#"QUOTE "one" "two""#, "stale"),
+        (r#"QUOTE "00:05" \@ "HH:mm" \# "0""#, "stale"),
+        (r#"QUOTE "00:05" \@"#, "stale"),
+    ];
+    for (instr, _) in cases {
+        s.run("insert.field", &json!({"instr": instr, "result": "stale"})).unwrap();
+    }
+    s.run("references.updateFields", &json!({})).unwrap();
+    let results: Vec<String> = fields(&s).into_iter().map(|(_, result)| result).collect();
+    assert_eq!(results, cases.map(|(_, expected)| expected));
+    for path in s.doc.para_paths(StoryRef::Body) {
+        for object in &mut s.doc.para_mut(StoryRef::Body, &path).unwrap().objects {
+            if let InlineObject::Field { locked, result, .. } = object {
+                *locked = true;
+                *result = "locked".into();
+            }
+        }
+    }
+    s.run("references.updateFields", &json!({})).unwrap();
+    assert!(fields(&s).iter().all(|(_, result)| result == "locked"));
+}
+
+#[test]
+fn quote_date_picture_updates_in_a_header_story() {
+    let (mut s, hdr) =
+        header_fields_session(wordcraft_doc::Document::new(), &[r#"QUOTE "November 14, 2026 9:07 PM" \@ "HH:mm:ss""#, r#"QUOTE "hello" \* Upper"#]);
+    s.run("references.updateFields", &json!({})).unwrap();
+    let results: Vec<String> = story_fields(&s, StoryRef::Part(hdr)).into_iter().map(|(_, result)| result).collect();
+    assert_eq!(results, ["21:07:00", "HELLO"]);
+}

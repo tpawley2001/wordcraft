@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged; earlier: P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged)
@@ -167,6 +169,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-14: P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged.
 
 - 2026-11-14: P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged.
 
@@ -995,6 +999,10 @@ Section page-numbering settings preserve `w:chapStyle` values across the full un
 MATH glyphs that reference the same construction now share its immutable variants and assembly data (#3630). Glyph mappings, values and the existing partial-record fallback stay unchanged. Repeated glyph IDs keep their last valid reference without retaining superseded constructions. Distinct overlapping constructions and assembly-only sharing remain separate.
 
 ## Revision history
+
+| Date | Change | Summary |
+|---|---|---|
+| 2026-11-14 | trivial | P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged. |
 
 > 2026-11-14 · trivial · P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged.
 
