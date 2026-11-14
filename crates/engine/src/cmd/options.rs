@@ -31,7 +31,25 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"value"?: bool (default: toggle)}"#)
         .pure(),
+        CommandSpec::new("view.styleAreaWidth", "Style area pane width", "File › Options › Advanced", style_area_width)
+            .params(r#"{"value"?: number (points, 0 to 1584; 0: no style area)} — the column of paragraph style names Draft and Outline views show at the left; without `value` it only reports. Returns {"styleAreaWidth"}."#)
+            .pure(),
     ]
+}
+
+/// Style area pane width in Draft and Outline views: a user preference in points.
+fn style_area_width(s: &mut Session, v: &Value) -> CmdResult {
+    match v.get("value") {
+        None | Some(Value::Null) => {}
+        Some(x) => {
+            let w = x
+                .as_f64()
+                .filter(|w| w.is_finite() && (0.0..=f64::from(crate::prefs::MAX_STYLE_AREA_WIDTH)).contains(w))
+                .ok_or_else(|| CmdError::Params(format!("`value` must be a width in points from 0 to {}", crate::prefs::MAX_STYLE_AREA_WIDTH)))?;
+            s.prefs.style_area_width = w as f32;
+        }
+    }
+    Ok(json!({"styleAreaWidth": s.prefs.style_area_width}))
 }
 
 /// The on/off settings by their `file.options` name.

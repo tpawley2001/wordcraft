@@ -29,6 +29,7 @@ mod pages;
 mod reading;
 mod rulers;
 mod story;
+mod style_area;
 
 #[cfg(test)]
 use balloons::balloon_text;
@@ -1829,6 +1830,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             grid_story,
         });
         paint_white_space_seams(&painter, &rects, &geo, &t);
+        if let Some(open) = style_area::show(app, ui, &layout, &rects, geo.scale, paper, &t) {
+            style_area::open(app, open);
+        }
         if rendered > 0 {
             app.canvas.render_ms = crate::now_ms() - t0;
         }

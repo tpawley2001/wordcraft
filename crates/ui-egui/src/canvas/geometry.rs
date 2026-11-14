@@ -221,7 +221,12 @@ pub fn geometry(app: &WordApp, l: &DocLayout, avail: egui::Vec2) -> Geometry {
         let bands = rects.iter().map(|r| (0.0, r.height())).collect();
         return Geometry { rects, size, scale, cols: 1, bands };
     }
-    let (mut rects, mut size) = place_pages(&sizes, markup, scale, cols, avail);
+    // Draft and Outline views' style area: a column at the left of the text, which moves right.
+    let style_area = super::style_area::width(app);
+    let (mut rects, mut size) = place_pages(&sizes, markup + style_area, scale, cols, avail);
+    if style_area > 0.0 {
+        rects.iter_mut().for_each(|r| *r = r.translate(vec2(style_area * scale, 0.0)));
+    }
     let mut bands: Vec<(f32, f32)> = rects.iter().map(|r| (0.0, r.height())).collect();
     let editing_part = matches!(app.session.sel.focus.story, StoryRef::Part(_));
     if v.hide_white_space && v.mode == wordcraft_layout::ViewMode::Print && !v.read_mode && cols == 1 && !editing_part && rects.len() > 1 {
