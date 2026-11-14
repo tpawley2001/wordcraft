@@ -596,6 +596,7 @@ fn change_case(s: &mut Session, v: &Value) -> CmdResult {
             "title".into()
         }
     });
+    let keep_capitals = text.chars().any(char::is_lowercase);
     for path in s.doc.paths_between(&a, &b) {
         // Changed stretches of one run each: (start, end, replacement), in text order.
         let groups = {
@@ -613,7 +614,7 @@ fn change_case(s: &mut Session, v: &Value) -> CmdResult {
                     is_turkic(lang.as_deref().or(s.editing_lang.as_deref()))
                 })
                 .collect();
-            case_groups(p, &chars, &convert_chars(&src, &mode, from == 0, &turkic))
+            case_groups(p, &chars, &convert_chars(&src, &mode, from == 0, &turkic, keep_capitals))
         };
         if groups.is_empty() {
             continue;
@@ -748,19 +749,17 @@ fn is_title(t: &str) -> bool {
 #[cfg(test)]
 fn convert(src: &str, mode: &str, para_start: bool) -> String {
     let turkic = vec![false; src.chars().count()];
-    convert_chars(src, mode, para_start, &turkic).concat()
+    convert_chars(src, mode, para_start, &turkic, src.chars().any(char::is_lowercase)).concat()
+}
+
+fn is_case_word_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '\'' | '’')
 }
 
 fn convert_title_char(c: char, i: usize, up: &mut bool, upper: impl Fn(char) -> String, lower: impl Fn(usize, char) -> String) -> String {
-    let n = if *up && c.is_alphabetic() {
-        *up = false;
-        upper(c)
-    } else {
-        lower(i, c)
-    };
-    if c.is_whitespace() {
-        *up = true;
-    }
+    let n = if *up && c.is_alphabetic() { upper(c) } else { lower(i, c) };
+    // Digits and apostrophes consume the part's start too; separators begin a new part.
+    *up = !is_case_word_char(c);
     n
 }
 
@@ -772,16 +771,15 @@ fn convert_sentence_char(
     upper: impl Fn(char) -> String,
     lower: impl Fn(usize, char) -> String,
 ) -> String {
-    let n = if *up && c.is_alphabetic() {
+    let n = if *up && c.is_alphabetic() { upper(c) } else { lower(i, c) };
+    // Only leading whitespace can carry a pending sentence start past this character.
+    if !c.is_whitespace() {
         *up = false;
-        upper(c)
-    } else {
-        lower(i, c)
-    };
+    }
     let is_decimal = c == '.'
         && i.checked_sub(1).and_then(|j| chars.get(j)).is_some_and(char::is_ascii_digit)
         && chars.get(i + 1).is_some_and(char::is_ascii_digit);
-    if matches!(c, '!' | '?') || (c == '.' && !is_decimal) {
+    if (matches!(c, '!' | '?') || (c == '.' && !is_decimal)) && chars.get(i + 1).is_some_and(|next| next.is_whitespace()) {
         *up = true;
     }
     n
@@ -790,7 +788,7 @@ fn convert_sentence_char(
 /// The case-converted form of each character of `src`, in order (one entry per char, so a
 /// change of length such as ß → SS or İ → i̇ can be applied run by run). `turkic` is one flag
 /// per char: true when that character's run is Turkish, Azerbaijani or Crimean Tatar.
-fn convert_chars(src: &str, mode: &str, para_start: bool, turkic: &[bool]) -> Vec<String> {
+fn convert_chars(src: &str, mode: &str, para_start: bool, turkic: &[bool], keep_capitals: bool) -> Vec<String> {
     let chars: Vec<char> = src.chars().collect();
     // Greek capital sigma lowers to the final form at the end of a word (as `str::to_lowercase`).
     let lower = |i: usize, c: char| -> String {
@@ -807,7 +805,23 @@ fn convert_chars(src: &str, mode: &str, para_start: bool, turkic: &[bool]) -> Ve
     // Title case capitalises the first word of any selection; sentence case only at a paragraph start.
     let mut up = mode == "title" || para_start;
     let mut out = Vec::with_capacity(chars.len());
+    let mut part_start = true;
+    let mut kept_part = false;
     for (i, &c) in chars.iter().enumerate() {
+        if keep_capitals && matches!(mode, "title" | "sentence") && part_start && is_case_word_char(c) {
+            let part = chars.iter().skip(i).copied().take_while(|c| is_case_word_char(*c));
+            let mut has_letter = false;
+            let mut has_lowercase = false;
+            for letter in part {
+                has_letter |= letter.is_alphabetic();
+                has_lowercase |= letter.is_lowercase();
+            }
+            kept_part = has_letter && !has_lowercase;
+        }
+        if !is_case_word_char(c) {
+            kept_part = false;
+        }
+        part_start = !is_case_word_char(c);
         let turkic = turkic.get(i).copied().unwrap_or(false);
         let upper = |c: char| upper_char(c, turkic);
         let new = match mode {
@@ -823,17 +837,19 @@ fn convert_chars(src: &str, mode: &str, para_start: bool, turkic: &[bool]) -> Ve
             "title" => convert_title_char(c, i, &mut up, upper, lower),
             _ => convert_sentence_char(c, i, &mut up, &chars, upper, lower),
         };
-        out.push(new);
+        // Conversion still consumes word/sentence starts inside a preserved part.
+        out.push(if kept_part { c.to_string() } else { new });
     }
     out
 }
 
-/// `format.clear` (Clear All Formatting): direct character formatting off and the paragraphs back
-/// to Normal, for the selection or a selected text box's text; at a caret, for what's typed next.
+/// `format.clear` (Clear All Formatting): direct character formatting and the character style off
+/// (highlighting stays, as in Word) and the paragraphs back to Normal, for the selection or a
+/// selected text box's text; at a caret, for what's typed next.
 fn clear(s: &mut Session, _: &Value) -> CmdResult {
     match selected_text_box(s).or_else(|| target(s)) {
         Some((a, b)) => {
-            s.doc.format_range(&a, &b, &|c| *c = c.cleared())?;
+            s.doc.format_range(&a, &b, &|c| *c = CharProps { highlight: c.highlight, ..c.cleared() })?;
             // Clear Formatting also resets the paragraph to Normal.
             s.doc.format_paragraphs(&a, &b, &|p| {
                 let num = p.numbering;
@@ -850,10 +866,11 @@ fn clear(s: &mut Session, _: &Value) -> CmdResult {
     sel_result(s)
 }
 
-/// Remove direct character formatting, keeping the paragraph and any character style.
+/// Reset Character Formatting (Ctrl+Space): direct character formatting and the character style
+/// (Emphasis, Strong…) go, as in Word; highlighting, links and revision marks stay.
 fn reset_char(s: &mut Session, _: &Value) -> CmdResult {
     match selected_text_box(s).or_else(|| target(s)) {
-        Some((a, b)) => s.doc.format_range(&a, &b, &|c| *c = CharProps { style: c.style.clone(), ..c.cleared() })?,
+        Some((a, b)) => s.doc.format_range(&a, &b, &|c| *c = CharProps { highlight: c.highlight, ..c.cleared() })?,
         None => s.pending = Some(CharProps::default()),
     }
     sel_result(s)
@@ -1067,7 +1084,8 @@ mod tests {
     #[test]
     fn case_conversions() {
         assert_eq!(convert("hello world. again", "sentence", true), "Hello world. Again");
-        assert_eq!(convert("hello WORLD", "title", true), "Hello World");
+        // Word keeps a word in capitals when the text also has lowercase letters (Word M365, 2026-11-14).
+        assert_eq!(convert("hello WORLD", "title", true), "Hello WORLD");
         assert_eq!(convert("Hello", "toggle", true), "hELLO");
         assert_eq!(convert("straße", "upper", true), "STRASSE");
         assert_eq!(convert("hello world", "title", false), "Hello World");

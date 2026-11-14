@@ -598,10 +598,10 @@ fn table_to_text_opens_its_dialog() {
     assert!(a.session.doc.body.iter().any(|b| b.as_table().is_some()), "nothing converted yet");
     let LayoutDialog::TableToText(mut f) = form(&mut a) else { panic!("table to text") };
     assert_eq!((f.separator.as_str(), f.other_char.as_str()), ("tab", "-"));
-    assert_eq!(f.params(), json!({"separator": "tab"}));
+    assert_eq!(f.params(), json!({"separator": "tab", "nested": true}));
     f.separator = "other".into();
     f.other_char = "/".into();
-    assert_eq!(f.params(), json!({"separator": "other", "char": "/"}));
+    assert_eq!(f.params(), json!({"separator": "other", "char": "/", "nested": true}));
     a.run("table.toText", f.params()).unwrap();
     assert!(a.dialog.is_none());
     let texts: Vec<&str> = a.session.doc.body.iter().filter_map(|b| b.as_para()).map(|p| p.text.as_str()).collect();
@@ -1004,4 +1004,25 @@ fn page_numbers_dialog_reads_and_applies_chapter_options() {
     f.chapter = false;
     a.run("layout.pageNumberFormat", f.params()).unwrap();
     assert_eq!(a.session.doc.last_section.chapter_style, None);
+}
+
+#[test]
+fn table_to_text_nested_defaults_on_and_can_be_unchecked() {
+    let mut a = table_app(2, &["a", "b", "c", "d"]);
+    let mut f = TableToTextForm::read(&a).unwrap();
+    assert!(f.nested);
+    assert!(!f.has_nested);
+    assert_eq!(f.params()["nested"], true);
+    f.nested = false;
+    assert_eq!(f.params()["nested"], false);
+    let (outer, _, _) = a.session.sel.focus.path.cell().unwrap();
+    a.session.run("insert.table", &json!({"rows": 1, "cols": 1})).unwrap();
+    // The caret is in the nested table; move it back into the outer table.
+    a.session.sel.focus.path = wordcraft_doc::Path(outer.0.into_iter().chain([0, 0, 0]).collect());
+    a.session.sel.anchor = a.session.sel.focus.clone();
+    assert!(TableToTextForm::read(&a).unwrap().has_nested);
+    let mut end = a.session.sel.focus.clone();
+    end.path.0 = end.path.0.into_iter().take(1).chain([0, 1, 0]).collect();
+    a.session.sel = wordcraft_engine::Selection { anchor: a.session.sel.focus.clone(), focus: end };
+    assert!(!TableToTextForm::read(&a).unwrap().has_nested, "only the selected rows enable the checkbox");
 }

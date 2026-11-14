@@ -75,21 +75,22 @@ pub(super) fn sort_table(s: &mut Session, v: &Value) -> CmdResult {
 /// Table Layout › Data › Convert to Text: the selected rows, or the whole table with the caret
 /// in one cell, become paragraphs. Each row is one paragraph with its cells set apart by the
 /// separator (a tab, a comma or another character); with `paragraph` each cell paragraph
-/// stays a separate paragraph. The text keeps its formatting and objects, a table nested in a cell stays
-/// a table, and rows above and below the selected ones stay a table each.
+/// stays a separate paragraph. The text keeps its formatting and objects; nested tables become
+/// text too unless `nested` is false. Rows above and below the selection stay tables.
 pub(super) fn to_text(s: &mut Session, v: &Value) -> CmdResult {
     let (tp, _, _) = cell(s)?;
     let sep = match p::str(v, "separator") {
-        None | Some("tab") => Some('\t'),
-        Some("comma") => Some(','),
+        None | Some("tab") => Some("\t".to_owned()),
+        Some("comma") => Some(", ".to_owned()),
         Some("paragraph") => None,
         Some("other") => match p::str(v, "char").and_then(|c| c.chars().next()) {
             // U+FFFC marks an object in the text, so it cannot set the cells apart.
-            Some(c) if c != '\n' && c != '\r' && c != wordcraft_doc::para::OBJ => Some(c),
+            Some(c) if c != '\n' && c != '\r' && c != wordcraft_doc::para::OBJ => Some(c.to_string()),
             _ => return Err(CmdError::Params("`char` (the separating character) is required with `other`".into())),
         },
         Some(x) => return Err(CmdError::Params(format!("unknown separator `{x}`"))),
     };
+    let nested = p::bool(v, "nested").unwrap_or(true);
     let story = s.sel.focus.story;
     let mut t = s.doc.table(story, &tp).cloned().ok_or_else(|| CmdError::Failed("no table".into()))?;
     // Several cells selected: their rows. A caret (or a selection inside one cell): every row.
@@ -111,7 +112,7 @@ pub(super) fn to_text(s: &mut Session, v: &Value) -> CmdResult {
     }
     let text_from = blocks.len();
     for row in rows {
-        row_to_text(row, sep, &mut blocks);
+        row_to_text(row, sep.as_deref(), nested, 1, &mut blocks)?;
     }
     // Rows without cells (only from a damaged file) still leave a paragraph in their place.
     if blocks.len() == text_from {
@@ -131,9 +132,20 @@ pub(super) fn to_text(s: &mut Session, v: &Value) -> CmdResult {
         }
         blocks.push(Block::Table(tail));
     }
+    carry_table_controls(&mut blocks, text_from, &mut t.controls)?;
+    s.doc.remove_block(story, &tp)?;
+    for (k, b) in blocks.into_iter().enumerate() {
+        s.doc.insert_block(story, &tp.with_last(tp.last() + k), b)?;
+    }
+    s.sel = Selection::caret(s.doc.clamp(&Pos { story, path: caret, off: 0 }));
+    sel_result(s)
+}
+
+/// Move a converted table's enclosing controls to the ends of its replacement blocks.
+fn carry_table_controls(blocks: &mut [Block], text_from: usize, controls: &mut wordcraft_doc::control::ControlWrap) -> Result<(), CmdError> {
     // A content control around the table keeps both ends: on the text where no table part is
     // left to carry them.
-    let (open, close) = (std::mem::take(&mut t.controls.open), std::mem::take(&mut t.controls.close));
+    let (open, close) = (std::mem::take(&mut controls.open), std::mem::take(&mut controls.close));
     match blocks.get_mut(text_from) {
         Some(Block::Para(p)) => {
             for (k, mut control) in open.into_iter().enumerate() {
@@ -159,39 +171,36 @@ pub(super) fn to_text(s: &mut Session, v: &Value) -> CmdResult {
         Some(Block::Table(x)) => x.controls.close = x.controls.close.saturating_add(close),
         None => {}
     }
-    s.doc.remove_block(story, &tp)?;
-    for (k, b) in blocks.into_iter().enumerate() {
-        s.doc.insert_block(story, &tp.with_last(tp.last() + k), b)?;
-    }
-    s.sel = Selection::caret(s.doc.clamp(&Pos { story, path: caret, off: 0 }));
-    sel_result(s)
+    Ok(())
 }
 
 /// One row of Convert to Text as blocks: a paragraph per row (and per further paragraph in a
 /// cell) with the cells set apart by `sep`, or each cell's blocks as they are without one.
-fn row_to_text(row: wordcraft_doc::Row, sep: Option<char>, out: &mut Vec<Block>) {
-    let Some(sep) = sep else {
-        for b in row.cells.into_iter().flat_map(|c| c.blocks) {
-            out.push(match std::sync::Arc::unwrap_or_clone(b) {
-                Block::Para(mut para) => {
-                    para.section = None;
-                    para.touch();
-                    Block::Para(para)
-                }
-                other => other,
-            });
+fn row_to_text(row: wordcraft_doc::Row, sep: Option<&str>, nested: bool, depth: usize, out: &mut Vec<Block>) -> Result<(), CmdError> {
+    let Some(sep_text) = sep else {
+        for cell in row.cells {
+            for b in converted_cell_blocks(cell.blocks, sep, nested, depth)? {
+                out.push(match b {
+                    Block::Para(mut para) => {
+                        para.section = None;
+                        para.touch();
+                        Block::Para(para)
+                    }
+                    other => other,
+                });
+            }
         }
-        return;
+        return Ok(());
     };
     let mut line: Option<Paragraph> = None;
     for (ci, cell) in row.cells.into_iter().enumerate() {
         if ci > 0 {
             // The separator takes no formatting from the text before it.
-            line.get_or_insert_with(Paragraph::new).append(Paragraph::with_text(sep.encode_utf8(&mut [0; 4]), Default::default()));
+            line.get_or_insert_with(Paragraph::new).append(Paragraph::with_text(sep_text, Default::default()));
         }
         let mut first = true;
-        for b in cell.blocks {
-            match std::sync::Arc::unwrap_or_clone(b) {
+        for b in converted_cell_blocks(cell.blocks, sep, nested, depth)? {
+            match b {
                 Block::Para(mut para) => {
                     para.section = None;
                     match line.as_mut() {
@@ -219,6 +228,28 @@ fn row_to_text(row: wordcraft_doc::Row, sep: Option<char>, out: &mut Vec<Block>)
     if let Some(done) = line {
         out.push(Block::Para(done));
     }
+    Ok(())
+}
+
+/// Expand tables before joining cell paragraphs, so the first nested row can continue a line.
+fn converted_cell_blocks(blocks: Vec<std::sync::Arc<Block>>, sep: Option<&str>, nested: bool, depth: usize) -> Result<Vec<Block>, CmdError> {
+    let mut out = Vec::new();
+    for block in blocks {
+        match std::sync::Arc::unwrap_or_clone(block) {
+            Block::Table(mut table) if nested && depth < wordcraft_doc::table::MAX_TABLE_DEPTH => {
+                let from = out.len();
+                for row in std::mem::take(&mut table.rows) {
+                    row_to_text(row, sep, nested, depth + 1, &mut out)?;
+                }
+                if out.len() == from {
+                    out.push(Block::Para(Paragraph::new()));
+                }
+                carry_table_controls(&mut out, from, &mut table.controls)?;
+            }
+            other => out.push(other),
+        }
+    }
+    Ok(out)
 }
 
 /// Table Layout › Data › Formula: inserts a formula field at the caret, evaluated now and again
@@ -500,4 +531,45 @@ pub(super) fn quick_table(s: &mut Session, v: &Value) -> CmdResult {
     s.sel = Selection::caret(Pos { story, path: Path(first), off: 0 });
     let _ = StoryRef::Body;
     sel_result(s)
+}
+
+#[cfg(test)]
+mod to_text_tests {
+    use super::*;
+    use wordcraft_doc::control::ContentControl;
+
+    #[test]
+    fn nested_conversion_keeps_controls_and_drops_cell_sections() {
+        for sep in [Some("\t"), Some(", "), None] {
+            let mut nested = Table::new(2, 1, 100.0);
+            nested.controls.open.push(ContentControl { id: Some(42), tag: "nested".into(), ..Default::default() });
+            nested.controls.close = 1;
+            for (row, text) in nested.rows.iter_mut().zip(["one", "two"]) {
+                let mut para = Paragraph::with_text(text, Default::default());
+                para.section = Some(Default::default());
+                row.cells[0].blocks = vec![para_block(para)];
+            }
+            let mut outer = Table::new(1, 1, 100.0);
+            outer.rows[0].cells[0].blocks = vec![std::sync::Arc::new(Block::Table(nested))];
+            let mut out = Vec::new();
+            row_to_text(outer.rows.remove(0), sep, true, 1, &mut out).unwrap();
+            assert_eq!(out.len(), 2);
+            let first = out[0].as_para().unwrap();
+            let last = out[1].as_para().unwrap();
+            assert!(first.section.is_none() && last.section.is_none());
+            assert!(matches!(&first.objects[0], InlineObject::ControlStart { control } if control.id == Some(42)));
+            assert!(matches!(last.objects.last(), Some(InlineObject::ControlEnd)));
+            assert_eq!(first.plain_text(), "one");
+            assert_eq!(last.plain_text(), "two");
+        }
+    }
+
+    #[test]
+    fn conversion_stops_at_the_model_depth_limit() {
+        let mut table = Table::new(1, 1, 100.0);
+        table.rows[0].cells[0].blocks = vec![std::sync::Arc::new(Block::Table(Table::new(1, 1, 100.0)))];
+        let mut out = Vec::new();
+        row_to_text(table.rows.remove(0), Some("\t"), true, wordcraft_doc::table::MAX_TABLE_DEPTH, &mut out).unwrap();
+        assert!(matches!(out.as_slice(), [Block::Table(_)]));
+    }
 }

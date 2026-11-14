@@ -14,7 +14,9 @@ mod autonum_fields;
 mod auto_caption;
 mod autocorrect_symbols_word;
 mod indent_keys_word;
+mod change_case_word;
 mod convert_text_spaces_word;
+mod table_to_text_word;
 mod find_caret_word;
 mod find_objects_word;
 mod find_wildcards_word;
@@ -69,6 +71,7 @@ mod seq_word;
 mod quote_date_picture;
 mod time_picture_runs;
 mod word_count_paragraphs;
+mod reset_formatting_word;
 mod date_picture_literal_a;
 mod mark_final;
 mod mark_toc_entry;
@@ -9210,7 +9213,7 @@ fn convert_to_text_takes_each_separator() {
     let cases = [
         (json!({}), vec!["a\tb", "c\td"]),
         (json!({"separator": "tab"}), vec!["a\tb", "c\td"]),
-        (json!({"separator": "comma"}), vec!["a,b", "c,d"]),
+        (json!({"separator": "comma"}), vec!["a, b", "c, d"]),
         (json!({"separator": "other", "char": ";"}), vec!["a;b", "c;d"]),
         (json!({"separator": "paragraph"}), vec!["a", "b", "c", "d"]),
     ];
@@ -9338,7 +9341,8 @@ fn convert_to_text_keeps_a_content_control_around_the_table() {
     assert!(!s.doc.has_unbalanced_controls());
 }
 
-/// The text keeps its formatting, and a table nested in a cell stays a table.
+/// The text keeps its formatting, and with Convert nested tables off a table nested in a cell
+/// stays a table.
 #[test]
 fn convert_to_text_keeps_formatting_and_nested_tables() {
     let mut s = typed_table(2, &["Name", "X"]);
@@ -9353,7 +9357,7 @@ fn convert_to_text_keeps_formatting_and_nested_tables() {
     run(&mut s, "insert.table", json!({"rows": 1, "cols": 1}));
     run(&mut s, "text.insert", json!({"text": "Inner"}));
     s.sel = crate::Selection::caret(wordcraft_doc::Pos { story: StoryRef::Body, path: wordcraft_doc::Path(vec![t, 0, 0, 0]), off: 0 });
-    run(&mut s, "table.toText", json!({}));
+    run(&mut s, "table.toText", json!({"nested": false}));
     let at = t as usize;
     let line = s.doc.body[at].as_para().unwrap();
     assert_eq!(line.text, "Name\tX");
@@ -9372,7 +9376,7 @@ fn convert_to_text_keeps_formatting_and_nested_tables() {
     assert!(row.cells[0].blocks.first().is_some_and(|b| b.as_table().is_some()), "the cell starts with the nested table");
     run(&mut s, "select.range", json!({"anchor": cell_at(t, 1, 1), "focus": cell_at(t, 1, 1)}));
     s.sel.anchor = wordcraft_doc::Pos { story: StoryRef::Body, path: wordcraft_doc::Path(vec![t, 1, 0, 1]), off: 0 };
-    run(&mut s, "table.toText", json!({}));
+    run(&mut s, "table.toText", json!({"nested": false}));
     let at = t as usize;
     assert_eq!(body_outline(&s).get(at..at + 3), Some(&["T", "T", "\tD"].map(String::from)[..]), "{:?}", body_outline(&s));
     assert_eq!(s.sel.focus.path.0, [t + 2], "the caret is on the row's text");
