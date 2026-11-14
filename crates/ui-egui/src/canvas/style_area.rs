@@ -51,15 +51,22 @@ fn style_label(app: &WordApp, path: &Path) -> Option<(String, String)> {
     Some((id, name))
 }
 
-/// What a double-click on a name asks for, done once the pages are painted.
-pub(super) struct Open {
+/// What a double-click on a name asks for, done once the style area is painted.
+struct Open {
     path: Path,
     style: String,
 }
 
 /// Paint the style area beside each page on screen and handle its mouse: resizing by the
-/// separator and double-clicks on the names. Returns a double-clicked name's paragraph.
-pub(super) fn show(app: &mut WordApp, ui: &mut Ui, layout: &DocLayout, rects: &[Rect], scale: f32, paper: Color32, t: &Tokens) -> Option<Open> {
+/// separator and double-clicks on the names.
+pub(super) fn show(app: &mut WordApp, ui: &mut Ui, layout: &DocLayout, rects: &[Rect], scale: f32, paper: Color32, t: &Tokens) {
+    if let Some(o) = paint(app, ui, layout, rects, scale, paper, t) {
+        open(app, o);
+    }
+}
+
+/// [`show`]'s painting and mouse; returns a double-clicked name's paragraph.
+fn paint(app: &mut WordApp, ui: &mut Ui, layout: &DocLayout, rects: &[Rect], scale: f32, paper: Color32, t: &Tokens) -> Option<Open> {
     let w = width(app);
     if w <= 0.0 {
         return None;
@@ -131,7 +138,7 @@ pub(super) fn show(app: &mut WordApp, ui: &mut Ui, layout: &DocLayout, rects: &[
 }
 
 /// Select the double-clicked name's paragraph and open Modify Style for its style.
-pub(super) fn open(app: &mut WordApp, open: Open) {
+fn open(app: &mut WordApp, open: Open) {
     app.session.sel = wordcraft_engine::Selection::caret(Pos::new(StoryRef::Body, open.path, 0));
     let _ = app.run("select.paragraph", json!({}));
     if let Some(d) = crate::dialogs::Dialog::modify_style(app, &open.style) {
@@ -169,7 +176,7 @@ mod tests {
         let pages = h.state().canvas.page_rects.clone();
         h.query_all_by_label(name).any(|n| {
             let r = n.rect();
-            pages.iter().any(|p| (r.min.x as f32) < p.left() && (r.min.y as f32) >= p.top() && (r.max.y as f32) <= p.bottom())
+            pages.iter().any(|p| r.min.x < p.left() && r.min.y >= p.top() && r.max.y <= p.bottom())
         })
     }
 
