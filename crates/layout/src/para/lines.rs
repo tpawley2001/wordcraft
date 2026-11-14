@@ -599,6 +599,7 @@ impl<'e> Breaker<'e> {
         if note_sep && let Some(st) = pl.styles.get(self.mark_style as usize) {
             ex.asc = ex.asc.max(st.ascent);
             ex.desc = ex.desc.max(st.descent);
+            ex.unmarked_desc = ex.unmarked_desc.max(st.descent);
             ex.font_asc = ex.font_asc.max(st.ascent);
             ex.font_desc = ex.font_desc.max(st.descent);
             any = true;
@@ -608,6 +609,7 @@ impl<'e> Breaker<'e> {
         {
             ex.asc = st.ascent;
             ex.desc = st.descent;
+            ex.unmarked_desc = st.descent;
         }
         if !any || (ex.font_asc == 0.0 && ex.font_desc == 0.0) {
             (ex.font_asc, ex.font_desc) = (ex.asc, ex.desc);
