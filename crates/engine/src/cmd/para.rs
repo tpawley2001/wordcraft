@@ -19,7 +19,7 @@ mod styles;
 mod tabs_borders;
 mod tools;
 
-use format::{align, asian_typography, cur, direction, line_spacing, ls, set_align, set_props, tog};
+use format::{align, asian_typography, cur, direction, hanging_indent, line_spacing, ls, remove_hanging, set_align, set_props, tog};
 pub use format::{cur as selection_para, fmt, indent, outdent};
 pub use lists::{ListButtons, list_buttons, manage_list, style_description, touch_all};
 use lists::{list, restart_numbering};
@@ -63,23 +63,8 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(r#"{"value"?: bool (false = right to left)}"#),
         CommandSpec::new("para.indent", "Increase Indent", "Home › Paragraph", indent).key("Mod+M"),
         CommandSpec::new("para.outdent", "Decrease Indent", "Home › Paragraph", outdent).key("Mod+Shift+M"),
-        CommandSpec::new("para.hangingIndent", "Hanging Indent", "Home › Paragraph › Paragraph", |s, _| {
-            fmt(s, &|p| {
-                let l = p.indent_left.unwrap_or(0.0) + 36.0;
-                p.indent_left = Some(l);
-                p.indent_first = Some(-36.0);
-                p.cancel_char_indents(true, false, true);
-            })
-        })
-        .key("Mod+T"),
-        CommandSpec::new("para.removeHanging", "Reduce Hanging Indent", "Home › Paragraph › Paragraph", |s, _| {
-            fmt(s, &|p| {
-                p.indent_left = Some((p.indent_left.unwrap_or(0.0) - 36.0).max(0.0));
-                p.indent_first = Some(0.0);
-                p.cancel_char_indents(true, false, true);
-            })
-        })
-        .key("Mod+Shift+T"),
+        CommandSpec::new("para.hangingIndent", "Hanging Indent", "Home › Paragraph › Paragraph", hanging_indent).key("Mod+T"),
+        CommandSpec::new("para.removeHanging", "Reduce Hanging Indent", "Home › Paragraph › Paragraph", remove_hanging).key("Mod+Shift+T"),
         CommandSpec::new("para.indents", "Indents", "Layout › Paragraph", |s, v| {
             let (l, r, f) = (p::f32(v, "left"), p::f32(v, "right"), p::f32(v, "firstLine"));
             fmt(s, &|p| {

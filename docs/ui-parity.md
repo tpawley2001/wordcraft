@@ -195,6 +195,7 @@ The table Formula dialog (Table Layout › Data › Formula) has Formula, Number
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0484: Ctrl+T / Ctrl+Shift+T step the left indent over paragraph tab stops while preserving the first line; Ctrl+M / Ctrl+Shift+M step the leftmost edge over default stops, keeping hanging paragraphs out of the margin. List level changes and readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0466: Ctrl+F10 toggles window maximization; Alt+F5 restores a maximized window on Linux/Windows. Gap #24 narrowed. |
 | 2026-11-12 | trivial | P0337: Insert › Text from File with a Range brings only the comments, replies and footnotes/endnotes that range refers to, not every one of the other file. Readiness estimates unchanged. |
 | 2026-11-11 | trivial | P0279: Home › Font › Font… Advanced has Word's OpenType Features group (Ligatures, Number spacing, Number forms, Stylistic sets, Use Contextual Alternates), each set on OK only when changed and blank while the selected text differs; Scale is one editable combo box (type a whole percent 1–600 or pick from the list); `format.state` reports `ligatures`, `numSpacing`, `numForm`, `stylisticSet` and `contextualAlternates`. Readiness estimates unchanged. |
