@@ -22,7 +22,12 @@ pub(super) fn autofit(s: &mut Session, v: &Value) -> CmdResult {
 /// be in `doc` yet: `doc` only supplies the styles its text is measured in.
 pub(crate) fn fit_table(doc: &wordcraft_doc::Document, t: &mut Table, mode: &str, tw: f32) {
     match mode {
-        "fixed" => t.props.fixed = true,
+        "fixed" => {
+            t.props.fixed = true;
+            t.props.width = None;
+            t.props.width_pct = None;
+            sync_cell_widths(t);
+        }
         "contents" => {
             let avail = (tw - t.props.indent.filter(|i| i.is_finite()).unwrap_or(0.0).max(0.0)).max(72.0);
             let widths = wordcraft_layout::autofit_widths(&wordcraft_layout::measure_table_columns(doc, t), avail);
@@ -30,14 +35,35 @@ pub(crate) fn fit_table(doc: &wordcraft_doc::Document, t: &mut Table, mode: &str
             t.props.width = None;
             t.props.width_pct = None;
             t.grid = widths.iter().map(|w| w.max(6.0)).collect();
-            sync_cell_widths(t);
+            for cell in t.rows.iter_mut().flat_map(|row| &mut row.cells) {
+                cell.props.width = None;
+                cell.props.width_pct = None;
+            }
         }
         _ => {
             t.props.fixed = false;
+            t.props.width = None;
             t.props.width_pct = Some(100.0);
-            let n = t.grid.len().max(1) as f32;
-            t.grid.iter_mut().for_each(|g| *g = tw / n);
-            sync_cell_widths(t);
+            if t.grid.is_empty() {
+                t.grid = vec![0.0; t.cols().clamp(1, wordcraft_doc::table::MAX_COLS)];
+            }
+            let total: f64 = t.grid.iter().map(|w| f64::from(*w)).sum();
+            let proportional = total.is_finite() && total > 0.0 && t.grid.iter().all(|w| w.is_finite() && *w >= 0.0);
+            let shares: Vec<f32> =
+                t.grid.iter().map(|w| if proportional { (f64::from(*w) / total) as f32 } else { 1.0 / t.grid.len() as f32 }).collect();
+            for (width, share) in t.grid.iter_mut().zip(&shares) {
+                *width = tw * share;
+            }
+            for row in &mut t.rows {
+                let mut g = row.first_grid();
+                for cell in &mut row.cells {
+                    let end = g.saturating_add(cell.span());
+                    let share: f32 = shares.get(g..end.min(shares.len())).unwrap_or(&[]).iter().sum();
+                    cell.props.width = None;
+                    cell.props.width_pct = Some(100.0 * share);
+                    g = end;
+                }
+            }
         }
     }
 }
@@ -54,6 +80,7 @@ pub(crate) fn sync_cell_widths(t: &mut Table) {
             let w: f32 = grid.get(g..g.saturating_add(span).min(grid.len())).unwrap_or(&[]).iter().sum();
             if w > 0.0 {
                 c.props.width = Some(w);
+                c.props.width_pct = None;
             }
             g = g.saturating_add(span);
         }
@@ -455,5 +482,58 @@ mod distribute_tests {
         // Each row now shows that height: the empty rows' content is shorter than it.
         let after = super::laid_out_heights(&s, StoryRef::Body, &Path::top(ti), &[0, 1, 2]);
         assert!(after.iter().all(|h| (h - want).abs() < 0.01), "{after:?} vs {want}");
+    }
+}
+
+#[cfg(test)]
+mod autofit_tests {
+    use super::{fit_table, sync_cell_widths};
+    use wordcraft_doc::{Cell, Document, Row, Table};
+
+    #[test]
+    fn window_and_fixed_follow_spans_after_skipped_columns() {
+        let mut row = Row::default();
+        row.props.grid_before = 1;
+        let mut cell = Cell::empty();
+        cell.props.span = 2;
+        row.cells.push(cell);
+        let mut table = Table { grid: vec![72.0, 144.0, 216.0], rows: vec![row], ..Default::default() };
+        fit_table(&Document::new(), &mut table, "window", 468.0);
+        let cell = &table.rows[0].cells[0];
+        assert_eq!(cell.props.width, None);
+        assert!((cell.props.width_pct.unwrap() - 100.0 * 5.0 / 6.0).abs() < 0.001);
+        fit_table(&Document::new(), &mut table, "fixed", 468.0);
+        assert_eq!(table.rows[0].cells[0].props.width, Some(390.0));
+        assert_eq!(table.rows[0].cells[0].props.width_pct, None);
+    }
+
+    #[test]
+    fn window_uses_equal_columns_for_missing_or_zero_grid() {
+        for grid in [vec![], vec![0.0; 3]] {
+            let row = Row { cells: vec![Cell::empty(); 3], ..Default::default() };
+            let mut table = Table { grid, rows: vec![row], ..Default::default() };
+            table.props.width = Some(100.0);
+            fit_table(&Document::new(), &mut table, "window", 468.0);
+            assert_eq!(table.grid, vec![156.0; 3]);
+            assert_eq!(table.props.width, None);
+            for cell in &table.rows[0].cells {
+                assert_eq!(cell.props.width, None);
+                assert!((cell.props.width_pct.unwrap() - 100.0 / 3.0).abs() < 0.001);
+            }
+        }
+    }
+
+    #[test]
+    fn fixed_drops_percentage_without_rescaling_grid() {
+        let row = Row { cells: vec![Cell::empty(); 3], ..Default::default() };
+        let mut table = Table { grid: vec![156.0; 3], rows: vec![row], ..Default::default() };
+        table.props.width_pct = Some(50.0);
+        fit_table(&Document::new(), &mut table, "fixed", 468.0);
+        assert_eq!(table.props.width_pct, None);
+        assert_eq!(table.grid, vec![156.0; 3]);
+        assert!(table.rows[0].cells.iter().all(|cell| cell.props.width == Some(156.0)));
+        // An out-of-grid cell must not make width synchronization panic.
+        table.rows[0].props.grid_before = u32::MAX;
+        sync_cell_widths(&mut table);
     }
 }
