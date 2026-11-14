@@ -166,7 +166,14 @@ impl Writer<'_> {
                 self.rev_close(w, props);
             }
             InlineObject::Opaque { format, xml, text } => {
-                if format == "docx" && crate::xml::parse(xml.as_bytes()).is_ok() {
+                if let Some(continuation) = o.as_note_separator() {
+                    // A note separator (§17.11.1, §17.11.2): its run keeps the character's own
+                    // properties, since layout sizes the separator line from that run's font.
+                    w.open("w:r", &[]);
+                    self.rpr(w, props);
+                    w.empty(if continuation { "w:continuationSeparator" } else { "w:separator" }, &[]);
+                    w.close("w:r");
+                } else if format == "docx" && crate::xml::parse(xml.as_bytes()).is_ok() {
                     w.raw(xml);
                 } else if !text.is_empty() {
                     self.rev_open(w, props);

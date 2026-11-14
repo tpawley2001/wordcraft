@@ -54,6 +54,7 @@ mod no_leading;
 mod no_tab_hang_ind;
 mod note_comments;
 mod note_mark_format;
+mod note_separator_run_props;
 mod opentype_features;
 mod passthrough;
 mod picture_link_forms;
