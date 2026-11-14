@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged.)
@@ -163,6 +165,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-14: P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged.
 
 - 2026-11-14: P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged.
 - 2026-11-14: P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged.
@@ -1046,6 +1050,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged. |
 | 2026-11-08 | trivial | P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged. |

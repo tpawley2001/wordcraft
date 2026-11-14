@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged.)
@@ -209,6 +211,8 @@ Strict DOCX graphics (gap #2): chart and SmartArt children and all relationship 
 
 Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text without the clipboard on Windows/Linux. Broader shortcut and UI gaps remain open.
 
+Raised and lowered text under multiple line spacing now adds its shift growth once (P0480); broader pagination differences in gap #4 remain open.
+
 ## Revision history
 
 > 2026-11-13 · trivial · P0462: gap #7 narrowed: Table of Figures › Options… (Style, Table entry fields with Table identifier A–Z), `references.tableOfFigures` `style` / `entryFields`. Readiness estimates unchanged.
@@ -287,6 +291,7 @@ Selection relocation (P0079): F2 / Shift+F2 and Enter now move/copy rich text wi
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0466: Ctrl+F10 toggles window maximization; Alt+F5 restores a maximized window on Linux/Windows. Gap #24 narrowed. |

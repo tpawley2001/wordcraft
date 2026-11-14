@@ -533,7 +533,17 @@ impl<'e> Breaker<'e> {
     /// tallest picture on it (which sits on the baseline).
     fn extents(&self, pl: &ParaLayout, (c0, c1): (usize, usize)) -> Extents {
         let rp = &self.rp;
-        let mut ex = Extents { asc: 0.0, desc: 0.0, obj_asc: 0.0, obj_desc: 0.0, text: false, font_asc: 0.0, font_desc: 0.0 };
+        let mut ex = Extents {
+            asc: 0.0,
+            desc: 0.0,
+            obj_asc: 0.0,
+            obj_desc: 0.0,
+            text: false,
+            font_asc: 0.0,
+            font_desc: 0.0,
+            unshifted_asc: 0.0,
+            unshifted_desc: 0.0,
+        };
         let mut any = false;
         let dropped = pl.drop_cap.map_or(0, |d| d.0);
         for (k, c) in pl.clusters.get(c0..c1).into_iter().flatten().enumerate() {
@@ -552,6 +562,7 @@ impl<'e> Breaker<'e> {
             // A picture sits on the baseline of its run (raised or lowered by its position):
             // the line keeps that font's ascent and descent, and grows to fit it.
             let (mut fa, mut fd) = (None, None);
+            let mut position = 0.0;
             let (a, d) = if check_box {
                 // Word sizes a line by a legacy check box as by text of the box's size (measured
                 // with Arial at 10 and 20 pt: a 20 pt box's line is 23 pt, times the spacing).
@@ -577,12 +588,15 @@ impl<'e> Breaker<'e> {
                 // `obj_h` is set on text clusters only under ruby text and for EQ fields (with
                 // `obj_d`), which the line grows to fit.
                 let (a, d) = st.line_extent();
+                position = st.rc.position;
                 (a.max(c.obj_h + st.shift), if c.obj_d > 0.0 { d.max(c.obj_d - st.shift) } else { d })
             };
             ex.asc = ex.asc.max(a);
             ex.desc = ex.desc.max(d);
             ex.font_asc = ex.font_asc.max(fa.unwrap_or(a));
             ex.font_desc = ex.font_desc.max(fd.unwrap_or(d));
+            ex.unshifted_asc = ex.unshifted_asc.max(fa.unwrap_or(a) - position.max(0.0));
+            ex.unshifted_desc = ex.unshifted_desc.max(fd.unwrap_or(d) - (-position).max(0.0));
             any = true;
             // Text needs its descent below the line; so do inline math (an object with its own
             // descent) and a check box. A line break ending the line is no text.
@@ -597,6 +611,8 @@ impl<'e> Breaker<'e> {
             ex.desc = ex.desc.max(st.descent);
             ex.font_asc = ex.font_asc.max(st.ascent);
             ex.font_desc = ex.font_desc.max(st.descent);
+            ex.unshifted_asc = ex.unshifted_asc.max(st.ascent);
+            ex.unshifted_desc = ex.unshifted_desc.max(st.descent);
             any = true;
         }
         if (!any || (ex.asc == 0.0 && ex.desc == 0.0))
@@ -607,6 +623,7 @@ impl<'e> Breaker<'e> {
         }
         if !any || (ex.font_asc == 0.0 && ex.font_desc == 0.0) {
             (ex.font_asc, ex.font_desc) = (ex.asc, ex.desc);
+            (ex.unshifted_asc, ex.unshifted_desc) = (ex.asc, ex.desc);
         }
         ex
     }
@@ -614,7 +631,9 @@ impl<'e> Breaker<'e> {
     /// The line's height, baseline and text extent.
     fn measure(&self, pl: &ParaLayout, range: (usize, usize)) -> Measure {
         let rp = &self.rp;
-        let Extents { mut asc, mut desc, obj_asc, obj_desc, text, font_asc: bare_asc, font_desc: bare_desc } = self.extents(pl, range);
+        let Extents { mut asc, mut desc, obj_asc, obj_desc, text, font_asc: bare_asc, font_desc: bare_desc, unshifted_asc, unshifted_desc } =
+            self.extents(pl, range);
+        let mut unshifted = unshifted_asc + unshifted_desc;
         let mut text_natural = asc + desc;
         // An inline equation taller than its text is sized like a picture beside text: with
         // multiple spacing at or above single the line takes the spacing's share of the text's
@@ -669,6 +688,7 @@ impl<'e> Breaker<'e> {
                     let styles = lab.runs.iter().filter_map(|r| pl.styles.get(r.style as usize));
                     let (a, d) = styles.fold((asc, font_desc), |(a, d), st| (a.max(st.ascent), d.max(st.descent)));
                     text_natural = a + d;
+                    unshifted = text_natural;
                     label_extra = 0.0;
                     label_floor = true;
                 }
@@ -687,7 +707,12 @@ impl<'e> Breaker<'e> {
         let (height, centred) = match (rp.line_spacing, grid) {
             (LineSpacing::Multiple(m), Some(g)) => ((g.snap_height(natural) * m).max(g.snap_height(pictures)), true),
             (LineSpacing::AtLeast(v), Some(g)) => (g.snap_height(natural.max(pictures)).max(v), true),
-            (LineSpacing::Multiple(m), None) => ((text_natural * m + label_extra).max(text_pictures + (m - 1.0).max(0.0) * text_natural), false),
+            (LineSpacing::Multiple(m), None) => {
+                // Position grows the single-spacing box once; only the unshifted text gets
+                // the extra spacing. Keep compression below single spacing unchanged.
+                let extra = (m - 1.0).max(0.0) * unshifted;
+                ((text_natural * m.min(1.0) + extra + label_extra).max(text_pictures + extra), false)
+            }
             // A list label's font is a floor, as with multiple spacing (unmeasured for at-least).
             (LineSpacing::AtLeast(v), None) if least_alone => ((obj_asc + obj_desc).max(v).max(if label_floor { text_natural } else { 0.0 }), false),
             (LineSpacing::AtLeast(v), None) => (natural.max(text_pictures).max(v), false),
@@ -889,6 +914,9 @@ struct Extents {
     /// The ascent and descent without inline equations' own extents (their runs' font instead).
     font_asc: f32,
     font_desc: f32,
+    /// Text extents without `w:position`, retaining script sizing and emphasis marks.
+    unshifted_asc: f32,
+    unshifted_desc: f32,
 }
 
 /// A line's height and baseline, and the extent of its text.
