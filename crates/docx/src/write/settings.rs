@@ -268,6 +268,9 @@ fn write_compatibility_settings(w: &mut W, doc: &Document) {
     if doc.settings.do_not_expand_shift_return {
         w.empty("w:doNotExpandShiftReturn", &[]);
     }
+    if doc.settings.ext_leading_2pt_only {
+        w.empty("w:suppressTopSpacingWP", &[]);
+    }
     if doc.settings.wrap_trail_spaces {
         w.empty("w:wrapTrailSpaces", &[]);
     }

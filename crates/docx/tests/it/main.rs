@@ -78,6 +78,7 @@ mod strict_save;
 mod strict_shapes;
 mod style_ui_flags;
 mod styles_without_id;
+mod suppress_top_spacing_wp;
 mod text_alignment;
 mod text_boxes;
 mod text_whitespace;
