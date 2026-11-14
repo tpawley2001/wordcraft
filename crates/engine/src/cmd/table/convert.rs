@@ -317,8 +317,9 @@ pub fn text_table_cells(lines: &[String], sep: Option<char>, columns: Option<usi
 
 /// The cells Convert Text to Table makes of `paras`, row by row, and the column count, as
 /// [`text_table_cells`] makes them of their text. Each cell is its field of the source paragraph
-/// cut out of it, trimmed of surrounding white space, so its formatting, objects (pictures,
-/// fields, notes…) and tracked changes go with it.
+/// cut out of it with white space preserved, except for one ordinary space directly after a
+/// comma separator. Its formatting, objects (pictures, fields, notes…) and tracked changes go
+/// with it.
 fn text_table_paras(paras: Vec<Paragraph>, sep: Option<char>, columns: Option<usize>) -> Result<(Vec<Vec<Paragraph>>, usize), CmdError> {
     use wordcraft_doc::para::OBJ;
     use wordcraft_doc::table::MAX_COLS;
@@ -352,10 +353,10 @@ fn text_table_paras(paras: Vec<Paragraph>, sep: Option<char>, columns: Option<us
         // Last field first, so the earlier offsets stay valid.
         for r in ranges.into_iter().rev() {
             let field = work.text.get(r.clone()).unwrap_or("");
-            let start = r.start + (field.len() - field.trim_start().len());
-            let end = (r.start + field.trim_end().len()).max(start);
+            // Word includes one U+0020 after a comma in the separator, never other white space.
+            let start = r.start + usize::from(sep == Some(',') && r.start > 0 && field.starts_with(' '));
             let mut piece = work.split_off(start)?;
-            piece.split_off(end - start)?;
+            piece.split_off(r.end - start)?;
             pieces.push(piece);
         }
         pieces.reverse();

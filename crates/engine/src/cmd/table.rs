@@ -25,7 +25,7 @@ pub(super) use clear::clear_range_cells;
 pub(crate) use clear::{backspace_cells, clear_cells};
 use convert::{formula, from_text, quick_table, sort_table, to_text};
 pub use convert::{text_table_cells, text_table_lines};
-use layout::{autofit, borders, properties, set_column_widths};
+use layout::{autofit, borders, distribute_rows, properties, set_column_widths};
 pub(crate) use layout::{fit_table, sync_cell_widths, text_direction, touch_cells};
 pub(crate) use move_rows::move_rows;
 pub(crate) use select::{extend_selection, grow_select_all, select_cell_first, select_range};
@@ -145,14 +145,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 sync_cell_widths(t);
             })
         })),
-        t(CommandSpec::new("table.distributeRows", "Distribute Rows", "Table Layout › Cell Size", |s, _| {
-            with_table(s, |t| {
-                let h = t.rows.iter().filter_map(|r| r.props.height).fold(0.0f32, f32::max).max(18.0);
-                for r in &mut t.rows {
-                    r.props.height = Some(h);
-                }
-            })
-        })),
+        t(CommandSpec::new("table.distributeRows", "Distribute Rows", "Table Layout › Cell Size", |s, _| distribute_rows(s))),
         t(CommandSpec::new("table.columnWidth", "Table Column Width", "Table Layout › Cell Size", |s, v| {
             let w = p::req_f32(v, "width")?.clamp(6.0, 1584.0);
             let cells = selected_cells(s);

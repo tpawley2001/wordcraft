@@ -1,6 +1,8 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0488: Find with Use wildcards: `@` takes as few characters as it can, `{,n}` is refused, and `?`, `*` and `[!…]` match a paragraph mark, as in Word. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged; earlier: P0486: Distribute Rows shares the selected rows' laid-out height equally, At least. P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged; earlier: P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-13 · **Change:** trivial (P0463: File › Options › Advanced › Display › Style area pane width in Draft and Outline views: a column of paragraph style names at the left of the text (`view.styleAreaWidth`). Readiness estimates unchanged; earlier: P0337: Insert › Text from File with a Range brings only the comments, replies and footnotes/endnotes that range refers to, not every one of the other file. Readiness estimates unchanged)
 
@@ -114,6 +116,10 @@ options `screen_paper_color_options_round_trip_and_work_without_a_document` test
 
 With **Regular expressions** on (Search Options), Replace with expands capture groups: `$1`…`$n`, `${n}`, `${name}` and `$name` (the longest run of letters, digits and `_`), `$0` / `${0}` (the whole match), and `\1`…`\9` as in wildcard Replace; `$$` is a dollar sign, `\t` a tab, `\\` a backslash, `\$` and `\^` a `$` or `^` as typed, and `\n` a paragraph mark, which splits the paragraph as `^p` does (Replace All stays one undo step). Word's `^&`, `^p`, `^t`, `^c` and the other `^` codes work there too (with Special characters off, only the `^` codes are taken literally). A group that doesn't exist, didn't take part in the match or is out of range expands to nothing; a `$` that starts no group, an unclosed `${`, and other `\` escapes stay as written. Plain and wildcard Replace are unchanged. Word has no regular-expression mode; this follows the Rust `regex` crate's Replace syntax.
 
+## Find and Replace: Use wildcards as in Word
+
+`@` (one or more) takes as few characters as it can, as in Word (`a@a` in `aaab` finds `aa`); inside a `( )` group it takes as many, so `([A-Z][a-z]@)` still captures a whole word for `\1`. `{n,}` and `{n,m}` stay greedy. `{,n}` has no lower bound and is refused. `?`, `*` and `[!…]` also match a paragraph mark, so a match can run into the next paragraph (`b?c` finds `b¶c`), but never out of a table cell or story.
+
 ## Find and Replace by formatting (#4893)
 
 Search Options › **Format ▾** (Font: bold, italic, underline, name, size, colour; Highlight; Style) and **No Formatting** set formatting for the box that last had the focus, shown in grey under it ("Format: Font: Bold"). Find what's format matches the effective formatting (styles and direct); with no text it finds each stretch of formatted text in a paragraph. Replace with's format goes on each replacement, or on the match itself when Replace with is empty. Find Next / Previous keep the format. The picker is compact, not Word's Find Font dialog.
@@ -164,6 +170,8 @@ Insert Hyperlink › E-mail Address accepts an address and subject and lists rec
 
 The table Formula dialog (Table Layout › Data › Formula) has Formula, Number format, Paste function and Paste bookmark. Number format lists Word's seven formats and also takes a typed picture; OK adds it to the field as a `\#` switch (`=SUM(ABOVE) \# "#,##0.00"`), and an empty box adds none. Paste bookmark lists the document's bookmarks by name (hidden `_` names left out) and adds the chosen name to the formula, and is greyed out when there are none (#1201).
 
+Convert Text to Table (`table.fromText`) keeps spaces, tabs and no-break spaces in every cell; only one U+0020 directly after each comma separator is dropped, as measured in Microsoft 365 Word 16.0.20527.
+
 ## Revision history
 
 > 2026-11-11 · trivial · Formula dialog: Number format lists Word's seven formats, takes a typed picture and adds the `\#` switch to the field, as in Word (#1201)
@@ -195,6 +203,8 @@ The table Formula dialog (Table Layout › Data › Formula) has Formula, Number
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged. |
+| 2026-11-14 | trivial | P0485: Sort Text and Table Sort by Number and by Date as in Word: text without a number or date sorts first (last descending); a Number key reads the text arithmetically (`12 13` is 25, `3,5` is 8, `5%` is 0.05, `3-4` is -1, `(2)` is -2; `+4`, `2e3` and `x7y` are no number); a Date key also reads two-digit years, English month names, day-first dates (a first number over 12) and times. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0483: Increase/Decrease Font Size step by one point below 8 pt, preserving fractional sizes and stopping at 1 and 8; their steps skip 10.5 pt, as measured in Word. The Font Size box and one-point commands are unchanged. |
 | 2026-11-14 | trivial | P0484: Ctrl+T / Ctrl+Shift+T step the left indent over paragraph tab stops while preserving the first line; Ctrl+M / Ctrl+Shift+M step the leftmost edge over default stops, keeping hanging paragraphs out of the margin. List level changes and readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0466: Ctrl+F10 toggles window maximization; Alt+F5 restores a maximized window on Linux/Windows. Gap #24 narrowed. |
@@ -554,7 +564,9 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 | 2026-11-13 | trivial | P0462: Table of Figures › Options… opens Table of Figures Options: Style (the document's paragraph styles, Caption by default) and Table entry fields with Table identifier (A–Z, F by default); either greys out the caption label and Include label and number, and the list is built from that style's paragraphs and those TC fields (`TOC \t "Style" \f ID \c`) |
 | 2026-11-13 | trivial | P0463: Style area pane width in Draft and Outline views (File › Options › Advanced › Display, `view.styleAreaWidth`, a user preference in points, 0 by default): each paragraph's style name in a column at the left of the text; drag the separator to resize or close it, double-click a name for Modify Style |
 | 2026-11-13 | trivial | P0460: Immersive Reader is its own view with an Immersive Reader tab (Column Width, Page Color, Line Focus, Text Spacing, Syllables, Read Aloud, Close) instead of switching to Read Mode |
+| 2026-11-14 | trivial | Find with Use wildcards: `@` is lazy, `{,n}` is refused, and `?`, `*`, `[!…]` match a paragraph mark, as in Word (P0488) |
 | 2026-11-13 | trivial | Layout › Arrange › Align: Align Top, Middle and Bottom, Align to Page, Align Selected Objects (the default for two or more objects) and Distribute Horizontally / Vertically (`arrange.distribute`) for floating objects, as in Word; Align only lined one object up left, centre or right of the margin |
+| 2026-11-14 | trivial | P0486: Table Layout › Distribute Rows as in Word: the selected rows (all rows with only a caret in the table) share the total of their laid-out heights equally, each At least; other rows keep theirs. It gave every row the tallest set height and kept exact rules |
 
 ### Format Painter integration refresh, 2026-10-30
 

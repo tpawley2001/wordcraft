@@ -1,6 +1,10 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged; earlier: P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged)
+
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged; earlier: P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged; earlier: P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged; earlier: P0476: in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows, as in Word; gap #24 narrowed. Readiness estimates unchanged)
 
@@ -33,6 +37,8 @@ Recovery discovery no longer interrupts an explicitly created or opened document
 Group connectors (gap 10): re-routing preserves displayed rotated and flipped free endpoints after unit, uniform or nonuniform group scaling, including ends whose target shape or site cannot be resolved. Glued endpoints still use their existing connection-site path. Degenerate display scales that cannot be inverted, or fallback spans exceeding the renderer's 4000 pt child-size cap, leave connectors needing fallback endpoints unchanged; fully resolved connectors still reroute. Invalid child extents retain the renderer's unit-scale fallback. Model and engine regressions cover this geometry and guard against nonfinite coordinate writes and repeated shrinkage at the display cap; routing around shapes remains missing, with no new native Word comparison.
 
 > **Printing update:** 2026-10-12 · direct desktop printing through craft-print; details below.
+
+Convert Text to Table preserves leading and trailing whitespace in each cell for every separator, dropping only one U+0020 directly after a comma. Column counts and padding are unchanged. See [UI parity](ui-parity.md).
 
 Table Sort rejects invalid explicit column selectors instead of silently sorting another column (#5531). This command-boundary correction leaves the ranked gaps and readiness estimates unchanged.
 
@@ -214,10 +220,11 @@ Raised and lowered text under multiple line spacing now adds its shift growth on
 
 ## Revision history
 
+> 2026-11-14 · trivial · P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged.
+
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged. |
-
 > 2026-11-13 · trivial · P0462: gap #7 narrowed: Table of Figures › Options… (Style, Table entry fields with Table identifier A–Z), `references.tableOfFigures` `style` / `entryFields`. Readiness estimates unchanged.
 
 > 2026-11-11 · trivial · P0226: File › Print › Print Selection prints only the selected text, without headers and footers, as in Word (`range: "selectedText"`). Gap #6 narrowed. Readiness estimates unchanged.
@@ -294,6 +301,7 @@ Raised and lowered text under multiple line spacing now adds its shift growth on
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0480: multiple line spacing multiplies the unshifted text height and adds raised or lowered text growth once; baselines, single spacing, document grids and superscript/subscript sizing are unchanged. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0476: in a table Ctrl+Shift+Enter splits the table (in its first row it adds an empty paragraph above), Split Table in the first row does the same, and Alt+Shift+Up/Down move the rows the selection touches, out of the table past the paragraph next to it at its ends, as measured in Word. Gap #24 narrowed. |
 | 2026-11-14 | trivial | P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged. |

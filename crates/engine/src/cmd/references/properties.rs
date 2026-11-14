@@ -65,6 +65,23 @@ pub(super) fn text_result(instr: &str, text: String) -> String {
     wordcraft_layout::fields::apply_case_switch(instr, text)
 }
 
+/// The result of a DATE or TIME field with picture `pic` in language `lang`: Word's error for a
+/// picture item it rejects (`yyy`), else the date with the field's `\*` switches. A number format
+/// (`\* Ordinal`, `\* roman`, `\* CardText`…) applies when the date came out as a whole number
+/// (`\@ "d"`), as on a number field; capitalization switches apply either way.
+pub(super) fn date_field_result(instr: &str, pic: &str, lang: Option<&str>) -> String {
+    let Some(text) = crate::cmd::insert::format_date_field_in(pic, lang) else {
+        return "Error! Unknown character in picture string.".into();
+    };
+    let number = (!text.is_empty() && text.bytes().all(|b| b.is_ascii_digit())).then(|| text.parse::<u32>().ok()).flatten();
+    match (number, wordcraft_layout::fields::format_switch(instr)) {
+        (Some(n), Some(fmt)) if crate::cmd::table_formula::number_format_covers(fmt, f64::from(n)) => {
+            wordcraft_layout::fields::field_number(instr, fmt, n)
+        }
+        _ => text_result(instr, text),
+    }
+}
+
 /// The property name of a `DOCPROPERTY` field: the word (or quoted text) after the field name,
 /// before any switch (`DOCPROPERTY "Project Name" \* MERGEFORMAT`).
 pub(super) fn doc_property_arg(instr: &str) -> Option<String> {

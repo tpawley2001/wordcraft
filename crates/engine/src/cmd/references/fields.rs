@@ -1,6 +1,6 @@
 use super::numbers::{body_bookmark_paths, para_numbers, ref_number};
 use super::properties::{
-    BodyCounts, bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_picture, doc_property_arg,
+    BodyCounts, bookmark_ends_in_its_paragraph, bookmark_text, bookmark_text_at, count_text, date_field_result, date_picture, doc_property_arg,
     doc_property_names_pages, doc_property_names_text_count, doc_property_result, new_property_value, set_summary_property, summary_property,
     text_result,
 };
@@ -669,7 +669,7 @@ fn header_footer_results(doc: &wordcraft_doc::Document, ctx: Option<&OutputConte
                     "DATE" | "TIME" => {
                         let lang = field_lang(doc, p, k);
                         let pic = date_picture(instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
-                        Some(text_result(instr, crate::cmd::insert::format_date_in(&pic, lang.as_deref())))
+                        Some(date_field_result(instr, &pic, lang.as_deref()))
                     }
                     "QUOTE" => quote_literal(instr).map(|text| text_result(instr, text)),
                     // Output has no layout to count pages from: DOCPROPERTY Pages keeps its result.
@@ -1059,7 +1059,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
                 "DATE" | "TIME" | "SAVEDATE" => {
                     let lang = field_lang(&s.doc, p, k);
                     let pic = date_picture(instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
-                    updates.push((k, text_result(instr, crate::cmd::insert::format_date_in(&pic, lang.as_deref()))));
+                    updates.push((k, date_field_result(instr, &pic, lang.as_deref())));
                 }
                 // After Insert › Field only a count field with no result yet (the new one) is counted.
                 "DOCPROPERTY" if !explicit && shows_text_count(o) => {}
@@ -1210,7 +1210,7 @@ pub fn refresh_date_fields(doc: &mut wordcraft_doc::Document) {
                 // Word's default picture when the code carries no `\@` switch.
                 let lang = field_lang(doc, p, k);
                 let pic = date_picture(instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
-                updates.push((k, text_result(instr, crate::cmd::insert::format_date_in(&pic, lang.as_deref()))));
+                updates.push((k, date_field_result(instr, &pic, lang.as_deref())));
             }
             if updates.is_empty() {
                 continue;
