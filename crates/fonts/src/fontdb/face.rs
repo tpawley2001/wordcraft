@@ -400,6 +400,28 @@ impl FontFace {
         let avg = f32::from(f.os2().ok()?.x_avg_char_width());
         (upem > 0.0 && avg > 0.0).then(|| avg / upem)
     }
+    /// Where an underline goes, from the `post` table: (centre below the baseline, thickness),
+    /// both in em. `underlinePosition` is the top of the line (negative = below the baseline).
+    /// `None` without a `post` table or when its values are unusable.
+    pub fn underline_metrics(&self) -> Option<(f64, f64)> {
+        use skrifa::raw::TableProvider;
+        let f = self.skrifa()?;
+        let upem = f64::from(f.head().ok()?.units_per_em());
+        let post = f.post().ok()?;
+        let (pos, thick) = (f64::from(post.underline_position().to_i16()), f64::from(post.underline_thickness().to_i16()));
+        decoration_metrics(-pos + thick / 2.0, thick, upem, 0.5)
+    }
+    /// Where a strikethrough goes, from the `OS/2` table: (centre above the baseline, thickness),
+    /// both in em. `yStrikeoutPosition` is the top of the stroke above the baseline. `None`
+    /// without an `OS/2` table or when its values are unusable.
+    pub fn strikeout_metrics(&self) -> Option<(f64, f64)> {
+        use skrifa::raw::TableProvider;
+        let f = self.skrifa()?;
+        let upem = f64::from(f.head().ok()?.units_per_em());
+        let os2 = f.os2().ok()?;
+        let (pos, size) = (f64::from(os2.y_strikeout_position()), f64::from(os2.y_strikeout_size()));
+        decoration_metrics(pos - size / 2.0, size, upem, 1.0)
+    }
     /// Is this a fixed-pitch (monospaced) font? Its `post` table says so (`isFixedPitch`), or,
     /// without one, every printable ASCII character it maps has the same advance.
     pub fn is_fixed_pitch(&self) -> bool {
@@ -476,4 +498,14 @@ impl OutlinePen for FlipPen {
             self.path.close_path();
         }
     }
+}
+
+/// A line's (centre, thickness) in em from font units, if the thickness is positive and the
+/// centre lies within `0 ..= max_centre` em (broken fonts fall back to defaults).
+fn decoration_metrics(centre: f64, thick: f64, upem: f64, max_centre: f64) -> Option<(f64, f64)> {
+    if !(upem > 0.0 && thick > 0.0) {
+        return None;
+    }
+    let (c, t) = (centre / upem, thick / upem);
+    ((0.0..=max_centre).contains(&c) && t.is_finite()).then_some((c, t))
 }

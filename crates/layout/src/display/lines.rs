@@ -367,7 +367,7 @@ fn run_decorations(
     {
         end_k -= 1;
     }
-    let thick = (st.size / 18.0).max(0.5);
+    let (ucentre, uthick, scentre, sthick) = decoration_lines(st);
     let underline = match (ins_mark, del_mark) {
         (Some(InsertMark::Underline), _) | (_, Some(DeleteMark::Underline)) => Underline::Single,
         (Some(InsertMark::DoubleUnderline), _) | (_, Some(DeleteMark::DoubleUnderline)) => Underline::Double,
@@ -378,7 +378,7 @@ fn run_decorations(
     let spans = if underline != Underline::None || struck { line.spans(run_start, end_k) } else { Vec::new() };
     for (x0, x1) in spans.into_iter().map(|(a, b)| (x + a, x + b)).filter(|(a, b)| b > a) {
         if underline != Underline::None {
-            let uy = base - st.shift + st.size * 0.12;
+            let uy = base - st.shift + ucentre;
             let ucolor = rc.underline_color.unwrap_or(color);
             if underline == Underline::Words {
                 for kk in run_start..end_k {
@@ -391,17 +391,17 @@ fn run_decorations(
                     if a < x0 - 0.01 || b > x1 + 0.01 {
                         continue; // drawn with its own span
                     }
-                    out.push(Draw::Line { x0: a, y0: uy, x1: b, y1: uy, width: thick, color: ucolor, stroke: Stroke::Solid, alpha, text_bg });
+                    out.push(Draw::Line { x0: a, y0: uy, x1: b, y1: uy, width: uthick, color: ucolor, stroke: Stroke::Solid, alpha, text_bg });
                 }
             } else {
-                let w = if underline == Underline::Thick { thick * 2.0 } else { thick };
+                let w = if underline == Underline::Thick { uthick * 2.0 } else { uthick };
                 out.push(Draw::Line { x0, y0: uy, x1, y1: uy, width: w, color: ucolor, stroke: stroke_of(underline), alpha, text_bg });
             }
         }
         if struck {
-            let sy = base - st.shift - st.size * 0.28;
+            let sy = base - st.shift - scentre;
             let stroke = if double { Stroke::Double } else { Stroke::Solid };
-            out.push(Draw::Line { x0, y0: sy, x1, y1: sy, width: thick, color, stroke, alpha, text_bg });
+            out.push(Draw::Line { x0, y0: sy, x1, y1: sy, width: sthick, color, stroke, alpha, text_bg });
         }
     }
     // Emphasis marks (Font › Emphasis mark): one over (or under) each character.
@@ -415,6 +415,21 @@ fn run_decorations(
             out.push(emphasis_mark(rc.emphasis, (a + b) / 2.0, base - st.shift, st.size, color));
         }
     }
+}
+
+/// The run's underline (centre below the baseline, thickness) and strikethrough (centre above
+/// the baseline, thickness), in points at the drawn size. As Word draws them, they come from the
+/// font: the underline from its `post` table, the strikethrough from its `OS/2` table. A font
+/// without usable values falls back to 0.12 and 0.28 of the size, `size / 18` thick. Lines are
+/// at least 0.25 pt thick.
+fn decoration_lines(st: &crate::para::StyleRun) -> (f32, f32, f32, f32) {
+    const MIN_THICK: f32 = 0.25;
+    let size = st.size;
+    let face = st.face.get();
+    let fallback = (size / 18.0).max(0.5);
+    let (uc, ut) = face.underline_metrics().map_or((size * 0.12, fallback), |(c, t)| (c as f32 * size, (t as f32 * size).max(MIN_THICK)));
+    let (sc, sw) = face.strikeout_metrics().map_or((size * 0.28, fallback), |(c, t)| (c as f32 * size, (t as f32 * size).max(MIN_THICK)));
+    (uc, ut, sc, sw)
 }
 
 /// An emphasis mark `mark` for a character centred at `cx` on baseline `base`, in a font of
@@ -562,18 +577,18 @@ fn label_decorations(ctx: &LineContext<'_, '_, '_>, gx: f32, width: f32, st: &cr
     }
     let (x0, x1) = (gx, gx + width);
     let color = ctx.ink(&rc.color, fill);
-    let thick = (st.size / 18.0).max(0.5);
+    let (ucentre, uthick, scentre, sthick) = decoration_lines(st);
     if rc.underline != Underline::None {
-        let uy = ctx.base - st.shift + st.size * 0.12;
-        let w = if rc.underline == Underline::Thick { thick * 2.0 } else { thick };
+        let uy = ctx.base - st.shift + ucentre;
+        let w = if rc.underline == Underline::Thick { uthick * 2.0 } else { uthick };
         let stroke = if rc.underline == Underline::Words { Stroke::Solid } else { stroke_of(rc.underline) };
         let ucolor = rc.underline_color.unwrap_or(color);
         out.push(Draw::Line { x0, y0: uy, x1, y1: uy, width: w, color: ucolor, stroke, alpha: ctx.alpha, text_bg: fill });
     }
     if struck {
-        let sy = ctx.base - st.shift - st.size * 0.28;
+        let sy = ctx.base - st.shift - scentre;
         let stroke = if rc.double_strike { Stroke::Double } else { Stroke::Solid };
-        out.push(Draw::Line { x0, y0: sy, x1, y1: sy, width: thick, color, stroke, alpha: ctx.alpha, text_bg: fill });
+        out.push(Draw::Line { x0, y0: sy, x1, y1: sy, width: sthick, color, stroke, alpha: ctx.alpha, text_bg: fill });
     }
 }
 
