@@ -325,6 +325,8 @@ fn missing_font_metrics_no_leading(family: &str) -> Option<(f64, f64)> {
 /// Verdana: `/Ascent` 1005, the descent the rest of the line; 10 pt lines 12.12 and 12.24 pt apart (1.215 em).
 /// Georgia: `/Ascent` 917, the descent the rest of the line; 11 pt lines 12.48 pt apart (1.136 em).
 /// Trebuchet MS: `/Ascent` 939, the descent the rest of the line; 24 pt lines 27.84 pt apart (1.161 em).
+/// Century: `/Ascent` 986, the descent the rest of the line; 10, 12, 20 and 36 pt lines
+/// 12.0-12.12, 14.40-14.52, 24.0-24.12 and 43.2-43.35 pt apart (1.2023 em).
 /// Century Gothic: `/Ascent` 1006, the descent the rest of the line; 10 pt lines 12.24 and 12.36 pt apart (1.226 em).
 /// With "Don't add leading between rows of text", 10, 20 and 36 pt lines 11.91, 23.83 and 42.90 pt
 /// apart (1.1916 em), the first line moved up as much: the leading comes off the ascent.
@@ -346,6 +348,7 @@ fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
         "verdana" => Some((1.005, 0.210)),
         "georgia" => Some((0.917, 0.219)),
         "trebuchet ms" => Some((0.939, 0.222)),
+        "century" => Some((0.986, 0.216)),
         "century gothic" => Some((1.006, 0.220)),
         "consolas" => Some((0.743, 0.429)),
         "garamond" => Some((0.862, 0.263)),
