@@ -788,10 +788,10 @@ fn search_objects(p: &wordcraft_doc::Paragraph, field_codes: bool) -> Vec<Search
                     depth -= 1;
                     if depth == 0 {
                         // Everything since the start (the result) is left out.
-                        if let Some(start) = out.last().map(|s| s.end) {
-                            if start < at {
-                                out.push(SearchObj { at: start, end: at, ch: None });
-                            }
+                        if let Some(start) = out.last().map(|s| s.end)
+                            && start < at
+                        {
+                            out.push(SearchObj { at: start, end: at, ch: None });
                         }
                         out.push(SearchObj { at, end, ch: Some(find_pattern::FIELD_END) });
                     }
