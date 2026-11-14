@@ -19,6 +19,7 @@ mod find_wildcards_word;
 mod formula_result_word;
 mod date_picture_word;
 mod insert_table_autofit;
+mod table_autofit_word;
 mod insert_table_remember;
 mod drop_cap_from_style;
 mod define_number_format;
@@ -2929,7 +2930,7 @@ fn autofit_contents_sizes_columns_to_their_text() {
     assert!(total <= tw + 0.5 && total > tw - 1.0, "the long text fills the page width: {total} vs {tw}");
     let t = s.doc.body.iter().find_map(|b| b.as_table()).unwrap();
     assert!(t.props.width_pct.is_none() && !t.props.fixed);
-    assert_eq!(t.rows[0].cells[1].props.width, Some(after[1]), "cell widths follow the grid");
+    assert_eq!(t.rows[0].cells[1].props.width, None, "AutoFit Contents clears the cells' preferred widths (Word: tcW auto)");
     // Short text only: every column gets just what its text needs.
     s.doc = wordcraft_doc::Document::new();
     s.sel = crate::Selection::caret(Pos::body(0, 0));
