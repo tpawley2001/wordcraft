@@ -440,7 +440,7 @@ impl PropCtx {
                 "w:autoSpaceDE" => p.auto_space_de = Some(on_off(k)),
                 "w:autoSpaceDN" => p.auto_space_dn = Some(on_off(k)),
                 "w:snapToGrid" => p.snap_to_grid = Some(on_off(k)),
-                "w:divId" => p.div_id = div_id(k),
+                "w:divId" => p.div_id = div_id(k).map(String::into_boxed_str),
                 "w:textAlignment" => p.text_alignment = k.attr("w:val").and_then(TextAlignment::from_ooxml),
                 "w:framePr" => {
                     if let Some(kind @ ("drop" | "margin")) = k.attr("w:dropCap") {

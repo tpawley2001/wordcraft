@@ -344,7 +344,7 @@ impl ResolvedPara {
             drop_cap: p.drop_cap.unwrap_or(0).min(10),
             drop_cap_margin: p.drop_cap_margin.unwrap_or(false),
             drop_cap_distance: p.drop_cap_distance.filter(|d| d.is_finite()).unwrap_or(0.0).clamp(0.0, MAX_DROP_CAP_DISTANCE),
-            drop_cap_font: p.drop_cap_font.clone().filter(|f| !f.trim().is_empty()),
+            drop_cap_font: p.drop_cap_font.as_deref().filter(|f| !f.trim().is_empty()).map(str::to_string),
             drop_cap_indent_first: p.drop_cap_indent_first.filter(|v| v.is_finite()).map(|v| v.clamp(-MAX_INDENT, MAX_INDENT)),
             drop_cap_sized: p.drop_cap_sized.unwrap_or(false),
             // Explicit zero dimensions cancel a frame; omitted dimensions still fit its text.
@@ -364,7 +364,7 @@ impl ResolvedPara {
             snap_to_grid: p.snap_to_grid.unwrap_or(true),
             indent_chars: [p.indent_left_chars, p.indent_right_chars, p.indent_first_chars]
                 .map(|c| c.filter(|c| c.is_finite()).unwrap_or(0.0).clamp(-MAX_CHARS, MAX_CHARS)),
-            div_id: p.div_id.clone(),
+            div_id: p.div_id.as_deref().map(str::to_string),
         }
     }
 }

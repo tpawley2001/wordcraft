@@ -507,7 +507,7 @@ impl Paragraph {
             for r in cap.runs.iter_mut().filter(|r| r.props.font == cap_font) {
                 r.props.font = text_font.clone();
             }
-            props.drop_cap_font = cap_font;
+            props.drop_cap_font = cap_font.map(String::into_boxed_str);
         }
         cap.append(next);
         cap.props = props;

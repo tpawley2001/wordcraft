@@ -530,7 +530,7 @@ pub struct ParaProps {
     pub drop_cap_distance: Option<f32>,
     /// The drop cap letter's font family (the cap run's `w:rFonts`). Unset = the text's font.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub drop_cap_font: Option<String>,
+    pub drop_cap_font: Option<Box<str>>,
     /// The margin cap frame's first-line indent, points; negative = hanging.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drop_cap_indent_first: Option<f32>,
@@ -576,7 +576,7 @@ pub struct ParaProps {
     /// `w:divId` (ECMA-376 §17.3.1.10): the HTML div (`Settings::web_divs`) the paragraph
     /// belongs to; its left and right margins add to the indents.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub div_id: Option<String>,
+    pub div_id: Option<Box<str>>,
     /// `w:textAlignment`: how characters of different sizes line up on a line. Kept for the
     /// file (not laid out yet); Word sizes a line by it, so dropping it changes Word's pages.
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -35,7 +35,7 @@ fn resolved_lines(s: &Session) -> u8 {
 
 fn own(s: &Session) -> (Option<u8>, Option<bool>, Option<f32>, Option<String>) {
     let p = props(s);
-    (p.drop_cap, p.drop_cap_margin, p.drop_cap_distance, p.drop_cap_font)
+    (p.drop_cap, p.drop_cap_margin, p.drop_cap_distance, p.drop_cap_font.map(String::from))
 }
 
 #[test]

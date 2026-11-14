@@ -410,7 +410,7 @@ fn join(first: &mut Paragraph, mut body: Paragraph, cap: &Cap) {
         for r in first.runs.iter_mut().filter(|r| r.props.font == cap_font) {
             r.props.font = text_font.clone();
         }
-        props.drop_cap_font = cap_font;
+        props.drop_cap_font = cap_font.map(String::into_boxed_str);
     }
     settle_old(&mut props);
     let mark = std::mem::take(&mut body.mark);
@@ -526,7 +526,7 @@ fn split(p: &Paragraph) -> Option<(Paragraph, Paragraph)> {
     }
     if let Some(f) = p.props.drop_cap_font.as_ref().filter(|f| !f.trim().is_empty()) {
         for r in &mut head.runs {
-            r.props.font = Some(f.clone());
+            r.props.font = Some(f.to_string());
         }
     }
     head.section = None;
