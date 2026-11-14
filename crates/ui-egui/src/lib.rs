@@ -428,7 +428,9 @@ pub struct UiState {
     /// File › Options › General: start on File › Home (Blank document, templates, Recent) when
     /// the app opens without a document (#766); on, as in Word. See [`WordApp::start_screen`].
     pub start_screen: bool,
-    /// File › Options › Display: print the page colour (off, as in Word).
+    /// File › Options › Display › Print background colors and images, as older versions saved
+    /// it: now the session's `prefs.print_background`, mirrored here when saving
+    /// and read back (on wins) when loading.
     pub print_backgrounds: bool,
     /// File › Options › Display: update fields (dates, page numbers, SEQ…) before printing.
     pub update_fields_before_print: bool,

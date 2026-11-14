@@ -132,6 +132,8 @@ fn write_attempt<'a>(
         lay,
         opts,
         forms_data_only: opts.forms_data_only,
+        background: opts.background,
+        drawings: opts.drawings,
         out_index: destinations,
         fonts: HashMap::new(),
         font_error: None,
@@ -158,6 +160,8 @@ fn write_attempt<'a>(
             // Print only the data from a form is the document's setting: the appendix is a
             // report about the document and prints in full.
             ex.forms_data_only = opts.forms_data_only && !in_appendix;
+            ex.background = opts.background || in_appendix;
+            ex.drawings = opts.drawings || in_appendix;
             std::mem::swap(&mut ex.out_index, &mut appendix_destinations);
             ex.bookmarks = std::cell::OnceCell::new();
         }

@@ -603,6 +603,9 @@ fn item_in(doc: &Document, it: &Placed, opts: &DisplayOptions, authors: &Authors
     if opts.forms_data_only && !matches!(it, Placed::Lines { .. } | Placed::Clip { .. }) {
         return;
     }
+    if opts.hide_drawings && is_drawing(doc, it) {
+        return;
+    }
     match it {
         Placed::Fill { rect, color } => out.push(Draw::Fill { rect: *rect, color: *color, alpha, text_bg: false }),
         Placed::Rule { x0, y0, x1, y1, border } => out.push(rule(*x0, *y0, *x1, *y1, border, alpha)),
@@ -674,6 +677,20 @@ fn item_in(doc: &Document, it: &Placed, opts: &DisplayOptions, authors: &Authors
         Placed::Lines { story, path, para, l0, l1, x, y, .. } => {
             lines(LineRender { doc, story: *story, path, pl: para, range: *l0..*l1, origin: (*x, *y), opts, authors, alpha, down: false }, out)
         }
+    }
+}
+
+/// Whether `it` is a drawing created in Word, which [`DisplayOptions::hide_drawings`] leaves out:
+/// a shape (lines, WordArt, a text box's or a canvas's own fill and outline; ink strokes are not
+/// drawings), a text box's text, or a drawing canvas's members. Pictures, charts and diagrams
+/// are not drawings, and a table cell's background picture (a clip of pictures with no object of
+/// their own) isn't either.
+fn is_drawing(doc: &Document, it: &Placed) -> bool {
+    match it {
+        Placed::Shape { freeform, .. } => !freeform.as_ref().is_some_and(|f| f.ink.is_some()),
+        Placed::Lines { story: StoryRef::Part(id), .. } => doc.parts.get(id).is_some_and(|p| p.kind == wordcraft_doc::PartKind::TextBox),
+        Placed::Clip { items, .. } => !items.iter().all(|i| matches!(i, Placed::Image { off: usize::MAX, .. })),
+        _ => false,
     }
 }
 
