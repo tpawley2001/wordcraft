@@ -714,17 +714,25 @@ fn session_result(doc: &wordcraft_doc::Document, ctx: &OutputContext, name: &str
     Some(text_result(instr, text))
 }
 
-/// The text of a `QUOTE "text"` field: exactly one quoted argument and no switch but `\*`.
-/// `None` for any other form (unquoted words, several arguments, picture switches).
+/// A `QUOTE "text"` result: one quoted argument, optionally with a date picture.
+/// Unsupported forms keep their cached result; callers apply `\*` formats afterwards.
 fn quote_literal(instr: &str) -> Option<String> {
     let f = FieldCode::parse(instr);
-    if f.name != "QUOTE" || f.switches.iter().any(|(c, _)| *c != '*') {
+    if f.name != "QUOTE" || f.switches.iter().any(|(c, _)| !matches!(c, '*' | '@')) {
         return None;
     }
     let [text] = f.args.as_slice() else { return None };
     let words = super::field_words(instr);
     match words.get(1) {
-        Some((w, true)) if w == text => Some(text.clone()),
+        Some((w, true)) if w == text => {
+            let Some((_, picture)) = f.switches.iter().find(|(c, _)| *c == '@') else { return Some(text.clone()) };
+            let picture = picture.as_deref()?;
+            // Unverified: most likely Word shares Sort by Date's date-text reader with QUOTE.
+            // Only the date/time forms recorded in quote_date_picture were measured in Word.
+            let date = crate::cmd::sort_keys::date_parts(text)?;
+            let days = crate::cmd::controls::days_from_civil(date.year, date.month, date.day);
+            Some(crate::cmd::insert::format_date_parts(picture, date.year, date.month as usize, date.day, date.time, days))
+        }
         _ => None,
     }
 }
@@ -1053,6 +1061,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
             }
             let name = wordcraft_layout::fields::field_name(instr);
             match name.as_str() {
+                "QUOTE" => updates.extend(quote_literal(instr).map(|text| (k, text_result(instr, text)))),
                 "SYMBOL" => updates.push((k, wordcraft_layout::fields::symbol_text(instr))),
                 "DATE" | "TIME" | "SAVEDATE" => {
                     let lang = field_lang(&s.doc, p, k);
@@ -1464,7 +1473,8 @@ mod header_footer_output_tests {
                     "QUOTE",
                 ]
             ),
-            ["fresh text", "MIXED", "", "stale", "stale", "stale", "stale", "stale"]
+            // A date picture formats the quoted date; `\#` is still not evaluated.
+            ["fresh text", "MIXED", "", "stale", "stale", "stale", "2024", "stale"]
         );
     }
 

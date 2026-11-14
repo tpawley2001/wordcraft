@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0489: formula results use literal decimal precision and decimal half-away rounding; fractional results rounded to zero show `0.0`; INT and MOD truncate toward zero. Readiness estimates unchanged; earlier: P0493: normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes; `^?` skips optional hyphens and searches paragraph marks, including the final mark, which replacement preserves. Readiness estimates unchanged; earlier: P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged)
@@ -169,6 +171,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-14: P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged.
 
 - 2026-11-14: P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged.
 
@@ -1009,6 +1013,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0495: Update Fields evaluates unlocked literal QUOTE fields in the updated story; a date/time literal with `\@` uses the shared Sort by Date reader and existing picture formatter. Unsupported forms keep their cached result. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged. |
 > 2026-11-08 · P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.

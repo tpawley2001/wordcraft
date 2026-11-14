@@ -63,6 +63,7 @@ mod autoformat_now;
 mod extend_selection;
 mod listnum_fields;
 mod seq_word;
+mod quote_date_picture;
 mod time_picture_runs;
 mod mark_final;
 mod mark_toc_entry;
