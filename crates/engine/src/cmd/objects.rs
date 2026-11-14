@@ -43,3 +43,5 @@ pub use specs::specs;
 mod tests;
 #[cfg(test)]
 mod tests_lock_aspect;
+#[cfg(test)]
+mod tests_wrap_points;
