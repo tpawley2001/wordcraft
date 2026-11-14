@@ -403,8 +403,8 @@ fn run_decorations(
         }
         if struck {
             let sy = base - st.shift - scentre;
-            let stroke = if double { Stroke::Double } else { Stroke::Solid };
-            out.push(Draw::Line { x0, y0: sy, x1, y1: sy, width: sthick, color, stroke, alpha, text_bg });
+            let (width, stroke) = strike_line(double, sthick);
+            out.push(Draw::Line { x0, y0: sy, x1, y1: sy, width, color, stroke, alpha, text_bg });
         }
     }
     // Emphasis marks (Font › Emphasis mark): one over (or under) each character.
@@ -657,9 +657,18 @@ fn label_decorations(ctx: &LineContext<'_, '_, '_>, gx: f32, width: f32, st: &cr
     }
     if struck {
         let sy = ctx.base - st.shift - scentre;
-        let stroke = if rc.double_strike { Stroke::Double } else { Stroke::Solid };
-        out.push(Draw::Line { x0, y0: sy, x1, y1: sy, width: sthick, color, stroke, alpha: ctx.alpha, text_bg: fill });
+        let (width, stroke) = strike_line(rc.double_strike, sthick);
+        out.push(Draw::Line { x0, y0: sy, x1, y1: sy, width, color, stroke, alpha: ctx.alpha, text_bg: fill });
     }
+}
+
+/// A strikethrough's line width and stroke, given the single strikethrough's thickness. Word draws
+/// a double strikethrough as two lines each as thick as the single one, the upper just above it and
+/// the lower just below it (measured in Word 16.0's PDF export, 7-36 pt): one line three
+/// thicknesses wide whose outer thirds are filled. `UnderlineDouble` is the stroke that draws that
+/// shape; it is not specific to underlines.
+fn strike_line(double: bool, thickness: f32) -> (f32, Stroke) {
+    if double { (thickness * 3.0, Stroke::UnderlineDouble { line: 333 }) } else { (thickness, Stroke::Solid) }
 }
 
 fn draw_label_and_hyphen(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
