@@ -587,6 +587,17 @@ impl<'e> Breaker<'e> {
             // descent) and a check box. A line break ending the line is no text.
             ex.text |= math || check_box || !matches!(c.kind, ClKind::Object(_) | ClKind::LineBreak | ClKind::PageBreak | ClKind::ColumnBreak);
         }
+        // A note separator's line is as tall as the larger of the separator's font and the
+        // paragraph mark's (Word: a 1 pt separator under an 11 pt mark takes an 11 pt line, a
+        // 20 pt mark a 20 pt one). On lines with text the mark doesn't count.
+        let note_sep = pl.clusters.get(c0..c1).into_iter().flatten().any(|c| matches!(c.kind, ClKind::Object(o) if pl.note_seps.contains(&o)));
+        if note_sep && let Some(st) = pl.styles.get(self.mark_style as usize) {
+            ex.asc = ex.asc.max(st.ascent);
+            ex.desc = ex.desc.max(st.descent);
+            ex.font_asc = ex.font_asc.max(st.ascent);
+            ex.font_desc = ex.font_desc.max(st.descent);
+            any = true;
+        }
         if (!any || (ex.asc == 0.0 && ex.desc == 0.0))
             && let Some(st) = pl.styles.get(self.mark_style as usize)
         {
