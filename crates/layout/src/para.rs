@@ -90,6 +90,9 @@ pub struct ParaLayout {
     pub maths: Vec<(usize, Arc<crate::math::MathLayout>)>,
     /// The legacy check boxes among its objects (inline objects' indexes).
     pub check_boxes: Vec<usize>,
+    /// The note separators among its objects (inline objects' indexes). A line holding one is at
+    /// least as tall as the paragraph mark's font, as in Word.
+    pub note_seps: Vec<usize>,
     /// Ruby (Phonetic Guide) text over base-text clusters, in cluster order.
     pub rubies: Vec<RubyLayout>,
     /// Display equations (on lines of their own): cluster index and justification.

@@ -86,6 +86,7 @@ struct Shaped<'a> {
     drop_cap_w: f32,
     maths: Vec<(usize, Arc<crate::math::MathLayout>)>,
     check_boxes: Vec<usize>,
+    note_seps: Vec<usize>,
     enclosures: Vec<(usize, Enclosed)>,
     rubies: Vec<RubyLayout>,
     displays: Vec<(usize, wordcraft_doc::math::MathJc)>,
@@ -213,6 +214,7 @@ impl<'a> Shaped<'a> {
             drop_cap_w: 0.0,
             maths: Vec::new(),
             check_boxes: Vec::new(),
+            note_seps: Vec::new(),
             enclosures: Vec::new(),
             rubies: Vec::new(),
             displays: Vec::new(),
@@ -379,6 +381,7 @@ impl<'a> Shaped<'a> {
                 let cont = o.as_note_separator() == Some(true);
                 let maxw = (cx.env.width - cx.rp.indent_left.max(0.0) - cx.rp.indent_right.max(0.0)).max(1.0);
                 self.push(slot, ClKind::Object(k), if cont { maxw } else { crate::NOTE_SEP_W.min(maxw) }, 0.0);
+                self.note_seps.push(k);
             }
             InlineObject::Ruby { .. } => self.ruby(cx, o, slot, (rc, props)),
             InlineObject::Opaque { text, .. } => self.b.shape_atomic(text, slot.start, slot.end, rc),
@@ -774,6 +777,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         drop_cap_w,
         maths,
         check_boxes,
+        note_seps,
         enclosures,
         rubies,
         displays,
@@ -804,6 +808,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         drop_cap_w,
         maths,
         check_boxes,
+        note_seps,
         rubies,
         displays,
         ptabs,
