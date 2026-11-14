@@ -14,6 +14,7 @@ mod autonum_fields;
 mod auto_caption;
 mod indent_keys_word;
 mod convert_text_spaces_word;
+mod find_caret_word;
 mod find_wildcards_word;
 mod formula_result_word;
 mod date_picture_word;
@@ -1084,10 +1085,11 @@ fn find_replace() {
 #[test]
 fn find_replace_special_codes() {
     // ^p finds paragraph marks across paragraphs; Replace All with ^p splits paragraphs and is one undo step.
+    // Word also finds the last paragraph mark (measured in Microsoft 365 Word), so three paragraphs give three.
     let mut s = s();
     run(&mut s, "document.setText", json!({"text": "one\ntwo\nthree"}));
     let paras = |s: &Session| s.doc.para_paths(StoryRef::Body).len();
-    assert_eq!(run(&mut s, "edit.find", json!({"text": "^p"}))["count"], 2);
+    assert_eq!(run(&mut s, "edit.find", json!({"text": "^p"}))["count"], 3);
     assert_eq!(run(&mut s, "edit.replaceAll", json!({"text": "o^pt", "with": "O+T"}))["replaced"], 1);
     assert_eq!((text(&s).as_str(), paras(&s)), ("one\ntwO+Three", 2));
     run(&mut s, "edit.undo", json!({}));

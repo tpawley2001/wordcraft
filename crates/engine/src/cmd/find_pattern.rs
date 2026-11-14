@@ -18,7 +18,7 @@ pub const SECT_MARK: char = '\u{1D}';
 pub const MAX_PATTERN: usize = 1024;
 /// Largest count in `{n,m}`.
 const MAX_COUNT: u32 = 1000;
-/// Any character except a paragraph mark (`?`, `^?`, `*`).
+/// The `^?` atom in wildcard search, excluding paragraph and section marks.
 const ANY: &str = r"[^\r\x{1D}]";
 /// Any character in "Use wildcards" (`?`, `*`, `[!…]`): Word's wildcards match a paragraph mark
 /// too, so such a match can run into the next paragraph.
@@ -105,7 +105,7 @@ fn code_char(n: u32) -> Option<char> {
         14 => '\u{0E}',
         30 => '\u{2011}',
         31 => '\u{AD}',
-        n => char::from_u32(n).filter(|c| !c.is_control() || *c == '\t')?,
+        n => char::from_u32(n)?,
     })
 }
 
@@ -130,7 +130,38 @@ fn numeric_code(chars: &[char], i: usize) -> Option<(char, usize)> {
     let n: u32 = digits.parse().ok()?;
     // `^0nnn` is a Windows-1252 (ANSI) code; `^nnn` and `^unnnn` are Unicode.
     let n = if start == i && digits.starts_with('0') { ansi(n) } else { n };
-    Some((code_char(n)?, start - i + digits.chars().count()))
+    Some((code_char(n).filter(|c| !c.is_control() || *c == '\t' || matches!(n, 11..=14))?, start - i + digits.chars().count()))
+}
+
+/// Normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes. Invalid
+/// numeric codes are consumed as a search that cannot match, rather than as literal text.
+fn find_numeric(chars: &[char], i: usize) -> Option<(Option<char>, usize)> {
+    let unicode = chars.get(i) == Some(&'u');
+    let start = i + usize::from(unicode);
+    let leading_zero = chars.get(start) == Some(&'0');
+    let max = if unicode {
+        MAX_PATTERN
+    } else if leading_zero {
+        4
+    } else {
+        3
+    };
+    let digits: String = chars.get(start..)?.iter().take(max).take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    let ch = digits.parse::<u32>().ok().and_then(|n| {
+        if unicode {
+            char::from_u32(n)
+        } else if leading_zero {
+            numeric_code(chars, i).map(|(ch, _)| ch)
+        } else if (1..=127).contains(&n) {
+            code_char(n)
+        } else {
+            None
+        }
+    });
+    Some((ch, start - i + digits.len()))
 }
 
 /// A literal character as a regex atom.
@@ -185,14 +216,14 @@ fn special(query: &str, o: &Opts) -> (String, bool) {
             && let Some(&n) = chars.get(i)
         {
             if let Some(code) = find_code(n) {
-                spans |= matches!(n, 'p' | 'b');
-                atoms.push(code.to_string());
+                spans |= matches!(n, 'p' | 'b' | '?');
+                atoms.push(if n == '?' { r"[^\x{AD}]".to_string() } else { code.to_string() });
                 i += 1;
                 continue;
             }
-            if let Some((ch, used)) = numeric_code(&chars, i) {
-                spans |= ch == PARA_MARK;
-                atoms.push(lit(ch));
+            if let Some((ch, used)) = find_numeric(&chars, i) {
+                spans |= ch == Some(PARA_MARK);
+                atoms.push(ch.map(lit).unwrap_or_else(|| r"[^\s\S]".into()));
                 i += used;
                 continue;
             }
@@ -552,6 +583,22 @@ mod tests {
 
     fn replaced(with: &str) -> String {
         expand(&parse_replace(with, &Opts::default()), "", &|_| None, "")
+    }
+
+    #[test]
+    fn normal_numeric_codes_preserve_controls_and_unicode_scalars() {
+        for (query, text) in [("^1", "\u{1}"), ("^127", "\u{7f}"), ("^u150", "\u{96}"), ("^u128512", "😀"), ("^u000000169", "©")] {
+            assert!(finds(query, text), "{query}");
+        }
+        for query in ["^0", "^128", "^169", "^233", "^00169", "^u55296", "^u1114112"] {
+            assert!(!finds(query, query), "invalid numeric code {query} must not become literal text");
+        }
+        // Wildcard and Replace with decoding retain their existing control filtering.
+        for query in ["^10", "^127", "^u150"] {
+            let c = compile(query, &Opts { wildcards: true, ..Opts::default() }).unwrap();
+            assert!(regex::Regex::new(&c.pattern).unwrap().is_match(query));
+            assert_eq!(replaced(query), query);
+        }
     }
 
     #[test]
