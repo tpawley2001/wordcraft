@@ -1,5 +1,7 @@
 # Layout and pagination parity with Microsoft Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged.)
+
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-14 · **Change:** trivial (P0471: a highlight or character shading under 1.5, double or other multiple line spacing fills only the line's single-spacing height, as in Word, so highlighted lines no longer run into each other. Readiness estimates unchanged; earlier: P0457: Edit Wrap Points (`arrange.wrapPoints`) reads and edits the outline Tight and Through wrapping follow. Readiness estimates unchanged; earlier: P0456: in compatibility mode 14 and older with Compress punctuation, proportional fonts such as Times New Roman and Arial squeeze their spaces down to half the font's average character width to keep an overrunning word, as in Word. Readiness estimates unchanged)
 
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-14 · **Change:** trivial (P0467: the line of a document's own note separator is as tall as the larger of the separator's font and its paragraph mark's, as in Word. Readiness estimates unchanged; earlier: P0457: Edit Wrap Points (`arrange.wrapPoints`) reads and edits the outline Tight and Through wrapping follow. Readiness estimates unchanged; earlier: P0456: in compatibility mode 14 and older with Compress punctuation, proportional fonts such as Times New Roman and Arial squeeze their spaces down to half the font's average character width to keep an overrunning word, as in Word. Readiness estimates unchanged)
@@ -418,6 +420,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0470: an underline's centre sits `(-underlinePosition + underlineThickness / 2) / unitsPerEm` x size below the baseline and is `underlineThickness / unitsPerEm` x size thick (`post`); a strikethrough's centre sits `(yStrikeoutPosition - yStrikeoutSize / 2) / unitsPerEm` x size above it, `yStrikeoutSize / unitsPerEm` x size thick (`OS/2`), as measured in Word's PDFs (7-36 pt, Times New Roman, Arial). Lines are at least 0.25 pt; fonts without usable values keep 0.12 / 0.28 x size, size / 18 thick (`layout::tests::underline_from_font`). Readiness estimates unchanged |
 | 2026-11-14 | trivial | P0469: small capitals are set at 0.8 of the text size rounded to the half point, as in Word (an 11 pt run drew them at 8.8 pt, Word at 9 pt); readiness estimates unchanged |
 | 2026-11-14 | trivial | P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged. |
