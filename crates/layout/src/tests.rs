@@ -19,6 +19,7 @@ mod button_switches;
 mod cell_floats;
 mod column_break_line;
 mod column_top_float;
+mod columns_line_numbers_word;
 mod complex;
 mod compress_punct_squeeze;
 mod continuous_resized_section;
