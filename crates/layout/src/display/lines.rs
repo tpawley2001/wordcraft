@@ -600,13 +600,29 @@ fn character_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
             continue;
         }
         if let Some((previous, x0, x1)) = open.take() {
-            char_box(&previous, x0, x1, ctx.top, ctx.bottom, ctx.alpha, out);
+            run_box(&previous, x0, x1, ctx.top, ctx.bottom, ctx.alpha, out);
         }
         open = border.map(|border| (border, ctx.x + left, ctx.x + right));
     }
     if let Some((border, x0, x1)) = open {
-        char_box(&border, x0, x1, ctx.top, ctx.bottom, ctx.alpha, out);
+        run_box(&border, x0, x1, ctx.top, ctx.bottom, ctx.alpha, out);
     }
+}
+
+/// A run border's box over one line of its group. The group's clusters already hold the
+/// border's room (space plus width) at its ends and the line holds it above and below, so the
+/// box's outer edge is the clusters' edge and the line's; the stroke lies inside it.
+fn run_box(b: &Border, x0: f32, x1: f32, top: f32, bottom: f32, alpha: f32, out: &mut Vec<Draw>) {
+    if crate::para::border_room(Some(b)) <= 0.0 {
+        // No room was taken (an invisible border): the box as before.
+        char_box(b, x0, x1, top, bottom, alpha, out);
+        return;
+    }
+    let half = super::page::rule_width(b) / 2.0;
+    let (l, r) = (x0 + half, (x1 - half).max(x0 + half));
+    let (t, bt) = (top + half, (bottom - half).max(top + half));
+    let flat = Border { space: 0.0, ..*b };
+    char_box(&flat, l, r, t, bt, alpha, out);
 }
 
 /// Where a list number's highlight, shading and border end: the line's text start when that lies

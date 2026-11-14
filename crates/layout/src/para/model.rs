@@ -156,7 +156,17 @@ impl StyleRun {
             // (measured: Times New Roman and Arial exactly, Cambria and Calibri within 0.02 x size).
             _ => a += size * 0.2875,
         }
-        (a, d)
+        // A run border's box sits outside the text by its space and line width, and the line
+        // makes room for it above and below (Word, single spacing: 8-24 pt within 0.12 pt).
+        let room = self.border_room();
+        (a + room, d + room)
+    }
+
+    /// The room a run border (`w:bdr`, ECMA-376 17.3.2.4) takes on each side of its text: its
+    /// space plus its line width, points (Word: the box's outer edge lies that far outside the
+    /// glyphs and the plain line). 0 without a visible border.
+    pub fn border_room(&self) -> f32 {
+        border_room(self.rc.border.as_ref())
     }
 
     /// The room dots below the text (`w:em w:val="underDot"`) add under the run's descent:
@@ -170,6 +180,13 @@ impl StyleRun {
         let size = if self.rc.size.is_finite() { self.rc.size.clamp(0.0, 1638.0) } else { 0.0 };
         size * 0.2875
     }
+}
+
+/// [`StyleRun::border_room`] of a border: space plus line width, clamped to a sane range.
+pub(crate) fn border_room(b: Option<&wordcraft_doc::props::Border>) -> f32 {
+    let Some(b) = b.filter(|b| b.is_visible()) else { return 0.0 };
+    let finite = |v: f32| if v.is_finite() { v.clamp(0.0, 200.0) } else { 0.0 };
+    finite(b.space) + finite(b.width)
 }
 
 /// A positioned glyph inside its cluster.

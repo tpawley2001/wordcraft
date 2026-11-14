@@ -533,7 +533,17 @@ impl<'e> Breaker<'e> {
     /// tallest picture on it (which sits on the baseline).
     fn extents(&self, pl: &ParaLayout, (c0, c1): (usize, usize)) -> Extents {
         let rp = &self.rp;
-        let mut ex = Extents { asc: 0.0, desc: 0.0, obj_asc: 0.0, obj_desc: 0.0, text: false, font_asc: 0.0, font_desc: 0.0, unmarked_desc: 0.0 };
+        let mut ex = Extents {
+            asc: 0.0,
+            desc: 0.0,
+            obj_asc: 0.0,
+            obj_desc: 0.0,
+            text: false,
+            font_asc: 0.0,
+            font_desc: 0.0,
+            unmarked_desc: 0.0,
+            unroomed_asc: 0.0,
+        };
         let mut any = false;
         let dropped = pl.drop_cap.map_or(0, |d| d.0);
         for (k, c) in pl.clusters.get(c0..c1).into_iter().flatten().enumerate() {
@@ -553,6 +563,7 @@ impl<'e> Breaker<'e> {
             // the line keeps that font's ascent and descent, and grows to fit it.
             let (mut fa, mut fd) = (None, None);
             let mut unmarked = None;
+            let mut unroomed = None;
             let (a, d) = if check_box {
                 // Word sizes a line by a legacy check box as by text of the box's size (measured
                 // with Arial at 10 and 20 pt: a 20 pt box's line is 23 pt, times the spacing).
@@ -579,12 +590,15 @@ impl<'e> Breaker<'e> {
                 // `obj_d`), which the line grows to fit.
                 let (a, d) = st.line_extent();
                 let below = |d: f32| if c.obj_d > 0.0 { d.max(c.obj_d - st.shift) } else { d };
-                unmarked = Some(below(d - st.mark_room_below()));
+                let room = st.border_room();
+                unmarked = Some(below(d - st.mark_room_below() - room));
+                unroomed = Some(a - room);
                 (a.max(c.obj_h + st.shift), below(d))
             };
             ex.asc = ex.asc.max(a);
             ex.desc = ex.desc.max(d);
             ex.unmarked_desc = ex.unmarked_desc.max(unmarked.unwrap_or(d));
+            ex.unroomed_asc = ex.unroomed_asc.max(unroomed.unwrap_or(a));
             ex.font_asc = ex.font_asc.max(fa.unwrap_or(a));
             ex.font_desc = ex.font_desc.max(fd.unwrap_or(d));
             any = true;
@@ -600,6 +614,7 @@ impl<'e> Breaker<'e> {
             ex.asc = ex.asc.max(st.ascent);
             ex.desc = ex.desc.max(st.descent);
             ex.unmarked_desc = ex.unmarked_desc.max(st.descent);
+            ex.unroomed_asc = ex.unroomed_asc.max(st.ascent);
             ex.font_asc = ex.font_asc.max(st.ascent);
             ex.font_desc = ex.font_desc.max(st.descent);
             any = true;
@@ -610,6 +625,7 @@ impl<'e> Breaker<'e> {
             ex.asc = st.ascent;
             ex.desc = st.descent;
             ex.unmarked_desc = st.descent;
+            ex.unroomed_asc = st.ascent;
         }
         if !any || (ex.font_asc == 0.0 && ex.font_desc == 0.0) {
             (ex.font_asc, ex.font_desc) = (ex.asc, ex.desc);
@@ -620,10 +636,12 @@ impl<'e> Breaker<'e> {
     /// The line's height, baseline and text extent.
     fn measure(&self, pl: &ParaLayout, range: (usize, usize)) -> Measure {
         let rp = &self.rp;
-        let Extents { mut asc, mut desc, obj_asc, obj_desc, text, font_asc: bare_asc, font_desc: bare_desc, unmarked_desc } = self.extents(pl, range);
-        // Room for dots below the text is added once: multiple spacing doesn't scale it, as it
-        // doesn't scale the room for marks above (Word measured at single spacing only).
-        let mark_below = (desc - unmarked_desc).max(0.0);
+        let Extents { mut asc, mut desc, obj_asc, obj_desc, text, font_asc: bare_asc, font_desc: bare_desc, unmarked_desc, unroomed_asc } =
+            self.extents(pl, range);
+        // Room for dots below the text and a run border's room above and below are added once:
+        // multiple spacing doesn't scale them, as it doesn't scale the room for marks above (Word
+        // measured at single spacing only).
+        let mark_below = (desc - unmarked_desc).max(0.0) + (asc - unroomed_asc).max(0.0);
         let mut text_natural = asc + desc;
         // An inline equation taller than its text is sized like a picture beside text: with
         // multiple spacing at or above single the line takes the spacing's share of the text's
@@ -901,8 +919,11 @@ struct Extents {
     /// The ascent and descent without inline equations' own extents (their runs' font instead).
     font_asc: f32,
     font_desc: f32,
-    /// The descent without the room dots below the text add (`StyleRun::mark_room_below`).
+    /// The descent without the room dots below the text and a run border add
+    /// (`StyleRun::mark_room_below`, `StyleRun::border_room`).
     unmarked_desc: f32,
+    /// The ascent without a run border's room (`StyleRun::border_room`).
+    unroomed_asc: f32,
 }
 
 /// A line's height and baseline, and the extent of its text.

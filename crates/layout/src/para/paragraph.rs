@@ -4,7 +4,7 @@ use super::chars::caps_char;
 use super::grid::{auto_space, snap_chars};
 use super::justify::hyphenation_points;
 use super::lines::break_lines;
-use super::model::{ClKind, Cluster, Enclosed, Glyph, Label, LabelRun, ParaEnv, RubyLayout, undrawable_bullet};
+use super::model::{ClKind, Cluster, Enclosed, Glyph, Label, LabelRun, ParaEnv, RubyLayout, StyleRun, undrawable_bullet};
 use super::proof::{ProofRun, is_list_item, proof_issues};
 use wordcraft_fonts::ShapeContext;
 
@@ -586,6 +586,34 @@ impl<'a> BreakText<'a> {
     }
 }
 
+/// Run borders take their room (Word): a group of consecutive runs with equal borders, which
+/// ECMA-376 17.3.2.4 draws as one box, gets the border's space plus line width before its first
+/// character and after its last. Zero-width markers neither split nor end a group.
+fn border_room_advances(b: &mut Builder) {
+    let border_of = |styles: &[StyleRun], c: &Cluster| styles.get(c.style as usize).and_then(|st| st.rc.border).filter(|_| c.kind != ClKind::Marker);
+    let shown: Vec<usize> = (0..b.clusters.len()).filter(|&k| b.clusters.get(k).is_some_and(|c| c.kind != ClKind::Marker)).collect();
+    for (n, &k) in shown.iter().enumerate() {
+        let Some(c) = b.clusters.get(k) else { continue };
+        let border = border_of(&b.styles, c);
+        let room = super::model::border_room(border.as_ref());
+        if room <= 0.0 {
+            continue;
+        }
+        let same = |j: Option<&usize>| j.and_then(|&j| b.clusters.get(j)).map(|o| border_of(&b.styles, o)) == Some(border);
+        let first = n == 0 || !same(n.checked_sub(1).and_then(|p| shown.get(p)));
+        let last = !same(shown.get(n + 1));
+        let (g0, g1) = (c.g0 as usize, c.g1 as usize);
+        if first {
+            for g in b.glyphs.get_mut(g0..g1).into_iter().flatten() {
+                g.dx += room;
+            }
+        }
+        if let Some(c) = b.clusters.get_mut(k) {
+            c.adv += room * (f32::from(u8::from(first)) + f32::from(u8::from(last)));
+        }
+    }
+}
+
 /// Mark the clusters a line may break after.
 fn mark_break_opportunities(clusters: &mut [Cluster], bt: &BreakText, rp: &ResolvedPara) {
     let opps: std::collections::HashSet<usize> = break_positions(&bt.text, rp).into_iter().filter_map(|i| bt.to_para(i)).collect();
@@ -789,6 +817,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     // Text on a character grid keeps to its cells.
     let auto_space =
         if rp.snap_to_grid && env.grid.chars.is_some() { Vec::new() } else { auto_space(&mut sh.b, &p.text, rp.auto_space_de, rp.auto_space_dn) };
+    border_room_advances(&mut sh.b);
     let mut skip = sh.left.clone();
     skip.extend(sh.bare.iter().cloned());
     let bt = BreakText::new(&p.text, skip);
