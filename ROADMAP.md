@@ -1,6 +1,6 @@
 # WordCraft roadmap
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. The protected legacy extent test still requires a separator beside an empty second column on page 2, conflicting with this rule; validation is blocked. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged.)
 
@@ -166,7 +166,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
-- 2026-11-14: P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. The protected legacy extent test still requires a separator beside an empty second column on page 2, conflicting with this rule; validation is blocked. Readiness estimates unchanged.
+- 2026-11-14: P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged.
 - 2026-11-14: P0473: at-least line spacing bottom-aligns highlight and run-shading bands at the tallest text's single-spacing height; exact and multiple spacing are unchanged. Readiness estimates unchanged.
 - 2026-11-14: P0468: superscript rises by 0.35 of the full font size and subscript drops by 0.08, measured in Microsoft 365 Word for Windows from PDF exports. Script size, line height and additive `w:position` handling are unchanged. Readiness estimates unchanged.
 - 2026-11-13: An empty paragraph that only carries a next-page section break, right after a page break or set to Page break before, starts no page of its own: the next section starts on the page the break opened, so no page with only the header and footer sits between two sections. Readiness estimates unchanged.
@@ -991,7 +991,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. The protected legacy extent test still requires a separator beside an empty second column on page 2, conflicting with this rule; validation is blocked. Readiness estimates unchanged. |
+| 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged. |
 
 > 2026-11-08 · P0143: `.doc` embedded-object EMFs NUL-terminate full 32-unit font face names before DOCX save; malformed record chains stay unchanged. Readiness estimates unchanged.
 > 2026-11-08 · P0131: DOCX core-property dates accept only real calendar days and offsets within ±14:00; minute-only times gain seconds on save, while reads preserve valid stored text. Readiness estimates unchanged.

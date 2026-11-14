@@ -1,6 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. The protected legacy extent test still requires a separator beside an empty second column on page 2, conflicting with this rule; validation is blocked. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged.)
 
 > **Last reviewed:** 2026-10-10 · **Last updated:** 2026-11-14 · **Change:** trivial (P0472: double, thick and wavy underlines fill a band worked out from the font's underline, dotted and dashed underlines use Word's fixed dash lengths in points, and waves turn every 1.20 pt with a 0.24 pt pen, as in Word. Readiness estimates unchanged; earlier: P0470: underlines and strikethroughs take their position and thickness from the font (`post` underline, `OS/2` strikeout), as in Word; earlier: P0457: Edit Wrap Points (`arrange.wrapPoints`) reads and edits the outline Tight and Through wrapping follow. Readiness estimates unchanged)
 
@@ -336,7 +336,7 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. The protected legacy extent test still requires a separator beside an empty second column on page 2, conflicting with this rule; validation is blocked. Readiness estimates unchanged. |
+| 2026-11-14 | trivial | P0481: Auto line-number distance is 9 pt in multi-column sections and 18 pt in one column; explicit distances are unchanged. Column separators are 0.72 pt and appear only before columns containing section text on the page, retaining the section-wide vertical extent. Readiness estimates unchanged. |
 
 > 2026-11-14 · P0471: under multiple line spacing above single (1.5, double…), a highlight or character shading (list numbers too) fills from the line's top down the line's single-spacing height, not the whole spaced line, as Word draws it (measured with Times New Roman: double spacing gives single spacing's band); exact and at-least lines and document-grid lines are filled whole as before (`layout::tests::highlight_band`). Readiness estimates unchanged.
 > 2026-11-13 · P0455: documents opened from RTF are saved as DOCX with `w:characterSpacingControl` `compressPunctuation` and compatibility mode 11, as Word saves an RTF file, so the reopened copy keeps squeezing spaces to keep an overrunning word (a 23-page Courier specification came back 24 pages). Readiness estimates unchanged.
