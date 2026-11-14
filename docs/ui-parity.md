@@ -1,6 +1,6 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0486: Distribute Rows shares the selected rows' laid-out height equally, At least. P0466: Ctrl+F10 / Alt+F5 window keys on Linux/Windows; gap #24 narrowed. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-13 · **Change:** trivial (P0463: File › Options › Advanced › Display › Style area pane width in Draft and Outline views: a column of paragraph style names at the left of the text (`view.styleAreaWidth`). Readiness estimates unchanged; earlier: P0337: Insert › Text from File with a Range brings only the comments, replies and footnotes/endnotes that range refers to, not every one of the other file. Readiness estimates unchanged)
 
@@ -553,6 +553,7 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 | 2026-11-13 | trivial | P0463: Style area pane width in Draft and Outline views (File › Options › Advanced › Display, `view.styleAreaWidth`, a user preference in points, 0 by default): each paragraph's style name in a column at the left of the text; drag the separator to resize or close it, double-click a name for Modify Style |
 | 2026-11-13 | trivial | P0460: Immersive Reader is its own view with an Immersive Reader tab (Column Width, Page Color, Line Focus, Text Spacing, Syllables, Read Aloud, Close) instead of switching to Read Mode |
 | 2026-11-13 | trivial | Layout › Arrange › Align: Align Top, Middle and Bottom, Align to Page, Align Selected Objects (the default for two or more objects) and Distribute Horizontally / Vertically (`arrange.distribute`) for floating objects, as in Word; Align only lined one object up left, centre or right of the margin |
+| 2026-11-14 | trivial | P0486: Table Layout › Distribute Rows as in Word: the selected rows (all rows with only a caret in the table) share the total of their laid-out heights equally, each At least; other rows keep theirs. It gave every row the tallest set height and kept exact rules |
 
 ### Format Painter integration refresh, 2026-10-30
 
