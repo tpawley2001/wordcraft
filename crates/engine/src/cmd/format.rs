@@ -46,15 +46,17 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("format.underline", "Underline", "Home › Font", underline)
             .key("Mod+U")
             .params(r#"{"value"?: bool, "style"?: "single|double|thick|dotted|dash|dotDash|dotDotDash|wave|words"}"#),
-        CommandSpec::new("format.doubleUnderline", "Double Underline", "Home › Font › Underline", |s, _| {
-            underline(s, &json!({"style": "double"}))
+        CommandSpec::new("format.doubleUnderline", "Double Underline", "Home › Font › Underline", |s, v| {
+            underline_toggle(s, v, Underline::Double)
         })
-        .key("Mod+Shift+D"),
-        CommandSpec::new("format.wordUnderline", "Underline Words Only", "Home › Font › Underline", |s, _| {
-            underline(s, &json!({"style": "words"}))
+        .key("Mod+Shift+D")
+        .params(r#"{"value"?: bool}"#),
+        CommandSpec::new("format.wordUnderline", "Underline Words Only", "Home › Font › Underline", |s, v| {
+            underline_toggle(s, v, Underline::Words)
         })
-        .key("Mod+Shift+W"),
-        CommandSpec::new("format.strikethrough", "Strikethrough", "Home › Font", |s, v| toggle(s, v, |r| r.strike, |c, on| c.strike = Some(on)))
+        .key("Mod+Shift+W")
+        .params(r#"{"value"?: bool}"#),
+        CommandSpec::new("format.strikethrough", "Strikethrough", "Home › Font", |s, v| effect(s, v, STRIKE, &[DOUBLE_STRIKE]))
             .key("Mod+Shift+X")
             .params(r#"{"value"?: bool}"#),
         // Note: off clears the direct property only; a border inherited from a character style stays on.
@@ -63,7 +65,7 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"value"?: bool}"#),
         CommandSpec::new("format.doubleStrikethrough", "Double Strikethrough", "Home › Font › Font", |s, v| {
-            toggle(s, v, |r| r.double_strike, |c, on| c.double_strike = Some(on))
+            effect(s, v, DOUBLE_STRIKE, &[STRIKE])
         }),
         CommandSpec::new("format.subscript", "Subscript", "Home › Font", |s, v| {
             toggle(
@@ -83,20 +85,20 @@ pub fn specs() -> Vec<CommandSpec> {
             )
         })
         .key("Mod+Shift+="),
-        CommandSpec::new("format.allCaps", "All Caps", "Home › Font › Font", |s, v| toggle(s, v, |r| r.caps, |c, on| c.caps = Some(on)))
+        CommandSpec::new("format.allCaps", "All Caps", "Home › Font › Font", |s, v| effect(s, v, CAPS, &[SMALL_CAPS]))
             .key("Mod+Shift+A"),
         CommandSpec::new("format.smallCaps", "Small Caps", "Home › Font › Font", |s, v| {
-            toggle(s, v, |r| r.small_caps, |c, on| c.small_caps = Some(on))
+            effect(s, v, SMALL_CAPS, &[CAPS])
         })
         .key("Mod+Shift+K"),
         CommandSpec::new("format.hidden", "Hidden", "Home › Font › Font", |s, v| toggle(s, v, |r| r.hidden, |c, on| c.hidden = Some(on)))
             .key("Mod+Shift+H"),
         CommandSpec::new("format.outline", "Outline", "Home › Font › Text Effects", |s, v| {
-            toggle(s, v, |r| r.outline, |c, on| c.outline = Some(on))
+            effect(s, v, OUTLINE, &[EMBOSS, ENGRAVE])
         }),
-        CommandSpec::new("format.shadow", "Shadow", "Home › Font › Text Effects", |s, v| toggle(s, v, |r| r.shadow, |c, on| c.shadow = Some(on))),
-        CommandSpec::new("format.emboss", "Emboss", "Home › Font › Font", |s, v| toggle(s, v, |r| r.emboss, |c, on| c.emboss = Some(on))),
-        CommandSpec::new("format.engrave", "Engrave", "Home › Font › Font", |s, v| toggle(s, v, |r| r.engrave, |c, on| c.engrave = Some(on))),
+        CommandSpec::new("format.shadow", "Shadow", "Home › Font › Text Effects", |s, v| effect(s, v, SHADOW, &[EMBOSS, ENGRAVE])),
+        CommandSpec::new("format.emboss", "Emboss", "Home › Font › Font", |s, v| effect(s, v, EMBOSS, &[ENGRAVE, OUTLINE, SHADOW])),
+        CommandSpec::new("format.engrave", "Engrave", "Home › Font › Font", |s, v| effect(s, v, ENGRAVE, &[EMBOSS, OUTLINE, SHADOW])),
         CommandSpec::new("format.font", "Font", "Home › Font", font).key("Mod+Shift+F").params(r#"{"name"?: string, "eastAsia"?: string}"#),
         CommandSpec::new("format.symbolFont", "Symbol Font", "Home › Font", |s, _| font(s, &json!({"name": "Symbol"})))
             .key(super::mac_or("", "Mod+Shift+Q")),
@@ -262,17 +264,31 @@ fn apply_to(s: &mut Session, target: fn(&Session) -> Option<(Pos, Pos)>, f: &dyn
 /// Resolved target formatting, sampled up to a paragraph/column-row boundary after 10,000 runs.
 /// Empty targets use pending caret formatting or the selected text box paragraph mark.
 fn resolved(s: &Session) -> Vec<ResolvedChar> {
+    resolved_with(s, None)
+}
+
+/// [`resolved`], with `edit` applied to each character's direct formatting first (to ask what the
+/// styles alone would give).
+fn resolved_with(s: &Session, edit: Option<&dyn Fn(&mut CharProps)>) -> Vec<ResolvedChar> {
+    let resolve = |style: Option<&str>, c: &CharProps| match edit {
+        None => s.doc.styles.resolve_char(style, c),
+        Some(f) => {
+            let mut c = c.clone();
+            f(&mut c);
+            s.doc.styles.resolve_char(style, &c)
+        }
+    };
     let mut out = Vec::new();
     if let Some(rows) = column_rows(s) {
         for (a, b) in rows {
             let Some(p) = s.doc.para_at(&a) else { continue };
             // An empty cell: its mark's formatting.
             if a == b {
-                out.push(s.doc.styles.resolve_char(p.props.style.as_deref(), &p.mark));
+                out.push(resolve(p.props.style.as_deref(), &p.mark));
             }
             for (r, c) in p.run_ranges() {
                 if r.end > a.off && r.start < b.off {
-                    out.push(s.doc.styles.resolve_char(p.props.style.as_deref(), c));
+                    out.push(resolve(p.props.style.as_deref(), c));
                 }
             }
             if out.len() > 10_000 {
@@ -286,7 +302,7 @@ fn resolved(s: &Session) -> Vec<ResolvedChar> {
     let Some((a, b)) = selected_text_box(s).or_else(|| target(s)) else {
         let f = &s.sel.focus;
         let style = s.doc.para_at(f).and_then(|p| p.props.style.clone());
-        out.push(s.doc.styles.resolve_char(style.as_deref(), &s.typing_props()));
+        out.push(resolve(style.as_deref(), &s.typing_props()));
         return out;
     };
     for path in s.doc.paths_between(&a, &b) {
@@ -295,7 +311,7 @@ fn resolved(s: &Session) -> Vec<ResolvedChar> {
         let to = if path == b.path { b.off } else { p.len() };
         for (r, c) in p.run_ranges() {
             if r.end > from && r.start < to {
-                out.push(s.doc.styles.resolve_char(p.props.style.as_deref(), c));
+                out.push(resolve(p.props.style.as_deref(), c));
             }
         }
         if out.len() > 10_000 {
@@ -307,17 +323,67 @@ fn resolved(s: &Session) -> Vec<ResolvedChar> {
         let style = p.and_then(|p| p.props.style.clone());
         // An empty selected text box has only its paragraph mark, which is what gets formatted.
         let empty_box = selected_text_box(s).and(p).map(|p| &p.mark);
-        out.push(s.doc.styles.resolve_char(style.as_deref(), empty_box.unwrap_or(&s.typing_props())));
+        out.push(resolve(style.as_deref(), empty_box.unwrap_or(&s.typing_props())));
     }
     out
+}
+
+/// Whether a toggle with no explicit `value` turns its property on: not every target character
+/// has it yet.
+fn turns_on(s: &Session, has: &dyn Fn(&ResolvedChar) -> bool) -> bool {
+    !resolved(s).iter().all(has)
 }
 
 fn toggle(s: &mut Session, v: &Value, get: fn(&ResolvedChar) -> bool, set: fn(&mut CharProps, bool)) -> CmdResult {
     let on = match p::bool(v, "value") {
         Some(b) => b,
-        None => !resolved(s).iter().all(get),
+        None => turns_on(s, &get),
     };
     apply(s, &|c| set(c, on))
+}
+
+/// An on/off character effect: how it resolves and its direct property.
+#[derive(Clone, Copy)]
+struct Effect {
+    get: fn(&ResolvedChar) -> bool,
+    field: fn(&mut CharProps) -> &mut Option<bool>,
+}
+
+const CAPS: Effect = Effect { get: |r| r.caps, field: |c| &mut c.caps };
+const SMALL_CAPS: Effect = Effect { get: |r| r.small_caps, field: |c| &mut c.small_caps };
+const STRIKE: Effect = Effect { get: |r| r.strike, field: |c| &mut c.strike };
+const DOUBLE_STRIKE: Effect = Effect { get: |r| r.double_strike, field: |c| &mut c.double_strike };
+const EMBOSS: Effect = Effect { get: |r| r.emboss, field: |c| &mut c.emboss };
+const ENGRAVE: Effect = Effect { get: |r| r.engrave, field: |c| &mut c.engrave };
+const OUTLINE: Effect = Effect { get: |r| r.outline, field: |c| &mut c.outline };
+const SHADOW: Effect = Effect { get: |r| r.shadow, field: |c| &mut c.shadow };
+
+/// Toggles `me`; turning it on also turns off the effects Word never shows with it (`partners`:
+/// All Caps/Small Caps, Strikethrough/Double, Emboss/Engrave and those two vs Outline/Shadow), in
+/// the same edit. A partner is left unset when no style turns it on, and written off otherwise.
+/// Turning `me` off leaves the partners alone.
+fn effect(s: &mut Session, v: &Value, me: Effect, partners: &[Effect]) -> CmdResult {
+    let on = match p::bool(v, "value") {
+        Some(b) => b,
+        None => turns_on(s, &me.get),
+    };
+    if !on {
+        return apply(s, &|c| *(me.field)(c) = Some(false));
+    }
+    // Which partners a style would still turn on once their direct formatting is cleared.
+    let clear = |c: &mut CharProps| {
+        for p in partners {
+            *(p.field)(c) = None;
+        }
+    };
+    let from_styles = resolved_with(s, Some(&clear));
+    let off: Vec<Option<bool>> = partners.iter().map(|p| from_styles.iter().any(|r| (p.get)(r)).then_some(false)).collect();
+    apply(s, &|c| {
+        *(me.field)(c) = Some(true);
+        for (p, off) in partners.iter().zip(&off) {
+            *(p.field)(c) = *off;
+        }
+    })
 }
 
 fn underline(s: &mut Session, v: &Value) -> CmdResult {
@@ -325,9 +391,21 @@ fn underline(s: &mut Session, v: &Value) -> CmdResult {
     let on = match (p::bool(v, "value"), style) {
         (Some(b), _) => b,
         (None, Some(_)) => true,
-        (None, None) => !resolved(s).iter().all(|r| r.underline != Underline::None),
+        // Ctrl+U is "on" only over a single underline: a double or dotted one becomes single.
+        (None, None) => turns_on(s, &|r| r.underline == Underline::Single),
     };
     let u = if on { style.unwrap_or(Underline::Single) } else { Underline::None };
+    apply(s, &|c| c.underline = Some(u))
+}
+
+/// Ctrl+Shift+D / Ctrl+Shift+W: a toggle of their own underline style, as in Word. Text that
+/// already has `style` loses its underline; any other text (none, single, dotted…) takes `style`.
+fn underline_toggle(s: &mut Session, v: &Value, style: Underline) -> CmdResult {
+    let on = match p::bool(v, "value") {
+        Some(b) => b,
+        None => turns_on(s, &|r| r.underline == style),
+    };
+    let u = if on { style } else { Underline::None };
     apply(s, &|c| c.underline = Some(u))
 }
 
@@ -1078,6 +1156,31 @@ fn enclose(s: &mut Session, v: &Value) -> CmdResult {
 #[cfg(test)]
 mod tests {
     use super::convert;
+
+    #[test]
+    fn exclusive_partner_from_a_style_is_written_off_and_an_unset_one_stays_unset() {
+        use crate::Session;
+        use serde_json::json;
+        use std::sync::Arc;
+        use wordcraft_doc::{Document, Pos, Style, StyleKind};
+        let mut doc = Document::from_text("abc");
+        let mut ch = Style { id: "Sc".into(), name: "Sc".into(), kind: StyleKind::Character, ..Default::default() };
+        ch.chr.small_caps = Some(true);
+        Arc::make_mut(&mut doc.styles).styles.push(ch);
+        doc.format_range(&Pos::body(0, 0), &Pos::body(0, 3), &|c| c.style = Some("Sc".into())).unwrap();
+        let mut s = Session::new(doc);
+        s.run("select.all", &json!({})).unwrap();
+        s.run("format.allCaps", &json!({})).unwrap();
+        let p = s.doc.para_at(&Pos::body(0, 0)).unwrap();
+        let c = p.props_of_char(0);
+        assert_eq!((c.caps, c.small_caps), (Some(true), Some(false)), "the style's small caps is turned off");
+        let r = s.doc.styles.resolve_char(None, c);
+        assert!(r.caps && !r.small_caps);
+        // Strikethrough with no double strike anywhere leaves double strike unset.
+        s.run("format.strikethrough", &json!({})).unwrap();
+        let c = s.doc.para_at(&Pos::body(0, 0)).unwrap().props_of_char(0);
+        assert_eq!((c.strike, c.double_strike), (Some(true), None));
+    }
 
     #[test]
     fn case_conversions() {

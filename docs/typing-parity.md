@@ -1,6 +1,6 @@
 # Typing parity with Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0513: Change Case preserves words in capitals and follows Word’s word and sentence boundaries.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0516: underline shortcuts and exclusive font effects follow Word.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.)
 
@@ -643,12 +643,15 @@ With an F2 / Shift+F2 source pending, Enter places that rich text at the caret i
 
 Change Case: title and sentence case keep words in capitals when the selection contains lowercase letters and follow Word’s word and sentence boundaries.
 
+Underline shortcuts and font effects follow Word: Ctrl+U makes any other underline style single, Ctrl+Shift+D and Ctrl+Shift+W toggle their own style off again, and turning on All Caps/Small Caps, Strikethrough/Double strikethrough or Emboss/Engrave/Outline/Shadow turns its exclusive partners off (Outline and Shadow can both be on) (`tests::char_toggles_word`).
+
 ## Revision history
 
 > 2026-11-14 · trivial · P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0516: Ctrl+U, Ctrl+Shift+D and Ctrl+Shift+W toggle underline styles as in Word; All Caps/Small Caps, Strikethrough/Double strikethrough and Emboss/Engrave/Outline/Shadow switch each other off. |
 | 2026-11-14 | trivial | P0513: title and sentence case preserve words in capitals in selections containing lowercase letters and follow Word’s word and sentence boundaries. |
 | 2026-11-04 | trivial | Ctrl+K on a selection: a changed Text to display replaces the selected text before it is linked |
 | 2026-11-07 | trivial | Removing an already-empty paragraph preserves the following paragraph properties, mark and inline formatting. Delete, Backspace, selected marks, outline/TOC, DOCX and Undo/Redo have synthetic coverage (Leaf #152); no new Word or native acceptance run. |
