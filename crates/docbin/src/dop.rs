@@ -33,6 +33,9 @@ const DOP95_LEN: usize = 88;
 const OFF_COPTS: usize = 508;
 /// Offset of the second 32-bit word of `Copts` (the flags after `copts80`, [MS-DOC] §2.7.1).
 const OFF_COPTS_FLAGS: usize = OFF_COPTS + 4;
+/// `Copts.fFtnLayoutLikeWW8` (bit B of the word after `copts80`; [MS-DOC] §2.7.1): lay out
+/// footnotes as Word 6.x/95/97 did.
+const F_FTN_LAYOUT_LIKE_WW8: u32 = 1 << 1;
 /// `Copts.fDontUseHTMLParagraphAutoSpacing` (bit C of the word after `copts80`; [MS-DOC] §2.7.1).
 const F_DONT_USE_HTML_AUTO_SPACING: u32 = 1 << 2;
 /// `Copts.fAllowSpaceOfSameStyleInTable` (bit V of the word after `copts80`; [MS-DOC] §2.7.1).
@@ -130,6 +133,7 @@ pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Setti
         && let Some(flags) = u32_at(dop, OFF_COPTS_FLAGS)
     {
         settings.sum_paragraph_spacing = flags & F_DONT_USE_HTML_AUTO_SPACING != 0;
+        settings.footnote_layout_like_ww8 = flags & F_FTN_LAYOUT_LIKE_WW8 != 0;
         if dop.len() >= DOP2003_LEN {
             settings.allow_space_of_same_style_in_table = flags & F_ALLOW_SPACE_OF_SAME_STYLE_IN_TABLE != 0;
         }
