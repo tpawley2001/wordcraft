@@ -20,6 +20,7 @@ mod picture;
 mod select;
 mod shape;
 mod specs;
+mod wrap_points;
 
 pub use arrange::moves_with_text;
 pub(crate) use arrange::{anchor_paragraph, nearest_line};
@@ -48,3 +49,5 @@ mod tests_align;
 mod tests_align_selected;
 #[cfg(test)]
 mod tests_lock_aspect;
+#[cfg(test)]
+mod tests_wrap_points;

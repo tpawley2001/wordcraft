@@ -206,6 +206,9 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"wrap": "inline|square|tight|through|topAndBottom|behindText|inFrontOfText"}"#)
         .when(has_placeable),
+        CommandSpec::new("arrange.wrapPoints", "Edit Wrap Points", "Layout › Arrange › Wrap Text", super::wrap_points::wrap_points)
+            .params(r#"{"op": "get|set|move|add|remove|reset", "points"?: [[x, y], ...], "index"?: n, "after"?: n, "x"?: n, "y"?: n}  (the outline Tight and Through wrapping follow, in the wrap space: 0..21600 spans the object's width and height. get: {"wrap", "points", "edited"}, no change; set: replace the points (3 or more); move: point index to x, y; add: a point x, y after index after; remove: point index (3 stay); reset: back to the outline worked out from the object. An edit makes an object not wrapped Tight or Through Tight; returns what get does)"#)
+            .when(has_placeable),
         CommandSpec::new("arrange.wrapText", "Wrap Text Sides", "Layout › Arrange", |s, v| {
             let side = p::str(v, "side").unwrap_or("bothSides");
             let side = WrapText::from_ooxml(side).ok_or_else(|| CmdError::Params(format!("unknown side {side:?}")))?;
