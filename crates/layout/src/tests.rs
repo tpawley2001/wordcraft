@@ -58,6 +58,7 @@ mod hf_float_wrap_modes;
 mod hf_frame_flow;
 mod hf_top_bottom_wrap;
 mod hidden_rows;
+mod highlight_band;
 mod html_auto_spacing_off;
 mod inline_drawing_reach;
 mod item_display_clip;
