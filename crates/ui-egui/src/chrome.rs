@@ -755,7 +755,7 @@ pub fn marked_final_bar(app: &mut WordApp, ui: &mut Ui) {
 /// with a tooltip; without a document the bar is empty.
 pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    egui::Panel::bottom("status")
+    let bar = egui::Panel::bottom("status")
         .exact_size(26.0)
         .frame(
             egui::Frame::NONE
@@ -807,10 +807,13 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                         resp
                     };
                     let st = |ui: &mut Ui, s: &str| st_icon(ui, None, s);
-                    if st(ui, &crate::i18n::fmt(tl!("Page {page} of {pages}"), &[("page", &page.to_string()), ("pages", &l.pages.len().to_string())]))
-                        .on_hover_text(tl!("Go To (⌘⌥G)"))
-                        .clicked()
-                    {
+                    let page_button = st(
+                        ui,
+                        &crate::i18n::fmt(tl!("Page {page} of {pages}"), &[("page", &page.to_string()), ("pages", &l.pages.len().to_string())]),
+                    );
+                    // F6 brings the keyboard to the status bar here, its first control.
+                    crate::panes::note_f6_target(app, ui.ctx(), crate::panes::F6Stop::StatusBar, page_button.id, true);
+                    if page_button.on_hover_text(tl!("Go To (⌘⌥G)")).clicked() {
                         let _ = app.run("ui.dialog", json!({"name": "goto"}));
                     }
                     // The live count: words (the default, as Word's status bar counts), characters
@@ -1027,6 +1030,7 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                 })
             });
         });
+    crate::panes::note_f6_area(app, ui.ctx(), crate::panes::F6Stop::StatusBar, bar.response.rect);
 }
 
 fn small_icon(ui: &mut Ui, icon: &str, tip: &str) -> bool {

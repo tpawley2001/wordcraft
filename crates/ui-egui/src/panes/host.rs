@@ -22,7 +22,6 @@ pub(crate) fn overlay_open(app: &WordApp, ctx: &egui::Context) -> bool {
 }
 
 /// The part of the window that has the keyboard, for the F6 / Shift+F6 cycle.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum KeyRegion {
     Document,
@@ -32,18 +31,155 @@ pub(crate) enum KeyRegion {
     Other,
 }
 
-/// Which part of the window has the keyboard (stub: the page or something else).
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn key_region(app: &WordApp, _ctx: &egui::Context) -> KeyRegion {
-    if app.canvas.focused { KeyRegion::Document } else { KeyRegion::Other }
+/// A stop of the F6 cycle outside the task panes. The status bar and the ribbon note where
+/// they are each pass they are drawn; one that was not drawn is not on screen and F6 skips it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum F6Stop {
+    StatusBar,
+    Ribbon,
 }
 
-/// F6 and Shift+F6 move the keyboard through the panes and back to the document. The key stays
-/// with an open dialog, file browser, popup or keytips (Customize Keyboard records it), and an
-/// F6 the user bound to a command runs that command instead.
-fn route_f6(app: &WordApp, ctx: &egui::Context) {
+/// What a stop drew in one pass: the widget F6 focuses and the area its controls sit in.
+#[derive(Clone, Copy, Debug, Default)]
+struct StopSeen {
+    pass: u64,
+    /// The widget F6 focuses, and whether it was the preferred one (the selected ribbon tab).
+    target: Option<(egui::Id, bool)>,
+    area: Option<egui::Rect>,
+}
+
+fn stop_key(app: &WordApp, stop: F6Stop) -> egui::Id {
+    app.window_id("f6_stops").with(stop as u8)
+}
+
+fn note(app: &WordApp, ctx: &egui::Context, stop: F6Stop, f: impl FnOnce(&mut StopSeen)) {
+    let key = stop_key(app, stop);
+    let pass = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| {
+        let seen = d.get_temp_mut_or_default::<StopSeen>(key);
+        if seen.pass != pass {
+            *seen = StopSeen { pass, ..StopSeen::default() };
+        }
+        f(seen);
+    });
+}
+
+/// The widget F6 focuses in `stop` this pass. The first one noted wins unless a later one is
+/// `preferred` (the selected tab over the first tab shown).
+pub(crate) fn note_f6_target(app: &WordApp, ctx: &egui::Context, stop: F6Stop, id: egui::Id, preferred: bool) {
+    note(app, ctx, stop, |seen| {
+        if preferred || seen.target.is_none() {
+            seen.target = Some((id, preferred));
+        }
+    });
+}
+
+/// Part of the area `stop`'s controls sit in this pass: a focused widget inside it is in the stop.
+pub(crate) fn note_f6_area(app: &WordApp, ctx: &egui::Context, stop: F6Stop, rect: egui::Rect) {
+    note(app, ctx, stop, |seen| seen.area = Some(seen.area.map_or(rect, |a| a.union(rect))));
+}
+
+/// The stop as drawn in this pass or the one before (read between passes), if it was.
+fn seen(app: &WordApp, ctx: &egui::Context, stop: F6Stop) -> Option<StopSeen> {
+    let seen = ctx.data(|d| d.get_temp::<StopSeen>(stop_key(app, stop)))?;
+    (seen.pass.saturating_add(1) >= ctx.cumulative_pass_nr()).then_some(seen)
+}
+
+/// The widget F6 focuses in `stop`, when the stop is on screen.
+fn stop_target(app: &WordApp, ctx: &egui::Context, stop: F6Stop) -> Option<egui::Id> {
+    seen(app, ctx, stop)?.target.map(|(id, _)| id)
+}
+
+/// Whether the pane host had a pane holding the keyboard when it last drew.
+fn pane_key(app: &WordApp) -> egui::Id {
+    app.window_id(HOST).with("f6_pane")
+}
+
+/// The region of the window the keyboard was in when the panes were last drawn, for Escape.
+fn last_region_key(app: &WordApp) -> egui::Id {
+    app.window_id(HOST).with("f6_region")
+}
+
+/// Which part of the window `focused` (an egui widget id) belongs to.
+fn region_of(app: &WordApp, ctx: &egui::Context, focused: Option<egui::Id>) -> KeyRegion {
+    let Some(focused) = focused else { return KeyRegion::Other };
+    if app.canvas.widget_id.is_some_and(|(id, _)| id == focused) {
+        return KeyRegion::Document;
+    }
+    let rect = ctx.read_response(focused).map(|r| r.rect);
+    for (stop, region) in [(F6Stop::StatusBar, KeyRegion::StatusBar), (F6Stop::Ribbon, KeyRegion::Ribbon)] {
+        if let Some(seen) = seen(app, ctx, stop)
+            && (seen.target.is_some_and(|(id, _)| id == focused) || rect.zip(seen.area).is_some_and(|(r, a)| a.contains_rect(r)))
+        {
+            return region;
+        }
+    }
+    if ctx.data(|d| d.get_temp::<bool>(pane_key(app))).unwrap_or(false) { KeyRegion::Pane } else { KeyRegion::Other }
+}
+
+/// Which part of the window has the keyboard: the page, a task pane, the status bar, the ribbon
+/// or something else. Derived from egui's focus, so it cannot drift from it.
+pub(crate) fn key_region(app: &WordApp, ctx: &egui::Context) -> KeyRegion {
+    if app.canvas.focused {
+        return KeyRegion::Document;
+    }
+    region_of(app, ctx, ctx.memory(|m| m.focused()))
+}
+
+/// The F6 cycle, forwards: the task panes, the status bar, the ribbon, the document.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Step {
+    Panes,
+    StatusBar,
+    Ribbon,
+    Document,
+}
+
+/// Give the keyboard to `step`, or to the next step on in the direction of travel when `step`
+/// is not on screen. Returns the direction when the pane host is to cycle its panes.
+fn enter(app: &mut WordApp, ctx: &egui::Context, step: Step, reverse: bool) -> Option<bool> {
+    let stop = match step {
+        Step::Panes => {
+            craft_ui::panes::focus_next(ctx, app.window_id(HOST), reverse);
+            return Some(reverse);
+        }
+        Step::Document => {
+            app.canvas.want_focus = true;
+            return None;
+        }
+        Step::StatusBar => F6Stop::StatusBar,
+        Step::Ribbon => F6Stop::Ribbon,
+    };
+    if let Some(id) = stop_target(app, ctx, stop) {
+        ctx.memory_mut(|m| m.request_focus(id));
+        return None;
+    }
+    let next = match (step, reverse) {
+        (Step::StatusBar, false) => Step::Ribbon,
+        (Step::StatusBar, true) => Step::Panes,
+        (_, false) => Step::Document,
+        (_, true) => Step::StatusBar,
+    };
+    enter(app, ctx, next, reverse)
+}
+
+/// F6 and Shift+F6 move the keyboard through the task panes, the status bar and the ribbon and
+/// back to the document, as Word does. The key stays with an open dialog, file browser, popup or
+/// keytips (Customize Keyboard records it), and an F6 the user bound to a command runs that
+/// command instead. Escape from the status bar or the ribbon gives the page the keyboard back.
+/// Returns the direction when the pane host is to cycle its panes this pass.
+fn route_f6(app: &mut WordApp, ctx: &egui::Context) -> Option<bool> {
     if overlay_open(app, ctx) {
-        return;
+        return None;
+    }
+    // egui drops a widget's focus on Escape before the pass starts: the region it was in is
+    // the one noted when the panes were last drawn.
+    let last = ctx.data(|d| d.get_temp::<KeyRegion>(last_region_key(app)));
+    if matches!(last, Some(KeyRegion::StatusBar | KeyRegion::Ribbon))
+        && ctx.memory(|m| m.focused()).is_none()
+        && ctx.input(|i| i.key_pressed(egui::Key::Escape))
+    {
+        app.canvas.want_focus = true;
     }
     let reg = &app.session.registry;
     let bound = |m: egui::Modifiers| app.session.keymap.resolve(reg, &crate::keys::combo(m, "F6", true)).is_some();
@@ -57,9 +193,17 @@ fn route_f6(app: &WordApp, ctx: &egui::Context) {
             _ => true,
         });
     });
-    if let Some(reverse) = cycle {
-        craft_ui::panes::focus_next(ctx, app.window_id(HOST), reverse);
-    }
+    let reverse = cycle?;
+    let step = match (key_region(app, ctx), reverse) {
+        (KeyRegion::StatusBar, false) => Step::Ribbon,
+        (KeyRegion::StatusBar, true) => Step::Panes,
+        (KeyRegion::Ribbon, false) => Step::Document,
+        (KeyRegion::Ribbon, true) => Step::StatusBar,
+        (KeyRegion::Pane, _) => Step::Panes,
+        (KeyRegion::Document | KeyRegion::Other, false) => Step::Panes,
+        (KeyRegion::Document | KeyRegion::Other, true) => Step::Ribbon,
+    };
+    enter(app, ctx, step, reverse)
 }
 
 /// Draw the open panes around the document. Call before the canvas's `CentralPanel`.
@@ -69,7 +213,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     if !open.contains(&Pane::FormatShape) {
         crate::format_shape::forget_drag(ui.ctx());
     }
-    route_f6(app, ui.ctx());
+    let cycle = route_f6(app, ui.ctx());
     let states: Vec<(Pane, PaneState)> = open.iter().map(|pane| (*pane, pane_state(app, *pane))).collect();
     let out = PaneHost::new(app.window_id(HOST))
         .policy(SidePolicy::Columns)
@@ -81,9 +225,20 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     for request in out.requests {
         apply(app, request);
     }
+    let ctx = ui.ctx().clone();
     if out.to_document {
-        app.canvas.want_focus = true;
+        // Past the last pane comes the status bar; before the first one, the document.
+        match cycle {
+            Some(false) => {
+                enter(app, &ctx, Step::StatusBar, false);
+            }
+            _ => app.canvas.want_focus = true,
+        }
     }
+    ctx.data_mut(|d| d.insert_temp(pane_key(app), out.focused.is_some()));
+    let focused = ctx.memory(|m| m.focused());
+    let region = region_of(app, &ctx, focused);
+    ctx.data_mut(|d| d.insert_temp(last_region_key(app), region));
 }
 
 /// Run a request from the pane host through the pane's commands and the UI preferences.
