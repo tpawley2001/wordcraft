@@ -21,6 +21,21 @@ pub(crate) fn overlay_open(app: &WordApp, ctx: &egui::Context) -> bool {
         || egui::Popup::is_any_open(ctx)
 }
 
+/// The part of the window that has the keyboard, for the F6 / Shift+F6 cycle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KeyRegion {
+    Document,
+    Pane,
+    StatusBar,
+    Ribbon,
+    Other,
+}
+
+/// Which part of the window has the keyboard (stub: the page or something else).
+pub(crate) fn key_region(app: &WordApp, _ctx: &egui::Context) -> KeyRegion {
+    if app.canvas.focused { KeyRegion::Document } else { KeyRegion::Other }
+}
+
 /// F6 and Shift+F6 move the keyboard through the panes and back to the document. The key stays
 /// with an open dialog, file browser, popup or keytips (Customize Keyboard records it), and an
 /// F6 the user bound to a command runs that command instead.
