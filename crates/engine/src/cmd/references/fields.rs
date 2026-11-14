@@ -1468,7 +1468,8 @@ mod header_footer_output_tests {
                     "QUOTE",
                 ]
             ),
-            ["fresh text", "MIXED", "", "stale", "stale", "stale", "stale", "stale"]
+            // A date picture formats the quoted date; `\#` is still not evaluated.
+            ["fresh text", "MIXED", "", "stale", "stale", "stale", "2024", "stale"]
         );
     }
 
