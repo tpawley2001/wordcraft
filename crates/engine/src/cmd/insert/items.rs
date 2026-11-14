@@ -282,7 +282,33 @@ pub fn format_date_parts(fmt: &str, y: i64, m: usize, d: u32, hms: (u32, u32, u3
 /// [`format_date_parts`] with month and weekday names in `lang`. Text between single quotes is
 /// copied as it is (`'de'`), while doubled apostrophes emit one literal quote anywhere.
 #[allow(clippy::too_many_arguments)]
-pub fn format_date_parts_in(fmt: &str, lang: Option<&str>, y: i64, m: usize, d: u32, (hh, mm, ss): (u32, u32, u32), days_since: i64) -> String {
+pub fn format_date_parts_in(fmt: &str, lang: Option<&str>, y: i64, m: usize, d: u32, hms: (u32, u32, u32), days_since: i64) -> String {
+    format_date_parts_checked(fmt, lang, y, m, d, hms, days_since).0
+}
+
+/// Format today's date with a Word picture in `lang`, as a DATE or TIME field shows it: `None`
+/// when the picture holds an item Word rejects (`yyy`), which the field reports as an error.
+pub fn format_date_field_in(fmt: &str, lang: Option<&str>) -> Option<String> {
+    let now = crate::cmd::now_unix();
+    let (y, m, d, hms, days) = crate::cmd::local_civil(now, crate::cmd::local_offset_secs(now));
+    let (text, valid) = format_date_parts_checked(fmt, lang, y, m as usize, d, hms, days);
+    valid.then_some(text)
+}
+
+/// [`format_date_parts_in`], also saying whether every picture item is one Word accepts. A run of
+/// `d`, `M` or `y` reads in pieces of at most four letters (`MMMMM` is `MMMM` then `M`); a piece
+/// of exactly three `y`s is not an item (written as the two-digit year, and reported invalid).
+#[allow(clippy::too_many_arguments)]
+fn format_date_parts_checked(
+    fmt: &str,
+    lang: Option<&str>,
+    y: i64,
+    m: usize,
+    d: u32,
+    (hh, mm, ss): (u32, u32, u32),
+    days_since: i64,
+) -> (String, bool) {
+    let mut valid = true;
     let names = date_names(lang);
     let month = names.months.get(m.saturating_sub(1)).copied().unwrap_or(names.months[0]);
     let day = names.days.get(days_since.rem_euclid(7) as usize).copied().unwrap_or(names.days[0]);
@@ -324,6 +350,12 @@ pub fn format_date_parts_in(fmt: &str, lang: Option<&str>, y: i64, m: usize, d: 
         while chars.get(i + n) == Some(&c) {
             n += 1;
         }
+        if matches!(c, 'd' | 'D' | 'M' | 'y' | 'Y') {
+            n = n.min(4);
+            if matches!(c, 'y' | 'Y') && n == 3 {
+                valid = false;
+            }
+        }
         match (c, n) {
             ('y' | 'Y', 4..) => out.push_str(&format!("{y:04}")),
             ('y' | 'Y', _) => out.push_str(&format!("{:02}", y % 100)),
@@ -352,7 +384,7 @@ pub fn format_date_parts_in(fmt: &str, lang: Option<&str>, y: i64, m: usize, d: 
         }
         i += n;
     }
-    out
+    (out, valid)
 }
 
 /// Insert › Symbol: the character at the caret, in its own font when `font` names one (the rest of
