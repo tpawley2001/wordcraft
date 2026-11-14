@@ -180,6 +180,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-14: P0509: normal Find reads objects as Word does: `^f`, `^e` and `^2` find footnote and endnote marks, `^d` a whole field while field codes are shown, `^g` only drawings, `^a` and `^5` nothing; bookmark and comment anchors inside a word no longer stop it being found. Replace All deletes a matched note mark's note. Readiness estimates unchanged.
 - 2026-11-14: P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged.
 
 - 2026-11-14: P0507: Word Count counts paragraphs holding a word, preserving object-only paragraphs and treating manual line breaks as part of their paragraph. Selection counts use the selected text in each paragraph. Readiness estimates unchanged.

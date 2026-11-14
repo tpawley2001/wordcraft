@@ -1,6 +1,8 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0507: Word Count counts paragraphs holding a word, preserving object-only paragraphs and treating manual line breaks as part of their paragraph. Selection counts use the selected text in each paragraph. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0509: normal Find reads objects as Word does: `^f`, `^e` and `^2` find footnote and endnote marks, `^d` a whole field while field codes are shown, `^g` only drawings, `^a` and `^5` nothing; bookmark and comment anchors inside a word no longer stop it being found. Replace All deletes a matched note mark's note. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged; earlier: P0507: Word Count counts paragraphs holding a word, preserving object-only paragraphs and treating manual line breaks as part of their paragraph. Selection counts use the selected text in each paragraph. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0493: normal Find distinguishes ASCII, Windows-1252 and Unicode decimal codes; `^?` skips optional hyphens and searches paragraph marks, including the final mark, which replacement preserves. Readiness estimates unchanged.)
 
@@ -118,7 +120,7 @@ options `screen_paper_color_options_round_trip_and_work_without_a_document` test
 
 ## Find and Replace: normal caret codes
 
-Without Use wildcards or Regular expressions, `^nnn` without a leading zero finds codes 1–127 (including controls); higher values find nothing. `^0nnn` keeps Windows-1252 decoding, while `^u` reads a Unicode scalar in decimal, with leading zeros allowed. `^?` matches characters and paragraph marks across paragraphs, skipping optional hyphens. `^p` and `^?` also find the final story mark: Find selects to the text end, replacement inserts before the retained mark, and `^&` excludes that final mark.
+Without Use wildcards or Regular expressions, `^nnn` without a leading zero finds codes 1–127 (including controls); higher values find nothing. `^0nnn` keeps Windows-1252 decoding, while `^u` reads a Unicode scalar in decimal, with leading zeros allowed. `^?` matches characters and paragraph marks across paragraphs, skipping optional hyphens. `^p` and `^?` also find the final story mark: Find selects to the text end, replacement inserts before the retained mark, and `^&` excludes that final mark. Objects: `^f` finds footnote reference marks, `^e` endnote marks, `^2` either, `^g` drawings only, `^d` a whole field (the outermost of nested ones) only while View › Field Codes is on, and `^a` / `^5` nothing, as Microsoft 365 Word's Find does not stop at comment anchors; a field is one character to `^?`, and bookmark, comment, permission and content-control anchors are not characters at all, so a word with a bookmark inside it is still found (P0509).
 
 ## Find and Replace: regular expressions (#4177)
 
@@ -215,6 +217,7 @@ Word Count's shared counters follow the 2026-11-14 Word for Windows measurements
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0509: normal Find reads objects as Word does: `^f`, `^e` and `^2` find footnote and endnote marks, `^d` a whole field while field codes are shown, `^g` only drawings, `^a` and `^5` nothing; bookmark and comment anchors inside a word no longer stop it being found. Replace All deletes a matched note mark's note. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0507: Word Count counts paragraphs holding a word, preserving object-only paragraphs and treating manual line breaks as part of their paragraph. Selection counts use the selected text in each paragraph. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0505: Word Count counts symbol and punctuation tokens, splits at em/en dashes and bullets, and uses Word's measured spaces and zero-width character exclusions. CJK counting is preserved; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0487: Convert Text to Table preserves cell whitespace; only one ordinary space directly after each comma separator is dropped. Readiness estimates unchanged. |

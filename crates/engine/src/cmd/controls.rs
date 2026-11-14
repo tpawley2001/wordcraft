@@ -990,10 +990,16 @@ mod editing_tests {
         let mut s = replacement_control();
         run(&mut s, "developer.properties", json!({"control": "protected", "lockDelete": true}));
         let before = s.doc.clone();
-        // Matching both control markers would delete the control itself.
-        assert!(s.run("edit.replaceAll", &json!({"text": "^gcat^g", "with": "fox"})).is_err());
-        assert!(s.status.contains("can't be deleted"));
-        assert_eq!(s.doc, before);
+        // A match around the whole control would delete the control itself. (Find does not see
+        // control markers, as in Word, so the match takes text on both sides of the control.)
+        let mut around = Session::new(wordcraft_doc::Document::from_text("a cat b"));
+        run(&mut around, "edit.find", json!({"text": "cat"}));
+        run(&mut around, "developer.richText", json!({"tag": "around"}));
+        run(&mut around, "developer.properties", json!({"control": "around", "lockDelete": true}));
+        let kept = around.doc.clone();
+        assert!(around.run("edit.replaceAll", &json!({"text": "a cat b", "with": "fox"})).is_err());
+        assert!(around.status.contains("can't be deleted"));
+        assert_eq!(around.doc, kept);
         // A deletion lock still permits editing the text inside the control.
         assert_eq!(run(&mut s, "edit.replaceAll", json!({"text": "cat", "with": "fox"}))["replaced"], 2);
         assert_eq!(text(&s), "fox fox");
