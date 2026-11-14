@@ -227,12 +227,17 @@ pub(super) fn split(s: &mut Session, v: &Value) -> CmdResult {
     fix_caret(s, &tp, top, c)
 }
 
-pub(super) fn split_table(s: &mut Session, _: &Value) -> CmdResult {
+/// Split Table: the rows from the caret's on become a table of their own, after an empty paragraph
+/// that takes the caret. In the first row an empty paragraph goes in above the table instead.
+pub(crate) fn split_table(s: &mut Session, _: &Value) -> CmdResult {
     let (tp, r, _) = cell(s)?;
-    if r == 0 {
-        return Err(CmdError::Failed("can't split at the first row".into()));
-    }
     let story = s.sel.focus.story;
+    // In the first row, as in Word: an empty paragraph goes in directly above the table.
+    if r == 0 {
+        s.doc.insert_block(story, &tp, Block::Para(Paragraph::new()))?;
+        s.sel = Selection::caret(Pos { story, path: tp, off: 0 });
+        return sel_result(s);
+    }
     let t = s.doc.table_mut(story, &tp)?;
     let tail = t.split_off(r);
     let after = tp.with_last(tp.last() + 1);
