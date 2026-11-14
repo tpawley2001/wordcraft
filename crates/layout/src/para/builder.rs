@@ -154,7 +154,7 @@ impl<'a> Builder<'a> {
                 return i;
             }
         }
-        let size = rc.draw_size() * if small { 0.8 } else { 1.0 };
+        let size = if small { rc.small_caps_size() } else { rc.draw_size() };
         // Word sizes missing symbol fonts (and Apple's one-em Symbol) by their own metrics.
         // Keep these heights independent of the fallback face drawing each glyph: its taller
         // ascent or descent must not enlarge a symbol run. Other known missing-font lines use

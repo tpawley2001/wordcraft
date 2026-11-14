@@ -117,6 +117,7 @@ mod rtl_gutter_vertical;
 mod section_mark_after_break;
 mod section_pages_blank;
 mod shared_row_edge;
+mod small_caps_half_point;
 mod split_break_float;
 mod split_break_mark;
 mod square_float_page_fit;
