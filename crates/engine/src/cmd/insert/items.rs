@@ -298,6 +298,8 @@ pub fn format_date_field_in(fmt: &str, lang: Option<&str>) -> Option<String> {
 /// [`format_date_parts_in`], also saying whether every picture item is one Word accepts. A run of
 /// `d`, `M` or `y` reads in pieces of at most four letters (`MMMMM` is `MMMM` then `M`); a piece
 /// of exactly three `y`s is not an item (written as the two-digit year, and reported invalid).
+/// Runs of `h`, `H`, `m` or `s` read in pieces of at most two letters (`hhh` is `hh` then `h`).
+/// Lowercase `a/p`, like `am/pm`, shows AM before noon and PM from noon on.
 #[allow(clippy::too_many_arguments)]
 fn format_date_parts_checked(
     fmt: &str,
@@ -346,6 +348,11 @@ fn format_date_parts_checked(
             i += 5;
             continue;
         }
+        if chars.get(i..i + 3) == Some(&['a', '/', 'p']) {
+            out.push_str(if hh < 12 { "AM" } else { "PM" });
+            i += 3;
+            continue;
+        }
         let mut n = 1;
         while chars.get(i + n) == Some(&c) {
             n += 1;
@@ -355,6 +362,8 @@ fn format_date_parts_checked(
             if matches!(c, 'y' | 'Y') && n == 3 {
                 valid = false;
             }
+        } else if matches!(c, 'h' | 'H' | 'm' | 's') {
+            n = n.min(2);
         }
         match (c, n) {
             ('y' | 'Y', 4..) => out.push_str(&format!("{y:04}")),

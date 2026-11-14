@@ -1,8 +1,8 @@
 # File-format parity with Microsoft Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged.)
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0482: DOCX reads and saves Fit Text (`w:fitText`) and lays it out to its set width, as Word does. Readiness estimates unchanged; earlier: P0465: DOCX reads and saves `w:specVanish` (Word's style separator). Readiness estimates unchanged; earlier: P0452: DOCX reads and saves Suppress extra line spacing like WordPerfect 5.x (`w:suppressTopSpacingWP`), so a `.doc` with it keeps its 14 pt lines for 12 pt text when saved as DOCX. Readiness estimates unchanged; earlier: P0464: DOCX keeps a note separator run's own font and size on save and reopen, so a `.doc` report saved as DOCX keeps its page count. Readiness estimates unchanged)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged; earlier: P0482: DOCX reads and saves Fit Text (`w:fitText`) and lays it out to its set width, as Word does. Readiness estimates unchanged; earlier: P0465: DOCX reads and saves `w:specVanish` (Word's style separator). Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-13 · **Change:** trivial (P0447: `.doc` drop caps (sprmPDcs) open as drop caps on the paragraph they start, as DOCX `w:framePr w:dropCap` does, not as a text frame above it, its letter at the size Word stores. Readiness estimates unchanged)
 
@@ -374,10 +374,11 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 ## Revision history
 
+> 2026-11-14 · trivial · P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged.
+
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-14 | trivial | P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged. |
-
 > 2026-11-14 · P0482: DOCX `w:fitText` (§17.3.2.14) read into `CharProps::fit_text` (`w:val` twips → points, optional `w:id`; a missing or invalid width drops the element) and written once in CT_RPr order, after `w:shd`, before `w:vertAlign` (`fit_text.rs`, `roundtrip.rs`).
 > 2026-11-13 · P0464: DOCX: the run holding `w:separator` / `w:continuationSeparator` (§17.11.1, §17.11.2) in footnotes.xml and endnotes.xml is written with the separator character's own `w:rPr` (none when it has none), so its size survives save and reopen (`note_separator_run_props.rs`).
 > 2026-11-13 · P0452: DOCX `w:suppressTopSpacingWP` (CT_Compat, after `w:noLeading`, before `w:wrapTrailSpaces`) read into `Settings::ext_leading_2pt_only` (`w:val="0"` off) and written once; on the settings merge path the model owns it like `w:wrapTrailSpaces`. A `.doc` with `Copts80.f2ptExtLeadingOnly` saved as DOCX had lost it, so its 12 pt Times New Roman lines were 13.8 pt instead of 14 pt and long files changed page count (234 -> 248 pages) (`crates/docx/tests/it/suppress_top_spacing_wp.rs`). Readiness estimates unchanged.
