@@ -76,25 +76,31 @@ fn note_top(l: &DocLayout, id: u32) -> f32 {
         .unwrap()
 }
 
-/// The height of the separator above note `id` on page 0: its rule is drawn half way down it and
-/// the note starts right below it.
-pub(super) fn sep_height(l: &DocLayout, id: u32) -> f32 {
-    let rule = l.pages[0]
+/// The height of the separator above note `id` (referred to from the first body paragraph):
+/// with only that paragraph and the notes placed beneath the text, the note starts the
+/// separator's height below the text's last line.
+pub(super) fn sep_height(d: &Document, id: u32) -> f32 {
+    let mut e = d.clone();
+    e.body.truncate(1);
+    e.settings.footnote_pr.pos = Some(wordcraft_doc::section::NotePos::BeneathText);
+    let l = lay(&e);
+    let body = l.pages[0]
         .items
         .iter()
-        .find_map(|it| match it {
-            Placed::Rule { y0, y1, .. } if (y0 - y1).abs() < 0.01 => Some(*y0),
+        .filter_map(|it| match it {
+            Placed::Lines { story: StoryRef::Body, y, para, l0, l1, .. } => item_bottom(*y, para, *l0, *l1),
             _ => None,
         })
+        .reduce(f32::max)
         .unwrap();
-    2.0 * (note_top(l, id) - rule)
+    note_top(&l, id) - body
 }
 
 fn check(font: &str, size: f32, para: ParaProps) {
     crate::test_fonts();
     let (d, id) = doc_with((font, size, para.clone()), vec![single("Body text")]);
     let want = normal_line(&d);
-    let got = sep_height(&lay(&d), id);
+    let got = sep_height(&d, id);
     assert!((got - want).abs() < 0.01, "{font} {size} {para:?}: separator {got}, one Normal line {want}");
 }
 
@@ -136,7 +142,7 @@ fn separator_story_keeps_its_own_height() {
     p.props.line_spacing = Some(LineSpacing::Exactly(17.0));
     p.insert_object(0, InlineObject::note_separator(false), &Default::default()).unwrap();
     d.footnote_separators.separator = Some(vec![para_block(p)]);
-    let got = sep_height(&lay(&d), id);
+    let got = sep_height(&d, id);
     assert!((got - 17.0).abs() < 0.01, "the story's height: {got}");
 }
 
@@ -144,7 +150,7 @@ fn separator_story_keeps_its_own_height() {
 fn unusable_normal_size_keeps_12pt() {
     crate::test_fonts();
     let (d, id) = doc_with(("Times New Roman", 0.0, ParaProps::default()), vec![single("Body text")]);
-    let got = sep_height(&lay(&d), id);
+    let got = sep_height(&d, id);
     assert!((got - NOTE_SEP).abs() < 0.01, "fallback: {got}");
 }
 
