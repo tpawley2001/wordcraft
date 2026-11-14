@@ -192,10 +192,17 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
         | "sitka text"
         | "sitka"
         | "aptos serif" => (SERIF, false),
-        _ if f.contains("mono") || f.contains("code") => (MONO, false),
+        _ if names_monospace(&f) => (MONO, false),
         _ if f.contains("serif") && !f.contains("sans") => (SERIF, false),
         _ => (SANS, false),
     }
+}
+
+/// Whether a lower-cased family name has a whole word that marks a monospaced face ("Fira Code",
+/// "Brand-Mono"). A word that merely contains one doesn't: "Lucida Sans Unicode" and "Monotype
+/// Corsiva" are proportional, and Word draws their stand-ins so.
+fn names_monospace(family: &str) -> bool {
+    family.split([' ', '-', '_']).any(|w| matches!(w, "mono" | "monospace" | "monospaced" | "code"))
 }
 
 /// Ascent and descent (em) of Word's symbol fonts, which aren't open fonts. Their characters are
@@ -1416,6 +1423,32 @@ mod tests {
             assert_eq!(&candidates[1..], substitutes("Arial"));
         }
         assert_eq!(substitutes("Cascadia Code").first(), Some(&"Courier New"));
+    }
+
+    #[test]
+    fn only_whole_words_mono_and_code_are_monospaced() {
+        for name in ["Lucida Sans Unicode", "Brand Unicode", "Monotype Corsiva", "Barcode 39", "Monaco"] {
+            assert_eq!(substitutes(name).first(), SANS.first(), "{name}");
+        }
+        for name in [
+            "Brand Code",
+            "Source Code Pro",
+            "Fira Code",
+            "Brand Mono",
+            "Ubuntu Mono",
+            "Noto Sans Mono",
+            "DejaVu Sans Mono",
+            "Brand-Mono",
+            "Brand_Code",
+            "Brand Monospace",
+            "Brand Monospaced",
+            "Brand Serif Mono",
+            "Cascadia Code",
+            "Courier New",
+            "Consolas",
+        ] {
+            assert_eq!(substitutes(name).first(), Some(&"Courier New"), "{name}");
+        }
     }
 
     #[test]
