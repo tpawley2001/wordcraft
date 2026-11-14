@@ -3,13 +3,38 @@ use super::parts::PartKind;
 use super::position::Path;
 use super::{InlineObject, Numbering, numbering, para, section, styles};
 
-/// Words in `s`, as Word counts them: tokens separated by whitespace that contain at least one
-/// alphanumeric char, plus each Han ideograph and kana as a word of its own (Chinese and Japanese
-/// are written without spaces, #4547; Korean is spaced, so Hangul counts by tokens).
+/// Words in `s`: non-empty tokens separated by Word's spaces, breaks, em/en dashes or bullets,
+/// plus each Han ideograph and kana as a word of its own (#4547). Invisible-only tokens and
+/// CJK punctuation don't count; Korean is spaced, so Hangul counts by tokens.
 pub fn count_words(s: &str) -> usize {
     // The half-width voiced sound marks belong to the kana before them, not a word of their own.
-    let word_char = |c: char| c.is_alphanumeric() && !matches!(c, '\u{FF9E}' | '\u{FF9F}');
-    let tokens = s.split(|c: char| c.is_whitespace() || c == para::OBJ || is_cjk_word(c)).filter(|w| w.chars().any(word_char)).count();
+    let word_char = |c: char| {
+        !matches!(c, '\u{FF9E}' | '\u{FF9F}'
+            | '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{FEFF}'
+            | '\u{3000}'..='\u{303F}' | '\u{3040}'..='\u{30FF}' | '\u{FF01}'..='\u{FF0F}'
+            | '\u{FF1A}'..='\u{FF20}' | '\u{FF3B}'..='\u{FF40}' | '\u{FF5B}'..='\u{FF65}')
+    };
+    // Word's separator set is narrower than Unicode whitespace. Dashes and bullets split
+    // even without surrounding spaces, but other punctuation (including a hyphen) is a word.
+    let separator = |c: char| {
+        matches!(
+            c,
+            ' ' | '\t'
+                | '\n'
+                | '\r'
+                | '\u{000B}'
+                | '\u{00A0}'
+                | '\u{2005}'
+                | '\u{3000}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{2014}'
+                | '\u{2013}'
+                | '\u{2022}'
+        ) || c == para::OBJ
+            || is_cjk_word(c)
+    };
+    let tokens = s.split(separator).filter(|w| w.chars().any(word_char)).count();
     tokens.saturating_add(s.chars().filter(|c| is_cjk_word(*c)).count())
 }
 
@@ -36,15 +61,34 @@ fn is_cjk_word(c: char) -> bool {
 }
 
 /// Characters in `s`, as the Word Count dialog counts them ("Characters (with spaces)"):
-/// paragraph breaks aren't characters (#2797).
+/// paragraph breaks and zero-width characters aren't characters (#2797).
 pub fn count_chars(s: &str) -> usize {
-    s.chars().filter(|c| *c != '\n' && *c != '\r').count()
+    s.chars().filter(|c| !matches!(c, '\n' | '\r' | '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{FEFF}')).count()
 }
 
-/// Characters in `s` ignoring every whitespace character, as the Word Count dialog counts them
-/// ("Characters (no spaces)"; #2797).
+/// Characters in `s` excluding Word's separating spaces and breaks, and zero-width characters
+/// ("Characters (no spaces)"; #2797). Dashes, bullets and other Unicode spaces still count.
 pub fn count_chars_no_spaces(s: &str) -> usize {
-    s.chars().filter(|c| !c.is_whitespace()).count()
+    s.chars()
+        .filter(|c| {
+            !matches!(
+                c,
+                ' ' | '\t'
+                    | '\n'
+                    | '\r'
+                    | '\u{000B}'
+                    | '\u{00A0}'
+                    | '\u{2005}'
+                    | '\u{3000}'
+                    | '\u{2028}'
+                    | '\u{2029}'
+                    | '\u{200B}'
+                    | '\u{200C}'
+                    | '\u{200D}'
+                    | '\u{FEFF}'
+            )
+        })
+        .count()
 }
 
 /// How deep in nested tables [`Document::para_paths`] goes: cells below this are skipped.
