@@ -15,6 +15,7 @@ mod auto_caption;
 mod indent_keys_word;
 mod convert_text_spaces_word;
 mod find_caret_word;
+mod find_objects_word;
 mod find_wildcards_word;
 mod formula_result_word;
 mod date_picture_word;
