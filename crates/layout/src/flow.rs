@@ -496,14 +496,16 @@ impl<'a> Flow<'a> {
         let mut total = 0.0;
         let mut link = start;
         let long = loop {
-            total += if link == b {
-                height
+            if link == b {
+                total += height;
             } else {
                 match chain_link(ctx, link, self.width, &mut counters, link == start) {
-                    Some(h) => h,
+                    // A link holding a page or column break ends the chain there.
+                    Some((h, true)) => break total + h > room + 0.01,
+                    Some((h, false)) => total += h,
                     None => break false,
                 }
-            };
+            }
             if total > room + 0.01 {
                 break true;
             }
@@ -1430,6 +1432,11 @@ fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, counters: &mut Count
                 // Its border room, unless it joins the paragraph before (or after) in one box.
                 let own = Edges::own(&pl, 0, pl.lines.len());
                 let top = if joined(ctx.doc, &ctx.doc.body, at + 1, Some(at), None) { 0.0 } else { own.top };
+                // A link holding a page or column break ends the chain at its break line: what
+                // follows starts a new page or column anyway (Word).
+                if let Some(h) = up_to_break(&pl) {
+                    return room + pl.rp.space_before + top + h;
+                }
                 if pl.rp.keep_next && links + 1 < MAX_CHAIN_AHEAD {
                     let bottom = if joined(ctx.doc, &ctx.doc.body, at + 1, Some(at + 2), None) { 0.0 } else { own.bottom };
                     room += pl.rp.space_before + top + pl.height + bottom + pl.rp.space_after;
@@ -1463,22 +1470,34 @@ fn next_first_line(ctx: &mut Ctx, block: usize, width: f32, counters: &mut Count
     room
 }
 
+/// The height of a laid-out paragraph from its first line's top to the bottom of its first page
+/// or column break line, when it holds one: a keep-with-next chain ends there.
+fn up_to_break(pl: &ParaLayout) -> Option<f32> {
+    let k = pl.lines.iter().position(|l| matches!(l.end, LineEnd::PageBreak | LineEnd::ColumnBreak))?;
+    let (first, last) = (pl.lines.first()?, pl.lines.get(k)?);
+    Some(last.top + last.height - first.top)
+}
+
 /// Whether body block `block` is a paragraph with keep with next.
 fn kept_para(doc: &Document, block: usize) -> bool {
     matches!(doc.body.get(block).map(|b| &**b), Some(Block::Para(p)) if doc.styles.resolve_para(&p.props).keep_next)
 }
 
 /// The room kept body paragraph `block` takes in its chain, as [`next_first_line`] counts it (the
-/// chain's `first` paragraph without its space before, which is above the chain). None when it is
-/// not a paragraph.
-fn chain_link(ctx: &mut Ctx, block: usize, width: f32, counters: &mut Counters, first: bool) -> Option<f32> {
+/// chain's `first` paragraph without its space before, which is above the chain), and whether
+/// the chain ends in it (at a page or column break it holds, counted up to that break line). None
+/// when it is not a paragraph.
+fn chain_link(ctx: &mut Ctx, block: usize, width: f32, counters: &mut Counters, first: bool) -> Option<(f32, bool)> {
     let Some(Block::Para(p)) = ctx.doc.body.get(block).map(|b| &**b) else { return None };
     let pl = para_ahead(ctx, p, width, counters);
     let own = Edges::own(&pl, 0, pl.lines.len());
     let top = if block > 0 && joined(ctx.doc, &ctx.doc.body, block, Some(block - 1), None) { 0.0 } else { own.top };
-    let bottom = if joined(ctx.doc, &ctx.doc.body, block, Some(block + 1), None) { 0.0 } else { own.bottom };
     let before = if first { 0.0 } else { pl.rp.space_before };
-    Some(before + top + pl.height + bottom + pl.rp.space_after)
+    if let Some(h) = up_to_break(&pl) {
+        return Some((before + top + h, true));
+    }
+    let bottom = if joined(ctx.doc, &ctx.doc.body, block, Some(block + 1), None) { 0.0 } else { own.bottom };
+    Some((before + top + pl.height + bottom + pl.rp.space_after, false))
 }
 
 /// Body paragraph `p` laid out ahead of the flow, for keep with next.
