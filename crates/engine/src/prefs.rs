@@ -41,6 +41,11 @@ pub struct Prefs {
     pub print_duplex_back: bool,
     /// File › Options › Advanced › Save › Always create backup copy (off).
     pub always_create_backup: bool,
+    /// File › Options › Advanced › Cut, copy, and paste › Use smart cut and paste (on).
+    pub smart_cut_paste: bool,
+    /// Its Settings › Adjust sentence and word spacing automatically (on): with both on,
+    /// deleting, cutting or pasting a word fixes the spaces around it.
+    pub paste_adjust_word_spacing: bool,
     /// Language › Detect language automatically (per user, as in Word).
     pub detect_language: bool,
     /// Set Proofing Language › Set As Default: overrides the interface language for future
@@ -158,6 +163,8 @@ impl Default for Prefs {
             print_duplex_front: false,
             print_duplex_back: false,
             always_create_backup: false,
+            smart_cut_paste: true,
+            paste_adjust_word_spacing: true,
             typing_replaces_selection: true,
             insert_key_overtype: false,
             overtype: false,

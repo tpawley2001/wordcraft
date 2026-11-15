@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0609: File › Options › Advanced › Cut, copy, and paste has Use smart cut and paste and, under it, Adjust sentence and word spacing automatically (both on, `file.options` `smartCutPaste` / `pasteAdjustWordSpacing`). Readiness estimates unchanged)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0587: Find matches the text a field shows (a citation's `[7]`, a REF or SEQ result, a legacy form field's text), and a match may run into and out of it; with field codes shown it searches the code instead, never across the field's edge, and the drawn braces are not characters. A match in a field covers the whole field; Replace leaves it alone and Replace All reports it as skipped (from storytold/wordcraft#5560). Readiness estimates unchanged.)
@@ -618,6 +620,7 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 | 2026-11-14 | trivial | P0515: F6 / Shift+F6 also reach the status bar and the ribbon's selected tab, as in Word (document, task panes, status bar, ribbon); Escape from either returns to the page. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0558: Reveal Formatting › Distinguish style source (`view.revealStyleSource`): each font, language, alignment and spacing line says whether it comes from a style (named) or direct formatting; `format.reveal` reports `styleSource` and each entry's `source` / `styleName` |
 | 2026-11-15 | trivial | P0587: Find matches the text a field shows (a citation's `[7]`, a REF or SEQ result, a legacy form field's text), and a match may run into and out of it; with field codes shown it searches the code instead, never across the field's edge, and the drawn braces are not characters. A match in a field covers the whole field; Replace leaves it alone and Replace All reports it as skipped (from storytold/wordcraft#5560). Readiness estimates unchanged. |
+| 2026-11-15 | trivial | P0609: File › Options › Advanced › Cut, copy, and paste: Use smart cut and paste and Adjust sentence and word spacing automatically (both on by default); with both on, deleting, cutting or pasting a word fixes the spaces around it, as in Word. Readiness estimates unchanged. |
 
 ### Format Painter integration refresh, 2026-10-30
 

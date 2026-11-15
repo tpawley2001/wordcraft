@@ -342,7 +342,12 @@ fn cut(s: &mut Session, _: &Value) -> CmdResult {
     }
     // A tracked cut of a paragraph or sentence may become a move when pasted.
     if !super::moves::cut_tracked(s)? {
+        let (a, b) = s.sel.ordered();
+        let smart = super::smart_space::whole_words(s, &a, &b);
         delete_selection(s)?;
+        if smart {
+            super::smart_space::after_delete(s)?;
+        }
     }
     super::controls::restore_placeholder(s)?;
     Ok(r)
@@ -380,10 +385,12 @@ fn insert_spike(s: &mut Session, _: &Value) -> CmdResult {
 /// else another program's HTML or RTF (#687). The system clipboard's text has none, so it pastes
 /// as Keep Text Only does.
 fn paste(s: &mut Session, v: &Value) -> CmdResult {
+    let start = s.sel.ordered().0;
     match super::paste::paste_content(s, v)? {
         super::paste::Pasted::Fragment(frag) => super::paste::insert(s, frag)?,
         super::paste::Pasted::Text(text) => super::paste::insert_text(s, &text)?,
     }
+    super::smart_space::after_paste(s, &start)?;
     sel_result(s)
 }
 
@@ -543,7 +550,9 @@ fn paste_text(s: &mut Session, v: &Value) -> CmdResult {
     if text.is_empty() {
         return Err(CmdError::Failed("the clipboard is empty".into()));
     }
+    let start = s.sel.ordered().0;
     super::paste_text(s, &text.replace("\r\n", "\r").replace('\n', "\r"))?;
+    super::smart_space::after_paste(s, &start)?;
     sel_result(s)
 }
 

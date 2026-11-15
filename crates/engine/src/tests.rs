@@ -1363,6 +1363,8 @@ fn find_next_with_options_visits_every_match() {
 #[test]
 fn clipboard_round_trip() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     run(&mut s, "document.setText", json!({"text": "alpha beta\ngamma"}));
     run(&mut s, "select.range", json!({"anchor": {"block": 0, "off": 6}, "focus": {"block": 1, "off": 2}}));
     run(&mut s, "edit.copy", json!({}));
@@ -1949,6 +1951,8 @@ fn props_at(s: &Session, off: usize) -> wordcraft_doc::CharProps {
 #[test]
 fn paste_keeps_source_formatting_from_other_programs() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     run(&mut s, "document.setText", json!({"text": "x"}));
     run(&mut s, "caret.docEnd", json!({}));
     let html = "<p><span style=\"font-family:'Courier New';color:#ff0000\">red <b>bold</b></span></p>";
@@ -2083,6 +2087,8 @@ fn paste_special_lists_and_pastes_a_picture() {
 #[test]
 fn clipboard_pane_collects_copies_and_pastes_one_undoably() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     run(&mut s, "document.setText", json!({"text": "one two three"}));
     for (a, b) in [(0, 3), (4, 7), (8, 13)] {
         run(&mut s, "select.range", json!({"anchor": {"block": 0, "off": a}, "focus": {"block": 0, "off": b}}));
@@ -2214,6 +2220,8 @@ fn spike_outside_the_editable_regions_changes_nothing() {
 #[test]
 fn clipboard_pane_is_capped_and_rejects_bad_indexes() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     let words: Vec<String> = (0..30).map(|i| format!("w{i}")).collect();
     run(&mut s, "document.setText", json!({"text": words.join(" ")}));
     // Cutting each word in turn leaves the spaces: word `off` starts at `off`.
