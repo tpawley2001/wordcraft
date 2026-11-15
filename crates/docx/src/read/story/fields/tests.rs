@@ -225,3 +225,32 @@ fn an_edited_code_is_saved_in_one_paragraph() {
     });
     assert_eq!(paragraphs(&document_xml(&crate::write(&doc).unwrap())).len(), 2);
 }
+
+#[test]
+fn nested_field_offsets_remain_available_for_output_conditions() {
+    let doc = read(&[para(
+        "",
+        &[
+            mark("begin"),
+            code(" IF "),
+            mark("begin"),
+            code(" PAGE "),
+            mark("separate"),
+            text("3"),
+            mark("end"),
+            code(" = 2 yes no "),
+            mark("separate"),
+            text("OLD"),
+            mark("end"),
+        ],
+    )]);
+    let InlineObject::Field { instr, result, code_paras, .. } = &paras(&doc)[0].objects[0] else { panic!("expected field") };
+    assert_eq!(instr, "IF 3 = 2 yes no");
+    assert_eq!(result, "OLD");
+    let code = code_paras.as_ref().unwrap();
+    assert_eq!(code.code, wordcraft_doc::para::code_hash(instr));
+    assert_eq!(code.nested.len(), 1);
+    assert_eq!(code.nested[0].at, 3);
+    assert_eq!(code.nested[0].instr, "PAGE");
+    assert!(code.parts(instr).is_none(), "nested fields do not invent paragraph marks");
+}

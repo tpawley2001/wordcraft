@@ -589,7 +589,11 @@ pub struct OutputContext {
 /// unlocked SEQ, STYLEREF and REF fields, even with
 /// "Update fields before printing" off, while NUMWORDS, FILENAME, the summary properties and
 /// formulas keep their stored results (measured with Word for Windows, printing and exporting
-/// fields whose stored results were wrong). In headers and footers, the summary properties
+/// fields whose stored results were wrong). Unlocked body IF fields, except the body's last
+/// field, refresh when the body contains SEQ, REF, DATE, PRINTDATE, SAVEDATE, PAGE, NUMPAGES,
+/// SECTION or SECTIONPAGES. Nested conditions use stored results; page-dependent conditions
+/// and chosen branches containing nested fields keep their result. In headers and footers,
+/// the summary properties
 /// (TITLE, AUTHOR ...), LASTSAVEDBY, DATE, TIME, a QUOTE of one quoted text, NUMWORDS, NUMCHARS,
 /// REVNUM, CREATEDATE, DOCPROPERTY and INFO of these properties show their current
 /// values too, while the same fields in the body and in notes keep theirs (measured with
@@ -624,7 +628,39 @@ pub fn output_fields_in(doc: &wordcraft_doc::Document, ctx: Option<&OutputContex
     if !parts.is_empty() {
         apply_results(out.get_or_insert_with(|| doc.clone()), parts).ok()?;
     }
+    let conditions = changed(doc, output_if_results(doc));
+    if !conditions.is_empty() {
+        apply_results(out.get_or_insert_with(|| doc.clone()), conditions).ok()?;
+    }
     out
+}
+
+/// Read the original body, including table cells, so refreshed references cannot change the
+/// stored values used in nested IF conditions. A range field also counts as the last field.
+fn output_if_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
+    let mut candidates = Vec::new();
+    let mut trigger = false;
+    let mut last = None;
+    for path in doc.para_paths(StoryRef::Body) {
+        let Some(p) = doc.para(StoryRef::Body, &path) else { continue };
+        for (k, o) in p.objects.iter().enumerate() {
+            let (InlineObject::Field { instr, .. } | InlineObject::FieldStart { instr, .. }) = o else { continue };
+            last = Some((path.clone(), k));
+            let name = wordcraft_layout::fields::field_name(instr);
+            trigger |= matches!(name.as_str(), "SEQ" | "REF" | "DATE" | "PRINTDATE" | "SAVEDATE" | "PAGE" | "NUMPAGES" | "SECTION" | "SECTIONPAGES");
+            if let InlineObject::Field { locked: false, code_paras, .. } = o
+                && name == "IF"
+                && let Some(result) = super::conditional::result(instr, code_paras.as_deref())
+            {
+                candidates.push((StoryRef::Body, path.clone(), k, result));
+            }
+        }
+    }
+    if !trigger {
+        return Vec::new();
+    }
+    candidates.retain(|(_, path, k, _)| !last.as_ref().is_some_and(|(p, i)| p == path && i == k));
+    candidates
 }
 
 /// The fresh results output shows for the unlocked fields in every header and footer (each
@@ -1061,6 +1097,11 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
             }
             let name = wordcraft_layout::fields::field_name(instr);
             match name.as_str() {
+                "IF" => {
+                    if let InlineObject::Field { code_paras, .. } = o {
+                        updates.extend(super::conditional::result(instr, code_paras.as_deref()).map(|text| (k, text)));
+                    }
+                }
                 "QUOTE" => updates.extend(quote_literal(instr).map(|text| (k, text_result(instr, text)))),
                 "SYMBOL" => updates.push((k, wordcraft_layout::fields::symbol_text(instr))),
                 "DATE" | "TIME" | "SAVEDATE" => {

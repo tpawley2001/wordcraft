@@ -19,7 +19,7 @@ mod inline_kinds;
 mod inline_object;
 mod run;
 
-pub use code_paras::{CodeMark, CodeParas, code_hash};
+pub use code_paras::{CodeMark, CodeParas, NestedCode, code_hash};
 pub use float::{AltText, Anchor, Float, FloatAlign, MAX_ALT_TEXT, Wrap, WrapText, cap_alt};
 pub use inline_kinds::{NoteKind, PTabAlign, PTabBase, RubyAlign, ShapeKind, ruby_offset, ruby_raise};
 pub use inline_object::{CanvasStyle, GroupChild, InlineObject, MAX_GROUP_CHILDREN};
