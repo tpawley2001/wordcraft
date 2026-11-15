@@ -1,6 +1,6 @@
 //! Advance widths Word gives Verdana, Tahoma, Century Gothic, SimSun, Aptos, Aptos Display,
 //! Trebuchet MS, Garamond, Consolas, Comic Sans MS, Corbel, Candara, Constantia, Tw Cen MT, Georgia,
-//! Arial Black, Segoe UI, Bookman Old Style, Perpetua and Gill Sans MT when the font isn't installed: their text is drawn with a substitute, but each character keeps the width Word
+//! Arial Black, Segoe UI, Bookman Old Style, Perpetua, Gill Sans MT, Palatino Linotype and Microsoft Sans Serif when the font isn't installed: their text is drawn with a substitute, but each character keeps the width Word
 //! gives it, so lines break where Word breaks them.
 
 /// The advance (em) Word gives `c` in `family` (bold / italic) when that font isn't installed,
@@ -8,7 +8,7 @@
 /// ("Verdana", "Tahoma", "Century Gothic", "SimSun" or "宋体", "Aptos", "Aptos Display",
 /// "Trebuchet MS", "Garamond", "Consolas", "Comic Sans MS", "Corbel", "Candara", "Constantia",
 /// "Tw Cen MT", "Georgia", "Arial Black", "Segoe UI", "Bookman Old Style", "Perpetua",
-/// "Gill Sans MT"). Consolas is fixed-pitch: every Windows-1252 character except the controls is
+/// "Gill Sans MT", "Palatino Linotype", "Microsoft Sans Serif"). Consolas is fixed-pitch: every Windows-1252 character except the controls is
 /// 0.55 em in every style. A style with no table of its own (Tahoma Italic, SimSun Bold,
 /// Trebuchet MS Bold Italic) takes the regular widths: Word synthesises it from the regular
 /// face with the same advances. Tw Cen MT was only measured in bold, so its other styles keep
@@ -70,6 +70,10 @@ fn table(family: &str, bold: bool, italic: bool) -> Option<&'static [(u8, u16)]>
         (PERPETUA, Some(PERPETUA_BOLD), None, None)
     } else if is("gill sans mt") {
         (GILL_SANS_MT, Some(GILL_SANS_MT_BOLD), None, None)
+    } else if is("palatino linotype") {
+        (PALATINO_LINOTYPE, Some(PALATINO_LINOTYPE_BOLD), Some(PALATINO_LINOTYPE_ITALIC), Some(PALATINO_LINOTYPE_BOLD_ITALIC))
+    } else if is("microsoft sans serif") {
+        (MICROSOFT_SANS_SERIF, None, None, None)
     } else {
         return None;
     };
@@ -654,6 +658,67 @@ const GILL_SANS_MT_BOLD: &[(u8, u16)] = &[
     (0x79, 510),
 ];
 
+/// 93 codes.
+#[rustfmt::skip]
+const PALATINO_LINOTYPE: &[(u8, u16)] = &[
+    (0x20, 250), (0x21, 278), (0x22, 371), (0x23, 479), (0x24, 500), (0x25, 840), (0x26, 778), (0x27, 208), (0x28, 333), (0x29, 333),
+    (0x2A, 389), (0x2C, 250), (0x2D, 333), (0x2E, 250), (0x2F, 320), (0x30, 500), (0x31, 500), (0x32, 500), (0x33, 500), (0x34, 500),
+    (0x35, 500), (0x36, 500), (0x37, 500), (0x38, 500), (0x39, 500), (0x3A, 250), (0x3B, 250), (0x3C, 500), (0x3D, 500), (0x3E, 500),
+    (0x3F, 444), (0x40, 683), (0x41, 778), (0x42, 611), (0x43, 709), (0x44, 774), (0x45, 611), (0x46, 556), (0x47, 763), (0x48, 832),
+    (0x49, 337), (0x4A, 333), (0x4B, 726), (0x4C, 611), (0x4D, 946), (0x4E, 831), (0x4F, 786), (0x50, 604), (0x51, 786), (0x52, 668),
+    (0x53, 525), (0x54, 613), (0x55, 778), (0x56, 722), (0x57, 1000), (0x58, 667), (0x59, 667), (0x5A, 667), (0x5B, 333), (0x5D, 333),
+    (0x5E, 500), (0x5F, 500), (0x61, 500), (0x62, 553), (0x63, 444), (0x64, 611), (0x65, 479), (0x66, 333), (0x67, 556), (0x68, 582),
+    (0x69, 291), (0x6A, 234), (0x6B, 556), (0x6C, 291), (0x6D, 883), (0x6E, 582), (0x6F, 546), (0x70, 601), (0x71, 560), (0x72, 395),
+    (0x73, 424), (0x74, 326), (0x75, 603), (0x76, 565), (0x77, 834), (0x78, 516), (0x79, 556), (0x7A, 500), (0x7B, 333), (0x7C, 500),
+    (0x7D, 333), (0x7E, 500), (0xAE, 747),
+];
+
+/// 74 codes.
+#[rustfmt::skip]
+const PALATINO_LINOTYPE_BOLD: &[(u8, u16)] = &[
+    (0x20, 250), (0x25, 889), (0x28, 333), (0x29, 333), (0x2C, 250), (0x2D, 333), (0x2E, 250), (0x2F, 296), (0x30, 500), (0x31, 500),
+    (0x32, 500), (0x33, 500), (0x34, 500), (0x35, 500), (0x36, 500), (0x37, 500), (0x38, 500), (0x39, 500), (0x3A, 250), (0x3F, 444),
+    (0x41, 778), (0x42, 661), (0x43, 722), (0x44, 831), (0x45, 606), (0x46, 558), (0x47, 833), (0x48, 833), (0x49, 389), (0x4A, 389),
+    (0x4B, 770), (0x4C, 606), (0x4D, 1000), (0x4E, 833), (0x4F, 833), (0x50, 610), (0x51, 833), (0x52, 714), (0x53, 611), (0x54, 667),
+    (0x55, 778), (0x56, 778), (0x57, 1000), (0x58, 667), (0x59, 667), (0x5A, 667), (0x5F, 500), (0x61, 500), (0x62, 611), (0x63, 444),
+    (0x64, 611), (0x65, 500), (0x66, 389), (0x67, 556), (0x68, 611), (0x69, 333), (0x6A, 333), (0x6B, 611), (0x6C, 333), (0x6D, 889),
+    (0x6E, 611), (0x6F, 556), (0x70, 611), (0x71, 611), (0x72, 389), (0x73, 444), (0x74, 333), (0x75, 611), (0x76, 556), (0x77, 833),
+    (0x78, 500), (0x79, 556), (0x7A, 500), (0xAE, 747),
+];
+
+/// 65 codes.
+#[rustfmt::skip]
+const PALATINO_LINOTYPE_ITALIC: &[(u8, u16)] = &[
+    (0x20, 250), (0x2C, 250), (0x2D, 333), (0x2E, 250), (0x30, 500), (0x31, 500), (0x32, 500), (0x33, 500), (0x34, 500), (0x35, 500),
+    (0x36, 500), (0x37, 500), (0x38, 500), (0x39, 500), (0x3E, 500), (0x41, 722), (0x42, 611), (0x43, 667), (0x44, 778), (0x45, 611),
+    (0x46, 556), (0x47, 722), (0x48, 778), (0x49, 333), (0x4A, 333), (0x4C, 556), (0x4D, 944), (0x4E, 778), (0x4F, 778), (0x50, 611),
+    (0x51, 778), (0x52, 667), (0x53, 556), (0x54, 611), (0x55, 778), (0x56, 658), (0x57, 944), (0x58, 722), (0x59, 667), (0x61, 444),
+    (0x62, 463), (0x63, 407), (0x64, 500), (0x65, 389), (0x66, 278), (0x67, 500), (0x68, 500), (0x69, 278), (0x6A, 278), (0x6B, 444),
+    (0x6C, 278), (0x6D, 778), (0x6E, 556), (0x6F, 444), (0x70, 500), (0x71, 463), (0x72, 389), (0x73, 389), (0x74, 333), (0x75, 556),
+    (0x76, 500), (0x77, 722), (0x78, 500), (0x79, 500), (0xAE, 747),
+];
+
+/// 41 codes.
+#[rustfmt::skip]
+const PALATINO_LINOTYPE_BOLD_ITALIC: &[(u8, u16)] = &[
+    (0x20, 250), (0x27, 250), (0x41, 722), (0x42, 667), (0x43, 685), (0x44, 778), (0x45, 611), (0x46, 556), (0x47, 778), (0x48, 778),
+    (0x4B, 722), (0x4C, 611), (0x4E, 778), (0x4F, 833), (0x52, 722), (0x53, 556), (0x54, 611), (0x55, 778), (0x56, 667), (0x57, 1000),
+    (0x61, 556), (0x62, 537), (0x63, 444), (0x64, 556), (0x65, 444), (0x67, 500), (0x69, 333), (0x6B, 556), (0x6C, 333), (0x6D, 833),
+    (0x6E, 556), (0x6F, 556), (0x70, 556), (0x72, 389), (0x73, 444), (0x74, 389), (0x75, 556), (0x76, 556), (0x78, 500), (0x79, 556),
+    (0x7A, 500),
+];
+
+/// 51 codes.
+#[rustfmt::skip]
+const MICROSOFT_SANS_SERIF: &[(u8, u16)] = &[
+    (0x20, 266), (0x2C, 278), (0x2D, 333), (0x2E, 278), (0x2F, 278), (0x30, 556), (0x31, 556), (0x32, 556), (0x33, 556), (0x34, 556),
+    (0x35, 556), (0x36, 556), (0x37, 556), (0x38, 556), (0x39, 556), (0x3A, 278), (0x3B, 278), (0x42, 667), (0x43, 722), (0x44, 722),
+    (0x45, 667), (0x47, 778), (0x48, 722), (0x4A, 500), (0x4D, 833), (0x53, 667), (0x55, 722), (0x57, 944), (0x61, 556), (0x62, 556),
+    (0x63, 500), (0x64, 556), (0x65, 556), (0x66, 278), (0x67, 556), (0x68, 556), (0x69, 228), (0x6B, 500), (0x6C, 228), (0x6D, 833),
+    (0x6E, 556), (0x6F, 556), (0x70, 556), (0x72, 333), (0x73, 500), (0x74, 278), (0x75, 556), (0x76, 500), (0x77, 722), (0x79, 500),
+    (0x7A, 500),
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -709,6 +774,11 @@ mod tests {
             PERPETUA_BOLD,
             GILL_SANS_MT,
             GILL_SANS_MT_BOLD,
+            PALATINO_LINOTYPE,
+            PALATINO_LINOTYPE_BOLD,
+            PALATINO_LINOTYPE_ITALIC,
+            PALATINO_LINOTYPE_BOLD_ITALIC,
+            MICROSOFT_SANS_SERIF,
         ];
         for t in all {
             assert!(t.windows(2).all(|w| w[0].0 < w[1].0));

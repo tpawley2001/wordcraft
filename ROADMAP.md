@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged; earlier: P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged)
@@ -196,6 +198,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+> 2026-11-15 · P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.
 
 - 2026-11-15: P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged.
 
@@ -1065,6 +1069,8 @@ Section page-numbering settings preserve `w:chapStyle` values across the full un
 MATH glyphs that reference the same construction now share its immutable variants and assembly data (#3630). Glyph mappings, values and the existing partial-record fallback stay unchanged. Repeated glyph IDs keep their last valid reference without retaining superseded constructions. Distinct overlapping constructions and assembly-only sharing remain separate.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
 
