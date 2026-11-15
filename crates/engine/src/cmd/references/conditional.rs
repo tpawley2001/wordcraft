@@ -9,6 +9,19 @@ pub(super) fn result(instr: &str, code: Option<&CodeParas>) -> Option<String> {
     if instr.len() > 65_536 || instr.contains(['{', '}']) {
         return None;
     }
+    let code = code.filter(|c| c.code == wordcraft_doc::para::code_hash(instr));
+    if let Some(code) = code {
+        for (nested, len) in code.nested.iter().zip(&code.nested_len) {
+            if *len == 0 {
+                let prefix = instr.get(..nested.at)?;
+                let index = super::field_words(&format!("{prefix}x")).len().saturating_sub(1);
+                // Missing condition text shifts the operands; keep the stored result instead.
+                if (1..=3).contains(&index) {
+                    return None;
+                }
+            }
+        }
+    }
     let words = super::field_words(instr);
     let args: Vec<_> = words.iter().skip(1).take_while(|(w, q)| *q || !w.starts_with('\\')).collect();
     let op = args.get(1).map(|(w, _)| w.as_str()).unwrap_or("");
@@ -32,7 +45,7 @@ pub(super) fn result(instr: &str, code: Option<&CodeParas>) -> Option<String> {
         _ => false,
     };
     let chosen = if holds { 4 } else { 5 };
-    if let Some(code) = code.filter(|c| c.code == wordcraft_doc::para::code_hash(instr)) {
+    if let Some(code) = code {
         for nested in &code.nested {
             // Appending a word identifies the token at the offset even inside quoted text.
             let prefix = instr.get(..nested.at)?;
