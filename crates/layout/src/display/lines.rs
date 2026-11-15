@@ -1009,7 +1009,15 @@ fn tab_leaders(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
         let Some(style) = ctx.pl.styles.get(cluster.style as usize) else { continue };
         let Some(ch) = leader.char() else { continue };
         let gid = style.face.glyph_for(ch);
-        let advance = leader_pitch(style.face.advance(gid) as f32, style.face.upem as f32, style.size);
+        // A missing font with Word's widths spaces its leader by Word's width of the character,
+        // not the stand-in glyph's (12 pt Aptos dots: every 3.48 pt in Word's PDF).
+        let missing = style.missing_widths();
+        let upem = style.face.upem as f32;
+        let units = match missing.as_ref().and_then(|m| m.advance(ch)) {
+            Some(em) if em.is_finite() && em > 0.0 => em as f32 * upem,
+            _ => style.face.advance(gid) as f32,
+        };
+        let advance = leader_pitch(units, upem, style.size);
         let glyphs = leader_xs(ctx.x + left, ctx.x + right, advance).into_iter().map(|gx| (gid, gx, ctx.base)).collect();
         out.push(Draw::Glyphs {
             face: style.face,
@@ -1024,7 +1032,7 @@ fn tab_leaders(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
             ranges: Vec::new(),
             text_bg: None,
             x_scale: 1.0,
-            missing_widths: None,
+            missing_widths: missing,
         });
     }
 }
