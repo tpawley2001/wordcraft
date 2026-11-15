@@ -93,6 +93,8 @@ struct Shaped<'a> {
     check_boxes: Vec<usize>,
     /// Offsets of the legacy form fields laid out as forms (not as their codes), ascending.
     forms: Vec<usize>,
+    /// Offsets of the other fields (results or codes), with whether the code was put on grey.
+    fields: Vec<(usize, bool)>,
     note_seps: Vec<usize>,
     enclosures: Vec<(usize, Enclosed)>,
     rubies: Vec<RubyLayout>,
@@ -237,6 +239,7 @@ impl<'a> Shaped<'a> {
             maths: Vec::new(),
             check_boxes: Vec::new(),
             forms: Vec::new(),
+            fields: Vec::new(),
             note_seps: Vec::new(),
             enclosures: Vec::new(),
             rubies: Vec::new(),
@@ -485,11 +488,14 @@ impl<'a> Shaped<'a> {
         } else if env.field_codes != *code {
             // The code in braces on grey, like Word's field shading.
             let mut shaded = (**rc).clone();
-            if shaded.highlight.is_none() && shaded.shading.is_none() {
+            let grey = shaded.highlight.is_none() && shaded.shading.is_none();
+            if grey {
                 shaded.shading = Some(FIELD_SHADING);
             }
+            self.fields.push((slot.start, grey));
             self.b.shape_atomic(&field_code_text(instr), slot.start, slot.end, &Arc::new(shaded));
         } else {
+            self.fields.push((slot.start, false));
             self.field_result(cx, (instr, result, *locked), slot, rc);
         }
     }
@@ -845,6 +851,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         maths,
         check_boxes,
         forms,
+        fields,
         note_seps,
         enclosures,
         rubies,
@@ -877,6 +884,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         maths,
         check_boxes,
         forms,
+        fields,
         note_seps,
         rubies,
         displays,
@@ -888,6 +896,8 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     };
     pl.forms.sort_unstable();
     pl.forms.dedup();
+    pl.fields.sort_unstable();
+    pl.fields.dedup_by_key(|f| f.0);
     // Missing symbol-font codes draw their box, where the cluster shaped for it is still there.
     let boxes = b
         .boxes
