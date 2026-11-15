@@ -369,6 +369,7 @@ pub(super) struct Output {
     pub(super) rule_pending: bool,
     pub(super) table_rights: Vec<Vec<i32>>,
     pub(super) table_lefts: Vec<i32>,
+    pub(super) table_gap_widths: Vec<[Option<f32>; 2]>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
     pub(super) row_style: RowStyle,
@@ -390,6 +391,7 @@ pub(super) struct TableLevel {
     pub(super) row_keep: bool,
     pub(super) table_rights: Vec<Vec<i32>>,
     pub(super) table_lefts: Vec<i32>,
+    pub(super) table_gap_widths: Vec<[Option<f32>; 2]>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
     pub(super) row_style: RowStyle,
@@ -435,11 +437,15 @@ pub(super) struct RowStyle {
     pub(super) pos_v_rel: Option<wordcraft_doc::para::Anchor>,
     pub(super) no_overlap: bool,
     pub(super) floats: bool,
+    /// The preferred widths of the gaps before and after the row's cells (`\trwWidthBN`,
+    /// `\trwWidthAN`) and their units (`\trftsWidthBN`, `\trftsWidthAN`: 3 twips, else none).
+    pub(super) gap_width: [i32; 2],
+    pub(super) gap_width_unit: [i32; 2],
 }
 
 impl RowStyle {
-    /// A direction, preferred width or positioned-table word (RTF 1.9.1 "Table row definitions"
-    /// and "Positioned tables"); false when `w` is none of them.
+    /// A direction, preferred width, positioned-table or gap width word (RTF 1.9.1 "Table row
+    /// definitions" and "Positioned tables"); false when `w` is none of them.
     pub(super) fn table_word(&mut self, w: &str, pv: i32) -> bool {
         use wordcraft_doc::para::{Anchor, FloatAlign};
         let off = |v: i32| v.clamp(-31_680, 31_680) as f32 / 20.0;
@@ -473,12 +479,34 @@ impl RowStyle {
             "tdfrmtxtRight" => p.dist[2] = dist(pv),
             "tdfrmtxtBottom" => p.dist[3] = dist(pv),
             "tabsnoovrlp" => self.no_overlap = true,
-            _ => return false,
+            _ => return self.gap_width_word(w, pv),
         }
         if w.starts_with("tpos") {
             self.floats = true;
         }
         true
+    }
+
+    /// A width-before or width-after word (`\trftsWidthB`, `\trwWidthB`, `\trftsWidthA`,
+    /// `\trwWidthA`); false when `w` is none of them.
+    pub(super) fn gap_width_word(&mut self, w: &str, pv: i32) -> bool {
+        match w {
+            "trftsWidthB" => self.gap_width_unit[0] = pv,
+            "trwWidthB" => self.gap_width[0] = pv,
+            "trftsWidthA" => self.gap_width_unit[1] = pv,
+            "trwWidthA" => self.gap_width[1] = pv,
+            _ => return false,
+        }
+        true
+    }
+
+    /// The preferred widths of the gaps before and after the row's cells, points: only a width
+    /// in twips counts, and a negative one is none.
+    pub(super) fn gap_widths(&self) -> [Option<f32>; 2] {
+        let one = |unit: i32, v: i32| (unit == 3 && v >= 0).then(|| v.min(31_680) as f32 / 20.0);
+        let [ub, ua] = self.gap_width_unit;
+        let [wb, wa] = self.gap_width;
+        [one(ub, wb), one(ua, wa)]
     }
 
     /// The table's preferred width: points, or percent of the text width.

@@ -1481,6 +1481,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     let cell_margins = t.props.cell_margins.filter(|m| m.iter().all(|v| v.is_finite()));
     // The rows that repeat at the top of each page (Repeat as header row), not the look's header.
     let header_rows = t.rows.iter().take_while(|r| r.props.header).count();
+    let row_gaps = row_gaps(t);
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
         .filter(|(h, k)| {
@@ -1491,6 +1492,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
                 || cell_margins.is_some()
                 || t.props.fixed
                 || header_rows > 0
+                || !row_gaps.is_empty()
         })
         .map(|(heights, keep_rows)| super::types::TableExtra {
             align: t.props.align,
@@ -1506,6 +1508,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             cell_margins,
             fixed: t.props.fixed,
             header_rows,
+            row_gaps,
             ..Default::default()
         });
     let extra = tracked.paras.then(|| {
@@ -1525,6 +1528,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             cell_margins: None,
             bidi_visual: false,
             float: None,
+            row_gaps: Vec::new(),
         }
     });
     // Kept whole for formats that ask for it: its header rows count even without the rest.
@@ -1532,6 +1536,24 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     let kept = (tracked.paras && depth == 0).then(|| doc.kept.of("odt").and_then(|k| k.table(t)).cloned()).flatten();
     let wrap = (tracked.paras && depth == 0).then(|| doc.kept.of("odt").and_then(|k| k.table_wrap(t)).cloned().map(Box::new)).flatten();
     FTable { rows, widths: t.grid.clone(), borderless, extra, kept, wrap }
+}
+
+/// Each row's empty grid columns before and after its cells and their widths, by row; empty when
+/// no row has any.
+fn row_gaps(t: &Table) -> Vec<super::types::RowGap> {
+    if t.rows.iter().all(|r| r.first_grid() == 0 && r.grid_after() == 0) {
+        return Vec::new();
+    }
+    let width = |n: usize, w: Option<f32>| w.filter(|w| n > 0 && w.is_finite() && *w >= 0.0).map(|w| w.min(1584.0));
+    t.rows
+        .iter()
+        .map(|r| super::types::RowGap {
+            before: r.first_grid() as u32,
+            after: r.grid_after() as u32,
+            w_before: width(r.first_grid(), r.props.w_before),
+            w_after: width(r.grid_after(), r.props.w_after),
+        })
+        .collect()
 }
 
 /// The document body as a flow.
