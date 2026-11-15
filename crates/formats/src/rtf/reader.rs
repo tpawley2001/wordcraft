@@ -961,7 +961,11 @@ impl Reader {
             } else {
                 rights.push(d.right);
             }
-            c.shading = d.shading;
+            // A cell without shading of its own takes the row's, as the same words on the cell.
+            c.shading = match self.row_style.pattern {
+                Some(p) if !d.own_pattern => p.colour(),
+                _ => d.shading,
+            };
             c.borders = d.borders.any_visible().then_some(d.borders);
             c.header = self.row_header;
             c.valign = d.valign;
