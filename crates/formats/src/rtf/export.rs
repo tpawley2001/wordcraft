@@ -561,6 +561,8 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
         (set.no_leading, "\\truncex"),
         (set.ext_leading_2pt_only, "\\sprslnsp"),
         (set.wp_justification, "\\wpjst"),
+        (!set.balance_sbcs_dbcs_width, "\\dntblnsbdb"),
+        (!set.use_word97_line_break_rules, "\\lnbrkrule"),
         (set.track_changes, "\\revisions"),
         (set.print_forms_data, "\\printdata"),
     ] {

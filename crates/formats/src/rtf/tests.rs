@@ -1867,6 +1867,7 @@ mod info_company;
 mod info_props;
 mod jexpand;
 mod justification_flag;
+mod compat_off_words;
 mod compat_options;
 mod compat_defaults;
 mod compat_pair;

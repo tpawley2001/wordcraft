@@ -604,6 +604,11 @@ impl Reader {
     /// print form data only). False when `w` isn't one.
     pub(super) fn doc_setting_word(&mut self, w: &str, p: Option<i32>) -> bool {
         use wordcraft_doc::ZoomFit;
+        // Like `\jexpand`, these two only count among the document's own formatting words: in a
+        // style, a header or a note they are swallowed.
+        if matches!(w, "dntblnsbdb" | "lnbrkrule") && (self.st.dest != Dest::Body || self.sub.is_some() || self.hf.is_some()) {
+            return true;
+        }
         let on = p != Some(0);
         let pv = p.unwrap_or(0);
         let d = &mut self.doc_set;
@@ -626,6 +631,8 @@ impl Reader {
             "truncex" => d.no_leading = Some(on),
             "sprslnsp" => d.ext_leading_2pt_only = Some(on),
             "wpjst" => d.wp_justification = Some(on),
+            "dntblnsbdb" => d.no_balance_sbcs_dbcs_width = Some(on),
+            "lnbrkrule" => d.no_word97_line_break_rules = Some(on),
             "formprot" => d.old_prot = on.then_some("forms"),
             "htmautsp" => d.html_auto_spacing = on,
             "linkstyles" => d.link_styles = Some(on),
@@ -1329,6 +1336,11 @@ pub(super) struct DocSettingWords {
     no_leading: Option<bool>,
     ext_leading_2pt_only: Option<bool>,
     wp_justification: Option<bool>,
+    /// `\dntblnsbdb` (don't balance single-byte and double-byte character widths) and
+    /// `\lnbrkrule` (don't use Word 97 line breaking rules for Asian text): each turns off an
+    /// option every RTF document otherwise opens with on.
+    no_balance_sbcs_dbcs_width: Option<bool>,
+    no_word97_line_break_rules: Option<bool>,
     /// `\htmautsp` (Use HTML paragraph auto spacing): the space between two paragraphs is the
     /// larger of space after and space before. Without it Word adds the two.
     html_auto_spacing: bool,
@@ -1405,6 +1417,12 @@ impl DocSettingWords {
             if let Some(v) = v {
                 *field = v;
             }
+        }
+        if self.no_balance_sbcs_dbcs_width == Some(true) {
+            s.balance_sbcs_dbcs_width = false;
+        }
+        if self.no_word97_line_break_rules == Some(true) {
+            s.use_word97_line_break_rules = false;
         }
         if let Some(t) = &self.template {
             s.attached_template = Some(t.clone());
