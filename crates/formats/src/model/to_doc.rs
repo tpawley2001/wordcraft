@@ -229,6 +229,7 @@ fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
         out.auto_space_de = x.auto_space_de.or(out.auto_space_de);
         out.auto_space_dn = x.auto_space_dn.or(out.auto_space_dn);
         out.text_alignment = x.text_alignment.or(out.text_alignment);
+        out.adjust_right_indent = x.adjust_right_indent.or(out.adjust_right_indent);
         // An outline level apart from its heading style's.
         out.outline_level = x.outline_level.map(|l| l.min(8)).or(out.outline_level);
         // Indents in characters, beside the twips ones.
