@@ -93,6 +93,7 @@ mod output_header_footer_fields;
 mod printdate_output;
 mod output_if_fields;
 mod output_if_nested_fresh;
+mod output_if_nested_trigger;
 mod output_nested_ref_formula;
 mod output_set_ref;
 mod output_set_ref_unbookmarked;

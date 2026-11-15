@@ -708,6 +708,11 @@ fn printdate_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
     out
 }
 
+/// Whether a field of this name makes the output refresh the body's IF fields.
+fn output_if_trigger(name: &str) -> bool {
+    matches!(name, "SEQ" | "REF" | "DATE" | "PRINTDATE" | "SAVEDATE" | "PAGE" | "NUMPAGES" | "SECTION" | "SECTIONPAGES")
+}
+
 /// Read the original body, including table cells, so refreshed references cannot change the
 /// stored values used in nested IF conditions. A range field also counts as the last field.
 /// Under the same condition, an unlocked formula (`=`) holding nested REF fields shows the result
@@ -723,7 +728,12 @@ fn output_if_results(doc: &wordcraft_doc::Document, current: &wordcraft_doc::Doc
             let (InlineObject::Field { instr, .. } | InlineObject::FieldStart { instr, .. }) = o else { continue };
             last = Some((path.clone(), k));
             let name = wordcraft_layout::fields::field_name(instr);
-            trigger |= matches!(name.as_str(), "SEQ" | "REF" | "DATE" | "PRINTDATE" | "SAVEDATE" | "PAGE" | "NUMPAGES" | "SECTION" | "SECTIONPAGES");
+            trigger |= output_if_trigger(&name);
+            // A field nested in another field's code counts too (measured with Microsoft 365
+            // Word), even when the outer code was edited since the nested fields were recorded.
+            if let InlineObject::Field { code_paras: Some(cp), .. } = o {
+                trigger |= cp.nested.iter().any(|n| output_if_trigger(&wordcraft_layout::fields::field_name(&n.instr)));
+            }
             if let InlineObject::Field { locked: false, code_paras, .. } = o
                 && name == "IF"
                 && let Some(result) = match fresh_if_condition(doc, current, p, k, instr, code_paras.as_deref()) {
