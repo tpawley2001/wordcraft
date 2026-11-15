@@ -593,7 +593,8 @@ fn accessibility(app: &mut WordApp, ui: &mut Ui) {
 }
 
 /// Advanced › Show document content, in Word's order: picture placeholders, text boundaries, crop
-/// marks, and the draft font with its name and size. Screen settings, kept between runs.
+/// marks, and the draft font with its name and size. Screen settings, kept between runs. Font
+/// Substitution… opens the dialog of the fonts the document shows that aren't installed.
 fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Show document content");
     for (label, id, mut on) in [
@@ -628,6 +629,9 @@ fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
             }
         });
     });
+    if ui.button(tl!("Font Substitution…")).clicked() {
+        let _ = app.run("ui.dialog", json!({"name": "fontSubstitution"}));
+    }
 }
 
 /// Draws Advanced options: typing and overtype behavior, alignment guides, recent-document count,

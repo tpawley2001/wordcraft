@@ -1005,7 +1005,7 @@ pub fn state(s: &Session) -> Value {
     // The font's substitute when it isn't installed: the face its text is drawn in, apart from
     // characters the substitute lacks. `font.missing` lists every face the shown text is drawn
     // in, fallback faces too, and which fonts change the layout.
-    let shown_as = font.as_str().and_then(|f| crate::cmd::font::shown_as(&s.doc, f));
+    let shown_as = font.as_str().and_then(|f| crate::cmd::font::shown_as_with(&s.doc, &s.prefs.font_substitutes, f));
     json!({
         "font": font,
         "fontShownAs": shown_as,

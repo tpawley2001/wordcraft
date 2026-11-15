@@ -128,7 +128,7 @@ impl<'a> Builder<'a> {
     /// Asian characters in the run's East Asian font. When `line_font` is missing and Word has a
     /// line for it (SimSun), the style takes that line instead of the substitute's.
     fn style_with_line(&mut self, rc: &Arc<ResolvedChar>, face_override: Option<FaceRef>, small: bool, line_font: Option<&str>) -> u32 {
-        let r = wordcraft_fonts::word::resolve(lookup_family(self.env.doc, &rc.font), rc.bold, rc.italic);
+        let r = wordcraft_fonts::word::resolve(lookup_family(self.env.doc, self.env.font_substitutes, &rc.font), rc.bold, rc.italic);
         let face = face_override.unwrap_or(r.face);
         // The display list reads every run's format (link target, strike kind, underline colour,
         // baseline shift…) from its StyleRun, so runs share one only when their formats are equal.
@@ -312,7 +312,7 @@ impl<'a> Builder<'a> {
         // Complex-script characters (Persian, Arabic…) use the run's complex-script font, size,
         // bold and italic.
         let rc_cs: Option<Arc<ResolvedChar>> = text.chars().any(|c| rc.uses_complex(c)).then(|| Arc::new(rc.complex()));
-        let family = lookup_family(self.env.doc, &rc.font);
+        let family = lookup_family(self.env.doc, self.env.font_substitutes, &rc.font);
         let resolved = wordcraft_fonts::word::resolve(family, rc.bold, rc.italic);
         let primary = resolved.face;
         // Symbol-font characters are laid out as their Unicode equivalents.
@@ -324,7 +324,7 @@ impl<'a> Builder<'a> {
         let boxes = matches!(dir, Dir::Para);
         // A font isn't installed when it was substituted, or looked up as a missing roman font.
         let resolved_cs = rc_cs.as_ref().map(|r| {
-            let family = lookup_family(self.env.doc, &r.font);
+            let family = lookup_family(self.env.doc, self.env.font_substitutes, &r.font);
             let resolved = wordcraft_fonts::word::resolve(family, r.bold, r.italic);
             (resolved.face, resolved.substituted || family != r.font)
         });
