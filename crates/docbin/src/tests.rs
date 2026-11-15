@@ -74,6 +74,7 @@ mod section_columns;
 mod section_line_numbers_grid;
 mod section_page_borders;
 mod section_page_numbers;
+mod section_note_options;
 mod section_rtl_gutter;
 mod shape_placeholder_size;
 mod split_break_mark;
