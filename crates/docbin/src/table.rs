@@ -72,6 +72,10 @@ const T_F_NO_ALLOW_OVERLAP: u16 = 0x3465;
 const T_F_AUTOFIT: u16 = 0x3615;
 /// `sprmTTextFlow` ([MS-DOC] 2.6.4): itcFirst, itcLim, then a 16-bit text flow for those cells.
 const T_TEXT_FLOW: u16 = 0x7629;
+/// `sprmTIstd` ([MS-DOC] 2.6.3): the row's table style, an istd.
+const T_ISTD: u16 = 0x563A;
+/// `sprmTCellFHideMark` ([MS-DOC] 2.6.3, 2.9.36): cb, itcFirst, itcLim, fHideMark.
+const T_CELL_HIDE_MARK: u16 = 0xD642;
 /// `sprmTTlp` ([MS-DOC] 2.6.4, 2.9.322): a TLP, `itl` (the old AutoFormat, ignored) then
 /// `grfatl`, the Fatl bits that pick which parts of the table style apply.
 const T_TLP: u16 = 0x740A;
@@ -142,6 +146,12 @@ pub(crate) struct RowInfo {
     /// `sprmTFAutofit` with operand 1: the row's columns fit their content. Without it the
     /// stored cell widths are final (the table has fixed column widths).
     autofit: bool,
+    /// `sprmTIstd`: the istd of the row's table style, as stored.
+    pub(crate) style_istd: Option<u16>,
+    /// The id of the row's table style, set from `style_istd` where the style sheet is known.
+    pub(crate) style: Option<String>,
+    /// Cells whose end-of-cell mark is hidden or shown (`sprmTCellFHideMark`), one slot per cell.
+    hide_mark: Vec<(u8, bool)>,
     /// The table style options from `sprmTTlp`.
     look: Option<TableLook>,
     /// `sprmTFBiDi`: the table runs right to left.
@@ -425,6 +435,8 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
             T_DYA_FROM_TEXT_BOTTOM => r.tap_dist_bottom = s16(&prl).map(dist_pt),
             T_F_NO_ALLOW_OVERLAP => r.tap_no_overlap = prl.operand.first().map(|b| *b != 0),
             T_F_AUTOFIT => r.autofit = prl.operand.first() == Some(&1),
+            T_ISTD => r.style_istd = u16_of(&prl),
+            T_CELL_HIDE_MARK => apply_hide_mark(&mut r.hide_mark, prl.operand),
             T_VERT_ALIGN => {
                 if let [_, a, b, va, ..] = prl.operand {
                     let v = match va {
@@ -448,6 +460,16 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
     r.indent = edge0.and_then(|e| row_indent(e, gap_half, r.cell_margins));
     r.cant_split = cant_split(prc.unwrap_or(papx), version);
     r
+}
+
+/// Apply a `sprmTCellFHideMark` operand (cb, itcFirst, itcLim, fHideMark) to its cells, one slot
+/// per cell; a range past the row's cells only reaches the cells there are.
+fn apply_hide_mark(slots: &mut Vec<(u8, bool)>, operand: &[u8]) {
+    if let [_, a, b, flag, ..] = operand {
+        for c in *a..(*b).min(MAX_COLS as u8) {
+            set(slots, c, *flag != 0);
+        }
+    }
 }
 
 /// "Don't break this row across pages" from `grpprl`: `sprmTFCantSplit` in every version (a later
@@ -793,6 +815,8 @@ impl TableBuilder {
             // borderless row under a bordered first row draws no grid.
             if self.rows.is_empty() {
                 self.props.borders = info.borders;
+                // The first row's table style is the table's.
+                self.props.style = info.style.clone();
             } else if info.borders != self.props.borders {
                 let own = info.borders.unwrap_or_else(|| Borders::all(Border::default()));
                 row.props.exceptions = Some(Box::new(TableProps { borders: Some(own), ..Default::default() }));
@@ -917,6 +941,9 @@ fn build_row(mut cells: Vec<Cell>, info: &RowInfo) -> Row {
         }
         if let Some((_, d)) = info.text_flow.iter().rfind(|(k, _)| *k == i) {
             c.props.text_direction = *d;
+        }
+        if let Some((_, h)) = info.hide_mark.iter().rfind(|(k, _)| *k == i) {
+            c.props.hide_mark = *h;
         }
         if info.no_wrap.contains(&i) {
             c.props.no_wrap = true;
@@ -1208,6 +1235,27 @@ fn def_table_valign(operand: &[u8]) -> impl Iterator<Item = (u8, Option<VAlign>)
         });
         (i as u8, v)
     })
+}
+
+/// A table style's whole-table borders and default cell margins (points, [top, left, bottom,
+/// right]) from its table grpprl (`lpUpxTapx`), read with the same decoders as a row's TAP; a
+/// later sprm wins as in a row.
+pub(crate) fn style_parts(tapx: &[u8]) -> (Option<Borders>, Option<[f32; 4]>) {
+    let mut borders = None;
+    let mut padding: [Option<f32>; 4] = [None; 4];
+    for prl in sprm::iter(tapx) {
+        match prl.op {
+            T_TABLE_BORDERS_80 => borders = table_borders(prl.operand),
+            T_TABLE_BORDERS => borders = table_borders_brc(prl.operand),
+            T_CELL_PADDING_DEFAULT => {
+                if let Some((_, _, sides)) = cssa(prl.operand) {
+                    merge_sides(&mut padding, &sides);
+                }
+            }
+            _ => {}
+        }
+    }
+    (borders, cell_margins(padding, None))
 }
 
 /// Table borders from `sprmTTableBorders80`: cb (0x18) then six Brc80s in the order top,
