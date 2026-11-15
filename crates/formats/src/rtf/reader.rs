@@ -1052,6 +1052,13 @@ impl Reader {
         if let Some(m) = ts.cell_margins() {
             extra.get_or_insert_with(Default::default).cell_margins = Some(m);
         }
+        // Its first row's direction, preferred width and floating position.
+        let (width, width_pct) = ts.preferred_width();
+        let float = ts.float();
+        if ts.rtl || width.is_some() || width_pct.is_some() || float.is_some() {
+            let x = extra.get_or_insert_with(Default::default);
+            (x.bidi_visual, x.width, x.width_pct, x.float) = (ts.rtl, width, width_pct, float);
+        }
         if ts.style.is_some() || ts.look.is_some() {
             let x = extra.get_or_insert_with(Default::default);
             (x.style, x.look) = (ts.style, ts.look);
