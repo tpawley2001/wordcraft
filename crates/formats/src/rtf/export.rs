@@ -872,6 +872,29 @@ fn style_para_flag_words(doc: &Document, id: &str, fa: Option<wordcraft_doc::pro
     }
 }
 
+/// The paragraph words RTF reads as off when absent: automatic space between Asian and Latin
+/// text and numbers (`\aspalpha`, `\aspnum`) and Automatically adjust right indent
+/// (`\adjustright`), from the flow's effective values (unset when on); then the font alignment.
+fn off_unless_written_words(x: Option<&wordcraft_doc::props::ParaProps>) -> String {
+    let mut out = String::new();
+    // Automatic space between Asian and Latin text and numbers: off in RTF unless written
+    // (the flow model holds the effective value, unset when on).
+    if x.and_then(|x| x.auto_space_de) != Some(false) {
+        out.push_str("\\aspalpha");
+    }
+    if x.and_then(|x| x.auto_space_dn) != Some(false) {
+        out.push_str("\\aspnum");
+    }
+    // Automatically adjust right indent: likewise off in RTF unless written.
+    if x.and_then(|x| x.adjust_right_indent) != Some(false) {
+        out.push_str("\\adjustright");
+    }
+    if let Some(w) = x.and_then(|x| x.text_alignment).map(font_align_word) {
+        out.push_str(w);
+    }
+    out
+}
+
 /// The RTF word for font alignment `fa` (RTF 1.9.1 "Paragraph formatting properties").
 fn font_align_word(fa: wordcraft_doc::props::TextAlignment) -> &'static str {
     use wordcraft_doc::props::TextAlignment;
@@ -1800,22 +1823,7 @@ impl Writer {
             Some(false) => out.push_str("\\nowidctlpar"),
             None => {}
         }
-        // Automatic space between Asian and Latin text and numbers: off in RTF unless written
-        // (the flow model holds the effective value, unset when on).
-        let x = p.extra.as_deref();
-        if x.and_then(|x| x.auto_space_de) != Some(false) {
-            out.push_str("\\aspalpha");
-        }
-        if x.and_then(|x| x.auto_space_dn) != Some(false) {
-            out.push_str("\\aspnum");
-        }
-        // Automatically adjust right indent: likewise off in RTF unless written.
-        if x.and_then(|x| x.adjust_right_indent) != Some(false) {
-            out.push_str("\\adjustright");
-        }
-        if let Some(w) = x.and_then(|x| x.text_alignment).map(font_align_word) {
-            out.push_str(w);
-        }
+        out.push_str(&off_unless_written_words(p.extra.as_deref()));
         if let Some(x) = p.extra.as_deref() {
             if x.contextual_spacing == Some(true) {
                 out.push_str("\\contextualspace");
