@@ -2,11 +2,12 @@
 //! the `Plcfhdd` stories of the header subdocument ([MS-DOC] §2.8.25, §2.9.244).
 
 use wordcraft_doc::props::{Border, Borders};
-use wordcraft_doc::section::NumFormat;
+use wordcraft_doc::section::{ChapterSep, MAX_NOTE_START, NotePos, NoteRestart, NumFormat};
 use wordcraft_doc::section::{DocGrid, DocGridType, LineNumberRestart, LineNumbering, MAX_CHAR_SPACE, PageVAlign, SectionProps, SectionStart};
 
 use crate::fib::{Fib, pair};
 use crate::fmt;
+use crate::list;
 use crate::sprm::{self, Prl};
 
 /// Most sections we read.
@@ -21,6 +22,22 @@ const S_DXA_COLUMNS: u16 = 0x900C; // sprmSDxaColumns
 const S_NFC_PGN: u16 = 0x300E; // sprmSNfcPgn
 const S_PGN_RESTART: u16 = 0x3011; // sprmSFPgnRestart
 const S_PGN_START: u16 = 0x501C; // sprmSPgnStart97
+const S_PGN_START32: u16 = 0x7044; // sprmSPgnStart: the 32-bit page-number start (Word 2007+)
+const S_CNS_PGN: u16 = 0x3000; // sprmScnsPgn: chapter number separator
+const S_I_HEADING_PGN: u16 = 0x3001; // sprmSiHeadingPgn: heading level of the chapter number
+const S_F_PROTECTED: u16 = 0x3006; // sprmSFProtected: the section is protected for forms
+const S_TEXT_FLOW: u16 = 0x5033; // sprmSTextFlow
+const S_FPC: u16 = 0x303B; // sprmSFpc: footnote position
+const S_RNC_FTN: u16 = 0x303C; // sprmSRncFtn: footnote numbering restart
+const S_RNC_EDN: u16 = 0x303E; // sprmSRncEdn: endnote numbering restart
+const S_N_FTN: u16 = 0x503F; // sprmSNFtn: footnote starting number
+const S_NFC_FTN_REF: u16 = 0x5040; // sprmSNfcFtnRef: footnote number format (MSONFC)
+const S_N_EDN: u16 = 0x5041; // sprmSNEdn: endnote starting number
+const S_NFC_EDN_REF: u16 = 0x5042; // sprmSNfcEdnRef: endnote number format (MSONFC)
+/// The highest note starting number a .doc states: sprmSNFtn and sprmSNEdn MUST be below 0x3FFF
+/// ([MS-DOC] §2.6.4), the range of the DOP's 14-bit nFtn / nEdn. A larger operand is not a start
+/// number (a truncated one reads the next sprm's bytes there) and is ignored.
+const MAX_DOC_NOTE_START: u32 = 0x3FFE;
 const S_L_BETWEEN: u16 = 0x3019; // sprmSLBetween
 const S_VJC: u16 = 0x301A; // sprmSVjc
 pub(crate) const S_ORIENTATION: u16 = 0x301D; // sprmSBOrientation
@@ -255,6 +272,98 @@ fn set_page_border(s: &mut SectionProps, op: u16, b: Border) {
     *slot = Some(b);
 }
 
+/// Apply a footnote or endnote option sprm ([MS-DOC] §2.6.4: sprmSFpc, sprmSRncFtn, sprmSRncEdn,
+/// sprmSNFtn, sprmSNfcFtnRef, sprmSNEdn, sprmSNfcEdnRef). A short operand or a value outside the
+/// defined range leaves the option unset.
+fn apply_note_options(s: &mut SectionProps, prl: &Prl) {
+    let restart = |v: u8| match v {
+        0 => Some(NoteRestart::Continuous),
+        1 => Some(NoteRestart::EachSect),
+        2 => Some(NoteRestart::EachPage),
+        _ => None,
+    };
+    let u16_op = || match prl.operand {
+        [b0, b1, ..] => Some(u16::from_le_bytes([*b0, *b1])),
+        _ => None,
+    };
+    let start = || u16_op().map(u32::from).filter(|n| (1..=MAX_DOC_NOTE_START.min(MAX_NOTE_START)).contains(n));
+    let fmt = || u16_op().and_then(|n| u8::try_from(n).ok()).map(list::num_format);
+    let first = prl.operand.first().copied();
+    // sprmSFpc and the Ftn sprms are footnote options; the Edn sprms endnote options.
+    let note = if matches!(prl.op, S_RNC_EDN | S_N_EDN | S_NFC_EDN_REF) { &mut s.endnote_pr } else { &mut s.footnote_pr };
+    match prl.op {
+        S_FPC => {
+            let pos = match first {
+                Some(1) => Some(NotePos::PageBottom),
+                Some(2) => Some(NotePos::BeneathText),
+                _ => None,
+            };
+            if pos.is_some() {
+                note.pos = pos;
+            }
+        }
+        S_RNC_FTN | S_RNC_EDN => {
+            if let Some(r) = first.and_then(restart) {
+                note.num_restart = Some(r);
+            }
+        }
+        S_N_FTN | S_N_EDN => {
+            if let Some(n) = start() {
+                note.num_start = Some(n);
+            }
+        }
+        S_NFC_FTN_REF | S_NFC_EDN_REF => {
+            if let Some(f) = fmt() {
+                note.num_fmt = Some(f);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Apply chapter page numbering, form protection or text flow ([MS-DOC] §2.6.4: sprmScnsPgn,
+/// sprmSiHeadingPgn, sprmSFProtected, sprmSTextFlow). A short operand changes nothing.
+fn apply_chapter_protection_flow(s: &mut SectionProps, prl: &Prl) {
+    match prl.op {
+        // Chapter numbering ([MS-DOC] sprmScnsPgn, sprmSiHeadingPgn). The separator is kept even
+        // without a heading level, as the file states it.
+        S_CNS_PGN => {
+            if let Some(&v) = prl.operand.first() {
+                let sep = match v {
+                    0 => Some(ChapterSep::Hyphen),
+                    1 => Some(ChapterSep::Period),
+                    2 => Some(ChapterSep::Colon),
+                    3 => Some(ChapterSep::EmDash),
+                    4 => Some(ChapterSep::EnDash),
+                    _ => None,
+                };
+                if sep.is_some() {
+                    s.chapter_sep = sep;
+                }
+            }
+        }
+        S_I_HEADING_PGN => {
+            if let Some(&v) = prl.operand.first() {
+                s.chapter_style = (1..=9).contains(&v).then_some(v);
+            }
+        }
+        S_F_PROTECTED => {
+            if let Some(&v) = prl.operand.first() {
+                s.form_prot = Some(v != 0);
+            }
+        }
+        // Same values as sprmTTextFlow; 0 states horizontal text.
+        S_TEXT_FLOW => {
+            if let [b0, b1, ..] = prl.operand {
+                let v = u16::from_le_bytes([*b0, *b1]);
+                s.text_direction = crate::table::text_flow(v);
+                s.text_direction_set = v == 0;
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Apply a section sprm to the model's section properties. All the measurement sprms here
 /// carry 16-bit twip operands ([MS-DOC] §2.6.4). The page-number restart flag and start value
 /// go to `pgn`, as they only count together.
@@ -351,11 +460,16 @@ pub(crate) fn apply_section(s: &mut SectionProps, pgn: &mut PageNumbering, prl: 
             }
         }
         S_PGN_RESTART => pgn.restart = prl.operand.first().is_some_and(|&v| v != 0),
-        S_PGN_START => {
-            if let [b0, b1, ..] = prl.operand {
-                pgn.start = Some(u32::from(u16::from_le_bytes([*b0, *b1])));
-            }
+        // sprmSPgnStart97 (16-bit) or sprmSPgnStart (32-bit, Word 2007+): the later one wins.
+        S_PGN_START | S_PGN_START32 => {
+            pgn.start = match (prl.op, prl.operand) {
+                (S_PGN_START32, [b0, b1, b2, b3, ..]) => Some(u32::from_le_bytes([*b0, *b1, *b2, *b3])),
+                (S_PGN_START, [b0, b1, ..]) => Some(u32::from(u16::from_le_bytes([*b0, *b1]))),
+                _ => pgn.start,
+            };
         }
+        S_FPC | S_RNC_FTN | S_RNC_EDN | S_N_FTN | S_NFC_FTN_REF | S_N_EDN | S_NFC_EDN_REF => apply_note_options(s, prl),
+        S_CNS_PGN | S_I_HEADING_PGN | S_F_PROTECTED | S_TEXT_FLOW => apply_chapter_protection_flow(s, prl),
         // Printer paper source (the DMBIN code, as DOCX `w:paperSrc`); 0 is the SEP default.
         S_DM_BIN_FIRST | S_DM_BIN_OTHER => {
             if let [b0, b1, ..] = prl.operand {
@@ -455,4 +569,78 @@ pub(crate) fn header_stories(table: &[u8], fib: &Fib) -> Vec<(u32, u32)> {
         }
     }
     stories
+}
+
+#[cfg(test)]
+mod note_option_tests {
+    use super::*;
+    use wordcraft_doc::props::TextDirection;
+
+    fn apply(prls: &[(u16, &[u8])]) -> (SectionProps, PageNumbering) {
+        let mut s = SectionProps::default();
+        let mut pgn = PageNumbering::default();
+        for &(op, operand) in prls {
+            apply_section(&mut s, &mut pgn, &Prl { op, operand });
+        }
+        (s, pgn)
+    }
+
+    #[test]
+    fn short_operands_leave_every_field_unchanged() {
+        let ops = [
+            S_FPC,
+            S_RNC_FTN,
+            S_RNC_EDN,
+            S_N_FTN,
+            S_NFC_FTN_REF,
+            S_N_EDN,
+            S_NFC_EDN_REF,
+            S_CNS_PGN,
+            S_I_HEADING_PGN,
+            S_F_PROTECTED,
+            S_TEXT_FLOW,
+            S_PGN_START32,
+        ];
+        for op in ops {
+            for operand in [&[][..], &[1][..], &[1, 0, 0][..]] {
+                if operand.len() >= 2 && op != S_PGN_START32 {
+                    continue;
+                }
+                if operand.len() == 1 && ![S_N_FTN, S_NFC_FTN_REF, S_N_EDN, S_NFC_EDN_REF, S_TEXT_FLOW, S_PGN_START32].contains(&op) {
+                    continue;
+                }
+                let (s, pgn) = apply(&[(op, operand)]);
+                let d = SectionProps::default();
+                assert_eq!((s.footnote_pr, s.endnote_pr), (d.footnote_pr, d.endnote_pr), "{op:#06x} {operand:?}");
+                assert_eq!((s.chapter_sep, s.chapter_style, s.form_prot), (None, None, None), "{op:#06x}");
+                assert_eq!((s.text_direction, s.text_direction_set), (TextDirection::Horizontal, false), "{op:#06x}");
+                assert_eq!(pgn.start, None, "{op:#06x}");
+            }
+        }
+    }
+
+    #[test]
+    fn note_formats_past_a_byte_and_starts_past_the_dop_range_are_ignored() {
+        let (s, _) =
+            apply(&[(S_NFC_FTN_REF, &0x0102u16.to_le_bytes()), (S_N_EDN, &0x3FFFu16.to_le_bytes()), (S_NFC_EDN_REF, &0x0100u16.to_le_bytes())]);
+        assert_eq!((s.footnote_pr.num_fmt, s.endnote_pr.num_start, s.endnote_pr.num_fmt), (None, None, None));
+        let (s, _) = apply(&[(S_N_FTN, &0x3FFEu16.to_le_bytes()), (S_N_EDN, &1u16.to_le_bytes())]);
+        assert_eq!((s.footnote_pr.num_start, s.endnote_pr.num_start), (Some(0x3FFE), Some(1)));
+    }
+
+    #[test]
+    fn endnotes_keep_restart_each_page_and_never_take_a_footnote_position() {
+        let (s, _) = apply(&[(S_RNC_EDN, &[2]), (S_FPC, &[2])]);
+        assert_eq!(s.endnote_pr.num_restart, Some(NoteRestart::EachPage));
+        assert_eq!(s.endnote_pr.pos, None);
+        assert_eq!(s.footnote_pr.pos, Some(NotePos::BeneathText));
+    }
+
+    #[test]
+    fn vertical_text_flow_is_not_a_stated_horizontal() {
+        let (s, _) = apply(&[(S_TEXT_FLOW, &5u16.to_le_bytes())]);
+        assert_eq!((s.text_direction, s.text_direction_set), (TextDirection::Down, false));
+        let (s, _) = apply(&[(S_TEXT_FLOW, &4u16.to_le_bytes())]);
+        assert_eq!((s.text_direction, s.text_direction_set), (TextDirection::Horizontal, false));
+    }
 }

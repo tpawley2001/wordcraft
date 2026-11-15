@@ -1020,7 +1020,7 @@ fn apply_def_table_valign(slots: &mut Vec<(u8, VAlign)>, operand: &[u8]) {
 /// `sprmTTextFlow` operand ([MS-DOC] 2.9.313 TCGRF, TextFlow). 1 runs top to bottom, 3 bottom to
 /// top, 5 top to bottom with upright glyphs (turned like 1, as the DOCX reader turns `tbRlV`);
 /// 0, 4 (horizontal with turned glyphs) and the undefined values are horizontal.
-fn text_flow(v: u16) -> TextDirection {
+pub(crate) fn text_flow(v: u16) -> TextDirection {
     match v {
         1 | 5 => TextDirection::Down,
         3 => TextDirection::Up,
