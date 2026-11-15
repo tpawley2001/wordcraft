@@ -621,8 +621,9 @@ fn border_room_advances(b: &mut Builder) {
 }
 
 /// Mark the clusters a line may break after.
-fn mark_break_opportunities(clusters: &mut [Cluster], bt: &BreakText, rp: &ResolvedPara) {
-    let opps: std::collections::HashSet<usize> = break_positions(&bt.text, rp).into_iter().filter_map(|i| bt.to_para(i)).collect();
+/// `keep_hyphenated`: no break after a hyphen between two letters (see [`break_positions`]).
+fn mark_break_opportunities(clusters: &mut [Cluster], bt: &BreakText, rp: &ResolvedPara, keep_hyphenated: bool) {
+    let opps: std::collections::HashSet<usize> = break_positions(&bt.text, rp, keep_hyphenated).into_iter().filter_map(|i| bt.to_para(i)).collect();
     for c in clusters.iter_mut() {
         c.break_after = opps.contains(&c.end) || matches!(c.kind, ClKind::Object(_) | ClKind::Tab);
     }
@@ -830,7 +831,9 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     let mut skip = sh.left.clone();
     skip.extend(sh.bare.iter().cloned());
     let bt = BreakText::new(&p.text, skip);
-    mark_break_opportunities(&mut sh.b.clusters, &bt, &rp);
+    // Below compatibility mode 15 with Compress punctuation, and in documents opened from RTF,
+    // Word keeps hyphenated words whole (the same documents squeeze their spaces).
+    mark_break_opportunities(&mut sh.b.clusters, &bt, &rp, doc.settings.squeezes_like_rtf());
     let label = list_label(&cx, &mut sh.b, mark_style);
     let joined_cluster_starts = joined_cluster_starts(p, &sh.b.clusters);
     let Shaped {
@@ -1031,7 +1034,10 @@ fn break_text<'a>(source: &'a str, skip: &[std::ops::Range<usize>]) -> (std::bor
     }
 }
 
-fn break_positions(text: &str, rp: &wordcraft_doc::resolve::ResolvedPara) -> Vec<usize> {
+/// Where a line may break in `text`. With `keep_hyphenated`, never after a hyphen-minus (U+002D)
+/// between two letters: Word moves the whole hyphenated word to the next line (a word longer than
+/// the line still breaks wherever it must).
+fn break_positions(text: &str, rp: &wordcraft_doc::resolve::ResolvedPara, keep_hyphenated: bool) -> Vec<usize> {
     let mut found = Vec::new();
     for (i, o) in unicode_linebreak::linebreaks(text) {
         // Word keeps "and/or" and web addresses whole: no break right after a slash (a word
@@ -1088,6 +1094,14 @@ fn break_positions(text: &str, rp: &wordcraft_doc::resolve::ResolvedPara) -> Vec
     // UAX #14 breaks between a full stop and an opening parenthesis; Word keeps
     // "2023.(Example" whole and wraps it at the space before.
     found.retain(|&i| !(text.get(..i).is_some_and(|t| t.ends_with('.')) && text.get(i..).is_some_and(|t| t.starts_with('('))));
+    if keep_hyphenated {
+        found.retain(|&i| {
+            let mut before = text.get(..i).unwrap_or_default().chars().rev();
+            !(before.next() == Some('-')
+                && before.next().is_some_and(char::is_alphabetic)
+                && text.get(i..).and_then(|t| t.chars().next()).is_some_and(char::is_alphabetic))
+        });
+    }
     // Asian typography: kinsoku and breaking Latin words anywhere.
     crate::kinsoku::apply(text, &mut found, rp.kinsoku, rp.word_wrap);
     found
