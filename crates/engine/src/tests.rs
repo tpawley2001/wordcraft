@@ -22,6 +22,7 @@ mod find_caret_word;
 mod find_objects_word;
 mod find_wildcards_word;
 mod formula_result_word;
+mod numeric_format_switch_word;
 mod date_picture_word;
 mod insert_table_autofit;
 mod table_autofit_word;
