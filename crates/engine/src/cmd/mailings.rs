@@ -127,12 +127,28 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"field": string}"#)
         .key(super::non_mac("Alt+Shift+F")),
-        CommandSpec::new("mailings.addressBlock", "Address Block", "Mailings › Write & Insert Fields", |s, _| {
-            insert_field(s, "ADDRESSBLOCK", "«AddressBlock»")
-        }),
-        CommandSpec::new("mailings.greetingLine", "Greeting Line", "Mailings › Write & Insert Fields", |s, _| {
-            insert_field(s, "GREETINGLINE", "«GreetingLine»")
-        }),
+        CommandSpec::new("mailings.addressBlock", "Address Block", "Mailings › Write & Insert Fields", |s, v| {
+            let mut instr = "ADDRESSBLOCK".to_string();
+            if let Some(format) = p::str(v, "format") {
+                instr.push_str(&format!(" \\f {}", quoted(format)));
+            }
+            if let Some(country) = v.get("country") {
+                let country = country.as_u64().filter(|c| *c <= 2).ok_or_else(|| CmdError::Params("`country` must be 0, 1 or 2".into()))?;
+                instr.push_str(&format!(" \\c {country}"));
+            }
+            if let Some(exclude) = p::str(v, "exclude") {
+                instr.push_str(&format!(" \\e {}", quoted(exclude)));
+            }
+            insert_field(s, &instr, "«AddressBlock»")
+        })
+        .params(r#"{"format"?: string, "country"?: 0|1|2, "exclude"?: string}"#),
+        CommandSpec::new("mailings.greetingLine", "Greeting Line", "Mailings › Write & Insert Fields", |s, v| {
+            let format = p::str(v, "format").unwrap_or("<<_BEFORE_ Dear >><<_TITLE0_ >><<_LAST0_>><<_AFTER_ ,>>");
+            let alt = p::str(v, "alt").unwrap_or("Dear Sir or Madam,");
+            let instr = format!("GREETINGLINE \\f {} \\l 1033 \\e {}", quoted(format), quoted(alt));
+            insert_field(s, &instr, "«GreetingLine»")
+        })
+        .params(r#"{"format"?: string, "alt"?: string}"#),
         CommandSpec::new("mailings.rules", "Rules", "Mailings › Write & Insert Fields", |s, v| {
             let rule = p::str(v, "rule").unwrap_or("NEXT").to_ascii_uppercase();
             let instr = match rule.as_str() {
