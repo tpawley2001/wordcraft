@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0562: PDF, printing and page images refresh eligible unlocked body IF fields when a body output/page field triggers refresh, except the last field. Stored document results and formula results are preserved; nested page conditions and chosen branches containing fields retain their cache. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0517: applying a paragraph style clears direct paragraph formatting (indents, alignment, spacing, keeps, tabs, borders, shading, outline level) and a direct bullet or number, as in Word; drop caps stay. Readiness estimates unchanged.)
@@ -251,6 +253,8 @@ Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei,
 Convert to Text now uses comma-space separators and offers recursive nested-table conversion (P0512); the remaining dialog depth work in gap #7 is unchanged.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0562: PDF, printing and page images refresh eligible unlocked body IF fields when a body output/page field triggers refresh, except the last field. Stored document results and formula results are preserved; nested page conditions and chosen branches containing fields retain their cache. Readiness estimates unchanged.
 
 > 2026-11-14 · trivial · P0514: Ctrl+Space and Clear All Formatting keep highlighting; Ctrl+Space also removes the character style and Ctrl+Q a directly applied bullet or number, as measured in Word. Readiness estimates unchanged.
 

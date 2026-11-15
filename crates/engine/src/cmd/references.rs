@@ -11,6 +11,7 @@ use super::{delete_selection, sel_result};
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
 mod captions;
+mod conditional;
 mod fields;
 mod includetext;
 mod link;
