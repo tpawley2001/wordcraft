@@ -417,6 +417,8 @@ pub(super) struct RowStyle {
     /// the order top, left, bottom, right.
     pub(super) pad: [i32; 4],
     pub(super) pad_unit: [i32; 4],
+    /// Whether the row is AutoFit (`\trautofitN`, N nonzero); otherwise its columns are fixed.
+    pub(super) autofit: bool,
     /// The row runs right to left (`\rtlrow`; `\ltrrow` left to right).
     pub(super) rtl: bool,
     /// The row's preferred width (`\trwWidthN`) and its unit (`\trftsWidthN`: 2 fiftieths of a
