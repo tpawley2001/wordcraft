@@ -297,7 +297,7 @@ pub struct Settings {
     /// has it (for pre-printed forms). PDF export is unaffected.
     pub print_forms_data: bool,
     /// Form Field Shading turned off (`w:doNotShadeFormData`, ECMA-376 Part 1 §17.15.1.42; RTF
-    /// `\formshade` is its opposite): legacy form fields are drawn without their grey shading.
+    /// `\formshade` is its opposite). Preserved on open/save; drawing the shading is deferred.
     pub do_not_shade_form_data: bool,
     pub auto_hyphenation: bool,
     /// Hyphenation zone (`w:hyphenationZone`), points: a line is hyphenated only when breaking

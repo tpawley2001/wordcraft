@@ -163,6 +163,9 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
             }
         }
     }
+    if s.do_not_shade_form_data {
+        w.empty("w:doNotShadeFormData", &[]);
+    }
     // Word saves a document opened from RTF with Compress punctuation in compatibility mode 11
     // (see `write_compatibility_settings`), so the reopened copy keeps squeezing spaces like RTF.
     let char_spacing = if s.rtf_justification && s.char_spacing == wordcraft_doc::CharSpacing::DoNotCompress {

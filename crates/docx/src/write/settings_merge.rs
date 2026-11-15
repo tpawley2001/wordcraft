@@ -43,6 +43,7 @@ const OWNED: &[&str] = &[
     "w:doNotUseMarginsForDrawingGridOrigin",
     "w:drawingGridHorizontalOrigin",
     "w:drawingGridVerticalOrigin",
+    "w:doNotShadeFormData",
     "w:characterSpacingControl",
     "w:footnotePr",
     "w:endnotePr",

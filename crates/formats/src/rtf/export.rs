@@ -556,6 +556,7 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
         (set.footnote_layout_like_ww8, "\\ftnlytwnine"),
         (set.track_changes, "\\revisions"),
         (set.print_forms_data, "\\printdata"),
+        (!set.do_not_shade_form_data, "\\formshade"),
     ] {
         if on {
             o.push_str(w);

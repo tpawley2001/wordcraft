@@ -617,6 +617,7 @@ impl Reader {
             "enforceprot" => d.enforce = Some(on),
             "expshrtn" => d.expand_shift_return = Some(on),
             "ftnlytwnine" => d.footnote_layout_like_ww8 = Some(on),
+            "formshade" => d.form_shade = on,
             "formprot" => d.old_prot = on.then_some("forms"),
             "htmautsp" => d.html_auto_spacing = on,
             "linkstyles" => d.link_styles = Some(on),
@@ -1312,6 +1313,8 @@ pub(super) struct DocSettingWords {
     /// `\revisions` (Track Changes on) and `\printdata` (print only the data from a form).
     track_changes: Option<bool>,
     print_forms_data: Option<bool>,
+    /// `\formshade` is a flag: absent or zero means shading is off.
+    form_shade: bool,
     /// `\trackmovesN` (Track moves): `\trackmoves0` turns move tracking off.
     track_moves: Option<bool>,
     /// The attached template (`{\*\template …}`): the last non-blank group's path.
@@ -1323,6 +1326,7 @@ pub(super) struct DocSettingWords {
 
 impl DocSettingWords {
     pub(super) fn apply(&self, s: &mut wordcraft_doc::Settings) {
+        s.do_not_shade_form_data = !self.form_shade;
         s.sum_paragraph_spacing = !self.html_auto_spacing;
         s.symbol_class_fonts.clone_from(&self.symbol_class_fonts);
         if self.percent.is_some() || self.fit.is_some() {
