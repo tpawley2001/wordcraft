@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.)
@@ -196,6 +198,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-15: P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged.
 
 - 2026-11-15: P0571: Shift+F3 cycles case as Word does: lowercase text with a full stop, ! or ? goes to Sentence case, other lowercase to Capitalize Each Word, all caps to lowercase, mixed text to UPPERCASE (or Sentence case when it starts lowercase and holds a full stop). It went lower, UPPER, Title. Readiness estimates unchanged.
 - 2026-11-15: P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.
@@ -1078,6 +1082,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | trivial | P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged. |
