@@ -40,7 +40,9 @@ fn unknown_codes_and_other_fonts_have_no_width() {
     assert_eq!(symbol_advance("Wingdings", 0x7F), None, "the missing-character box keeps its own width");
     assert_eq!(symbol_advance("Wingdings", 0x10), None);
     assert_eq!(symbol_advance("Wingdings 3", 0xF5), None, "not measured");
-    assert_eq!(symbol_advance("Webdings", 0x6C), None);
+    assert!(near(symbol_advance("Webdings", 0x6C), 1.0));
+    assert!(near(symbol_advance("Webdings", 0x6D), 0.559));
+    assert_eq!(symbol_advance("Webdings", 0x7F), None, "the missing-character box keeps its own width");
     assert_eq!(symbol_advance("Wingdings 4", 0x6C), None);
     // Symbol's table is unchanged.
     assert!(near(symbol_advance("Symbol", 0x79), 0.686));

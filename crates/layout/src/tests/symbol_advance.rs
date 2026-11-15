@@ -1,8 +1,8 @@
 //! A character in the Symbol font, when Symbol itself isn't installed, is drawn as its Unicode
 //! equivalent from another face but is as wide as Symbol makes it, as Word lays it out: a psi
 //! (Symbol 0x79) is 0.686 em, not the 0.660 em of a substitute's psi, so it wraps where Word wraps
-//! it. A missing Wingdings, Wingdings 2 or Wingdings 3 likewise keeps Word's widths for its
-//! characters. An installed font keeps its own advances; Webdings keeps the drawn face's.
+//! it. A missing Wingdings, Wingdings 2, Wingdings 3 or Webdings likewise keeps Word's widths for
+//! its characters. An installed font keeps its own advances.
 
 use std::sync::Arc;
 
