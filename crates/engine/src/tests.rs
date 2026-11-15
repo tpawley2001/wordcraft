@@ -63,6 +63,7 @@ mod shrink_font_steps;
 mod sort_number_date_word;
 mod grid_settings;
 mod fonts;
+mod font_substitution;
 mod includetext;
 mod includetext_update_source;
 mod edit_links;
