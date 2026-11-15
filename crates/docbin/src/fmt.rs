@@ -2,8 +2,8 @@
 
 use wordcraft_doc::Rgb;
 use wordcraft_doc::props::{
-    Align, Border, BorderStyle, Borders, CharProps, EmphasisMark, Highlight, LineSpacing, NumRef, ParaProps, TabAlign, TabLeader, TabStop, TextColor,
-    TextFrame, Underline, VertAlign,
+    Align, Border, BorderStyle, Borders, CharProps, EmphasisMark, Highlight, LineSpacing, NumRef, ParaProps, TabAlign, TabLeader, TabStop,
+    TextAlignment, TextColor, TextFrame, Underline, VertAlign,
 };
 use wordcraft_doc::styles::{Style, StyleKind, StyleSheet};
 
@@ -77,6 +77,24 @@ const P_F_DYA_AFTER_AUTO: u16 = 0x245C;
 const P_F_WIDOW_CONTROL: u16 = 0x2431;
 /// sprmPFContextualSpacing ([MS-DOC] §2.6.2): Don't add space between paragraphs of the same style.
 const P_F_CONTEXTUAL_SPACING: u16 = 0x246D;
+// More Bool8 paragraph flags ([MS-DOC] §2.6.2): Suppress line numbers, Don't hyphenate, the
+// East Asian line-break options and Mirror indents.
+const P_F_NO_LINE_NUMB: u16 = 0x240C;
+const P_F_NO_AUTO_HYPH: u16 = 0x242A;
+const P_F_KINSOKU: u16 = 0x2433;
+const P_F_WORD_WRAP: u16 = 0x2434;
+const P_F_OVERFLOW_PUNCT: u16 = 0x2435;
+const P_F_TOP_LINE_PUNCT: u16 = 0x2436;
+const P_F_AUTO_SPACE_DE: u16 = 0x2437;
+const P_F_AUTO_SPACE_DN: u16 = 0x2438;
+const P_F_MIRROR_INDENTS: u16 = 0x2470;
+/// sprmPWAlignFont: vertical font alignment on the line, a u16 (0 top, 1 center, 2 baseline,
+/// 3 bottom, 4 auto).
+const P_W_ALIGN_FONT: u16 = 0x4439;
+/// sprmPShd80 (a 2-byte Shd80) and sprmPShd (cb + a 10-byte Shd): paragraph shading. Word 2000
+/// and later write both, the exact colour last, so the later one wins.
+const P_SHD80: u16 = 0x442D;
+const P_SHD: u16 = 0xC64D;
 const P_DYA_LINE: u16 = 0x6412;
 const P_KEEP: u16 = 0x2405; // keep lines together
 const P_KEEP_FOLLOW: u16 = 0x2406; // keep with next
@@ -680,6 +698,48 @@ pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
         P_F_CONTEXTUAL_SPACING => {
             if let Some(&b) = prl.operand.first() {
                 p.contextual_spacing = Some(b != 0);
+            }
+        }
+        P_F_NO_LINE_NUMB | P_F_NO_AUTO_HYPH | P_F_KINSOKU | P_F_WORD_WRAP | P_F_OVERFLOW_PUNCT | P_F_TOP_LINE_PUNCT | P_F_AUTO_SPACE_DE
+        | P_F_AUTO_SPACE_DN | P_F_MIRROR_INDENTS => {
+            if let Some(&b) = prl.operand.first() {
+                let on = Some(b != 0);
+                match prl.op {
+                    P_F_NO_LINE_NUMB => p.suppress_line_numbers = on,
+                    P_F_NO_AUTO_HYPH => p.suppress_hyphens = on,
+                    P_F_KINSOKU => p.kinsoku = on,
+                    P_F_WORD_WRAP => p.word_wrap = on,
+                    P_F_OVERFLOW_PUNCT => p.overflow_punct = on,
+                    P_F_TOP_LINE_PUNCT => p.top_line_punct = on,
+                    P_F_AUTO_SPACE_DE => p.auto_space_de = on,
+                    P_F_AUTO_SPACE_DN => p.auto_space_dn = on,
+                    _ => p.mirror_indents = on,
+                }
+            }
+        }
+        // A value the spec does not define changes nothing.
+        P_W_ALIGN_FONT => {
+            let a = match u16_of(prl) {
+                Some(0) => Some(TextAlignment::Top),
+                Some(1) => Some(TextAlignment::Center),
+                Some(2) => Some(TextAlignment::Baseline),
+                Some(3) => Some(TextAlignment::Bottom),
+                Some(4) => Some(TextAlignment::Auto),
+                _ => None,
+            };
+            if a.is_some() {
+                p.text_alignment = a;
+            }
+        }
+        // A short operand changes nothing; an automatic fill clears an earlier one.
+        P_SHD80 => {
+            if let Some(b) = prl.operand.get(..2) {
+                p.shading = crate::table::shd80_rgb(b);
+            }
+        }
+        P_SHD => {
+            if let Some(b) = prl.operand.get(1..11) {
+                p.shading = crate::table::shd_rgb(b);
             }
         }
         // LSPD ([MS-DOC] §2.9.150): a signed dyaLine, then fMultLinespace. In lines (240ths) when
