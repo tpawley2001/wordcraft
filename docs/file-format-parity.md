@@ -1,6 +1,6 @@
 # File-format parity with Microsoft Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0542: RTF keeps five Word compatibility options on open and save: `\notabind`, `\truncex`, `\sprslnsp`, `\wpjst`, `\spltpgpar`. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0547: `.docx` keeps the view a document was saved in (`w:view`): Web Layout and Outline reopen in that view, Draft opens in Print Layout as in Word, and saving records the current view. Readiness estimates unchanged; earlier: P0542: RTF keeps five Word compatibility options on open and save: `\notabind`, `\truncex`, `\sprslnsp`, `\wpjst`, `\spltpgpar`. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0538: Word 6.0/95 `.doc` fields whose result runs over paragraphs, such as a table of contents, keep those paragraphs. Readiness estimates unchanged; earlier: P0540: `.doc` paragraphs and styles keep Automatically adjust right indent, Snap to grid and Right-to-left, and a right-to-left paragraph's alignment and indents are read as Word saves them. Readiness estimates unchanged; earlier: P0536: Save as RTF writes `\trhdr` only for rows set to Repeat as header row and no longer makes header cells bold; a table look's Header Row stays a style option. Readiness estimates unchanged)
 
@@ -401,6 +401,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0547: `.docx` reads and writes `w:view` (§17.15.1.92): a document saved in Web Layout or Outline (`masterPages` reads as Outline) reopens in that view; Draft (`normal`) opens in Print Layout, as Word does by default. Saving records the current view (Print and Read Mode write none), also into a merged settings part. Readiness unchanged |
 | 2026-11-14 | trivial | P0538: Word 6.0/95 `.doc`: a field whose result runs over paragraphs (a table of contents, or any top-level field whose result reaches a paragraph mark) keeps its result as paragraphs between `FieldStart` and `FieldEnd`, with the Word 97 reader's rules; the entries came out as empty paragraphs and one run-together paragraph. A range field left open at the end of the text is closed. Readiness unchanged |
 | 2026-11-14 | trivial | P0528: `.doc` table styles keep their borders, cell margins and paragraph and character formatting, tables keep the style their rows name (sprmTIstd), and cells keep Hide end-of-cell mark (sprmTCellFHideMark). Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0529: `.doc` text keeps its language (sprmCRgLid0_80/1_80, sprmCRgLid0/1, sprmCLidBi) and complex-script bold, italic and size (sprmCFBoldBi, sprmCFItalicBi, sprmCHpsBi). Readiness estimates unchanged. |

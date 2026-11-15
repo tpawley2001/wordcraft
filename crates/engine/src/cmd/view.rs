@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use wordcraft_doc::{Zoom, ZoomFit};
+use wordcraft_doc::{SavedView, Zoom, ZoomFit};
 use wordcraft_layout::{NumeralMode, ViewMode};
 
 use super::sel_result;
@@ -732,6 +732,32 @@ pub(crate) fn saved_zoom(v: &crate::ViewState) -> Option<Zoom> {
 }
 
 /// Show an opened document at the zoom it was saved with.
+/// The view a document is saved in (`w:view`): Print Layout and Read Mode are saved as Print.
+pub(crate) fn saved_view(v: &crate::ViewState) -> Option<SavedView> {
+    if v.read_mode {
+        return None;
+    }
+    match v.mode {
+        ViewMode::Web => Some(SavedView::Web),
+        ViewMode::Outline => Some(SavedView::Outline),
+        ViewMode::Draft => Some(SavedView::Draft),
+        ViewMode::Print | ViewMode::Read => None,
+    }
+}
+
+/// Opens a document in the view it was saved in, as `view.webLayout` / `view.outline` would. A
+/// document saved in Draft opens in Print Layout, as in Word unless "Allow opening a document in
+/// Draft view" (off by default) is on.
+pub(crate) fn restore_view(s: &mut Session, view: Option<SavedView>) {
+    let m = match view {
+        Some(SavedView::Web) => ViewMode::Web,
+        Some(SavedView::Outline) => ViewMode::Outline,
+        Some(SavedView::Draft) | None => return,
+    };
+    // `mode` only fails to build its JSON result, which isn't needed here.
+    let _ = mode(s, m, false);
+}
+
 pub(crate) fn restore_zoom(s: &mut Session, z: Zoom) {
     let fit = match z.fit {
         Some(ZoomFit::OnePage) => "onePage",

@@ -312,6 +312,7 @@ fn open(s: &mut Session, v: &Value) -> CmdResult {
     if let Some(z) = s.doc.settings.zoom {
         super::view::restore_zoom(s, z);
     }
+    super::view::restore_view(s, s.doc.settings.view);
     s.path = Some(path.into());
     s.read_only = read_only;
     // A Markdown file's own text, for the view to show and Save to write back as it is.
@@ -524,8 +525,14 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
     // Undone below if the write fails: a failed save (no permission, disk full, a bad path)
     // must not leave the document's own save stamps — zoom, modified/created, author, revision —
     // changed, or a later save would persist them for a write that never actually happened.
-    let before_stamp =
-        (s.doc.settings.zoom, s.doc.core.last_modified_by.clone(), s.doc.core.created.clone(), s.doc.core.modified.clone(), s.doc.core.revision);
+    let before_stamp = (
+        s.doc.settings.zoom,
+        s.doc.settings.view,
+        s.doc.core.last_modified_by.clone(),
+        s.doc.core.created.clone(),
+        s.doc.core.modified.clone(),
+        s.doc.core.revision,
+    );
     s.stamp_save();
     let password = s.password.as_ref().map(crate::io::Password::as_str);
     // A header/footer just made and left empty isn't saved (#960).
@@ -543,7 +550,8 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
         None => crate::io::save_path_with(&path, copy.as_ref().unwrap_or(&s.doc), password, &opts),
     };
     if let Err(e) = written {
-        (s.doc.settings.zoom, s.doc.core.last_modified_by, s.doc.core.created, s.doc.core.modified, s.doc.core.revision) = before_stamp;
+        (s.doc.settings.zoom, s.doc.settings.view, s.doc.core.last_modified_by, s.doc.core.created, s.doc.core.modified, s.doc.core.revision) =
+            before_stamp;
         return Err(CmdError::Failed(e));
     }
     let encrypted = password.is_some() && crate::io::can_encrypt(&path.to_string_lossy());
