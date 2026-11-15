@@ -72,6 +72,9 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
     ];
     const ARIAL_UNICODE: &[&str] = &["Arial", "Liberation Sans", "Helvetica", "Helvetica Neue", "Arimo", "Source Sans 3"];
     const TIMES: &[&str] = &["Liberation Serif", "Times", "Tinos", "Source Serif 4"];
+    // Windows 3.x "Helv" and "Tms Rmn": Word draws them in Arial and Times New Roman themselves.
+    const HELV: &[&str] = ARIAL_UNICODE;
+    const TMS_RMN: &[&str] = &["Times New Roman", "Liberation Serif", "Times", "Tinos", "Source Serif 4"];
     // Word's symbol fonts (Symbol, Wingdings…) are proprietary: their characters are drawn as their
     // Unicode equivalents (`wordcraft_doc::symbol_fonts`) from these faces or any face that has them.
     const SYMBOL: &[&str] = &["Apple Symbols", "Segoe UI Symbol", "DejaVu Sans", "Noto Sans Symbols", "Noto Sans Symbols 2", "Source Sans 3"];
@@ -178,6 +181,8 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
         "century" | "century schoolbook" | "new century schoolbook" => (CENTURY, true),
         "arial narrow" | "helvetica narrow" => (ARIAL_NARROW, true),
         "arial unicode ms" => (ARIAL_UNICODE, true),
+        "helv" => (HELV, true),
+        "tms rmn" => (TMS_RMN, true),
         "times new roman" | "times" | "cg times" => (TIMES, true),
         "courier new" | "courier" | "consolas" | "lucida console" | "cascadia code" | "cascadia mono" => (MONO, true),
         "symbol" | "wingdings" | "wingdings 2" | "wingdings 3" | "segoe ui symbol" | "webdings" => (SYMBOL, true),
