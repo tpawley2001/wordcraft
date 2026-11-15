@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0587: Find matches the text a field shows (a citation's `[7]`, a REF or SEQ result, a legacy form field's text), and a match may run into and out of it; with field codes shown it searches the code instead, never across the field's edge, and the drawn braces are not characters. A match in a field covers the whole field; Replace leaves it alone and Replace All reports it as skipped (from storytold/wordcraft#5560). Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0571: Shift+F3 picks the next case from the selected text as Word does, instead of cycling lower, UPPER, Title. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged.)
@@ -134,6 +136,8 @@ options `screen_paper_color_options_round_trip_and_work_without_a_document` test
 ## Find and Replace: normal caret codes
 
 Without Use wildcards or Regular expressions, `^nnn` without a leading zero finds codes 1–127 (including controls); higher values find nothing. `^0nnn` keeps Windows-1252 decoding, while `^u` reads a Unicode scalar in decimal, with leading zeros allowed. `^?` matches characters and paragraph marks across paragraphs, skipping optional hyphens. `^p` and `^?` also find the final story mark: Find selects to the text end, replacement inserts before the retained mark, and `^&` excludes that final mark. Objects: `^f` finds footnote reference marks, `^e` endnote marks, `^2` either, `^g` drawings only, `^d` a whole field (the outermost of nested ones) only while View › Field Codes is on, and `^a` / `^5` nothing, as Microsoft 365 Word's Find does not stop at comment anchors; a field is one character to `^?`, and bookmark, comment, permission and content-control anchors are not characters at all, so a word with a bookmark inside it is still found (P0509).
+
+Fields (P0587, from storytold/wordcraft#5560): with field codes hidden, Find, Reading Highlight and the Navigation pane read a simple field as the text it shows (a citation's `[7]`, a REF or SEQ result, a legacy text or drop-down form field's text), and a match may run from the paragraph's text into it and out again; the code is not searched. Fields whose text depends on the page (PAGE, NUMPAGES, SECTION, SECTIONPAGES; PAGEREF and STYLEREF in headers and footers), check boxes and EQ overstrikes stay one object. With field codes shown Find searches the code text, a match never crosses the field's begin or end mark, and the braces drawn around the code are not characters (`{ QUOTE` finds nothing). A match in a field selects the whole field; Replace moves past it and Replace All leaves it and reports it as skipped, rather than deleting the field. View › Field Codes searches the listed results and Reading Highlight again.
 
 ## Find and Replace: regular expressions (#4177)
 
@@ -610,6 +614,7 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 | 2026-11-14 | trivial | P0486: Table Layout › Distribute Rows as in Word: the selected rows (all rows with only a caret in the table) share the total of their laid-out heights equally, each At least; other rows keep theirs. It gave every row the tallest set height and kept exact rules |
 | 2026-11-14 | trivial | P0515: F6 / Shift+F6 also reach the status bar and the ribbon's selected tab, as in Word (document, task panes, status bar, ribbon); Escape from either returns to the page. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0558: Reveal Formatting › Distinguish style source (`view.revealStyleSource`): each font, language, alignment and spacing line says whether it comes from a style (named) or direct formatting; `format.reveal` reports `styleSource` and each entry's `source` / `styleName` |
+| 2026-11-15 | trivial | P0587: Find matches the text a field shows (a citation's `[7]`, a REF or SEQ result, a legacy form field's text), and a match may run into and out of it; with field codes shown it searches the code instead, never across the field's edge, and the drawn braces are not characters. A match in a field covers the whole field; Replace leaves it alone and Replace All reports it as skipped (from storytold/wordcraft#5560). Readiness estimates unchanged. |
 
 ### Format Painter integration refresh, 2026-10-30
 

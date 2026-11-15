@@ -805,7 +805,8 @@ struct SearchObj {
 /// whole; hidden, its markers are left out and its result is searched as text. Fields are
 /// paired within the paragraph: a range field running on into the next paragraph is left open.
 /// A simple field reads as what it shows ([`super::fields::FieldShow`], #5552): its result text,
-/// or its code between the start and end sentinels while it shows its code; one that shows no
+/// or its code (without the braces drawn around it) between the start and end sentinels while it
+/// shows its code, so no match crosses its edge then; one that shows no
 /// searchable text is the `^d` sentinel.
 fn search_objects(p: &wordcraft_doc::Paragraph, field_codes: bool, show: &super::fields::FieldShow) -> Vec<SearchObj> {
     use wordcraft_doc::para::NoteKind;
@@ -841,10 +842,9 @@ fn search_objects(p: &wordcraft_doc::Paragraph, field_codes: bool, show: &super:
             }
         }
         let text = show.read(o).map(|t| match t {
-            super::fields::FieldText::Code(instr) => {
-                let code = wordcraft_layout::fields::field_code_text(instr);
-                (format!("{}{code}{}", find_pattern::FIELD_START, find_pattern::FIELD_END), true)
-            }
+            // The field's begin and end marks stand where layout draws the braces: the braces are
+            // not characters, and no match runs across the marks (as measured in Word).
+            super::fields::FieldText::Code(instr) => (format!("{}{instr}{}", find_pattern::FIELD_START, find_pattern::FIELD_END), true),
             super::fields::FieldText::Shown(t) => (t, false),
         });
         let ch = match o {

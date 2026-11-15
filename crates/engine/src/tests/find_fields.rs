@@ -66,14 +66,16 @@ fn find_matches_citation_results() {
     assert_eq!(run(&mut s, "edit.find", json!({"text": "[1]]"}))["count"], 0);
 }
 
-/// While field codes show (View › Field Codes, Alt+F9), Find matches the code in braces the page
-/// shows, as Word does, not the hidden result; Replace leaves those matches alone too.
+/// While field codes show (View › Field Codes, Alt+F9), Find matches the code, as Word does, not
+/// the hidden result; the braces drawn around it are not characters. Replace leaves those matches
+/// alone too.
 #[test]
 fn find_matches_field_codes_while_they_show() {
     let mut s = cited();
     run(&mut s, "view.fieldCodes", json!({"value": true}));
     assert_eq!(run(&mut s, "edit.find", json!({"text": "[1]"}))["count"], 0);
-    assert_eq!(run(&mut s, "edit.find", json!({"text": "{ CITATION"}))["count"], 2);
+    assert_eq!(run(&mut s, "edit.find", json!({"text": "CITATION"}))["count"], 2);
+    assert_eq!(run(&mut s, "edit.find", json!({"text": "{ CITATION"}))["count"], 0);
     let r = run(&mut s, "edit.replaceAll", json!({"text": "CITATION", "with": "X"}));
     assert_eq!((r["replaced"].as_u64(), r["skippedInFields"].as_u64()), (Some(0), Some(2)), "{r}");
     assert_eq!(field_count(&s), 2);
