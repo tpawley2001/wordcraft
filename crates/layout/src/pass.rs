@@ -565,16 +565,35 @@ fn fit_web_page(pages: &mut [Page]) {
     p.h = bottom + 36.0;
 }
 
-/// The floats found above their anchors, if they aren't all in the `early` floats' wrap areas.
-fn uncovered_floats(ctx: &mut Ctx, early: &EarlyFloats) -> Option<EarlyFloats> {
+/// The floats found above their anchors, if they aren't all in the `early` floats' wrap areas,
+/// or the body paragraphs whose floats a page started with that are no longer on that page
+/// (`breaks`, [`crate::floats::merge_early`]).
+fn uncovered_floats(ctx: &mut Ctx, early: &EarlyFloats, pages: &[Page]) -> Option<EarlyFloats> {
     let mut above: Vec<((usize, usize), usize, WrapArea)> =
         ctx.floats_above.drain().filter_map(|(k, v)| v.map(|(page, area)| (k, page, area))).collect();
     above.sort_by_key(|(k, ..)| *k);
     let mut found = EarlyFloats::new();
     for ((block, oi), page, area) in above {
-        found.entry(page).or_default().push((block, oi, area));
+        found.areas.entry(page).or_default().push((block, oi, area));
     }
-    (!early_covered(&found, early)).then_some(found)
+    for (page, v) in &early.areas {
+        for (b, ..) in v {
+            if early.breaks.contains(b) || !ctx.doc.body.get(*b).is_some_and(|x| matches!(**x, Block::Para(_))) {
+                continue;
+            }
+            if first_page_of(pages, *b).is_some_and(|at| at > *page) {
+                found.breaks.insert(*b);
+            }
+        }
+    }
+    (!found.breaks.is_empty() || !early_covered(&found, early)).then_some(found)
+}
+
+/// The page body block `block`'s first line is on.
+fn first_page_of(pages: &[Page], block: usize) -> Option<usize> {
+    let is_block =
+        |it: &Placed| matches!(it, Placed::Lines { story: StoryRef::Body, path, .. } if path.0.first().is_some_and(|b| *b as usize == block));
+    pages.iter().position(|p| p.items.iter().any(is_block))
 }
 
 /// Fill in what depends on the finished pagination: page totals and page references in headers
@@ -722,7 +741,7 @@ pub(crate) fn layout_pass(
     ctx.grid = para::Grid::default();
     if !mode.reflow
         && may_rewrap
-        && let Some(found) = uncovered_floats(&mut ctx, early)
+        && let Some(found) = uncovered_floats(&mut ctx, early, &pages)
     {
         return Pass::Rewrap(found);
     }
