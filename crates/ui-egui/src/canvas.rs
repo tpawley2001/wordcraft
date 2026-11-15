@@ -2126,6 +2126,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
 }
 
 #[cfg(test)]
+mod field_shading_tests;
+#[cfg(test)]
 mod show_content_tests;
 #[cfg(test)]
 mod tests;
