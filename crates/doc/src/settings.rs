@@ -296,6 +296,9 @@ pub struct Settings {
     /// puts only what was filled into the legacy form fields on the paper, where the full page
     /// has it (for pre-printed forms). PDF export is unaffected.
     pub print_forms_data: bool,
+    /// Form Field Shading turned off (`w:doNotShadeFormData`, ECMA-376 Part 1 §17.15.1.42; RTF
+    /// `\formshade` is its opposite): legacy form fields are drawn without their grey shading.
+    pub do_not_shade_form_data: bool,
     pub auto_hyphenation: bool,
     /// Hyphenation zone (`w:hyphenationZone`), points: a line is hyphenated only when breaking
     /// it at a word boundary would leave more than this empty at its end.
@@ -795,6 +798,7 @@ impl Default for Settings {
             mirror_margins: false,
             gutter_at_top: false,
             print_forms_data: false,
+            do_not_shade_form_data: false,
             auto_hyphenation: false,
             hyphenation_zone: DEFAULT_HYPHENATION_ZONE,
             hyphenate_caps: true,
