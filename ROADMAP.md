@@ -5,6 +5,10 @@
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0562: PDF, printing and page images refresh eligible unlocked body IF fields when a body output/page field triggers refresh, except the last field. Stored document results and formula results are preserved; nested page conditions and chosen branches containing fields retain their cache. Readiness estimates unchanged; earlier: a page break at the end of the document starts no blank last page, as in Word. Readiness estimates unchanged)
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged; earlier: P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0562: PDF, printing and page images refresh eligible unlocked body IF fields when a body output/page field triggers refresh, except the last field. Stored document results and formula results are preserved; nested page conditions and chosen branches containing fields retain their cache. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0564: REF to an empty bookmark defined by SET shows its value in PDF/print and after F9. Output uses stored SET results; repeated SET names follow document order. Non-empty bookmarks keep their text. Readiness estimates unchanged.)
 
@@ -192,6 +196,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-15: P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.
 - 2026-11-15: P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged.
 
 - 2026-11-15: P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.
@@ -202,6 +207,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 - 2026-11-15: P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.
 - 2026-11-15: P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged.
+- 2026-11-15: P0562: PDF, printing and page images refresh eligible unlocked body IF fields when a body output/page field triggers refresh, except the last field. Stored document results and formula results are preserved; nested page conditions and chosen branches containing fields retain their cache. Readiness estimates unchanged.
+
 - 2026-11-14: P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged.
 
 - 2026-11-14: P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
@@ -1053,6 +1060,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 ## Revision history
 
+> 2026-11-15 · trivial · P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0562: PDF, printing and page images refresh eligible unlocked body IF fields when a body output/page field triggers refresh, except the last field. Stored document results and formula results are preserved; nested page conditions and chosen branches containing fields retain their cache. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0564: REF to an empty bookmark defined by SET shows its value in PDF/print and after F9. Output uses stored SET results; repeated SET names follow document order. Non-empty bookmarks keep their text. Readiness estimates unchanged.

@@ -1,10 +1,15 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0568: PDF, printing and page images work out an unlocked body formula (`=`) holding nested REF fields from the bookmarks' current text under the same condition as IF fields (`= { REF x } +1` with x = 5 prints 6, as Microsoft 365 Word's PDF export does); other formulas keep their stored results. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0562: PDF, printing and page images refresh eligible unlocked body IF fields when a body output/page field triggers refresh, except the last field. Stored document results and formula results are preserved; nested page conditions and chosen branches containing fields retain their cache. Readiness estimates unchanged; earlier: P0566: Alt+Shift+Home/End/PageUp/PageDown in a table select whole cells from the anchor cell to the first or last cell of the row or column (`table.selectToRowStart`, `table.selectToRowEnd`, `table.selectToColumnTop`, `table.selectToColumnBottom`). Readiness estimates unchanged)
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged; earlier: P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0562: PDF, printing and page images refresh eligible unlocked body IF fields when a body output/page field triggers refresh, except the last field. Stored document results and formula results are preserved; nested page conditions and chosen branches containing fields retain their cache. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged; earlier: P0565: Word's alternate default keys on Linux/Windows: Ctrl+Shift+B/I/U (bold, italic, underline), Ctrl+3/4/6 (lock, unlock, unlink fields), Alt+Shift+U (update fields) and Alt+Shift+Backspace (redo). macOS unchanged; readiness unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged; earlier: P0559: #7: Edit Links to Files (Links dialog) lists the document's LINK fields and updates, locks, re-points or breaks each one; dialog count +1. Readiness estimates unchanged)
@@ -263,6 +268,9 @@ Formatting restriction settings now include theme and style set switching locks,
 
 ## Revision history
 
+> 2026-11-15 · trivial · P0568: PDF, printing and page images work out an unlocked body formula (`=`) holding nested REF fields from the bookmarks' current text under the same condition as IF fields (`= { REF x } +1` with x = 5 prints 6, as Microsoft 365 Word's PDF export does); other formulas keep their stored results. Readiness estimates unchanged.
+
+> 2026-11-15 · trivial · P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0562: PDF, printing and page images refresh eligible unlocked body IF fields when a body output/page field triggers refresh, except the last field. Stored document results and formula results are preserved; nested page conditions and chosen branches containing fields retain their cache. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0564: REF to an empty bookmark defined by SET shows its value in PDF/print and after F9. Output uses stored SET results; repeated SET names follow document order. Non-empty bookmarks keep their text. Readiness estimates unchanged.

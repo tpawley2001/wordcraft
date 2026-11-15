@@ -88,7 +88,8 @@ struct FieldState {
     form: String,
     /// Paragraph marks inside the code (offsets in the untrimmed `instr`).
     marks: Vec<wordcraft_doc::para::CodeMark>,
-    nested: Vec<wordcraft_doc::para::NestedCode>,
+    /// Nested fields in the code, each with the byte length of its stored text in `instr`.
+    nested: Vec<(wordcraft_doc::para::NestedCode, usize)>,
     /// The space after of the paragraph the first mark ends (with its auto flag).
     first_after: (Option<f32>, Option<bool>),
 }

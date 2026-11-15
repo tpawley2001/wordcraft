@@ -160,10 +160,19 @@ impl Reader<'_> {
                         first_after: f.first_after.0,
                         first_after_auto: f.first_after.1,
                         marks,
+                        nested_len: f
+                            .nested
+                            .iter()
+                            .map(|(n, len)| {
+                                // The trim may cut into stored text at either end of the code.
+                                let end = n.at.saturating_add(*len).saturating_sub(lead).min(instr.len());
+                                end.saturating_sub(n.at.saturating_sub(lead).min(instr.len()))
+                            })
+                            .collect(),
                         nested: f
                             .nested
                             .into_iter()
-                            .map(|mut n| {
+                            .map(|(mut n, _)| {
                                 n.at = n.at.saturating_sub(lead).min(instr.len());
                                 n
                             })
@@ -190,7 +199,7 @@ impl Reader<'_> {
             && parent.phase == Phase::Instr
         {
             if let InlineObject::Field { instr, .. } = &obj {
-                parent.nested.push(wordcraft_doc::para::NestedCode { at: parent.instr.len(), instr: instr.clone() });
+                parent.nested.push((wordcraft_doc::para::NestedCode { at: parent.instr.len(), instr: instr.clone() }, obj.plain_text().len()));
             }
             parent.instr.push_str(obj.plain_text());
             return;
@@ -295,5 +304,7 @@ impl Reader<'_> {
     }
 }
 
+#[cfg(test)]
+mod nested_len_tests;
 #[cfg(test)]
 mod tests;

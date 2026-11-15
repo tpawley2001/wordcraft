@@ -656,7 +656,7 @@ pub fn output_fields_in(doc: &wordcraft_doc::Document, ctx: Option<&OutputContex
     if !parts.is_empty() {
         apply_results(out.get_or_insert_with(|| doc.clone()), parts).ok()?;
     }
-    let conditions = changed(doc, output_if_results(doc));
+    let conditions = changed(doc, output_if_results(doc, out.as_ref().unwrap_or(doc)));
     if !conditions.is_empty() {
         apply_results(out.get_or_insert_with(|| doc.clone()), conditions).ok()?;
     }
@@ -665,7 +665,10 @@ pub fn output_fields_in(doc: &wordcraft_doc::Document, ctx: Option<&OutputContex
 
 /// Read the original body, including table cells, so refreshed references cannot change the
 /// stored values used in nested IF conditions. A range field also counts as the last field.
-fn output_if_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
+/// Under the same condition, an unlocked formula (`=`) holding nested REF fields shows the result
+/// worked out from the bookmarks' text in `current` (the copy with the fields refreshed so far),
+/// as Microsoft 365 Word's PDF export does; other formulas keep their stored results.
+fn output_if_results(doc: &wordcraft_doc::Document, current: &wordcraft_doc::Document) -> Vec<FieldResult> {
     let mut candidates = Vec::new();
     let mut trigger = false;
     let mut last = None;
@@ -679,6 +682,11 @@ fn output_if_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
             if let InlineObject::Field { locked: false, code_paras, .. } = o
                 && name == "IF"
                 && let Some(result) = super::conditional::result(instr, code_paras.as_deref())
+            {
+                candidates.push((StoryRef::Body, path.clone(), k, result));
+            }
+            if let InlineObject::Field { locked: false, code_paras, .. } = o
+                && let Some(result) = super::nested_ref_formula::result(current, &path, instr, code_paras.as_deref())
             {
                 candidates.push((StoryRef::Body, path.clone(), k, result));
             }
