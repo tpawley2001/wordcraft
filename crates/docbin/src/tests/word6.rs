@@ -5,6 +5,8 @@
 
 use super::{body_texts, cfb_file, read};
 
+mod fields;
+
 const FC_MIN: usize = 0x300;
 
 fn put16(v: &mut [u8], at: usize, x: u16) {
