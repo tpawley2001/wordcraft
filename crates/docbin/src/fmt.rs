@@ -24,6 +24,7 @@ const C_EMBOSS: u16 = 0x0858; // sprmCFEmboss
 const C_DSTRIKE: u16 = 0x2A53; // sprmCFDStrike: double strikethrough
 const C_NO_PROOF: u16 = 0x0875; // sprmCFNoProof: Do not check spelling or grammar
 const C_WEB_HIDDEN: u16 = 0x0811; // sprmCFWebHidden
+const C_USE_PGSU: u16 = 0x0868; // sprmCFUsePgsuSettings: snap to grid
 const C_SPEC_VANISH: u16 = 0x0818; // sprmCFSpecVanish
 const C_KCD: u16 = 0x2A34; // sprmCKcd: emphasis mark
 const C_SHD80: u16 = 0x4866; // sprmCShd80: text shading (Shd80)
@@ -330,6 +331,7 @@ pub(crate) fn apply_char(p: &mut CharProps, prl: &Prl, base: &CharProps, fonts: 
         C_DSTRIKE => set_flag(&mut p.double_strike, prl, base.double_strike),
         C_NO_PROOF => set_flag(&mut p.no_proof, prl, base.no_proof),
         C_WEB_HIDDEN => set_flag(&mut p.web_hidden, prl, base.web_hidden),
+        C_USE_PGSU => set_flag(&mut p.snap_to_grid, prl, base.snap_to_grid),
         C_SPEC_VANISH => set_flag(&mut p.spec_vanish, prl, base.spec_vanish),
         C_BOLD_BI => set_flag(&mut p.bold_cs, prl, base.bold_cs),
         C_ITALIC_BI => set_flag(&mut p.italic_cs, prl, base.italic_cs),
