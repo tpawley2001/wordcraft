@@ -1052,6 +1052,17 @@ pub fn update_fields_after_insert(s: &mut Session) -> Result<(), CmdError> {
     update_fields_with(s, false, false, false)
 }
 
+/// The result of a `=` formula field: a table formula reads the cells around its own cell again;
+/// a formula anywhere else reads numbers and bookmarks only. An error shows as `!<error>`.
+fn formula_result(s: &Session, story: StoryRef, path: &Path, instr: &str) -> String {
+    let default_lang = crate::cmd::default_lang(s);
+    let result = match path.cell().and_then(|(tp, r, c)| s.doc.table(story, &tp).map(|t| (t, r, c))) {
+        Some((t, r, c)) => crate::cmd::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, instr),
+        None => crate::cmd::table_formula::evaluate_text_field(&s.doc, default_lang.as_deref(), instr),
+    };
+    result.unwrap_or_else(|e| format!("!{e}"))
+}
+
 fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit: bool) -> Result<(), CmdError> {
     let caret_story = s.sel.focus.story;
     let in_body = all || caret_story == StoryRef::Body;
@@ -1111,16 +1122,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
             // A table formula reads the cells around its own cell again; a formula anywhere
             // else reads numbers and bookmarks only.
             if instr.trim_start().starts_with('=') {
-                let default_lang = crate::cmd::default_lang(s);
-                let result = match path.cell().and_then(|(tp, r, c)| s.doc.table(story, &tp).map(|t| (t, r, c))) {
-                    Some((t, r, c)) => crate::cmd::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, instr),
-                    None => crate::cmd::table_formula::evaluate_text_field(&s.doc, default_lang.as_deref(), instr),
-                };
-                let text = match result {
-                    Ok(text) => text,
-                    Err(e) => format!("!{e}"),
-                };
-                updates.push((k, text));
+                updates.push((k, formula_result(s, story, &path, instr)));
                 continue;
             }
             let name = wordcraft_layout::fields::field_name(instr);
