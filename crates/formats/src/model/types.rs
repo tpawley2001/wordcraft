@@ -1027,6 +1027,9 @@ pub struct Cell {
     pub pref_width: Option<f32>,
     /// Its preferred width, percent of the table's (`w:tcW` pct; RTF `\clftsWidth2`).
     pub pref_width_pct: Option<f32>,
+    /// It has no preferred width (auto). Otherwise a cell giving neither of the above prefers
+    /// the width of its columns.
+    pub pref_auto: bool,
     /// Hide end-of-cell mark (`w:hideMark`; RTF `\clhidemark`).
     pub hide_mark: bool,
 }
@@ -1059,6 +1062,7 @@ impl Default for Cell {
             width: None,
             pref_width: None,
             pref_width_pct: None,
+            pref_auto: false,
             hide_mark: false,
         }
     }
@@ -1126,9 +1130,6 @@ pub struct TableExtra {
     /// The table's default cell padding (top, left, bottom, right), points, for formats that
     /// state it by row (RTF).
     pub cell_margins: Option<[f32; 4]>,
-    /// Its cells' preferred widths are their own ([`Cell::pref_width`], [`Cell::pref_width_pct`]),
-    /// none when they give none (RTF); otherwise each cell prefers the width of its columns.
-    pub cell_pref_widths: bool,
 }
 
 impl FTable {

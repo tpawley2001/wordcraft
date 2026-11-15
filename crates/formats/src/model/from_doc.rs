@@ -1429,6 +1429,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
                 no_wrap: c.props.no_wrap,
                 pref_width: c.props.width,
                 pref_width_pct: c.props.width_pct,
+                pref_auto: c.props.width.is_none() && c.props.width_pct.is_none(),
                 hide_mark: c.props.hide_mark,
                 direction: c.props.text_direction,
                 // Its background picture, for formats that keep cell formatting (ODT).
@@ -1500,7 +1501,6 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             style: None,
             look: None,
             cell_margins: None,
-            cell_pref_widths: false,
         }
     });
     // Kept whole for formats that ask for it: its header rows count even without the rest.

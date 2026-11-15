@@ -749,14 +749,23 @@ impl CellDef {
         out
     }
 
-    /// The cell's preferred width: (points, percent). A percentage is capped at 100%; a missing,
-    /// zero or negative value, or a twips value beyond 22 inches, gives none.
-    pub(super) fn pref_width(&self) -> (Option<f32>, Option<f32>) {
+    /// The cell's preferred width: (points, percent, auto). With no unit (or unit 0) the cell
+    /// prefers its column's width, as in Word: (None, None, false). Auto (unit 1), a missing, zero
+    /// or negative value, or a twips value beyond 22 inches give no preferred width: (None, None,
+    /// true). A percentage is capped at 100%.
+    pub(super) fn pref_width(&self) -> (Option<f32>, Option<f32>, bool) {
         let v = self.pref_value.filter(|v| *v > 0);
         match self.pref_unit {
-            Some(2) => (None, v.map(|v| (v as f32 / 50.0).min(100.0))),
-            Some(3) => (v.filter(|v| *v <= 31_680).map(|v| v as f32 / 20.0), None),
-            _ => (None, None),
+            Some(1) => (None, None, true),
+            Some(2) => {
+                let pct = v.map(|v| (v as f32 / 50.0).min(100.0));
+                (None, pct, pct.is_none())
+            }
+            Some(3) => {
+                let pt = v.filter(|v| *v <= 31_680).map(|v| v as f32 / 20.0);
+                (pt, None, pt.is_none())
+            }
+            _ => (None, None, false),
         }
     }
 }
