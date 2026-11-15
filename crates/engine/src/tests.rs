@@ -145,6 +145,7 @@ mod chapter_page_numbers;
 mod figures_hyperlinks;
 mod reset_window_position;
 mod window_edge_keys;
+mod floating_shape_cycle;
 mod write_protection;
 mod style_keys;
 mod paper_source;
