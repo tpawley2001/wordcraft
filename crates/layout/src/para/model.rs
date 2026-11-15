@@ -131,9 +131,17 @@ pub struct StyleRun {
     pub descent: f32,
     /// Baseline shift (superscript etc.), points, positive up.
     pub shift: f32,
+    /// `face` stands in for the run's font, which isn't installed and has Word's widths
+    /// ([`crate::display::missing_font_width`]): its characters take those widths.
+    pub missing_widths: bool,
 }
 
 impl StyleRun {
+    /// The missing font whose widths this style's glyphs take, when [`Self::missing_widths`].
+    pub fn missing_widths(&self) -> Option<crate::display::MissingWidths> {
+        self.missing_widths.then(|| crate::display::MissingWidths { family: self.rc.font.clone(), bold: self.rc.bold, italic: self.rc.italic })
+    }
+
     /// How far the run reaches above and below the line's baseline. Word sizes a superscript
     /// or subscript's line at the full font size and leaves out its raise or drop; only a
     /// `w:position` raise or lowering counts (Word for Mac: an 11pt subscript beside 11pt text

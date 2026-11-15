@@ -49,11 +49,12 @@ use wordcraft_doc::{Document, Path as DocPath, Rgb, StoryRef};
 use wordcraft_fonts::FaceRef;
 use wordcraft_geom::Rect;
 use wordcraft_layout::display::Paint;
-use wordcraft_layout::display::{Draw, ItemDisplay, Stroke as LineStyle};
+use wordcraft_layout::display::{Draw, ItemDisplay, MissingWidths, Stroke as LineStyle};
 use wordcraft_layout::para::{ClKind, LineEnd};
 use wordcraft_layout::{DocLayout, LayoutCache, NumeralMode, Page, Placed, layout};
 use wordcraft_metafile::{Picture, PlacedItem};
 
+mod advances;
 mod export;
 mod exporter;
 mod glyphs;
@@ -63,6 +64,7 @@ mod paint;
 mod picture;
 mod tags;
 
+use advances::with_advances;
 #[cfg(test)]
 use export::Fit;
 pub use export::{export, export_layout, export_layout_with_appendix};
@@ -80,6 +82,10 @@ use picture::{load_image, load_image_within};
 
 #[cfg(test)]
 mod field_glyph_tests;
+#[cfg(test)]
+mod missing_font_mixed_run_tests;
+#[cfg(test)]
+mod missing_font_width_tests;
 #[cfg(test)]
 mod tests;
 

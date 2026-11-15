@@ -222,6 +222,7 @@ impl<'a> Builder<'a> {
             ascent: ascent as f32,
             descent: descent as f32,
             shift: rc.baseline_shift(),
+            missing_widths: r.substituted && face.id() == r.face.id() && has_missing_widths(&rc.font, rc.bold, rc.italic),
         };
         // A `u32` index (like the glyph ranges) counts more distinct formats than a paragraph can
         // hold in memory, so every format keeps its own style.
@@ -465,6 +466,7 @@ impl<'a> Builder<'a> {
             // Number forms, number spacing, stylistic sets and contextual alternates come after.
             let mut list = FeatureList::new();
             list.extend(all.get(from..to).unwrap_or_default());
+            list.extend(table_width_ligatures(ligatures.is_some() || key.complex || !st.missing_widths, shape_text).as_slice());
             if rc.num_form.is_some() || rc.num_spacing.is_some() || rc.stylistic_sets.is_some() || rc.contextual_alternates.is_some() {
                 let khmer = rc.contextual_alternates.is_some() && shape_text.chars().any(is_khmer);
                 list.extend(number_and_set_features(rc, khmer).as_slice());
@@ -673,8 +675,7 @@ impl<'a> Builder<'a> {
             return None;
         }
         let c = map(c);
-        let em_w = wordcraft_fonts::word::missing_font_advance(&rc.font, rc.bold, c)
-            .or_else(|| wordcraft_fonts::word_widths::missing_font_advance(&rc.font, rc.bold, rc.italic, c))?;
+        let em_w = crate::display::missing_font_width(&rc.font, rc.bold, rc.italic, c)?;
         let w = em_w as f32 * em;
         w.is_finite().then_some(w)
     }
@@ -1007,6 +1008,20 @@ fn single_char(s: &str) -> Option<char> {
         (Some(c), None) => Some(c),
         _ => None,
     }
+}
+
+/// The standard ligatures turned off for text laid out with a missing font's widths (`keep`
+/// false): such a font takes one width per character, and Word forms no standard ligatures unless
+/// the run asks for them (`w14:ligatures`), so each letter keeps its own glyph and width and a PDF
+/// reader sees no overlap inside "fi". Khmer builds its syllables with them and keeps them.
+fn table_width_ligatures(keep: bool, text: &str) -> Option<wordcraft_fonts::Feature> {
+    (!keep && !text.chars().any(is_khmer)).then(|| wordcraft_fonts::feature_value(b"liga", 0))
+}
+
+/// Whether Word has character widths for the missing font `family` in a style
+/// ([`crate::display::missing_font_width`]).
+fn has_missing_widths(family: &str, bold: bool, italic: bool) -> bool {
+    ('!'..='~').any(|c| crate::display::missing_font_width(family, bold, italic, c).is_some())
 }
 
 #[cfg(test)]

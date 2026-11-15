@@ -347,6 +347,7 @@ fn draw_glyph_runs(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
                 ranges,
                 text_bg,
                 x_scale: rc.scale / 100.0,
+                missing_widths: st.missing_widths(),
             });
         }
         if data_only {
@@ -785,6 +786,7 @@ fn draw_label_and_hyphen(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
                 ranges: Vec::new(),
                 text_bg: fill,
                 x_scale: 1.0,
+                missing_widths: None,
             });
         }
         if let Some(st) = decor {
@@ -808,6 +810,7 @@ fn draw_label_and_hyphen(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
             ranges: Vec::new(),
             text_bg: None,
             x_scale: style.rc.scale / 100.0,
+            missing_widths: None,
         });
     }
 }
@@ -910,6 +913,7 @@ fn draw_rubies(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
                 ranges,
                 text_bg: st.rc.highlight.or(st.rc.shading),
                 x_scale: 1.0,
+                missing_widths: st.missing_widths(),
             });
         }
     }
@@ -1020,6 +1024,7 @@ fn tab_leaders(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
             ranges: Vec::new(),
             text_bg: None,
             x_scale: 1.0,
+            missing_widths: None,
         });
     }
 }
@@ -1158,6 +1163,7 @@ fn equation(items: &[MItem], x: f32, base: f32, alpha: f32, screen: bool, out: &
                 ranges: ranges.clone(),
                 text_bg: None,
                 x_scale: 1.0,
+                missing_widths: None,
             }),
             MItem::Rect { x: rx, y, w, h, color } => {
                 out.push(Draw::Fill { rect: Rect::new(x + rx, base - y - h, *w, *h), color: *color, alpha, text_bg: false })
