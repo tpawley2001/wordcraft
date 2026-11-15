@@ -24,6 +24,7 @@ mod compat_mode;
 mod contextual_spacing;
 mod dop_base;
 mod dop_options;
+mod dop_note_options;
 mod dop_no_tab_hang_ind;
 mod dop_wp_justification;
 mod drawing;
