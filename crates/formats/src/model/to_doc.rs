@@ -229,6 +229,7 @@ fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
         out.auto_space_de = x.auto_space_de.or(out.auto_space_de);
         out.auto_space_dn = x.auto_space_dn.or(out.auto_space_dn);
         out.text_alignment = x.text_alignment.or(out.text_alignment);
+        out.adjust_right_indent = x.adjust_right_indent.or(out.adjust_right_indent);
         // An outline level apart from its heading style's.
         out.outline_level = x.outline_level.map(|l| l.min(8)).or(out.outline_level);
         // Indents in characters, beside the twips ones.
@@ -976,9 +977,20 @@ impl<'a> Builder<'a> {
                     Box::new(wordcraft_doc::props::CellPicture { media, size: [p.img.w, p.img.h], repeat: p.repeat, align: p.align })
                 });
                 let (margins, partial_margins) = cell_margins(c);
+                // The cell's own preferred width (RTF), none when it says auto, else the width
+                // of its columns.
+                let pct = c.pref_width_pct.filter(|p| p.is_finite() && *p > 0.0).map(|p| p.min(100.0));
+                let pt = c.pref_width.filter(|w| pct.is_none() && w.is_finite() && *w > 0.0).map(|w| w.min(1584.0));
+                let (pref, pref_pct) = match (pt, pct) {
+                    (None, None) if c.pref_auto => (None, None),
+                    (None, None) => (Some(w), None),
+                    own => own,
+                };
                 row.cells.push(wordcraft_doc::Cell {
                     props: CellProps {
-                        width: Some(w),
+                        width: pref,
+                        width_pct: pref_pct,
+                        hide_mark: c.hide_mark,
                         span: span as u32,
                         vmerge,
                         shading: c.shading,
