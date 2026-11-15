@@ -661,6 +661,14 @@ mod tests {
         assert_eq!(field_code_text(""), "{  }");
     }
 
+    /// Measured in Microsoft 365 Word: `\* FirstCap` raises only the first letter and `\* Caps`
+    /// every word of dollar text.
+    #[test]
+    fn case_switches_on_formula_values_as_measured_in_word() {
+        assert_eq!(field_value(r"= 35 \* CardText \* FirstCap", NumFormat::CardinalText, 35.0), "Thirty-five");
+        assert_eq!(field_value(r"= 12.5 \* DollarText \* Caps", NumFormat::DollarText, 12.5), "Twelve And 50/100");
+    }
+
     /// Cardinal and ordinal text is lowercase unless a capitalization switch follows; `\* Upper`,
     /// `\* Lower`, `\* Caps` and `\* FirstCap` apply to the page fields and the TITLE, AUTHOR and
     /// FILENAME fallbacks. A switch inside quotes is text. Every expected value below is what Word
@@ -682,8 +690,6 @@ mod tests {
         assert_eq!(text(r"PAGE \* OrdText \* Caps"), "Twenty-First");
         assert_eq!(text(r"PAGE \* CardText \* Upper"), "TWENTY-ONE");
         assert_eq!(text(r"PAGE \* CardText \* Caps"), "Twenty-One", "measured in Word: every hyphen-separated part is capitalised");
-        assert_eq!(field_value(r"= 35 \* CardText \* FirstCap", NumFormat::CardinalText, 35.0), "Thirty-five");
-        assert_eq!(field_value(r"= 12.5 \* DollarText \* Caps", NumFormat::DollarText, 12.5), "Twelve And 50/100");
         assert_eq!(text(r"PAGE \* roman \* upper"), "XXI");
         assert_eq!(text(r"PAGE \* roman \* Caps"), "Xxi");
         assert_eq!(text(r"PAGE \* hex \* Caps"), "15");
