@@ -980,6 +980,17 @@ impl WordApp {
                 }
                 json!({"alignmentGuides": self.ui.alignment_guides})
             }
+            "ui.ctrlClickFollowsLinks" => {
+                // File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink:
+                // `value` true (the default) or false; no value reads it. Off, a plain click on a
+                // link in the text follows it.
+                match p.get("value") {
+                    None => {}
+                    Some(Value::Bool(on)) => self.ui.ctrl_click_follows_links = *on,
+                    Some(_) => return Some(Err("`value` must be true or false".into())),
+                }
+                json!({"ctrlClickFollowsLinks": self.ui.ctrl_click_follows_links})
+            }
             "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" => return Some(self.show_content_option(id, p)),
             "ui.draftFont" => return Some(self.draft_font_command(p)),
             "ui.startScreen" => {
@@ -1338,6 +1349,7 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.makeDefaultApp"
             | "ui.pirateSpeak"
             | "ui.caretAnimation"
+            | "ui.ctrlClickFollowsLinks"
             | "ui.startScreen"
             | "ui.recentRemove"
             | "ui.recentClear"

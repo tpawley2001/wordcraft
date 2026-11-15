@@ -156,6 +156,9 @@ pub struct CanvasState {
     /// The last primary press on the page (time, screen point, clicks in a row), to count
     /// double- and triple-presses as they go down (egui reports them on release).
     pub(crate) last_press: Option<(f64, Pos2, u8)>,
+    /// With Use Ctrl+Click to follow hyperlink off: the link a plain press landed on, followed
+    /// when the button comes up without a drag.
+    link_press: Option<String>,
     /// The first press of the current run of presses moved header/footer editing into another
     /// header/footer; the double-click it starts doesn't select a word there.
     hf_press_switched: bool,
@@ -413,6 +416,7 @@ impl Default for CanvasState {
             dragging: false,
             column_drag: None,
             last_press: None,
+            link_press: None,
             hf_press_switched: false,
             unit_drag: None,
             last_highlight: "yellow".into(),
@@ -2129,6 +2133,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
 mod show_content_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_ctrl_click_drag;
 #[cfg(test)]
 mod tests_ctrl_click_links;
 #[cfg(test)]
