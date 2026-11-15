@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0596: a missing Georgia, Arial Black, Segoe UI, Bookman Old Style, Perpetua or Gill Sans MT keeps Word's advance widths. Readiness estimates unchanged; earlier: P0595: a missing Corbel, Candara, Constantia or Tw Cen MT keeps Word's advance widths. Readiness estimates unchanged)
@@ -271,7 +273,11 @@ Convert to Text now uses comma-space separators and offers recursive nested-tabl
 
 Formatting restriction settings now include theme and style set switching locks, with DOCX and RTF persistence (P0560); broader dialog depth remains open.
 
+Automatically update now redefines paragraph styles for paragraph formatting and whole-paragraph character formatting (P0608); broader style and dialog depth work remains open.
+
 ## Revision history
+
+> 2026-11-15 · trivial · P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged.
 
