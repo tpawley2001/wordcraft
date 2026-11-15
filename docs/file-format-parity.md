@@ -1,5 +1,7 @@
 # File-format parity with Microsoft Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0531: RTF tables keep right-to-left direction (`\rtlrow`), preferred width (`\trftsWidth`/`\trwWidth`) and floating position (`\tph*`/`\tposx*`, `\tpv*`/`\tposy*`, `\tdfrmtxt*`, `\tabsnoovrlp`) on open and save. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0525: `.doc` text keeps outline, shadow, emboss, engrave, double strikethrough, Do not check spelling or grammar, web-hidden and special-hidden, emphasis marks, and text shading and borders (sprmCFOutline … sprmCBrc), as Word shows them. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0518: DOCX reads and writes Gutter position Top (`w:settings/w:gutterAtTop`), once also when the settings part is merged; RTF `\gutterprl`. Readiness estimates unchanged.)
@@ -1008,3 +1010,4 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 | 2026-11-12 | trivial | DOCX: `w:lnNumType` without a positive `w:countBy` leaves line numbering off, as Word does, instead of numbering every line on screen, in PDF export and on re-save; saving then omits the element (`section_line_numbering.rs`, #6209) |
 | 2026-11-14 | trivial | P0497: DOCX footnote/endnote separator stories are used only when `w:settings/w:footnotePr` (`w:endnotePr`) lists their ids; an unlisted story is ignored and the built-in separator drawn, as measured in Word (`crates/docx/tests/it/note_separator_links.rs`). Readiness estimates unchanged |
 | 2026-11-14 | trivial | P0518: DOCX `w:settings/w:gutterAtTop` (§17.15.1.49) is read (`w:val="0"` is off) and written after `w:mirrorMargins`, once also when the file's settings part is merged; RTF `\gutterprl` is read and written for it. |
+| 2026-11-14 | trivial | P0531: RTF reads and writes a table's right-to-left direction (`\rtlrow`, `\ltrrow`), preferred width (`\trftsWidthN` 2 fiftieths of a percent, 3 twips, with `\trwWidthN`) and floating position (`\tphcol`/`\tphmrg`/`\tphpg`, `\tposx*`, `\tposnegx`, `\tpvpara`/`\tpvmrg`/`\tpvpg`, `\tposy*`, `\tposnegy`, `\tdfrmtxt*`, `\tabsnoovrlp`) from its first row, so a floating table no longer lands inline at full width (`crates/formats/src/rtf/tests/table_rtl_row.rs`). Readiness estimates unchanged |
