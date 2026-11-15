@@ -214,7 +214,9 @@ fn in_columns_the_box_stays_and_its_paragraph_starts_the_next_column() {
     let first_col1 = p0.iter().filter(|(_, y)| *y < boxes[0].y).count();
     assert!(first_col1 > 0, "b15: column 1 has lines above the box: {p0:?}");
     let anchor_line = p0.iter().find(|(b, _)| *b == n).expect("b15: ANCHOR on page 1");
-    assert!(anchor_line.1 < boxes[0].y, "b15: ANCHOR starts column 2 near its top, not under a band: {anchor_line:?}");
+    // Word: box 136..436, ANCHOR at the top of column 2 @155.3 (below the box top, far above its
+    // bottom); the wrong layout starts both columns under an empty band, ANCHOR @576.8.
+    assert!(anchor_line.1 < boxes[0].y + 300.0, "b15: ANCHOR starts column 2 near its top, not under a band: {anchor_line:?}");
 }
 
 /// Part C (q1, q2, q6): a Square box (page x 278, y 277, 220 x 195pt) whose wrap area pushes its
