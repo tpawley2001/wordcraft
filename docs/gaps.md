@@ -268,6 +268,8 @@ Formatting restriction settings now include theme and style set switching locks,
 
 ## Revision history
 
+> 2026-11-15 · trivial · P0589: below compatibility mode 15 with Compress punctuation, and in documents opened from RTF, hyphenated words are not split at their hyphen at a line end, as in Word. Readiness estimates unchanged.
+
 > 2026-11-15 · trivial · P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0568: PDF, printing and page images work out an unlocked body formula (`=`) holding nested REF fields from the bookmarks' current text under the same condition as IF fields (`= { REF x } +1` with x = 5 prints 6, as Microsoft 365 Word's PDF export does); other formulas keep their stored results. Readiness estimates unchanged.

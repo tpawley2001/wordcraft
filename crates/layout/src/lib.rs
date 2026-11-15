@@ -436,6 +436,8 @@ mod compress_punct_tests;
 #[cfg(test)]
 mod form_field_shading_lines_tests;
 #[cfg(test)]
+mod hyphen_break_compress_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod wp_justification_tests;
