@@ -553,6 +553,17 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
     if let Some(n) = level {
         o.push_str(&format!("\\enforceprot1\\protlevel{n}"));
     }
+    for (on, word) in [
+        (set.protect_formatting, "\\stylelock"),
+        (set.protect_formatting && set.protection.is_some(), "\\stylelockenforced"),
+        (set.auto_format_override, "\\autofmtoverride"),
+        (set.style_lock_theme, "\\stylelocktheme"),
+        (set.style_lock_qf_set, "\\stylelockqfset"),
+    ] {
+        if on {
+            o.push_str(word);
+        }
+    }
     if !set.track_moves {
         o.push_str("\\trackmoves0");
     }

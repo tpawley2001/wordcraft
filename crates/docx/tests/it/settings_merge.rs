@@ -199,3 +199,34 @@ fn caption_labels_and_autocaption_round_trip() {
     let back = wordcraft_docx::read(&wordcraft_docx::write(&fresh).unwrap()).unwrap();
     assert_eq!(back.settings.captions, doc.settings.captions);
 }
+
+#[test]
+fn formatting_switch_locks_follow_the_model_and_settings_order() {
+    let xml = format!(
+        r#"<w:settings xmlns:w="{W}"><w:documentProtection w:formatting="1" w:enforcement="1"/><w:autoFormatOverride/><w:styleLockTheme/><w:styleLockQFSet/><w:defaultTabStop w:val="720"/></w:settings>"#
+    );
+    let mut doc = wordcraft_docx::read(&with_settings(&xml)).unwrap();
+    assert!(doc.settings.auto_format_override && doc.settings.style_lock_theme && doc.settings.style_lock_qf_set);
+    for merged in [true, false] {
+        let d = if merged {
+            doc.clone()
+        } else {
+            let mut fresh = wordcraft_doc::Document::new();
+            fresh.settings = doc.settings.clone();
+            fresh
+        };
+        let files = save(&d);
+        let xml = text(&files, "word/settings.xml");
+        let positions: Vec<_> = ["w:documentProtection", "w:autoFormatOverride", "w:styleLockTheme", "w:styleLockQFSet", "w:defaultTabStop"]
+            .iter()
+            .map(|name| xml.find(name).unwrap())
+            .collect();
+        assert!(positions.windows(2).all(|p| p[0] < p[1]), "{xml}");
+        let again = wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap();
+        assert!(again.settings.auto_format_override && again.settings.style_lock_theme && again.settings.style_lock_qf_set);
+    }
+    doc.settings.style_lock_theme = false;
+    assert!(!text(&save(&doc), "word/settings.xml").contains("w:styleLockTheme"));
+    let off = xml.replace("<w:styleLockTheme/>", "<w:styleLockTheme w:val=\"off\"/>");
+    assert!(!wordcraft_docx::read(&with_settings(&off)).unwrap().settings.style_lock_theme);
+}

@@ -11,14 +11,18 @@ pub(super) fn style_set_box(app: &mut WordApp, ui: &mut Ui) -> (Rect, Rect) {
     let mut gui = ui.new_child(egui::UiBuilder::new().max_rect(gallery).layout(crate::rtl::row_layout(ui, egui::Align::Min)));
     gui.set_clip_rect(gallery.intersect(ui.clip_rect()));
     gui.spacing_mut().item_spacing = vec2(1.0, 1.0);
-    crate::previews::style_set_gallery(app, &mut gui);
+    let reason = app.session.why_disabled("design.styleSet").map(str::to_owned);
+    let response = gui.add_enabled_ui(reason.is_none(), |ui| crate::previews::style_set_gallery(app, ui)).response;
+    if let Some(reason) = reason {
+        response.on_disabled_hover_text(reason);
+    }
     ui.add_space(8.0);
     (gallery, gui.min_rect())
 }
 
 pub(super) fn design(app: &mut WordApp, ui: &mut Ui) {
     group(ui, "Themes", None, app, |ui, app| {
-        menu_button(ui, app, crate::widgets::MenuButtonOptions::new("themes", Some("Themes"), "Themes", true, "design.themes"), |ui, app| {
+        menu_button(ui, app, crate::widgets::MenuButtonOptions::new("themes", Some("Themes"), "Themes", true, "design.theme"), |ui, app| {
             for (name, ..) in wordcraft_engine::cmd::design::THEMES {
                 mi(ui, app, name, "design.theme", json!({"name": name}));
             }

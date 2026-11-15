@@ -634,6 +634,11 @@ impl Reader {
             "dntblnsbdb" => d.no_balance_sbcs_dbcs_width = Some(on),
             "lnbrkrule" => d.no_word97_line_break_rules = Some(on),
             "formshade" => d.form_shade = on,
+            "stylelock" => d.style_lock = on,
+            "stylelockenforced" => d.style_lock_enforced = on,
+            "autofmtoverride" => d.auto_format_override = on,
+            "stylelocktheme" => d.style_lock_theme = on,
+            "stylelockqfset" => d.style_lock_qf_set = on,
             "formprot" => d.old_prot = on.then_some("forms"),
             "htmautsp" => d.html_auto_spacing = on,
             "linkstyles" => d.link_styles = Some(on),
@@ -1329,6 +1334,11 @@ pub(super) struct DocSettingWords {
     level: Option<u8>,
     enforce: Option<bool>,
     old_prot: Option<&'static str>,
+    style_lock: bool,
+    style_lock_enforced: bool,
+    auto_format_override: bool,
+    style_lock_theme: bool,
+    style_lock_qf_set: bool,
     link_styles: Option<bool>,
     remove_personal_info: Option<bool>,
     remove_date_time: Option<bool>,
@@ -1373,6 +1383,10 @@ pub(super) struct DocSettingWords {
 
 impl DocSettingWords {
     pub(super) fn apply(&self, s: &mut wordcraft_doc::Settings) {
+        s.protect_formatting = self.style_lock;
+        s.auto_format_override = self.auto_format_override;
+        s.style_lock_theme = self.style_lock_theme;
+        s.style_lock_qf_set = self.style_lock_qf_set;
         s.do_not_shade_form_data = !self.form_shade;
         s.sum_paragraph_spacing = !self.html_auto_spacing;
         s.symbol_class_fonts.clone_from(&self.symbol_class_fonts);
@@ -1414,6 +1428,7 @@ impl DocSettingWords {
             Some(false) => None,
             None => self.old_prot,
         };
+        let prot = prot.or((self.style_lock && self.style_lock_enforced).then_some("none"));
         if let Some(p) = prot {
             s.protection = Some(p.to_string());
         }
