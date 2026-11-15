@@ -90,6 +90,7 @@ mod output_header_footer_fields;
 mod output_if_fields;
 mod output_nested_ref_formula;
 mod output_set_ref;
+mod output_set_ref_unbookmarked;
 mod para_sort_case;
 mod para_sort_keys;
 mod paste_link;
