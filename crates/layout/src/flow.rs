@@ -1203,7 +1203,9 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
     let placed_at = spot(pb);
     // A continuous section's top mid-page is not a page top, so the break still applies.
     // A bare section mark starts no page of its own: the section break after it starts one.
-    let broke_before = f.pl.rp.page_break_before && !pb.fresh() && !pb.web && !bare_section_mark(pb, p);
+    // A paragraph its own float pushed off a page starts the next one ([`crate::floats::EarlyFloats::breaks`]).
+    let forced = pb.early.breaks.contains(&block);
+    let broke_before = (f.pl.rp.page_break_before || forced) && !pb.fresh() && !pb.web && !bare_section_mark(pb, p);
     if broke_before {
         pb.new_page(block, body_top);
     }
