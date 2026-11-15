@@ -789,6 +789,7 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         odd_even,
         first_page,
         gutter,
+        gutter_top,
         header,
         footer,
         start,
@@ -814,6 +815,9 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         t.row(|r| {
             let gutter_label = r.cell(|ui| ui.label(tl!("Gutter:")));
             r.cell(|ui| ui.add(margin(gutter)).labelled_by(gutter_label.id));
+            // Greyed and showing Left while margins mirror, as in Word.
+            let pos_label = r.cell(|ui| ui.add_enabled(!*mirror, egui::Label::new(tl!("Gutter position:"))));
+            r.cell(|ui| ui.add_enabled_ui(!*mirror, |ui| page_gutter_position_combo(ui, gutter_top, *mirror, pos_label.id)));
         });
     });
     ui.label(egui::RichText::new(tl!("Orientation")).font(semibold(12.5)));
@@ -874,6 +878,9 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 // Mirror margins go with the margins (#1181).
                 if let Some((_, v)) = commands.iter_mut().rev().find(|(id, _)| *id == "layout.margins") {
                     v["mirror"] = json!(*mirror);
+                    if !*mirror {
+                        v["gutterPos"] = json!(if *gutter_top { "top" } else { "left" });
+                    }
                 }
                 if *start != wordcraft_engine::cmd::page::sect(&app.session).start {
                     commands.push(("layout.sectionStart", json!({"value": page_section_start_value(*start)})));
@@ -916,6 +923,21 @@ fn page_setup_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         }
     }
     ok || cancel
+}
+
+/// Page Setup's "Gutter position:" box: Left or Top (`layout.margins` `gutterPos`). It shows Left
+/// while margins mirror.
+fn page_gutter_position_combo(ui: &mut Ui, top: &mut bool, mirror: bool, label: egui::Id) {
+    let shown = if *top && !mirror { tl!("Top") } else { tl!("Left") };
+    let combo = craft_ui::ComboBox::from_id_salt("ps_gutter_pos").width(90.0).selected_text(shown).show_ui(ui, |ui| {
+        if ui.selectable_label(!*top, tl!("Left")).clicked() {
+            *top = false;
+        }
+        if ui.selectable_label(*top, tl!("Top")).clicked() {
+            *top = true;
+        }
+    });
+    combo.response.labelled_by(label);
 }
 
 fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {

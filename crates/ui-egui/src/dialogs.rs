@@ -244,6 +244,8 @@ pub enum Dialog {
         /// unit as shown (`layout.margins`), and the section's break type (`layout.sectionStart`),
         /// each applied only if changed.
         gutter: f32,
+        /// Gutter position Top (the document's `w:gutterAtTop`), applied with the margins.
+        gutter_top: bool,
         header: f32,
         footer: f32,
         start: wordcraft_doc::section::SectionStart,
@@ -930,6 +932,7 @@ impl Dialog {
                     odd_even: app.session.doc.settings.even_odd_headers,
                     first_page: sp.title_page,
                     gutter: sp.gutter / crate::options::unit().pt_per_unit(),
+                    gutter_top: app.session.doc.settings.gutter_at_top,
                     header: sp.header / crate::options::unit().pt_per_unit(),
                     footer: sp.footer / crate::options::unit().pt_per_unit(),
                     start: sp.start,

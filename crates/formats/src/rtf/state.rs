@@ -819,6 +819,8 @@ pub(super) struct DocOpts {
     pub(super) facing_pages: Option<bool>,
     /// `\margmirror`.
     pub(super) mirror_margins: Option<bool>,
+    /// `\gutterprl`: the gutter goes at the top of the page (DOCX `w:gutterAtTop`).
+    pub(super) gutter_at_top: Option<bool>,
     /// `\hyphauto`.
     pub(super) auto_hyphenation: Option<bool>,
     /// `\hyphhotzN`, twips (>= 0).
@@ -851,6 +853,7 @@ impl DocOpts {
             }
             "facingp" => self.facing_pages = Some(on),
             "margmirror" => self.mirror_margins = Some(on),
+            "gutterprl" => self.gutter_at_top = Some(on),
             "hyphauto" => self.auto_hyphenation = Some(on),
             "hyphhotz" => {
                 if pv >= 0 {
@@ -882,6 +885,9 @@ impl DocOpts {
         }
         if let Some(v) = self.mirror_margins {
             s.mirror_margins = v;
+        }
+        if let Some(v) = self.gutter_at_top {
+            s.gutter_at_top = v;
         }
         if let Some(v) = self.auto_hyphenation {
             s.auto_hyphenation = v;

@@ -288,6 +288,10 @@ pub struct Settings {
     pub default_tab: f32,
     pub even_odd_headers: bool,
     pub mirror_margins: bool,
+    /// Gutter position Top (`w:gutterAtTop`, ECMA-376 Part 1 §17.15.1.49): every section's gutter
+    /// widens its top margin instead of the left (or right) one, on every page, mirror margins
+    /// and `w:rtlGutter` notwithstanding.
+    pub gutter_at_top: bool,
     /// Print only the data from a form (`w:printFormsData`, File › Options › Advanced): printing
     /// puts only what was filled into the legacy form fields on the paper, where the full page
     /// has it (for pre-printed forms). PDF export is unaffected.
@@ -789,6 +793,7 @@ impl Default for Settings {
             default_tab: 36.0,
             even_odd_headers: false,
             mirror_margins: false,
+            gutter_at_top: false,
             print_forms_data: false,
             auto_hyphenation: false,
             hyphenation_zone: DEFAULT_HYPHENATION_ZONE,

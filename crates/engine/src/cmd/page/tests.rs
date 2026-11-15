@@ -433,3 +433,27 @@ fn page_number_format_keeps_or_clears_the_start() {
     assert_eq!(back["pageNumFormat"], "decimal");
     assert_eq!(back["pageNumStart"], 1);
 }
+
+/// Page Setup's Gutter position: `layout.margins {gutterPos}` sets the document's gutter at the
+/// top (`w:gutterAtTop`) as one undo step; other margin changes keep it; an unknown position is
+/// refused; and with the gutter at the top it counts against the text's height, not its width.
+#[test]
+fn gutter_position_top_is_set_and_undone() {
+    let mut s = doc();
+    s.run("layout.margins", &json!({"gutter": 72.0, "gutterPos": "top"})).unwrap();
+    assert!(s.doc.settings.gutter_at_top);
+    let top = s.layout().pages.first().map(|p| p.body.y).unwrap();
+    assert!((top - (sect(&s).margin_top + 72.0)).abs() < 0.01, "{top}");
+    s.run("layout.margins", &json!({"left": 80.0})).unwrap();
+    assert!(s.doc.settings.gutter_at_top);
+    assert!(s.run("layout.margins", &json!({"gutterPos": "bottom"})).is_err());
+    assert!(s.doc.settings.gutter_at_top);
+    s.run("edit.undo", &json!({})).unwrap();
+    s.run("edit.undo", &json!({})).unwrap();
+    assert!(!s.doc.settings.gutter_at_top);
+    // A gutter wider than the page's text room fits on top when the height has room.
+    let c = sect(&s);
+    let wide = c.page_w - c.margin_left - c.margin_right - 10.0;
+    assert!(s.run("layout.margins", &json!({"gutter": wide})).is_err());
+    s.run("layout.margins", &json!({"gutter": wide.min(c.page_h - c.margin_top - c.margin_bottom - MIN_TEXT_ROOM), "gutterPos": "top"})).unwrap();
+}

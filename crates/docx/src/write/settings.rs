@@ -90,6 +90,10 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
     if s.mirror_margins {
         w.empty("w:mirrorMargins", &[]);
     }
+    // §17.15.1.49, after `w:mirrorMargins` and the border settings (which the model does not hold).
+    if s.gutter_at_top {
+        w.empty("w:gutterAtTop", &[]);
+    }
     if let Some(id) = template_rel {
         w.empty("w:attachedTemplate", &[("r:id", id)]);
     }
