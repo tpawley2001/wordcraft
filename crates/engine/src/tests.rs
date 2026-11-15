@@ -116,6 +116,7 @@ mod table_row_column_ends;
 mod table_sort_keys;
 mod symbol_field_update;
 mod accent_compose;
+mod ctrl_g_goes_to;
 mod table_edge_extend_keys;
 mod alignment_tab;
 mod cross_ref_missing;
