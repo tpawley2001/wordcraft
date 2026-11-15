@@ -18,7 +18,13 @@ struct Breaker<'e> {
     level: Option<&'e Level>,
     rp: wordcraft_doc::resolve::ResolvedPara,
     mark_style: u32,
-    exclusions: &'e [Exclusion],
+    /// The wrap areas, owned once a Keep-lines-together restart stretches some up (see
+    /// [`Breaker::keep_lines_restart`]).
+    exclusions: std::borrow::Cow<'e, [Exclusion]>,
+    /// Below compatibility mode 15 a Keep-lines-together paragraph that reaches a floating
+    /// object starts again beside it (see [`Breaker::keep_lines_restart`]): whether that is still
+    /// to be decided for this paragraph.
+    keep_lines_open: bool,
     n: usize,
     width: f32,
     base_right: f32,
@@ -228,6 +234,9 @@ pub(super) fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u32, l
     let exclusions = mirrored.as_deref().unwrap_or(env.exclusions);
     let mut bk = Breaker::new(pl, (env, exclusions), mark_style, level);
     loop {
+        if bk.row_rest.is_empty() {
+            bk.keep_lines_row(pl);
+        }
         let mut sc = bk.begin_line(pl);
         sc.scan(&mut bk, pl);
         if sc.skip {
@@ -236,6 +245,9 @@ pub(super) fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u32, l
         }
         let end = bk.close_line(pl, sc);
         if bk.next_line(pl, end) {
+            if bk.keep_lines_end() {
+                continue;
+            }
             break;
         }
     }
@@ -256,7 +268,8 @@ impl<'e> Breaker<'e> {
         Breaker {
             level,
             mark_style,
-            exclusions,
+            keep_lines_open: rp.keep_lines && settings.compat_mode < wordcraft_doc::COMPAT_MODE_CURRENT && exclusions.iter().any(|e| !e.table),
+            exclusions: std::borrow::Cow::Borrowed(exclusions),
             n: pl.clusters.len(),
             width,
             base_right: (width - rp.indent_right).max(1.0),
@@ -320,6 +333,76 @@ impl<'e> Breaker<'e> {
         }
     }
 
+    /// Below compatibility mode 15 (measured in Word in modes 11, 12 and 14), a paragraph with Keep
+    /// lines together whose full-width lines would reach a floating object (not a floating table)
+    /// starts again beside it: its first line goes to the top of the first line that meets the
+    /// object (or to the object's top, when that is inside the first line), the room above stays
+    /// empty, and every line wraps around the object. An object whose top is at or above the
+    /// paragraph's top wraps it in place, as in mode 15. Decided once, at the first row that
+    /// meets an object (a new row is about to start at `self.top`).
+    fn keep_lines_row(&mut self, pl: &ParaLayout) {
+        if !self.keep_lines_open {
+            return;
+        }
+        let lo = self.row_left(pl);
+        let (top, h, hi) = (self.top, self.est_h, self.base_right);
+        let Some(reach) = self.exclusions.iter().filter(|e| !e.table && e.intersects_row(top, h, h, lo, hi)).map(|e| e.top).reduce(f32::min) else {
+            return;
+        };
+        self.keep_lines_open = false;
+        let start = if self.lines.is_empty() { reach } else { top };
+        if start > 0.0 {
+            self.restart(start, |e| e.intersects_row(top, h, h, lo, hi));
+        }
+    }
+
+    /// After the last line of a Keep-lines-together paragraph (see [`Breaker::keep_lines_row`])
+    /// none of whose lines met an object: whether the last line's band with the space after
+    /// reaches one. Then the paragraph starts again at that line's top, beside the object.
+    fn keep_lines_end(&mut self) -> bool {
+        if !self.keep_lines_open {
+            return false;
+        }
+        self.keep_lines_open = false;
+        let Some(last) = self.lines.last() else { return false };
+        let (top, single) = (last.top, self.lines.len() == 1);
+        let h = self.top - top + self.rp.space_after.max(0.0);
+        let (lo, hi) = (self.rp.indent_left.min(self.first_left), self.base_right);
+        let meets = |e: &Exclusion| !e.table && e.intersects_row(top, h, h, lo, hi);
+        let Some(reach) = self.exclusions.iter().filter(|e| meets(e)).map(|e| e.top).reduce(f32::min) else { return false };
+        let start = if single { reach.max(top) } else { top };
+        if start <= 0.0 {
+            return false;
+        }
+        self.restart(start, meets);
+        true
+    }
+
+    /// Lay the paragraph out again from its first line at `start`, the wrap areas that `met`
+    /// reaching up to it so that every line goes beside (or below) them.
+    fn restart(&mut self, start: f32, met: impl Fn(&Exclusion) -> bool) {
+        // Each area met is stretched up to `start` by a plain rectangle above it (its outline, if
+        // any, stays measured from its own top).
+        let mut areas = self.exclusions.to_vec();
+        let above: Vec<Exclusion> = areas
+            .iter()
+            .filter(|e| !e.table && e.top > start && met(e))
+            .map(|e| Exclusion { top: start, bottom: e.top, contour: None, ..e.clone() })
+            .collect();
+        areas.extend(above);
+        self.exclusions = std::borrow::Cow::Owned(areas);
+        self.lines.clear();
+        self.label_shifts = [0.0; 2];
+        self.first_x0 = None;
+        self.i = 0;
+        self.top = start;
+        self.first = true;
+        self.row_rest.clear();
+        self.row_first = 0;
+        self.skipped = 0;
+        self.wrapped_tab = None;
+    }
+
     /// The left edge of the row's first span: the indent, behind a drop cap on its lines.
     fn row_left(&self, pl: &ParaLayout) -> f32 {
         let lo = if self.first { self.first_left } else { self.rp.indent_left };
@@ -340,7 +423,7 @@ impl<'e> Breaker<'e> {
         let mut guard = 0;
         loop {
             let lo = self.row_left(pl);
-            match row_spans(self.exclusions, self.top, self.est_h, self.table_h, lo, self.base_right).map(|mut spans| (spans.pop_front(), spans)) {
+            match row_spans(&self.exclusions, self.top, self.est_h, self.table_h, lo, self.base_right).map(|mut spans| (spans.pop_front(), spans)) {
                 Ok((Some((a, b)), rest)) => {
                     let narrowed = !rest.is_empty() || a > lo || b < self.base_right;
                     self.row_rest = rest;

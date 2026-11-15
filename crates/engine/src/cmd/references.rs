@@ -30,6 +30,7 @@ pub use fields::{
 };
 pub(crate) use fields::{page_at, page_formats, page_label, page_text};
 pub(crate) use includetext::update_source;
+pub(crate) use link::update_link_at;
 pub(super) use notes::note_options;
 use notes::{note, note_refs};
 pub(crate) use properties::bookmark_text_at;

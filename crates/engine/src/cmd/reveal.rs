@@ -28,6 +28,12 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"value"?: bool (compare with the selection where it was turned on; absent toggles)}"#)
         .pure(),
+        CommandSpec::new("view.revealStyleSource", "Distinguish style source", "Home › Styles › Reveal Formatting", |s, v| {
+            s.view.reveal_style_source = p::bool(v, "value").unwrap_or(!s.view.reveal_style_source);
+            Ok(reveal(s))
+        })
+        .params(r#"{"value"?: bool (tag each font and paragraph entry with its source; absent toggles)}"#)
+        .pure(),
     ]
 }
 
@@ -120,6 +126,7 @@ pub fn reveal(s: &Session) -> Value {
     let diffs = first.as_ref().map(|first| differences(first, &out));
     if let Value::Object(m) = &mut out {
         m.insert("compare".into(), json!(first.is_some()));
+        m.insert("styleSource".into(), json!(s.view.reveal_style_source));
         if let Some(diffs) = diffs {
             m.insert("differences".into(), diffs);
         }
@@ -220,7 +227,7 @@ pub fn reveal_at(s: &Session, sel: &Selection) -> Value {
     let mut style_lines = Lines::default();
     style_lines.add(style.clone(), json!({"label": null, "style": style}));
 
-    json!({"groups": [
+    let mut out = json!({"groups": [
         {"name": "Font", "sections": font_sections},
         {"name": "Paragraph", "sections": [
             section("PARAGRAPH STYLE", style_lines),
@@ -228,7 +235,114 @@ pub fn reveal_at(s: &Session, sel: &Selection) -> Value {
             section("SPACING", spacing),
         ]},
         {"name": "Section", "sections": [section("MARGINS", margins), section("PAPER", paper)]},
-    ]})
+    ]});
+    if s.view.reveal_style_source {
+        tag_sources(s, sel, &pstyle, &mut out);
+    }
+    out
+}
+
+/// The props fields (camelCase, as serialised) an entry of section `heading` shows; empty for
+/// sections whose entries carry no source (paragraph style, margins, paper).
+fn entry_fields(heading: &str, entry: &Value) -> &'static [&'static str] {
+    let label = entry.get("label").and_then(Value::as_str);
+    let has = |k: &str| entry.get(k).is_some();
+    match heading {
+        "FONT" => match (label, entry.get("text").and_then(Value::as_str)) {
+            (Some("Font color"), _) => &["color"],
+            (_, Some("Bold")) => &["bold"],
+            (_, Some("Italic")) => &["italic"],
+            (_, Some("Underline")) => &["underline"],
+            (_, Some("Strikethrough")) => &["strike"],
+            (_, Some("Double strikethrough")) => &["doubleStrike"],
+            (_, Some("Superscript" | "Subscript")) => &["vertAlign"],
+            (_, Some("Small caps")) => &["smallCaps"],
+            (_, Some("All caps")) => &["caps"],
+            (_, Some("Hidden")) => &["hidden"],
+            _ if has("font") => &["font"],
+            _ if has("pt") => &["size"],
+            _ => &[],
+        },
+        "LANGUAGE" => &["lang"],
+        "ALIGNMENT AND INDENTATION" => match label {
+            Some("Left") => &["indentLeft", "indentLeftChars"],
+            Some("Right") => &["indentRight", "indentRightChars"],
+            Some("First line" | "Hanging") => &["indentFirst", "indentFirstChars"],
+            _ => &["align"],
+        },
+        "SPACING" => match label {
+            Some("Before") => &["spaceBefore", "spaceBeforeAuto"],
+            Some("After") => &["spaceAfter", "spaceAfterAuto"],
+            Some("Line spacing") => &["lineSpacing"],
+            _ => &[],
+        },
+        _ => &[],
+    }
+}
+
+/// Whether serialised props `props` set any of `fields`.
+fn sets(props: &Value, fields: &[&str]) -> bool {
+    fields.iter().any(|f| props.get(*f).is_some_and(|v| !v.is_null()))
+}
+
+/// Where the formatting comes from: `Some(None)` direct, `Some(Some(style id))` a style, `None`
+/// the document defaults. `chains` are style chains, nearest style first, searched in order.
+fn source_of<'a>(direct: &Value, chains: &[Vec<(&'a str, Value)>], fields: &[&str]) -> Option<Option<&'a str>> {
+    if sets(direct, fields) {
+        return Some(None);
+    }
+    chains.iter().flatten().find(|(_, props)| sets(props, fields)).map(|(id, _)| Some(*id))
+}
+
+/// Distinguish style source: add `source` (`direct`, `style` with `styleName`, or `default`) to
+/// each entry of the font, language, alignment and spacing sections of listing `out`.
+fn tag_sources(s: &Session, sel: &Selection, pstyle: &str, out: &mut Value) {
+    use wordcraft_doc::styles::StyleKind;
+    let styles = &s.doc.styles;
+    let to_value = |v: Result<Value, serde_json::Error>| v.unwrap_or(Value::Null);
+    let mut cp = char_props(s, sel);
+    let cstyle = cp.style.take();
+    let mut pp = para_props(s, sel);
+    pp.style = None;
+    let direct_char = to_value(serde_json::to_value(&cp));
+    let direct_para = to_value(serde_json::to_value(&pp));
+    let nearest_first = |id: &str, chr: bool| -> Vec<(&str, Value)> {
+        let mut chain = styles.chain(id);
+        chain.reverse();
+        chain
+            .into_iter()
+            .filter(|st| !chr || st.kind == StyleKind::Character || st.kind == StyleKind::Paragraph)
+            .map(|st| (st.id.as_str(), to_value(if chr { serde_json::to_value(&st.chr) } else { serde_json::to_value(&st.para) })))
+            .collect()
+    };
+    let char_chains = vec![cstyle.as_deref().map(|c| nearest_first(c, true)).unwrap_or_default(), nearest_first(pstyle, true)];
+    let para_chains = vec![nearest_first(pstyle, false)];
+    let Some(groups) = out.get_mut("groups").and_then(Value::as_array_mut) else { return };
+    for section in groups.iter_mut().filter_map(|g| g.get_mut("sections").and_then(Value::as_array_mut)).flatten() {
+        let heading = section.get("heading").and_then(Value::as_str).unwrap_or_default().to_string();
+        let (direct, chains) = match heading.as_str() {
+            "FONT" | "LANGUAGE" => (&direct_char, &char_chains),
+            "ALIGNMENT AND INDENTATION" | "SPACING" => (&direct_para, &para_chains),
+            _ => continue,
+        };
+        let Some(entries) = section.get_mut("entries").and_then(Value::as_array_mut) else { continue };
+        for entry in entries {
+            let source = source_of(direct, chains, entry_fields(&heading, entry));
+            let Value::Object(m) = entry else { continue };
+            match source {
+                Some(None) => {
+                    m.insert("source".into(), json!("direct"));
+                }
+                Some(Some(id)) => {
+                    m.insert("source".into(), json!("style"));
+                    m.insert("styleName".into(), json!(style_name(s, id)));
+                }
+                None => {
+                    m.insert("source".into(), json!("default"));
+                }
+            }
+        }
+    }
 }
 
 /// The key two entries in a section are matched by: the label when it has one, else the name of
@@ -255,7 +369,20 @@ fn keyed(section: &Value, font_section: bool) -> Vec<(String, Value)> {
     section
         .get("entries")
         .and_then(Value::as_array)
-        .map(|entries| entries.iter().map(|e| (entry_key(e, font_section), e.clone())).collect())
+        .map(|entries| {
+            entries
+                .iter()
+                .map(|e| {
+                    // The source is not formatting: Distinguish style source never adds differences.
+                    let mut e = e.clone();
+                    if let Value::Object(m) = &mut e {
+                        m.remove("source");
+                        m.remove("styleName");
+                    }
+                    (entry_key(&e, font_section), e)
+                })
+                .collect()
+        })
         .unwrap_or_default()
 }
 

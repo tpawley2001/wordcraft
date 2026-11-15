@@ -125,7 +125,7 @@ fn sample() -> Document {
 }
 
 /// Text of every page through hayro's interpreter (glyph → Unicode via ToUnicode / ActualText).
-fn extract_text(bytes: &[u8]) -> Vec<String> {
+pub(crate) fn extract_text(bytes: &[u8]) -> Vec<String> {
     use hayro_interpret::font::Glyph;
     use hayro_interpret::{
         BlendMode, ClipPath, Context, Device, GlyphDrawMode, Image, InterpreterCache, InterpreterSettings, Paint, PathDrawMode, SoftMask,
@@ -620,7 +620,7 @@ fn unsubsettable_font(family: &str, gid: u16) -> Vec<u8> {
 }
 
 /// Glyphs drawn as text and paths drawn, over every page.
-fn count_glyphs_and_paths(bytes: &[u8]) -> (usize, usize) {
+pub(crate) fn count_glyphs_and_paths(bytes: &[u8]) -> (usize, usize) {
     use hayro_interpret::font::Glyph;
     use hayro_interpret::{
         BlendMode, ClipPath, Context, Device, GlyphDrawMode, Image, InterpreterCache, InterpreterSettings, Paint, PathDrawMode, SoftMask,

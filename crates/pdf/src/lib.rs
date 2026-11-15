@@ -79,6 +79,8 @@ use paint::shape_path;
 use picture::{load_image, load_image_within};
 
 #[cfg(test)]
+mod field_glyph_tests;
+#[cfg(test)]
 mod tests;
 
 #[cfg(test)]
@@ -88,3 +90,5 @@ mod print_background_tests;
 
 #[cfg(test)]
 mod fill_alpha_tests;
+#[cfg(test)]
+mod form_shading_tests;

@@ -1,4 +1,5 @@
-//! Text in Verdana, Tahoma, Century Gothic or SimSun, when the font isn't installed, is drawn
+//! Text in Verdana, Tahoma, Century Gothic, SimSun, Aptos, Aptos Display, Trebuchet MS or
+//! Garamond, when the font isn't installed, is drawn
 //! with a substitute but keeps the advances Word gives the real font
 //! (`wordcraft_fonts::word_widths::missing_font_advance`), so lines hold the words Word's do.
 
@@ -48,6 +49,27 @@ fn runs_take_words_widths() {
         ("Century Gothic", false, false, "Page 12", 39.83),
         ("SimSun", false, false, "abc 123", 35.00),
         ("Verdana", false, true, "Quick", 28.02),
+    ];
+    for &(font, bold, italic, text, want) in cases {
+        if !missing(font) {
+            continue;
+        }
+        let got = run_width(text, font, bold, italic);
+        assert!((got - want).abs() < 0.01, "{font} b={bold} i={italic} {text:?}: {got} vs {want}");
+    }
+}
+
+#[test]
+fn aptos_trebuchet_and_garamond_runs_take_words_widths() {
+    // 10 pt: the table sum (1/1000 em) / 100.
+    let cases: &[(&str, bool, bool, &str, f32)] = &[
+        ("Aptos", false, false, "Meeting notes", 60.83),
+        ("Aptos", true, false, "Total 2024", 46.20),
+        ("Aptos", false, true, "Drawn", 28.22),
+        ("Aptos Display", true, false, "Chapter 3", 41.81),
+        ("Trebuchet MS", false, false, "Parity test", 46.89),
+        ("Trebuchet MS", true, false, "Annual report", 65.07),
+        ("Garamond", true, false, "Chapter 1", 40.32),
     ];
     for &(font, bold, italic, text, want) in cases {
         if !missing(font) {

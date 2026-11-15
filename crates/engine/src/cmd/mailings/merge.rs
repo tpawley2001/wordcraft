@@ -1,3 +1,4 @@
+use super::super::references::FieldCode;
 use super::{
     Block, Blocks, CmdError, CmdResult, Document, InlineObject, Paragraph, Part, PartKind, SectionProps, SectionStart, Session, StoryRef, Value,
     field_words, json, p, para_block,
@@ -55,7 +56,16 @@ pub(super) fn address_map(headers: &[String]) -> Value {
         "city": find(&["City", "Town"]),
         "state": find(&["State", "Province", "Region"]),
         "postal": find(&["PostalCode", "ZIP", "ZipCode", "Postcode"]),
-        "country": find(&["Country"]),
+        "country": find(&["Country", "CountryorRegion"]),
+        "address2": find(&["Address2", "AddressLine2", "Street2"]),
+        "nickname": find(&["Nickname"]),
+        "middleName": find(&["MiddleName"]),
+        "suffix": find(&["Suffix"]),
+        "spouseTitle": find(&["Spouse/PartnerCourtesyTitle"]),
+        "spouseFirst": find(&["Spouse/PartnerFirstName"]),
+        "spouseMiddle": find(&["Spouse/PartnerMiddleName"]),
+        "spouseLast": find(&["Spouse/PartnerLastName"]),
+        "spouseNickname": find(&["Spouse/PartnerNickname"]),
         "title": find(&["Title", "CourtesyTitle"]),
     })
 }
@@ -77,11 +87,157 @@ pub(super) fn address_block(s: &Session, row: usize) -> String {
     [name, g("company"), g("address"), city_line, g("country")].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join("\n")
 }
 
-fn greeting(s: &Session, row: usize) -> String {
-    let m = address_map(&s.merge.headers);
-    let g = |k: &str| m.get(k).and_then(Value::as_str).map(|f| value(s, row, f)).unwrap_or_default();
-    let name = [g("firstName"), g("lastName")].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" ");
-    if name.is_empty() { "Dear Sir or Madam,".into() } else { format!("Dear {name},") }
+// Long and short field-format tokens share the address-column mapping. Word maps
+// the partner suffix to the partner nickname, and has no partner nickname token.
+const FORMAT_TOKENS: &[(&str, &str, &str)] = &[
+    ("_TITLE0_", "/t0", "title"),
+    ("_NICK0_", "/n0", "nickname"),
+    ("_FIRST0_", "/f0", "firstName"),
+    ("_MIDDLE0_", "/m0", "middleName"),
+    ("_LAST0_", "/l0", "lastName"),
+    ("_SUFFIX0_", "/s0", "suffix"),
+    ("_TITLE1_", "/t1", "spouseTitle"),
+    ("_NICK1_", "/n1", ""),
+    ("_FIRST1_", "/f1", "spouseFirst"),
+    ("_MIDDLE1_", "/m1", "spouseMiddle"),
+    ("_LAST1_", "/l1", "spouseLast"),
+    ("_SUFFIX1_", "/s1", "spouseNickname"),
+    ("_COMPANY_", "/c", "company"),
+    ("_STREET1_", "/r", "address"),
+    ("_STREET2_", "/e", "address2"),
+    ("_CITY_", "/i", "city"),
+    ("_STATE_", "/a", "state"),
+    ("_POSTAL_", "/z", "postal"),
+    ("_COUNTRY_", "/d", "country"),
+    ("_BEFORE_", "/g", "before"),
+    ("_AFTER_", "/x", "after"),
+];
+
+struct FormatPart<'a> {
+    before: &'a str,
+    key: Option<&'static str>,
+    after: &'a str,
+}
+
+/// Scan only complete groups; malformed trailing text remains literal. Offsets
+/// come from string searches so even hostile Unicode formats stay on boundaries.
+fn format_parts(mut text: &str) -> Vec<FormatPart<'_>> {
+    let mut parts = Vec::new();
+    while let Some((literal, rest)) = text.split_once("<<") {
+        let Some((group, tail)) = rest.split_once(">>") else { break };
+        parts.push(FormatPart { before: literal, key: None, after: "" });
+        let token = group.char_indices().find_map(|(i, _)| {
+            let suffix = group.get(i..)?;
+            FORMAT_TOKENS.iter().find_map(|(long, short, key)| {
+                let matched = if suffix.starts_with(long) {
+                    *long
+                } else if suffix.starts_with(short) {
+                    *short
+                } else {
+                    return None;
+                };
+                Some((i, matched.len(), *key))
+            })
+        });
+        if let Some((start, len, key)) = token {
+            let before = group.get(..start).unwrap_or_default();
+            let after = group.get(start.saturating_add(len)..).unwrap_or_default();
+            let after = if matches!(key, "before" | "after") { after.strip_prefix(' ').unwrap_or(after) } else { after };
+            parts.push(FormatPart { before, key: Some(key), after });
+        }
+        text = tail;
+    }
+    parts.push(FormatPart { before: text, key: None, after: "" });
+    parts
+}
+
+fn render_format(parts: &[FormatPart<'_>], get: impl Fn(&str) -> String) -> String {
+    let mut out = String::new();
+    for part in parts {
+        match part.key {
+            None | Some("before" | "after") => {
+                out.push_str(part.before);
+                out.push_str(part.after);
+            }
+            Some(key) => {
+                let value = get(key);
+                if !value.is_empty() {
+                    out.push_str(part.before);
+                    out.push_str(&value);
+                    out.push_str(part.after);
+                }
+            }
+        }
+    }
+    out.replace("\r\n", "\n").replace(['\r', '\u{b}'], "\n")
+}
+
+fn formatted_address(s: &Session, row: usize, code: &FieldCode) -> String {
+    let Some(format) = code.arg('f') else { return address_block(s, row) };
+    let map = address_map(&s.merge.headers);
+    let exclude = code.switches.iter().rev().find(|(c, _)| *c == 'e').and_then(|(_, v)| v.as_deref());
+    render_format(&format_parts(format), |key| {
+        let v = map.get(key).and_then(Value::as_str).map(|f| value(s, row, f)).unwrap_or_default();
+        if key == "country" && code.arg('c') == Some("2") && exclude.is_some_and(|e| e.trim().to_lowercase() == v.trim().to_lowercase()) {
+            String::new()
+        } else {
+            v
+        }
+    })
+}
+
+fn greeting(s: &Session, row: usize, code: &FieldCode) -> String {
+    let Some(format) = code.arg('f') else { return String::new() };
+    let alt = code.arg('e').unwrap_or_default();
+    let parts = format_parts(format);
+    let keys: Vec<&str> = parts.iter().filter_map(|p| p.key).filter(|k| !matches!(*k, "before" | "after")).collect();
+    // Reject unsupported name orders before inspecting the record, as Word does.
+    if !matches!(
+        keys.as_slice(),
+        ["title", "lastName"]
+            | ["title", "spouseTitle", "lastName"]
+            | ["title", "firstName", "lastName", "suffix"]
+            | ["title", "nickname", "lastName", "suffix"]
+            | ["firstName", "lastName", "suffix"]
+            | ["nickname", "lastName", "suffix"]
+            | ["firstName", "spouseFirst", "lastName"]
+            | ["nickname", "spouseFirst", "lastName"]
+            | ["firstName"]
+            | ["nickname"]
+            | ["firstName", "spouseFirst"]
+            | ["nickname", "spouseFirst"]
+            | ["lastName"]
+    ) {
+        return alt.to_string();
+    }
+    let map = address_map(&s.merge.headers);
+    let get = |key: &str| map.get(key).and_then(Value::as_str).map(|f| value(s, row, f)).unwrap_or_default();
+    if keys.first() == Some(&"title") && get("title").is_empty() {
+        let name = [get("firstName"), get("lastName")].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
+        if name.is_empty() {
+            return alt.to_string();
+        }
+        // Replace the entire name, including its group punctuation, at the first
+        // name token. Prefix/suffix groups and text outside groups remain intact.
+        let mut used = false;
+        let fallback: Vec<_> = parts
+            .iter()
+            .map(|p| {
+                if p.key.is_some_and(|k| !matches!(k, "before" | "after")) {
+                    let before = if used { "" } else { name.as_str() };
+                    used = true;
+                    FormatPart { before, key: None, after: "" }
+                } else {
+                    FormatPart { before: p.before, key: p.key, after: p.after }
+                }
+            })
+            .collect();
+        return render_format(&fallback, |_| String::new());
+    }
+    if keys.iter().all(|k| get(k).is_empty()) {
+        return alt.to_string();
+    }
+    render_format(&parts, get)
 }
 
 /// What a merge-related field does for the current record.
@@ -137,8 +293,8 @@ fn act(s: &Session, instr: &str, row: usize) -> Option<Act> {
         return Some(Act::Text(value(s, row, &n)));
     }
     Some(match keyword(t).as_str() {
-        "ADDRESSBLOCK" => Act::Text(address_block(s, row)),
-        "GREETINGLINE" => Act::Text(greeting(s, row)),
+        "ADDRESSBLOCK" => Act::Text(formatted_address(s, row, &FieldCode::parse(t))),
+        "GREETINGLINE" => Act::Text(greeting(s, row, &FieldCode::parse(t))),
         "MERGEREC" => Act::Text(row.saturating_add(1).to_string()),
         "NEXT" => Act::Next,
         "NEXTIF" if condition(s, t, row).0 => Act::Next,
@@ -417,4 +573,101 @@ fn merge_blocks(s: &Session, blocks: &mut Blocks, cur: &mut usize, end: usize, d
         }
     }
     true
+}
+
+#[cfg(test)]
+mod format_tests {
+    use super::*;
+
+    #[test]
+    fn address_tokens_long_and_short_include_partner_columns_and_aliases() {
+        let mut s = Session::new(Document::new());
+        s.merge.headers = [
+            "Courtesy Title",
+            "Nickname",
+            "GivenName",
+            "Middle Name",
+            "Surname",
+            "Suffix",
+            "Spouse/Partner Courtesy Title",
+            "Spouse/Partner First Name",
+            "Spouse/Partner Middle Name",
+            "Spouse/Partner Last Name",
+            "Spouse/Partner Nickname",
+            "Organization",
+            "Street",
+            "Address 2",
+            "Town",
+            "Province",
+            "ZipCode",
+            "Country or Region",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+        s.merge.rows = vec![(1..=18).map(|n| n.to_string()).collect()];
+        let mut n = 0;
+        for (long, short, key) in FORMAT_TOKENS.iter().filter(|(_, _, key)| !matches!(*key, "before" | "after")) {
+            let expected = if key.is_empty() {
+                String::new()
+            } else {
+                n += 1;
+                format!("[{n}]")
+            };
+            for token in [long, short] {
+                let code = FieldCode::parse(&format!("ADDRESSBLOCK \\f {}", super::super::quoted(&format!("<<[{token}]>>"))));
+                assert_eq!(formatted_address(&s, 0, &code), expected, "{token}");
+            }
+        }
+    }
+
+    #[test]
+    fn literal_breaks_and_escaped_command_arguments_round_trip() {
+        let mut s = Session::new(Document::new());
+        s.run("mailings.recipients", &json!({"rows": [{"First Name": "Ada", "Country": " Australia "}]})).unwrap();
+        s.run(
+            "mailings.addressBlock",
+            &json!({
+                "format": "α<<_FIRST0_>>\r\nβ\rγ\u{b}δ<< (_COUNTRY_)>>\\\"",
+                "country": 2, "exclude": "australia"
+            }),
+        )
+        .unwrap();
+        s.run("mailings.preview", &json!({"value": true})).unwrap();
+        assert!(s.doc.plain_text(StoryRef::Body).contains("αAda\nβ\nγ\nδ\\\""));
+        s.run("mailings.greetingLine", &json!({"format": "<<_FIRST0_>>", "alt": "\\\"friend\\\""})).unwrap();
+        s.merge.rows = vec![vec![String::new(), String::new()]];
+        refresh(&mut s);
+        assert!(s.doc.plain_text(StoryRef::Body).contains("\\\"friend\\\""));
+    }
+
+    #[test]
+    fn greeting_allowed_name_orders_and_empty_alternate() {
+        let mut s = Session::new(Document::new());
+        s.merge.headers = ["Title", "First Name", "Last Name", "Nickname", "Suffix", "Spouse/Partner Courtesy Title", "Spouse/Partner First Name"]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        s.merge.rows = vec![["Dr", "Ada", "Lee", "Al", "Jr", "Mr", "Pat"].into_iter().map(str::to_string).collect()];
+        for (tokens, expected) in [
+            ("/t0 /l0", "Dr Lee"),
+            ("/t0 /t1 /l0", "Dr Mr Lee"),
+            ("/t0 /f0 /l0 /s0", "Dr Ada Lee Jr"),
+            ("/t0 /n0 /l0 /s0", "Dr Al Lee Jr"),
+            ("/f0 /l0 /s0", "Ada Lee Jr"),
+            ("/n0 /l0 /s0", "Al Lee Jr"),
+            ("/f0 /f1 /l0", "Ada Pat Lee"),
+            ("/n0 /f1 /l0", "Al Pat Lee"),
+            ("/f0", "Ada"),
+            ("/n0", "Al"),
+            ("/f0 /f1", "Ada Pat"),
+            ("/n0 /f1", "Al Pat"),
+            ("/l0", "Lee"),
+        ] {
+            let format = tokens.split(' ').map(|t| format!("<<{t} >>")).collect::<String>();
+            let code = FieldCode::parse(&format!("GREETINGLINE \\f {}", super::super::quoted(&format)));
+            assert_eq!(greeting(&s, 0, &code).trim_end(), expected);
+            assert_eq!(greeting(&s, 1, &code), "");
+        }
+    }
 }

@@ -149,3 +149,29 @@ fn a_protection_level_with_no_rtf_form_writes_nothing() {
     let out = export(&d);
     assert!(!out.contains(r"\protlevel") && !out.contains(r"\enforceprot"), "{out}");
 }
+
+#[test]
+fn formatting_switch_locks_and_formatting_only_protection_round_trip() {
+    for parameter in ["", "1", "0"] {
+        let rtf = format!(r"{{\rtf1\ansi\stylelock{parameter}\stylelockenforced{parameter}\autofmtoverride{parameter}\stylelocktheme{parameter}\stylelockqfset{parameter} text\par}}");
+        let d = doc(&rtf);
+        let on = parameter != "0";
+        assert_eq!(d.settings.protect_formatting, on);
+        assert_eq!(d.settings.protection.as_deref(), on.then_some("none"));
+        assert_eq!(d.settings.auto_format_override, on);
+        assert_eq!(d.settings.style_lock_theme, on);
+        assert_eq!(d.settings.style_lock_qf_set, on);
+        let output = export(&d);
+        for word in [r"\stylelocktheme", r"\stylelockqfset", r"\autofmtoverride", r"\stylelockenforced"] {
+            assert_eq!(output.contains(word), on, "{output}");
+        }
+        let back = round_trip(&d);
+        assert_eq!(back.settings.protection, d.settings.protection);
+        assert_eq!(back.settings.style_lock_theme, on);
+        assert_eq!(back.settings.style_lock_qf_set, on);
+        assert_eq!(back.settings.auto_format_override, on);
+    }
+    let d = doc(r"{\rtf1\ansi\stylelock\stylelockenforced0 text}");
+    assert!(d.settings.protect_formatting);
+    assert!(d.settings.protection.is_none());
+}

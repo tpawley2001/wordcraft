@@ -15,6 +15,9 @@ use wordcraft_doc::{Pos, StoryRef};
 use super::sel_result;
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
+mod links;
+pub use links::link_fields;
+
 /// Longest field code accepted.
 const MAX_CODE: usize = 4096;
 
@@ -41,6 +44,10 @@ pub fn specs() -> Vec<CommandSpec> {
             .key("Shift+F11 / Alt+Shift+F1")
             .pure(),
         CommandSpec::new("fields.click", "Do Field Click", "Insert › Text › Quick Parts › Field", click).key("Alt+Shift+F9").pure(),
+        CommandSpec::new("fields.links", "Edit Links to Files", "File › Info › Related Documents", links::links).pure(),
+        CommandSpec::new("fields.editLink", "Edit Link", "File › Info › Related Documents › Edit Links to Files", links::edit_link).params(
+            r#"{"index": number (0-based, as fields.links lists the links), "update"?: "auto"|"manual", "locked"?: bool, "preserveFormatting"?: bool, "source"?: string (path), "item"?: string (bookmark name; "" = the whole document), "action"?: "updateNow"|"breakLink"}"#,
+        ),
         CommandSpec::new("fields.selected", "Selected Fields", "Insert › Text › Quick Parts", |s, _| {
             Ok(Value::Array(selected(s).iter().map(|f| f.json()).collect()))
         })
@@ -222,10 +229,16 @@ fn unlink(s: &mut Session, _: &Value) -> CmdResult {
     if fields.is_empty() {
         return Err(none_selected());
     }
+    unlink_fields(s, &fields)?;
+    Ok(json!({"fields": fields.len()}))
+}
+
+/// Replace `fields` with what they show (see [`unlink`]).
+fn unlink_fields(s: &mut Session, fields: &[FieldAt]) -> Result<(), CmdError> {
     // Unlinking rewrites the field into text: refused in content locked against editing.
     // Not tracked (Word doesn't track it either); the result stays as ordinary text.
     let width = OBJ.len_utf8();
-    for f in &fields {
+    for f in fields {
         let end = f.end.as_ref().unwrap_or(&f.at);
         let end = Pos { off: end.off.saturating_add(width), ..end.clone() };
         super::controls::check_edit(s, &f.at, &end)?;
@@ -251,7 +264,7 @@ fn unlink(s: &mut Session, _: &Value) -> CmdResult {
         para.insert_text(at.off, text, &props)?;
     }
     s.clamp_selection();
-    Ok(json!({"fields": fields.len()}))
+    Ok(())
 }
 
 /// The field a click at `pos` acts on: the simple field whose object is at `pos` or just before

@@ -658,6 +658,9 @@ fn setup_ui(app: &mut WordApp, ui: &mut Ui, st: &mut RestrictPane) {
             }
         });
     }
+    if st.formatting && st.show_styles {
+        formatting_switches(app, ui, st, false);
+    }
     heading(ui, "2. Editing restrictions");
     let editing = ui.checkbox(&mut st.editing, tl!("Only allow this kind of editing:"));
     ui.add_enabled_ui(st.editing, |ui| {
@@ -744,7 +747,28 @@ fn passwords(ui: &mut Ui, st: &mut RestrictPane, confirm: bool) {
     }
 }
 
+fn formatting_switches(app: &mut WordApp, ui: &mut Ui, st: &mut RestrictPane, enforced: bool) {
+    let settings = &app.session.doc.settings;
+    let values = [
+        (settings.auto_format_override, "autoFormatOverride", tl!("Allow AutoFormat to override formatting restrictions")),
+        (settings.style_lock_theme, "blockTheme", tl!("Block Theme or Scheme switching")),
+        (settings.style_lock_qf_set, "blockStyleSet", tl!("Block Quick Style Set switching")),
+    ];
+    ui.add_enabled_ui(!enforced, |ui| {
+        for (mut on, param, label) in values {
+            if ui.checkbox(&mut on, label).changed()
+                && let Err(e) = app.run("review.restrict", json!({param: on}))
+            {
+                st.message = e;
+            }
+        }
+    });
+}
+
 fn enforced_ui(app: &mut WordApp, ui: &mut Ui, st: &mut RestrictPane, mode: &str) {
+    if app.session.doc.settings.protect_formatting {
+        formatting_switches(app, ui, st, true);
+    }
     ui.label(tl!("Editing in this document is restricted."));
     ui.add_space(4.0);
     let what = match mode {

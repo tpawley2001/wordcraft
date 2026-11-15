@@ -57,3 +57,23 @@ fn saving_records_the_current_view() {
     s.stamp_save();
     assert_eq!(s.doc.settings.view, None);
 }
+
+#[test]
+fn an_rtf_document_reopens_in_the_view_it_was_saved_in() {
+    let dir = std::env::temp_dir().join(format!("wordcraft-engine-saved-view-rtf-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let opened = dir.join("opened.rtf");
+    std::fs::write(&opened, r"{\rtf1\ansi\deff0{\fonttbl{\f0 Times New Roman;}}\viewkind5\pard a\par}").unwrap();
+    let mut s = Session::new(wordcraft_doc::Document::new());
+    run(&mut s, "file.open", json!({"path": opened.to_string_lossy()}));
+    assert_eq!(s.view.mode, ViewMode::Web, "\\viewkind5 opens in Web Layout");
+
+    let saved = dir.join("saved.rtf").to_string_lossy().to_string();
+    run(&mut s, "view.outline", json!({}));
+    run(&mut s, "file.save", json!({"path": saved}));
+    let mut other = Session::new(wordcraft_doc::Document::new());
+    run(&mut other, "file.open", json!({"path": saved}));
+    assert_eq!(other.view.mode, ViewMode::Outline);
+    let _ = std::fs::remove_dir_all(&dir);
+}
