@@ -16,6 +16,7 @@ mod fib;
 mod fieldtype;
 mod fkp;
 mod fmt;
+mod lid;
 mod list;
 mod media;
 mod metadata;

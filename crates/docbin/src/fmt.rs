@@ -33,6 +33,14 @@ const C_BRC: u16 = 0xCA72; // sprmCBrc: text border (cb + Brc)
 const C_ICO: u16 = 0x2A42; // palette colour
 const C_CR: u16 = 0x6870; // explicit COLORREF
 const C_HPS: u16 = 0x4A43; // half-points
+const C_LID0_80: u16 = 0x486D; // sprmCRgLid0_80: default language (Word 97 copy)
+const C_LID1_80: u16 = 0x486E; // sprmCRgLid1_80: East Asian language (Word 97 copy)
+const C_LID0: u16 = 0x4873; // sprmCRgLid0: default language
+const C_LID1: u16 = 0x4874; // sprmCRgLid1: East Asian language
+const C_LID_BI: u16 = 0x485F; // sprmCLidBi: complex-script language
+const C_BOLD_BI: u16 = 0x085C; // sprmCFBoldBi: complex-script bold
+const C_ITALIC_BI: u16 = 0x085D; // sprmCFItalicBi: complex-script italic
+const C_HPS_BI: u16 = 0x4A61; // sprmCHpsBi: complex-script size in half-points
 const C_HPS_POS: u16 = 0x4845; // raised (+) / lowered (-) by signed half-points: w:position
 const C_ISS: u16 = 0x2A48; // superscript / subscript: w:vertAlign
 const C_FTC0: u16 = 0x4A4F; // font index (ASCII)
@@ -264,6 +272,13 @@ fn set_flag(props: &mut Option<bool>, prl: &Prl, base: Option<bool>) {
     }
 }
 
+/// A language sprm: the LID's tag, when it names a known language.
+fn set_lang(lang: &mut Option<String>, prl: &Prl) {
+    if let Some(tag) = u16_of(prl).and_then(crate::lid::lcid_tag) {
+        *lang = Some(tag.to_string());
+    }
+}
+
 /// The toggle base for a run in a paragraph style (`para`) that also names a character style
 /// whose own toggle values are `chr`: per property, a character style that says on inverts the
 /// paragraph style's value (unset counts as off), one that says off gives off, and one that
@@ -291,6 +306,8 @@ pub(crate) fn combine_toggles(para: &CharProps, chr: &CharProps) -> CharProps {
     out.no_proof = one(para.no_proof, chr.no_proof);
     out.web_hidden = one(para.web_hidden, chr.web_hidden);
     out.spec_vanish = one(para.spec_vanish, chr.spec_vanish);
+    out.bold_cs = one(para.bold_cs, chr.bold_cs);
+    out.italic_cs = one(para.italic_cs, chr.italic_cs);
     out
 }
 
@@ -314,6 +331,17 @@ pub(crate) fn apply_char(p: &mut CharProps, prl: &Prl, base: &CharProps, fonts: 
         C_NO_PROOF => set_flag(&mut p.no_proof, prl, base.no_proof),
         C_WEB_HIDDEN => set_flag(&mut p.web_hidden, prl, base.web_hidden),
         C_SPEC_VANISH => set_flag(&mut p.spec_vanish, prl, base.spec_vanish),
+        C_BOLD_BI => set_flag(&mut p.bold_cs, prl, base.bold_cs),
+        C_ITALIC_BI => set_flag(&mut p.italic_cs, prl, base.italic_cs),
+        // A LID ([MS-LCID]) outside the known table, or "no language", keeps the inherited value.
+        C_LID0_80 | C_LID0 => set_lang(&mut p.lang, prl),
+        C_LID1_80 | C_LID1 => set_lang(&mut p.lang_ea, prl),
+        C_LID_BI => set_lang(&mut p.lang_bidi, prl),
+        C_HPS_BI => {
+            if let Some(hps) = u16_of(prl) {
+                p.size_cs = Some((hps as f32 / 2.0).clamp(1.0, 1638.0));
+            }
+        }
         C_KCD => {
             let mark = match prl.operand.first() {
                 Some(0) => Some(EmphasisMark::None),

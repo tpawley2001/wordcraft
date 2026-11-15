@@ -22,6 +22,7 @@ mod char_spacing;
 mod char_styles;
 mod compat_mode;
 mod char_sprms;
+mod char_lang;
 mod contextual_spacing;
 mod para_sprms;
 mod dop_base;
