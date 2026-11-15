@@ -572,6 +572,16 @@ thread_local! {
     static OWN_STYLES: std::cell::RefCell<HashMap<String, u32>> = std::cell::RefCell::new(HashMap::new());
 }
 
+/// The widths of a row's gaps before and after its cells (`\trftsWidthB3\trwWidthBN`,
+/// `\trftsWidthA3\trwWidthAN`, twips), where it has a gap with a width.
+fn row_gap_words(gap: &model::RowGap, out: &mut String) {
+    for (n, w, side) in [(gap.before, gap.w_before, 'B'), (gap.after, gap.w_after, 'A')] {
+        if let Some(w) = w.filter(|w| n > 0 && w.is_finite() && *w >= 0.0) {
+            out.push_str(&format!("\\trftsWidth{side}3\\trwWidth{side}{}", (w.min(1584.0) * 20.0).round() as i64));
+        }
+    }
+}
+
 /// A table's direction (`\rtlrow`), preferred width (`\trftsWidthN\trwWidthN`) and floating
 /// position (RTF 1.9.1 "Positioned tables"), written in each of its row definitions.
 fn table_place_words(x: &model::TableExtra, out: &mut String) {
@@ -1953,16 +1963,21 @@ impl Writer {
             Some(Align::Center | Align::Right) => 0,
             _ => extra.and_then(|x| x.indent).filter(|i| i.is_finite()).map_or(0, |i| ((i * 20.0).round() as i64).clamp(-31_680, 31_680)),
         };
+        // A row that starts short of the grid starts at its first cell's column: its own left edge.
+        let gap = extra.and_then(|x| x.row_gaps.get(ri)).copied().unwrap_or_default();
+        let mut g = (gap.before as usize).min(widths.len());
+        let mut x: f32 = widths.get(..g).map_or(0.0, |w| w.iter().sum());
+        let row_left = (x.round() as i64).saturating_add(left);
         // Its default cell padding: the gap is the left padding, each side stated in twips.
         let pad = extra.and_then(|x| x.cell_margins).filter(|m| m.iter().all(|v| v.is_finite()));
         match pad {
             Some(m) => {
                 let [t, l, b, r] = m.map(|v| ((v * 20.0).round() as i64).clamp(0, 31_680));
                 out.push_str(&format!(
-                    "\\trgaph{l}\\trleft{left}\\trpaddl{l}\\trpaddt{t}\\trpaddb{b}\\trpaddr{r}\\trpaddfl3\\trpaddft3\\trpaddfb3\\trpaddfr3"
+                    "\\trgaph{l}\\trleft{row_left}\\trpaddl{l}\\trpaddt{t}\\trpaddb{b}\\trpaddr{r}\\trpaddfl3\\trpaddft3\\trpaddfb3\\trpaddfr3"
                 ));
             }
-            None => out.push_str(&format!("\\trgaph108\\trleft{left}")),
+            None => out.push_str(&format!("\\trgaph108\\trleft{row_left}")),
         }
         // The table's style and its look.
         if let Some(n) = extra.and_then(|x| x.style.as_deref()).and_then(own_style_num) {
@@ -1999,8 +2014,7 @@ impl Writer {
         if extra.is_some_and(|x| x.keep_rows.get(ri) == Some(&true)) {
             out.push_str("\\trkeep");
         }
-        let mut g = 0usize;
-        let mut x = 0.0f32;
+        row_gap_words(&gap, out);
         for c in row {
             let span = c.colspan.clamp(1, 63) as usize;
             for k in g..(g + span).min(widths.len()) {

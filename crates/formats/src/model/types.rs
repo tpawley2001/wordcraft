@@ -1122,11 +1122,33 @@ pub struct TableExtra {
     /// Where it floats, when it does, for formats that state it by row (RTF's positioned-table
     /// words).
     pub float: Option<wordcraft_doc::props::TableFloat>,
+    /// Each row's empty grid columns before and after its cells, with their widths, by row, for
+    /// formats that state each row's edges (RTF); empty when no row starts or ends short.
+    pub row_gaps: Vec<RowGap>,
+}
+
+/// The grid columns a row leaves empty before its first cell and after its last
+/// (`w:gridBefore`, `w:gridAfter`), and those gaps' preferred widths in points.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RowGap {
+    pub before: u32,
+    pub after: u32,
+    pub w_before: Option<f32>,
+    pub w_after: Option<f32>,
 }
 
 impl FTable {
     pub fn cols(&self) -> usize {
-        self.rows.iter().map(|r| r.iter().map(|c| c.colspan.clamp(1, 63) as usize).sum::<usize>()).max().unwrap_or(0)
+        let gaps = self.extra.as_deref().map(|x| x.row_gaps.as_slice()).unwrap_or_default();
+        self.rows
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let gap = gaps.get(i).map_or(0, |g| g.before.min(63) as usize + g.after.min(63) as usize);
+                r.iter().map(|c| c.colspan.clamp(1, 63) as usize).sum::<usize>() + gap
+            })
+            .max()
+            .unwrap_or(0)
     }
     /// Grid column widths from the cells that give one (after [`Self::insert_covered`], so a
     /// cell's column counts those spanned from rows above), when every column has one.

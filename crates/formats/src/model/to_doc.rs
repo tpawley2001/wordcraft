@@ -954,7 +954,14 @@ impl<'a> Builder<'a> {
                 row.props.height_rule = if exact { wordcraft_doc::props::HeightRule::Exact } else { wordcraft_doc::props::HeightRule::AtLeast };
             }
             row.props.cant_split = t.extra.as_ref().is_some_and(|x| x.keep_rows.get(ri) == Some(&true));
-            let mut g = 0usize;
+            // The grid columns it leaves empty before and after its cells, with their widths.
+            let gap = t.extra.as_ref().and_then(|x| x.row_gaps.get(ri)).copied().unwrap_or_default();
+            let before = (gap.before as usize).min(cols.saturating_sub(1));
+            let after = (gap.after as usize).min(cols.saturating_sub(before + 1));
+            let gap_width = |n: usize, w: Option<f32>| w.filter(|w| n > 0 && w.is_finite() && *w >= 0.0).map(|w| w.min(1584.0));
+            (row.props.grid_before, row.props.grid_after) = (before as u32, after as u32);
+            (row.props.w_before, row.props.w_after) = (gap_width(before, gap.w_before), gap_width(after, gap.w_after));
+            let mut g = before;
             for c in r.iter().take(wordcraft_doc::table::MAX_COLS) {
                 let span = (c.colspan.clamp(1, 63) as usize).min(cols.saturating_sub(g).max(1));
                 let w: f32 = tb.grid.get(g..(g + span).min(tb.grid.len())).map(|s| s.iter().sum()).unwrap_or(72.0);

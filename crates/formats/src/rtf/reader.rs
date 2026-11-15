@@ -62,6 +62,8 @@ pub(super) struct Reader {
     table_rights: Vec<Vec<i32>>,
     /// Each table row's left edge (`\trleft`, twips), which its `\cellx` edges are measured with.
     table_lefts: Vec<i32>,
+    /// Each table row's widths of the gaps before and after its cells (points), as it states them.
+    table_gap_widths: Vec<[Option<f32>; 2]>,
     /// Each table row's height (points, exact) and whether it keeps from breaking across pages.
     table_heights: Vec<Option<(f32, bool)>>,
     table_keeps: Vec<bool>,
@@ -211,6 +213,7 @@ impl Reader {
         std::mem::swap(&mut o.rule_pending, &mut self.rule_pending);
         std::mem::swap(&mut o.table_rights, &mut self.table_rights);
         std::mem::swap(&mut o.table_lefts, &mut self.table_lefts);
+        std::mem::swap(&mut o.table_gap_widths, &mut self.table_gap_widths);
         std::mem::swap(&mut o.row_height, &mut self.row_height);
         std::mem::swap(&mut o.row_keep, &mut self.row_keep);
         std::mem::swap(&mut o.table_heights, &mut self.table_heights);
@@ -233,6 +236,7 @@ impl Reader {
         std::mem::swap(&mut l.row_keep, &mut self.row_keep);
         std::mem::swap(&mut l.table_rights, &mut self.table_rights);
         std::mem::swap(&mut l.table_lefts, &mut self.table_lefts);
+        std::mem::swap(&mut l.table_gap_widths, &mut self.table_gap_widths);
         std::mem::swap(&mut l.table_heights, &mut self.table_heights);
         std::mem::swap(&mut l.table_keeps, &mut self.table_keeps);
         std::mem::swap(&mut l.row_style, &mut self.row_style);
@@ -1001,6 +1005,7 @@ impl Reader {
             self.table.push(out);
             self.table_rights.push(rights);
             self.table_lefts.push(self.row_style.left);
+            self.table_gap_widths.push(self.row_style.gap_widths());
             self.table_heights.push(self.row_height);
             self.table_keeps.push(self.row_keep);
         }
@@ -1029,8 +1034,14 @@ impl Reader {
         let mut rows = std::mem::take(&mut self.table);
         let rights = std::mem::take(&mut self.table_rights);
         let lefts = std::mem::take(&mut self.table_lefts);
-        let rights = from_left_edge(rights, &lefts);
-        let widths = column_grid(&mut rows, &rights);
+        let gap_widths = std::mem::take(&mut self.table_gap_widths);
+        // Rows that start or end short of the others get empty grid columns there; else the
+        // grid comes from the rights edges measured from the table's left edge.
+        let ragged = ragged_grid(&mut rows, &rights, &lefts, &gap_widths);
+        let (widths, row_gaps, shift) = match ragged {
+            Some(r) => r,
+            None => (column_grid(&mut rows, &from_left_edge(rights, &lefts)), Vec::new(), 0),
+        };
         let heights = std::mem::take(&mut self.table_heights);
         let keep_rows = std::mem::take(&mut self.table_keeps);
         // Only a table whose rows give a height or keep gets them, so others stay as before.
@@ -1038,8 +1049,10 @@ impl Reader {
             .then(|| Box::new(model::TableExtra { heights, keep_rows, ..Default::default() }));
         // Its first row's table style and look.
         let ts = std::mem::take(&mut self.table_style);
-        // Its first row's position: a zero edge with no alignment is the default.
-        let indent = ts.edge().map(|e| e as f32 / 20.0);
+        // Its first row's position: a zero edge with no alignment is the default. When that row
+        // starts short of the grid, the table starts where the grid does.
+        let edge = if shift != 0 && ts.align.is_none() { Some(ts.edge().unwrap_or(0).saturating_sub(shift)).filter(|&e| e != 0) } else { ts.edge() };
+        let indent = edge.map(|e| e as f32 / 20.0);
         if ts.align.is_some() || indent.is_some() {
             let x = extra.get_or_insert_with(Default::default);
             (x.align, x.indent) = (ts.align, indent);
@@ -1059,9 +1072,81 @@ impl Reader {
             let x = extra.get_or_insert_with(Default::default);
             (x.style, x.look) = (ts.style, ts.look);
         }
+        if !row_gaps.is_empty() {
+            extra.get_or_insert_with(Default::default).row_gaps = row_gaps;
+        }
         // Word draws only the borders the cells name: no grid style, each cell its own.
         Some(FTable { rows, widths, borderless: true, extra, kept: None, wrap: None })
     }
+}
+
+/// How far (twips) two rows' cell edges may differ and still be one column boundary.
+const EDGE_TOL: i32 = 10;
+
+/// The grid of a table whose rows start or end at different edges: every row's edges (its
+/// `\trleft` and each `\cellx`, from the margin) together, those within [`EDGE_TOL`] as one. Sets
+/// each cell's span to the grid columns its edges cover and gives the column widths (points),
+/// each row's empty columns before and after its cells with their stated widths (`gap_widths`,
+/// kept only where the row has a gap) and how far (twips) the first row starts right of the grid.
+/// `None`, changing nothing, when every row spans the whole grid or the edges can't be mapped.
+fn ragged_grid(
+    rows: &mut [Vec<Cell>],
+    rights: &[Vec<i32>],
+    lefts: &[i32],
+    gap_widths: &[[Option<f32>; 2]],
+) -> Option<(Vec<f32>, Vec<model::RowGap>, i32)> {
+    if rows.is_empty() || rights.len() != rows.len() || lefts.len() != rows.len() {
+        return None;
+    }
+    let row_edges: Vec<Vec<i32>> = rights.iter().zip(lefts).map(|(r, &l)| std::iter::once(l).chain(r.iter().copied()).collect()).collect();
+    let usable = |e: &Vec<i32>, r: &Vec<Cell>| e.len() == r.len() + 1 && e.len() >= 2 && e.windows(2).all(|w| w.first() < w.get(1));
+    if !row_edges.iter().zip(rows.iter()).all(|(e, r)| usable(e, r)) {
+        return None;
+    }
+    let mut all: Vec<i32> = row_edges.iter().flatten().copied().collect();
+    all.sort_unstable();
+    let mut bounds: Vec<i32> = Vec::new();
+    for e in all {
+        if bounds.last().is_none_or(|&l| e.saturating_sub(l) > EDGE_TOL) {
+            bounds.push(e);
+        }
+    }
+    if bounds.len() < 2 || bounds.len() > 64 {
+        return None;
+    }
+    let last_col = bounds.len() - 1;
+    let col_of = |e: i32| bounds.iter().position(|&f| f.abs_diff(e) <= EDGE_TOL as u32);
+    let mut cols_of_row: Vec<Vec<usize>> = Vec::with_capacity(row_edges.len());
+    for edges in &row_edges {
+        let cols = edges.iter().map(|&e| col_of(e)).collect::<Option<Vec<usize>>>()?;
+        if !cols.windows(2).all(|w| w.first() < w.get(1)) {
+            return None;
+        }
+        cols_of_row.push(cols);
+    }
+    if cols_of_row.iter().all(|c| c.first() == Some(&0) && c.last() == Some(&last_col)) {
+        return None;
+    }
+    let mut gaps = Vec::with_capacity(rows.len());
+    for (i, (row, cols)) in rows.iter_mut().zip(&cols_of_row).enumerate() {
+        for (c, w) in row.iter_mut().zip(cols.windows(2)) {
+            if let [l, r] = *w {
+                c.colspan = (r - l).clamp(1, 63) as u32;
+            }
+        }
+        let before = cols.first().copied().unwrap_or(0);
+        let after = last_col.saturating_sub(cols.last().copied().unwrap_or(last_col));
+        let [wb, wa] = gap_widths.get(i).copied().unwrap_or_default();
+        gaps.push(model::RowGap {
+            before: before as u32,
+            after: after as u32,
+            w_before: wb.filter(|_| before > 0).map(|w| w.min(1584.0)),
+            w_after: wa.filter(|_| after > 0).map(|w| w.min(1584.0)),
+        });
+    }
+    let widths = bounds.windows(2).map(|w| if let [a, b] = *w { b.saturating_sub(a) as f32 / 20.0 } else { 0.0 }).collect();
+    let shift = lefts.first().copied().unwrap_or(0).saturating_sub(bounds.first().copied().unwrap_or(0));
+    Some((widths, gaps, shift))
 }
 
 /// The rows' cell right edges measured from the table's left edge rather than the margin: less
@@ -1367,5 +1452,53 @@ mod template_tests {
     fn template_in_a_header_is_ignored() {
         let d = import(br"{\rtf1\ansi{\header {\*\template H.dotx}h\par}\sectd a\par}").unwrap();
         assert_eq!(d.settings.attached_template, None);
+    }
+}
+
+#[cfg(test)]
+mod ragged_row_tests {
+    use super::super::{export, import};
+    use wordcraft_doc::{Document, Table};
+
+    fn table(d: &Document) -> &Table {
+        d.body.iter().find_map(|b| b.as_table()).unwrap()
+    }
+
+    fn shape(t: &Table) -> Vec<(u32, Vec<u32>, u32)> {
+        t.rows.iter().map(|r| (r.props.grid_before, r.cells.iter().map(|c| c.props.span).collect(), r.props.grid_after)).collect()
+    }
+
+    #[test]
+    fn a_first_row_that_starts_short_puts_the_table_at_the_grid() {
+        let d = import(
+            br"{\rtf1\ansi\trowd\trleft1440\cellx2880\cellx4320\pard\intbl a\cell b\cell\row\trowd\trleft0\cellx1440\cellx4320\pard\intbl c\cell d\cell\row\pard x\par}",
+        )
+        .unwrap();
+        let t = table(&d);
+        assert_eq!(shape(t), vec![(1, vec![1, 1], 0), (0, vec![1, 2], 0)]);
+        assert_eq!(t.grid, vec![72.0, 72.0, 72.0]);
+        assert_eq!(t.props.indent, None);
+        // Written and read back, it keeps its shape and place.
+        let back = import(export(&d).as_bytes()).unwrap();
+        assert_eq!(shape(table(&back)), shape(t));
+        assert_eq!(table(&back).props.indent, None);
+        assert_eq!(table(&back).grid, t.grid);
+    }
+
+    #[test]
+    fn edges_a_few_twips_apart_are_one_column_boundary() {
+        let d = import(
+            br"{\rtf1\ansi\trowd\cellx1440\cellx2880\cellx4320\pard\intbl a\cell b\cell c\cell\row\trowd\trleft1445\cellx2885\cellx4316\pard\intbl d\cell e\cell\row\pard x\par}",
+        )
+        .unwrap();
+        assert_eq!(shape(table(&d)), vec![(0, vec![1, 1, 1], 0), (1, vec![1, 1], 0)]);
+    }
+
+    #[test]
+    fn rows_that_share_their_edges_have_no_gap() {
+        let d =
+            import(br"{\rtf1\ansi\trowd\cellx2000\cellx9000\pard\intbl a\cell b\cell\row\trowd\cellx3000\cellx9000\pard\intbl c\cell d\cell\row}")
+                .unwrap();
+        assert_eq!(shape(table(&d)), vec![(0, vec![1, 2], 0), (0, vec![2, 1], 0)]);
     }
 }
