@@ -122,7 +122,7 @@ pub fn specs() -> Vec<CommandSpec> {
             sel_result(s)
         })
         .params(r#"{"all"?: bool (the body and every header, footer, note and text box, wherever the caret is; default: the story the caret is in), "pageNumbersOnly"?: bool (the table of contents keeps its entries and updates only their page numbers; default: rebuilt)}"#)
-        .key("F9"),
+        .key(super::mac_or("F9", "F9 / Alt+Shift+U")),
     ]
 }
 

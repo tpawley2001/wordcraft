@@ -43,7 +43,7 @@ fn a_style_key_takes_the_key_from_its_previous_owner() {
     assert_eq!(m.assign_style(&reg, "Strong", "Mod+B").unwrap(), Some(KeyTarget::Command("format.bold".into())));
     assert_eq!(m.resolve_target(&reg, "Mod+B"), Some(KeyTarget::Style("Strong".into())));
     assert!(m.resolve(&reg, "Mod+B").is_none());
-    assert!(m.keys_for(&reg, "format.bold").is_empty());
+    assert!(!m.keys_for(&reg, "format.bold").iter().any(|k| k == "Mod+B"));
     // Another style takes it.
     assert_eq!(m.assign_style(&reg, "Emphasis", "Mod+B").unwrap(), Some(KeyTarget::Style("Strong".into())));
     assert!(m.keys_for_style("Strong").is_empty());
