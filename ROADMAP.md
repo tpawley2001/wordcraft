@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged; earlier: P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged)
@@ -197,6 +199,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-15: P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged.
 - 2026-11-15: P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged.
 
 - 2026-11-15: P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
@@ -1083,6 +1086,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | trivial | P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged. |

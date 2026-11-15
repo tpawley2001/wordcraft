@@ -977,8 +977,20 @@ pub fn key(app: &mut WordApp, key: egui::Key, m: egui::Modifiers) -> bool {
     if crate::crop::key(app, key) {
         return true;
     }
-    if selected(app).is_none() {
-        return false;
+    let Some((pos, obj)) = selected(app) else { return false };
+    let floating = obj.is_floating() && pos.story == StoryRef::Body;
+    // A floating shape selected in the body: Tab / Shift+Tab go on to the next / previous one
+    // (Ctrl+Alt+5 starts the cycle) and Esc puts the caret just after its anchor, as in Word.
+    if floating && wordcraft_engine::cmd::canvas::selected_member(&app.session).is_none() {
+        let only_shift = !m.ctrl && !m.alt && !m.command;
+        match key {
+            egui::Key::Tab if only_shift => {
+                let _ = app.run("select.nextFloatingShape", json!({"backward": m.shift}));
+                return true;
+            }
+            egui::Key::Escape if m.is_none() => return app.run("select.collapse", json!({"end": true})).is_ok(),
+            _ => {}
+        }
     }
     let step = if m.ctrl || m.alt || m.command { NUDGE_FINE } else { NUDGE };
     let (dx, dy) = match key {
