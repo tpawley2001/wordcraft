@@ -38,6 +38,7 @@ mod drop_cap_in_margin;
 mod drop_cap_margin_style_indent;
 mod immersive_reader;
 mod style_area;
+mod style_auto_redefine;
 mod bidi;
 mod browse_object;
 mod table_keys;

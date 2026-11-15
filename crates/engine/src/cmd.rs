@@ -45,6 +45,7 @@ pub mod shape_fill;
 pub mod smart_art;
 mod sort_keys;
 pub mod speech;
+mod style_auto_redefine;
 pub mod table;
 pub mod table_draw;
 pub mod table_formula;

@@ -1,6 +1,8 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0605: Math AutoCorrect has Word's 780 built-in entries (add, replace and delete your own), Recognized Functions… (Word's 55, add and delete) and Use Math AutoCorrect rules outside of math regions (`tools.autocorrect` `mathAdd`, `mathDelete`, `addFunction`, `deleteFunction`, `mathReplaceText`, `mathOutside`). Readiness estimates unchanged; dialog count +1)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged; earlier: P0605: Math AutoCorrect has Word's 780 built-in entries (add, replace and delete your own), Recognized Functions… (Word's 55, add and delete) and Use Math AutoCorrect rules outside of math regions (`tools.autocorrect` `mathAdd`, `mathDelete`, `addFunction`, `deleteFunction`, `mathReplaceText`, `mathOutside`). Readiness estimates unchanged; dialog count +1)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged; earlier: P0604: Customize Status Bar: right-click the status bar for the list of its items (Formatted Page Number, Section, Page Number, Vertical Page Position, Line Number, Column, Word Count, Character Count (with spaces), Language, Track Changes, Caps Lock, Overtype, Selection Mode, View Shortcuts, Zoom Slider, Zoom), each with its value; a click shows or hides one and the list stays open; kept between runs (`ui.statusItem`). The default set is what the bar showed before. Caps Lock has no value: egui doesn't report the key's state. Readiness estimates unchanged)
 
@@ -202,7 +204,11 @@ Convert Text to Table (`table.fromText`) keeps spaces, tabs and no-break spaces 
 
 Word Count's shared counters follow the 2026-11-14 Word for Windows measurements for symbols, dash/bullet separators, spaces and invisible characters. U+2028/U+2029 as breaks, invisible-only tokens and the retained CJK punctuation exception remain unverified in Word.
 
+Modify Style’s existing Automatically update flag is honoured by engine formatting commands (P0608). Only paragraph styles redefine, and only whole paragraphs promote character formatting; tracked edits retain direct formatting.
+
 ## Revision history
+
+> 2026-11-15 · trivial · P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0605: Math AutoCorrect has Word's 780 built-in entries (add, replace and delete your own), Recognized Functions… (Word's 55, add and delete) and Use Math AutoCorrect rules outside of math regions (`tools.autocorrect` `mathAdd`, `mathDelete`, `addFunction`, `deleteFunction`, `mathReplaceText`, `mathOutside`). Readiness estimates unchanged; dialog count +1.
 > 2026-11-15 · trivial · P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged.
