@@ -1,6 +1,8 @@
 # File-format parity with Microsoft Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0577: at PDF/print/page-image output a REF to a SET name with no bookmark of that name (the SET was never updated) shows Word's "Error! Reference source not found." instead of the SET's stored text; with the bookmark it still shows the SET value. Readiness estimates unchanged; earlier: P0572: date/time pictures show the Japanese era items (`g`/`gg`/`ggg` era initial, kanji and name; `e`/`n` era year, `元` before `年` in an era's first year) and Japanese numerals (`A` day, `O` month, `I` minutes, `C` seconds; zero is `○`), from storytold/wordcraft#2643; a bare `A` is the day numeral, not AM/PM, as in Word. Readiness estimates unchanged)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0572: date/time pictures show the Japanese era items (`g`/`gg`/`ggg` era initial, kanji and name; `e`/`n` era year, `元` before `年` in an era's first year) and Japanese numerals (`A` day, `O` month, `I` minutes, `C` seconds; zero is `○`), from storytold/wordcraft#2643; a bare `A` is the day numeral, not AM/PM, as in Word. Readiness estimates unchanged; earlier: P0577: at PDF/print/page-image output a REF to a SET name with no bookmark of that name (the SET was never updated) shows Word's "Error! Reference source not found." instead of the SET's stored text; with the bookmark it still shows the SET value. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0568: PDF, printing and page images work out an unlocked body formula (`=`) holding nested REF fields from the bookmarks' current text under the same condition as IF fields (`= { REF x } +1` with x = 5 prints 6, as Microsoft 365 Word's PDF export does); other formulas keep their stored results. Readiness estimates unchanged; earlier: P0569: `.doc` inline pictures whose PICF stores the crop in PICMID (older Word versions) are sized from the cropped goal times the scale, as Word does; they were up to a third too big. Readiness estimates unchanged)
 
@@ -432,6 +434,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | trivial | P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0572: date/time pictures show the Japanese era items (`g`/`gg`/`ggg` era initial, kanji and name; `e`/`n` era year, `元` before `年` in an era's first year) and Japanese numerals (`A` day, `O` month, `I` minutes, `C` seconds; zero is `○`), from storytold/wordcraft#2643; a bare `A` is the day numeral, not AM/PM, as in Word. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0555: RTF reads `\viewkindN` into the saved view (5 Web Layout, 2 and 3 Outline, 4 Draft; 0, 1 and other numbers Print Layout; the last word wins) and writes the document's view (`\viewkind1` for Print Layout) instead of always `\viewkind4` (Draft). Readiness unchanged |
 | 2026-11-14 | trivial | P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged. |

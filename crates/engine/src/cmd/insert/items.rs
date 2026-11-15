@@ -299,6 +299,7 @@ pub fn format_date_field_in(fmt: &str, lang: Option<&str>) -> Option<String> {
 /// `d`, `M` or `y` reads in pieces of at most four letters (`MMMMM` is `MMMM` then `M`); a piece
 /// of exactly three `y`s is not an item (written as the two-digit year, and reported invalid).
 /// Runs of `h`, `H`, `m` or `s` read in pieces of at most two letters (`hhh` is `hh` then `h`).
+/// Lowercase `a` runs show `a` for 1–3 letters, `aa` for more, or AM/PM when followed by `/p`.
 /// Lowercase `a/p`, like `am/pm`, shows AM before noon and PM from noon on. Japanese items
 /// (from storytold/wordcraft#2643, results as Word shows them in any language): `g`/`gg`/`ggg` the
 /// era initial, first kanji and name; `e`/`n` the era year (`ee`/`nn` two digits; a single `e`
@@ -352,14 +353,19 @@ fn format_date_parts_checked(
             i += 5;
             continue;
         }
-        if chars.get(i..i + 3) == Some(&['a', '/', 'p']) {
-            out.push_str(if hh < 12 { "AM" } else { "PM" });
-            i += 3;
-            continue;
-        }
         let mut n = 1;
         while chars.get(i + n) == Some(&c) {
             n += 1;
+        }
+        if c == 'a' {
+            i += n;
+            if chars.get(i) == Some(&'/') && chars.get(i + 1) == Some(&'p') {
+                out.push_str(if hh < 12 { "AM" } else { "PM" });
+                i += 2;
+            } else {
+                out.push_str(if n <= 3 { "a" } else { "aa" });
+            }
+            continue;
         }
         if let Some(used) = japanese_item(&mut out, &chars, i, n, (y, m, d), (mm, ss)) {
             i += used;

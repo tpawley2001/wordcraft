@@ -1,6 +1,8 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0572: date/time pictures show the Japanese era items (`g`/`gg`/`ggg` era initial, kanji and name; `e`/`n` era year, `元` before `年` in an era's first year) and Japanese numerals (`A` day, `O` month, `I` minutes, `C` seconds; zero is `○`), from storytold/wordcraft#2643; a bare `A` is the day numeral, not AM/PM, as in Word. Readiness estimates unchanged; earlier: P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0572: date/time pictures show the Japanese era items (`g`/`gg`/`ggg` era initial, kanji and name; `e`/`n` era year, `元` before `年` in an era's first year) and Japanese numerals (`A` day, `O` month, `I` minutes, `C` seconds; zero is `○`), from storytold/wordcraft#2643; a bare `A` is the day numeral, not AM/PM, as in Word. Readiness estimates unchanged; earlier: P0568: PDF, printing and page images work out an unlocked body formula (`=`) holding nested REF fields from the bookmarks' current text under the same condition as IF fields (`= { REF x } +1` with x = 5 prints 6, as Microsoft 365 Word's PDF export does); other formulas keep their stored results. Readiness estimates unchanged; earlier: P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged)
 
@@ -290,6 +292,7 @@ Formatting restriction settings now include theme and style set switching locks,
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | trivial | P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0572: date/time pictures show the Japanese era items (`g`/`gg`/`ggg` era initial, kanji and name; `e`/`n` era year, `元` before `年` in an era's first year) and Japanese numerals (`A` day, `O` month, `I` minutes, `C` seconds; zero is `○`), from storytold/wordcraft#2643; a bare `A` is the day numeral, not AM/PM, as in Word. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0565: Word's alternate default keys on Linux/Windows: Ctrl+Shift+B/I/U (bold, italic, underline), Ctrl+3/4/6 (lock, unlock, unlink fields), Alt+Shift+U (update fields) and Alt+Shift+Backspace (redo). macOS unchanged; readiness unchanged |
