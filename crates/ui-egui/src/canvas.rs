@@ -2130,6 +2130,6 @@ mod show_content_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
-mod tests_rtl_gutter;
-#[cfg(test)]
 mod tests_auto_word_select;
+#[cfg(test)]
+mod tests_rtl_gutter;
