@@ -6,10 +6,10 @@ use super::{RichSpec, grpprl, read, rich_doc};
 use wordcraft_doc::Document;
 use wordcraft_doc::props::CharProps;
 
-const LID0_80: u16 = 0x4A47;
-const LID1_80: u16 = 0x4A48;
-const LID0: u16 = 0x486D;
-const LID1: u16 = 0x486E;
+const LID0_80: u16 = 0x486D;
+const LID1_80: u16 = 0x486E;
+const LID0: u16 = 0x4873;
+const LID1: u16 = 0x4874;
 const LID_BI: u16 = 0x485F;
 const BOLD_BI: u16 = 0x085C;
 const ITALIC_BI: u16 = 0x085D;
