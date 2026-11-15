@@ -1272,7 +1272,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
                 }
                 "QUOTE" => updates.extend(quote_literal(instr).map(|text| (k, text_result(instr, text)))),
                 "SYMBOL" => updates.push((k, wordcraft_layout::fields::symbol_text(instr))),
-                "DATE" | "TIME" | "SAVEDATE" => {
+                "DATE" | "TIME" => {
                     let lang = field_lang(&s.doc, p, k);
                     let pic = date_picture(instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
                     updates.push((k, date_field_result(instr, &pic, lang.as_deref())));
@@ -1283,6 +1283,8 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
                     updates.extend(document_info_result(&s.doc, &core, &counts, &name, instr).map(|text| (k, text)));
                 }
                 "PRINTDATE" => updates.extend(document_date_result(instr, &core.last_printed, "M/d/yyyy").map(|text| (k, text))),
+                // When the document was last saved, in local time; not "now".
+                "SAVEDATE" => updates.extend(document_date_result(instr, &core.modified, "M/d/yyyy").map(|text| (k, text))),
                 "REF" | "PAGEREF" | "NOTEREF" => {
                     let f = FieldCode::parse(instr);
                     let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
@@ -1408,10 +1410,12 @@ fn update_body_toc(s: &mut Session, pages_only: bool) -> Result<(), CmdError> {
 
 /// Refresh every unlocked `DATE` and `TIME` field to now, as Word does whenever it shows,
 /// prints or exports a document: a letter written from a template carries today's date, not the
-/// date the template was last saved (#1672).
+/// date the template was last saved (#1672). Unlocked `SAVEDATE` fields show the document's
+/// last-saved time (`core.modified`, in local time), as Word shows on open; one whose property
+/// names no instant keeps its stored result.
 ///
-/// Only those two. `CREATEDATE`, `SAVEDATE` and `PRINTDATE` record when something happened and
-/// are not "now" (except PRINTDATE at output, see [`output_fields`]); `REF`, `PAGEREF`, `TOC` and citations are refreshed on an explicit update
+/// Only those three. `CREATEDATE` and `PRINTDATE` keep their stored result (PRINTDATE shows the
+/// output time at output, see [`output_fields`]); `REF`, `PAGEREF`, `TOC` and citations are refreshed on an explicit update
 /// (`fields.updateAll`) and not on open, again as Word does. A field carrying `w:fldLock` keeps
 /// its stored result, which is what the lock is for.
 pub fn refresh_date_fields(doc: &mut wordcraft_doc::Document) {
@@ -1423,6 +1427,10 @@ pub fn refresh_date_fields(doc: &mut wordcraft_doc::Document) {
             for (k, o) in p.objects.iter().enumerate() {
                 let InlineObject::Field { instr, locked: false, .. } = o else { continue };
                 let name = wordcraft_layout::fields::field_name(instr);
+                if name == "SAVEDATE" {
+                    updates.extend(document_date_result(instr, &doc.core.modified, "M/d/yyyy").map(|text| (k, text)));
+                    continue;
+                }
                 if !matches!(name.as_str(), "DATE" | "TIME") {
                     continue;
                 }
