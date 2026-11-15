@@ -330,6 +330,9 @@ fn round(v: f64, places: i32) -> f64 {
 }
 
 #[cfg(test)]
+mod lcs_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
