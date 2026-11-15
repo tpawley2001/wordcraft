@@ -63,7 +63,7 @@ impl WordApp {
     /// tells the user).
     /// In the browser the save picker may write the file later ([`PromptSave::Later`], #1315).
     fn save_for_prompt(&mut self) -> Result<PromptSave, String> {
-        let v = self.execute("file.save", json!({}))?;
+        let v = self.execute("file.save", crate::file_conversion::remembered(self))?;
         let saved = v.get("saved").and_then(Value::as_bool) == Some(true) || v.get("downloaded").is_some();
         if !self.safely_saved(saved) {
             return Ok(PromptSave::NotSaved);

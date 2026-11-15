@@ -3288,6 +3288,8 @@ fn a_text_file_saved_over_itself_closes() {
     a.run("file.open", json!({"path": path.to_string_lossy()})).unwrap();
     a.run("text.insert", json!({"text": "Hello"})).unwrap();
     a.run("file.save", json!({})).unwrap();
+    // A plain-text save asks for its encoding first (File Conversion): the default choice.
+    a.run("ui.fileConversion", json!({"answer": "ok"})).unwrap();
     assert!(a.close_requested(), "a saved text file closes");
     assert_eq!(prompt(&a), None);
 

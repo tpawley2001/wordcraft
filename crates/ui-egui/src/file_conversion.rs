@@ -150,6 +150,11 @@ pub fn before_save(app: &mut WordApp, id: &str, params: &mut Value) -> Option<Re
     if KEYS.iter().any(|k| params.get(k).is_some_and(|v| !v.is_null())) {
         return None;
     }
+    // The web's Save without a name downloads under a name of its own (an opened .txt as a
+    // .docx): only a save to a named plain-text file asks.
+    if app.services.download.is_some() && params.get("path").and_then(Value::as_str).is_none() {
+        return None;
+    }
     let path = txt_target(app, id, params)?;
     let own_file = app.session.path.as_deref() == Some(path.as_path());
     if id == "file.save"
@@ -164,6 +169,21 @@ pub fn before_save(app: &mut WordApp, id: &str, params: &mut Value) -> Option<Re
     let form = FileConversionForm::new(app, id, params.clone());
     app.dialog = Some(Dialog::FileConversion { form: Box::new(form) });
     Some(Ok(json!({"pending": "fileConversion"})))
+}
+
+/// The parameters for a Save of the document's own file that the Save Changes prompt makes:
+/// the remembered choice for a plain-text file saved with one this session, else none.
+pub fn remembered(app: &WordApp) -> Value {
+    let mut params = json!({});
+    let saved = app.session.path.as_ref().is_some_and(|p| app.txt_save.saved.contains(p));
+    if saved
+        && txt_target(app, "file.save", &params).is_some()
+        && let (Some(o), Some(obj)) = (&app.txt_save.options, params.as_object_mut())
+        && let Some(choice) = params_of(o).as_object()
+    {
+        obj.extend(choice.clone());
+    }
+    params
 }
 
 /// `ui.fileConversion`: answer the open File Conversion dialog. `answer` is `ok` (save with
