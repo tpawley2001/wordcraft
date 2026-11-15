@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0565: Word's alternate default keys on Linux/Windows: Ctrl+Shift+B/I/U (bold, italic, underline), Ctrl+3/4/6 (lock, unlock, unlink fields), Alt+Shift+U (update fields) and Alt+Shift+Backspace (redo). macOS unchanged; readiness unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0558: Reveal Formatting › Distinguish style source (`view.revealStyleSource`) shows after each font and paragraph line the style it comes from, or direct; `format.reveal` tags those entries with `source` and `styleName`. Readiness estimates unchanged; earlier: P0515: F6 / Shift+F6 also reach the status bar and the ribbon's selected tab, as in Word (document, task panes, status bar, ribbon); Escape from either returns to the page. Readiness estimates unchanged)
@@ -225,6 +227,7 @@ Word Count's shared counters follow the 2026-11-14 Word for Windows measurements
 > 2026-11-07 · P0112: table-of-figures entries link to caption bookmarks by default; page numbers use linked PAGEREF fields, and the dialog offers Use hyperlinks instead of page numbers (#5783). Readiness estimates unchanged.
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | trivial | P0565: Word's alternate default keys on Linux/Windows: Ctrl+Shift+B/I/U (bold, italic, underline), Ctrl+3/4/6 (lock, unlock, unlink fields), Alt+Shift+U (update fields) and Alt+Shift+Backspace (redo). macOS unchanged; readiness unchanged |
 | 2026-11-14 | trivial | P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0509: normal Find reads objects as Word does: `^f`, `^e` and `^2` find footnote and endnote marks, `^d` a whole field while field codes are shown, `^g` only drawings, `^a` and `^5` nothing; bookmark and comment anchors inside a word no longer stop it being found. Replace All deletes a matched note mark's note. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0507: Word Count counts paragraphs holding a word, preserving object-only paragraphs and treating manual line breaks as part of their paragraph. Selection counts use the selected text in each paragraph. Readiness estimates unchanged. |

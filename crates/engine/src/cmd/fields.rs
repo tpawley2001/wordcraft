@@ -30,12 +30,15 @@ pub fn specs() -> Vec<CommandSpec> {
         .pure(),
         CommandSpec::new("fields.toggleCode", "Toggle Field Codes", "Insert › Text › Quick Parts", toggle_code).key("Shift+F9"),
         CommandSpec::new("fields.setCode", "Edit Field Code", "Insert › Text › Quick Parts", set_code).params(r#"{"code": string}"#),
-        CommandSpec::new("fields.unlink", "Unlink Fields", "Insert › Text › Quick Parts", unlink).key("Mod+Shift+F9"),
+        CommandSpec::new("fields.unlink", "Unlink Fields", "Insert › Text › Quick Parts", unlink)
+            .key(super::mac_or("Mod+Shift+F9", "Mod+Shift+F9 / Mod+6")),
         CommandSpec::new("fields.updateSource", "Update Source", "Insert › Text › Quick Parts", super::references::update_source)
             .key("Mod+Shift+F7")
             .pure(),
-        CommandSpec::new("fields.lock", "Lock Fields", "Insert › Text › Quick Parts", |s, _| set_locked(s, true)).key("Mod+F11"),
-        CommandSpec::new("fields.unlock", "Unlock Fields", "Insert › Text › Quick Parts", |s, _| set_locked(s, false)).key("Mod+Shift+F11"),
+        CommandSpec::new("fields.lock", "Lock Fields", "Insert › Text › Quick Parts", |s, _| set_locked(s, true))
+            .key(super::mac_or("Mod+F11", "Mod+F11 / Mod+3")),
+        CommandSpec::new("fields.unlock", "Unlock Fields", "Insert › Text › Quick Parts", |s, _| set_locked(s, false))
+            .key(super::mac_or("Mod+Shift+F11", "Mod+Shift+F11 / Mod+4")),
         CommandSpec::new("fields.next", "Next Field", "Insert › Text › Quick Parts", |s, _| go(s, true)).key("Alt+F1").pure(),
         CommandSpec::new("fields.previous", "Previous Field", "Insert › Text › Quick Parts", |s, _| go(s, false))
             .key("Shift+F11 / Alt+Shift+F1")
