@@ -101,3 +101,52 @@ fn extend_and_shrink_keys() {
     assert_eq!(id("F8"), Some("select.extend"));
     assert_eq!(id("Shift+F8"), Some("select.shrink"));
 }
+
+/// A plain mouse drag (File › Options › Advanced: automatic word and smart paragraph selection).
+mod plain_drag {
+    use crate::cmd::caret::plain_drag_selection;
+    use crate::{Selection, Session};
+    use wordcraft_doc::Pos;
+
+    fn session() -> Session {
+        Session::new(wordcraft_doc::Document::from_text("Alpha beta gamma\nLast para"))
+    }
+
+    fn drag(s: &mut Session, a: (usize, usize), b: (usize, usize)) -> Selection {
+        plain_drag_selection(s, &Pos::body(a.0, a.1), &Pos::body(b.0, b.1))
+    }
+
+    #[test]
+    fn whole_words_keep_the_drag_direction() {
+        let mut s = session();
+        let sel = drag(&mut s, (0, 8), (0, 12));
+        assert_eq!((sel.anchor, sel.focus), (Pos::body(0, 6), Pos::body(0, 16)));
+        let sel = drag(&mut s, (0, 12), (0, 7));
+        assert_eq!((sel.anchor, sel.focus), (Pos::body(0, 16), Pos::body(0, 6)));
+    }
+
+    #[test]
+    fn the_trailing_spaces_of_the_first_word_stay_precise() {
+        let mut s = session();
+        let sel = drag(&mut s, (0, 7), (0, 11));
+        assert_eq!((sel.anchor, sel.focus), (Pos::body(0, 7), Pos::body(0, 11)));
+    }
+
+    #[test]
+    fn the_last_paragraph_has_no_mark_to_take() {
+        let mut s = session();
+        let sel = drag(&mut s, (1, 0), (1, 9));
+        assert_eq!((sel.anchor, sel.focus), (Pos::body(1, 0), Pos::body(1, 9)));
+    }
+
+    #[test]
+    fn a_backward_drag_over_a_paragraph_takes_its_mark() {
+        let mut s = session();
+        s.prefs.auto_word_selection = false;
+        let sel = drag(&mut s, (0, 16), (0, 0));
+        assert_eq!((sel.anchor, sel.focus), (Pos::body(1, 0), Pos::body(0, 0)));
+        s.prefs.smart_paragraph_selection = false;
+        let sel = drag(&mut s, (0, 16), (0, 0));
+        assert_eq!((sel.anchor, sel.focus), (Pos::body(0, 16), Pos::body(0, 0)));
+    }
+}
