@@ -1867,6 +1867,7 @@ mod info_props;
 mod jexpand;
 mod justification_flag;
 mod compat_options;
+mod compat_defaults;
 mod compat_pair;
 mod last_para_no_par;
 mod latent_styles;
