@@ -6454,6 +6454,9 @@ fn cell_margins_are_where_cell_text_starts() {
 /// Line count and, per line, how far the text (trailing spaces excluded) reaches.
 fn justified_lines(text: &str, compat_mode: u32, align: Align) -> (usize, Vec<f32>) {
     let mut d = Document::from_text(text);
+    // Pinned to the bundled face these numbers were measured with: a missing Aptos (the default)
+    // takes Word's Aptos widths, which would change the case under test.
+    Arc::make_mut(&mut d.styles).default_chr.font = Some("Source Sans 3".into());
     d.settings.compat_mode = compat_mode;
     d.format_paragraphs(&Pos::body(0, 0), &Pos::body(0, 0), &|p| p.align = Some(align)).unwrap();
     let l = lay(&d);
@@ -6505,6 +6508,8 @@ fn leading_spaces_keep_their_width_in_justified_lines() {
     // the one after the spaces.
     let first_x = |align: Align, hidden: &str, float: bool| {
         let mut d = Document::from_text(&format!("{hidden}{spaces}{body}"));
+        // The bundled face these cases were measured with, not a missing Aptos's widths.
+        Arc::make_mut(&mut d.styles).default_chr.font = Some("Source Sans 3".into());
         d.format_paragraphs(&Pos::body(0, 0), &Pos::body(0, 0), &|p| p.align = Some(align)).unwrap();
         if !hidden.is_empty() {
             d.format_range(&Pos::body(0, 0), &Pos::body(0, hidden.len()), &|c| c.hidden = Some(true)).unwrap();
@@ -11503,7 +11508,8 @@ fn kerning_follows_kerning_for_fonts_like_word() {
     use wordcraft_doc::props::CharProps;
     let width = |kern: Option<f32>| {
         let mut d = Document::new();
-        let chr = CharProps { size: Some(14.0), kern, ..Default::default() };
+        // An installed font: a missing one (the default Aptos here) keeps Word's unkerned widths.
+        let chr = CharProps { font: Some("Source Sans 3".into()), size: Some(14.0), kern, ..Default::default() };
         d.body = vec![wordcraft_doc::para_block(wordcraft_doc::Paragraph::with_text("AVAVAV To Wo Ty Yo AWAY", chr))];
         let l = lay(&d);
         let end = d.para_at(&Pos::body(0, 0)).map_or(0, |p| p.len());
