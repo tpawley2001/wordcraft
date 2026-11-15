@@ -1,6 +1,8 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0596: a missing Georgia, Arial Black, Segoe UI, Bookman Old Style, Perpetua or Gill Sans MT keeps Word's advance widths. Readiness estimates unchanged; earlier: P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0596: a missing Georgia, Arial Black, Segoe UI, Bookman Old Style, Perpetua or Gill Sans MT keeps Word's advance widths. Readiness estimates unchanged; earlier: P0595: a missing Corbel, Candara, Constantia or Tw Cen MT keeps Word's advance widths. Readiness estimates unchanged)
 
@@ -273,6 +275,9 @@ Formatting restriction settings now include theme and style set switching locks,
 
 ## Revision history
 
+> 2026-11-15 · trivial · P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.
+
+> 2026-11-15 · trivial · P0596: a missing Georgia, Arial Black, Segoe UI, Bookman Old Style, Perpetua or Gill Sans MT keeps Word's advance widths, so their lines break where Word's do. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0596: a missing Georgia, Arial Black, Segoe UI, Bookman Old Style, Perpetua or Gill Sans MT keeps Word's advance widths, so their lines break where Word's do. Readiness estimates unchanged.
