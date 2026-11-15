@@ -310,6 +310,15 @@ fn locate(data: &[u8], fc_pic: u32, pics: &mut Pictures) -> Option<Found> {
     let dya_goal = i16::from_le_bytes([m[2], m[3]]) as f32;
     let mx = u16::from_le_bytes([m[4], m[5]]) as f32;
     let my = u16::from_le_bytes([m[6], m[7]]) as f32;
+    // PICMID's four 16-bit fields after `my` ([MS-DOC] §2.9.191: dxaReserved1, dyaReserved1,
+    // dxaReserved2, dyaReserved2): older Word versions store the picture's crop there, in signed
+    // twips of the goal size, left, top, right, bottom. A PICF too short for them reads 0.
+    let crop_at = |i: usize| {
+        pic.get(OFF_PICMID + 8 + 2 * i..OFF_PICMID + 10 + 2 * i)
+            .and_then(|b| b.try_into().ok())
+            .map_or(0.0, |b: [u8; 2]| f32::from(i16::from_le_bytes(b)))
+    };
+    let [crop_l, crop_t, crop_r, crop_b] = [0, 1, 2, 3].map(crop_at);
     let scale = |r: f32| if r > 0.0 { (r / 1000.0).clamp(0.01, 100.0) } else { 1.0 };
     let end = lcb.min(pic.len());
     if mm == MM_SHAPE || mm == MM_SHAPEFILE {
@@ -322,9 +331,13 @@ fn locate(data: &[u8], fc_pic: u32, pics: &mut Pictures) -> Option<Found> {
             at = at.checked_add(1 + n)?;
         }
         let (blip, props) = inline_shape(pic.get(at..end)?, data, pics)?;
-        // The box is the goal size times the scale, whatever the crop: PICMID's `mx` / `my` are
-        // the ratio of the final display size to the goal size ([MS-DOC] §2.9.191), so the crop
-        // is already in them. The crop only picks which part of the picture is drawn.
+        // The box is the goal size times the scale: PICMID's `mx` / `my` are the ratio of the
+        // final display size to the goal size ([MS-DOC] §2.9.191), so a crop in the FOPT is
+        // already in them and only picks which part of the picture is drawn. When the PICMID
+        // crop fields are nonzero (older Word versions), they are subtracted from the goal
+        // first, as Word sizes such pictures; all four 0 leaves the goal as it is.
+        let dxa_goal = dxa_goal - crop_l - crop_r;
+        let dya_goal = dya_goal - crop_t - crop_b;
         let w = (dxa_goal / 20.0 * scale(mx)).clamp(1.0, 1584.0);
         let h = (dya_goal / 20.0 * scale(my)).clamp(1.0, 1584.0);
         // A picture horizontal line (one with a BLIP) stays a picture.
