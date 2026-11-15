@@ -20,6 +20,10 @@ pub struct CodeParas {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_after_auto: Option<bool>,
     pub marks: Vec<CodeMark>,
+    /// Nested fields flattened to stored text on import. Retained to avoid evaluating page
+    /// conditions or replacing branch fields when preparing output.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub nested: Vec<NestedCode>,
 }
 
 /// A paragraph mark inside a field's code: the paragraph that starts after it.
@@ -80,4 +84,12 @@ mod tests {
         assert_eq!(split("é", &[1]).parts("é"), None);
         assert_eq!(split("ab", &[]).parts("ab"), None);
     }
+}
+
+/// A nested field's instruction and the byte offset of its stored text in the outer code.
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct NestedCode {
+    pub at: usize,
+    pub instr: String,
 }

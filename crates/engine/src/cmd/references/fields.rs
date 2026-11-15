@@ -617,7 +617,11 @@ pub struct OutputContext {
 /// unlocked SEQ, STYLEREF and REF fields, even with
 /// "Update fields before printing" off, while NUMWORDS, FILENAME, the summary properties and
 /// formulas keep their stored results (measured with Word for Windows, printing and exporting
-/// fields whose stored results were wrong). In headers and footers, the summary properties
+/// fields whose stored results were wrong). Unlocked body IF fields, except the body's last
+/// field, refresh when the body contains SEQ, REF, DATE, PRINTDATE, SAVEDATE, PAGE, NUMPAGES,
+/// SECTION or SECTIONPAGES. Nested conditions use stored results; page-dependent conditions
+/// and chosen branches containing nested fields keep their result. In headers and footers,
+/// the summary properties
 /// (TITLE, AUTHOR ...), LASTSAVEDBY, DATE, TIME, a QUOTE of one quoted text, NUMWORDS, NUMCHARS,
 /// REVNUM, CREATEDATE, DOCPROPERTY and INFO of these properties show their current
 /// values too, while the same fields in the body and in notes keep theirs (measured with
@@ -652,7 +656,39 @@ pub fn output_fields_in(doc: &wordcraft_doc::Document, ctx: Option<&OutputContex
     if !parts.is_empty() {
         apply_results(out.get_or_insert_with(|| doc.clone()), parts).ok()?;
     }
+    let conditions = changed(doc, output_if_results(doc));
+    if !conditions.is_empty() {
+        apply_results(out.get_or_insert_with(|| doc.clone()), conditions).ok()?;
+    }
     out
+}
+
+/// Read the original body, including table cells, so refreshed references cannot change the
+/// stored values used in nested IF conditions. A range field also counts as the last field.
+fn output_if_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
+    let mut candidates = Vec::new();
+    let mut trigger = false;
+    let mut last = None;
+    for path in doc.para_paths(StoryRef::Body) {
+        let Some(p) = doc.para(StoryRef::Body, &path) else { continue };
+        for (k, o) in p.objects.iter().enumerate() {
+            let (InlineObject::Field { instr, .. } | InlineObject::FieldStart { instr, .. }) = o else { continue };
+            last = Some((path.clone(), k));
+            let name = wordcraft_layout::fields::field_name(instr);
+            trigger |= matches!(name.as_str(), "SEQ" | "REF" | "DATE" | "PRINTDATE" | "SAVEDATE" | "PAGE" | "NUMPAGES" | "SECTION" | "SECTIONPAGES");
+            if let InlineObject::Field { locked: false, code_paras, .. } = o
+                && name == "IF"
+                && let Some(result) = super::conditional::result(instr, code_paras.as_deref())
+            {
+                candidates.push((StoryRef::Body, path.clone(), k, result));
+            }
+        }
+    }
+    if !trigger {
+        return Vec::new();
+    }
+    candidates.retain(|(_, path, k, _)| !last.as_ref().is_some_and(|(p, i)| p == path && i == k));
+    candidates
 }
 
 /// The fresh results output shows for the unlocked fields in every header and footer (each
@@ -1016,6 +1052,17 @@ pub fn update_fields_after_insert(s: &mut Session) -> Result<(), CmdError> {
     update_fields_with(s, false, false, false)
 }
 
+/// The result of a `=` formula field: a table formula reads the cells around its own cell again;
+/// a formula anywhere else reads numbers and bookmarks only. An error shows as `!<error>`.
+fn formula_result(s: &Session, story: StoryRef, path: &Path, instr: &str) -> String {
+    let default_lang = crate::cmd::default_lang(s);
+    let result = match path.cell().and_then(|(tp, r, c)| s.doc.table(story, &tp).map(|t| (t, r, c))) {
+        Some((t, r, c)) => crate::cmd::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, instr),
+        None => crate::cmd::table_formula::evaluate_text_field(&s.doc, default_lang.as_deref(), instr),
+    };
+    result.unwrap_or_else(|e| format!("!{e}"))
+}
+
 fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit: bool) -> Result<(), CmdError> {
     let caret_story = s.sel.focus.story;
     let in_body = all || caret_story == StoryRef::Body;
@@ -1075,20 +1122,16 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
             // A table formula reads the cells around its own cell again; a formula anywhere
             // else reads numbers and bookmarks only.
             if instr.trim_start().starts_with('=') {
-                let default_lang = crate::cmd::default_lang(s);
-                let result = match path.cell().and_then(|(tp, r, c)| s.doc.table(story, &tp).map(|t| (t, r, c))) {
-                    Some((t, r, c)) => crate::cmd::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, instr),
-                    None => crate::cmd::table_formula::evaluate_text_field(&s.doc, default_lang.as_deref(), instr),
-                };
-                let text = match result {
-                    Ok(text) => text,
-                    Err(e) => format!("!{e}"),
-                };
-                updates.push((k, text));
+                updates.push((k, formula_result(s, story, &path, instr)));
                 continue;
             }
             let name = wordcraft_layout::fields::field_name(instr);
             match name.as_str() {
+                "IF" => {
+                    if let InlineObject::Field { code_paras, .. } = o {
+                        updates.extend(super::conditional::result(instr, code_paras.as_deref()).map(|text| (k, text)));
+                    }
+                }
                 "QUOTE" => updates.extend(quote_literal(instr).map(|text| (k, text_result(instr, text)))),
                 "SYMBOL" => updates.push((k, wordcraft_layout::fields::symbol_text(instr))),
                 "DATE" | "TIME" | "SAVEDATE" => {

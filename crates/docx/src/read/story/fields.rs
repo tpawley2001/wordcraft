@@ -46,6 +46,7 @@ impl Reader<'_> {
             sizes: Vec::new(),
             form,
             marks: Vec::new(),
+            nested: Vec::new(),
             first_after: (None, None),
         });
     }
@@ -144,7 +145,7 @@ impl Reader<'_> {
             None => {
                 let instr = f.instr.trim().to_string();
                 // Paragraph marks inside the code, at their offsets in the trimmed code.
-                if !f.marks.is_empty() && !nested_in_instr {
+                if (!f.marks.is_empty() || !f.nested.is_empty()) && !nested_in_instr {
                     let lead = f.instr.len().saturating_sub(f.instr.trim_start().len());
                     let marks = f
                         .marks
@@ -159,6 +160,14 @@ impl Reader<'_> {
                         first_after: f.first_after.0,
                         first_after_auto: f.first_after.1,
                         marks,
+                        nested: f
+                            .nested
+                            .into_iter()
+                            .map(|mut n| {
+                                n.at = n.at.saturating_sub(lead).min(instr.len());
+                                n
+                            })
+                            .collect(),
                     }));
                 }
                 (instr, result)
@@ -180,6 +189,9 @@ impl Reader<'_> {
             && !parent.spilled
             && parent.phase == Phase::Instr
         {
+            if let InlineObject::Field { instr, .. } = &obj {
+                parent.nested.push(wordcraft_doc::para::NestedCode { at: parent.instr.len(), instr: instr.clone() });
+            }
             parent.instr.push_str(obj.plain_text());
             return;
         }

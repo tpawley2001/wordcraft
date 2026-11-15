@@ -86,6 +86,7 @@ mod rtl_gutter;
 mod output_header_footer_counts;
 mod output_header_footer_session;
 mod output_header_footer_fields;
+mod output_if_fields;
 mod output_set_ref;
 mod para_sort_case;
 mod para_sort_keys;
