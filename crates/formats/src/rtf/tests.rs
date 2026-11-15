@@ -1841,6 +1841,7 @@ fn compound_borders_round_trip() {
 mod asian_auto_space;
 mod bookmark_ranges;
 mod cell_margins;
+mod cell_pref_width;
 mod char_border;
 mod char_effects;
 mod char_unit_indents;
