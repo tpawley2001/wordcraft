@@ -735,6 +735,43 @@ fn reveal_formatting_compare_check_box_lists_differences() {
     assert!(h.state().session.view.reveal_compare.is_none(), "and off again");
 }
 
+/// The Reveal Formatting pane's Distinguish style source check box turns `view.revealStyleSource`
+/// on, and the pane then says where each entry comes from.
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn reveal_formatting_style_source_check_box_shows_sources() {
+    use egui_kittest::kittest::{NodeT, Queryable};
+
+    let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("One\nTwo")), crate::Services::default());
+    app.run("styles.modify", serde_json::json!({"style": "Heading1", "chr": {"bold": true}})).unwrap();
+    app.run("caret.set", serde_json::json!({"pos": {"block": 0, "off": 1}})).unwrap();
+    app.run("para.style", serde_json::json!({"style": "Heading1"})).unwrap();
+    app.run("select.range", serde_json::json!({"anchor": {"block": 0, "off": 0}, "focus": {"block": 0, "off": 3}})).unwrap();
+    app.run("format.italic", serde_json::json!({"value": true})).unwrap();
+    app.run("caret.set", serde_json::json!({"pos": {"block": 0, "off": 1}})).unwrap();
+    app.run("view.revealFormattingPane", serde_json::json!({"value": true})).unwrap();
+    let heading = app.session.doc.styles.get("Heading1").map(|s| s.name.clone()).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut crate::WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        app,
+    );
+    h.run_steps(4);
+    assert!(!h.state().session.view.reveal_style_source);
+    assert!(h.query_by_label("(direct)").is_none(), "no sources while the box is clear");
+    h.get_by_label("Distinguish style source").click();
+    h.run_steps(4);
+    assert!(h.state().session.view.reveal_style_source, "the check box turns the sources on");
+    h.get_by_label(&format!("({heading})")).accesskit_node();
+    h.get_by_label("(direct)").accesskit_node();
+    h.get_by_label("Distinguish style source").click();
+    h.run_steps(4);
+    assert!(!h.state().session.view.reveal_style_source, "and off again");
+}
+
 /// The Styles pane's Disable Linked Styles check box runs `styles.disableLinked` and shows the
 /// view state.
 #[test]
