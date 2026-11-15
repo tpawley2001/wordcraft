@@ -127,3 +127,17 @@ fn a_trailing_break_in_the_last_section_of_two() {
     let l = lay(&d);
     assert_eq!(pages(&d, &l), [vec!["AAA"], vec!["BBB"]]);
 }
+
+#[test]
+fn a_trailing_break_keeps_its_page_when_the_mark_moves_after_breaks() {
+    // `w:splitPgBreakAndParaMark` below compatibility mode 15 (old .doc files): the paragraph mark
+    // after the break is an empty line at the top of the next page, as measured in Word for
+    // `tests::split_break_mark`, so that page stays.
+    let mut d = doc("AAA\nPB", 12);
+    d.settings.split_pg_break_and_para_mark = true;
+    assert_eq!(lay(&d).pages.len(), 2);
+    // Mode 15 ignores the setting: one page.
+    let mut d = doc("AAA\nPB", 15);
+    d.settings.split_pg_break_and_para_mark = true;
+    one_page(&d);
+}

@@ -710,7 +710,9 @@ pub(crate) fn layout_pass(
         section_endnotes(&mut ctx, &mut pb, &mut endnotes, (sect, si, block), suppressed);
     }
     // A page break that ends the document starts no page: Word ends on the page holding it.
-    if !mode.web {
+    // Not when the paragraph mark after a break moves to the new page (`w:splitPgBreakAndParaMark`
+    // below compatibility mode 15): the last paragraph mark then sits on that page.
+    if !mode.web && !crate::floats::split_mark(&ctx.doc.settings) {
         pb.take_back_break_page();
     }
     if pb.pages.is_empty() {
