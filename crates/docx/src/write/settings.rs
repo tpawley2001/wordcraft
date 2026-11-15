@@ -210,7 +210,6 @@ fn write_doc_vars(w: &mut W, vars: &[wordcraft_doc::DocVar]) {
     w.close("w:docVars");
 }
 
-/// `w:writeProtection` (§17.15.1.93): Read-only recommended and the password to modify's hash.
 /// Formatting restriction switches follow document protection in CT_Settings order.
 fn write_formatting_locks(w: &mut W, s: &wordcraft_doc::Settings) {
     for (on, name) in
@@ -222,6 +221,7 @@ fn write_formatting_locks(w: &mut W, s: &wordcraft_doc::Settings) {
     }
 }
 
+/// `w:writeProtection` (§17.15.1.93): Read-only recommended and the password to modify's hash.
 fn write_protection(w: &mut W, wp: Option<&wordcraft_doc::WriteProtection>) {
     let Some(wp) = wp.filter(|wp| !wp.is_empty()) else { return };
     let mut a: Vec<(&str, &str)> = Vec::new();
@@ -584,4 +584,25 @@ pub(super) fn app_xml(doc: &Document) -> Vec<u8> {
     }
     w.close("Properties");
     w.into_bytes()
+}
+
+#[cfg(test)]
+mod formatting_lock_tests {
+    use super::*;
+
+    #[test]
+    fn formatting_switches_follow_protection_and_precede_tab_stop() {
+        let mut doc = Document::new();
+        doc.settings.protection = Some("none".into());
+        doc.settings.protect_formatting = true;
+        doc.settings.auto_format_override = true;
+        doc.settings.style_lock_theme = true;
+        doc.settings.style_lock_qf_set = true;
+        let xml = String::from_utf8(settings_xml(&doc, false, false, None)).unwrap();
+        let positions: Vec<_> = ["w:documentProtection", "w:autoFormatOverride", "w:styleLockTheme", "w:styleLockQFSet", "w:defaultTabStop"]
+            .iter()
+            .map(|name| xml.find(name).unwrap())
+            .collect();
+        assert!(positions.windows(2).all(|p| p[0] < p[1]), "{xml}");
+    }
 }
