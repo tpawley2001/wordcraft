@@ -740,7 +740,7 @@ fn reveal_formatting_compare_check_box_lists_differences() {
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn reveal_formatting_style_source_check_box_shows_sources() {
-    use egui_kittest::kittest::{NodeT, Queryable};
+    use egui_kittest::kittest::Queryable;
 
     let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("One\nTwo")), crate::Services::default());
     app.run("styles.modify", serde_json::json!({"style": "Heading1", "chr": {"bold": true}})).unwrap();
@@ -761,12 +761,12 @@ fn reveal_formatting_style_source_check_box_shows_sources() {
     );
     h.run_steps(4);
     assert!(!h.state().session.view.reveal_style_source);
-    assert!(h.query_by_label("(direct)").is_none(), "no sources while the box is clear");
+    assert_eq!(h.query_all_by_label("(direct)").count(), 0, "no sources while the box is clear");
     h.get_by_label("Distinguish style source").click();
     h.run_steps(4);
     assert!(h.state().session.view.reveal_style_source, "the check box turns the sources on");
-    h.get_by_label(&format!("({heading})")).accesskit_node();
-    h.get_by_label("(direct)").accesskit_node();
+    assert!(h.query_all_by_label(&format!("({heading})")).count() > 0, "a style source");
+    assert!(h.query_all_by_label("(direct)").count() > 0, "a direct source");
     h.get_by_label("Distinguish style source").click();
     h.run_steps(4);
     assert!(!h.state().session.view.reveal_style_source, "and off again");
