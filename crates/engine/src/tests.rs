@@ -76,6 +76,7 @@ mod time_picture_runs;
 mod word_count_paragraphs;
 mod reset_formatting_word;
 mod date_picture_japanese;
+mod date_picture_letter_a;
 mod date_picture_literal_a;
 mod mark_final;
 mod mark_toc_entry;
