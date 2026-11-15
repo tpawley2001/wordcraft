@@ -143,6 +143,13 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
         }
         w.empty("w:documentProtection", &a);
     }
+    for (on, name) in
+        [(s.auto_format_override, "w:autoFormatOverride"), (s.style_lock_theme, "w:styleLockTheme"), (s.style_lock_qf_set, "w:styleLockQFSet")]
+    {
+        if on {
+            w.empty(name, &[]);
+        }
+    }
     w.val("w:defaultTabStop", &crate::units::twips(s.default_tab.clamp(1.0, 1584.0)));
     if s.auto_hyphenation {
         w.empty("w:autoHyphenation", &[]);

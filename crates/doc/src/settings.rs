@@ -332,6 +332,15 @@ pub struct Settings {
     /// formatting (`w:formatting="1"`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub protect_formatting: bool,
+    /// `w:autoFormatOverride`: retained without changing AutoFormat behaviour.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub auto_format_override: bool,
+    /// `w:styleLockTheme`: block theme switching while formatting protection is enforced.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub style_lock_theme: bool,
+    /// `w:styleLockQFSet`: block style set switching while formatting protection is enforced.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub style_lock_qf_set: bool,
     /// The protection password's hash, as the file's `w:documentProtection` attributes
     /// (`w:algorithmName`, `w:hashValue`, `w:saltValue`, `w:spinCount`, or the older
     /// `w:cryptAlgorithmSid`, `w:hash`, `w:salt`…). Empty: no password.
@@ -832,6 +841,9 @@ impl Default for Settings {
             endnote_pr: section::NoteProps::default(),
             protection: None,
             protect_formatting: false,
+            auto_format_override: false,
+            style_lock_theme: false,
+            style_lock_qf_set: false,
             protect_hash: Vec::new(),
             write_protection: None,
             compat_mode: COMPAT_MODE_CURRENT,
