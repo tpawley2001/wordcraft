@@ -481,6 +481,22 @@ impl<'a> Builder<'a> {
             // SimSun, Aptos, Aptos Display, Trebuchet MS, Garamond) keeps them: the substitute's glyph is drawn at the start of a cell as wide
             // as the real font's (`missing_font_advance`).
             let word_advances = resolved.substituted && !key.complex && st.face.id() == primary.id() && st.size.is_finite() && st.size > 0.0;
+            // A missing font Word has per-form Arabic advances for (Traditional Arabic) keeps them
+            // for every character it has one for, joining forms decided over the segment and the
+            // text around it (letters join across format changes).
+            let font_missing = if key.complex { resolved_cs.is_some_and(|(_, missing)| missing) } else { resolved.substituted };
+            let arabic: Vec<(usize, Option<f64>)> = if font_missing
+                && st.size.is_finite()
+                && st.size > 0.0
+                && wordcraft_fonts::word_widths_arabic::has_arabic_widths(&rc.font)
+            {
+                let shown: String = shape_text.chars().map(map).collect();
+                wordcraft_fonts::word_widths_arabic::missing_arabic_char_advances(&rc.font, rc.bold, rc.italic, &shown, around.before, around.after)
+                    .map(|w| shape_text.char_indices().map(|(i, _)| i).zip(w).collect())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             // Group glyphs by cluster byte offset; graphemes may span several shaper clusters.
             // Complex-script syllables the graphemes split (Myanmar vowel signs, stacked
             // consonants) stay one cluster: the caret never stops inside them.
@@ -521,6 +537,7 @@ impl<'a> Builder<'a> {
                 // The substitute's kerning pairs aren't the missing font's: Word's advance stands.
                 let adv = boxed
                     .or(sym_adv)
+                    .or_else(|| arabic_advance(&arabic, gs, ge, st.size * hscale))
                     .or_else(|| word_advances.then(|| self.missing_font_advance(s, map, rc, st.size * hscale, g0)).flatten())
                     .unwrap_or(adv);
                 let adv = if kind == ClKind::Marker { 0.0 } else { adv + rc.spacing + self.extra_word_space(kind, rc.size) };
@@ -1004,6 +1021,18 @@ fn single_char(s: &str) -> Option<char> {
 /// reader sees no overlap inside "fi". Khmer builds its syllables with them and keeps them.
 fn table_width_ligatures(keep: bool, text: &str) -> Option<wordcraft_fonts::Feature> {
     (!keep && !text.chars().any(is_khmer)).then(|| wordcraft_fonts::feature_value(b"liga", 0))
+}
+
+/// Word's width (points) of the cluster at bytes `gs..ge` of a segment whose characters (byte
+/// offset, advance in em) are `chars` ([`wordcraft_fonts::word_widths_arabic`]); `em` is the drawn
+/// size in points. `None` when the cluster has a character without a width.
+fn arabic_advance(chars: &[(usize, Option<f64>)], gs: usize, ge: usize, em: f32) -> Option<f32> {
+    let from = chars.partition_point(|&(i, _)| i < gs);
+    let to = chars.partition_point(|&(i, _)| i < ge);
+    let inside = chars.get(from..to).filter(|c| !c.is_empty())?;
+    let total: f64 = inside.iter().map(|&(_, w)| w).sum::<Option<f64>>()?;
+    let w = total as f32 * em;
+    w.is_finite().then_some(w)
 }
 
 /// Whether Word has character widths for the missing font `family` in a style
