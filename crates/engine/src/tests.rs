@@ -99,6 +99,7 @@ mod print_display_options;
 mod print_selection;
 mod reveal_formatting;
 mod reveal_compare;
+mod reveal_style_source;
 mod reveal_formatting_pane;
 mod para_tools;
 mod revision_checks;
