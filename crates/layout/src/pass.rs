@@ -134,6 +134,20 @@ fn effective_start(sections: &[(usize, &SectionProps)], si: usize, paper: bool) 
     })
 }
 
+/// A continuous section break after footnote references on the same page starts the next section
+/// on a new page, as Next Page does, in a document laid out for an earlier Word (compatibility
+/// mode below 15, ECMA-376 Part 1 §17.15.3.4) unless footnotes are laid out like Word 6/97
+/// (`w:footnoteLayoutLikeWW8`, §17.15.3.9). The notes stay under their references; endnote
+/// references don't count (measured in Word).
+fn starts_after_notes(doc: &Document, pb: &PageBuilder, start: SectionStart) -> bool {
+    let s = &doc.settings;
+    start == SectionStart::Continuous
+        && !pb.pages.is_empty()
+        && pb.page_footnote_refs
+        && s.compat_mode < wordcraft_doc::COMPAT_MODE_CURRENT
+        && !s.footnote_layout_like_ww8
+}
+
 /// The blocks whose paragraph mark takes no room: the empty paragraph ending a section that a
 /// continuous break follows, and empty paragraphs with hidden marks while hidden text is not shown.
 /// A continuous break to a new paper size starts a page (see [`effective_start`]), so the
@@ -254,6 +268,7 @@ fn new_page_builder<'p>(
         column_lines: None,
         pins: Vec::new(),
         mark_floor: None,
+        page_footnote_refs: false,
     }
 }
 
@@ -690,6 +705,7 @@ pub(crate) fn layout_pass(
             _ => sect,
         };
         let start = if si == 0 { SectionStart::NextPage } else { effective_start(sections, si, !mode.reflow).unwrap_or(sect.start) };
+        let start = if !mode.reflow && starts_after_notes(doc, &pb, start) { SectionStart::NextPage } else { start };
         let next_col = !mode.web && turn == prev_turn && starts_next_column(&pb, sect, start);
         if !mode.web && !pb.pages.is_empty() && !next_col && (start != SectionStart::Continuous || turn != prev_turn) {
             // The page the section before ends on is finished with its own margins and footnote

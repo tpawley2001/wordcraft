@@ -1121,6 +1121,7 @@ fn notes_split(pb: &PageBuilder, (new_notes, line_notes): (&[NoteBox], &[NoteBox
 /// Keep the notes of the lines that are placed (those referenced before `placed_end`) on the page.
 fn add_notes(pb: &mut PageBuilder, mut new_notes: Vec<NoteBox>, notes: &[(usize, u32)], placed_end: usize) {
     new_notes.retain(|n| notes.iter().any(|(ci, nid)| *nid == n.id && *ci < placed_end));
+    pb.page_footnote_refs |= new_notes.iter().any(|n| !n.cont);
     let before = pb.notes_h();
     pb.notes.extend(new_notes);
     if pb.balance.is_some() {

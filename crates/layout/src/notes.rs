@@ -572,6 +572,7 @@ pub(crate) fn table_notes(ctx: &mut Ctx, pb: &mut PageBuilder, items: &[Placed])
     let before = pb.notes_h();
     for id in ids {
         if let Some(note) = footnote_box(ctx, id, pb.note_w()) {
+            pb.page_footnote_refs = true;
             pb.notes.push(note);
         }
     }
