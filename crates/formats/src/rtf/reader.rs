@@ -613,6 +613,11 @@ impl Reader {
             "enforceprot" => d.enforce = Some(on),
             "expshrtn" => d.expand_shift_return = Some(on),
             "ftnlytwnine" => d.footnote_layout_like_ww8 = Some(on),
+            "notabind" => d.no_tab_hang_ind = Some(on),
+            "truncex" => d.no_leading = Some(on),
+            "sprslnsp" => d.ext_leading_2pt_only = Some(on),
+            "wpjst" => d.wp_justification = Some(on),
+            "spltpgpar" => d.split_pg_break_and_para_mark = Some(on),
             "formprot" => d.old_prot = on.then_some("forms"),
             "htmautsp" => d.html_auto_spacing = on,
             "linkstyles" => d.link_styles = Some(on),
@@ -1219,6 +1224,15 @@ pub(super) struct DocSettingWords {
     expand_shift_return: Option<bool>,
     /// `\ftnlytwnine` (emulate Word 6.0/95/97 footnote placement).
     footnote_layout_like_ww8: Option<bool>,
+    /// Compatibility options (RTF 1.9.1 document formatting properties): `\notabind` (no
+    /// automatic tab stop at a hanging indent), `\truncex` (no leading between rows of text),
+    /// `\sprslnsp` (line spacing like WordPerfect 5.x), `\wpjst` (justification like
+    /// WordPerfect 6.x) and `\spltpgpar` (split page break and paragraph mark).
+    no_tab_hang_ind: Option<bool>,
+    no_leading: Option<bool>,
+    ext_leading_2pt_only: Option<bool>,
+    wp_justification: Option<bool>,
+    split_pg_break_and_para_mark: Option<bool>,
     /// `\htmautsp` (Use HTML paragraph auto spacing): the space between two paragraphs is the
     /// larger of space after and space before. Without it Word adds the two.
     html_auto_spacing: bool,
@@ -1282,6 +1296,11 @@ impl DocSettingWords {
             (self.remove_date_time, &mut s.remove_date_time),
             (self.expand_shift_return, &mut s.do_not_expand_shift_return),
             (self.footnote_layout_like_ww8, &mut s.footnote_layout_like_ww8),
+            (self.no_tab_hang_ind, &mut s.no_tab_hang_ind),
+            (self.no_leading, &mut s.no_leading),
+            (self.ext_leading_2pt_only, &mut s.ext_leading_2pt_only),
+            (self.wp_justification, &mut s.wp_justification),
+            (self.split_pg_break_and_para_mark, &mut s.split_pg_break_and_para_mark),
             (self.track_changes, &mut s.track_changes),
             (self.print_forms_data, &mut s.print_forms_data),
             (self.track_moves, &mut s.track_moves),
