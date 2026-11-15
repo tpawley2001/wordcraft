@@ -453,8 +453,8 @@ impl<'a> Flow<'a> {
             // text and goes on to the next page), the check stays as it was.
             let own_notes = pb.notes.iter().any(|n| !n.cont);
             let height = if own_notes { height + space_after_over_next(ctx, self.block, rp, self.list) } else { height };
-            let rows = height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), Some(room));
-            if rows <= room + 0.01 { rows } else { height + next_first_line(ctx, self.block, self.width, 0, &mut ctx.counters.clone(), None) }
+            let rows = height + next_first_line(ctx, self.block, self.width, &mut ctx.counters.clone(), Some(room));
+            if rows <= room + 0.01 { rows } else { height + next_first_line(ctx, self.block, self.width, &mut ctx.counters.clone(), None) }
         } else {
             height
         };
