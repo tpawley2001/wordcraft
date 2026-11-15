@@ -30,6 +30,8 @@ impl Writer<'_> {
         let toc = if top { written_toc_span(bl) } else { None };
         // Whether the heading's TOC field was written and still needs its end.
         let mut toc_field_open = false;
+        // Whether the last block written was a table (one that wrote a `w:tbl`).
+        let mut ends_in_table = false;
         for (i, b) in bl.iter().enumerate() {
             for c in plan.opens.get(i).into_iter().flatten() {
                 crate::write::sdt::open(w, c);
@@ -40,8 +42,9 @@ impl Writer<'_> {
                     self.inline_controls = plan.inline_in(i);
                     self.para(w, p, rels, top, depth);
                     self.write_flattened(w, rels, depth);
+                    ends_in_table = false;
                 }
-                Block::Table(t) => self.table(w, t, rels, depth),
+                Block::Table(t) => ends_in_table = self.table(w, t, rels, depth),
             }
             self.update_toc_after_block(i, toc, &mut toc_field_open, w);
             for _ in 0..plan.closes.get(i).copied().unwrap_or(0) {
@@ -51,7 +54,12 @@ impl Writer<'_> {
         if depth == 0 {
             self.move_ranges(w, &[]);
         }
-        if bl.last().is_none_or(|b| matches!(**b, Block::Table(_))) {
+        // A header or footer may end in a table (ECMA-376 Part 1 §17.10.3–4: any block-level
+        // content), and Word keeps it so: an extra empty paragraph would make it taller on reopen.
+        // Other stories and table cells (§17.4.66) end in a paragraph; so does a header whose
+        // watermark has no paragraph yet, or whose last table wrote nothing.
+        let table_may_end = depth == 0 && self.hf_story && ends_in_table && self.pending_watermark.is_none();
+        if bl.last().is_none_or(|b| matches!(**b, Block::Table(_))) && !table_may_end {
             self.write_trailing_para(w, depth);
         }
         if depth == 0 {
@@ -97,9 +105,10 @@ impl Writer<'_> {
         }
     }
 
-    fn table(&mut self, w: &mut W, t: &Table, rels: &mut PartRels, depth: usize) {
+    /// Write a table; false when it has no cells and nothing was written.
+    fn table(&mut self, w: &mut W, t: &Table, rels: &mut PartRels, depth: usize) -> bool {
         if t.rows.iter().all(|r| r.cells.is_empty()) {
-            return;
+            return false;
         }
         let (grid, spans) = saved_grid(t);
         w.open("w:tbl", &[]);
@@ -162,5 +171,6 @@ impl Writer<'_> {
             crate::write::sdt::close(w);
         }
         w.close("w:tbl");
+        true
     }
 }
