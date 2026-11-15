@@ -34,6 +34,7 @@ pub mod equation_tab;
 /// The built-in file browser, for desktops without a system file dialog (#576).
 #[cfg(not(target_arch = "wasm32"))]
 pub mod file_browser;
+pub mod file_conversion;
 pub mod file_dialogs;
 pub mod format_shape;
 pub mod frame;
@@ -845,6 +846,8 @@ pub struct WordApp {
     autosave_path: Option<std::path::PathBuf>,
     /// Web: saves the browser's picker hasn't finished yet ([`async_saves`], #1315).
     saves_in_flight: Vec<SaveInFlight>,
+    /// File Conversion's last choice and the plain-text files saved with it ([`file_conversion`]).
+    pub(crate) txt_save: file_conversion::Memory,
     /// Web: the command a Save Changes prompt held back until its picker save ends (#1315).
     awaiting_save: Option<AwaitingSave>,
     /// The file dialog the host is showing, and what its answer is for ([`file_dialogs`]).

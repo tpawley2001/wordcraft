@@ -74,6 +74,8 @@ pub const MAX_EQUATION_TYPE_CHARS: usize = 10_000;
 pub const MAX_EQUATION_DELETE_UNITS: usize = 64;
 
 pub use wordcraft_doc as doc;
+/// Plain text: the File Conversion choices of a plain-text save ([`wordcraft_formats::txt::TxtSaveOptions`]).
+pub use wordcraft_formats::txt;
 pub use wordcraft_geom::Region;
 pub use wordcraft_layout as layout;
 pub use wordcraft_proof as proof;

@@ -3,6 +3,7 @@ use egui_kittest::kittest::Queryable;
 
 mod backup_status;
 mod break_dialog;
+mod file_conversion;
 mod perf;
 mod show_content;
 
@@ -4914,6 +4915,11 @@ fn a_save_that_drops_content_does_not_continue() {
         a.status_msg = None;
         let r = a.run("ui.saveChanges", json!({"answer": "save"})).unwrap();
         assert_eq!(r["done"], false, "{ext}: the Close was cancelled");
+        if ext == "txt" {
+            // Plain text asks for its encoding first (File Conversion).
+            assert_eq!(prompt(&a), Some("fileConversion"));
+            a.run("ui.fileConversion", json!({"answer": "ok"})).unwrap();
+        }
         assert!(dir.join(format!("novel.{ext}")).exists(), "{ext}: the copy was written");
         assert_eq!(prompt(&a), None);
         assert!(body_text(&a).contains(UNSAVED), "{ext}: the document is kept");

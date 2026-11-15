@@ -83,6 +83,10 @@ impl WordApp {
         {
             return r;
         }
+        // Saving as Plain Text asks for the encoding first (File Conversion).
+        if let Some(r) = crate::file_conversion::before_save(self, id, &mut params) {
+            return r;
+        }
         let applied = applied_font(id, &params);
         let r = self.execute_user(id, params);
         // A save error already on the status line is the reason to see; the refusal shows otherwise.
@@ -907,6 +911,7 @@ impl WordApp {
                     json!({"pending": "discardRecovery"})
                 }
             }
+            "ui.fileConversion" => return Some(crate::file_conversion::answer(self, p)),
             "ui.saveChanges" => {
                 let Some(choice) = s("answer").and_then(SaveChoice::parse) else {
                     return Some(Err("`answer` must be save, dontSave or cancel".into()));
