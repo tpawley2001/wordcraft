@@ -138,7 +138,7 @@ fn details(app: &mut WordApp, ui: &mut Ui, f: &mut FontSubstitutionForm) {
     ui.horizontal(|ui| {
         let label = ui.label(tl!("Substituted font:"));
         let shown = r.substitute.clone().unwrap_or_else(|| tl!("Default").to_string());
-        egui::ComboBox::from_id_salt("font_substitution_font")
+        craft_ui::ComboBox::from_id_salt("font_substitution_font")
             .width(200.0)
             .selected_text(shown)
             .show_ui(ui, |ui| {
