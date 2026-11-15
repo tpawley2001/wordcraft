@@ -120,6 +120,9 @@ pub(crate) struct PageBuilder<'a> {
     /// footnote area (a page break on a line of its own kept at the foot of a full page): the
     /// notes go below this, not below that line.
     pub(crate) mark_floor: Option<f32>,
+    /// A footnote reference has been placed on the current page (not the rest of a note
+    /// continued from the page before): see `pass::starts_after_notes`.
+    pub(crate) page_footnote_refs: bool,
 }
 
 /// A page break whose paragraph mark stayed with it: the page (index) and column it is in, the
@@ -489,6 +492,7 @@ impl PageBuilder<'_> {
         self.max_y = self.top;
         self.content_bottom = self.top;
         self.col_notes_top = f32::MAX;
+        self.page_footnote_refs = false;
         self.cap_columns();
         self.open_column_lines(first_block);
     }
