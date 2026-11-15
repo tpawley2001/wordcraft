@@ -15,25 +15,234 @@ pub enum ArabicForm {
     Final,
 }
 
-/// The joining form of every char of `text` (one entry per char).
+/// How a character joins its neighbours (Unicode `ArabicShaping.txt` joining types).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Joining {
+    /// Joins on both sides.
+    Dual,
+    /// Joins only to the previous letter.
+    Right,
+    /// Joins both neighbours that can join it, with no forms of its own (tatweel, ZWJ).
+    Causing,
+    /// Skipped when finding a letter's neighbours (combining marks).
+    Transparent,
+    /// Breaks joining.
+    None,
+}
+
+/// A letter's presentation forms: (base, isolated form, form count). With two forms the letter
+/// is right-joining (isolated, final); with four dual-joining (isolated, final, initial, medial),
+/// the forms at consecutive code points from the isolated one.
+const FORMS: &[(u16, u16, u8)] = &[
+    (0x0622, 0xFE81, 2),
+    (0x0623, 0xFE83, 2),
+    (0x0624, 0xFE85, 2),
+    (0x0625, 0xFE87, 2),
+    (0x0626, 0xFE89, 4),
+    (0x0627, 0xFE8D, 2),
+    (0x0628, 0xFE8F, 4),
+    (0x0629, 0xFE93, 2),
+    (0x062A, 0xFE95, 4),
+    (0x062B, 0xFE99, 4),
+    (0x062C, 0xFE9D, 4),
+    (0x062D, 0xFEA1, 4),
+    (0x062E, 0xFEA5, 4),
+    (0x062F, 0xFEA9, 2),
+    (0x0630, 0xFEAB, 2),
+    (0x0631, 0xFEAD, 2),
+    (0x0632, 0xFEAF, 2),
+    (0x0633, 0xFEB1, 4),
+    (0x0634, 0xFEB5, 4),
+    (0x0635, 0xFEB9, 4),
+    (0x0636, 0xFEBD, 4),
+    (0x0637, 0xFEC1, 4),
+    (0x0638, 0xFEC5, 4),
+    (0x0639, 0xFEC9, 4),
+    (0x063A, 0xFECD, 4),
+    (0x0641, 0xFED1, 4),
+    (0x0642, 0xFED5, 4),
+    (0x0643, 0xFED9, 4),
+    (0x0644, 0xFEDD, 4),
+    (0x0645, 0xFEE1, 4),
+    (0x0646, 0xFEE5, 4),
+    (0x0647, 0xFEE9, 4),
+    (0x0648, 0xFEED, 2),
+    (0x0649, 0xFEEF, 2),
+    (0x064A, 0xFEF1, 4),
+    (0x0671, 0xFB50, 2),
+    (0x067E, 0xFB56, 4),
+    (0x0686, 0xFB7A, 4),
+    (0x0698, 0xFB8A, 2),
+    (0x06A9, 0xFB8E, 4),
+    (0x06AF, 0xFB92, 4),
+    (0x06CC, 0xFBFC, 4),
+];
+
+const LAM: char = '\u{644}';
+
+fn forms_of(c: char) -> Option<(u16, u8)> {
+    let code = u16::try_from(u32::from(c)).ok()?;
+    let i = FORMS.binary_search_by_key(&code, |&(k, _, _)| k).ok()?;
+    FORMS.get(i).map(|&(_, iso, n)| (iso, n))
+}
+
+/// Whether `c` is an alef a preceding lam forms a ligature with.
+fn is_alef(c: char) -> bool {
+    matches!(c, '\u{622}' | '\u{623}' | '\u{625}' | '\u{627}')
+}
+
+fn joining(c: char) -> Joining {
+    if let Some((_, n)) = forms_of(c) {
+        return if n == 4 { Joining::Dual } else { Joining::Right };
+    }
+    match u32::from(c) {
+        0x0640 | 0x200D => Joining::Causing,
+        0x0300..=0x036F
+        | 0x0610..=0x061A
+        | 0x064B..=0x065F
+        | 0x0670
+        | 0x06D6..=0x06DC
+        | 0x06DF..=0x06E4
+        | 0x06E7..=0x06E8
+        | 0x06EA..=0x06ED
+        | 0xFE20..=0xFE2F => Joining::Transparent,
+        0x0620
+        | 0x063B..=0x063F
+        | 0x066E..=0x066F
+        | 0x0678..=0x0687
+        | 0x069A..=0x06BF
+        | 0x06C1..=0x06C2
+        | 0x06CE
+        | 0x06D0..=0x06D1
+        | 0x06FA..=0x06FC
+        | 0x06FF => Joining::Dual,
+        0x0672..=0x0673
+        | 0x0675..=0x0677
+        | 0x0688..=0x0699
+        | 0x06C0
+        | 0x06C3..=0x06CB
+        | 0x06CD
+        | 0x06CF
+        | 0x06D2..=0x06D3
+        | 0x06D5
+        | 0x06EE..=0x06EF => Joining::Right,
+        _ => Joining::None,
+    }
+}
+
+/// Whether `c` is a combining mark (drawn over its letter, without width of its own).
+fn is_mark(c: char) -> bool {
+    joining(c) == Joining::Transparent
+}
+
+/// The joining form of every char of `text` (one entry per char): Unicode's Arabic joining
+/// (The Unicode Standard, ch. 9.2). Non-joining characters and combining marks are `Isolated`.
 pub fn arabic_forms(text: &str) -> Vec<ArabicForm> {
-    // TODO(P0590): joining analysis.
-    text.chars().map(|_| ArabicForm::Isolated).collect()
+    let types: Vec<Joining> = text.chars().map(joining).collect();
+    let mut forms = Vec::with_capacity(types.len());
+    // The previous non-transparent char's type.
+    let mut prev = Joining::None;
+    for (i, &t) in types.iter().enumerate() {
+        if t == Joining::Transparent || t == Joining::None {
+            forms.push(ArabicForm::Isolated);
+            if t == Joining::None {
+                prev = Joining::None;
+            }
+            continue;
+        }
+        let next = types.get(i + 1..).unwrap_or_default().iter().copied().find(|&n| n != Joining::Transparent).unwrap_or(Joining::None);
+        let joins_prev = matches!(prev, Joining::Dual | Joining::Causing);
+        let joins_next = matches!(t, Joining::Dual | Joining::Causing) && matches!(next, Joining::Dual | Joining::Right | Joining::Causing);
+        forms.push(match (joins_prev, joins_next) {
+            (false, false) => ArabicForm::Isolated,
+            (false, true) => ArabicForm::Initial,
+            (true, true) => ArabicForm::Medial,
+            (true, false) => ArabicForm::Final,
+        });
+        prev = t;
+    }
+    forms
+}
+
+/// The width table for `family` (bold); italic takes the upright one.
+fn table(family: &str, bold: bool) -> Option<&'static [(u16, u16)]> {
+    if !family.trim().eq_ignore_ascii_case("Traditional Arabic") {
+        return None;
+    }
+    Some(if bold { TRADITIONAL_ARABIC_BOLD } else { TRADITIONAL_ARABIC })
+}
+
+/// Whether Word has per-form advances for the missing `family`.
+pub fn has_arabic_widths(family: &str) -> bool {
+    table(family, false).is_some()
+}
+
+fn units(table: &[(u16, u16)], code: u16) -> Option<f64> {
+    let i = table.binary_search_by_key(&code, |&(k, _)| k).ok()?;
+    table.get(i).map(|&(_, w)| f64::from(w) / 2048.0)
 }
 
 /// Word's advance (em) of `c` in `form` in the missing `family`; `None` without a table or entry.
-pub fn missing_arabic_advance(family: &str, bold: bool, italic: bool, c: char, form: ArabicForm) -> Option<f64> {
-    // TODO(P0590)
-    let _ = (family, bold, italic, c, form, TRADITIONAL_ARABIC, TRADITIONAL_ARABIC_BOLD);
-    None
+/// A letter's isolated form is its base code point's entry; its other forms are its presentation
+/// forms' entries. Characters without forms take their own entry in any form.
+pub fn missing_arabic_advance(family: &str, bold: bool, _italic: bool, c: char, form: ArabicForm) -> Option<f64> {
+    let table = table(family, bold)?;
+    let code = u16::try_from(u32::from(c)).ok()?;
+    let code = match (forms_of(c), form) {
+        (None, _) | (_, ArabicForm::Isolated) => code,
+        (Some((iso, _)), ArabicForm::Final) => iso.checked_add(1)?,
+        (Some((iso, 4)), ArabicForm::Initial) => iso.checked_add(2)?,
+        (Some((iso, 4)), ArabicForm::Medial) => iso.checked_add(3)?,
+        (Some(_), _) => return None,
+    };
+    units(table, code)
+}
+
+/// Word's advance (em) of every char of `text` in the missing `family`, with the text shown
+/// before and after it (`before`, `after`), which its first and last letters may join. A lam
+/// before an alef (marks between allowed) takes the lam-alef ligature's width and the alef none;
+/// combining marks take none. `None` for the whole when `family` has no table, and per char
+/// when the table has no width for it.
+pub fn missing_arabic_char_advances(family: &str, bold: bool, italic: bool, text: &str, before: &str, after: &str) -> Option<Vec<Option<f64>>> {
+    let table = table(family, bold)?;
+    // Joining looks past marks only: a few chars of context are plenty.
+    const CONTEXT: usize = 16;
+    let before: Vec<char> = before.chars().rev().take(CONTEXT).collect::<Vec<_>>().into_iter().rev().collect();
+    let after: Vec<char> = after.chars().take(CONTEXT).collect();
+    let chars: Vec<char> = before.iter().copied().chain(text.chars()).chain(after.iter().copied()).collect();
+    let forms = arabic_forms(&chars.iter().collect::<String>());
+    let n = text.chars().count();
+    let mut out = Vec::with_capacity(n);
+    for i in before.len()..before.len().saturating_add(n) {
+        let (Some(&c), Some(&form)) = (chars.get(i), forms.get(i)) else { break };
+        let w = if is_mark(c) {
+            Some(0.0)
+        } else if c == LAM && chars.get(i + 1..).unwrap_or_default().iter().copied().find(|&d| !is_mark(d)).is_some_and(is_alef) {
+            // The ligature after the alef it draws: U+FEF5 (madda), FEF7 (hamza above), FEF9
+            // (hamza below), FEFB (plain), each followed by its final form.
+            let alef = chars.get(i + 1..).unwrap_or_default().iter().copied().find(|&d| !is_mark(d));
+            let iso: u16 = match alef {
+                Some('\u{622}') => 0xFEF5,
+                Some('\u{623}') => 0xFEF7,
+                Some('\u{625}') => 0xFEF9,
+                _ => 0xFEFB,
+            };
+            let joined = matches!(form, ArabicForm::Medial | ArabicForm::Final);
+            units(table, if joined { iso + 1 } else { iso })
+        } else if is_alef(c) && chars.get(..i).unwrap_or_default().iter().rev().copied().find(|&d| !is_mark(d)) == Some(LAM) {
+            Some(0.0)
+        } else {
+            missing_arabic_advance(family, bold, italic, c, form)
+        };
+        out.push(w);
+    }
+    Some(out)
 }
 
 /// Word's total advance (em) of `text` in the missing `family`: joining forms, lam-alef ligatures,
 /// combining marks without width. `None` if a character has no width.
 pub fn missing_arabic_run_advance(family: &str, bold: bool, italic: bool, text: &str) -> Option<f64> {
-    // TODO(P0590)
-    let _ = (family, bold, italic, text);
-    None
+    missing_arabic_char_advances(family, bold, italic, text, "", "")?.into_iter().sum()
 }
 
 /// Traditional Arabic advances in font units (2048 per em), sorted by code point.
@@ -499,3 +708,27 @@ const TRADITIONAL_ARABIC_BOLD: &[(u16, u16)] = &[
     (0xFEFB, 984),
     (0xFEFC, 1099),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tables_are_sorted() {
+        for t in [TRADITIONAL_ARABIC, TRADITIONAL_ARABIC_BOLD] {
+            assert!(t.windows(2).all(|w| w[0].0 < w[1].0));
+        }
+        assert!(FORMS.windows(2).all(|w| w[0].0 < w[1].0));
+    }
+
+    #[test]
+    fn context_joins_across_the_edges() {
+        // beh then "beh" (after context beh): the run's beh is medial.
+        let w = missing_arabic_char_advances("Traditional Arabic", false, false, "\u{628}", "\u{628}", "\u{628}");
+        assert_eq!(w, Some(vec![missing_arabic_advance("Traditional Arabic", false, false, '\u{628}', ArabicForm::Medial)]));
+        // An alef after a lam in the text before draws nothing of its own.
+        let w = missing_arabic_char_advances("Traditional Arabic", false, false, "\u{627}", "\u{644}", "");
+        assert_eq!(w, Some(vec![Some(0.0)]));
+        assert_eq!(missing_arabic_char_advances("Arial", false, false, "\u{627}", "", ""), None);
+    }
+}
