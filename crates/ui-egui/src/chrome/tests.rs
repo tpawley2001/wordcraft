@@ -542,3 +542,118 @@ fn window_commands_send_only_maximization_and_report_the_target_state() {
         assert!(app.session.registry.get(id).is_some(), "available in Customize Keyboard");
     }
 }
+
+/// Customize Status Bar: one status-bar frame, so the caret's line is laid out as on screen.
+fn status_frame(a: &mut WordApp) {
+    let ctx = ctx();
+    for i in 0..2 {
+        let input = egui::RawInput { time: Some(f64::from(i) / 60.0), predicted_dt: 1.0 / 60.0, ..Default::default() };
+        ctx.run_ui(input, |ui| status_bar(a, ui)).drop_without_applying_deltas();
+    }
+}
+
+/// Customize Status Bar: the line is counted from the top of the caret's page, so the first line
+/// after a page break is line 1 of page 2.
+#[test]
+fn a_caret_on_page_two_reads_line_one_there() {
+    let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("One\nTwo\nThree")), crate::Services::default());
+    a.run("caret.docEnd", json!({})).unwrap();
+    a.run("insert.pageBreak", json!({})).unwrap();
+    a.run("text.insert", json!({"text": "Four"})).unwrap();
+    status_frame(&mut a);
+    assert_eq!(status_item_value(&a, StatusItem::PageNumber), "Page 2 of 2");
+    assert_eq!(status_item_value(&a, StatusItem::FormattedPageNumber), "2");
+    assert_eq!(status_item_value(&a, StatusItem::LineNumber), "1");
+    assert_eq!(status_item_value(&a, StatusItem::Column), "5");
+    a.run("caret.docStart", json!({})).unwrap();
+    a.run("caret.down", json!({})).unwrap();
+    a.run("caret.down", json!({})).unwrap();
+    status_frame(&mut a);
+    assert_eq!(status_item_value(&a, StatusItem::LineNumber), "3", "page 1's third line");
+    let at = status_item_value(&a, StatusItem::VerticalPagePosition);
+    assert!(at.ends_with('"') || at.ends_with("cm"), "a length: {at}");
+}
+
+/// Customize Status Bar: a tab is one character of the line, like any other.
+#[test]
+fn the_column_counts_a_tab_as_one_character() {
+    let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("a\tb")), crate::Services::default());
+    a.run("caret.docEnd", json!({})).unwrap();
+    status_frame(&mut a);
+    assert_eq!(status_item_value(&a, StatusItem::Column), "4");
+    a.run("caret.left", json!({})).unwrap();
+    status_frame(&mut a);
+    assert_eq!(status_item_value(&a, StatusItem::Column), "3", "just after the tab");
+}
+
+/// Customize Status Bar: right-clicking an empty part of the status bar opens the list of items;
+/// a click on Section shows it on the bar, and the list stays open.
+#[test]
+fn the_status_bar_items_are_chosen_from_its_context_menu() {
+    let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello")), crate::Services::default());
+    let ctx = ctx();
+    ctx.enable_accesskit();
+    let mut n = 0;
+    let drawn = |a: &mut WordApp, n: &mut u32, events: Vec<egui::Event>| -> Vec<(String, egui::Rect)> {
+        *n += 1;
+        let input = egui::RawInput {
+            time: Some(f64::from(*n) / 60.0),
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(1200.0, 800.0))),
+            events,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| status_bar(a, ui));
+        out.textures_delta.clear();
+        let update = out.platform_output.accesskit_update.take().unwrap();
+        update
+            .nodes
+            .into_iter()
+            .filter_map(|(_, node)| {
+                let b = node.bounds()?;
+                Some((node.label()?.to_string(), egui::Rect::from_min_max(pos2(b.x0 as f32, b.y0 as f32), pos2(b.x1 as f32, b.y1 as f32))))
+            })
+            .collect()
+    };
+    let at =
+        |seen: &[(String, egui::Rect)], label: &str| seen.iter().find(|(l, _)| l == label).unwrap_or_else(|| panic!("{label} is drawn")).1.center();
+    let button = |at: egui::Pos2, button: egui::PointerButton, pressed: bool| egui::Event::PointerButton {
+        pos: at,
+        button,
+        pressed,
+        modifiers: Default::default(),
+    };
+    let mut seen = drawn(&mut a, &mut n, vec![]);
+    assert!(!seen.iter().any(|(l, _)| l.starts_with("Section")), "off by default: {seen:?}");
+    // Between the language and the Focus button the bar is empty.
+    let empty = pos2(at(&seen, "Focus").x - 150.0, at(&seen, "Focus").y);
+    drawn(&mut a, &mut n, vec![egui::Event::PointerMoved(empty), button(empty, egui::PointerButton::Secondary, true)]);
+    drawn(&mut a, &mut n, vec![button(empty, egui::PointerButton::Secondary, false)]);
+    seen = drawn(&mut a, &mut n, vec![]);
+    for item in StatusItem::ALL {
+        assert!(seen.iter().any(|(l, _)| l == item.label()), "the list has {}: {seen:?}", item.label());
+    }
+    let pick = at(&seen, "Section");
+    drawn(&mut a, &mut n, vec![egui::Event::PointerMoved(pick), button(pick, egui::PointerButton::Primary, true)]);
+    drawn(&mut a, &mut n, vec![button(pick, egui::PointerButton::Primary, false)]);
+    assert!(status_item_shown(&a, StatusItem::Section));
+    seen = drawn(&mut a, &mut n, vec![]);
+    assert!(seen.iter().any(|(l, _)| l == "Section: 1"), "{seen:?}");
+    assert!(seen.iter().any(|(l, _)| l == "Word Count"), "the list stays open: {seen:?}");
+    // Kept between runs, and a junk saved value reads the defaults.
+    let saved = serde_json::to_vec(&a.prefs()).unwrap();
+    assert!(crate::UiState::from_json(&saved).unwrap().status_items.shows(StatusItem::Section));
+    let junk = crate::UiState::from_json(br#"{"statusItems": {"section": true, "wordCount": "no", "nonsense": false}}"#).unwrap();
+    assert!(junk.status_items.shows(StatusItem::Section) && junk.status_items.shows(StatusItem::WordCount));
+    assert_eq!(crate::UiState::from_json(br#"{"statusItems": 7}"#).unwrap().status_items, crate::chrome::StatusItems::default());
+}
+
+/// `ui.statusItem` shows, hides or toggles an item and refuses names it doesn't know.
+#[test]
+fn status_bar_items_are_a_ui_command() {
+    let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
+    assert_eq!(a.run("ui.statusItem", json!({})).unwrap()["statusItems"]["zoom"], true);
+    assert_eq!(a.run("ui.statusItem", json!({"item": "lineNumber", "value": true})).unwrap()["shown"], true);
+    assert_eq!(a.run("ui.statusItem", json!({"item": "lineNumber"})).unwrap()["shown"], false);
+    assert!(a.run("ui.statusItem", json!({"item": "paragraphs"})).is_err());
+    assert!(a.run("ui.statusItem", json!({"item": "zoom", "value": "yes"})).is_err());
+}
