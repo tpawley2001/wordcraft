@@ -1187,3 +1187,33 @@ fn clicking_and_dragging_inside_a_canvas_works_on_its_members() {
     let is_box = matches!(story, StoryRef::Part(id) if h.state().session.doc.parts.get(&id).is_some_and(|p| p.kind == PartKind::TextBox));
     assert!(is_box, "the caret is in the text box's text: {story:?}");
 }
+
+/// Word's floating-shape navigation: with a floating shape selected, Tab and Shift+Tab select the
+/// next and previous one (wrapping) instead of typing a tab over it, and Esc puts the caret
+/// after it.
+#[test]
+fn tab_cycles_floating_shapes_and_escape_leaves_them() {
+    let mut app = WordApp::new(wordcraft_engine::Session::new(Document::from_text("Alpha")), crate::Services::default());
+    for w in [100, 140] {
+        app.run("caret.docEnd", json!({})).unwrap();
+        app.run("insert.shape", json!({"kind": "rectangle", "width": w, "height": 30})).unwrap();
+        app.run("arrange.wrap", json!({"wrap": "square"})).unwrap();
+    }
+    let text_before = app.session.doc.clone();
+    let width = |app: &WordApp| selected(app).and_then(|(_, o)| o.frame()).map(|(w, _, _)| w.round() as i32);
+    app.run("select.nextFloatingShape", json!({})).unwrap();
+    assert_eq!(width(&app), Some(100));
+    assert!(key(&mut app, egui::Key::Tab, egui::Modifiers::NONE));
+    assert_eq!(width(&app), Some(140));
+    assert!(key(&mut app, egui::Key::Tab, egui::Modifiers::NONE));
+    assert_eq!(width(&app), Some(100), "wraps to the first");
+    assert!(key(&mut app, egui::Key::Tab, egui::Modifiers::SHIFT));
+    assert_eq!(width(&app), Some(140), "Shift+Tab goes back");
+    assert_eq!(app.session.doc, text_before, "no tab typed over the shape");
+    let (pos, _) = selected(&app).unwrap();
+    assert!(key(&mut app, egui::Key::Escape, egui::Modifiers::NONE));
+    assert!(app.session.sel.is_collapsed());
+    assert_eq!(app.session.sel.focus, Pos { off: pos.off + OBJ.len_utf8(), ..pos });
+    // With a caret, Tab is the document's again.
+    assert!(!key(&mut app, egui::Key::Tab, egui::Modifiers::NONE));
+}
