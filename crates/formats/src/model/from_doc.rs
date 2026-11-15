@@ -1484,7 +1484,13 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
         .filter(|(h, k)| {
-            h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed || cell_margins.is_some() || t.props.fixed || header_rows > 0
+            h.iter().any(Option::is_some)
+                || k.contains(&true)
+                || t.props.style.is_some()
+                || placed
+                || cell_margins.is_some()
+                || t.props.fixed
+                || header_rows > 0
         })
         .map(|(heights, keep_rows)| super::types::TableExtra {
             align: t.props.align,
