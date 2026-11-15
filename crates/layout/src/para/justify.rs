@@ -289,7 +289,13 @@ pub(super) fn hyphenation_points(
                         let first = w.chars().next().map_or(1, char::len_utf8);
                         let lang = to_para(a + first).map(|e| lang_at(runs, e.saturating_sub(first))).unwrap_or_default();
                         let offs: Vec<usize> = w.char_indices().map(|(o, _)| o).collect();
-                        for pt in wordcraft_proof::hyphen::hyphen_points_in(w, &lim, lang) {
+                        // The hyphenator drops every point of an all-capitals word (it takes it for an
+                        // acronym); Word hyphenates it where the lower-case word breaks. Only when each
+                        // letter lowercases to one char, so the char offsets still line up (`ß`, `İ`).
+                        let lower = (caps && all_caps(w) && w.chars().any(char::is_alphabetic) && w.chars().all(|c| c.to_lowercase().count() == 1))
+                            .then(|| w.to_lowercase());
+                        let ask = lower.as_deref().unwrap_or(w);
+                        for pt in wordcraft_proof::hyphen::hyphen_points_in(ask, &lim, lang) {
                             if let Some(o) = offs.get(pt) {
                                 bytes.push(a + o);
                             }
@@ -320,6 +326,19 @@ pub(super) fn hyphenation_points(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capitals_that_lowercase_to_several_chars_lay_out_without_panicking() {
+        // `İ` lowercases to two chars: such a word keeps the old behaviour (no lower-case lookup).
+        crate::test_fonts();
+        for caps in [true, false] {
+            let mut d = wordcraft_doc::Document::from_text("İNTERNATİONALİZATİON STRAßENBAHN INTERNATIONALIZATION ''");
+            d.settings.auto_hyphenation = true;
+            d.settings.hyphenate_caps = caps;
+            let l = crate::layout(&d, &mut crate::LayoutCache::new(), &crate::LayoutOptions::default());
+            assert!(!l.pages.is_empty());
+        }
+    }
 
     #[test]
     fn a_fixed_pitch_space_keeps_half_its_width() {
