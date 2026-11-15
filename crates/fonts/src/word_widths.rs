@@ -1,11 +1,12 @@
-//! Advance widths Word gives Verdana, Tahoma, Century Gothic and SimSun when the font isn't
-//! installed: their text is drawn with a substitute, but each character keeps the width Word
+//! Advance widths Word gives Verdana, Tahoma, Century Gothic, SimSun, Aptos, Aptos Display,
+//! Trebuchet MS and Garamond when the font isn't installed: their text is drawn with a substitute, but each character keeps the width Word
 //! gives it, so lines break where Word breaks them.
 
 /// The advance (em) Word gives `c` in `family` (bold / italic) when that font isn't installed,
 /// or `None` to keep the drawn substitute's advance. `family` is matched case-insensitively
-/// ("Verdana", "Tahoma", "Century Gothic", "SimSun" or "宋体"). A style with no table of its own
-/// (Tahoma Italic, SimSun Bold) takes the regular widths: Word synthesises it from the regular
+/// ("Verdana", "Tahoma", "Century Gothic", "SimSun" or "宋体", "Aptos", "Aptos Display",
+/// "Trebuchet MS", "Garamond"). A style with no table of its own (Tahoma Italic, SimSun Bold,
+/// Trebuchet MS Bold Italic) takes the regular widths: Word synthesises it from the regular
 /// face with the same advances. Characters not in the table give `None`.
 pub fn missing_font_advance(family: &str, bold: bool, italic: bool, c: char) -> Option<f64> {
     let table = table(family.trim(), bold, italic)?;
@@ -25,6 +26,15 @@ fn table(family: &str, bold: bool, italic: bool) -> Option<&'static [(u8, u16)]>
         (CENTURY_GOTHIC, Some(CENTURY_GOTHIC_BOLD), Some(CENTURY_GOTHIC_ITALIC), None)
     } else if is("simsun") || family == "宋体" {
         (SIMSUN, None, None, None)
+    } else if is("aptos") {
+        (APTOS, Some(APTOS_BOLD), Some(APTOS_ITALIC), Some(APTOS_BOLD_ITALIC))
+    } else if is("aptos display") {
+        // Its own widths, not Aptos's (a space is 0.193 em, not 0.203).
+        (APTOS_DISPLAY, Some(APTOS_DISPLAY_BOLD), None, None)
+    } else if is("trebuchet ms") {
+        (TREBUCHET_MS, Some(TREBUCHET_MS_BOLD), Some(TREBUCHET_MS_ITALIC), None)
+    } else if is("garamond") {
+        (GARAMOND, Some(GARAMOND_BOLD), None, None)
     } else {
         return None;
     };
@@ -218,6 +228,128 @@ const VERDANA_ITALIC: &[(u8, u16)] = &[
     (0x79, 591), (0x7A, 525),
 ];
 
+/// 96 codes.
+#[rustfmt::skip]
+const APTOS: &[(u8, u16)] = &[
+    (0x20, 203), (0x21, 293), (0x22, 370), (0x23, 537), (0x24, 534), (0x25, 826), (0x27, 210), (0x28, 293), (0x29, 293),
+    (0x2A, 457), (0x2B, 534), (0x2C, 286), (0x2D, 340), (0x2E, 286), (0x2F, 339), (0x30, 534), (0x31, 534), (0x32, 534),
+    (0x33, 534), (0x34, 534), (0x35, 534), (0x36, 534), (0x37, 534), (0x38, 534), (0x39, 534), (0x3A, 286), (0x3B, 286),
+    (0x3C, 534), (0x3D, 534), (0x3E, 534), (0x3F, 501), (0x40, 895), (0x41, 589), (0x42, 604), (0x43, 692), (0x44, 686),
+    (0x45, 556), (0x46, 524), (0x47, 708), (0x48, 707), (0x49, 260), (0x4A, 331), (0x4B, 568), (0x4C, 500), (0x4D, 790),
+    (0x4E, 706), (0x4F, 732), (0x50, 577), (0x51, 732), (0x52, 606), (0x53, 566), (0x54, 479), (0x55, 681), (0x56, 585),
+    (0x57, 892), (0x58, 553), (0x59, 540), (0x5A, 516), (0x5B, 294), (0x5C, 339), (0x5D, 294), (0x5F, 460), (0x60, 552),
+    (0x61, 531), (0x62, 561), (0x63, 525), (0x64, 561), (0x65, 527), (0x66, 301), (0x67, 484), (0x68, 551), (0x69, 239),
+    (0x6A, 239), (0x6B, 487), (0x6C, 260), (0x6D, 853), (0x6E, 551), (0x6F, 552), (0x70, 561), (0x71, 561), (0x72, 334),
+    (0x73, 486), (0x74, 323), (0x75, 559), (0x76, 452), (0x77, 721), (0x78, 442), (0x79, 452), (0x7A, 438), (0x7B, 294),
+    (0x7D, 294), (0xA9, 749), (0xAB, 416), (0xB7, 286), (0xBB, 416), (0xE9, 527),
+];
+
+/// 80 codes.
+#[rustfmt::skip]
+const APTOS_BOLD: &[(u8, u16)] = &[
+    (0x20, 203), (0x21, 293), (0x22, 420), (0x23, 537), (0x28, 293), (0x29, 293), (0x2C, 300), (0x2D, 340), (0x2E, 300),
+    (0x2F, 387), (0x30, 534), (0x31, 534), (0x32, 534), (0x33, 534), (0x34, 534), (0x35, 534), (0x36, 534), (0x37, 534),
+    (0x38, 534), (0x39, 534), (0x3A, 300), (0x3C, 534), (0x3D, 534), (0x3E, 534), (0x41, 620), (0x42, 619), (0x43, 707),
+    (0x44, 707), (0x45, 573), (0x46, 537), (0x47, 718), (0x48, 729), (0x49, 294), (0x4A, 367), (0x4B, 623), (0x4C, 512),
+    (0x4D, 821), (0x4E, 723), (0x4F, 737), (0x50, 605), (0x51, 737), (0x52, 634), (0x53, 598), (0x54, 505), (0x55, 696),
+    (0x56, 617), (0x57, 940), (0x58, 599), (0x59, 586), (0x5A, 547), (0x5B, 337), (0x5C, 387), (0x5D, 337), (0x5F, 460),
+    (0x61, 552), (0x62, 586), (0x63, 549), (0x64, 586), (0x65, 556), (0x66, 335), (0x67, 511), (0x68, 579), (0x69, 268),
+    (0x6A, 268), (0x6B, 534), (0x6C, 296), (0x6D, 889), (0x6E, 579), (0x6F, 573), (0x70, 586), (0x71, 586), (0x72, 369),
+    (0x73, 516), (0x74, 355), (0x75, 582), (0x76, 494), (0x77, 761), (0x78, 495), (0x79, 494), (0xEE, 268),
+];
+
+/// 36 codes.
+#[rustfmt::skip]
+const APTOS_BOLD_ITALIC: &[(u8, u16)] = &[
+    (0x20, 203), (0x2C, 298), (0x2E, 300), (0x30, 534), (0x33, 534), (0x34, 534), (0x35, 534), (0x3A, 300), (0x41, 620),
+    (0x42, 628), (0x43, 712), (0x44, 707), (0x45, 573), (0x48, 729), (0x4F, 737), (0x54, 506), (0x59, 586), (0x5C, 387),
+    (0x61, 557), (0x62, 587), (0x63, 555), (0x64, 587), (0x65, 561), (0x68, 579), (0x69, 266), (0x6B, 531), (0x6C, 296),
+    (0x6D, 889), (0x6E, 579), (0x6F, 573), (0x70, 587), (0x72, 366), (0x73, 516), (0x74, 345), (0x77, 761), (0x79, 494),
+];
+
+/// 2 codes.
+#[rustfmt::skip]
+const APTOS_DISPLAY: &[(u8, u16)] = &[
+    (0x20, 193), (0x2D, 349),
+];
+
+/// 77 codes.
+#[rustfmt::skip]
+const APTOS_DISPLAY_BOLD: &[(u8, u16)] = &[
+    (0x20, 193), (0x22, 420), (0x27, 232), (0x28, 337), (0x29, 337), (0x2A, 429), (0x2B, 540), (0x2C, 261), (0x2D, 365),
+    (0x2E, 261), (0x30, 540), (0x31, 540), (0x32, 540), (0x33, 540), (0x34, 540), (0x35, 540), (0x36, 540), (0x37, 540),
+    (0x38, 540), (0x39, 540), (0x3A, 261), (0x3B, 261), (0x3D, 540), (0x40, 888), (0x41, 610), (0x42, 599), (0x43, 675),
+    (0x44, 678), (0x45, 549), (0x46, 517), (0x47, 686), (0x48, 683), (0x49, 267), (0x4B, 603), (0x4C, 492), (0x4D, 794),
+    (0x4E, 696), (0x4F, 705), (0x50, 585), (0x51, 705), (0x52, 610), (0x53, 574), (0x54, 499), (0x55, 670), (0x56, 601),
+    (0x57, 921), (0x58, 592), (0x59, 572), (0x5A, 547), (0x5C, 387), (0x5F, 460), (0x61, 507), (0x62, 542), (0x63, 508),
+    (0x64, 542), (0x65, 515), (0x66, 318), (0x67, 472), (0x68, 533), (0x69, 240), (0x6A, 240), (0x6B, 500), (0x6C, 279),
+    (0x6D, 840), (0x6E, 533), (0x6F, 530), (0x70, 542), (0x72, 343), (0x73, 484), (0x74, 333), (0x75, 534), (0x76, 475),
+    (0x77, 748), (0x78, 489), (0x79, 475), (0x7B, 337), (0x7D, 337),
+];
+
+/// 75 codes.
+#[rustfmt::skip]
+const APTOS_ITALIC: &[(u8, u16)] = &[
+    (0x20, 203), (0x22, 359), (0x27, 198), (0x28, 293), (0x29, 293), (0x2B, 534), (0x2C, 270), (0x2D, 340), (0x2E, 287),
+    (0x30, 534), (0x31, 534), (0x32, 534), (0x33, 534), (0x34, 534), (0x35, 534), (0x36, 534), (0x37, 534), (0x38, 534),
+    (0x39, 534), (0x3A, 287), (0x3B, 270), (0x3E, 534), (0x41, 589), (0x42, 610), (0x43, 697), (0x44, 685), (0x45, 556),
+    (0x46, 543), (0x47, 708), (0x48, 707), (0x49, 260), (0x4B, 561), (0x4C, 499), (0x4D, 790), (0x4E, 706), (0x4F, 732),
+    (0x50, 591), (0x51, 732), (0x52, 606), (0x53, 566), (0x54, 479), (0x55, 681), (0x56, 584), (0x57, 893), (0x58, 553),
+    (0x59, 540), (0x5B, 292), (0x5D, 289), (0x5F, 460), (0x61, 532), (0x62, 561), (0x63, 530), (0x64, 561), (0x65, 530),
+    (0x66, 288), (0x67, 484), (0x68, 551), (0x69, 231), (0x6A, 231), (0x6B, 488), (0x6C, 260), (0x6D, 854), (0x6E, 551),
+    (0x6F, 552), (0x70, 561), (0x71, 560), (0x72, 333), (0x73, 485), (0x74, 313), (0x75, 551), (0x76, 452), (0x77, 721),
+    (0x78, 442), (0x79, 452), (0x7A, 438),
+];
+
+/// 9 codes.
+#[rustfmt::skip]
+const GARAMOND: &[(u8, u16)] = &[
+    (0x20, 250), (0x34, 469), (0x47, 771), (0x61, 406), (0x64, 500), (0x6D, 771), (0x6E, 510), (0x6F, 510), (0x72, 333),
+];
+
+/// 56 codes.
+#[rustfmt::skip]
+const GARAMOND_BOLD: &[(u8, u16)] = &[
+    (0x20, 250), (0x28, 354), (0x29, 354), (0x2C, 260), (0x2D, 333), (0x2E, 260), (0x30, 469), (0x31, 396), (0x32, 469),
+    (0x35, 469), (0x37, 469), (0x3B, 260), (0x3F, 417), (0x41, 656), (0x42, 677), (0x43, 677), (0x44, 781), (0x45, 708),
+    (0x46, 615), (0x47, 729), (0x48, 865), (0x49, 396), (0x4C, 635), (0x4D, 917), (0x4E, 844), (0x4F, 792), (0x50, 615),
+    (0x52, 698), (0x53, 510), (0x54, 688), (0x55, 760), (0x57, 896), (0x59, 656), (0x61, 479), (0x62, 552), (0x63, 469),
+    (0x64, 552), (0x65, 469), (0x66, 302), (0x67, 542), (0x68, 552), (0x69, 281), (0x6A, 260), (0x6B, 531), (0x6C, 260),
+    (0x6D, 844), (0x6E, 552), (0x6F, 521), (0x70, 552), (0x72, 344), (0x73, 417), (0x74, 313), (0x75, 552), (0x76, 458),
+    (0x77, 708), (0x79, 469),
+];
+
+/// 62 codes.
+#[rustfmt::skip]
+const TREBUCHET_MS: &[(u8, u16)] = &[
+    (0x20, 301), (0x28, 367), (0x29, 367), (0x2C, 367), (0x2D, 367), (0x2E, 367), (0x2F, 524), (0x30, 524), (0x31, 524),
+    (0x32, 524), (0x34, 524), (0x35, 524), (0x36, 524), (0x37, 524), (0x38, 524), (0x39, 524), (0x3E, 524), (0x41, 590),
+    (0x42, 566), (0x43, 598), (0x44, 613), (0x45, 536), (0x46, 525), (0x48, 654), (0x49, 278), (0x4C, 506), (0x4D, 709),
+    (0x4E, 638), (0x4F, 674), (0x50, 558), (0x52, 582), (0x53, 481), (0x54, 581), (0x55, 648), (0x56, 587), (0x58, 557),
+    (0x59, 570), (0x5B, 367), (0x5D, 367), (0x61, 525), (0x62, 557), (0x63, 495), (0x64, 557), (0x65, 545), (0x66, 370),
+    (0x67, 502), (0x68, 546), (0x69, 285), (0x6B, 504), (0x6C, 295), (0x6D, 830), (0x6E, 546), (0x6F, 537), (0x70, 557),
+    (0x72, 389), (0x73, 405), (0x74, 396), (0x75, 546), (0x76, 490), (0x77, 744), (0x78, 501), (0x79, 493),
+];
+
+/// 59 codes.
+#[rustfmt::skip]
+const TREBUCHET_MS_BOLD: &[(u8, u16)] = &[
+    (0x20, 301), (0x28, 367), (0x29, 367), (0x2C, 367), (0x2D, 367), (0x2E, 367), (0x2F, 390), (0x30, 586), (0x31, 586),
+    (0x32, 586), (0x37, 586), (0x38, 586), (0x3A, 367), (0x41, 633), (0x42, 595), (0x43, 612), (0x44, 643), (0x45, 569),
+    (0x46, 583), (0x48, 684), (0x49, 278), (0x4C, 553), (0x4D, 745), (0x4E, 667), (0x4F, 703), (0x50, 587), (0x52, 611),
+    (0x53, 511), (0x54, 612), (0x55, 678), (0x56, 622), (0x59, 613), (0x5B, 402), (0x5D, 402), (0x61, 533), (0x62, 582),
+    (0x63, 512), (0x64, 581), (0x65, 575), (0x66, 370), (0x67, 502), (0x68, 593), (0x69, 298), (0x6A, 367), (0x6B, 548),
+    (0x6C, 295), (0x6D, 859), (0x6E, 590), (0x6F, 566), (0x70, 583), (0x72, 427), (0x73, 431), (0x74, 396), (0x75, 591),
+    (0x76, 527), (0x77, 784), (0x78, 552), (0x79, 534), (0x7A, 528),
+];
+
+/// 15 codes.
+#[rustfmt::skip]
+const TREBUCHET_MS_ITALIC: &[(u8, u16)] = &[
+    (0x20, 301), (0x43, 598), (0x45, 536), (0x4F, 674), (0x50, 543), (0x5B, 367), (0x5D, 367), (0x61, 525), (0x64, 557),
+    (0x65, 537), (0x69, 307), (0x6E, 546), (0x72, 417), (0x73, 405), (0x74, 420),
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,6 +367,17 @@ mod tests {
             CENTURY_GOTHIC_BOLD,
             CENTURY_GOTHIC_ITALIC,
             SIMSUN,
+            APTOS,
+            APTOS_BOLD,
+            APTOS_ITALIC,
+            APTOS_BOLD_ITALIC,
+            APTOS_DISPLAY,
+            APTOS_DISPLAY_BOLD,
+            TREBUCHET_MS,
+            TREBUCHET_MS_BOLD,
+            TREBUCHET_MS_ITALIC,
+            GARAMOND,
+            GARAMOND_BOLD,
         ];
         for t in all {
             assert!(t.windows(2).all(|w| w[0].0 < w[1].0));
@@ -248,6 +391,9 @@ mod tests {
         assert_eq!(missing_font_advance("Tahoma", true, true, 'P'), Some(0.551));
         assert_eq!(missing_font_advance("Century Gothic", true, true, 'A'), Some(0.74));
         assert_eq!(missing_font_advance("CENTURY GOTHIC", false, true, 'a'), Some(0.683));
+        assert_eq!(missing_font_advance("Trebuchet MS", true, true, 'a'), Some(0.525));
+        assert_eq!(missing_font_advance("Garamond", false, true, 'm'), Some(0.771));
+        assert_eq!(missing_font_advance("Aptos Display", false, true, ' '), Some(0.193));
     }
 
     #[test]

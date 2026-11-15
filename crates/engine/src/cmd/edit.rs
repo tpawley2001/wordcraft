@@ -70,7 +70,7 @@ pub fn specs() -> Vec<CommandSpec> {
             s.redo();
             sel_result(s)
         })
-        .key("Mod+Y / Mod+Shift+Z")
+        .key(super::mac_or("Mod+Y / Mod+Shift+Z", "Mod+Y / Mod+Shift+Z / Alt+Shift+Backspace"))
         .pure(),
         CommandSpec::new("edit.cut", "Cut", "Home › Clipboard", cut).key("Mod+X").when(has_sel),
         CommandSpec::new("edit.copy", "Copy", "Home › Clipboard", copy).key("Mod+C / Mod+Insert").pure(),

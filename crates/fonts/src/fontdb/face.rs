@@ -381,6 +381,12 @@ impl FontFace {
             .map(|a| a as f64)
             .unwrap_or(self.upem * 0.5)
     }
+    /// How many glyphs the face has (`maxp`); 0 when it can't be read. Glyph ids from 0 up to
+    /// one less are the face's own.
+    pub fn glyph_count(&self) -> u32 {
+        use skrifa::raw::TableProvider;
+        self.skrifa().map_or(0, |f| u32::from(f.maxp().map_or(0, |m| m.num_glyphs())))
+    }
     /// Glyph id for `c` (0 = .notdef).
     pub fn glyph_for(&self, c: char) -> u32 {
         self.skrifa().and_then(|f| f.charmap().map(c)).map(|g| g.to_u32()).unwrap_or(0)

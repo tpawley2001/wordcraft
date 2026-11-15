@@ -28,7 +28,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 },
             )
         })
-        .key("Mod+B")
+        .key(super::mac_or("Mod+B", "Mod+B / Mod+Shift+B"))
         .params(r#"{"value"?: bool}"#),
         CommandSpec::new("format.italic", "Italic", "Home › Font", |s, v| {
             toggle(
@@ -41,10 +41,10 @@ pub fn specs() -> Vec<CommandSpec> {
                 },
             )
         })
-        .key("Mod+I")
+        .key(super::mac_or("Mod+I", "Mod+I / Mod+Shift+I"))
         .params(r#"{"value"?: bool}"#),
         CommandSpec::new("format.underline", "Underline", "Home › Font", underline)
-            .key("Mod+U")
+            .key(super::mac_or("Mod+U", "Mod+U / Mod+Shift+U"))
             .params(r#"{"value"?: bool, "style"?: "single|double|thick|dotted|dash|dotDash|dotDotDash|wave|words"}"#),
         CommandSpec::new("format.doubleUnderline", "Double Underline", "Home › Font › Underline", |s, v| {
             underline_toggle(s, v, Underline::Double)

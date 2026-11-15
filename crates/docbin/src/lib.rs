@@ -1921,6 +1921,7 @@ fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &Work) {
             first_after: f.code.first_after.0,
             first_after_auto: f.code.first_after.1,
             marks,
+            nested: Vec::new(),
         })
     });
     pb.push('\u{FFFC}', props);
