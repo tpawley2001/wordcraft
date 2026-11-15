@@ -196,3 +196,55 @@ pub fn export(doc: &Document) -> Vec<u8> {
     blocks_text(&flow.blocks, &mut lines, &mut ListCounter::default(), 0);
     lines.join("\r\n").into_bytes()
 }
+
+/// The encoding a plain-text save writes (Word's File Conversion dialog).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TxtEncoding {
+    /// The system's ANSI code page: windows-1252.
+    Windows,
+    /// The OEM code page: IBM437.
+    MsDos,
+    Utf8,
+    Utf16Le,
+    Utf16Be,
+    /// A WHATWG label encoding_rs knows ("windows-1251", "shift_jis", "gbk"...).
+    Label(String),
+}
+
+/// What ends each line of a plain-text save.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineEnd {
+    CrLf,
+    Cr,
+    Lf,
+    LfCr,
+}
+
+/// The File Conversion choices for a plain-text save.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TxtSaveOptions {
+    pub encoding: TxtEncoding,
+    pub line_end: LineEnd,
+    pub allow_substitution: bool,
+}
+
+impl Default for TxtSaveOptions {
+    fn default() -> Self {
+        todo!("P0602")
+    }
+}
+
+/// The plain text [`export_with`] encodes, lines joined with `\n`.
+pub fn export_text(_doc: &Document) -> String {
+    todo!("P0602")
+}
+
+/// [`export`]'s text encoded per `o`.
+pub fn export_with(_doc: &Document, _o: &TxtSaveOptions) -> Vec<u8> {
+    todo!("P0602")
+}
+
+/// Char indices in `text` that won't save correctly in `o.encoding`.
+pub fn unencodable(_text: &str, _o: &TxtSaveOptions) -> Vec<usize> {
+    todo!("P0602")
+}
