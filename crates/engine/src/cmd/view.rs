@@ -731,7 +731,6 @@ pub(crate) fn saved_zoom(v: &crate::ViewState) -> Option<Zoom> {
     Some(Zoom { percent, fit }).filter(|z| z.percent != 100 || z.fit.is_some())
 }
 
-/// Show an opened document at the zoom it was saved with.
 /// The view a document is saved in (`w:view`): Print Layout and Read Mode are saved as Print.
 pub(crate) fn saved_view(v: &crate::ViewState) -> Option<SavedView> {
     if v.read_mode {
@@ -758,6 +757,7 @@ pub(crate) fn restore_view(s: &mut Session, view: Option<SavedView>) {
     let _ = mode(s, m, false);
 }
 
+/// Show an opened document at the zoom it was saved with.
 pub(crate) fn restore_zoom(s: &mut Session, z: Zoom) {
     let fit = match z.fit {
         Some(ZoomFit::OnePage) => "onePage",
