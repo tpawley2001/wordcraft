@@ -96,6 +96,12 @@ const P_F_TOP_LINE_PUNCT: u16 = 0x2436;
 const P_F_AUTO_SPACE_DE: u16 = 0x2437;
 const P_F_AUTO_SPACE_DN: u16 = 0x2438;
 const P_F_MIRROR_INDENTS: u16 = 0x2470;
+// Automatically adjust right indent when grid is defined (sprmPFAdjustRight) and Snap to grid
+// when document grid is defined (sprmPFUsePgsuSettings), Bool8; both are on when absent.
+const P_F_USE_PGSU_SETTINGS: u16 = 0x2447;
+const P_F_ADJUST_RIGHT: u16 = 0x2448;
+/// sprmPFBiDi, Bool8: a right-to-left paragraph.
+const P_F_BIDI: u16 = 0x2441;
 /// sprmPWAlignFont: vertical font alignment on the line, a u16 (0 top, 1 center, 2 baseline,
 /// 3 bottom, 4 auto).
 const P_W_ALIGN_FONT: u16 = 0x4439;
@@ -652,6 +658,64 @@ pub(crate) fn style_drop_cap(raw: &[crate::stsh::RawStyle], istd: usize) -> (Opt
     (para.drop_cap, para.drop_cap_margin)
 }
 
+/// How one grpprl (a paragraph's PAPX or a style's UPX) reads its alignment and indents. Word
+/// writes them twice: the `...80` sprms (sprmPJc80, sprmPDxaLeft80, sprmPDxaRight80) are physical,
+/// mirrored in a right-to-left paragraph, and the newer ones (sprmPJc, sprmPDxaLeft,
+/// sprmPDxaRight) logical, like the model. So a logical sprm wins over its twin wherever it
+/// stands, and a lone `...80` sprm in a right-to-left paragraph is mirrored back.
+pub(crate) struct ParaTwins {
+    jc: bool,
+    left: bool,
+    right: bool,
+    rtl: bool,
+}
+
+impl ParaTwins {
+    /// Scans `grpprl`; `style_rtl` is the paragraph style's resolved right-to-left, used when the
+    /// grpprl has no sprmPFBiDi of its own.
+    pub(crate) fn of(grpprl: &[u8], style_rtl: bool) -> Self {
+        let mut t = ParaTwins { jc: false, left: false, right: false, rtl: style_rtl };
+        for prl in sprm::iter(grpprl) {
+            match prl.op {
+                P_JC => t.jc = true,
+                P_DXA_LEFT => t.left = true,
+                P_DXA_RIGHT => t.right = true,
+                P_F_BIDI => {
+                    if let Some(&b) = prl.operand.first() {
+                        t.rtl = b != 0;
+                    }
+                }
+                _ => {}
+            }
+        }
+        t
+    }
+
+    /// Applies one sprm of the scanned grpprl.
+    pub(crate) fn apply(&self, p: &mut ParaProps, prl: &Prl) {
+        match prl.op {
+            P_JC80 if self.jc => {}
+            P_DXA_LEFT80 if self.left => {}
+            P_DXA_RIGHT80 if self.right => {}
+            P_JC80 if self.rtl => {
+                // Physical left and right swap; centre, justify and distribute stay.
+                let mirrored = prl.operand.first().map(|&b| match b {
+                    0 => 2,
+                    2 => 0,
+                    b => b,
+                });
+                match mirrored {
+                    Some(b) => apply_para(p, &Prl { op: P_JC80, operand: &[b] }),
+                    None => apply_para(p, prl),
+                }
+            }
+            P_DXA_LEFT80 if self.rtl => apply_para(p, &Prl { op: P_DXA_RIGHT80, operand: prl.operand }),
+            P_DXA_RIGHT80 if self.rtl => apply_para(p, &Prl { op: P_DXA_LEFT80, operand: prl.operand }),
+            _ => apply_para(p, prl),
+        }
+    }
+}
+
 /// Apply a paragraph-property sprm.
 pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
     let tw = |v: i32| (v as f32 / 20.0).clamp(-1000.0, 1000.0);
@@ -728,8 +792,18 @@ pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
                 p.contextual_spacing = Some(b != 0);
             }
         }
-        P_F_NO_LINE_NUMB | P_F_NO_AUTO_HYPH | P_F_KINSOKU | P_F_WORD_WRAP | P_F_OVERFLOW_PUNCT | P_F_TOP_LINE_PUNCT | P_F_AUTO_SPACE_DE
-        | P_F_AUTO_SPACE_DN | P_F_MIRROR_INDENTS => {
+        P_F_NO_LINE_NUMB
+        | P_F_NO_AUTO_HYPH
+        | P_F_KINSOKU
+        | P_F_WORD_WRAP
+        | P_F_OVERFLOW_PUNCT
+        | P_F_TOP_LINE_PUNCT
+        | P_F_AUTO_SPACE_DE
+        | P_F_AUTO_SPACE_DN
+        | P_F_MIRROR_INDENTS
+        | P_F_USE_PGSU_SETTINGS
+        | P_F_ADJUST_RIGHT
+        | P_F_BIDI => {
             if let Some(&b) = prl.operand.first() {
                 let on = Some(b != 0);
                 match prl.op {
@@ -741,6 +815,9 @@ pub(crate) fn apply_para(p: &mut ParaProps, prl: &Prl) {
                     P_F_TOP_LINE_PUNCT => p.top_line_punct = on,
                     P_F_AUTO_SPACE_DE => p.auto_space_de = on,
                     P_F_AUTO_SPACE_DN => p.auto_space_dn = on,
+                    P_F_USE_PGSU_SETTINGS => p.snap_to_grid = on,
+                    P_F_ADJUST_RIGHT => p.adjust_right_indent = on,
+                    P_F_BIDI => p.bidi = on,
                     _ => p.mirror_indents = on,
                 }
             }
@@ -859,7 +936,8 @@ pub(crate) fn stylesheet(raw: &[crate::stsh::RawStyle], ids: &[String], fonts: &
         let (own_ix, bases) = chain.split_last().map_or((None, &[][..]), |(o, b)| (Some(*o), b));
         for s in bases.iter().filter_map(|&i| raw.get(i)) {
             apply_chain(&mut inherited_chr, &s.chpx, fonts);
-            apply_chain_para(&mut inherited, &s.papx);
+            let rtl = inherited.bidi == Some(true);
+            apply_chain_para(&mut inherited, &s.papx, rtl);
         }
         let own_chpx = own_ix.and_then(|i| raw.get(i)).map_or(&[][..], |s| s.chpx.as_slice());
         let mut full_chr = inherited_chr.clone();
@@ -868,10 +946,11 @@ pub(crate) fn stylesheet(raw: &[crate::stsh::RawStyle], ids: &[String], fonts: &
         apply_chain(&mut own_chr, own_chpx, fonts);
         let chr = if bases.is_empty() { full_chr } else { full_chr.own_part(&own_chr, &inherited_chr) };
         let own_papx = own_ix.and_then(|i| raw.get(i)).map_or(&[][..], |s| s.papx.as_slice());
+        let base_rtl = inherited.bidi == Some(true);
         let mut full = inherited.clone();
-        apply_chain_para(&mut full, own_papx);
+        apply_chain_para(&mut full, own_papx, base_rtl);
         let mut own = ParaProps::default();
-        apply_chain_para(&mut own, own_papx);
+        apply_chain_para(&mut own, own_papx, base_rtl);
         let mut para = if bases.is_empty() { full.clone() } else { full.clone().own_part(&own, &inherited) };
         // A heading without an outline level anywhere in its chain gets its heading's.
         if full.outline_level.is_none() && kind == StyleKind::Paragraph {
@@ -1074,9 +1153,10 @@ fn apply_chain(chr: &mut CharProps, grpprl: &[u8], fonts: &[String]) {
     }
 }
 
-/// Apply a grpprl of paragraph sprms.
-fn apply_chain_para(para: &mut ParaProps, grpprl: &[u8]) {
+/// Apply a grpprl of paragraph sprms; `base_rtl` is whether the based-on chain is right-to-left.
+fn apply_chain_para(para: &mut ParaProps, grpprl: &[u8], base_rtl: bool) {
     let (mut ilfo, mut ilvl) = (None, None);
+    let twins = ParaTwins::of(grpprl, base_rtl);
     for prl in sprm::iter(grpprl) {
         match prl.op {
             crate::P_ILFO => ilfo = Some(crate::ilfo_operand(prl.operand)),
@@ -1084,7 +1164,7 @@ fn apply_chain_para(para: &mut ParaProps, grpprl: &[u8]) {
             // A style's drop cap goes on each of its paragraphs ([`style_drop_cap`]), where a
             // paragraph's own DCS can switch it off; a style's would show through that.
             P_DCS => {}
-            _ if prl.sgc() == 1 => apply_para(para, &prl),
+            _ if prl.sgc() == 1 => twins.apply(para, &prl),
             _ => {}
         }
     }
@@ -1255,5 +1335,34 @@ mod widow_control_operand {
         let mut p = ParaProps::default();
         apply_para(&mut p, &Prl { op: P_F_WIDOW_CONTROL, operand: &[] });
         assert_eq!(p.widow_control, None);
+    }
+}
+
+#[cfg(test)]
+mod para_twins {
+    use super::*;
+
+    fn read(grpprl: &[u8], style_rtl: bool) -> ParaProps {
+        let mut p = ParaProps::default();
+        let twins = ParaTwins::of(grpprl, style_rtl);
+        for prl in sprm::iter(grpprl) {
+            twins.apply(&mut p, &prl);
+        }
+        p
+    }
+
+    #[test]
+    fn a_lone_physical_sprm_is_mirrored_when_the_style_is_right_to_left() {
+        let g = [0x03, 0x24, 0x02, 0x0E, 0x84, 0xD0, 0x02];
+        let rtl = read(&g, true);
+        assert_eq!((rtl.align, rtl.indent_left, rtl.indent_right), (Some(Align::Left), Some(36.0), None));
+        let ltr = read(&g, false);
+        assert_eq!((ltr.align, ltr.indent_left, ltr.indent_right), (Some(Align::Right), None, Some(36.0)));
+    }
+
+    #[test]
+    fn the_paragraphs_own_bidi_off_beats_a_right_to_left_style() {
+        let p = read(&[0x41, 0x24, 0x00, 0x03, 0x24, 0x02], true);
+        assert_eq!((p.bidi, p.align), (Some(false), Some(Align::Right)));
     }
 }
