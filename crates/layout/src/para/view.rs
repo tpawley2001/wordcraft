@@ -94,6 +94,7 @@ impl ParaLayout {
             drop_cap_w: self.drop_cap_w,
             maths: self.maths.iter().filter(|(i, _)| (o0..o1).contains(i)).map(|(i, m)| (i - o0, m.clone())).collect(),
             check_boxes: objects(&self.check_boxes),
+            forms: self.forms.iter().filter(|o| (b0..b1).contains(*o)).map(|o| o - b0).collect(),
             note_seps: objects(&self.note_seps),
             rubies: self
                 .rubies

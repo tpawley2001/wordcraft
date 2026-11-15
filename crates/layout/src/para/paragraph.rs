@@ -91,6 +91,8 @@ struct Shaped<'a> {
     drop_cap_w: f32,
     maths: Vec<(usize, Arc<crate::math::MathLayout>)>,
     check_boxes: Vec<usize>,
+    /// Offsets of the legacy form fields laid out as forms (not as their codes), ascending.
+    forms: Vec<usize>,
     note_seps: Vec<usize>,
     enclosures: Vec<(usize, Enclosed)>,
     rubies: Vec<RubyLayout>,
@@ -234,6 +236,7 @@ impl<'a> Shaped<'a> {
             drop_cap_w: 0.0,
             maths: Vec::new(),
             check_boxes: Vec::new(),
+            forms: Vec::new(),
             note_seps: Vec::new(),
             enclosures: Vec::new(),
             rubies: Vec::new(),
@@ -471,6 +474,9 @@ impl<'a> Shaped<'a> {
         let InlineObject::Field { instr, result, code, locked, .. } = o else { return };
         let env = cx.env;
         let form = if env.field_codes != *code { None } else { o.legacy_form() };
+        if form.is_some() {
+            self.forms.push(slot.start);
+        }
         if let Some(wordcraft_doc::legacy_form::LegacyForm::CheckBox { size, .. }) = form {
             self.check_box((k, slot), rc, size);
         } else if let Some(text) = form.as_ref().and_then(|f| f.shown_text()) {
@@ -835,6 +841,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         drop_cap_w,
         maths,
         check_boxes,
+        forms,
         note_seps,
         enclosures,
         rubies,
@@ -866,6 +873,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         drop_cap_w,
         maths,
         check_boxes,
+        forms,
         note_seps,
         rubies,
         displays,
@@ -875,6 +883,8 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         enclosures,
         auto_space,
     };
+    pl.forms.sort_unstable();
+    pl.forms.dedup();
     // Missing symbol-font codes draw their box, where the cluster shaped for it is still there.
     let boxes = b
         .boxes

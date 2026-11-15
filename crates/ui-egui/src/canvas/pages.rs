@@ -11,7 +11,7 @@ pub(super) fn view_key(app: &WordApp, dim_body: bool, hidden: Option<&Pos>, hint
     let v = &app.session.view;
     (v.marks, app.session.prefs.marks, v.show_markup, v.dark_mode, wordcraft_render::DARK_PAPER, v.hide_ink, v.draw.replay).hash(&mut h);
     (v.read_mode, v.read_page_color, app.session.prefs.paper_color).hash(&mut h);
-    app.ui.picture_placeholders.hash(&mut h);
+    (app.ui.picture_placeholders, app.session.doc.settings.do_not_shade_form_data).hash(&mut h);
     app.session.prefs.markup.hash(&mut h);
     (dim_body, v.show_document_text).hash(&mut h);
     format!("{:?}{:?}{:?}", app.session.doc.settings.page_color, app.session.doc.settings.page_picture, app.session.doc.settings.watermark)
@@ -359,6 +359,8 @@ pub(super) fn page_render_options(app: &WordApp, dim_body: bool) -> wordcraft_re
     // Header & Footer › Show Document Text off: the body isn't drawn while a header or footer is edited.
     opts.display.hide_body = dim_body && !app.session.view.show_document_text;
     opts.display.picture_placeholders = app.ui.picture_placeholders;
+    // Form Field Shading is a screen aid: on here, where the document asks for it, never in print or PDF.
+    opts.display.form_field_shading = true;
     opts
 }
 
