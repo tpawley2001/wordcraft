@@ -33,6 +33,8 @@ struct Parsed {
     foreign_styles: Vec<(String, wordcraft_doc::props::ParaProps, wordcraft_doc::props::CharProps)>,
     /// The document's own paragraph and character styles the stylesheet defines.
     own_styles: Vec<wordcraft_doc::styles::Style>,
+    /// Font alignment and Automatically adjust right indent of the fixed styles' entries.
+    fixed_style_flags: Vec<(String, Option<wordcraft_doc::props::TextAlignment>, bool)>,
     notes: Vec<NoteData>,
     comments: Vec<CommentData>,
     /// The note separator stories (`\ftnsep`…), in the order of [`super::state::SEP_WORDS`].
@@ -431,6 +433,7 @@ fn finalize(mut r: Reader) -> Parsed {
     let default_font = r.fonts.get(&r.deff).map(|n| n.to_string());
     let foreign_styles = r.foreign_styles();
     let own_styles = r.own_styles();
+    let fixed_style_flags = r.fixed_style_flags();
     Parsed {
         info,
         flow: Flow { blocks, meta: r.meta },
@@ -441,6 +444,7 @@ fn finalize(mut r: Reader) -> Parsed {
         headers_footers,
         foreign_styles,
         own_styles,
+        fixed_style_flags,
         notes: r.notes,
         comments: r.comments,
         note_seps: std::mem::take(&mut r.note_seps),
@@ -531,6 +535,7 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
         headers_footers,
         foreign_styles,
         own_styles,
+        fixed_style_flags,
         mut notes,
         comments,
         note_seps,
@@ -615,6 +620,13 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
         if let Some(s) = Arc::make_mut(&mut doc.styles).get_mut(&id) {
             s.para = wordcraft_doc::props::ParaProps { outline_level: s.para.outline_level, ..para };
             s.chr = chr;
+        }
+    }
+    // The fixed styles' font alignment and adjust right indent, as their entries say.
+    for (id, fa, adjust) in fixed_style_flags {
+        if let Some(s) = Arc::make_mut(&mut doc.styles).get_mut(&id) {
+            s.para.text_alignment = fa.or(s.para.text_alignment);
+            s.para.adjust_right_indent = Some(adjust);
         }
     }
     // The document's own styles, which its paragraphs and runs already name.
@@ -731,13 +743,15 @@ fn is_default_separator(blocks: &Blocks, continuation: bool) -> bool {
     let [b] = blocks.as_slice() else { return false };
     let Block::Para(p) = &**b else { return false };
     let [o] = p.objects.as_slice() else { return false };
-    // Every RTF paragraph without `\aspalpha`/`\aspnum` says no automatic Asian spacing, and
-    // `\ql` is the default alignment (written for every paragraph): not formatting of its own.
+    // Every RTF paragraph without `\aspalpha`/`\aspnum` says no automatic Asian spacing, one
+    // without `\adjustright` says no automatic right indent, and `\ql` is the default alignment
+    // (written for every paragraph): not formatting of its own.
     let plain = wordcraft_doc::props::ParaProps {
         style: p.props.style.clone(),
         align: p.props.align.filter(|a| *a == wordcraft_doc::Align::Left),
         auto_space_de: p.props.auto_space_de,
         auto_space_dn: p.props.auto_space_dn,
+        adjust_right_indent: p.props.adjust_right_indent,
         ..Default::default()
     };
     o.as_note_separator() == Some(continuation) && p.plain_text().trim().is_empty() && p.props == plain

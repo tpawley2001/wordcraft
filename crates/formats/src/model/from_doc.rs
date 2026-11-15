@@ -412,6 +412,7 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         let rp = doc.styles.resolve_para(p);
         x.auto_space_de = (!rp.auto_space_de).then_some(false);
         x.auto_space_dn = (!rp.auto_space_dn).then_some(false);
+        x.adjust_right_indent = (!rp.adjust_right_indent).then_some(false);
     }
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
@@ -1427,6 +1428,10 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
                 // The sides the cell sets itself, for formats that write only those (RTF).
                 own_margins: c.props.margins.map(|m| m.map(Some)).or(c.props.partial_margins).unwrap_or([None; 4]),
                 no_wrap: c.props.no_wrap,
+                pref_width: c.props.width,
+                pref_width_pct: c.props.width_pct,
+                pref_auto: c.props.width.is_none() && c.props.width_pct.is_none(),
+                hide_mark: c.props.hide_mark,
                 direction: c.props.text_direction,
                 // Its background picture, for formats that keep cell formatting (ODT).
                 picture: c.props.picture.as_deref().filter(|_| tracked.paras).and_then(|p| {
