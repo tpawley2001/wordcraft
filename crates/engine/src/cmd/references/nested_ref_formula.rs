@@ -49,7 +49,7 @@ pub(super) fn result(doc: &Document, path: &Path, instr: &str, code: Option<&Cod
 /// The text a nested REF field shows now: its bookmark's text under its `\*` switches. `None` for
 /// any other field, a REF with `\p`, `\r`, `\n` or `\w`, or a bookmark that is missing or ends in
 /// a later paragraph.
-fn ref_text(doc: &Document, instr: &str) -> Option<String> {
+pub(super) fn ref_text(doc: &Document, instr: &str) -> Option<String> {
     if wordcraft_layout::fields::field_name(instr) != "REF" || ['p', 'r', 'n', 'w'].iter().any(|&sw| has_switch(instr, sw)) {
         return None;
     }
