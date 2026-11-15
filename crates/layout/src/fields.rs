@@ -222,7 +222,7 @@ fn case_switches(instr: &str) -> Vec<CaseSwitch> {
 /// word does not (`o'neil` gives "O'neil"). A letter whose capital is more than one letter (ß)
 /// stays as it is. Without a switch, the function returns `text` unchanged.
 pub fn apply_case_switch(instr: &str, text: String) -> String {
-    case_switches(instr).into_iter().fold(text, apply_case)
+    case_switches(instr).into_iter().fold(text, |text, case| apply_case(text, case, false))
 }
 
 /// `c` in capitals when that is one letter (ß has no single-letter capital).
@@ -248,25 +248,32 @@ fn is_apostrophe(c: char) -> bool {
 }
 
 /// Whether the character at `i` starts a word: nothing before it, or something other than a letter,
-/// a digit or an apostrophe that follows one.
-fn starts_word(chars: &[char], i: usize) -> bool {
+/// a digit or an apostrophe that follows one. With `hyphen_joins`, a hyphen after a letter or digit
+/// does not start a word either.
+fn starts_word(chars: &[char], i: usize, hyphen_joins: bool) -> bool {
     let before = |back: usize| i.checked_sub(back).and_then(|at| chars.get(at)).copied();
     match before(1) {
         None => true,
         Some(c) if c.is_alphanumeric() => false,
+        Some('-') if hyphen_joins => !before(2).is_some_and(char::is_alphanumeric),
         Some(c) if is_apostrophe(c) => !before(2).is_some_and(char::is_alphanumeric),
         Some(_) => true,
     }
 }
 
-/// `text` with one capitalization switch applied (see [`apply_case_switch`]).
-fn apply_case(text: String, case: CaseSwitch) -> String {
+/// `text` with one capitalization switch applied (see [`apply_case_switch`]); `hyphen_joins` keeps
+/// hyphenated words whole for `\* Caps`.
+fn apply_case(text: String, case: CaseSwitch, hyphen_joins: bool) -> String {
     match case {
         CaseSwitch::Upper => text.chars().map(upper_char).collect(),
         CaseSwitch::Lower => text.chars().map(lower_char).collect(),
         CaseSwitch::Caps => {
             let chars: Vec<char> = text.chars().collect();
-            chars.iter().enumerate().map(|(i, &c)| if c.is_alphabetic() && starts_word(&chars, i) { upper_char(c) } else { lower_char(c) }).collect()
+            chars
+                .iter()
+                .enumerate()
+                .map(|(i, &c)| if c.is_alphabetic() && starts_word(&chars, i, hyphen_joins) { upper_char(c) } else { lower_char(c) })
+                .collect()
         }
         CaseSwitch::FirstCap => {
             // The first letter, digit or apostrophe decides: only a letter is raised.
@@ -294,7 +301,8 @@ pub fn field_number(instr: &str, fmt: NumFormat, n: u32) -> String {
 }
 
 /// Formats `value` in `fmt` as a field shows it, then applies the field's capitalization switches
-/// (`\* CardText \* Caps` shows "Twenty-One"). A format writes a whole number, so `value` is rounded
+/// (`\* OrdText \* Caps` shows "Twenty-First"; Word keeps a cardinal's hyphenated number one word, so
+/// `\* CardText \* Caps` shows "Twenty-one"). A format writes a whole number, so `value` is rounded
 /// first (2.5 gives 3, -2.5 gives -3); one between 0.5 and 1 in size, or past the format's range,
 /// shows [`NUMBER_FORMAT_ERROR`] instead. As Word writes them: cardinal and ordinal text for 0 to
 /// 999,999 in lowercase (`\* CardText` shows "twenty-one"), roman numerals for 1 to 32,767 and
@@ -303,7 +311,8 @@ pub fn field_number(instr: &str, fmt: NumFormat, n: u32) -> String {
 /// `\* Ordinal` any number.
 pub fn field_value(instr: &str, fmt: NumFormat, value: f64) -> String {
     let text = value_text(fmt, value).unwrap_or_else(|| NUMBER_FORMAT_ERROR.to_string());
-    apply_case_switch(instr, text)
+    let hyphen_joins = fmt == NumFormat::CardinalText;
+    case_switches(instr).into_iter().fold(text, |text, case| apply_case(text, case, hyphen_joins))
 }
 
 fn value_text(fmt: NumFormat, value: f64) -> Option<String> {
@@ -681,6 +690,7 @@ mod tests {
         assert_eq!(text(r"PAGE \* OrdText \* FirstCap"), "Twenty-first");
         assert_eq!(text(r"PAGE \* OrdText \* Caps"), "Twenty-First");
         assert_eq!(text(r"PAGE \* CardText \* Upper"), "TWENTY-ONE");
+        assert_eq!(text(r"PAGE \* CardText \* Caps"), "Twenty-one", "a cardinal's hyphenated number is one word");
         assert_eq!(text(r"PAGE \* roman \* upper"), "XXI");
         assert_eq!(text(r"PAGE \* roman \* Caps"), "Xxi");
         assert_eq!(text(r"PAGE \* hex \* Caps"), "15");
