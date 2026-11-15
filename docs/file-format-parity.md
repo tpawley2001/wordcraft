@@ -1,6 +1,6 @@
 # File-format parity with Microsoft Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0525: `.doc` text keeps outline, shadow, emboss, engrave, double strikethrough, Do not check spelling or grammar, web-hidden and special-hidden, emphasis marks, and text shading and borders (sprmCFOutline … sprmCBrc), as Word shows them. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0529: `.doc` text keeps its language (sprmCRgLid0_80/1_80, sprmCRgLid0/1, sprmCLidBi), so it is hyphenated and spell-checked in that language and saved with `w:lang`, and complex-script bold, italic and size (sprmCFBoldBi, sprmCFItalicBi, sprmCHpsBi). Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0518: DOCX reads and writes Gutter position Top (`w:settings/w:gutterAtTop`), once also when the settings part is merged; RTF `\gutterprl`. Readiness estimates unchanged.)
 
@@ -64,6 +64,7 @@ Comment commands reject explicit negative, floating-point and wrong-type IDs bef
 
 Legacy DOC imports tolerate unreferenced FAT end markers beyond EOF and garbage in unused compound-file directory entries, while retaining other validation errors (P0001; synthetic `cfb_tolerance` tests).
 Legacy DOC character effects read from CHP sprms ([MS-DOC] §2.6.1): outline, shadow, emboss, engrave, double strikethrough, no-proof, web-hidden and special-hidden toggles (resolved against the style like bold), emphasis marks (sprmCKcd), text shading (sprmCShd80, then the exact sprmCShd) and text borders (sprmCBrc80, then sprmCBrc) (synthetic `char_sprms` tests).
+Legacy DOC run languages read from CHP sprms ([MS-DOC] §2.6.1): the default, East Asian and complex-script languages (sprmCRgLid0_80, sprmCRgLid0, sprmCRgLid1_80, sprmCRgLid1, sprmCLidBi; a Windows LCID mapped to its language tag, a later sprm winning; no language or an unlisted LCID keeps the inherited value), so a German document is hyphenated and spell-checked as German and saves `w:lang`; complex-script bold and italic (sprmCFBoldBi, sprmCFItalicBi, toggles resolved against the style like bold) and size (sprmCHpsBi) are kept for Arabic and Hebrew text (synthetic `char_lang` tests).
 
 Legacy DOC framed paragraphs (sprmPPc, sprmPDxaAbs/PDyaAbs, sprmPDxaWidth, sprmPWHeightAbs, sprmPDxa/PDyaFromText, sprmPWr) keep their frame, merged field by field from the style chain and direct formatting (synthetic `frames` tests). In a table they position the table instead: the first row's frame (or the TAP's sprmTPc, sprmTDxaAbs, sprmTDyaAbs and distance sprms over it) becomes a floating table, and its paragraphs keep no frame (`table_float`, `table_float_tap` tests).
 Legacy DOC linked pictures (an `INCLUDEPICTURE \d` result: an `MM_SHAPEFILE` PICF whose shape names the file in `pibName`/`pibFlags` but has no BLIP) keep their goal size and show as an empty frame, as Word does when the file is missing; the file is never read. DOCX saves them as `a:blip r:link` with an external relationship to the path and no image part, and reads such a link back the same way. Horizontal-line shapes without a BLIP are still dropped (synthetic `linked_pictures` tests).
@@ -388,6 +389,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0529: `.doc` text keeps its language (sprmCRgLid0_80/1_80, sprmCRgLid0/1, sprmCLidBi) and complex-script bold, italic and size (sprmCFBoldBi, sprmCFItalicBi, sprmCHpsBi). Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0525: `.doc` text keeps outline, shadow, emboss, engrave, double strikethrough, Do not check spelling or grammar, web-hidden and special-hidden, emphasis marks, and text shading and borders (sprmCFOutline … sprmCBrc), as Word shows them. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged. |
