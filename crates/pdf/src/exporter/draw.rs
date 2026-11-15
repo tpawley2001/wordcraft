@@ -27,10 +27,10 @@ impl Exporter<'_> {
                         let k = *x_scale;
                         let moved: Vec<(u32, f32, f32)> = glyphs.iter().map(|&(g, x, y)| (g, x0 + (x - x0) / k, y)).collect();
                         s.push_transform(&Transform::from_row(k, 0.0, 0.0, 1.0, x0 * (1.0 - k), 0.0));
-                        self.glyphs(s, face, *size, &moved, paint, (text, ranges), missing_widths.as_ref());
+                        self.glyphs(s, (face, missing_widths.as_ref()), *size, &moved, paint, (text, ranges));
                         s.pop();
                     }
-                    None => self.glyphs(s, face, *size, glyphs, paint, (text, ranges), missing_widths.as_ref()),
+                    None => self.glyphs(s, (face, missing_widths.as_ref()), *size, glyphs, paint, (text, ranges)),
                 }
                 if let Some(l) = link {
                     self.link_rect(face, *size, glyphs, l);

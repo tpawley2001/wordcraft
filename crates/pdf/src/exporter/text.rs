@@ -81,12 +81,11 @@ impl Exporter<'_> {
     pub(super) fn glyphs(
         &mut self,
         s: &mut Surface,
-        face: &FaceRef,
+        (face, missing): (&FaceRef, Option<&MissingWidths>),
         size: f32,
         glyphs: &[(u32, f32, f32)],
         style: GlyphPaint,
         (text, known): (&str, &[std::ops::Range<usize>]),
-        missing: Option<&MissingWidths>,
     ) {
         let GlyphPaint { color, alpha, bold, italic } = style;
         if !size.is_finite() || size <= 0.0 || size > 5000.0 {

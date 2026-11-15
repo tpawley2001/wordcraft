@@ -466,12 +466,7 @@ impl<'a> Builder<'a> {
             // Number forms, number spacing, stylistic sets and contextual alternates come after.
             let mut list = FeatureList::new();
             list.extend(all.get(from..to).unwrap_or_default());
-            // A missing font laid out with Word's widths takes one width per character, and Word
-            // forms no standard ligatures unless the run asks for them (`w14:ligatures`): each
-            // letter keeps its own glyph and width, so a PDF reader sees no overlap inside "fi".
-            if ligatures.is_none() && !key.complex && st.missing_widths && !shape_text.chars().any(is_khmer) {
-                list.push(wordcraft_fonts::feature_value(b"liga", 0));
-            }
+            list.extend(table_width_ligatures(ligatures.is_some() || key.complex || !st.missing_widths, shape_text).as_slice());
             if rc.num_form.is_some() || rc.num_spacing.is_some() || rc.stylistic_sets.is_some() || rc.contextual_alternates.is_some() {
                 let khmer = rc.contextual_alternates.is_some() && shape_text.chars().any(is_khmer);
                 list.extend(number_and_set_features(rc, khmer).as_slice());
@@ -1013,6 +1008,14 @@ fn single_char(s: &str) -> Option<char> {
         (Some(c), None) => Some(c),
         _ => None,
     }
+}
+
+/// The standard ligatures turned off for text laid out with a missing font's widths (`keep`
+/// false): such a font takes one width per character, and Word forms no standard ligatures unless
+/// the run asks for them (`w14:ligatures`), so each letter keeps its own glyph and width and a PDF
+/// reader sees no overlap inside "fi". Khmer builds its syllables with them and keeps them.
+fn table_width_ligatures(keep: bool, text: &str) -> Option<wordcraft_fonts::Feature> {
+    (!keep && !text.chars().any(is_khmer)).then(|| wordcraft_fonts::feature_value(b"liga", 0))
 }
 
 /// Whether Word has character widths for the missing font `family` in a style
