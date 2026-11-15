@@ -1,6 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (tab leaders in a missing font with Word's widths are spaced by Word's width of the leader character. Readiness estimates unchanged; earlier: PDFs of text in a missing font with Word's widths keep words whole for copy and search. Readiness estimates unchanged; earlier: P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0585: PDF, printing and page images show unlocked SAVEDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged; earlier: tab leaders in a missing font with Word's widths are spaced by Word's width of the leader character. Readiness estimates unchanged; earlier: PDFs of text in a missing font with Word's widths keep words whole for copy and search. Readiness estimates unchanged; earlier: P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0573: below compatibility mode 15 a continuous section break after footnote references starts the next section on a new page, as in Word. Readiness estimates unchanged; earlier: PDFs of text in a missing font with Word's widths keep words whole for copy and search. Readiness estimates unchanged; earlier: the Windows 3.x font names Helv and Tms Rmn are drawn in Arial and Times New Roman, as in Word. Readiness estimates unchanged)
 
@@ -372,6 +372,8 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei, Microsoft YaHei, PMingLiU and Yu Gothic now use Word's measured line metrics (P0504; `fonts/tests/missing_font_line_east_asian.rs`). Localized names remain unmeasured; broader pagination differences in gap #4 remain open.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0585: PDF, printing and page images show unlocked SAVEDATE fields at output time in all stories, as Word's PDF export treats output as a save; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
 
