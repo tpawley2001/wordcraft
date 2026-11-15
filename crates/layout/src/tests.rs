@@ -24,6 +24,7 @@ mod column_top_float;
 mod columns_line_numbers_word;
 mod complex;
 mod compress_punct_squeeze;
+mod continuous_after_notes;
 mod continuous_resized_section;
 mod custom_note_marks;
 mod default_note_separator;
