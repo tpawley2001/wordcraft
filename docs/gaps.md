@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0568: PDF, printing and page images work out an unlocked body formula (`=`) holding nested REF fields from the bookmarks' current text under the same condition as IF fields (`= { REF x } +1` with x = 5 prints 6, as Microsoft 365 Word's PDF export does); other formulas keep their stored results. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged.)
 
@@ -267,6 +269,8 @@ Convert to Text now uses comma-space separators and offers recursive nested-tabl
 Formatting restriction settings now include theme and style set switching locks, with DOCX and RTF persistence (P0560); broader dialog depth remains open.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0568: PDF, printing and page images work out an unlocked body formula (`=`) holding nested REF fields from the bookmarks' current text under the same condition as IF fields (`= { REF x } +1` with x = 5 prints 6, as Microsoft 365 Word's PDF export does); other formulas keep their stored results. Readiness estimates unchanged.
 

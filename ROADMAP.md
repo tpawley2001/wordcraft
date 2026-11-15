@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.)
@@ -196,6 +198,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-15: P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
 
 - 2026-11-15: P0571: Shift+F3 cycles case as Word does: lowercase text with a full stop, ! or ? goes to Sentence case, other lowercase to Capitalize Each Word, all caps to lowercase, mixed text to UPPERCASE (or Sentence case when it starts lowercase and holds a full stop). It went lower, UPPER, Title. Readiness estimates unchanged.
 - 2026-11-15: P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.
@@ -1062,6 +1066,8 @@ Section page-numbering settings preserve `w:chapStyle` values across the full un
 MATH glyphs that reference the same construction now share its immutable variants and assembly data (#3630). Glyph mappings, values and the existing partial-record fallback stay unchanged. Repeated glyph IDs keep their last valid reference without retaining superseded constructions. Distinct overlapping constructions and assembly-only sharing remain separate.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0562: PDF, printing and page images refresh eligible unlocked body IF fields when a body output/page field triggers refresh, except the last field. Stored document results and formula results are preserved; nested page conditions and chosen branches containing fields retain their cache. Readiness estimates unchanged.
