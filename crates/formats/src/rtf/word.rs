@@ -190,6 +190,10 @@ impl Reader {
             "pc" if self.ansicpg == 0 => self.ansicpg = 437,
             "pca" if self.ansicpg == 0 => self.ansicpg = 850,
             "deff" => self.deff = pv,
+            // The document's default languages: Latin, East Asian and complex-script text.
+            "deflang" => self.def_langs[0] = super::lid::lcid_tag(pv).or(self.def_langs[0]),
+            "deflangfe" => self.def_langs[1] = super::lid::lcid_tag(pv).or(self.def_langs[1]),
+            "adeflang" => self.def_langs[2] = super::lid::lcid_tag(pv).or(self.def_langs[2]),
             "f" => {
                 self.st.cp = self.font_cps.get(&pv).copied();
                 self.font_word(pv, false);
@@ -1015,6 +1019,10 @@ impl Reader {
             "embo" => self.set_extra(|x| x.emboss = on.then_some(true)),
             "impr" => self.set_extra(|x| x.engrave = on.then_some(true)),
             "noproof" => self.set_extra(|x| x.no_proof = on.then_some(true)),
+            // The text's languages (an LCID; 1024 "no language" or one not known leaves it unset).
+            "lang" | "langnp" => self.set_extra(|x| x.lang = super::lid::lcid_tag(pv).map(String::from)),
+            "langfe" | "langfenp" => self.set_extra(|x| x.lang_ea = super::lid::lcid_tag(pv).map(String::from)),
+            "alang" => self.set_extra(|x| x.lang_bidi = super::lid::lcid_tag(pv).map(String::from)),
             "accnone" => self.set_extra(|x| x.emphasis = None),
             "accdot" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Dot)),
             "acccomma" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Comma)),

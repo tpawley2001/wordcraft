@@ -141,6 +141,10 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, look: Option<&str>, props: 
                 size_cs: e.size_cs.filter(|s| s.is_finite()),
                 bold_cs: e.bold_cs,
                 italic_cs: e.italic_cs,
+                // The text's languages (Latin, complex script, East Asian).
+                lang: e.lang.clone().filter(|l| !l.is_empty()),
+                lang_bidi: e.lang_bidi.clone().filter(|l| !l.is_empty()),
+                lang_ea: e.lang_ea.clone().filter(|l| !l.is_empty()),
                 ..Default::default()
             };
             if x.double_strike.is_some() {
