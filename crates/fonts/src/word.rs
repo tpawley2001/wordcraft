@@ -1248,6 +1248,9 @@ pub fn twin_avg_char_width_em(requested: &str, face_family: &str) -> Option<f32>
 }
 
 #[cfg(test)]
+mod legacy_names_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
