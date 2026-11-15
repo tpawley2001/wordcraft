@@ -86,5 +86,5 @@ fn family_names_match_case_insensitively_and_trimmed() {
 fn a_corbel_word_sums_word_advances() {
     // "Corbel" in Corbel Regular at 1 em.
     let w: f64 = "Corbel".chars().map(|c| missing_font_advance("Corbel", false, false, c).unwrap_or(f64::NAN)).sum();
-    assert!((w - 2.72).abs() < 1e-9, "{w}");
+    assert!((w - 2.723).abs() < 1e-9, "{w}"); // C 589 + o 533 + r 335 + b 536 + e 498 + l 232
 }
