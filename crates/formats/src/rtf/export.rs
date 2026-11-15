@@ -1929,7 +1929,9 @@ impl Writer {
                 }
             }
         }
-        if !row.is_empty() && row.iter().all(|c| c.header) {
+        // Repeat as header row only for rows that really repeat, never because of the table's look
+        // (Header Row is on in Word's default look and only picks which table style parts apply).
+        if extra.is_some_and(|x| ri < x.header_rows) {
             out.push_str("\\trhdr");
         }
         // Row height in twips: negative for exactly, positive for at least.
@@ -2011,23 +2013,8 @@ impl Writer {
                 if c.covered {
                     out.push_str(&format!("\\pard\\plain{} {cell_end}\n", in_table(itap)));
                 } else {
-                    let blocks: Vec<FBlock> = c
-                        .blocks
-                        .iter()
-                        .cloned()
-                        .map(|b| match b {
-                            FBlock::Para(mut p) if c.header => {
-                                for i in &mut p.inlines {
-                                    if let Inline::Text(_, f) = i {
-                                        f.bold = true;
-                                    }
-                                }
-                                FBlock::Para(p)
-                            }
-                            other => other,
-                        })
-                        .collect();
-                    self.blocks(&blocks, itap, cell_end, out, depth);
+                    // Runs keep their own bold: a table style's bold header row is already in them.
+                    self.blocks(&c.blocks, itap, cell_end, out, depth);
                 }
             }
             if nested {
