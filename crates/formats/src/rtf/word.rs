@@ -253,6 +253,7 @@ impl Reader {
                 self.row_keep = false;
                 self.row_style = Default::default();
             }
+            _ if self.row_style.table_word(w, pv) => {}
             // The row's table style: the document style its stylesheet entry became, if one did.
             "ts" => self.row_style.style = self.table_style_id(pv),
             "tbllkhdrrows" | "tbllklastrow" | "tbllkhdrcols" | "tbllklastcol" | "tbllknorowband" | "tbllknocolband" => self.look_word(w, on),
@@ -272,6 +273,9 @@ impl Reader {
                 self.row_height = (pv != 0 && pv.unsigned_abs() <= 31680).then(|| (pv.unsigned_abs() as f32 / 20.0, pv < 0));
             }
             "trkeep" => self.row_keep = on,
+            "trcbpat" | "trcfpat" | "trshdng" => self.row_pattern_word(w, pv),
+            // AutoFit (`\trautofit1`); without it, or with 0, the columns keep their widths.
+            "trautofit" => self.row_style.autofit = on,
             "clvmgf" => self.def_cur.vmerge = 1,
             "clvmrg" => self.def_cur.vmerge = 2,
             "clmgf" => self.def_cur.hmerge = 1,
@@ -1034,9 +1038,22 @@ impl Reader {
         }
         let colour = pat.colour();
         if cell {
+            self.def_cur.own_pattern = true;
             self.def_cur.shading = colour;
         } else {
             self.st.fmt.background = colour;
+        }
+    }
+
+    /// A row shading word (`\trcbpat`, `\trcfpat`, `\trshdng`): kept on the row's pattern,
+    /// which shades the cells without shading of their own when the row ends.
+    fn row_pattern_word(&mut self, w: &str, pv: i32) {
+        let c = self.colors.get(pv.max(0) as usize).copied().flatten();
+        let pat = self.row_style.pattern.get_or_insert_with(Default::default);
+        match w {
+            "trcfpat" => pat.ink = c,
+            "trshdng" => pat.pct = pv,
+            _ => pat.fill = c,
         }
     }
 

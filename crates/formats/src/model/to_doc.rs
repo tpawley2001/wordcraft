@@ -930,6 +930,10 @@ impl<'a> Builder<'a> {
             tb.props.width_pct = x.width_pct.filter(|p| p.is_finite() && *p > 0.0).map(|p| p.min(100.0));
             tb.props.width = x.width.filter(|w| w.is_finite() && *w > 0.0).map(|w| w.min(1584.0));
             tb.props.fixed |= x.fixed;
+            tb.props.bidi_visual |= x.bidi_visual;
+            if let Some(f) = x.float {
+                tb.props.float = Some(finite_float(f));
+            }
             let space = |v: Option<f32>| v.filter(|v| v.is_finite() && *v > 0.0).map(|v| v.min(1584.0));
             (tb.props.space_before, tb.props.space_after) = (space(x.space[0]), space(x.space[1]));
             if let Some(id) = &x.style {
@@ -1040,6 +1044,12 @@ fn placement_only(x: &super::types::TableExtra) -> bool {
         && x.header_rows == 0
         && x.style.is_none()
         && x.look.is_none()
+}
+
+/// A floating table's position with its offsets and distances finite and within 22 inches.
+fn finite_float(f: wordcraft_doc::props::TableFloat) -> wordcraft_doc::props::TableFloat {
+    let off = |v: f32| finite_or(v, 0.0).clamp(-1584.0, 1584.0);
+    wordcraft_doc::props::TableFloat { x: off(f.x), y: off(f.y), dist: f.dist.map(|v| finite_or(v, 0.0).clamp(0.0, 1584.0)), ..f }
 }
 
 fn finite_or(v: f32, d: f32) -> f32 {

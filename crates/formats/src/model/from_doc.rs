@@ -1470,20 +1470,32 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     };
     let keep_rows = || t.rows.iter().map(|r| r.props.cant_split).collect::<Vec<_>>();
     // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one,
-    // and the table's style and look, when it has a style, and its alignment and left edge.
-    let placed = t.props.align.is_some() || t.props.indent.is_some();
+    // and the table's style and look, when it has a style, its alignment and left edge, and its fixed layout.
+    let placed = t.props.align.is_some()
+        || t.props.indent.is_some()
+        || t.props.width.is_some()
+        || t.props.width_pct.is_some()
+        || t.props.bidi_visual
+        || t.props.float.is_some();
     let cell_margins = t.props.cell_margins.filter(|m| m.iter().all(|v| v.is_finite()));
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
-        .filter(|(h, k)| h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed || cell_margins.is_some())
+        .filter(|(h, k)| {
+            h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed || cell_margins.is_some() || t.props.fixed
+        })
         .map(|(heights, keep_rows)| super::types::TableExtra {
             align: t.props.align,
             indent: t.props.indent,
+            width: t.props.width,
+            width_pct: t.props.width_pct,
             heights,
             keep_rows,
+            bidi_visual: t.props.bidi_visual,
+            float: t.props.float,
             style: t.props.style.clone(),
             look: t.props.style.is_some().then_some(t.props.look),
             cell_margins,
+            fixed: t.props.fixed,
             ..Default::default()
         });
     let extra = tracked.paras.then(|| {
@@ -1501,6 +1513,8 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             style: None,
             look: None,
             cell_margins: None,
+            bidi_visual: false,
+            float: None,
         }
     });
     // Kept whole for formats that ask for it: its header rows count even without the rest.

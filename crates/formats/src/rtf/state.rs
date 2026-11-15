@@ -417,9 +417,89 @@ pub(super) struct RowStyle {
     /// the order top, left, bottom, right.
     pub(super) pad: [i32; 4],
     pub(super) pad_unit: [i32; 4],
+    /// The row's shading pattern (`\trcbpatN`, `\trcfpatN`, `\trshdngN`), once one of them is
+    /// read: it shades each cell of the row that has no shading of its own.
+    pub(super) pattern: Option<Pattern>,
+    /// Whether the row is AutoFit (`\trautofitN`, N nonzero); otherwise its columns are fixed.
+    pub(super) autofit: bool,
+    /// The row runs right to left (`\rtlrow`; `\ltrrow` left to right).
+    pub(super) rtl: bool,
+    /// The row's preferred width (`\trwWidthN`) and its unit (`\trftsWidthN`: 2 fiftieths of a
+    /// percent, 3 twips, else none).
+    pub(super) width: i32,
+    pub(super) width_unit: i32,
+    /// The table's position when it floats (`\tph*`, `\tposx*`, `\tpv*`, `\tposy*`,
+    /// `\tdfrmtxt*`), its vertical anchor when one is stated, whether it keeps clear of other
+    /// floating tables (`\tabsnoovrlp`), and whether an offset or alignment word makes it float.
+    pub(super) pos: wordcraft_doc::props::TableFloat,
+    pub(super) pos_v_rel: Option<wordcraft_doc::para::Anchor>,
+    pub(super) no_overlap: bool,
+    pub(super) floats: bool,
 }
 
 impl RowStyle {
+    /// A direction, preferred width or positioned-table word (RTF 1.9.1 "Table row definitions"
+    /// and "Positioned tables"); false when `w` is none of them.
+    pub(super) fn table_word(&mut self, w: &str, pv: i32) -> bool {
+        use wordcraft_doc::para::{Anchor, FloatAlign};
+        let off = |v: i32| v.clamp(-31_680, 31_680) as f32 / 20.0;
+        let dist = |v: i32| v.clamp(0, 31_680) as f32 / 20.0;
+        let p = &mut self.pos;
+        match w {
+            "rtlrow" => self.rtl = true,
+            "ltrrow" => self.rtl = false,
+            "trftsWidth" => self.width_unit = pv,
+            "trwWidth" => self.width = pv,
+            "tphcol" => p.h_rel = Anchor::Column,
+            "tphmrg" => p.h_rel = Anchor::Margin,
+            "tphpg" => p.h_rel = Anchor::Page,
+            "tpvpara" => self.pos_v_rel = Some(Anchor::Paragraph),
+            "tpvmrg" => self.pos_v_rel = Some(Anchor::Margin),
+            "tpvpg" => self.pos_v_rel = Some(Anchor::Page),
+            "tposx" | "tposnegx" => (p.x, p.h_align) = (off(pv), None),
+            "tposy" | "tposnegy" => (p.y, p.v_align) = (off(pv), None),
+            "tposxl" => p.h_align = Some(FloatAlign::Start),
+            "tposxc" => p.h_align = Some(FloatAlign::Center),
+            "tposxr" => p.h_align = Some(FloatAlign::End),
+            "tposxi" => p.h_align = Some(FloatAlign::Inside),
+            "tposxo" => p.h_align = Some(FloatAlign::Outside),
+            "tposyt" => p.v_align = Some(FloatAlign::Start),
+            "tposyc" => p.v_align = Some(FloatAlign::Center),
+            "tposyb" => p.v_align = Some(FloatAlign::End),
+            "tposyin" => p.v_align = Some(FloatAlign::Inside),
+            "tposyout" => p.v_align = Some(FloatAlign::Outside),
+            "tdfrmtxtLeft" => p.dist[0] = dist(pv),
+            "tdfrmtxtTop" => p.dist[1] = dist(pv),
+            "tdfrmtxtRight" => p.dist[2] = dist(pv),
+            "tdfrmtxtBottom" => p.dist[3] = dist(pv),
+            "tabsnoovrlp" => self.no_overlap = true,
+            _ => return false,
+        }
+        if w.starts_with("tpos") {
+            self.floats = true;
+        }
+        true
+    }
+
+    /// The table's preferred width: points, or percent of the text width.
+    pub(super) fn preferred_width(&self) -> (Option<f32>, Option<f32>) {
+        match self.width_unit {
+            2 => (None, Some(self.width.clamp(0, 5000) as f32 / 50.0)),
+            3 => (Some(self.width.clamp(0, 31_680) as f32 / 20.0), None),
+            _ => (None, None),
+        }
+    }
+
+    /// Where the table floats, when its row states an offset or alignment; with no vertical
+    /// anchor stated it is measured from the text where the table stands.
+    pub(super) fn float(&self) -> Option<wordcraft_doc::props::TableFloat> {
+        self.floats.then(|| wordcraft_doc::props::TableFloat {
+            v_rel: self.pos_v_rel.unwrap_or(wordcraft_doc::para::Anchor::Paragraph),
+            overlap: !self.no_overlap,
+            ..self.pos
+        })
+    }
+
     /// `\trgaphN`: the gap, twips, clamped to 22 inches.
     pub(super) fn gap_word(&mut self, pv: i32) {
         self.gap = pv.clamp(0, 31_680);
@@ -733,6 +813,9 @@ pub(super) struct CellDef {
     pub(super) pref_value: Option<i32>,
     /// Hide end-of-cell mark (`\clhidemark`).
     pub(super) hide_mark: bool,
+    /// Whether the cell names a shading word of its own (`\clcbpat`, `\clcfpat`, `\clshdng`),
+    /// so the row's shading does not replace it.
+    pub(super) own_pattern: bool,
 }
 
 impl CellDef {

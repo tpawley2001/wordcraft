@@ -16,6 +16,7 @@ mod fib;
 mod fieldtype;
 mod fkp;
 mod fmt;
+mod lid;
 mod list;
 mod media;
 mod metadata;
@@ -310,7 +311,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     let mut doc = Document::new();
     // Word lays out every Word 97-2003 file in Compatibility Mode, with the file's options.
     doc.settings.compat_mode = wordcraft_doc::WORD2003_COMPAT_MODE;
-    dop::apply(&table, fib.pair(fib::pair::DOP), &mut doc.settings);
+    dop::apply(&table, fib.pair(fib::pair::DOP), &mut doc.settings, fib.version);
     // A missing font of the roman family class is drawn in a serif face, as for DOCX's
     // `w:family w:val="roman"`.
     doc.settings.roman_fonts = roman_fonts(font_entries.iter().map(|f| (f.ff, f.name.as_str())));
@@ -1074,6 +1075,15 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 pb.props.style = ctx.style_ids.get(usize::from(istd)).filter(|id| !id.is_empty()).cloned();
                 let mut row = table::decode_in(papx, ctx.version, table_props(ctx.data, papx));
                 row.cell_mark = c == '\u{7}';
+                // `sprmTIstd` names the row's table style; an istd that is not a table style
+                // (or past the end of the style sheet) gives the row none.
+                row.style = row
+                    .style_istd
+                    .map(usize::from)
+                    .filter(|&i| ctx.raw_styles.get(i).is_some_and(|s| s.stk == 3))
+                    .and_then(|i| ctx.style_ids.get(i))
+                    .filter(|id| !id.is_empty())
+                    .cloned();
                 // Only table marks keep their table context; a plain paragraph would carry
                 // a `RowInfo` (about 300 bytes) it never uses.
                 let row = row.is_table().then(|| Box::new(row));
