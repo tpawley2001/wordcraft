@@ -21,6 +21,7 @@ mod note_mark_format;
 mod char_spacing;
 mod char_styles;
 mod compat_mode;
+mod char_sprms;
 mod contextual_spacing;
 mod dop_base;
 mod dop_options;
