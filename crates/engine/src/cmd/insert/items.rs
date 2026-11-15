@@ -299,7 +299,11 @@ pub fn format_date_field_in(fmt: &str, lang: Option<&str>) -> Option<String> {
 /// `d`, `M` or `y` reads in pieces of at most four letters (`MMMMM` is `MMMM` then `M`); a piece
 /// of exactly three `y`s is not an item (written as the two-digit year, and reported invalid).
 /// Runs of `h`, `H`, `m` or `s` read in pieces of at most two letters (`hhh` is `hh` then `h`).
-/// Lowercase `a/p`, like `am/pm`, shows AM before noon and PM from noon on.
+/// Lowercase `a/p`, like `am/pm`, shows AM before noon and PM from noon on. Japanese items
+/// (from storytold/wordcraft#2643, results as Word shows them in any language): `g`/`gg`/`ggg` the
+/// era initial, first kanji and name; `e`/`n` the era year (`ee`/`nn` two digits; a single `e`
+/// before `年` in the era's first year is `元`); `A`, `O`, `I`, `C` the day, month, minutes and
+/// seconds in Japanese numerals. A bare uppercase `A` is the day, not AM/PM.
 #[allow(clippy::too_many_arguments)]
 fn format_date_parts_checked(
     fmt: &str,
@@ -357,6 +361,10 @@ fn format_date_parts_checked(
         while chars.get(i + n) == Some(&c) {
             n += 1;
         }
+        if let Some(used) = japanese_item(&mut out, &chars, i, n, (y, m, d), (mm, ss)) {
+            i += used;
+            continue;
+        }
         if matches!(c, 'd' | 'D' | 'M' | 'y' | 'Y') {
             n = n.min(4);
             if matches!(c, 'y' | 'Y') && n == 3 {
@@ -384,15 +392,6 @@ fn format_date_parts_checked(
             ('m', _) => out.push_str(&mm.to_string()),
             ('s', 2..) => out.push_str(&format!("{ss:02}")),
             ('s', _) => out.push_str(&ss.to_string()),
-            ('a' | 'A', _) => {
-                if c == 'a' || chars.get(i + 1) == Some(&'M') {
-                    for _ in 0..n {
-                        out.push(c);
-                    }
-                } else {
-                    out.push_str(if hh < 12 { "AM" } else { "PM" });
-                }
-            }
             _ => {
                 for _ in 0..n {
                     out.push(c);
@@ -402,6 +401,102 @@ fn format_date_parts_checked(
         i += n;
     }
     (out, valid)
+}
+
+/// Write the Japanese picture item at `chars[i]` (a run of `n` equal letters), returning how many
+/// letters it used, or `None` when the letter is not a Japanese item. `A`, `O`, `I` and `C` are
+/// one numeral per letter; `g` runs read as `ggg` pieces then `gg` or `g`; `e`/`n` runs as `ee`
+/// pieces then `e`. An uppercase `A` before `M` is not an item (it stays literal).
+fn japanese_item(out: &mut String, chars: &[char], i: usize, n: usize, (y, m, d): (i64, usize, u32), (mm, ss): (u32, u32)) -> Option<usize> {
+    let c = chars.get(i).copied()?;
+    if matches!(c, 'A' | 'O' | 'I' | 'C') && (c != 'A' || chars.get(i + 1) != Some(&'M')) {
+        let value = match c {
+            'A' => d,
+            'O' => u32::try_from(m).unwrap_or(0),
+            'I' => mm,
+            _ => ss,
+        };
+        out.push_str(&japanese_numeral(value));
+        return Some(1);
+    }
+    if c == 'g' {
+        let piece = n.min(3);
+        if let Some(era) = japanese_era(y, m, d) {
+            match piece {
+                3 => out.push_str(era.name),
+                2 => out.extend(era.name.chars().take(1)),
+                _ => out.push(era.initial),
+            }
+        }
+        return Some(piece);
+    }
+    if matches!(c, 'e' | 'n') {
+        let piece = n.min(2);
+        if let Some(era) = japanese_era(y, m, d) {
+            let year = y.saturating_sub(era.start.0).saturating_add(1);
+            if piece == 1 && year == 1 && chars.get(i + 1) == Some(&'年') {
+                out.push('元');
+            } else if piece == 2 {
+                out.push_str(&format!("{year:02}"));
+            } else {
+                out.push_str(&year.to_string());
+            }
+        }
+        return Some(piece);
+    }
+    None
+}
+
+/// A Japanese era as date pictures show it: Latin initial (`g`), name (`ggg`, its first kanji
+/// being `gg`) and first day (year, month, day).
+struct JapaneseEra {
+    initial: char,
+    name: &'static str,
+    start: (i64, usize, u32),
+}
+
+/// The modern Japanese eras, newest first.
+const JAPANESE_ERAS: [JapaneseEra; 5] = [
+    JapaneseEra { initial: 'R', name: "令和", start: (2019, 5, 1) },
+    JapaneseEra { initial: 'H', name: "平成", start: (1989, 1, 8) },
+    JapaneseEra { initial: 'S', name: "昭和", start: (1926, 12, 25) },
+    JapaneseEra { initial: 'T', name: "大正", start: (1912, 7, 30) },
+    JapaneseEra { initial: 'M', name: "明治", start: (1868, 1, 25) },
+];
+
+/// The era a date falls in; `None` before Meiji.
+fn japanese_era(y: i64, m: usize, d: u32) -> Option<&'static JapaneseEra> {
+    JAPANESE_ERAS.iter().find(|e| (y, m, d) >= e.start)
+}
+
+/// A number in Japanese numerals (counting form: 十五, 二十五, 三十一); zero is `○`.
+fn japanese_numeral(n: u32) -> String {
+    const DIGITS: [char; 10] = ['\u{25CB}', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+    let digit = |k: u32| DIGITS.get(k as usize).copied().unwrap_or('\u{25CB}');
+    if n == 0 {
+        return digit(0).to_string();
+    }
+    let mut out = String::new();
+    let mut rest = n;
+    for (unit, mark) in [(1000, Some('千')), (100, Some('百')), (10, Some('十')), (1, None)] {
+        let k = rest / unit;
+        rest %= unit;
+        if k == 0 {
+            continue;
+        }
+        if k > 1 || mark.is_none() {
+            if k >= 10 {
+                // Out of the range dates use; write the digits plainly.
+                out.extend(k.to_string().chars().filter_map(|c| c.to_digit(10)).map(digit));
+            } else {
+                out.push(digit(k));
+            }
+        }
+        if let Some(mark) = mark {
+            out.push(mark);
+        }
+    }
+    out
 }
 
 /// Insert › Symbol: the character at the caret, in its own font when `font` names one (the rest of
