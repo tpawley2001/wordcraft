@@ -70,7 +70,7 @@ pub fn specs() -> Vec<CommandSpec> {
             s.redo();
             sel_result(s)
         })
-        .key("Mod+Y / Mod+Shift+Z")
+        .key(super::mac_or("Mod+Y / Mod+Shift+Z", "Mod+Y / Mod+Shift+Z / Alt+Shift+Backspace"))
         .pure(),
         CommandSpec::new("edit.cut", "Cut", "Home › Clipboard", cut).key("Mod+X").when(has_sel),
         CommandSpec::new("edit.copy", "Copy", "Home › Clipboard", copy).key("Mod+C / Mod+Insert").pure(),
@@ -133,8 +133,9 @@ pub fn specs() -> Vec<CommandSpec> {
             read_opts(s, v)?;
             step(s, 1)
         })
-        // Elsewhere Ctrl+Page Down is Next by the browse object (`nav.browseNext`), Find by default.
-        .key(super::mac_or("Mod+G / Shift+F4 / Mod+PageDown", "Mod+G / Shift+F4 / Mod+Alt+Y"))
+        // Elsewhere Ctrl+Page Down is Next by the browse object (`nav.browseNext`), Find by default,
+        // and Ctrl+G is Go To (`edit.goto`), as Word for Windows binds it.
+        .key(super::mac_or("Mod+G / Shift+F4 / Mod+PageDown", "Shift+F4 / Mod+Alt+Y"))
         .params(r#"{"text"?: string, "matchCase"?: bool, "wholeWord"?: bool, "regex"?: bool, "format"?: {…} | null (as edit.find)}"#)
         .pure(),
         CommandSpec::new("edit.findPrevious", "Find Previous", "Home › Editing › Find", |s, v| {
@@ -163,8 +164,10 @@ pub fn specs() -> Vec<CommandSpec> {
         .pure(),
         CommandSpec::new("edit.replaceAll", "Replace All", "Home › Editing › Replace", replace_all)
             .params(r#"{"text": string, "with": string (^p ^t ^& ^c …; \\1 with wildcards; with regex also $1 ${n} ${name} $0 $$ \\1 \\n (paragraph mark) \\t), "format"?, "replaceFormat"?: {…} | null (Replace with's formatting; empty `with` keeps the text and only formats it), …options of edit.find}"#),
+        // Word for Windows binds Ctrl+G to Go To (Ctrl+G first, so menus and tooltips show it);
+        // on the Mac Cmd+G is Find Next, as in Word for Mac.
         CommandSpec::new("edit.goto", "Go To", "Home › Editing › Find", goto)
-            .key("Mod+Alt+G / F5")
+            .key(super::mac_or("Mod+Alt+G / F5", "Mod+G / F5 / Mod+Alt+G"))
             .params(r#"{"page"?: n, "pageBy"?: int (pages forward, negative back, from the caret's page), "bookmark"?: string (selects its text), "paragraph"?: n} | {"what": "page|section|line|bookmark|comment|footnote|endnote|field|table|graphic|equation|object|heading", "n"?: n (1-based, clamped), "by"?: int (+k after / -k before the selection; neither = Next), "name"?: string (bookmark; comment reviewer; field type such as PAGE)}; none opens Find and Replace on its Go To tab"#)
             .pure(),
         CommandSpec::new("edit.goBack", "Go Back", "Navigation", |s, _| {

@@ -5,7 +5,16 @@ use super::{FaceRef, GlyphId, HashMap, Path, PathBuilder};
 /// any), but krilla's font subsetting takes 16-bit ones and panics on a larger id (#3674): one
 /// that doesn't fit is written as .notdef (glyph 0), keeping its place. Its own character doesn't
 /// extract, since krilla maps no text to .notdef.
-pub(crate) fn glyph_id(g: u32) -> GlyphId {
+///
+/// An id past the face's last glyph (`count`, from [`wordcraft_fonts::FontFace::glyph_count`]) is
+/// written as .notdef too: such an id comes from another face (a fallback font's glyph for a
+/// character this face lacks, as in a field result drawn in one font), and krilla can't subset a
+/// face with a glyph it doesn't have, so the export would drop every run in that face (it is then
+/// drawn as outlines, without text). Only that glyph is lost; it keeps its advance.
+pub(crate) fn glyph_id(g: u32, count: u32) -> GlyphId {
+    if count > 0 && g >= count {
+        return GlyphId::new(0);
+    }
     GlyphId::new(u16::try_from(g).map_or(0, u32::from))
 }
 
@@ -151,4 +160,18 @@ pub(crate) fn cluster_ends(clusters: &[usize], len: usize) -> Vec<usize> {
         later.push(c);
     }
     ends
+}
+
+#[cfg(test)]
+mod glyph_id_tests {
+    use super::glyph_id;
+
+    #[test]
+    fn an_id_past_the_face_is_notdef() {
+        assert_eq!(glyph_id(40, 100).to_u32(), 40);
+        assert_eq!(glyph_id(100, 100).to_u32(), 0, "one past the last glyph comes from another face");
+        assert_eq!(glyph_id(30_000, 2_000).to_u32(), 0);
+        assert_eq!(glyph_id(70_000, 0).to_u32(), 0, "too wide for krilla");
+        assert_eq!(glyph_id(500, 0).to_u32(), 500, "an unreadable count leaves the id alone");
+    }
 }

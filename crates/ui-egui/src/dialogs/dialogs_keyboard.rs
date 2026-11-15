@@ -364,7 +364,9 @@ mod tests {
         a.run("tools.customizeKeyboard", json!({})).unwrap();
         assert!(matches!(a.dialog, Some(Dialog::CustomizeKeyboard { .. })));
         a.run("tools.customizeKeyboard", json!({"assign": {"command": "format.italic", "key": "Mod+B"}})).unwrap();
-        assert_eq!(crate::widgets::shortcut_text(&a, "format.bold"), "");
+        // Bold keeps its second key (Ctrl+Shift+B) on Linux/Windows, as in Word; none on macOS.
+        let bold = if cfg!(target_os = "macos") { "" } else { "Ctrl+Shift+B" };
+        assert_eq!(crate::widgets::shortcut_text(&a, "format.bold"), bold);
         let saved = serde_json::to_string(&a.prefs()).unwrap();
         let mut b = app();
         b.apply_prefs(serde_json::from_str(&saved).unwrap());

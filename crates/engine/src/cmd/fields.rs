@@ -15,6 +15,9 @@ use wordcraft_doc::{Pos, StoryRef};
 use super::sel_result;
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
+mod links;
+pub use links::link_fields;
+
 /// Longest field code accepted.
 const MAX_CODE: usize = 4096;
 
@@ -30,17 +33,24 @@ pub fn specs() -> Vec<CommandSpec> {
         .pure(),
         CommandSpec::new("fields.toggleCode", "Toggle Field Codes", "Insert › Text › Quick Parts", toggle_code).key("Shift+F9"),
         CommandSpec::new("fields.setCode", "Edit Field Code", "Insert › Text › Quick Parts", set_code).params(r#"{"code": string}"#),
-        CommandSpec::new("fields.unlink", "Unlink Fields", "Insert › Text › Quick Parts", unlink).key("Mod+Shift+F9"),
+        CommandSpec::new("fields.unlink", "Unlink Fields", "Insert › Text › Quick Parts", unlink)
+            .key(super::mac_or("Mod+Shift+F9", "Mod+Shift+F9 / Mod+6")),
         CommandSpec::new("fields.updateSource", "Update Source", "Insert › Text › Quick Parts", super::references::update_source)
             .key("Mod+Shift+F7")
             .pure(),
-        CommandSpec::new("fields.lock", "Lock Fields", "Insert › Text › Quick Parts", |s, _| set_locked(s, true)).key("Mod+F11"),
-        CommandSpec::new("fields.unlock", "Unlock Fields", "Insert › Text › Quick Parts", |s, _| set_locked(s, false)).key("Mod+Shift+F11"),
+        CommandSpec::new("fields.lock", "Lock Fields", "Insert › Text › Quick Parts", |s, _| set_locked(s, true))
+            .key(super::mac_or("Mod+F11", "Mod+F11 / Mod+3")),
+        CommandSpec::new("fields.unlock", "Unlock Fields", "Insert › Text › Quick Parts", |s, _| set_locked(s, false))
+            .key(super::mac_or("Mod+Shift+F11", "Mod+Shift+F11 / Mod+4")),
         CommandSpec::new("fields.next", "Next Field", "Insert › Text › Quick Parts", |s, _| go(s, true)).key("Alt+F1").pure(),
         CommandSpec::new("fields.previous", "Previous Field", "Insert › Text › Quick Parts", |s, _| go(s, false))
             .key("Shift+F11 / Alt+Shift+F1")
             .pure(),
         CommandSpec::new("fields.click", "Do Field Click", "Insert › Text › Quick Parts › Field", click).key("Alt+Shift+F9").pure(),
+        CommandSpec::new("fields.links", "Edit Links to Files", "File › Info › Related Documents", links::links).pure(),
+        CommandSpec::new("fields.editLink", "Edit Link", "File › Info › Related Documents › Edit Links to Files", links::edit_link).params(
+            r#"{"index": number (0-based, as fields.links lists the links), "update"?: "auto"|"manual", "locked"?: bool, "preserveFormatting"?: bool, "source"?: string (path), "item"?: string (bookmark name; "" = the whole document), "action"?: "updateNow"|"breakLink"}"#,
+        ),
         CommandSpec::new("fields.selected", "Selected Fields", "Insert › Text › Quick Parts", |s, _| {
             Ok(Value::Array(selected(s).iter().map(|f| f.json()).collect()))
         })
@@ -222,10 +232,16 @@ fn unlink(s: &mut Session, _: &Value) -> CmdResult {
     if fields.is_empty() {
         return Err(none_selected());
     }
+    unlink_fields(s, &fields)?;
+    Ok(json!({"fields": fields.len()}))
+}
+
+/// Replace `fields` with what they show (see [`unlink`]).
+fn unlink_fields(s: &mut Session, fields: &[FieldAt]) -> Result<(), CmdError> {
     // Unlinking rewrites the field into text: refused in content locked against editing.
     // Not tracked (Word doesn't track it either); the result stays as ordinary text.
     let width = OBJ.len_utf8();
-    for f in &fields {
+    for f in fields {
         let end = f.end.as_ref().unwrap_or(&f.at);
         let end = Pos { off: end.off.saturating_add(width), ..end.clone() };
         super::controls::check_edit(s, &f.at, &end)?;
@@ -251,7 +267,7 @@ fn unlink(s: &mut Session, _: &Value) -> CmdResult {
         para.insert_text(at.off, text, &props)?;
     }
     s.clamp_selection();
-    Ok(json!({"fields": fields.len()}))
+    Ok(())
 }
 
 /// The field a click at `pos` acts on: the simple field whose object is at `pos` or just before

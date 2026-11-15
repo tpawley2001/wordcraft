@@ -488,12 +488,35 @@ fn ref_results(doc: &wordcraft_doc::Document, stored: &wordcraft_doc::Document) 
     // A bookmark's text, `None` when it ends in a later paragraph.
     let mut texts: std::collections::HashMap<String, Option<String>> = std::collections::HashMap::new();
     let mut ranges = None;
+    // Output reads SET's stored value, including results of nested fields, without evaluating it.
+    // A REF before the first SET uses the final value; later REFs use the preceding SET.
+    let mut last_set = std::collections::HashMap::new();
+    for path in stored.para_paths(StoryRef::Body) {
+        let Some(p) = stored.para(StoryRef::Body, &path) else { continue };
+        for o in &p.objects {
+            if let InlineObject::Field { instr, result, .. } = o
+                && wordcraft_layout::fields::field_name(instr) == "SET"
+                && let Some((name, _)) = set_args(instr)
+                && (last_set.contains_key(&name) || last_set.len() < MAX_SET)
+            {
+                last_set.insert(name, result.clone());
+            }
+        }
+    }
+    let mut set = std::collections::HashMap::new();
     for path in doc.para_paths(StoryRef::Body) {
         let Some(p) = doc.para(StoryRef::Body, &path) else { continue };
         let offsets: Vec<usize> = p.objects_with_offsets().map(|(off, _)| off).collect();
         for (k, o) in p.objects.iter().enumerate() {
-            let InlineObject::Field { instr, locked: false, .. } = o else { continue };
-            if wordcraft_layout::fields::field_name(instr) != "REF" {
+            let InlineObject::Field { instr, result, locked, .. } = o else { continue };
+            let name = wordcraft_layout::fields::field_name(instr);
+            if name == "SET"
+                && let Some((name, _)) = set_args(instr)
+                && (set.contains_key(&name) || set.len() < MAX_SET)
+            {
+                set.insert(name, result.clone());
+            }
+            if *locked || name != "REF" {
                 continue;
             }
             let f = FieldCode::parse(instr);
@@ -514,8 +537,11 @@ fn ref_results(doc: &wordcraft_doc::Document, stored: &wordcraft_doc::Document) 
             if ['p', 'r', 'n', 'w'].iter().any(|&sw| has_switch(instr, sw)) {
                 continue;
             }
+            let key = target.to_lowercase();
+            let set_value = || set.get(&key).or_else(|| last_set.get(&key)).cloned();
             let Some(start) = starts.get(target) else {
-                out.push((StoryRef::Body, path.clone(), k, REFERENCE_NOT_FOUND.to_string()));
+                let result = set_value().map(|r| text_result(instr, r)).unwrap_or_else(|| REFERENCE_NOT_FOUND.to_string());
+                out.push((StoryRef::Body, path.clone(), k, result));
                 continue;
             };
             let text = texts.entry(target.to_string()).or_insert_with(|| {
@@ -523,6 +549,8 @@ fn ref_results(doc: &wordcraft_doc::Document, stored: &wordcraft_doc::Document) 
                 bookmark_ends_in_its_paragraph(source, target, start).then(|| bookmark_text_at(source, target, start)).flatten()
             });
             if let Some(r) = text.clone() {
+                // The reader places an empty bookmark before a SET whose result it encloses.
+                let r = if r.is_empty() { set_value().unwrap_or(r) } else { r };
                 out.push((StoryRef::Body, path.clone(), k, text_result(instr, r)));
             }
         }
@@ -1032,6 +1060,17 @@ pub fn update_fields_after_insert(s: &mut Session) -> Result<(), CmdError> {
     update_fields_with(s, false, false, false)
 }
 
+/// The result of a `=` formula field: a table formula reads the cells around its own cell again;
+/// a formula anywhere else reads numbers and bookmarks only. An error shows as `!<error>`.
+fn formula_result(s: &Session, story: StoryRef, path: &Path, instr: &str) -> String {
+    let default_lang = crate::cmd::default_lang(s);
+    let result = match path.cell().and_then(|(tp, r, c)| s.doc.table(story, &tp).map(|t| (t, r, c))) {
+        Some((t, r, c)) => crate::cmd::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, instr),
+        None => crate::cmd::table_formula::evaluate_text_field(&s.doc, default_lang.as_deref(), instr),
+    };
+    result.unwrap_or_else(|e| format!("!{e}"))
+}
+
 fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit: bool) -> Result<(), CmdError> {
     let caret_story = s.sel.focus.story;
     let in_body = all || caret_story == StoryRef::Body;
@@ -1091,16 +1130,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
             // A table formula reads the cells around its own cell again; a formula anywhere
             // else reads numbers and bookmarks only.
             if instr.trim_start().starts_with('=') {
-                let default_lang = crate::cmd::default_lang(s);
-                let result = match path.cell().and_then(|(tp, r, c)| s.doc.table(story, &tp).map(|t| (t, r, c))) {
-                    Some((t, r, c)) => crate::cmd::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, instr),
-                    None => crate::cmd::table_formula::evaluate_text_field(&s.doc, default_lang.as_deref(), instr),
-                };
-                let text = match result {
-                    Ok(text) => text,
-                    Err(e) => format!("!{e}"),
-                };
-                updates.push((k, text));
+                updates.push((k, formula_result(s, story, &path, instr)));
                 continue;
             }
             let name = wordcraft_layout::fields::field_name(instr);
@@ -1151,10 +1181,13 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
                             let paths = bookmark_paths.get_or_insert_with(|| body_bookmark_paths(&s.doc));
                             paths.get(target).and_then(|tp| ref_number(numbers, tp, from, sw))
                         } else {
-                            bookmark_text(&s.doc, target).or_else(|| {
+                            let text = bookmark_text(&s.doc, target);
+                            if text.as_ref().is_none_or(String::is_empty) {
                                 let key = target.to_lowercase();
-                                set.get(&key).or_else(|| last_set.get(&key)).cloned()
-                            })
+                                set.get(&key).or_else(|| last_set.get(&key)).cloned().or(text)
+                            } else {
+                                text
+                            }
                         }
                     } else if !has_switch(instr, 'p') {
                         pages.get(target).map(|(num, page_fmt, chapter)| {

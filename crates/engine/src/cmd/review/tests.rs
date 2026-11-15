@@ -943,6 +943,8 @@ fn comment_in_header_version(s: &mut Session, option: &str, page: usize) -> (u64
     s.run("review.newComment", &json!({"text": "body"})).unwrap();
     s.run("caret.docEnd", &json!({})).unwrap();
     s.run("insert.pageBreak", &json!({})).unwrap();
+    // Text on the second page: a page break that ends the document starts no page.
+    s.run("text.insert", &json!({"text": "Page two"})).unwrap();
     s.run(option, &json!({"value": true})).unwrap();
     s.run("insert.editHeader", &json!({"page": page})).unwrap();
     s.run("text.insert", &json!({"text": "header"})).unwrap();
@@ -981,6 +983,8 @@ fn first_page_header_comes_before_the_default_header() {
     s.run("document.setText", &json!({"text": "Page one"})).unwrap();
     s.run("caret.docEnd", &json!({})).unwrap();
     s.run("insert.pageBreak", &json!({})).unwrap();
+    // Text on the second page: a page break that ends the document starts no page.
+    s.run("text.insert", &json!({"text": "Page two"})).unwrap();
     s.run("layout.differentFirstPage", &json!({"value": true})).unwrap();
     let mut header = |page: usize| {
         s.run("insert.editHeader", &json!({"page": page})).unwrap();
