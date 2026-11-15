@@ -142,12 +142,14 @@ fn an_odt_toc_with_numbered_headings_keeps_its_entries_on_one_line() {
         <text:h text:outline-level="2">Budget</text:h><text:p>More text.</text:p>
         </office:text></office:body></office:document-content>"#
     );
-    let mut z = craft_zip::Writer::new();
+    let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let o = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     for (name, data) in [("mimetype", "application/vnd.oasis.opendocument.text"), ("styles.xml", styles.as_str()), ("content.xml", content.as_str())]
     {
-        z.add(name, data.as_bytes(), craft_zip::Compression::Stored).unwrap();
+        z.start_file(name, o).unwrap();
+        z.write_all(data.as_bytes()).unwrap();
     }
-    let mut s = Session::new(io::open_bytes("toc.odt", &z.finish().unwrap()).unwrap());
+    let mut s = Session::new(io::open_bytes("toc.odt", &z.finish().unwrap().into_inner()).unwrap());
     s.run("references.updateToc", &json!({})).unwrap();
     let layout = s.layout();
     let mut checked = 0;
