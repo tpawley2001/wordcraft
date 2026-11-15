@@ -6,7 +6,7 @@ use std::sync::Arc;
 use wordcraft_doc::Rgb;
 use wordcraft_doc::para::{Anchor, FloatAlign, InlineObject, OBJ, Paragraph};
 use wordcraft_doc::props::{
-    Align, Border, Borders, CellProps, HeightRule, ParaProps, RowProps, TableFloat, TableProps, TextDirection, TextFrame, VAlign, VMerge,
+    Align, Border, Borders, CellProps, HeightRule, ParaProps, RowProps, TableFloat, TableLook, TableProps, TextDirection, TextFrame, VAlign, VMerge,
 };
 use wordcraft_doc::table::{Cell, Row, Table};
 use wordcraft_doc::{Block, Blocks, para_block};
@@ -72,6 +72,11 @@ const T_F_NO_ALLOW_OVERLAP: u16 = 0x3465;
 const T_F_AUTOFIT: u16 = 0x3615;
 /// `sprmTTextFlow` ([MS-DOC] 2.6.4): itcFirst, itcLim, then a 16-bit text flow for those cells.
 const T_TEXT_FLOW: u16 = 0x7629;
+/// `sprmTTlp` ([MS-DOC] 2.6.4, 2.9.322): a TLP, `itl` (the old AutoFormat, ignored) then
+/// `grfatl`, the Fatl bits that pick which parts of the table style apply.
+const T_TLP: u16 = 0x740A;
+/// `sprmTFBiDi` ([MS-DOC] 2.6.4): 1 = the table is right-to-left.
+const T_F_BIDI: u16 = 0x560B;
 
 /// Most grid columns we build from a `sprmTDefTable` (the model's own cap is 63; one more
 /// edge is fine but merged rows can sum spans slightly over, so clamp when assembling).
@@ -137,6 +142,24 @@ pub(crate) struct RowInfo {
     /// `sprmTFAutofit` with operand 1: the row's columns fit their content. Without it the
     /// stored cell widths are final (the table has fixed column widths).
     autofit: bool,
+    /// The table style options from `sprmTTlp`.
+    look: Option<TableLook>,
+    /// `sprmTFBiDi`: the table runs right to left.
+    bidi: Option<bool>,
+}
+
+/// The table style options of a `grfatl` (Fatl, [MS-DOC] 2.9.69); the same bits as the
+/// transitional `w:tblLook w:val` mask. The old AutoFormat bits (0x0001-0x0010) are ignored.
+fn look_from_fatl(bits: u16) -> TableLook {
+    let on = |m: u16| bits & m != 0;
+    TableLook {
+        header_row: on(0x0020),
+        total_row: on(0x0040),
+        first_column: on(0x0080),
+        last_column: on(0x0100),
+        banded_rows: !on(0x0200),
+        banded_columns: !on(0x0400),
+    }
 }
 
 /// A table's preferred width as `sprmTTableWidth` gives it.
@@ -263,6 +286,12 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
                 r.no_wrap = def_table_no_wrap(prl.operand);
             }
             T_TEXT_FLOW => apply_text_flow_sprm(&mut r.text_flow, prl.operand),
+            T_TLP => {
+                if let [_, _, a, b, ..] = prl.operand {
+                    r.look = Some(look_from_fatl(u16::from_le_bytes([*a, *b])));
+                }
+            }
+            T_F_BIDI => r.bidi = s16(&prl).map(|v| v != 0).or(r.bidi),
             T_TABLE_HEADER => r.header = prl.operand.first().copied().unwrap_or(0) != 0,
             // Read after the loop, from the Data-stream copy when there is one.
             T_CANT_SPLIT | T_CANT_SPLIT_90 => {}
@@ -673,6 +702,11 @@ impl TableBuilder {
         let row_hidden = row_end && para.mark.hidden == Some(true);
         if row_end && self.rows.is_empty() {
             self.props.float = row_float(frame.or_else(|| self.first_frame.take()), info);
+            // Table-level style options and direction come from the first row's TAP.
+            if let Some(look) = info.look {
+                self.props.look = look;
+            }
+            self.props.bidi_visual = info.bidi.unwrap_or(false);
         }
         if self.grid.is_empty() {
             // Column widths from the table's first `sprmTDefTable`.
