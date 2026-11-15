@@ -1832,8 +1832,8 @@ fn all_caps_and_small_caps_text_extracts_as_displayed() {
     ] {
         assert!(text.contains(line), "missing {line:?} in {text:?}");
     }
-    // An All Caps ß is drawn as SS, as Word does (#1581), and reads as the SS drawn.
-    assert!(text.contains("STRASSE"), "{text:?}");
+    // An All Caps ß stays ß, as Microsoft 365 Word draws it (STRAßE), and reads as drawn.
+    assert!(text.contains("STRAßE"), "{text:?}");
 }
 
 #[test]
