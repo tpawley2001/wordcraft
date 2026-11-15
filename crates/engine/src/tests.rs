@@ -87,6 +87,7 @@ mod rtl_gutter;
 mod output_header_footer_counts;
 mod output_header_footer_session;
 mod output_header_footer_fields;
+mod printdate_output;
 mod output_if_fields;
 mod output_nested_ref_formula;
 mod output_set_ref;
