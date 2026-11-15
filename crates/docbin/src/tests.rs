@@ -22,6 +22,7 @@ mod char_spacing;
 mod char_styles;
 mod compat_mode;
 mod contextual_spacing;
+mod para_sprms;
 mod dop_base;
 mod dop_options;
 mod dop_no_tab_hang_ind;
