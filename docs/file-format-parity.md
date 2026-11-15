@@ -424,7 +424,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 ## Revision history
 
-> 2026-11-15 · trivial · P0586: field `\*` number formats follow Word (from storytold/wordcraft#4571): rounding first, Word's error text for numbers a format can't write, 0 in roman/alphabetic is a space, DollarText cents don't carry, Ordinal keeps its sign, OrdText `\* Caps` capitalises each hyphen-joined word.
+> 2026-11-15 · trivial · P0586: field `\*` number formats follow Word (from storytold/wordcraft#4571): rounding first, Word's error text for numbers a format can't write, 0 in roman/alphabetic is a space, DollarText cents don't carry, Ordinal keeps its sign, `\* Caps` capitalises each hyphen-separated part in every format (`Twenty-One`, `Twenty-First`).
 
 > 2026-11-15 · trivial · P0577: at PDF/print/page-image output a REF to a SET name with no bookmark of that name (the SET was never updated) shows Word's "Error! Reference source not found." instead of the SET's stored text; with the bookmark it still shows the SET value. Readiness estimates unchanged.
 
