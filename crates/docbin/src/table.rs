@@ -162,6 +162,12 @@ fn look_from_fatl(bits: u16) -> TableLook {
     }
 }
 
+/// The look of a `sprmTTlp` operand (a TLP: `itl`, then `grfatl`); `None` when truncated.
+fn tlp_look(operand: &[u8]) -> Option<TableLook> {
+    let [_, _, a, b, ..] = operand else { return None };
+    Some(look_from_fatl(u16::from_le_bytes([*a, *b])))
+}
+
 /// A table's preferred width as `sprmTTableWidth` gives it.
 #[derive(Clone, Copy)]
 enum TableWidth {
@@ -286,11 +292,7 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
                 r.no_wrap = def_table_no_wrap(prl.operand);
             }
             T_TEXT_FLOW => apply_text_flow_sprm(&mut r.text_flow, prl.operand),
-            T_TLP => {
-                if let [_, _, a, b, ..] = prl.operand {
-                    r.look = Some(look_from_fatl(u16::from_le_bytes([*a, *b])));
-                }
-            }
+            T_TLP => r.look = tlp_look(prl.operand).or(r.look),
             T_F_BIDI => r.bidi = s16(&prl).map(|v| v != 0).or(r.bidi),
             T_TABLE_HEADER => r.header = prl.operand.first().copied().unwrap_or(0) != 0,
             // Read after the loop, from the Data-stream copy when there is one.
