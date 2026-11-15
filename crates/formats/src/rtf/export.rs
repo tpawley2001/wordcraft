@@ -1488,6 +1488,10 @@ impl Writer {
                     ctl.push_str(w);
                 }
             }
+            // Snap to grid is on by default: only off is written.
+            if x.snap_to_grid == Some(false) {
+                ctl.push_str("\\cgrid0");
+            }
             // Horizontal scale in percent, 1-600; kerning from a size in half-points.
             if let Some(s) = x.scale.filter(|v| v.is_finite()).map(|v| v.round().clamp(1.0, 600.0) as i32).filter(|v| *v != 100) {
                 ctl.push_str(&format!("\\charscalex{s}"));

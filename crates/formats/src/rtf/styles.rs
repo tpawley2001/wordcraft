@@ -307,6 +307,7 @@ impl Reader {
             caps: d.caps,
             small_caps: d.small_caps,
             hidden: d.hidden_text,
+            snap_to_grid: d.snap_off.then_some(false),
             vert_align: d.vert_align,
             highlight,
             shading,
@@ -405,6 +406,7 @@ impl Reader {
             out.caps = out.caps.or(d.caps);
             out.small_caps = out.small_caps.or(d.small_caps);
             out.hidden_text = out.hidden_text.or(d.hidden_text);
+            out.snap_off |= d.snap_off;
             out.vert_align = out.vert_align.or(d.vert_align);
             out.highlight = out.highlight.or(d.highlight);
             out.underline_color = out.underline_color.or(d.underline_color);
@@ -805,6 +807,8 @@ pub(super) struct StyleDef {
     pub(super) caps: Option<bool>,
     pub(super) small_caps: Option<bool>,
     pub(super) hidden_text: Option<bool>,
+    /// Snap to grid turned off (`\cgrid0`); on, the default, is kept as nothing.
+    pub(super) snap_off: bool,
     /// Superscript or subscript (`\super`, `\sub`, `\nosupersub`; the later wins).
     pub(super) vert_align: Option<wordcraft_doc::props::VertAlign>,
     /// `\colortbl` indexes: the highlight (`\highlight`) and the underline colour (`\ulc`).
