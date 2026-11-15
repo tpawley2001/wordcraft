@@ -832,6 +832,7 @@ fn info_properties(app: &mut WordApp, ui: &mut Ui, info: &serde_json::Value) {
     });
     compatibility_section(app, ui);
     inspect_section(app, ui);
+    related_documents_section(app, ui);
     // Protect Document › Encrypt with Password (#55).
     ui.add_space(18.0);
     ui.label(egui::RichText::new(tl!("Protect Document")).font(semibold(15.0)));
@@ -906,6 +907,19 @@ fn info_statistics(ui: &mut Ui, info: &serde_json::Value) {
 
 /// File › Info › Compatibility Mode: shown only for a document laid out for an older Word, with
 /// Convert, which asks before upgrading it (`file.convert`).
+/// Related Documents › Edit Links to Files, shown only while the document links to other files
+/// (`fields.links`).
+fn related_documents_section(app: &mut WordApp, ui: &mut Ui) {
+    if wordcraft_engine::cmd::fields::link_fields(&app.session).is_empty() {
+        return;
+    }
+    ui.add_space(18.0);
+    ui.label(egui::RichText::new(tl!("Related Documents")).font(semibold(15.0)));
+    if ui.button(egui::RichText::new(tl!("Edit Links to Files")).font(medium(13.5))).clicked() {
+        let _ = app.run("ui.dialog", json!({"name": "editLinks"}));
+    }
+}
+
 fn compatibility_section(app: &mut WordApp, ui: &mut Ui) {
     if !wordcraft_engine::compatibility_mode(&app.session) {
         return;

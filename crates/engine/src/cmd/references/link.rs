@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use wordcraft_doc::edit::Fragment;
 use wordcraft_doc::para::OBJ;
-use wordcraft_doc::{Block, Comment, Document, InlineObject, PartKind, Pos, StoryRef};
+use wordcraft_doc::{Block, Comment, Document, FieldRange, InlineObject, PartKind, Pos, StoryRef};
 
 use super::FieldCode;
 use crate::{CmdError, Session};
@@ -246,7 +246,6 @@ pub(super) fn new_simple_result(s: &Session, sources: &mut Sources, o: &wordcraf
 /// the linked range as the source holds it now. Unlocked fields only; a link that can't be
 /// followed keeps its result.
 pub(super) fn update_link_ranges(s: &mut Session, sources: &mut Sources, stories: &[StoryRef]) -> Result<(), CmdError> {
-    let width = OBJ.len_utf8();
     for &story in stories {
         // Last first, so replacing one result never moves a field still to do; re-read after each
         // edit, as a replaced result may have held other fields.
@@ -254,39 +253,67 @@ pub(super) fn update_link_ranges(s: &mut Session, sources: &mut Sources, stories
         while i > 0 {
             i -= 1;
             let Some(r) = s.doc.field_ranges(story).into_iter().nth(i) else { continue };
-            if r.locked || wordcraft_layout::fields::field_name(&r.instr) != "LINK" {
-                continue;
-            }
-            let Some(link) = parse(s, &r.instr) else { continue };
-            let Some(inner) = r.start.off.checked_add(width) else { continue };
-            let start = Pos { off: inner, ..r.start.clone() };
-            match link.format {
-                Format::Text => {
-                    let Some(frag) = source_range(sources, &link) else { continue };
-                    let text = text_of(&frag);
-                    if text_of(&s.doc.copy_range(&start, &r.end)) == text {
-                        continue;
-                    }
-                    let props = s.doc.para_at(&start).map(|p| p.props_of_char(start.off).clone()).unwrap_or_default();
-                    let mut at = s.doc.delete_range(&start, &r.end)?;
-                    for (k, part) in text.split('\r').enumerate() {
-                        if k > 0 {
-                            at = s.doc.split_paragraph(&at)?;
-                        }
-                        at = s.doc.insert_text(&at, part, &props)?;
-                    }
-                }
-                Format::Formatted => {
-                    let Some(frag) = adopted_range(s, sources, &link) else { continue };
-                    let old = s.doc.copy_range(&start, &r.end);
-                    let (comments, notes) = references(&s.doc, old.blocks.iter());
-                    let at = s.doc.delete_range(&start, &r.end)?;
-                    s.doc.insert_fragment(&at, &frag)?;
-                    drop_unreferred(&mut s.doc, &comments, &notes);
-                }
-            }
+            update_range(s, sources, &r)?;
         }
     }
+    Ok(())
+}
+
+/// F9 on the one LINK range field `r` (see [`update_link_ranges`]).
+fn update_range(s: &mut Session, sources: &mut Sources, r: &FieldRange) -> Result<(), CmdError> {
+    if r.locked || wordcraft_layout::fields::field_name(&r.instr) != "LINK" {
+        return Ok(());
+    }
+    let Some(link) = parse(s, &r.instr) else { return Ok(()) };
+    let Some(inner) = r.start.off.checked_add(OBJ.len_utf8()) else { return Ok(()) };
+    let start = Pos { off: inner, ..r.start.clone() };
+    match link.format {
+        Format::Text => {
+            let Some(frag) = source_range(sources, &link) else { return Ok(()) };
+            let text = text_of(&frag);
+            if text_of(&s.doc.copy_range(&start, &r.end)) == text {
+                return Ok(());
+            }
+            let props = s.doc.para_at(&start).map(|p| p.props_of_char(start.off).clone()).unwrap_or_default();
+            let mut at = s.doc.delete_range(&start, &r.end)?;
+            for (k, part) in text.split('\r').enumerate() {
+                if k > 0 {
+                    at = s.doc.split_paragraph(&at)?;
+                }
+                at = s.doc.insert_text(&at, part, &props)?;
+            }
+        }
+        Format::Formatted => {
+            let Some(frag) = adopted_range(s, sources, &link) else { return Ok(()) };
+            let old = s.doc.copy_range(&start, &r.end);
+            let (comments, notes) = references(&s.doc, old.blocks.iter());
+            let at = s.doc.delete_range(&start, &r.end)?;
+            s.doc.insert_fragment(&at, &frag)?;
+            drop_unreferred(&mut s.doc, &comments, &notes);
+        }
+    }
+    Ok(())
+}
+
+/// Update Now in Edit Links to Files: F9 on just the LINK field whose object (or start marker)
+/// is at `at`, by the same rules as [`update_link_ranges`] and [`new_simple_result`]. A locked
+/// field or one that isn't a link is left as it is.
+pub(crate) fn update_link_at(s: &mut Session, at: &Pos) -> Result<(), CmdError> {
+    let mut sources = Sources::default();
+    if let Some(r) = s.doc.field_ranges(at.story).into_iter().find(|r| r.start == *at) {
+        return update_range(s, &mut sources, &r);
+    }
+    let Some(o) = s.doc.para_at(at).and_then(|p| p.object_at(at.off)).cloned() else { return Ok(()) };
+    if !matches!(&o, InlineObject::Field { locked: false, instr, .. } if wordcraft_layout::fields::field_name(instr) == "LINK") {
+        return Ok(());
+    }
+    let Some(text) = new_simple_result(s, &mut sources, &o) else { return Ok(()) };
+    let para = s.doc.para_mut(at.story, &at.path)?;
+    if let Some(InlineObject::Field { result, dirty, .. }) = para.object_at_mut(at.off) {
+        *result = text;
+        *dirty = false;
+    }
+    para.touch();
     Ok(())
 }
 
