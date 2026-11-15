@@ -288,34 +288,105 @@ fn norm(s: &str) -> String {
 fn lcs(a: &[String], b: &[String]) -> Vec<(usize, usize)> {
     // Equal lines at the start and end first: keeps the table small for near-identical documents.
     let pre = a.iter().zip(b).take_while(|(x, y)| x == y).count();
-    let suf = a[pre..].iter().rev().zip(b[pre..].iter().rev()).take_while(|(x, y)| x == y).count();
-    let (ma, mb) = (&a[pre..a.len() - suf], &b[pre..b.len() - suf]);
-    let (n, m) = (ma.len(), mb.len());
+    let rest_a = a.get(pre..).unwrap_or_default();
+    let rest_b = b.get(pre..).unwrap_or_default();
+    let suf = rest_a.iter().rev().zip(rest_b.iter().rev()).take_while(|(x, y)| x == y).count();
+    let ma = rest_a.get(..rest_a.len() - suf).unwrap_or_default();
+    let mb = rest_b.get(..rest_b.len() - suf).unwrap_or_default();
     let mut out: Vec<(usize, usize)> = (0..pre).map(|i| (i, i)).collect();
-    // The table is (n+1)(m+1) cells: past ~100 M (400 MB) keep only the equal start and end.
-    if (n + 1).saturating_mul(m + 1) > 100_000_000 {
-        out.extend((0..suf).map(|k| (a.len() - suf + k, b.len() - suf + k)));
-        return out;
-    }
-    let mut t = vec![0u32; (n + 1) * (m + 1)];
-    for i in (0..n).rev() {
-        for j in (0..m).rev() {
-            t[i * (m + 1) + j] = if ma[i] == mb[j] { t[(i + 1) * (m + 1) + j + 1] + 1 } else { t[(i + 1) * (m + 1) + j].max(t[i * (m + 1) + j + 1]) };
-        }
-    }
-    let (mut i, mut j) = (0, 0);
-    while i < n && j < m {
-        if ma[i] == mb[j] {
-            out.push((pre + i, pre + j));
-            (i, j) = (i + 1, j + 1);
-        } else if t[(i + 1) * (m + 1) + j] >= t[i * (m + 1) + j + 1] {
-            i += 1;
-        } else {
-            j += 1;
-        }
+    let mut ids = std::collections::HashMap::<&str, u32>::new();
+    let interned: Option<Vec<u32>> = ma
+        .iter()
+        .chain(mb)
+        .map(|line| {
+            if let Some(&id) = ids.get(line.as_str()) {
+                return Some(id);
+            }
+            let id = u32::try_from(ids.len()).ok()?;
+            ids.insert(line.as_str(), id);
+            Some(id)
+        })
+        .collect();
+    if let Some(interned) = interned {
+        let (ia, ib) = interned.split_at(ma.len());
+        lcs_match(ia, ib, pre, pre, &mut out);
+    } else {
+        // More than u32::MAX distinct lines cannot share integer ids without collisions.
+        lcs_match(ma, mb, pre, pre, &mut out);
     }
     out.extend((0..suf).map(|k| (a.len() - suf + k, b.len() - suf + k)));
     out
+}
+
+fn lcs_match<T: Eq>(a: &[T], b: &[T], ai: usize, bi: usize, out: &mut Vec<(usize, usize)>) {
+    if a.is_empty() || b.is_empty() {
+        return;
+    }
+    if let [line] = a {
+        if let Some(j) = b.iter().position(|x| x == line) {
+            out.push((ai, bi + j));
+        }
+        return;
+    }
+    if let [line] = b {
+        if let Some(i) = a.iter().position(|x| x == line) {
+            out.push((ai + i, bi));
+        }
+        return;
+    }
+    let width = b.len().saturating_add(1);
+    let cells = a.len().saturating_add(1).saturating_mul(width);
+    if cells <= 100_000_000 {
+        let mut t = vec![0u32; cells];
+        let mut rows = t.chunks_exact_mut(width).rev();
+        if let Some(mut below) = rows.next() {
+            for (x, row) in a.iter().rev().zip(rows) {
+                let (mut diagonal, mut right) = (0, 0);
+                for ((cell, y), &down) in row.iter_mut().rev().skip(1).zip(b.iter().rev()).zip(below.iter().rev().skip(1)) {
+                    *cell = if x == y { diagonal + 1 } else { down.max(right) };
+                    diagonal = down;
+                    right = *cell;
+                }
+                below = row;
+            }
+        }
+        let (mut i, mut j) = (0, 0);
+        while let (Some(x), Some(y)) = (a.get(i), b.get(j)) {
+            if x == y {
+                out.push((ai + i, bi + j));
+                (i, j) = (i + 1, j + 1);
+            } else if t.get((i + 1) * width + j) >= t.get(i * width + j + 1) {
+                i += 1;
+            } else {
+                j += 1;
+            }
+        }
+        return;
+    }
+    // Each split halves a, bounding recursion depth by the number of bits in usize.
+    let (top, bottom) = a.split_at(a.len() / 2);
+    let split = {
+        let forward = lcs_lengths(top.iter(), b.iter());
+        let backward = lcs_lengths(bottom.iter().rev(), b.iter().rev());
+        forward.iter().zip(backward.iter().rev()).enumerate().max_by_key(|(_, (left, right))| **left + **right).map_or(0, |(j, _)| j)
+    }; // Release both rows before recursing so they do not accumulate on the stack.
+    let (left, right) = b.split_at(split);
+    lcs_match(top, left, ai, bi, out);
+    lcs_match(bottom, right, ai + top.len(), bi + split, out);
+}
+
+fn lcs_lengths<'a, T: Eq + 'a>(a: impl Iterator<Item = &'a T>, b: impl ExactSizeIterator<Item = &'a T> + Clone) -> Vec<usize> {
+    let mut row = vec![0usize; b.len().saturating_add(1)];
+    for x in a {
+        let (mut diagonal, mut left) = (0, 0);
+        for (cell, y) in row.iter_mut().skip(1).zip(b.clone()) {
+            let above = *cell;
+            *cell = if x == y { diagonal + 1 } else { above.max(left) };
+            diagonal = above;
+            left = *cell;
+        }
+    }
+    row
 }
 
 /// A short stable hash of a line, for `--private` (FNV-1a, 64 bit).
