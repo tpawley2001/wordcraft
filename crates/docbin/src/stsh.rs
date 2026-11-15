@@ -21,8 +21,10 @@ pub(crate) struct RawStyle {
     pub(crate) name: String,
     /// Paragraph-formatting UPX grpprl (paragraph styles).
     pub(crate) papx: Vec<u8>,
-    /// Character-formatting UPX grpprl (paragraph and character styles).
+    /// Character-formatting UPX grpprl (paragraph, character and table styles).
     pub(crate) chpx: Vec<u8>,
+    /// Table-formatting UPX grpprl (table styles: `lpUpxTapx`, [MS-DOC] §2.9.269).
+    pub(crate) tapx: Vec<u8>,
 }
 
 /// The stylesheet's standard fonts, the ones text takes when neither its style nor its own
@@ -126,10 +128,23 @@ pub(crate) fn parse(table: &[u8], fc: u32, lcb: u32) -> Result<Vec<RawStyle>, Do
             at += 2 + cb + (cb & 1); // padded to even; cb in the header excludes the pad
         }
         // Paragraph styles: UPX0 is a PAPX (istd u16 + grpprl), UPX1 a raw grpprl of
-        // character sprms; character styles: UPX0 is the character grpprl.
+        // character sprms; character styles: UPX0 is the character grpprl; table styles
+        // (StkTableGRLPUPX, [MS-DOC] §2.9.269): UPX0 the table grpprl, UPX1 a PAPX, UPX2 the
+        // character grpprl.
         let mut papx = Vec::new();
         let mut chpx = Vec::new();
-        if stk == 1 {
+        let mut tapx = Vec::new();
+        if stk == 3 {
+            if let Some(u) = upxs.first() {
+                tapx = u.clone();
+            }
+            if let Some(u) = upxs.get(1) {
+                papx = u.get(2..).unwrap_or(&[]).to_vec(); // skip the istd
+            }
+            if let Some(u) = upxs.get(2) {
+                chpx = u.clone();
+            }
+        } else if stk == 1 {
             if let Some(u) = upxs.first() {
                 papx = u.get(2..).unwrap_or(&[]).to_vec(); // skip the istd of GrpPrlAndIstd
             }
@@ -141,7 +156,7 @@ pub(crate) fn parse(table: &[u8], fc: u32, lcb: u32) -> Result<Vec<RawStyle>, Do
         {
             chpx = u.clone();
         }
-        out.push(RawStyle { sti, stk, istd_base, name, papx, chpx });
+        out.push(RawStyle { sti, stk, istd_base, name, papx, chpx, tapx });
     }
     Ok(out)
 }
