@@ -143,13 +143,7 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
         }
         w.empty("w:documentProtection", &a);
     }
-    for (on, name) in
-        [(s.auto_format_override, "w:autoFormatOverride"), (s.style_lock_theme, "w:styleLockTheme"), (s.style_lock_qf_set, "w:styleLockQFSet")]
-    {
-        if on {
-            w.empty(name, &[]);
-        }
-    }
+    write_formatting_locks(&mut w, s);
     w.val("w:defaultTabStop", &crate::units::twips(s.default_tab.clamp(1.0, 1584.0)));
     if s.auto_hyphenation {
         w.empty("w:autoHyphenation", &[]);
@@ -217,6 +211,17 @@ fn write_doc_vars(w: &mut W, vars: &[wordcraft_doc::DocVar]) {
 }
 
 /// `w:writeProtection` (§17.15.1.93): Read-only recommended and the password to modify's hash.
+/// Formatting restriction switches follow document protection in CT_Settings order.
+fn write_formatting_locks(w: &mut W, s: &wordcraft_doc::Settings) {
+    for (on, name) in
+        [(s.auto_format_override, "w:autoFormatOverride"), (s.style_lock_theme, "w:styleLockTheme"), (s.style_lock_qf_set, "w:styleLockQFSet")]
+    {
+        if on {
+            w.empty(name, &[]);
+        }
+    }
+}
+
 fn write_protection(w: &mut W, wp: Option<&wordcraft_doc::WriteProtection>) {
     let Some(wp) = wp.filter(|wp| !wp.is_empty()) else { return };
     let mut a: Vec<(&str, &str)> = Vec::new();
