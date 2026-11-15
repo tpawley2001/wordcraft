@@ -617,13 +617,15 @@ impl Reader {
             "dgvshow" => d.every_v = u8::try_from(pv).ok().filter(|&n| n <= 127).or(d.every_v),
             "dgvspace" => d.grid_v = (pv >= 1).then(|| pv as f32 / 20.0).or(d.grid_v),
             "enforceprot" => d.enforce = Some(on),
-            "expshrtn" => d.expand_shift_return = Some(on),
-            "ftnlytwnine" => d.footnote_layout_like_ww8 = Some(on),
+            // These four turn their option off; with parameter 0 the word is ignored.
+            "expshrtn" => d.expand_shift_return |= on,
+            "ftnlytwnine" => d.no_footnote_layout_like_ww8 |= on,
+            "spltpgpar" => d.no_split_pg_break_and_para_mark |= on,
+            "nocxsptable" => d.no_space_of_same_style_in_table |= on,
             "notabind" => d.no_tab_hang_ind = Some(on),
             "truncex" => d.no_leading = Some(on),
             "sprslnsp" => d.ext_leading_2pt_only = Some(on),
             "wpjst" => d.wp_justification = Some(on),
-            "spltpgpar" => d.split_pg_break_and_para_mark = Some(on),
             "formprot" => d.old_prot = on.then_some("forms"),
             "htmautsp" => d.html_auto_spacing = on,
             "linkstyles" => d.link_styles = Some(on),
@@ -1310,18 +1312,23 @@ pub(super) struct DocSettingWords {
     link_styles: Option<bool>,
     remove_personal_info: Option<bool>,
     remove_date_time: Option<bool>,
-    expand_shift_return: Option<bool>,
-    /// `\ftnlytwnine` (emulate Word 6.0/95/97 footnote placement).
-    footnote_layout_like_ww8: Option<bool>,
+    /// Four compatibility options are on in an RTF file unless a word turns them off, as Word
+    /// reads them (Word 2007 and later write all four): `\expshrtn` (expand character spaces on a
+    /// line ending in Shift+Return), `\ftnlytwnine` (no Word 6.0/95/97 footnote placement),
+    /// `\spltpgpar` (no split page break and paragraph mark) and `\nocxsptable` (no space between
+    /// paragraphs of the same style in a table).
+    expand_shift_return: bool,
+    no_footnote_layout_like_ww8: bool,
+    no_split_pg_break_and_para_mark: bool,
+    no_space_of_same_style_in_table: bool,
     /// Compatibility options (RTF 1.9.1 document formatting properties): `\notabind` (no
     /// automatic tab stop at a hanging indent), `\truncex` (no leading between rows of text),
     /// `\sprslnsp` (line spacing like WordPerfect 5.x), `\wpjst` (justification like
-    /// WordPerfect 6.x) and `\spltpgpar` (split page break and paragraph mark).
+    /// WordPerfect 6.x).
     no_tab_hang_ind: Option<bool>,
     no_leading: Option<bool>,
     ext_leading_2pt_only: Option<bool>,
     wp_justification: Option<bool>,
-    split_pg_break_and_para_mark: Option<bool>,
     /// `\htmautsp` (Use HTML paragraph auto spacing): the space between two paragraphs is the
     /// larger of space after and space before. Without it Word adds the two.
     html_auto_spacing: bool,
@@ -1379,17 +1386,18 @@ impl DocSettingWords {
         if let Some(p) = prot {
             s.protection = Some(p.to_string());
         }
+        s.do_not_expand_shift_return = !self.expand_shift_return;
+        s.footnote_layout_like_ww8 = !self.no_footnote_layout_like_ww8;
+        s.split_pg_break_and_para_mark = !self.no_split_pg_break_and_para_mark;
+        s.allow_space_of_same_style_in_table = !self.no_space_of_same_style_in_table;
         for (v, field) in [
             (self.link_styles, &mut s.link_styles),
             (self.remove_personal_info, &mut s.remove_personal_info),
             (self.remove_date_time, &mut s.remove_date_time),
-            (self.expand_shift_return, &mut s.do_not_expand_shift_return),
-            (self.footnote_layout_like_ww8, &mut s.footnote_layout_like_ww8),
             (self.no_tab_hang_ind, &mut s.no_tab_hang_ind),
             (self.no_leading, &mut s.no_leading),
             (self.ext_leading_2pt_only, &mut s.ext_leading_2pt_only),
             (self.wp_justification, &mut s.wp_justification),
-            (self.split_pg_break_and_para_mark, &mut s.split_pg_break_and_para_mark),
             (self.track_changes, &mut s.track_changes),
             (self.print_forms_data, &mut s.print_forms_data),
             (self.track_moves, &mut s.track_moves),
