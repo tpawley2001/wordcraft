@@ -709,7 +709,10 @@ fn output_if_results(doc: &wordcraft_doc::Document, current: &wordcraft_doc::Doc
             trigger |= matches!(name.as_str(), "SEQ" | "REF" | "DATE" | "PRINTDATE" | "SAVEDATE" | "PAGE" | "NUMPAGES" | "SECTION" | "SECTIONPAGES");
             if let InlineObject::Field { locked: false, code_paras, .. } = o
                 && name == "IF"
-                && let Some(result) = super::conditional::result(instr, code_paras.as_deref())
+                && let Some(result) = match fresh_if_condition(doc, current, p, k, instr, code_paras.as_deref()) {
+                    Some((fresh, code)) => super::conditional::result(&fresh, Some(&code)),
+                    None => super::conditional::result(instr, code_paras.as_deref()),
+                }
             {
                 candidates.push((StoryRef::Body, path.clone(), k, result));
             }
@@ -725,6 +728,78 @@ fn output_if_results(doc: &wordcraft_doc::Document, current: &wordcraft_doc::Doc
     }
     candidates.retain(|(_, path, k, _)| !last.as_ref().is_some_and(|(p, i)| p == path && i == k));
     candidates
+}
+
+/// An IF's code with each nested REF or DATE/TIME in its condition showing its value now, and a
+/// copy of `code` matching it, or `None` when nothing changes (no lengths recorded, an edited code,
+/// no such nested field). Word's PDF export compares a nested REF's bookmark text and a nested
+/// DATE's current date (measured with Microsoft 365 Word); every other nested field (`=`,
+/// DOCPROPERTY, MERGEFIELD, ...) and a missing bookmark keep their stored text.
+fn fresh_if_condition(
+    doc: &wordcraft_doc::Document,
+    current: &wordcraft_doc::Document,
+    p: &Paragraph,
+    k: usize,
+    instr: &str,
+    code: Option<&wordcraft_doc::para::CodeParas>,
+) -> Option<(String, wordcraft_doc::para::CodeParas)> {
+    use wordcraft_doc::para::code_hash;
+    if instr.len() > 65_536 {
+        return None;
+    }
+    let code = code.filter(|c| c.code == code_hash(instr) && !c.nested.is_empty() && c.nested_len.len() == c.nested.len())?;
+    let mut fresh = String::with_capacity(instr.len());
+    let mut out = code.clone();
+    let mut from = 0usize;
+    let mut changed = false;
+    for (i, nested) in code.nested.iter().enumerate() {
+        let len = *code.nested_len.get(i)?;
+        let end = nested.at.checked_add(len)?;
+        if nested.at < from {
+            return None;
+        }
+        let prefix = instr.get(..nested.at)?;
+        let stored = instr.get(nested.at..end)?;
+        // Only the condition's operands (words 1 and 3 after IF) are read before comparing.
+        let index = super::field_words(&format!("{prefix}x")).len().saturating_sub(1);
+        let name = wordcraft_layout::fields::field_name(&nested.instr);
+        let value = match name.as_str() {
+            _ if index > 3 => None,
+            "REF" => super::nested_ref_formula::ref_text(current, &nested.instr),
+            "DATE" | "TIME" => {
+                let lang = field_lang(doc, p, k);
+                let pic = date_picture(&nested.instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
+                Some(date_field_result(&nested.instr, &pic, lang.as_deref()))
+            }
+            _ => None,
+        };
+        let value = match value {
+            Some(v) => {
+                changed = true;
+                // One operand: Word compares the text, so inner quotes go, and a value with a space
+                // (or none at all) is quoted unless it already sits inside quotes.
+                let v = v.replace('"', "");
+                let in_quotes = prefix.matches('"').count() % 2 == 1;
+                if !in_quotes && (v.is_empty() || v.contains(char::is_whitespace)) { format!("\"{v}\"") } else { v }
+            }
+            None => stored.to_string(),
+        };
+        fresh.push_str(instr.get(from..nested.at)?);
+        if let Some(n) = out.nested.get_mut(i) {
+            n.at = fresh.len();
+        }
+        if let Some(l) = out.nested_len.get_mut(i) {
+            *l = value.len();
+        }
+        fresh.push_str(&value);
+        from = end;
+    }
+    fresh.push_str(instr.get(from..)?);
+    if !changed {
+        return None;
+    }
+    out.code = code_hash(&fresh);
+    Some((fresh, out))
 }
 
 /// The fresh results output shows for the unlocked fields in every header and footer (each
@@ -1415,6 +1490,36 @@ fn update_button_ranges(s: &mut Session, stories: &[StoryRef]) -> Result<(), Cmd
 #[cfg(test)]
 mod listnum_tests {
     use super::*;
+
+    #[test]
+    fn a_fresh_nested_ref_with_spaces_or_quotes_stays_one_operand() {
+        use wordcraft_doc::para::{CodeParas, NestedCode, code_hash};
+        let props = CharProps::default();
+        let mut p = Paragraph::default();
+        p.insert_object(0, InlineObject::BookmarkStart { name: "x".into() }, &props).unwrap();
+        p.insert_text(p.len(), "a \"b\" c", &props).unwrap();
+        p.insert_object(p.len(), InlineObject::BookmarkEnd { name: "x".into() }, &props).unwrap();
+        let mut doc = wordcraft_doc::Document::new();
+        doc.body = vec![wordcraft_doc::para_block(p.clone())];
+        let check = |before: &str, after: &str, want: &str| {
+            let instr = format!("{before}OLD{after}");
+            let code = CodeParas {
+                code: code_hash(&instr),
+                nested: vec![NestedCode { at: before.len(), instr: "REF x".into() }],
+                nested_len: vec![3],
+                ..Default::default()
+            };
+            let (fresh, code) = fresh_if_condition(&doc, &doc, &p, 0, &instr, Some(&code)).unwrap();
+            assert_eq!(fresh, want);
+            assert_eq!(code.code, code_hash(&fresh));
+            assert_eq!(
+                fresh.get(code.nested[0].at..code.nested[0].at + code.nested_len[0]),
+                Some(want.get(before.len()..before.len() + code.nested_len[0]).unwrap())
+            );
+        };
+        check("IF ", " = 1 yes no", "IF \"a b c\" = 1 yes no");
+        check("IF \"", "\" = 1 yes no", "IF \"a b c\" = 1 yes no");
+    }
 
     #[test]
     fn output_refreshes_numbering_fields_without_changing_stored_results() {
