@@ -231,35 +231,53 @@ fn outline_format(level: u8) -> (NumFormat, &'static str, &'static str) {
     }
 }
 
-/// AUTONUM, AUTONUMLGL and AUTONUMOUT's shared level counters (ECMA-376 §17.16.5.4-6), separate
-/// from LISTNUM's and SEQ's.
+/// AUTONUM, AUTONUMLGL and AUTONUMOUT's shared counters (ECMA-376 §17.16.5.4-6), separate from
+/// LISTNUM's and SEQ's. Only a heading that holds one of these fields moves them, as in Word: a
+/// heading without one changes nothing.
 #[derive(Default)]
 struct AutoNumCount {
+    /// One counter per heading level, counted by fields in headings.
     levels: [u32; 9],
+    /// The one counter of fields in body (non-heading) paragraphs; a counted heading restarts it.
+    body: u32,
+    /// The level of the last heading whose field was counted (0 when none).
     last_heading: u8,
 }
 
 impl AutoNumCount {
     /// Count a field of `name` in a paragraph of heading level `heading` and give its result.
     fn result(&mut self, name: &str, field: &FieldCode, heading: Option<u8>) -> String {
-        let level = heading.unwrap_or_else(|| self.last_heading.saturating_add(1).min(9));
-        let index = usize::from(level.saturating_sub(1));
-        for (i, n) in self.levels.iter_mut().enumerate() {
-            if i == index {
-                *n = n.saturating_add(1);
-            } else if i > index {
-                *n = 0;
+        let (level, n) = match heading.map(|l| l.clamp(1, 9)) {
+            Some(l) => {
+                let index = usize::from(l.saturating_sub(1));
+                for (i, n) in self.levels.iter_mut().enumerate() {
+                    if i == index {
+                        *n = n.saturating_add(1);
+                    } else if i > index {
+                        *n = 0;
+                    }
+                }
+                self.body = 0;
+                self.last_heading = l;
+                (l, self.levels.get(index).copied().unwrap_or(0))
             }
-        }
-        let n = self.levels.get(index).copied().unwrap_or(0);
+            None => {
+                self.body = self.body.saturating_add(1);
+                (self.last_heading.saturating_add(1), self.body)
+            }
+        };
         match name {
             "AUTONUMLGL" => {
-                let parts: Vec<String> = self.levels.iter().take(usize::from(level)).map(|n| n.max(&1).to_string()).collect();
+                let heads = usize::from(if heading.is_some() { level } else { self.last_heading });
+                let mut parts: Vec<String> = self.levels.iter().take(heads).map(|n| n.max(&1).to_string()).collect();
+                if heading.is_none() {
+                    parts.push(n.to_string());
+                }
                 let sep = if field.has('e') { "" } else { "." };
                 format!("{}{sep}", parts.join("."))
             }
             "AUTONUMOUT" => {
-                let (fmt, prefix, suffix) = outline_format(level);
+                let (fmt, prefix, suffix) = outline_format(level.min(9));
                 format!("{prefix}{}{suffix}", fmt.format(n))
             }
             _ => {
@@ -369,7 +387,6 @@ fn seq_walk(doc: &wordcraft_doc::Document, known: Option<std::collections::HashM
         let Some(p) = doc.para(StoryRef::Body, &path) else { continue };
         if let Some(l) = heading_style_level(p) {
             count.listnum.last_heading = l;
-            count.autonum.last_heading = l;
         }
         if let Some(l) = heading_style_level(p)
             && let Some(k) = (l as usize).checked_sub(1)
@@ -629,7 +646,8 @@ pub struct OutputContext {
 /// REVNUM, CREATEDATE, DOCPROPERTY and INFO of these properties show their current
 /// values too, while the same fields in the body and in notes keep theirs (measured with
 /// Microsoft 365 Word's PDF export). The document itself keeps its stored results.
-/// Unlocked PRINTDATE fields show the output time in every story.
+/// Unlocked PRINTDATE and SAVEDATE fields show the output time in every story: Word's PDF export
+/// treats the output as a save, so SAVEDATE shows neither its stored result nor the last-saved date.
 /// `None` when every such field already shows its fresh result, so nothing is copied then.
 pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Document> {
     output_fields_in(doc, None)
@@ -671,7 +689,8 @@ pub fn output_fields_in(doc: &wordcraft_doc::Document, ctx: Option<&OutputContex
     out
 }
 
-/// Output is a print: use one instant for unlocked PRINTDATE fields across all stories.
+/// Output is a print (and, for SAVEDATE, a save): use one instant for unlocked PRINTDATE and
+/// SAVEDATE fields across all stories.
 fn printdate_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
     let now = crate::cmd::now_iso();
     let mut out = Vec::new();
@@ -680,7 +699,7 @@ fn printdate_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
             let Some(p) = doc.para(story, &path) else { continue };
             for (k, o) in p.objects.iter().enumerate() {
                 let InlineObject::Field { instr, locked: false, .. } = o else { continue };
-                if wordcraft_layout::fields::field_name(instr) == "PRINTDATE"
+                if matches!(wordcraft_layout::fields::field_name(instr).as_str(), "PRINTDATE" | "SAVEDATE")
                     && let Some(result) = document_date_result(instr, &now, "M/d/yyyy")
                 {
                     out.push((story, path.clone(), k, result));
@@ -689,6 +708,11 @@ fn printdate_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
         }
     }
     out
+}
+
+/// Whether a field of this name makes the output refresh the body's IF fields.
+fn output_if_trigger(name: &str) -> bool {
+    matches!(name, "SEQ" | "REF" | "DATE" | "PRINTDATE" | "SAVEDATE" | "PAGE" | "NUMPAGES" | "SECTION" | "SECTIONPAGES")
 }
 
 /// Read the original body, including table cells, so refreshed references cannot change the
@@ -706,7 +730,12 @@ fn output_if_results(doc: &wordcraft_doc::Document, current: &wordcraft_doc::Doc
             let (InlineObject::Field { instr, .. } | InlineObject::FieldStart { instr, .. }) = o else { continue };
             last = Some((path.clone(), k));
             let name = wordcraft_layout::fields::field_name(instr);
-            trigger |= matches!(name.as_str(), "SEQ" | "REF" | "DATE" | "PRINTDATE" | "SAVEDATE" | "PAGE" | "NUMPAGES" | "SECTION" | "SECTIONPAGES");
+            trigger |= output_if_trigger(&name);
+            // A field nested in another field's code counts too (measured with Microsoft 365
+            // Word), even when the outer code was edited since the nested fields were recorded.
+            if let InlineObject::Field { code_paras: Some(cp), .. } = o {
+                trigger |= cp.nested.iter().any(|n| output_if_trigger(&wordcraft_layout::fields::field_name(&n.instr)));
+            }
             if let InlineObject::Field { locked: false, code_paras, .. } = o
                 && name == "IF"
                 && let Some(result) = match fresh_if_condition(doc, current, p, k, instr, code_paras.as_deref()) {
@@ -1245,7 +1274,7 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
                 }
                 "QUOTE" => updates.extend(quote_literal(instr).map(|text| (k, text_result(instr, text)))),
                 "SYMBOL" => updates.push((k, wordcraft_layout::fields::symbol_text(instr))),
-                "DATE" | "TIME" | "SAVEDATE" => {
+                "DATE" | "TIME" => {
                     let lang = field_lang(&s.doc, p, k);
                     let pic = date_picture(instr).unwrap_or_else(|| default_picture(&name, lang.as_deref()));
                     updates.push((k, date_field_result(instr, &pic, lang.as_deref())));
@@ -1256,6 +1285,8 @@ fn update_fields_with(s: &mut Session, all: bool, toc_pages_only: bool, explicit
                     updates.extend(document_info_result(&s.doc, &core, &counts, &name, instr).map(|text| (k, text)));
                 }
                 "PRINTDATE" => updates.extend(document_date_result(instr, &core.last_printed, "M/d/yyyy").map(|text| (k, text))),
+                // When the document was last saved, in local time; not "now".
+                "SAVEDATE" => updates.extend(document_date_result(instr, &core.modified, "M/d/yyyy").map(|text| (k, text))),
                 "REF" | "PAGEREF" | "NOTEREF" => {
                     let f = FieldCode::parse(instr);
                     let target = f.args.first().map(|s| s.split('\\').next().unwrap_or("").trim_matches('"')).unwrap_or("");
@@ -1381,10 +1412,14 @@ fn update_body_toc(s: &mut Session, pages_only: bool) -> Result<(), CmdError> {
 
 /// Refresh every unlocked `DATE` and `TIME` field to now, as Word does whenever it shows,
 /// prints or exports a document: a letter written from a template carries today's date, not the
-/// date the template was last saved (#1672).
+/// date the template was last saved (#1672). Unlocked `SAVEDATE` fields show the document's
+/// last-saved time (`core.modified`, in local time), as Word shows on open; one whose property
+/// names no instant keeps its stored result.
 ///
 /// Only those two. `CREATEDATE`, `SAVEDATE` and `PRINTDATE` record when something happened and
-/// are not "now" (except PRINTDATE at output, see [`output_fields`]); `REF`, `PAGEREF`, `TOC` and citations are refreshed on an explicit update
+/// are not "now" on open (PRINTDATE and SAVEDATE are at output, see [`output_fields`]); `REF`, `PAGEREF`, `TOC` and citations are refreshed on an explicit update
+/// Only those three. `CREATEDATE` and `PRINTDATE` keep their stored result (PRINTDATE shows the
+/// output time at output, see [`output_fields`]); `REF`, `PAGEREF`, `TOC` and citations are refreshed on an explicit update
 /// (`fields.updateAll`) and not on open, again as Word does. A field carrying `w:fldLock` keeps
 /// its stored result, which is what the lock is for.
 pub fn refresh_date_fields(doc: &mut wordcraft_doc::Document) {
@@ -1396,6 +1431,10 @@ pub fn refresh_date_fields(doc: &mut wordcraft_doc::Document) {
             for (k, o) in p.objects.iter().enumerate() {
                 let InlineObject::Field { instr, locked: false, .. } = o else { continue };
                 let name = wordcraft_layout::fields::field_name(instr);
+                if name == "SAVEDATE" {
+                    updates.extend(document_date_result(instr, &doc.core.modified, "M/d/yyyy").map(|text| (k, text)));
+                    continue;
+                }
                 if !matches!(name.as_str(), "DATE" | "TIME") {
                     continue;
                 }
