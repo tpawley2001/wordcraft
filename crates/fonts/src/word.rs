@@ -237,22 +237,30 @@ pub fn notdef_advance(family: &str) -> Option<f64> {
     })
 }
 
-/// Advance (em) of Symbol code `code` (0x20-0xFE) when the Symbol font itself isn't installed and
-/// its characters are drawn from another face: Word sizes them by Symbol, not by the face drawn.
-/// `family` is matched as [`notdef_advance`] matches it ("Symbol", "Symbol (PCL6)"); other fonts
-/// (Wingdings and the like included) and codes Symbol has no glyph for give `None`.
+/// Advance (em) of code `code` in a symbol font when that font isn't installed and its characters
+/// are drawn from another face: Word sizes them by the real font, not by the face drawn. `family`
+/// is matched case-insensitively against each `;`-separated name, first match wins: "Symbol",
+/// "Symbol (PCL6)", "Wingdings", "Wingdings 2" and "Wingdings 3". Other fonts (Webdings
+/// included), codes below 0x20 and codes without a known width give `None`.
 ///
-/// Source: the published Adobe font metrics for the PDF core font Symbol (Symbol.afm, "Font Metrics
-/// for PDF Core 14 Fonts", free to use, copy and distribute); no font file was read. Fifteen codes
-/// measured in the application's PDF output agree to the unit (0x44, 0x47, 0x57, 0x59, 0x61, 0x71,
-/// 0x72, 0x74, 0x79, 0x7E, 0xA3, 0xB0, 0xB1, 0xB9, 0xBA). The other codes are unverified there (the
-/// bracket pieces 0xE9-0xFB measured about 389 for 384 in runs whose size could not be pinned).
+/// Symbol's source: the published Adobe font metrics for the PDF core font Symbol (Symbol.afm, "Font
+/// Metrics for PDF Core 14 Fonts", free to use, copy and distribute); no font file was read. Fifteen
+/// codes measured in the application's PDF output agree to the unit (0x44, 0x47, 0x57, 0x59, 0x61,
+/// 0x71, 0x72, 0x74, 0x79, 0x7E, 0xA3, 0xB0, 0xB1, 0xB9, 0xBA). The other codes are unverified there
+/// (the bracket pieces 0xE9-0xFB measured about 389 for 384 in runs whose size could not be pinned).
+///
+/// Wingdings, Wingdings 2 and Wingdings 3: Word's own advances, measured from its PDF output (the
+/// widths it wrote for the embedded subsets in its exports of 115 documents); no font file was read.
 pub fn symbol_advance(family: &str, code: u8) -> Option<f64> {
-    let symbol = family.split(';').map(str::trim).any(|f| f.eq_ignore_ascii_case("symbol") || f.eq_ignore_ascii_case("symbol (pcl6)"));
-    if !symbol {
-        return None;
-    }
-    let w = SYMBOL_WIDTHS.get(usize::from(code)).copied().unwrap_or(0);
+    // (table, the code of its first entry)
+    let (table, first): (&[u16], u8) = family.split(';').map(str::trim).find_map(|f| match f.to_ascii_lowercase().as_str() {
+        "symbol" | "symbol (pcl6)" => Some((&SYMBOL_WIDTHS[..], 0)),
+        "wingdings" => Some((&WINGDINGS_WIDTHS[..], 0x20)),
+        "wingdings 2" => Some((&WINGDINGS2_WIDTHS[..], 0x20)),
+        "wingdings 3" => Some((&WINGDINGS3_WIDTHS[..], 0x20)),
+        _ => None,
+    })?;
+    let w = table.get(usize::from(code.checked_sub(first)?)).copied().unwrap_or(0);
     (w > 0).then(|| f64::from(w) / 1000.0)
 }
 
@@ -275,6 +283,63 @@ const SYMBOL_WIDTHS: [u16; 256] = [
     768, 713, 790, 790, 890, 823, 549, 250, 713, 603, 603, 1042, 987, 603, 987, 603,
     494, 329, 790, 790, 786, 713, 384, 384, 384, 384, 384, 384, 494, 494, 494, 494,
     0, 329, 274, 686, 686, 686, 384, 384, 384, 384, 384, 384, 494, 494, 494, 0,
+];
+
+/// Wingdings: codes 0x20-0xFF, 1/1000 em, 0 = not measured (codes ['0x7f']).
+#[rustfmt::skip]
+const WINGDINGS_WIDTHS: [u16; 224] = [
+    1000, 1030, 1144, 1301, 1344, 894, 1217, 458, 1084, 892, 1132, 1132, 1171, 1171, 1441, 1443,
+    1096, 1343, 699, 699, 892, 554, 602, 1072, 948, 1078, 940, 891, 892, 892, 891, 910,
+    910, 587, 793, 674, 674, 942, 942, 549, 549, 892, 843, 843, 843, 1111, 660, 849,
+    1089, 888, 880, 650, 813, 747, 747, 723, 693, 794, 885, 892, 896, 891, 1156, 1054,
+    964, 1090, 941, 933, 946, 1025, 929, 1096, 1065, 780, 1050, 1271, 747, 953, 747, 891,
+    891, 891, 891, 458, 747, 986, 891, 578, 1060, 1060, 891, 892, 892, 530, 530, 0,
+    892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 892,
+    892, 892, 892, 892, 892, 892, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 313, 458,
+    313, 891, 891, 891, 891, 891, 953, 458, 891, 891, 891, 891, 891, 891, 891, 891,
+    891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891,
+    891, 891, 891, 891, 891, 891, 891, 1048, 1048, 1048, 1048, 1000, 1000, 1000, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1253, 1253, 794, 794, 891, 891, 891, 891, 891, 891, 980,
+    980, 891, 891, 776, 776, 776, 776, 1067, 1067, 891, 891, 873, 873, 873, 873, 891,
+    891, 810, 810, 1060, 810, 782, 782, 782, 782, 482, 385, 635, 786, 892, 892, 1035,
+];
+
+/// Wingdings2: codes 0x20-0xFF, 1/1000 em, 0 = not measured (codes ['0x7f', '0xfa', '0xfb', '0xfc', '0xfd', '0xfe', '0xff']).
+#[rustfmt::skip]
+const WINGDINGS2_WIDTHS: [u16; 224] = [
+    1000, 1030, 1020, 1012, 1019, 1144, 998, 1084, 483, 699, 699, 892, 699, 699, 892, 699,
+    699, 892, 699, 699, 1133, 1097, 892, 892, 892, 1133, 1060, 1060, 674, 674, 946, 946,
+    946, 946, 941, 941, 941, 941, 511, 511, 511, 511, 575, 575, 575, 575, 892, 645,
+    766, 892, 892, 892, 892, 891, 891, 892, 892, 1087, 843, 756, 771, 480, 505, 422,
+    497, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 892, 892, 892, 892, 892, 892, 892,
+    892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 892, 0,
+    927, 927, 710, 710, 817, 650, 699, 891, 891, 891, 891, 891, 891, 891, 891, 891,
+    891, 891, 891, 1000, 1000, 265, 361, 554, 891, 891, 891, 891, 891, 891, 891, 265,
+    361, 554, 891, 891, 891, 891, 891, 891, 891, 891, 891, 305, 373, 441, 713, 986,
+    986, 986, 986, 986, 265, 313, 361, 554, 747, 747, 530, 530, 891, 891, 891, 891,
+    891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891,
+    891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891,
+    891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891,
+    891, 891, 891, 891, 891, 891, 891, 891, 730, 891, 0, 0, 0, 0, 0, 0,
+];
+
+/// Wingdings3: codes 0x20-0xFF, 1/1000 em, 0 = not measured (codes ['0x7f', '0xf1', '0xf2', '0xf3', '0xf4', '0xf5', '0xf6', '0xf7', '0xf8', '0xf9', '0xfa', '0xfb', '0xfc', '0xfd', '0xfe', '0xff']).
+#[rustfmt::skip]
+const WINGDINGS3_WIDTHS: [u16; 224] = [
+    1000, 891, 891, 554, 554, 705, 705, 705, 705, 891, 891, 554, 554, 819, 819, 554,
+    554, 554, 554, 554, 554, 554, 554, 554, 554, 554, 891, 891, 710, 710, 710, 710,
+    981, 981, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891,
+    891, 891, 891, 1084, 891, 855, 544, 544, 810, 810, 942, 942, 942, 942, 940, 940,
+    940, 940, 942, 942, 943, 943, 891, 891, 602, 602, 705, 705, 705, 705, 891, 602,
+    979, 979, 979, 979, 879, 879, 879, 879, 879, 879, 879, 879, 530, 530, 891, 0,
+    891, 891, 891, 891, 891, 794, 794, 891, 891, 891, 891, 385, 385, 891, 891, 482,
+    482, 891, 891, 578, 578, 891, 891, 771, 771, 891, 891, 434, 434, 891, 891, 674,
+    674, 891, 891, 916, 916, 891, 891, 891, 891, 891, 891, 891, 385, 289, 241, 192,
+    891, 891, 891, 891, 891, 530, 530, 674, 674, 795, 795, 578, 578, 440, 440, 891,
+    891, 498, 498, 891, 891, 891, 891, 891, 891, 891, 891, 891, 891, 630, 630, 630,
+    630, 958, 958, 891, 891, 752, 752, 752, 752, 1023, 1023, 891, 891, 824, 824, 824,
+    824, 1112, 1112, 891, 891, 920, 920, 920, 920, 265, 265, 602, 602, 374, 374, 602,
+    602, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
 /// The (ascent, descent) in em Word gives a line with a run in a symbol font, when that isn't the
@@ -1277,7 +1342,7 @@ mod tests {
         assert_eq!(symbol_advance("Symbol", 0xFF), None);
         assert_eq!(symbol_advance("Symbol", 0xF0), None);
         assert_eq!(symbol_advance("Symbol", 0x00), None);
-        assert_eq!(symbol_advance("Wingdings", 0x79), None);
+        assert_eq!(symbol_advance("Wingdings", 0x79), Some(1.060));
         assert_eq!(symbol_advance("Times New Roman", 0x79), None);
         assert_eq!(symbol_advance("", 0x79), None);
         // Every code is looked up without a panic.
