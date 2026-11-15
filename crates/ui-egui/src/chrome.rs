@@ -7,6 +7,9 @@ use wordcraft_doc::{PartKind, StoryRef};
 use crate::theme::{Tokens, TypeRung, fit_text, paint_text, regular, semibold, text_width};
 use crate::{StatusCount, StatusCounts, WordApp, icons};
 
+mod status_items;
+pub use status_items::{StatusItem, status_item_shown, status_item_value, toggle_status_item};
+
 /// Why the caret's language isn't spell-checked (dictionary unreadable or missing), if it isn't.
 pub(crate) fn dictionary_problem(lang: &str, unreadable: &Option<(std::path::PathBuf, String)>, missing: Option<&str>) -> Option<String> {
     match (unreadable, missing) {
