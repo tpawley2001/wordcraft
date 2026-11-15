@@ -81,6 +81,8 @@ use picture::{load_image, load_image_within};
 #[cfg(test)]
 mod field_glyph_tests;
 #[cfg(test)]
+mod missing_font_width_tests;
+#[cfg(test)]
 mod tests;
 
 #[cfg(test)]
