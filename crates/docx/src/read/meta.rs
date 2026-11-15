@@ -2,6 +2,7 @@ use super::{
     Arc, Blocks, Comment, DocxError, El, HashMap, MAX_PARTS, MAX_SOURCES, MAX_TEMPLATE_PATH, NoteKind, NumFormat, Paragraph, PartKind, Reader, Rels,
     Seen, StoryCtx, Zoom, ZoomFit, int, math, on_off, para_block, props, tw, u32_of,
 };
+use wordcraft_doc::SavedView;
 
 /// `w:stylePaneFormatFilter`'s attributes whose bit in `w:val` was measured, with that bit.
 const PANE_FILTER_ATTRS: [(&str, u16); 7] = [
@@ -170,6 +171,15 @@ impl Reader<'_> {
                 "w:writeProtection" => read_write_protection(k, s),
                 "w:captions" => s.captions = read_captions(k),
                 "w:docVars" => s.doc_vars = read_doc_vars(k),
+                // §17.15.1.92: master documents (`masterPages`) are shown in Outline view.
+                "w:view" => {
+                    s.view = match k.attr("w:val") {
+                        Some("web") => Some(SavedView::Web),
+                        Some("outline" | "masterPages") => Some(SavedView::Outline),
+                        Some("normal") => Some(SavedView::Draft),
+                        _ => None,
+                    };
+                }
                 "w:zoom" => {
                     let percent = k.attr("w:percent").and_then(|v| u32_of(v.trim_end_matches('%'))).unwrap_or(100).clamp(10, 500);
                     let fit = match k.attr("w:val") {

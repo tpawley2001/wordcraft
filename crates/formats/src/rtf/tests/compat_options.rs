@@ -1,13 +1,14 @@
-//! Five Word compatibility options the document model stores are read from and written to RTF's
+//! Four Word compatibility options the document model stores are read from and written to RTF's
 //! document formatting properties (RTF 1.9.1, "Document Formatting Properties"):
 //! `\notabind` (no automatic tab stop at a hanging indent), `\truncex` (don't add leading between
-//! rows of text), `\sprslnsp` (suppress extra line spacing like WordPerfect 5.x), `\wpjst`
-//! (full justification like WordPerfect 6.x) and `\spltpgpar` (split page break and paragraph mark).
+//! rows of text), `\sprslnsp` (suppress extra line spacing like WordPerfect 5.x), and `\wpjst`
+//! (full justification like WordPerfect 6.x). `\spltpgpar` works the other way round: see
+//! `compat_defaults.rs`.
 
 use super::*;
 use wordcraft_doc::Settings;
 
-const WORDS: [&str; 5] = ["notabind", "truncex", "sprslnsp", "wpjst", "spltpgpar"];
+const WORDS: [&str; 4] = ["notabind", "truncex", "sprslnsp", "wpjst"];
 
 fn field(s: &Settings, word: &str) -> bool {
     match word {
@@ -15,7 +16,6 @@ fn field(s: &Settings, word: &str) -> bool {
         "truncex" => s.no_leading,
         "sprslnsp" => s.ext_leading_2pt_only,
         "wpjst" => s.wp_justification,
-        "spltpgpar" => s.split_pg_break_and_para_mark,
         _ => false,
     }
 }
@@ -26,7 +26,6 @@ fn set_field(s: &mut Settings, word: &str) {
         "truncex" => s.no_leading = true,
         "sprslnsp" => s.ext_leading_2pt_only = true,
         "wpjst" => s.wp_justification = true,
-        "spltpgpar" => s.split_pg_break_and_para_mark = true,
         _ => {}
     }
 }

@@ -34,4 +34,5 @@ mod toc_page_numbers_only;
 mod custom_labels;
 mod print_section_ranges;
 mod ref_paragraph_numbers;
+mod saved_view;
 mod table_cell_options;

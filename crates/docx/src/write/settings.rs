@@ -49,6 +49,17 @@ fn write_style_pane(w: &mut W, pane: &wordcraft_doc::StylePaneOptions) {
     }
 }
 
+/// `w:view` (§17.15.1.92), between `w:writeProtection` and `w:zoom`; Print Layout writes none.
+fn write_view(w: &mut W, view: Option<wordcraft_doc::SavedView>) {
+    let Some(view) = view else { return };
+    let val = match view {
+        wordcraft_doc::SavedView::Web => "web",
+        wordcraft_doc::SavedView::Outline => "outline",
+        wordcraft_doc::SavedView::Draft => "normal",
+    };
+    w.empty("w:view", &[("w:val", val)]);
+}
+
 /// `w:zoom` (§17.15.1.95): the saved zoom, 100% when there is none.
 fn write_zoom(w: &mut W, zoom: Option<wordcraft_doc::Zoom>) {
     let zoom = zoom.unwrap_or(wordcraft_doc::Zoom { percent: 100, fit: None });
@@ -77,6 +88,7 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
     w.open("w:settings", &ns_refs);
     // §17.15.1.93: the first child of CT_Settings, before `w:view` and `w:zoom`.
     write_protection(&mut w, s.write_protection.as_ref());
+    write_view(&mut w, s.view);
     write_zoom(&mut w, s.zoom);
     // §17.15.1.70 / §17.15.1.69, right after `w:zoom` in CT_Settings.
     if s.remove_personal_info {
