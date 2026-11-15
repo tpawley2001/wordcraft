@@ -388,6 +388,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0535: RTF row shading (`\trcbpat`, `\trcfpat`, `\trshdng`) shades each cell of the row without shading of its own, as the same words on the cell would; a cell's own `\clcbpat` wins, and `\trowd` resets it (`rtf/row_shading_edges.rs`). Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0526: `.doc` sections read their footnote and endnote position, restart, start number and number format, chapter page numbering, form protection, text direction and the 32-bit page-number start ([MS-DOC] §2.6.4), so footnotes that restart each page or count i, ii, iii open as in Word. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0523: DOCX: a header or footer whose last block is a table is saved with no empty paragraph after it (ECMA-376 §17.10.3–4 allow it, and Word opens it so), so it is no taller after save and reopen; a pending watermark or an all-empty table still gets one, and body text and table cells are unchanged (`hf_table_end.rs`). Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0525: `.doc` text keeps outline, shadow, emboss, engrave, double strikethrough, Do not check spelling or grammar, web-hidden and special-hidden, emphasis marks, and text shading and borders (sprmCFOutline … sprmCBrc), as Word shows them. Readiness estimates unchanged. |
