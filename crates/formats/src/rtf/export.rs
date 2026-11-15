@@ -554,6 +554,11 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
         (set.remove_date_time, "\\remdttm"),
         (set.do_not_expand_shift_return, "\\expshrtn"),
         (set.footnote_layout_like_ww8, "\\ftnlytwnine"),
+        (set.no_tab_hang_ind, "\\notabind"),
+        (set.no_leading, "\\truncex"),
+        (set.ext_leading_2pt_only, "\\sprslnsp"),
+        (set.wp_justification, "\\wpjst"),
+        (set.split_pg_break_and_para_mark, "\\spltpgpar"),
         (set.track_changes, "\\revisions"),
         (set.print_forms_data, "\\printdata"),
     ] {
@@ -1539,6 +1544,10 @@ impl Writer {
                     ctl.push_str(w);
                 }
             }
+            // Snap to grid is on by default: only off is written.
+            if x.snap_to_grid == Some(false) {
+                ctl.push_str("\\cgrid0");
+            }
             lang_words(x, &mut ctl);
             // Horizontal scale in percent, 1-600; kerning from a size in half-points.
             if let Some(s) = x.scale.filter(|v| v.is_finite()).map(|v| v.round().clamp(1.0, 600.0) as i32).filter(|v| *v != 100) {
@@ -2089,7 +2098,9 @@ impl Writer {
         if let Some(x) = extra {
             table_place_words(x, out);
         }
-        if !row.is_empty() && row.iter().all(|c| c.header) {
+        // Repeat as header row only for rows that really repeat, never because of the table's look
+        // (Header Row is on in Word's default look and only picks which table style parts apply).
+        if extra.is_some_and(|x| ri < x.header_rows) {
             out.push_str("\\trhdr");
         }
         // Row height in twips: negative for exactly, positive for at least.
@@ -2179,23 +2190,8 @@ impl Writer {
                 if c.covered {
                     out.push_str(&format!("\\pard\\plain{} {cell_end}\n", in_table(itap)));
                 } else {
-                    let blocks: Vec<FBlock> = c
-                        .blocks
-                        .iter()
-                        .cloned()
-                        .map(|b| match b {
-                            FBlock::Para(mut p) if c.header => {
-                                for i in &mut p.inlines {
-                                    if let Inline::Text(_, f) = i {
-                                        f.bold = true;
-                                    }
-                                }
-                                FBlock::Para(p)
-                            }
-                            other => other,
-                        })
-                        .collect();
-                    self.blocks(&blocks, itap, cell_end, out, depth);
+                    // Runs keep their own bold: a table style's bold header row is already in them.
+                    self.blocks(&c.blocks, itap, cell_end, out, depth);
                 }
             }
             if nested {

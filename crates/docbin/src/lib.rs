@@ -932,6 +932,8 @@ fn apply_para_sprms(ctx: &WalkCtx<'_>, pb: &mut ParaBuild, papx: &[u8], istd: u1
     if sprm::iter(papx).any(|prl| fmt::is_frame_sprm(prl.op)) {
         pb.props.frame = fmt::style_frame(ctx.raw_styles, istd as usize);
     }
+    let style_rtl = pb.props.style.as_deref().and_then(|id| ctx.sheet.chain(id).into_iter().rev().find_map(|s| s.para.bidi)).unwrap_or(false);
+    let twins = fmt::ParaTwins::of(papx, style_rtl);
     for prl in sprm::iter(papx) {
         if prl.op == P_ILVL {
             ilvl = Some(ilvl_operand(prl.operand));
@@ -942,7 +944,7 @@ fn apply_para_sprms(ctx: &WalkCtx<'_>, pb: &mut ParaBuild, papx: &[u8], istd: u1
             continue;
         }
         if prl.sgc() == 1 {
-            fmt::apply_para(&mut pb.props, &prl);
+            twins.apply(&mut pb.props, &prl);
         }
     }
     // The paragraph's own list, or its style's list at its own level. Switching the

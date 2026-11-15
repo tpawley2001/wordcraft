@@ -75,6 +75,8 @@ mod char_border_edges;
 #[cfg(test)]
 mod gutter_edges;
 #[cfg(test)]
+mod header_row_save_edges;
+#[cfg(test)]
 mod info_edges;
 #[cfg(test)]
 mod normal_style_save_edges;

@@ -130,6 +130,7 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, look: Option<&str>, props: 
                 underline: e.underline.filter(|u| f.underline && *u != Underline::Single),
                 underline_color: e.underline_color,
                 no_proof: set(e.no_proof),
+                snap_to_grid: e.snap_to_grid.filter(|b| !*b),
                 emphasis: e.emphasis.filter(|m| *m != wordcraft_doc::props::EmphasisMark::None),
                 border: e.border.filter(|b| b.is_visible()),
                 highlight,
@@ -330,6 +331,7 @@ fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
         lang_bidi: e.lang_bidi.clone().filter(|l| !l.is_empty()),
         lang_ea: e.lang_ea.clone().filter(|l| !l.is_empty()),
         no_proof: set(e.no_proof),
+        snap_to_grid: e.snap_to_grid.filter(|b| !*b),
         east_asian_layout: e.east_asian_layout.clone().filter(|l| *l != Default::default()),
         highlight,
         shading,
@@ -1483,6 +1485,8 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
         || t.props.bidi_visual
         || t.props.float.is_some();
     let cell_margins = t.props.cell_margins.filter(|m| m.iter().all(|v| v.is_finite()));
+    // The rows that repeat at the top of each page (Repeat as header row), not the look's header.
+    let header_rows = t.rows.iter().take_while(|r| r.props.header).count();
     let row_gaps = row_gaps(t);
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
@@ -1493,6 +1497,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
                 || placed
                 || cell_margins.is_some()
                 || t.props.fixed
+                || header_rows > 0
                 || !row_gaps.is_empty()
         })
         .map(|(heights, keep_rows)| super::types::TableExtra {
@@ -1508,6 +1513,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             look: t.props.style.is_some().then_some(t.props.look),
             cell_margins,
             fixed: t.props.fixed,
+            header_rows,
             row_gaps,
             ..Default::default()
         });
@@ -1522,7 +1528,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             keep_rows: keep_rows(),
             fixed: t.props.fixed,
             space: [t.props.space_before, t.props.space_after],
-            header_rows: t.rows.iter().take_while(|r| r.props.header).count(),
+            header_rows,
             style: None,
             look: None,
             cell_margins: None,
