@@ -14,6 +14,7 @@ mod autonum_fields;
 mod autonum_heading_rule;
 mod auto_caption;
 mod autocorrect_symbols_word;
+mod math_autocorrect_word;
 mod indent_keys_word;
 mod change_case_word;
 mod change_case_cycle;
