@@ -1914,8 +1914,8 @@ fn watermark_header_respects_linking() {
     assert_eq!(header_ids(&r).len(), 2);
 }
 
-/// #1290: a header holding only a table takes the watermark in the paragraph after the table
-/// (one every story ends with), so it gains no line.
+/// #1290: a header holding only a table takes the watermark in a paragraph after the table, the
+/// only paragraph it gains; without a watermark it ends in the table and gains none.
 #[test]
 fn watermark_in_table_only_header() {
     let mut d = doc_with(vec![Paragraph::with_text("Body", CharProps::default())]);
@@ -1923,11 +1923,11 @@ fn watermark_in_table_only_header() {
     let h = d.add_part(PartKind::Header, vec![Arc::new(Block::Table(t))]);
     d.last_section.headers.default = Some(h);
     let blocks = |d: &Document| d.parts[&d.last_section.headers.default.unwrap()].blocks.len();
-    let plain = blocks(&rt(&d));
+    assert_eq!(blocks(&rt(&d)), 1);
     d.settings.watermark = Some(Watermark::default());
     let r = rt(&d);
     assert_eq!(r.settings.watermark, d.settings.watermark);
-    assert_eq!(blocks(&r), plain);
+    assert_eq!(blocks(&r), 2);
 }
 
 /// #1290: with different odd and even pages, a document with only a default header gains an

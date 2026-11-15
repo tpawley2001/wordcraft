@@ -37,6 +37,7 @@ mod footnote_layout_ww8;
 mod glossary;
 mod gutter_at_top;
 mod heading_levels;
+mod hf_table_end;
 mod hidden_row;
 mod hyperlink_screen_tips;
 mod inline_shape_reach;

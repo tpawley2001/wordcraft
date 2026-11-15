@@ -1116,6 +1116,12 @@ pub struct TableExtra {
     /// The table's default cell padding (top, left, bottom, right), points, for formats that
     /// state it by row (RTF).
     pub cell_margins: Option<[f32; 4]>,
+    /// Its cells run right to left (`w:bidiVisual`), for formats that state it by row (RTF
+    /// `\\rtlrow`).
+    pub bidi_visual: bool,
+    /// Where it floats, when it does, for formats that state it by row (RTF's positioned-table
+    /// words).
+    pub float: Option<wordcraft_doc::props::TableFloat>,
 }
 
 impl FTable {
