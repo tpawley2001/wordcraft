@@ -92,6 +92,7 @@ mod paste_link_failures;
 mod paste_special_results;
 mod manual_duplex;
 mod print_document_properties;
+mod form_shading;
 mod print_forms_data;
 mod print_options;
 mod print_display_options;

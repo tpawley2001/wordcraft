@@ -141,6 +141,7 @@ impl Reader<'_> {
                 "w:mirrorMargins" => s.mirror_margins = on_off(k),
                 "w:gutterAtTop" => s.gutter_at_top = on_off(k),
                 "w:printFormsData" => s.print_forms_data = on_off(k),
+                "w:doNotShadeFormData" => s.do_not_shade_form_data = on_off(k),
                 "w:autoHyphenation" => s.auto_hyphenation = on_off(k),
                 "w:doNotHyphenateCaps" => s.hyphenate_caps = !on_off(k),
                 "w:hyphenationZone" => {

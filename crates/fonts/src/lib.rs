@@ -13,6 +13,7 @@ pub mod math;
 mod script;
 mod ui_fallback;
 pub mod word;
+pub mod word_widths;
 pub use word::twin_avg_char_width_em;
 
 pub use fontdb::{
