@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0596: a missing Georgia, Arial Black, Segoe UI, Bookman Old Style, Perpetua or Gill Sans MT keeps Word's advance widths. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0595: a missing Corbel, Candara, Constantia or Tw Cen MT keeps Word's advance widths. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0586: a number outside a field `\*` format's range now shows Word's "Error! Number cannot be represented in specified format.", so that follow-up is closed, from storytold/wordcraft#4571. Readiness estimates unchanged.)
@@ -270,6 +272,8 @@ Convert to Text now uses comma-space separators and offers recursive nested-tabl
 Formatting restriction settings now include theme and style set switching locks, with DOCX and RTF persistence (P0560); broader dialog depth remains open.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0596: a missing Georgia, Arial Black, Segoe UI, Bookman Old Style, Perpetua or Gill Sans MT keeps Word's advance widths, so their lines break where Word's do. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0595: a missing Corbel, Candara, Constantia or Tw Cen MT (bold only) keeps Word's advance widths, so their lines break where Word's do. Readiness estimates unchanged.
 
