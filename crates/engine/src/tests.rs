@@ -80,6 +80,7 @@ mod move_text_keys;
 mod html_auto_spacing_off_docx;
 mod east_asian_theme_line_grid;
 mod negative_margins;
+mod gutter_at_top;
 mod rtl_gutter;
 mod output_header_footer_counts;
 mod output_header_footer_session;

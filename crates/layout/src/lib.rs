@@ -57,6 +57,7 @@ mod cache;
 mod ctx;
 mod floats;
 mod flow;
+mod gutter_top;
 mod headers;
 mod join;
 mod list_stories;
@@ -368,6 +369,9 @@ pub use join::MAX_JOINED_PARAS;
 /// Lay out the whole document. Where deletions are hidden, a paragraph whose mark is a tracked
 /// deletion is laid out joined to the next one, as Word prints it ([`join`]).
 pub fn layout(doc: &Document, cache: &mut LayoutCache, opts: &LayoutOptions) -> DocLayout {
+    // With the gutter at the top, each section is laid out with it in its top margin.
+    let top = gutter_top::plan(doc);
+    let doc = top.as_ref().unwrap_or(doc);
     match join::plan(doc, opts) {
         Some(joins) => {
             let mut l = layout_doc(&joins.doc, cache, opts);

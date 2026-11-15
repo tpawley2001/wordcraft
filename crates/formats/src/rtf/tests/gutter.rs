@@ -68,3 +68,15 @@ fn a_negative_gutter_counts_as_zero() {
     let d = doc(r"{\rtf1\ansi\gutter-720\sectd\guttersxn-360 a\par}");
     assert_eq!(gutters(&d), ((0.0, false), (0.0, false)));
 }
+
+#[test]
+fn a_gutter_at_the_top_is_read_and_written() {
+    // `\gutterprl` (parallel gutter) is DOCX `w:gutterAtTop`; `\gutterprl0` turns it off.
+    let d = doc(r"{\rtf1\ansi\gutter1440\gutterprl\sectd a\par}");
+    assert!(d.settings.gutter_at_top);
+    let out = export(&d);
+    assert_eq!(out.matches("\\gutterprl").count(), 1, "{out}");
+    assert!(doc(&out).settings.gutter_at_top);
+    assert!(!doc(r"{\rtf1\ansi\gutterprl\gutterprl0\sectd a\par}").settings.gutter_at_top);
+    assert!(!export(&doc(r"{\rtf1\ansi\gutter1440\sectd a\par}")).contains("\\gutterprl"));
+}

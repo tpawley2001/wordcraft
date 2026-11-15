@@ -496,6 +496,7 @@ pub fn pages_fingerprint(doc: &crate::Document) -> u64 {
         parts,
         s.even_odd_headers,
         s.mirror_margins,
+        s.gutter_at_top,
         &s.page_color,
         &s.page_picture,
         s.watermark.as_ref().filter(|w| !w.text.trim().is_empty()),

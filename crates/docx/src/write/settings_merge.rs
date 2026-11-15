@@ -22,6 +22,7 @@ const OWNED: &[&str] = &[
     "w:displayBackgroundShape",
     "w:printFormsData",
     "w:mirrorMargins",
+    "w:gutterAtTop",
     "w:attachedTemplate",
     "w:linkStyles",
     "w:stylePaneFormatFilter",

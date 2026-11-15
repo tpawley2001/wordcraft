@@ -34,14 +34,16 @@ pub(crate) fn place_para(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, blo
             place_para_in_flow(ctx, pb, p, block, body_top);
             return;
         }
-        // Its (empty) line stays where the text ended, even at the bottom of a full column.
+        // Its (empty) line stays where the text ended, even at the bottom of a full column. It takes
+        // no room, so it gets no line number and is not counted (Word).
         let (y, prev, bottom, content_bottom, at) = (pb.y, pb.prev.clone(), pb.bottom, pb.content_bottom, (pb.pages.len(), pb.col));
+        let line_no = pb.line_no;
         let drawn = pb.page().map_or(0, |page| page.items.len());
         pb.bottom = f32::MAX / 4.0;
         place_para_in_flow(ctx, pb, p, block, body_top);
         pb.bottom = bottom;
         if (pb.pages.len(), pb.col) == at {
-            (pb.y, pb.prev, pb.content_bottom) = (y, prev, content_bottom);
+            (pb.y, pb.prev, pb.content_bottom, pb.line_no) = (y, prev, content_bottom, line_no);
             if let Some(page) = pb.page() {
                 strip_mark(page, drawn, true);
             }
@@ -53,6 +55,7 @@ pub(crate) fn place_para(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, blo
         // new page just for a mark; later text starts there instead.
         let (y, prev, bottom, content_bottom, at) = (pb.y, pb.prev.clone(), pb.bottom, pb.content_bottom, (pb.pages.len(), pb.col));
         let drawn = pb.page().map_or(0, |page| page.items.len());
+        let line_no = pb.line_no;
         pb.bottom = f32::MAX / 4.0;
         place_para_in_flow(ctx, pb, p, block, body_top);
         if pb.pages.len() == at.0 {
@@ -64,6 +67,8 @@ pub(crate) fn place_para(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, blo
                 && let Some(page) = pb.page()
             {
                 strip_mark(page, drawn, false);
+                // Its line number went with it: the mark takes no room, so it is not counted.
+                pb.line_no = line_no;
             }
         }
         return;
@@ -130,7 +135,8 @@ fn mark_under_break(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block: u
     true
 }
 
-/// Remove the list label from a mark's lines; optionally keep its other drawing items.
+/// Remove the list label and the line numbers from a mark's lines; optionally keep its other
+/// drawing items.
 fn strip_mark(page: &mut Page, drawn: usize, keep_others: bool) {
     let tail = page.items.split_off(drawn.min(page.items.len()));
     page.items.extend(tail.into_iter().filter_map(|item| match item {
@@ -139,7 +145,7 @@ fn strip_mark(page: &mut Page, drawn: usize, keep_others: bool) {
             bare.label = None;
             Some(Placed::Lines { story, path, para: Arc::new(bare), l0, l1, x, y, turn })
         }
-        Placed::Lines { story, .. } if story == DECOR_STORY && !keep_others => None,
+        Placed::Lines { story, .. } if story == DECOR_STORY => None,
         line @ Placed::Lines { .. } => Some(line),
         other => keep_others.then_some(other),
     }));
