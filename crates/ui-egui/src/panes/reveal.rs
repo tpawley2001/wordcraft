@@ -9,6 +9,10 @@ pub(super) fn reveal(app: &mut WordApp, ui: &mut Ui) {
         if ui.checkbox(&mut compare, tl!("Compare to another selection")).changed() {
             let _ = app.run("view.revealCompare", json!({"value": compare}));
         }
+        let mut style_source = app.session.view.reveal_style_source;
+        if ui.checkbox(&mut style_source, tl!("Distinguish style source")).changed() {
+            let _ = app.run("view.revealStyleSource", json!({"value": style_source}));
+        }
         if let Some(differences) = formatting.get("differences").and_then(Value::as_array) {
             ui.label(egui::RichText::new(tl!("Formatting differences")).strong());
             ui.indent("revealDifferences", |ui| {
@@ -32,7 +36,12 @@ pub(super) fn reveal(app: &mut WordApp, ui: &mut Ui) {
                     ui.indent(index, |ui| {
                         if let Some(entries) = section.get("entries").and_then(Value::as_array) {
                             for entry in entries.iter().take(64) {
-                                ui.add(egui::Label::new(describe(entry)).wrap());
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.add(egui::Label::new(describe(entry)).wrap());
+                                    if let Some(source) = source(entry) {
+                                        ui.label(egui::RichText::new(source).weak());
+                                    }
+                                });
                             }
                         }
                     });
@@ -72,6 +81,16 @@ fn describe(entry: &Value) -> String {
     match entry.get("label").and_then(Value::as_str) {
         Some(label) => format!("{}: {value}", tl!(label)),
         None => value,
+    }
+}
+
+/// Where an entry's formatting comes from, as Distinguish style source shows it after the entry:
+/// `(Heading 1)` for a style, `(direct)` for direct formatting, nothing for the defaults.
+fn source(entry: &Value) -> Option<String> {
+    match entry.get("source").and_then(Value::as_str)? {
+        "style" => entry.get("styleName").and_then(Value::as_str).map(|name| format!("({name})")),
+        "direct" => Some(format!("({})", tl!("direct"))),
+        _ => None,
     }
 }
 

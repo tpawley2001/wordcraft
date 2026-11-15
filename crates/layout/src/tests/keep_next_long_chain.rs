@@ -95,3 +95,22 @@ fn a_chain_that_fits_on_a_page_still_moves_together() {
     let got: Vec<usize> = (0..=links).map(|k| page_of(&l, fillers + k)).collect();
     assert_eq!(got, vec![1; links + 1]);
 }
+
+#[test]
+fn a_chain_of_many_short_links_that_fits_on_a_page_moves_together() {
+    // A Word 97-2003 file's references list: a heading and 16 one-line paragraphs, all kept with
+    // the next, start near the foot of page 5; Word moves the whole list to page 6. Its first
+    // links alone would fit (we measured only 8 links ahead and broke the list after the fifth).
+    let cap = lines_per_page();
+    let links = 16;
+    assert!(links + LAST_LINES < cap, "page holds {cap} lines");
+    let fillers = cap - 12;
+    let d = chain_doc(fillers, 1, links);
+    let l = lay(&d);
+    let got: Vec<usize> = (0..=links).map(|k| page_of(&l, fillers + k)).collect();
+    assert_eq!(got, vec![1; links + 1]);
+    // Without room for the whole chain only because of its tail, it still moves.
+    let d = chain_doc(cap - links, 1, links);
+    let l = lay(&d);
+    assert_eq!(page_of(&l, cap - links), 1);
+}

@@ -296,6 +296,10 @@ pub struct Settings {
     /// puts only what was filled into the legacy form fields on the paper, where the full page
     /// has it (for pre-printed forms). PDF export is unaffected.
     pub print_forms_data: bool,
+    /// Form Field Shading turned off (`w:doNotShadeFormData`, ECMA-376 Part 1 §17.15.1.42; RTF
+    /// `\formshade` is its opposite). Preserved on open/save. While it is off the editor draws legacy
+    /// form fields on grey (screen only; print and PDF never show the shading).
+    pub do_not_shade_form_data: bool,
     pub auto_hyphenation: bool,
     /// Hyphenation zone (`w:hyphenationZone`), points: a line is hyphenated only when breaking
     /// it at a word boundary would leave more than this empty at its end.
@@ -329,6 +333,15 @@ pub struct Settings {
     /// formatting (`w:formatting="1"`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub protect_formatting: bool,
+    /// `w:autoFormatOverride`: retained without changing AutoFormat behaviour.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub auto_format_override: bool,
+    /// `w:styleLockTheme`: block theme switching while formatting protection is enforced.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub style_lock_theme: bool,
+    /// `w:styleLockQFSet`: block style set switching while formatting protection is enforced.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub style_lock_qf_set: bool,
     /// The protection password's hash, as the file's `w:documentProtection` attributes
     /// (`w:algorithmName`, `w:hashValue`, `w:saltValue`, `w:spinCount`, or the older
     /// `w:cryptAlgorithmSid`, `w:hash`, `w:salt`…). Empty: no password.
@@ -811,6 +824,7 @@ impl Default for Settings {
             mirror_margins: false,
             gutter_at_top: false,
             print_forms_data: false,
+            do_not_shade_form_data: false,
             auto_hyphenation: false,
             hyphenation_zone: DEFAULT_HYPHENATION_ZONE,
             hyphenate_caps: true,
@@ -828,6 +842,9 @@ impl Default for Settings {
             endnote_pr: section::NoteProps::default(),
             protection: None,
             protect_formatting: false,
+            auto_format_override: false,
+            style_lock_theme: false,
+            style_lock_qf_set: false,
             protect_hash: Vec::new(),
             write_protection: None,
             compat_mode: COMPAT_MODE_CURRENT,

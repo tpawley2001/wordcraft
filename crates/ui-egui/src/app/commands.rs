@@ -1255,6 +1255,7 @@ fn input_dialog_other(id: &str, params: &Value) -> Option<&'static str> {
         "file.encrypt" if params.get("password").is_none() => Some("encryptPassword"),
         "file.protect" | "review.restrict" if no_settings(params) => Some("restrictEditing"),
         "fields.setCode" if !has_value(params, "code") => Some("editFieldCode"),
+        "fields.editLink" if !has_value(params, "index") => Some("editLinks"),
         "picture.size" if no_settings(params) => Some("pictureSize"),
         "list.define" if params.get("levels").is_none() => Some("defineList"),
         "para.defineNumber" if params.get("format").is_none() && params.get("text").is_none() => Some("defineNumber"),

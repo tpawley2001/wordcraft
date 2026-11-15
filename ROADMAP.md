@@ -2,6 +2,10 @@
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (a page break at the end of the document starts no blank last page, as in Word. Readiness estimates unchanged.)
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0564: REF to an empty bookmark defined by SET shows its value in PDF/print and after F9. Output uses stored SET results; repeated SET names follow document order. Non-empty bookmarks keep their text. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged; earlier: P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged; earlier: P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged; earlier: P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged)
@@ -187,6 +191,10 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 ## Progress log
 
 - 2026-11-15: A page break at the very end of the document starts no blank last page, as in Word (we added a page holding only the header and footer, and the page count was one too many). Readiness estimates unchanged.
+- 2026-11-15: P0564: REF to an empty bookmark defined by SET shows its value in PDF/print and after F9. Output uses stored SET results; repeated SET names follow document order. Non-empty bookmarks keep their text. Readiness estimates unchanged.
+
+- 2026-11-15: P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.
+- 2026-11-15: P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged.
 - 2026-11-14: P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged.
 
 - 2026-11-14: P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
@@ -538,6 +546,7 @@ Imported Word 97–2003 `.doc`/`.dot` files now ask for a supported DOCX target 
 | 2026-11-07 | Deleting a preceding empty paragraph keeps the following paragraph's style, outline and mark formatting rather than promoting body text to a heading (Leaf #152). Non-empty merges and section absorption retain their existing rules; synthetic model, command, DOCX and Undo/Redo coverage. |
 | 2026-11-04 | Pictures keep the brightness, contrast and transparency their file gives them (#1711, #1766): a "Washout" picture watermark (VML `gain`/`blacklevel`) and a washed-out letterhead picture behind the text (`a:lum`) are drawn faded on screen and in PDF instead of at full colour, with the pixel curve measured on Word's own PDF export; `a:alphaModFix` transparency too. Saved back as DrawingML (and as VML `gain`/`blacklevel` in Word 2003 XML, without the transparency). Picture Format › Corrections, Transparency and Color › Washout replace the file's values (other Color modes leave them alone), and Reset Picture discards them all, as in Word; the PDF embeds the corrected pixels once per picture |
 |---|---|
+| 2026-11-14 | P0545: DOCX and RTF preserve Form Field Shading on open/save; drawing the shading remains deferred. |
 | 2026-10-17 | Copies keep their formatting in programs that read RTF rather than HTML: Copy and Cut put RTF beside the text and HTML on the system clipboard on Windows, macOS and Wayland (an X11 copy stays text and HTML, since arboard owns the selection there; a copy of only pictures or shapes carries no HTML or RTF, so pasting it back keeps every detail), and Paste reads another program's RTF on macOS and X11 too, not only on Windows and Wayland |
 | 2026-11-03 | **Arabic interface (#1195):** `ar` selectable (and every `ar-*` system locale); craft-i18n catalog; mirrored ribbon, panes, File page, dialogs and menus; Arabic UI font fallback; document direction stays independent. No kashida or Arabic proofing yet; Hebrew UI still open. |
 | 2026-11-01 | **English spelling reads SCOWL 2026 (CP2, #40, #520, #1281, #1045):** en-US, en-GB (also en-AU, en-NZ, en-IE, en-IN…) and en-CA each check against their own SCOWL `rel-2026.02.25` Hunspell dictionary from craft-i18n, embedded and read by craft-proof's affix engine (which now understands `COMPOUNDRULE`, so ordinals like `21st` are words). Suggestions come from the dialect's own dictionary; our American/British policy (`en-variants.txt`) still decides the other dialect's spellings, because Word accepts more than SCOWL's one spelling per dialect (`organize` and `organise` in en-GB). Rare words the 1990s Moby list accepted (`aposiopesis`) are now flagged. The Moby list stays for hyphenation and as a fallback. The build carries 1.5 MB more Language data. |
@@ -1037,6 +1046,9 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 ## Revision history
 
+> 2026-11-15 · trivial · P0564: REF to an empty bookmark defined by SET shows its value in PDF/print and after F9. Output uses stored SET results; repeated SET names follow document order. Non-empty bookmarks keep their text. Readiness estimates unchanged.
+
+> 2026-11-15 · trivial · P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged.
 > 2026-11-14 · trivial · P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
 
 > 2026-11-14 · trivial · P0494: date/time pictures split runs of `h`, `H`, `m` and `s` into items of at most two letters; lowercase `a/p` shows AM or PM. Readiness estimates unchanged.
@@ -1046,6 +1058,8 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | trivial | P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged. |
+| 2026-11-14 | trivial | P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0510: AutoFit Window preserves column proportions and sets cell percentages; Contents clears cell preferred widths; Fixed clears table preferred widths and pins cells to the grid. Column Width clears cell percentages. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged. |

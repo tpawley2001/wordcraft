@@ -22,7 +22,7 @@ const MODES: [&str; 5] = ["none", "readOnly", "comments", "trackedChanges", "for
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("review.restrict", "Restrict Editing", "Review › Protect", restrict).params(
-            r#"{"mode"?: "none|readOnly|comments|trackedChanges|forms" (start enforcing; "none" stops), "formatting"?: bool (limit formatting to unlocked styles), "lockedStyles"?: [style id or name] (the styles that can't be applied; every other style is unlocked), "password"?: string (set when enforcing; required to stop a password-protected document), "stop"?: bool, "exception"?: "add" (the selection stays editable for everyone) | "remove" (exceptions touching the selection) | "removeAll"} → state"#,
+            r#"{"mode"?: "none|readOnly|comments|trackedChanges|forms" (start enforcing; "none" stops), "formatting"?: bool (limit formatting to unlocked styles), "blockTheme"?: bool, "blockStyleSet"?: bool, "autoFormatOverride"?: bool, "lockedStyles"?: [style id or name] (the styles that can't be applied; every other style is unlocked), "password"?: string (set when enforcing; required to stop a password-protected document), "stop"?: bool, "exception"?: "add" (the selection stays editable for everyone) | "remove" (exceptions touching the selection) | "removeAll"} → state"#,
         ),
     ]
 }
@@ -35,6 +35,9 @@ pub fn state(s: &Session) -> Value {
     json!({
         "protection": st.protection,
         "formatting": st.protect_formatting,
+        "blockTheme": st.style_lock_theme,
+        "blockStyleSet": st.style_lock_qf_set,
+        "autoFormatOverride": st.auto_format_override,
         "password": !st.protect_hash.is_empty(),
         "lockedStyles": s.doc.styles.styles.iter().filter(|x| x.locked).map(|x| x.id.clone()).collect::<Vec<_>>(),
         "exceptions": regions.len(),
@@ -72,6 +75,18 @@ fn restrict(s: &mut Session, v: &Value) -> CmdResult {
             _ => return Err(CmdError::Params("`exception` is \"add\", \"remove\" or \"removeAll\"".into())),
         }
         return Ok(state(s));
+    }
+    for (name, field) in [
+        ("blockTheme", &mut s.doc.settings.style_lock_theme),
+        ("blockStyleSet", &mut s.doc.settings.style_lock_qf_set),
+        ("autoFormatOverride", &mut s.doc.settings.auto_format_override),
+    ] {
+        if let Some(on) = p::bool(v, name) {
+            if s.doc.settings.protection.is_some() {
+                return Err(CmdError::Disabled("stop protection before changing the formatting restrictions".into()));
+            }
+            *field = on;
+        }
     }
     if let Some(list) = v.get("lockedStyles") {
         let Some(list) = list.as_array() else { return Err(CmdError::Params("`lockedStyles` is a list of style ids or names".into())) };
@@ -306,6 +321,14 @@ pub(crate) fn greyed_out(s: &Session, id: &str, facts: impl FnOnce() -> Facts) -
     let mode = s.doc.settings.protection.as_deref()?;
     if always_allowed(id, &Value::Null) {
         return None;
+    }
+    if s.doc.settings.protect_formatting {
+        if s.doc.settings.style_lock_theme && matches!(id, "design.theme" | "design.themeColors" | "design.themeFonts") {
+            return Some("theme switching is blocked");
+        }
+        if s.doc.settings.style_lock_qf_set && id == "design.styleSet" {
+            return Some("style set switching is blocked");
+        }
     }
     if mode == "forms" {
         match id {
@@ -660,7 +683,13 @@ fn flush(out: &mut Vec<Piece>, piece: &mut String, props: &CharProps, in_hole: b
 /// Did undo or redo take protection away (it may only be lifted with Stop Protection)?
 pub(crate) fn protection_lifted(before: &Document, after: &Document) -> bool {
     let (b, a) = (&before.settings, &after.settings);
-    b.protection.is_some() && (a.protection != b.protection || a.protect_formatting != b.protect_formatting || a.protect_hash != b.protect_hash)
+    b.protection.is_some()
+        && (a.protection != b.protection
+            || a.protect_formatting != b.protect_formatting
+            || a.style_lock_theme != b.style_lock_theme
+            || a.style_lock_qf_set != b.style_lock_qf_set
+            || a.auto_format_override != b.auto_format_override
+            || a.protect_hash != b.protect_hash)
 }
 
 /// Where typing at the caret `p` goes in a document that is read only or open to comments only: a

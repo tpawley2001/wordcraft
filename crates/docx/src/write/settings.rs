@@ -143,6 +143,7 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
         }
         w.empty("w:documentProtection", &a);
     }
+    write_formatting_locks(&mut w, s);
     w.val("w:defaultTabStop", &crate::units::twips(s.default_tab.clamp(1.0, 1584.0)));
     if s.auto_hyphenation {
         w.empty("w:autoHyphenation", &[]);
@@ -175,6 +176,9 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
             }
         }
     }
+    if s.do_not_shade_form_data {
+        w.empty("w:doNotShadeFormData", &[]);
+    }
     // Word saves a document opened from RTF with Compress punctuation in compatibility mode 11
     // (see `write_compatibility_settings`), so the reopened copy keeps squeezing spaces like RTF.
     let char_spacing = if s.rtf_justification && s.char_spacing == wordcraft_doc::CharSpacing::DoNotCompress {
@@ -204,6 +208,17 @@ fn write_doc_vars(w: &mut W, vars: &[wordcraft_doc::DocVar]) {
         w.empty("w:docVar", &[("w:name", &v.name), ("w:val", &v.value)]);
     }
     w.close("w:docVars");
+}
+
+/// Formatting restriction switches follow document protection in CT_Settings order.
+fn write_formatting_locks(w: &mut W, s: &wordcraft_doc::Settings) {
+    for (on, name) in
+        [(s.auto_format_override, "w:autoFormatOverride"), (s.style_lock_theme, "w:styleLockTheme"), (s.style_lock_qf_set, "w:styleLockQFSet")]
+    {
+        if on {
+            w.empty(name, &[]);
+        }
+    }
 }
 
 /// `w:writeProtection` (§17.15.1.93): Read-only recommended and the password to modify's hash.
@@ -569,4 +584,25 @@ pub(super) fn app_xml(doc: &Document) -> Vec<u8> {
     }
     w.close("Properties");
     w.into_bytes()
+}
+
+#[cfg(test)]
+mod formatting_lock_tests {
+    use super::*;
+
+    #[test]
+    fn formatting_switches_follow_protection_and_precede_tab_stop() {
+        let mut doc = Document::new();
+        doc.settings.protection = Some("none".into());
+        doc.settings.protect_formatting = true;
+        doc.settings.auto_format_override = true;
+        doc.settings.style_lock_theme = true;
+        doc.settings.style_lock_qf_set = true;
+        let xml = String::from_utf8(settings_xml(&doc, false, false, None)).unwrap();
+        let positions: Vec<_> = ["w:documentProtection", "w:autoFormatOverride", "w:styleLockTheme", "w:styleLockQFSet", "w:defaultTabStop"]
+            .iter()
+            .map(|name| xml.find(name).unwrap())
+            .collect();
+        assert!(positions.windows(2).all(|p| p[0] < p[1]), "{xml}");
+    }
 }

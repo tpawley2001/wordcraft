@@ -482,8 +482,9 @@ impl<'a> Builder<'a> {
             };
             let k = st.size / st.face.upem.max(1.0) as f32;
             let hscale = rc.scale / 100.0;
-            // A missing font Word has advances for (Univers) keeps them: the substitute's glyph is
-            // drawn at the start of a cell as wide as the real font's (`missing_font_advance`).
+            // A missing font Word has advances for (Univers, Verdana, Tahoma, Century Gothic,
+            // SimSun, Aptos, Aptos Display, Trebuchet MS, Garamond) keeps them: the substitute's glyph is drawn at the start of a cell as wide
+            // as the real font's (`missing_font_advance`).
             let word_advances = resolved.substituted && !key.complex && st.face.id() == primary.id() && st.size.is_finite() && st.size > 0.0;
             // Group glyphs by cluster byte offset; graphemes may span several shaper clusters.
             // Complex-script syllables the graphemes split (Myanmar vowel signs, stacked
@@ -671,7 +672,10 @@ impl<'a> Builder<'a> {
         if self.glyphs.len() != (g0 as usize).saturating_add(1) {
             return None;
         }
-        let w = wordcraft_fonts::word::missing_font_advance(&rc.font, rc.bold, map(c))? as f32 * em;
+        let c = map(c);
+        let em_w = wordcraft_fonts::word::missing_font_advance(&rc.font, rc.bold, c)
+            .or_else(|| wordcraft_fonts::word_widths::missing_font_advance(&rc.font, rc.bold, rc.italic, c))?;
+        let w = em_w as f32 * em;
         w.is_finite().then_some(w)
     }
 

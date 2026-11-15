@@ -141,6 +141,7 @@ impl Reader<'_> {
                 "w:mirrorMargins" => s.mirror_margins = on_off(k),
                 "w:gutterAtTop" => s.gutter_at_top = on_off(k),
                 "w:printFormsData" => s.print_forms_data = on_off(k),
+                "w:doNotShadeFormData" => s.do_not_shade_form_data = on_off(k),
                 "w:autoHyphenation" => s.auto_hyphenation = on_off(k),
                 "w:doNotHyphenateCaps" => s.hyphenate_caps = !on_off(k),
                 "w:hyphenationZone" => {
@@ -168,6 +169,9 @@ impl Reader<'_> {
                     self.endnote_sep_ids.extend(k.children("w:endnote").filter_map(|f| f.attr("w:id").and_then(int)));
                 }
                 "w:documentProtection" => read_protection(k, s),
+                "w:autoFormatOverride" => s.auto_format_override = on_off(k),
+                "w:styleLockTheme" => s.style_lock_theme = on_off(k),
+                "w:styleLockQFSet" => s.style_lock_qf_set = on_off(k),
                 "w:writeProtection" => read_write_protection(k, s),
                 "w:captions" => s.captions = read_captions(k),
                 "w:docVars" => s.doc_vars = read_doc_vars(k),

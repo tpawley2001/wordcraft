@@ -8,6 +8,7 @@ use super::{
     StoryRef, TextColor, Underline,
 };
 use crate::display::Paint;
+use crate::fields::FIELD_SHADING;
 use wordcraft_doc::Paragraph;
 use wordcraft_doc::graphic::PathSeg;
 use wordcraft_doc::para::ShapeKind;
@@ -211,7 +212,16 @@ fn collect_glyph_run(
 /// shows a form field's data (`None` otherwise).
 fn run_stop(ctx: &LineContext<'_, '_, '_>, k: usize, at: usize) -> Option<usize> {
     if !ctx.opts.forms_data_only {
-        return Some(ctx.line.c1);
+        if !form_shading_on(ctx) {
+            return Some(ctx.line.c1);
+        }
+        // With Form Field Shading, a form field's text is a run of its own (drawn on the grey),
+        // and the text around it runs up to it.
+        let field = is_form_cluster(ctx, k);
+        let end = (k + 1..ctx.line.c1)
+            .find(|&j| ctx.pl.clusters.get(j).is_some_and(|c| if field { c.start != at } else { is_form_cluster(ctx, j) }))
+            .unwrap_or(ctx.line.c1);
+        return Some(end);
     }
     ctx.forms.binary_search(&at).ok().map(|_| k + 1)
 }
@@ -260,8 +270,10 @@ fn draw_glyph_runs(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
             (None, Some(r)) => m.delete_color.unwrap_or_else(|| author(r)),
             _ => ctx.ink(&rc.color, rc.shading.or(rc.highlight)),
         };
-        // The highlight or shading drawn under this run (as filled in the backgrounds pass).
-        let text_bg = rc.highlight.or(rc.shading);
+        // The highlight or shading drawn under this run (as filled in the backgrounds pass),
+        // else a form field's grey.
+        let form_bg = (form_shading_on(ctx) && is_form_cluster(ctx, run_start)).then_some(FIELD_SHADING);
+        let text_bg = rc.highlight.or(rc.shading).or(form_bg);
         let ins_mark = ins.map(|_| if moved_to { m.move_to_mark } else { m.insert_mark });
         let del_mark = del.map(|_| if moved_from { m.move_from_mark } else { m.delete_mark });
         if del_mark == Some(DeleteMark::Caret) {
@@ -576,6 +588,8 @@ fn character_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
     } else {
         (ctx.top, ctx.line.band_height())
     };
+    // Form Field Shading goes first: a run's own shading or highlight is drawn over it.
+    form_field_shading(ctx, band_top, band_height, out);
     let mut open: Option<(Border, f32, f32)> = None;
     for k in ctx.line.c0..ctx.line.c1 {
         let (Some(cluster), Some(left), Some(right)) = (ctx.pl.clusters.get(k), ctx.line.cl_left(k), ctx.line.cl_right(k)) else { continue };
@@ -606,6 +620,57 @@ fn character_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
     }
     if let Some((border, x0, x1)) = open {
         run_box(&border, x0, x1, ctx.top, ctx.bottom, ctx.alpha, out);
+    }
+}
+
+/// Whether legacy form fields are drawn on grey ([`DisplayOptions::form_field_shading`], the
+/// document's Form Field Shading on, not Print only the data from a form).
+fn form_shading_on(ctx: &LineContext<'_, '_, '_>) -> bool {
+    let opts = ctx.opts;
+    opts.form_field_shading && !opts.forms_data_only && !ctx.doc.settings.do_not_shade_form_data && !ctx.pl.forms.is_empty()
+}
+
+/// Whether cluster `k` shows a legacy form field laid out as a form (not as its code).
+fn is_form_cluster(ctx: &LineContext<'_, '_, '_>, k: usize) -> bool {
+    ctx.pl.clusters.get(k).is_some_and(|c| c.kind != ClKind::Marker && ctx.pl.forms.binary_search(&c.start).is_ok())
+}
+
+/// Form Field Shading (`w:doNotShadeFormData` off, ECMA-376 Part 1 §17.15.1.42): one grey fill
+/// behind each legacy form field's part of the line (a text field's result, a drop-down's entry, a
+/// check box's square), the height of the character shading. Screen only
+/// ([`DisplayOptions::form_field_shading`]); fields shown as their codes keep their code shading.
+fn form_field_shading(ctx: &LineContext<'_, '_, '_>, band_top: f32, band_height: f32, out: &mut Vec<Draw>) {
+    if !form_shading_on(ctx) {
+        return;
+    }
+    let mut fill = |x0: f32, x1: f32| {
+        if x1 - x0 > 0.0 && x0.is_finite() && x1.is_finite() {
+            out.push(Draw::Fill { rect: Rect::new(x0, band_top, x1 - x0, band_height), color: FIELD_SHADING, alpha: ctx.alpha, text_bg: true });
+        }
+    };
+    // The field being shaded on this line: its offset and extent so far.
+    let mut open: Option<(usize, f32, f32)> = None;
+    for k in ctx.line.c0..ctx.line.c1 {
+        let (Some(cluster), Some(left), Some(right)) = (ctx.pl.clusters.get(k), ctx.line.cl_left(k), ctx.line.cl_right(k)) else { continue };
+        if !is_form_cluster(ctx, k) {
+            continue;
+        }
+        let (x0, x1) = (ctx.x + left.min(right), ctx.x + left.max(right));
+        match open.as_mut() {
+            Some((at, a, b)) if *at == cluster.start => {
+                *a = a.min(x0);
+                *b = b.max(x1);
+            }
+            _ => {
+                if let Some((_, a, b)) = open.take() {
+                    fill(a, b);
+                }
+                open = Some((cluster.start, x0, x1));
+            }
+        }
+    }
+    if let Some((_, a, b)) = open {
+        fill(a, b);
     }
 }
 

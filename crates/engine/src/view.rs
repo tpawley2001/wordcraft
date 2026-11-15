@@ -40,6 +40,10 @@ pub struct ViewState {
     /// pane compares the current one with. On screen only, not saved and not undone.
     #[serde(default, skip)]
     pub reveal_compare: Option<crate::doc_state::Selection>,
+    /// Reveal Formatting › Distinguish style source: each font and paragraph entry says whether it
+    /// comes from a style or from direct formatting. On screen only, not saved.
+    #[serde(default, skip)]
+    pub reveal_style_source: bool,
     /// Styles pane › Disable Linked Styles: a linked style always applies as a paragraph style.
     /// Not kept between runs.
     #[serde(default)]
@@ -250,6 +254,7 @@ impl Default for ViewState {
             style_inspector: false,
             reveal_formatting_pane: false,
             reveal_compare: None,
+            reveal_style_source: false,
             disable_linked_styles: false,
             selection_pane: false,
             split: None,

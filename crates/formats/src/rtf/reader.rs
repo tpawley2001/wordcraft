@@ -603,7 +603,12 @@ impl Reader {
     /// options, linked styles, Shift+Return expansion, HTML paragraph auto spacing, Track Changes on,
     /// print form data only). False when `w` isn't one.
     pub(super) fn doc_setting_word(&mut self, w: &str, p: Option<i32>) -> bool {
-        use wordcraft_doc::ZoomFit;
+        use wordcraft_doc::{SavedView, ZoomFit};
+        // Like `\jexpand`, these two only count among the document's own formatting words: in a
+        // style, a header or a note they are swallowed.
+        if matches!(w, "dntblnsbdb" | "lnbrkrule") && (self.st.dest != Dest::Body || self.sub.is_some() || self.hf.is_some()) {
+            return true;
+        }
         let on = p != Some(0);
         let pv = p.unwrap_or(0);
         let d = &mut self.doc_set;
@@ -626,6 +631,14 @@ impl Reader {
             "truncex" => d.no_leading = Some(on),
             "sprslnsp" => d.ext_leading_2pt_only = Some(on),
             "wpjst" => d.wp_justification = Some(on),
+            "dntblnsbdb" => d.no_balance_sbcs_dbcs_width = Some(on),
+            "lnbrkrule" => d.no_word97_line_break_rules = Some(on),
+            "formshade" => d.form_shade = on,
+            "stylelock" => d.style_lock = on,
+            "stylelockenforced" => d.style_lock_enforced = on,
+            "autofmtoverride" => d.auto_format_override = on,
+            "stylelocktheme" => d.style_lock_theme = on,
+            "stylelockqfset" => d.style_lock_qf_set = on,
             "formprot" => d.old_prot = on.then_some("forms"),
             "htmautsp" => d.html_auto_spacing = on,
             "linkstyles" => d.link_styles = Some(on),
@@ -637,6 +650,16 @@ impl Reader {
             "revisions" => d.track_changes = Some(on),
             "trackmoves" => d.track_moves = Some(on),
             "revprot" => d.old_prot = on.then_some("trackedChanges"),
+            // `\viewkindN`: the view the document was saved in. Master documents (3) show in
+            // Outline view; 0 (none), 1 (Page Layout) and unknown numbers are Print Layout.
+            "viewkind" => {
+                d.view = Some(match pv {
+                    2 | 3 => Some(SavedView::Outline),
+                    4 => Some(SavedView::Draft),
+                    5 => Some(SavedView::Web),
+                    _ => None,
+                })
+            }
             "viewscale" => d.percent = u32::try_from(pv).ok().filter(|n| (10..=500).contains(n)).or(d.percent),
             "viewzk" => match pv {
                 0 => d.fit = Some(None),
@@ -1294,6 +1317,8 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
 /// document is built. `None` is a word the header doesn't name.
 #[derive(Default)]
 pub(super) struct DocSettingWords {
+    /// `\viewkind`: the saved view (`Some(None)` for Print Layout).
+    view: Option<Option<wordcraft_doc::SavedView>>,
     /// `\viewscale` (10–500) and `\viewzk` (`Some(None)` for `\viewzk0`).
     percent: Option<u32>,
     fit: Option<Option<wordcraft_doc::ZoomFit>>,
@@ -1309,6 +1334,11 @@ pub(super) struct DocSettingWords {
     level: Option<u8>,
     enforce: Option<bool>,
     old_prot: Option<&'static str>,
+    style_lock: bool,
+    style_lock_enforced: bool,
+    auto_format_override: bool,
+    style_lock_theme: bool,
+    style_lock_qf_set: bool,
     link_styles: Option<bool>,
     remove_personal_info: Option<bool>,
     remove_date_time: Option<bool>,
@@ -1329,12 +1359,19 @@ pub(super) struct DocSettingWords {
     no_leading: Option<bool>,
     ext_leading_2pt_only: Option<bool>,
     wp_justification: Option<bool>,
+    /// `\dntblnsbdb` (don't balance single-byte and double-byte character widths) and
+    /// `\lnbrkrule` (don't use Word 97 line breaking rules for Asian text): each turns off an
+    /// option every RTF document otherwise opens with on.
+    no_balance_sbcs_dbcs_width: Option<bool>,
+    no_word97_line_break_rules: Option<bool>,
     /// `\htmautsp` (Use HTML paragraph auto spacing): the space between two paragraphs is the
     /// larger of space after and space before. Without it Word adds the two.
     html_auto_spacing: bool,
     /// `\revisions` (Track Changes on) and `\printdata` (print only the data from a form).
     track_changes: Option<bool>,
     print_forms_data: Option<bool>,
+    /// `\formshade` is a flag: absent or zero means shading is off.
+    form_shade: bool,
     /// `\trackmovesN` (Track moves): `\trackmoves0` turns move tracking off.
     track_moves: Option<bool>,
     /// The attached template (`{\*\template …}`): the last non-blank group's path.
@@ -1346,8 +1383,16 @@ pub(super) struct DocSettingWords {
 
 impl DocSettingWords {
     pub(super) fn apply(&self, s: &mut wordcraft_doc::Settings) {
+        s.protect_formatting = self.style_lock;
+        s.auto_format_override = self.auto_format_override;
+        s.style_lock_theme = self.style_lock_theme;
+        s.style_lock_qf_set = self.style_lock_qf_set;
+        s.do_not_shade_form_data = !self.form_shade;
         s.sum_paragraph_spacing = !self.html_auto_spacing;
         s.symbol_class_fonts.clone_from(&self.symbol_class_fonts);
+        if let Some(v) = self.view {
+            s.view = v;
+        }
         if self.percent.is_some() || self.fit.is_some() {
             let (percent, fit) = (self.percent.unwrap_or(100), self.fit.flatten());
             // 100% with no fit mode is the model's "no saved zoom".
@@ -1383,6 +1428,7 @@ impl DocSettingWords {
             Some(false) => None,
             None => self.old_prot,
         };
+        let prot = prot.or((self.style_lock && self.style_lock_enforced).then_some("none"));
         if let Some(p) = prot {
             s.protection = Some(p.to_string());
         }
@@ -1405,6 +1451,12 @@ impl DocSettingWords {
             if let Some(v) = v {
                 *field = v;
             }
+        }
+        if self.no_balance_sbcs_dbcs_width == Some(true) {
+            s.balance_sbcs_dbcs_width = false;
+        }
+        if self.no_word97_line_break_rules == Some(true) {
+            s.use_word97_line_break_rules = false;
         }
         if let Some(t) = &self.template {
             s.attached_template = Some(t.clone());

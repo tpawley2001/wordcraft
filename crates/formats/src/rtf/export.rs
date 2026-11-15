@@ -503,6 +503,18 @@ fn doc_note_words(doc: &Document) -> String {
     o
 }
 
+/// `\viewkindN` for the view the document was saved in (RTF 1.9.1 document formatting): 1 Page
+/// Layout (Print Layout), 2 Outline, 4 Normal (Draft), 5 Online Layout (Web Layout).
+fn view_kind(view: Option<wordcraft_doc::SavedView>) -> u8 {
+    use wordcraft_doc::SavedView;
+    match view {
+        None => 1,
+        Some(SavedView::Outline) => 2,
+        Some(SavedView::Draft) => 4,
+        Some(SavedView::Web) => 5,
+    }
+}
+
 /// The document settings that differ from a new document's: view zoom, drawing grid, Restrict
 /// Editing (never a password hash), linked styles, privacy options, Shift+Return expansion,
 /// Track Changes on and print only the data from a form.
@@ -541,6 +553,17 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
     if let Some(n) = level {
         o.push_str(&format!("\\enforceprot1\\protlevel{n}"));
     }
+    for (on, word) in [
+        (set.protect_formatting, "\\stylelock"),
+        (set.protect_formatting && set.protection.is_some(), "\\stylelockenforced"),
+        (set.auto_format_override, "\\autofmtoverride"),
+        (set.style_lock_theme, "\\stylelocktheme"),
+        (set.style_lock_qf_set, "\\stylelockqfset"),
+    ] {
+        if on {
+            o.push_str(word);
+        }
+    }
     if !set.track_moves {
         o.push_str("\\trackmoves0");
     }
@@ -561,8 +584,11 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
         (set.no_leading, "\\truncex"),
         (set.ext_leading_2pt_only, "\\sprslnsp"),
         (set.wp_justification, "\\wpjst"),
+        (!set.balance_sbcs_dbcs_width, "\\dntblnsbdb"),
+        (!set.use_word97_line_break_rules, "\\lnbrkrule"),
         (set.track_changes, "\\revisions"),
         (set.print_forms_data, "\\printdata"),
+        (!set.do_not_shade_form_data, "\\formshade"),
     ] {
         if on {
             o.push_str(w);
@@ -2575,13 +2601,14 @@ fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &st
         }
     }
     out.push_str(&format!(
-        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{gutter}{landscape}{notes}{opts}\\viewkind4\n",
+        "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}{gutter}{landscape}{notes}{opts}\\viewkind{}\n",
         tw(sec.page_w),
         tw(sec.page_h),
         tw(sec.margin_left),
         tw(sec.margin_right),
         tw(sec.margin_top),
-        tw(sec.margin_bottom)
+        tw(sec.margin_bottom),
+        view_kind(settings.view)
     ));
     out.push_str(body);
     out.push_str("}\n");
