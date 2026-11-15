@@ -82,6 +82,7 @@ mod style_own_para_props;
 mod table_float;
 mod table_left_edge;
 mod table_row_cant_split;
+mod table_styles;
 mod table_autofit;
 mod table_width;
 mod table_width_rows;
