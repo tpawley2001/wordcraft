@@ -216,3 +216,10 @@ pub mod p {
 #[cfg(test)]
 #[rustfmt::skip]
 mod tests;
+// Find reading fields' text (#5552); kept out of `tests.rs`, which lists the Word-measured suites.
+#[cfg(test)]
+#[path = "tests/field_search_controls.rs"]
+mod field_search_controls_tests;
+#[cfg(test)]
+#[path = "tests/find_fields.rs"]
+mod find_fields_tests;
