@@ -9,7 +9,7 @@ concerning environmental sustainability, extraordinary communications infrastruc
 characteristics and unquestionably incomprehensible documentation, notwithstanding counterintuitive \
 internationalization, decentralization and microelectronics manufacturing.";
 
-/// Where each line of the paragraph starts, with automatic hyphenation and the given zone.
+/// Where each line of the paragraph starts (byte offsets into `TEXT`), with automatic hyphenation and the given zone.
 fn line_starts(compat: u32, zone: Option<f32>) -> Vec<usize> {
     crate::test_fonts();
     let mut d = Document::from_text(TEXT);
@@ -26,7 +26,9 @@ fn line_starts(compat: u32, zone: Option<f32>) -> Vec<usize> {
         .items
         .iter()
         .filter_map(|it| match it {
-            Placed::Lines { story: StoryRef::Body, para, l0, l1, .. } => Some(para.lines[*l0..*l1].iter().map(|ln| ln.c0).collect::<Vec<_>>()),
+            Placed::Lines { story: StoryRef::Body, para, l0, l1, .. } => {
+                Some(para.lines[*l0..*l1].iter().map(|ln| para.clusters.get(ln.c0).map_or(usize::MAX, |c| c.start)).collect::<Vec<_>>())
+            }
             _ => None,
         })
         .flatten()
@@ -37,7 +39,8 @@ fn line_starts(compat: u32, zone: Option<f32>) -> Vec<usize> {
 fn the_fixture_hyphenates_with_the_default_zone() {
     // Guard: some line starts inside a word (after a hyphen), or the zone tests prove nothing.
     let starts = line_starts(15, None);
-    assert!(starts.iter().skip(1).any(|&c| !TEXT[..c].ends_with(' ')), "no hyphenated line: {starts:?}");
+    assert!(starts.len() > 3, "too few lines: {starts:?}");
+    assert!(starts.iter().skip(1).any(|&c| c < TEXT.len() && !TEXT[..c].ends_with(' ')), "no hyphenated line: {starts:?}");
 }
 
 #[test]
