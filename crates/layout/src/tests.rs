@@ -55,6 +55,7 @@ mod float_table_notes;
 mod float_top;
 mod footnote_notice_room;
 mod footnotes_in_columns;
+mod form_field_shading;
 mod frame_page_break;
 mod grid;
 mod header_extent;
