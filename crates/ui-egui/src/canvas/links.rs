@@ -53,6 +53,14 @@ pub(super) fn link_hover_text(target: &str, screen_tip: Option<&str>, follow: &s
     format!("{first}\n{follow}")
 }
 
+/// The hover tip's last line: how to follow the link with Use Ctrl+Click to follow hyperlink on
+/// (`"Ctrl+Click to follow link"`, ⌘ on macOS) or off (`"Click to follow link"`).
+#[allow(dead_code)] // Stub: `show_hover_link` uses it once the option is wired in.
+pub(crate) fn follow_hint(ctrl_click_follows: bool) -> String {
+    let _ = ctrl_click_follows;
+    String::new()
+}
+
 /// A link to a hidden bookmark (`#_Toc…`, `#_Ref…`): a name the program made, which nobody
 /// chose or sees, so the hover tip says where it goes instead of showing it (#2177).
 pub(super) fn is_generated_bookmark_link(link: &str) -> bool {
