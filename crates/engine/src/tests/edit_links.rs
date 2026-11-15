@@ -118,9 +118,9 @@ fn manual_update_removes_only_the_a_switch_and_undoes_in_one_step() {
     let mut s = host(&[(instr, false)]);
     edit(&mut s, json!({"index": 0, "update": "manual"}));
     let code = instrs(&s).remove(0);
-    assert!(!code.contains(r"\a"), "{code}");
+    assert!(!has_switch(&code, r"\a"), "{code}");
     assert!(code.starts_with(r#"LINK Word.Document.12 "C:\\d\\a.docx" "OLE_LINK1""#), "{code}");
-    assert!(code.contains(r"\t"), "{code}");
+    assert!(has_switch(&code, r"\t"), "{code}");
     assert_eq!(links(&mut s)[0]["update"], "manual");
     edit(&mut s, json!({"index": 0, "update": "auto"}));
     assert_eq!(links(&mut s)[0]["update"], "auto");
@@ -167,7 +167,7 @@ fn change_source_rewrites_the_path_and_shows_the_new_sources_text() {
     let code = instrs(&s).remove(0);
     assert!(code.contains(&format!("\"{}\"", code_path(&new))), "{code}");
     assert!(!code.contains("old.docx"), "{code}");
-    assert!(code.contains("Word.Document.12") && code.contains("\"OLE_LINK1\"") && code.contains(r"\a"), "{code}");
+    assert!(code.contains("Word.Document.12") && code.contains("\"OLE_LINK1\"") && has_switch(&code, r"\a"), "{code}");
     assert_eq!(links(&mut s)[0]["source"], new.display().to_string());
     assert_eq!(result(&s), "new source");
 }
@@ -189,4 +189,9 @@ fn a_bad_index_is_an_error_and_changes_nothing() {
     assert!(s.run("fields.editLink", &json!({"index": 5, "update": "manual"})).is_err());
     assert!(s.run("fields.editLink", &json!({"update": "manual"})).is_err());
     assert_eq!(instrs(&s), vec![instr.to_string()]);
+}
+
+/// True when `sw` appears as a whole switch token (not as text inside a quoted path).
+fn has_switch(code: &str, sw: &str) -> bool {
+    code.split_whitespace().any(|t| t == sw)
 }
