@@ -626,6 +626,7 @@ pub struct OutputContext {
 /// REVNUM, CREATEDATE, DOCPROPERTY and INFO of these properties show their current
 /// values too, while the same fields in the body and in notes keep theirs (measured with
 /// Microsoft 365 Word's PDF export). The document itself keeps its stored results.
+/// Unlocked PRINTDATE fields show the output time in every story.
 /// `None` when every such field already shows its fresh result, so nothing is copied then.
 pub fn output_fields(doc: &wordcraft_doc::Document) -> Option<wordcraft_doc::Document> {
     output_fields_in(doc, None)
@@ -656,9 +657,33 @@ pub fn output_fields_in(doc: &wordcraft_doc::Document, ctx: Option<&OutputContex
     if !parts.is_empty() {
         apply_results(out.get_or_insert_with(|| doc.clone()), parts).ok()?;
     }
+    let printed = changed(out.as_ref().unwrap_or(doc), printdate_results(out.as_ref().unwrap_or(doc)));
+    if !printed.is_empty() {
+        apply_results(out.get_or_insert_with(|| doc.clone()), printed).ok()?;
+    }
     let conditions = changed(doc, output_if_results(doc, out.as_ref().unwrap_or(doc)));
     if !conditions.is_empty() {
         apply_results(out.get_or_insert_with(|| doc.clone()), conditions).ok()?;
+    }
+    out
+}
+
+/// Output is a print: use one instant for unlocked PRINTDATE fields across all stories.
+fn printdate_results(doc: &wordcraft_doc::Document) -> Vec<FieldResult> {
+    let now = crate::cmd::now_iso();
+    let mut out = Vec::new();
+    for story in std::iter::once(StoryRef::Body).chain(doc.parts.keys().copied().map(StoryRef::Part)) {
+        for path in doc.para_paths(story) {
+            let Some(p) = doc.para(story, &path) else { continue };
+            for (k, o) in p.objects.iter().enumerate() {
+                let InlineObject::Field { instr, locked: false, .. } = o else { continue };
+                if wordcraft_layout::fields::field_name(instr) == "PRINTDATE"
+                    && let Some(result) = document_date_result(instr, &now, "M/d/yyyy")
+                {
+                    out.push((story, path.clone(), k, result));
+                }
+            }
+        }
     }
     out
 }
@@ -1281,7 +1306,7 @@ fn update_body_toc(s: &mut Session, pages_only: bool) -> Result<(), CmdError> {
 /// date the template was last saved (#1672).
 ///
 /// Only those two. `CREATEDATE`, `SAVEDATE` and `PRINTDATE` record when something happened and
-/// are not "now"; `REF`, `PAGEREF`, `TOC` and citations are refreshed on an explicit update
+/// are not "now" (except PRINTDATE at output, see [`output_fields`]); `REF`, `PAGEREF`, `TOC` and citations are refreshed on an explicit update
 /// (`fields.updateAll`) and not on open, again as Word does. A field carrying `w:fldLock` keeps
 /// its stored result, which is what the lock is for.
 pub fn refresh_date_fields(doc: &mut wordcraft_doc::Document) {
