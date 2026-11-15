@@ -419,6 +419,11 @@ pub(super) struct RowStyle {
     /// the order top, left, bottom, right.
     pub(super) pad: [i32; 4],
     pub(super) pad_unit: [i32; 4],
+    /// The row's shading pattern (`\trcbpatN`, `\trcfpatN`, `\trshdngN`), once one of them is
+    /// read: it shades each cell of the row that has no shading of its own.
+    pub(super) pattern: Option<Pattern>,
+    /// Whether the row is AutoFit (`\trautofitN`, N nonzero); otherwise its columns are fixed.
+    pub(super) autofit: bool,
     /// The row runs right to left (`\rtlrow`; `\ltrrow` left to right).
     pub(super) rtl: bool,
     /// The row's preferred width (`\trwWidthN`) and its unit (`\trftsWidthN`: 2 fiftieths of a
@@ -830,6 +835,9 @@ pub(super) struct CellDef {
     pub(super) pad_unit: [Option<i32>; 4],
     /// Wrap text off (`\clNoWrap`).
     pub(super) no_wrap: bool,
+    /// Whether the cell names a shading word of its own (`\clcbpat`, `\clcfpat`, `\clshdng`),
+    /// so the row's shading does not replace it.
+    pub(super) own_pattern: bool,
 }
 
 impl CellDef {

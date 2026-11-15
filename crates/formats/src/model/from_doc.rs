@@ -1466,7 +1466,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     };
     let keep_rows = || t.rows.iter().map(|r| r.props.cant_split).collect::<Vec<_>>();
     // Formats that keep only the rows' heights and keeps (RTF) get those alone, when a row has one,
-    // and the table's style and look, when it has a style, and its alignment and left edge.
+    // and the table's style and look, when it has a style, its alignment and left edge, and its fixed layout.
     let placed = t.props.align.is_some()
         || t.props.indent.is_some()
         || t.props.width.is_some()
@@ -1478,7 +1478,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
         .filter(|(h, k)| {
-            h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed || cell_margins.is_some() || !row_gaps.is_empty()
+            h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed || cell_margins.is_some() || t.props.fixed || !row_gaps.is_empty()
         })
         .map(|(heights, keep_rows)| super::types::TableExtra {
             align: t.props.align,
@@ -1492,6 +1492,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             style: t.props.style.clone(),
             look: t.props.style.is_some().then_some(t.props.look),
             cell_margins,
+            fixed: t.props.fixed,
             row_gaps,
             ..Default::default()
         });
