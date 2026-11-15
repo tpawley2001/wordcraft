@@ -94,3 +94,12 @@ fn the_dialog_draws_its_preview() {
     assert_eq!(dialog(&a), Some("fileConversion"), "the dialog stays open until answered");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn an_answer_without_the_dialog_leaves_other_dialogs_alone() {
+    let mut a = app("x");
+    a.dialog = Some(crate::dialogs::Dialog::MarkAsFinal);
+    assert!(a.run("ui.fileConversion", json!({"answer": "ok"})).is_err());
+    assert!(a.run("ui.fileConversion", json!({"answer": "maybe"})).is_err());
+    assert_eq!(dialog(&a), Some("markAsFinal"));
+}

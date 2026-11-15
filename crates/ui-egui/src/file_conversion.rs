@@ -175,6 +175,16 @@ pub fn answer(app: &mut WordApp, p: &Value) -> Result<Value, String> {
         Some("cancel") => false,
         _ => return Err("`answer` must be ok or cancel".into()),
     };
+    let line_end = match p.get("lineEnd").and_then(Value::as_str) {
+        Some(l) => match LINE_ENDS.iter().find(|(v, _)| *v == l) {
+            Some((v, _)) => Some(*v),
+            None => return Err("`lineEnd` must be crlf, cr, lf or lfcr".into()),
+        },
+        None => None,
+    };
+    if !matches!(app.dialog, Some(Dialog::FileConversion { .. })) {
+        return Err("no File Conversion dialog is open".into());
+    }
     let Some(Dialog::FileConversion { mut form }) = app.dialog.take() else {
         return Err("no File Conversion dialog is open".into());
     };
@@ -193,11 +203,8 @@ pub fn answer(app: &mut WordApp, p: &Value) -> Result<Value, String> {
             }
         }
     }
-    if let Some(l) = p.get("lineEnd").and_then(Value::as_str) {
-        let Some((v, _)) = LINE_ENDS.iter().find(|(v, _)| *v == l) else {
-            return Err("`lineEnd` must be crlf, cr, lf or lfcr".into());
-        };
-        form.line_end = (*v).to_string();
+    if let Some(l) = line_end {
+        form.line_end = l.to_string();
     }
     if let Some(a) = p.get("allowSubstitution").and_then(Value::as_bool) {
         form.allow_substitution = a;
