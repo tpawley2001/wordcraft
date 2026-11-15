@@ -443,6 +443,9 @@ pub struct UiState {
     /// spaces, or characters without spaces. Right-click the count in the status bar, or File ›
     /// Options › Display. Junk saved values read as words.
     pub status_count: StatusCount,
+    /// The items the status bar shows (right-click it: Customize Status Bar). Items missing from
+    /// the saved object, or saved with a value that isn't true or false, read as their defaults.
+    pub status_items: chrome::StatusItems,
     /// How far a mouse-wheel notch scrolls (#6146).
     #[serde(default, alias = "scrollSpeed")]
     pub scroll_speed: ScrollSpeed,
@@ -558,6 +561,7 @@ impl Default for UiState {
             dictionary: Vec::new(),
             display_server: DisplayServer::Auto,
             status_count: StatusCount::default(),
+            status_items: chrome::StatusItems::default(),
             scroll_speed: ScrollSpeed::default(),
             touchpad_scroll_speed: ScrollSpeed::default(),
         }

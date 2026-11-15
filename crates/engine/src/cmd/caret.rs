@@ -539,6 +539,13 @@ pub(crate) const EXTEND_HISTORY: usize = 8;
 
 const EXTEND_STATUS: &str = "Extend Selection: arrow keys extend, Esc ends";
 
+impl Session {
+    /// Extend mode (F8) is on: caret movement extends the selection.
+    pub fn extend_mode_on(&self) -> bool {
+        self.extend_mode
+    }
+}
+
 /// Turn extend mode (F8) off and forget its growth history; the selection stays.
 pub(crate) fn extend_mode_off(s: &mut Session) {
     if s.extend_mode && s.status == EXTEND_STATUS {

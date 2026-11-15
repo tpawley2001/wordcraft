@@ -841,6 +841,11 @@ impl WordApp {
                 }
                 json!({"statusCount": self.ui.status_count.code()})
             }
+            "ui.statusItem" => {
+                // Customize Status Bar: `{"item": code, "value"?: bool}` shows or hides one
+                // item (toggles without a value); no item reads them all.
+                return Some(crate::chrome::status_items::command(self, p));
+            }
             "ui.scrollSpeed" => {
                 // `slow`, `normal` (the default) or `fast`: mouse-wheel scroll speed (#6146);
                 // no value reads it.
@@ -1343,6 +1348,7 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.recentClear"
             | "ui.displayServer"
             | "ui.statusCount"
+            | "ui.statusItem"
             | "ui.scrollSpeed"
             | "ui.touchpadScrollSpeed"
             | "ui.checkForUpdates"
