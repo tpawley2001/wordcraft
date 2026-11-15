@@ -647,6 +647,11 @@ pub enum Dialog {
     EditLinks {
         form: Box<edit_links::EditLinksForm>,
     },
+    /// File Conversion: a save as Plain Text asks for the encoding, the line ends and character
+    /// substitution first (`ui.fileConversion`).
+    FileConversion {
+        form: Box<crate::file_conversion::FileConversionForm>,
+    },
 }
 
 impl Dialog {
@@ -735,6 +740,7 @@ impl Dialog {
             Dialog::CustomProperties(..) => "customProperties",
             Dialog::ConvertDocument => "convertDocument",
             Dialog::MarkAsFinal => "markAsFinal",
+            Dialog::FileConversion { .. } => "fileConversion",
             Dialog::Compatibility { .. } => "compatibilityChecker",
             Dialog::EditLinks { .. } => "editLinks",
             Dialog::Layout(d) => d.name(),

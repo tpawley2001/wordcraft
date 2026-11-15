@@ -211,6 +211,7 @@ impl WordApp {
             ctx: _,
             read_aloud_error: _,
             saves_in_flight: _,
+            txt_save: _,
             recovery_seen: _,
             no_document: _,
             windows: _,

@@ -19,6 +19,7 @@ mod change_case_word;
 mod change_case_cycle;
 mod convert_text_spaces_word;
 mod table_to_text_word;
+mod txt_save_encoding;
 mod find_caret_word;
 mod find_objects_word;
 mod find_field_text_word;

@@ -1,6 +1,8 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0602: Save as Plain Text opens File Conversion (encoding, line ends, character substitution, red preview), as in Word. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0596: a missing Georgia, Arial Black, Segoe UI, Bookman Old Style, Perpetua or Gill Sans MT keeps Word's advance widths. Readiness estimates unchanged; earlier: P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.)
 
@@ -275,12 +277,14 @@ Convert to Text now uses comma-space separators and offers recursive nested-tabl
 
 Formatting restriction settings now include theme and style set switching locks, with DOCX and RTF persistence (P0560); broader dialog depth remains open.
 
+Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM437) or another encoding (Unicode with a byte order mark, Windows and East Asian code pages), the line ends and character substitution, with a preview that shows in red what won't save (P0602). Insert line breaks and the open-side encoding dialog remain open in gap #7.
+
 ## Revision history
 
+> 2026-11-15 · trivial · P0602: Save as Plain Text asks for the encoding, line ends and character substitution in a File Conversion dialog, as in Word (`txt::export_with`; `file.save` `encoding`/`lineEnd`/`allowSubstitution`). Readiness estimates unchanged.
+
 > 2026-11-15 · trivial · P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged.
-
 > 2026-11-15 · trivial · P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.
-
 > 2026-11-15 · trivial · P0596: a missing Georgia, Arial Black, Segoe UI, Bookman Old Style, Perpetua or Gill Sans MT keeps Word's advance widths, so their lines break where Word's do. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged.
 
