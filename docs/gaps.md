@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0564: REF to an empty bookmark defined by SET shows its value in PDF/print and after F9. Output uses stored SET results; repeated SET names follow document order. Non-empty bookmarks keep their text. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0517: applying a paragraph style clears direct paragraph formatting (indents, alignment, spacing, keeps, tabs, borders, shading, outline level) and a direct bullet or number, as in Word; drop caps stay. Readiness estimates unchanged.)
@@ -251,6 +253,8 @@ Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei,
 Convert to Text now uses comma-space separators and offers recursive nested-table conversion (P0512); the remaining dialog depth work in gap #7 is unchanged.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0564: REF to an empty bookmark defined by SET shows its value in PDF/print and after F9. Output uses stored SET results; repeated SET names follow document order. Non-empty bookmarks keep their text. Readiness estimates unchanged.
 
 > 2026-11-14 · trivial · P0514: Ctrl+Space and Clear All Formatting keep highlighting; Ctrl+Space also removes the character style and Ctrl+Q a directly applied bullet or number, as measured in Word. Readiness estimates unchanged.
 

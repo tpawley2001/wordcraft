@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0564: REF to an empty bookmark defined by SET shows its value in PDF/print and after F9. Output uses stored SET results; repeated SET names follow document order. Non-empty bookmarks keep their text. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged.)
@@ -185,6 +187,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-15: P0564: REF to an empty bookmark defined by SET shows its value in PDF/print and after F9. Output uses stored SET results; repeated SET names follow document order. Non-empty bookmarks keep their text. Readiness estimates unchanged.
 
 - 2026-11-14: P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged.
 
@@ -1036,6 +1040,8 @@ Section page-numbering settings preserve `w:chapStyle` values across the full un
 MATH glyphs that reference the same construction now share its immutable variants and assembly data (#3630). Glyph mappings, values and the existing partial-record fallback stay unchanged. Repeated glyph IDs keep their last valid reference without retaining superseded constructions. Distinct overlapping constructions and assembly-only sharing remain separate.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0564: REF to an empty bookmark defined by SET shows its value in PDF/print and after F9. Output uses stored SET results; repeated SET names follow document order. Non-empty bookmarks keep their text. Readiness estimates unchanged.
 
 > 2026-11-14 · trivial · P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged.
 
