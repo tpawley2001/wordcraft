@@ -572,6 +572,59 @@ thread_local! {
     static OWN_STYLES: std::cell::RefCell<HashMap<String, u32>> = std::cell::RefCell::new(HashMap::new());
 }
 
+/// A table's direction (`\rtlrow`), preferred width (`\trftsWidthN\trwWidthN`) and floating
+/// position (RTF 1.9.1 "Positioned tables"), written in each of its row definitions.
+fn table_place_words(x: &model::TableExtra, out: &mut String) {
+    use wordcraft_doc::para::{Anchor, FloatAlign};
+    let twips = |v: f32, lo: i64| if v.is_finite() { ((v * 20.0).round() as i64).clamp(lo, 31_680) } else { 0 };
+    if x.bidi_visual {
+        out.push_str("\\rtlrow");
+    }
+    if let Some(w) = x.width.filter(|w| w.is_finite() && *w > 0.0) {
+        out.push_str(&format!("\\trftsWidth3\\trwWidth{}", twips(w, 0)));
+    } else if let Some(p) = x.width_pct.filter(|p| p.is_finite() && *p > 0.0) {
+        out.push_str(&format!("\\trftsWidth2\\trwWidth{}", ((p * 50.0).round() as i64).clamp(0, 5000)));
+    }
+    let Some(f) = x.float else { return };
+    out.push_str(match f.h_rel {
+        Anchor::Margin => "\\tphmrg",
+        Anchor::Page => "\\tphpg",
+        _ => "\\tphcol",
+    });
+    match f.h_align {
+        Some(FloatAlign::Start) => out.push_str("\\tposxl"),
+        Some(FloatAlign::Center) => out.push_str("\\tposxc"),
+        Some(FloatAlign::End) => out.push_str("\\tposxr"),
+        Some(FloatAlign::Inside) => out.push_str("\\tposxi"),
+        Some(FloatAlign::Outside) => out.push_str("\\tposxo"),
+        None => {
+            let v = twips(f.x, -31_680);
+            out.push_str(&format!("{}{v}", if v < 0 { "\\tposnegx" } else { "\\tposx" }));
+        }
+    }
+    out.push_str(match f.v_rel {
+        Anchor::Margin => "\\tpvmrg",
+        Anchor::Page => "\\tpvpg",
+        _ => "\\tpvpara",
+    });
+    match f.v_align {
+        Some(FloatAlign::Start) => out.push_str("\\tposyt"),
+        Some(FloatAlign::Center) => out.push_str("\\tposyc"),
+        Some(FloatAlign::End) => out.push_str("\\tposyb"),
+        Some(FloatAlign::Inside) => out.push_str("\\tposyin"),
+        Some(FloatAlign::Outside) => out.push_str("\\tposyout"),
+        None => {
+            let v = twips(f.y, -31_680);
+            out.push_str(&format!("{}{v}", if v < 0 { "\\tposnegy" } else { "\\tposy" }));
+        }
+    }
+    let [l, t, r, b] = f.dist.map(|v| twips(v, 0));
+    out.push_str(&format!("\\tdfrmtxtLeft{l}\\tdfrmtxtTop{t}\\tdfrmtxtRight{r}\\tdfrmtxtBottom{b}"));
+    if !f.overlap {
+        out.push_str("\\tabsnoovrlp");
+    }
+}
+
 /// The `\stylesheet` number of the document's own style `id`, while [`export`] writes it.
 fn own_style_num(id: &str) -> Option<u32> {
     OWN_STYLES.with(|m| m.try_borrow().ok().and_then(|m| m.get(id).copied()))
@@ -1890,6 +1943,10 @@ impl Writer {
         let extra = t.extra.as_deref();
         // Its alignment, else its left edge (`\trleft`, which each `\cellx` is measured with).
         out.push_str("\\trowd");
+        // AutoFit, unless the table's columns are fixed (RTF's default).
+        if !extra.is_some_and(|x| x.fixed) {
+            out.push_str("\\trautofit1");
+        }
         let align = extra.and_then(|x| x.align);
         match align {
             Some(Align::Center) => out.push_str("\\trqc"),
@@ -1928,6 +1985,9 @@ impl Writer {
                     out.push_str(word);
                 }
             }
+        }
+        if let Some(x) = extra {
+            table_place_words(x, out);
         }
         if !row.is_empty() && row.iter().all(|c| c.header) {
             out.push_str("\\trhdr");
