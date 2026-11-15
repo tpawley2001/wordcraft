@@ -189,6 +189,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-15: P0571: Shift+F3 cycles case as Word does: lowercase text with a full stop, ! or ? goes to Sentence case, other lowercase to Capitalize Each Word, all caps to lowercase, mixed text to UPPERCASE (or Sentence case when it starts lowercase and holds a full stop). It went lower, UPPER, Title. Readiness estimates unchanged.
 - 2026-11-15: P0562: PDF, printing and page images refresh eligible unlocked body IF fields when a body output/page field triggers refresh, except the last field. Stored document results and formula results are preserved; nested page conditions and chosen branches containing fields retain their cache. Readiness estimates unchanged.
 
 - 2026-11-15: A page break at the very end of the document starts no blank last page, as in Word (we added a page holding only the header and footer, and the page count was one too many). Readiness estimates unchanged.

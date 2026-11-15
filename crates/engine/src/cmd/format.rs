@@ -663,16 +663,24 @@ fn change_case(s: &mut Session, v: &Value) -> CmdResult {
         .collect::<Vec<_>>()
         .join("\n");
     let mode = p::str(v, "mode").map(str::to_string).unwrap_or_else(|| {
-        // Shift+F3 cycles: lower → UPPER → Title → lower.
-        if text.chars().any(char::is_lowercase) && text.chars().any(char::is_uppercase) && !is_title(&text) {
-            "lower".into()
-        } else if !text.chars().any(char::is_uppercase) {
-            "upper".into()
-        } else if text.chars().any(char::is_lowercase) {
-            "lower".into()
+        // Shift+F3 picks the next case from the selected text, as Word does: lowercase goes to
+        // Sentence case when it holds an end of sentence (. ! ?) and to Capitalize Each Word
+        // otherwise, all caps to lowercase, text starting with a capital to UPPERCASE, and other
+        // mixed text to Sentence case or UPPERCASE by the same punctuation test.
+        let has_upper = text.chars().any(char::is_uppercase);
+        let has_lower = text.chars().any(char::is_lowercase);
+        let ends_sentence = text.contains(['.', '!', '?']);
+        let first_upper = text.chars().find(|c| c.is_uppercase() || c.is_lowercase()).is_some_and(char::is_uppercase);
+        if !has_upper {
+            if ends_sentence { "sentence" } else { "title" }
+        } else if !has_lower {
+            "lower"
+        } else if first_upper || !ends_sentence {
+            "upper"
         } else {
-            "title".into()
+            "sentence"
         }
+        .into()
     });
     let keep_capitals = text.chars().any(char::is_lowercase);
     for path in s.doc.paths_between(&a, &b) {
@@ -818,10 +826,6 @@ fn map_offset(spans: &[(usize, usize, usize)], off: usize) -> usize {
         }
     }
     out
-}
-
-fn is_title(t: &str) -> bool {
-    t.split_whitespace().all(|w| w.chars().next().is_some_and(char::is_uppercase))
 }
 
 #[cfg(test)]
