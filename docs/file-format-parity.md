@@ -10,7 +10,7 @@
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged; earlier: P0482: DOCX reads and saves Fit Text (`w:fitText`) and lays it out to its set width, as Word does. Readiness estimates unchanged; earlier: P0465: DOCX reads and saves `w:specVanish` (Word's style separator). Readiness estimates unchanged)
 
-> **Last updated:** 2026-11-13 · **Change:** trivial (P0447: `.doc` drop caps (sprmPDcs) open as drop caps on the paragraph they start, as DOCX `w:framePr w:dropCap` does, not as a text frame above it, its letter at the size Word stores. Readiness estimates unchanged)
+> **Last updated:** 2026-11-14 · **Change:** trivial (DOCX: a header or footer ending in a table is saved without an extra empty paragraph after it; earlier: P0447: `.doc` drop caps (sprmPDcs) open as drop caps on the paragraph they start, as DOCX `w:framePr w:dropCap` does, not as a text frame above it, its letter at the size Word stores. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-13 · **Change:** trivial (DOCX: turning Wrap trailing spaces (`w:wrapTrailSpaces`) on or off survives saving a file whose settings part is merged; earlier: DOCX line spacing (`w:line`) and row heights (`w:trHeight`) above 32767 twips wrap to 16 bits as Word reads them, the sign deciding exact or at least. Readiness estimates unchanged; earlier: P0396: a table row deleted with tracking is read from DOCX and `.doc` and saved as `w:trPr/w:del`. Readiness estimates unchanged)
 
@@ -384,6 +384,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0523: DOCX: a header or footer whose last block is a table is saved with no empty paragraph after it (ECMA-376 §17.10.3–4 allow it, and Word opens it so), so it is no taller after save and reopen; a pending watermark or an all-empty table still gets one, and body text and table cells are unchanged (`hf_table_end.rs`). Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged. |
 > 2026-11-14 · P0482: DOCX `w:fitText` (§17.3.2.14) read into `CharProps::fit_text` (`w:val` twips → points, optional `w:id`; a missing or invalid width drops the element) and written once in CT_RPr order, after `w:shd`, before `w:vertAlign` (`fit_text.rs`, `roundtrip.rs`).
