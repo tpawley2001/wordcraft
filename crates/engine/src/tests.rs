@@ -121,6 +121,7 @@ mod cross_ref_self;
 mod cross_ref_notes;
 mod typing;
 mod view_split;
+mod word_alternate_keys;
 mod word_window_keys;
 mod button_fields;
 mod wordart;

@@ -292,8 +292,11 @@ mod tests {
         // Mod+B to Italic: Bold loses it.
         assert_eq!(m.assign(&reg, "format.italic", "mod+b").unwrap().as_deref(), Some("format.bold"));
         assert_eq!(m.resolve(&reg, "Mod+B").map(|s| s.id), Some("format.italic"));
-        assert!(m.keys_for(&reg, "format.bold").is_empty());
-        assert_eq!(m.keys_for(&reg, "format.italic"), ["Mod+I", "Mod+B"]);
+        // Bold keeps only its second key on Linux/Windows (Ctrl+Shift+B, as in Word).
+        let bold: &[&str] = if cfg!(target_os = "macos") { &[] } else { &["Mod+Shift+B"] };
+        assert_eq!(m.keys_for(&reg, "format.bold"), bold);
+        let italic: &[&str] = if cfg!(target_os = "macos") { &["Mod+I", "Mod+B"] } else { &["Mod+I", "Mod+Shift+I", "Mod+B"] };
+        assert_eq!(m.keys_for(&reg, "format.italic"), italic);
         // Removing it from Italic leaves Mod+B doing nothing (Bold doesn't get it back).
         assert!(m.remove(&reg, "format.italic", "Mod+B").unwrap());
         assert!(m.resolve(&reg, "Mod+B").is_none());
