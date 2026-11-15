@@ -383,6 +383,7 @@ impl Exporter<'_> {
             return;
         }
         let ends = cluster_ends(&shaped.iter().map(|g| g.cluster).collect::<Vec<_>>(), text.len());
+        let count = face.glyph_count();
         let glyphs: Vec<KrillaGlyph> = shaped
             .iter()
             .enumerate()
@@ -390,7 +391,7 @@ impl Exporter<'_> {
                 let end = ends.get(i).copied().unwrap_or(text.len());
                 let start = g.cluster.min(end);
                 KrillaGlyph::new(
-                    glyph_id(g.gid),
+                    glyph_id(g.gid, count),
                     g.x_advance as f32 / upem,
                     g.x_offset as f32 / upem,
                     g.y_offset as f32 / upem,

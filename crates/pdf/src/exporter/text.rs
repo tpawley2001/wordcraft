@@ -118,6 +118,7 @@ impl Exporter<'_> {
         let placed: Vec<(u32, f32, f32, std::ops::Range<usize>)> =
             order.iter().filter_map(|&i| Some((glyphs.get(i).copied()?, ranges.get(i).cloned()?))).map(|((g, x, y), r)| (g, x, y, r)).collect();
         let Some(&(_, x0, y0, _)) = placed.first() else { return };
+        let count = face.glyph_count();
         let kg: Vec<KrillaGlyph> = placed
             .iter()
             .enumerate()
@@ -126,7 +127,7 @@ impl Exporter<'_> {
                     Some((_, nx, _, _)) => (nx - x) / size,
                     None => face.advance(*g) as f32 / upem,
                 };
-                KrillaGlyph::new(glyph_id(*g), adv, 0.0, (y0 - y) / size, 0.0, r.clone(), None)
+                KrillaGlyph::new(glyph_id(*g, count), adv, 0.0, (y0 - y) / size, 0.0, r.clone(), None)
             })
             .collect();
         let pushed = italic;
@@ -205,6 +206,7 @@ impl Exporter<'_> {
         match font {
             Some(font) => {
                 let upem = face.upem.max(1.0) as f32;
+                let count = face.glyph_count();
                 let ends = cluster_ends(&shaped.iter().map(|g| g.cluster).collect::<Vec<_>>(), t.text.len());
                 let kg: Vec<KrillaGlyph> = shaped
                     .iter()
@@ -218,7 +220,7 @@ impl Exporter<'_> {
                             None => g.x_advance as f32 / upem,
                         };
                         let dy = lay.glyphs.get(i).map_or(0.0, |p| ((lay.baseline - p.1) / lay.em) as f32);
-                        KrillaGlyph::new(glyph_id(g.gid), adv, 0.0, dy, 0.0, start..end, None)
+                        KrillaGlyph::new(glyph_id(g.gid, count), adv, 0.0, dy, 0.0, start..end, None)
                     })
                     .collect();
                 let x0 = lay.glyphs.first().map_or(0.0, |p| p.0) as f32;
