@@ -22,7 +22,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("file.options", "Options", "File", options)
             .params(
-                r#"{"pane"?: "general|display|proofing|save|language|accessibility|advanced|agents", "author"?: string, "initials"?: string, "units"?: "inches|centimeters|millimeters|points|picas|auto" (auto: the region's), "region"?: string (a locale tag like pl-PL, saved: the paper File › New starts on, the default units and the decimal separator; auto: the system's), "typingReplacesSelection"?: bool, "insertKeyOvertype"?: bool, "overtype"?: bool, "marks"?: {"tabs"?: bool, "spaces"?: bool, "paragraphs"?: bool, "hidden"?: bool}, "checkSpelling"?: bool, "markGrammar"?: bool, "printProperties"?: bool, "printBackground"?: bool (print the page color and picture), "printDrawings"?: bool (print shapes, text boxes, Decorative Text and drawing canvases), "printHiddenText"?: bool, "printFieldCodes"?: bool, "printFormsData"?: bool (this document: print only the data from its form fields), "printReverse"?: bool, "printDuplexFront"?: bool, "printDuplexBack"?: bool, "ignoreUppercase"?: bool, "ignoreNumbers"?: bool, "ignoreInternet"?: bool, "alwaysCreateBackup"?: bool, "dictionariesFolder"?: string (a folder of Hunspell .aff/.dic files searched first, saved; auto: the system locations only), "userTemplatesFolder"?: string (the folder File › New lists personal templates from, saved; auto: the app's own Templates folder; not a network folder), "addWords"?: [string], "removeWords"?: [string]} — with any setting it changes them and opens nothing; without, it opens File › Options (at `pane`). Returns the settings."#,
+                r#"{"pane"?: "general|display|proofing|save|language|accessibility|advanced|agents", "author"?: string, "initials"?: string, "units"?: "inches|centimeters|millimeters|points|picas|auto" (auto: the region's), "region"?: string (a locale tag like pl-PL, saved: the paper File › New starts on, the default units and the decimal separator; auto: the system's), "typingReplacesSelection"?: bool, "insertKeyOvertype"?: bool, "overtype"?: bool, "marks"?: {"tabs"?: bool, "spaces"?: bool, "paragraphs"?: bool, "hidden"?: bool}, "checkSpelling"?: bool, "markGrammar"?: bool, "printProperties"?: bool, "printBackground"?: bool (print the page color and picture), "printDrawings"?: bool (print shapes, text boxes, Decorative Text and drawing canvases), "printHiddenText"?: bool, "printFieldCodes"?: bool, "printFormsData"?: bool (this document: print only the data from its form fields), "printReverse"?: bool, "printScaleA4Letter"?: bool (default true; scale between A4 and Letter printer paper), "printDuplexFront"?: bool, "printDuplexBack"?: bool, "ignoreUppercase"?: bool, "ignoreNumbers"?: bool, "ignoreInternet"?: bool, "alwaysCreateBackup"?: bool, "dictionariesFolder"?: string (a folder of Hunspell .aff/.dic files searched first, saved; auto: the system locations only), "userTemplatesFolder"?: string (the folder File › New lists personal templates from, saved; auto: the app's own Templates folder; not a network folder), "addWords"?: [string], "removeWords"?: [string]} — with any setting it changes them and opens nothing; without, it opens File › Options (at `pane`). Returns the settings."#,
             )
             .pure(),
         CommandSpec::new("text.overtype", "Overtype", "File › Options › Advanced", |s, v| {
@@ -53,7 +53,7 @@ fn style_area_width(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 /// The on/off settings by their `file.options` name.
-fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 16] {
+fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 17] {
     [
         ("typingReplacesSelection", |p| &mut p.typing_replaces_selection),
         ("insertKeyOvertype", |p| &mut p.insert_key_overtype),
@@ -65,6 +65,7 @@ fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 16] {
         ("printHiddenText", |p| &mut p.print_hidden_text),
         ("printFieldCodes", |p| &mut p.print_field_codes),
         ("printReverse", |p| &mut p.print_reverse),
+        ("printScaleA4Letter", |p| &mut p.print_scale_a4_letter),
         ("printDuplexFront", |p| &mut p.print_duplex_front),
         ("printDuplexBack", |p| &mut p.print_duplex_back),
         ("ignoreUppercase", |p| &mut p.ignore_uppercase),
@@ -270,6 +271,7 @@ pub fn current(s: &Session) -> Value {
         "printFieldCodes": pr.print_field_codes,
         "printFormsData": s.doc.settings.print_forms_data,
         "printReverse": pr.print_reverse,
+        "printScaleA4Letter": pr.print_scale_a4_letter,
         "printDuplexFront": pr.print_duplex_front,
         "printDuplexBack": pr.print_duplex_back,
         "ignoreUppercase": pr.ignore_uppercase,

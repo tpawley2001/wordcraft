@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0615: print jobs scale A4 pages onto Letter printer paper and Letter pages onto A4 by default, preserving orientation; explicit paper scaling wins and other sizes stay unchanged. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.)
@@ -1073,7 +1075,11 @@ Quoted field escapes are interpreted like Word, and body `PAGE` fields use their
 Section page-numbering settings preserve `w:chapStyle` values across the full unsigned-byte range.
 MATH glyphs that reference the same construction now share its immutable variants and assembly data (#3630). Glyph mappings, values and the existing partial-record fallback stay unchanged. Repeated glyph IDs keep their last valid reference without retaining superseded constructions. Distinct overlapping constructions and assembly-only sharing remain separate.
 
+- 2026-11-15: P0615: print jobs scale A4 pages onto Letter printer paper and Letter pages onto A4 by default, preserving orientation; explicit paper scaling wins and other sizes stay unchanged. Readiness estimates unchanged.
+
 ## Revision history
+
+> 2026-11-15 · trivial · P0615: print jobs scale A4 pages onto Letter printer paper and Letter pages onto A4 by default, preserving orientation; explicit paper scaling wins and other sizes stay unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged.
 

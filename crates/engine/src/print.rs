@@ -475,6 +475,35 @@ pub fn paper(v: &Value) -> Result<Option<(&'static str, f32, f32)>, CmdError> {
     }
 }
 
+/// Resolve the optional A4/Letter substitution. Validate even when explicit scaling wins.
+fn paper_substitution(v: &Value, enabled: bool) -> Result<Option<((f32, f32), (f32, f32))>, CmdError> {
+    let printer = match v.get("printerPaper") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(name)) if name.chars().count() <= 40 => {
+            if name.trim().is_empty() {
+                None
+            } else {
+                Some(wordcraft_geom::paper_by_name(name).ok_or_else(|| CmdError::Params("unknown printerPaper".into()))?)
+            }
+        }
+        Some(_) => return Err(CmdError::Params("printerPaper must be a paper name of at most 40 characters".into())),
+    };
+    let enabled = match v.get("scaleA4Letter") {
+        None => enabled,
+        Some(Value::Bool(value)) => *value,
+        Some(_) => return Err(CmdError::Params("scaleA4Letter must be a boolean".into())),
+    };
+    if !enabled || paper(v)?.is_some() {
+        return Ok(None);
+    }
+    let source = match printer.map(|p| p.0) {
+        Some("Letter") => "A4",
+        Some("A4") => "Letter",
+        _ => return Ok(None),
+    };
+    Ok(printer.zip(wordcraft_geom::paper_by_name(source)).map(|((_, w, h), (_, sw, sh))| ((sw, sh), (w, h))))
+}
+
 /// Validate the physical sheet layout without touching document page setup.
 pub fn imposition(v: &Value) -> Result<wordcraft_pdf::imposition::Imposition, CmdError> {
     match v.get("pagesPerSheet") {
@@ -648,6 +677,7 @@ impl Session {
         if !v.is_object() {
             return Err(CmdError::Params("print settings must be an object".into()));
         }
+        let paper_substitution = paper_substitution(v, self.prefs.print_scale_a4_letter)?;
         // Print Markup (File › Print) decides whether tracked changes and comments print.
         let mut markup = crate::cmd::file::export_options(self, v);
         let out = crate::cmd::references::output_fields_in(&self.doc, Some(&self.output_context()));
@@ -693,6 +723,7 @@ impl Session {
             include_markup: markup.markup,
             comments: markup.comments,
             paper,
+            paper_substitution,
             links,
             // Print only the data from a form (File › Options › Advanced): the document's own
             // setting; a Document Info report prints in full.

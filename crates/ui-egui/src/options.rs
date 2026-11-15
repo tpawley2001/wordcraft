@@ -653,6 +653,7 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     flag(app, ui, "Print pages in reverse order", "printReverse", pr.print_reverse);
     flag(app, ui, "Print on front of the sheet for duplex printing", "printDuplexFront", pr.print_duplex_front);
     flag(app, ui, "Print on back of the sheet for duplex printing", "printDuplexBack", pr.print_duplex_back);
+    flag(app, ui, "Scale content for A4 or 8.5 x 11\" paper sizes", "printScaleA4Letter", pr.print_scale_a4_letter);
     flag(app, ui, "Print field codes instead of their values", "printFieldCodes", pr.print_field_codes);
     let forms_data = app.session.doc.settings.print_forms_data;
     flag(app, ui, "Print only the data from a form", "printFormsData", forms_data);

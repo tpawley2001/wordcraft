@@ -24,6 +24,8 @@ pub struct Prefs {
     pub print_field_codes: bool,
     /// File › Options › Advanced › Print pages in reverse order (off).
     pub print_reverse: bool,
+    /// Scale A4 pages onto Letter printer paper and Letter pages onto A4 (print jobs only).
+    pub print_scale_a4_letter: bool,
     /// File › Options › Display › Print document properties (off): a print of the document is
     /// followed by the Document Properties report on its own page.
     pub print_properties: bool,
@@ -152,6 +154,7 @@ impl Default for Prefs {
             print_hidden_text: false,
             print_field_codes: false,
             print_reverse: false,
+            print_scale_a4_letter: true,
             print_properties: false,
             print_background: false,
             print_drawings: true,
