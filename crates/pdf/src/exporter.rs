@@ -6,9 +6,9 @@ use super::picture::{Vector, build_vector, load_image, paint_of, vector_picture}
 use super::tags::{Role, TagEntry, figure_alt, graphic_alt, holds_picture, holds_text};
 use super::{
     Annotation, Arc, Artifact, ArtifactType, ClKind, ContentTag, DocLayout, DocPath, Document, Draw, FaceRef, Fill, FillRule, Font, HashMap, HashSet,
-    Identifier, Image, InlineObject, ItemDisplay, KrillaGlyph, LineCap, LineEnd, LineJoin, LineStyle, LinkAnnotation, Node, NonZeroU16, Outline,
-    OutlineNode, Page, PathBuilder, Placed, Point, Rect, Rgb, ShapeKind, Size, SpanTag, StoryRef, Stroke, StrokeDash, Surface, Tag, TagGroup,
-    TagKind, TagTree, Target, Transform, WriteError, XyzDestination, krilla, rgb, write,
+    Identifier, Image, InlineObject, ItemDisplay, KrillaGlyph, LineCap, LineEnd, LineJoin, LineStyle, LinkAnnotation, MissingWidths, Node,
+    NonZeroU16, Outline, OutlineNode, Page, PathBuilder, Placed, Point, Rect, Rgb, ShapeKind, Size, SpanTag, StoryRef, Stroke, StrokeDash, Surface,
+    Tag, TagGroup, TagKind, TagTree, Target, Transform, WriteError, XyzDestination, krilla, rgb, with_advances, write,
 };
 use wordcraft_doc::picfx::PicFx;
 
@@ -29,8 +29,12 @@ pub(crate) struct Exporter<'a> {
     pub(crate) drawings: bool,
     /// Layout page index to the first output sheet side and its placement transform.
     pub(crate) out_index: HashMap<usize, (usize, Fit)>,
-    /// Embedded fonts by face id (`None`: krilla can't read it).
-    pub(crate) fonts: HashMap<u32, (FaceRef, Option<Font>)>,
+    /// Embedded fonts by face id and, for a face standing in for a missing font with Word's
+    /// widths, that font (`None`: krilla can't read it). See [`Exporter::missing_advances`].
+    pub(crate) fonts: HashMap<(u32, Option<MissingWidths>), (FaceRef, Option<Font>)>,
+    /// Word's advances (font units by glyph id) a stand-in face's glyphs take for a missing font,
+    /// empty when the face keeps its own (see [`Exporter::missing_advances`]).
+    pub(crate) missing_advances: HashMap<(u32, MissingWidths), Arc<HashMap<u16, u16>>>,
     pub(crate) font_error: Option<PdfError>,
     /// Faces whose glyphs are drawn as outlines because krilla can't subset them.
     pub(crate) outlined: &'a HashSet<u32>,
@@ -53,30 +57,83 @@ pub(crate) struct Exporter<'a> {
 }
 
 impl Exporter<'_> {
-    fn font(&mut self, face: &FaceRef) -> Option<Font> {
+    /// The embedded font for `face`; with `missing`, a copy of it whose glyphs declare the missing
+    /// font's widths the layout spaced them by (see [`Self::missing_advances`]). A face drawn both
+    /// as itself and as a stand-in is two PDF fonts.
+    fn font(&mut self, face: &FaceRef, missing: Option<&MissingWidths>) -> Option<Font> {
         if self.outlined.contains(&face.id()) {
             return None;
         }
-        let font_error = &mut self.font_error;
-        self.fonts
-            .entry(face.id())
+        let advances = missing.and_then(|m| Some((m, self.missing_advances(face, m)?)));
+        let key = (face.id(), advances.as_ref().map(|(m, _)| (*m).clone()));
+        if let Some((_, font)) = self.fonts.get(&key) {
+            return font.clone();
+        }
+        let variant = advances.as_ref().and_then(|(m, a)| {
+            let data = with_advances(face.data(), face.index(), a);
+            if data.is_none() {
+                // Not an OpenType file we can copy: the face keeps its own widths.
+                self.missing_advances.insert((face.id(), (*m).clone()), Arc::default());
+            }
+            data
+        });
+        if advances.is_some() && variant.is_none() {
+            return self.font(face, None);
+        }
+        let font = match &variant {
+            // The copy is one static face (stand-ins with variations keep their own widths).
+            Some(data) => write::font(data, 0, None),
+            None => write::font(face.data(), face.index(), face.is_variable().then_some(face.coords.as_slice())),
+        };
+        let font = match font {
+            Ok(font) => Some(font),
+            // Keep WordCraft's existing policy: unreadable faces are skipped.
+            Err(WriteError::InvalidFont) => None,
+            Err(error) => {
+                // Allocation, validation or backend failures must fail the export,
+                // rather than return a PDF with missing text.
+                self.font_error.get_or_insert_with(|| error.into());
+                None
+            }
+        };
+        self.fonts.insert(key, (*face, font.clone()));
+        font
+    }
+
+    /// Word's advances, in `face`'s font units by glyph id, for the characters of the missing font
+    /// `missing` that `face` stands in for: the widths layout gave those characters
+    /// (`missing_font_advance` in the paragraph builder). A glyph two characters of different
+    /// widths share keeps its own advance, as does every glyph of a face with variations (its
+    /// metric variations would override the copy's advances). `None` when no glyph changes.
+    pub(crate) fn missing_advances(&mut self, face: &FaceRef, missing: &MissingWidths) -> Option<Arc<HashMap<u16, u16>>> {
+        if face.is_variable() {
+            return None;
+        }
+        let map = self
+            .missing_advances
+            .entry((face.id(), missing.clone()))
             .or_insert_with(|| {
-                let variations = face.is_variable().then_some(face.coords.as_slice());
-                let font = match write::font(face.data(), face.index(), variations) {
-                    Ok(font) => Some(font),
-                    // Keep WordCraft's existing policy: unreadable faces are skipped.
-                    Err(WriteError::InvalidFont) => None,
-                    Err(error) => {
-                        // Allocation, validation or backend failures must fail the export,
-                        // rather than return a PDF with missing text.
-                        font_error.get_or_insert_with(|| error.into());
-                        None
+                let upem = face.upem.max(1.0);
+                let mut map: HashMap<u16, u16> = HashMap::new();
+                let mut shared = HashSet::new();
+                // The tables cover Windows-1252, whose characters lie in U+0020-U+2122.
+                for c in ('\u{20}'..='\u{2122}').filter(|c| !c.is_control()) {
+                    let Some(w) = missing.advance(c) else { continue };
+                    let Ok(g) = u16::try_from(face.glyph_for(c)) else { continue };
+                    let units = (w * upem).round();
+                    if g == 0 || !units.is_finite() || !(0.0..=f64::from(u16::MAX)).contains(&units) {
+                        continue;
                     }
-                };
-                (*face, font)
+                    let units = units as u16;
+                    if *map.entry(g).or_insert(units) != units {
+                        shared.insert(g);
+                    }
+                }
+                map.retain(|g, _| !shared.contains(g));
+                Arc::new(map)
             })
-            .1
-            .clone()
+            .clone();
+        (!map.is_empty()).then_some(map)
     }
 
     fn cmap(&mut self, face: &FaceRef) -> Arc<HashMap<u32, char>> {
@@ -378,7 +435,7 @@ impl Exporter<'_> {
         let (c, sn) = (angle.cos(), angle.sin());
         let (dx, dy) = (-bw / 2.0, bh / 2.0 - descent.clamp(0.0, 1.0) * bh);
         let (cx, cy) = if area.w > 0.0 && area.h > 0.0 { (area.x + area.w / 2.0, area.y + area.h / 2.0) } else { (w / 2.0, h.min(2000.0) / 2.0) };
-        let font = self.font(&face);
+        let font = self.font(&face, None);
         if font.is_none() && !self.outlined.contains(&face.id()) {
             return;
         }

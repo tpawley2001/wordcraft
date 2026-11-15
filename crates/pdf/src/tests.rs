@@ -1525,6 +1525,7 @@ fn bookmark_destination_is_the_page_of_its_start() {
         drawings: true,
         out_index: pages.iter().enumerate().map(|(o, p)| (*p, (o, Fit::of(&lay.pages[*p], None)))).collect(),
         fonts: HashMap::new(),
+        missing_advances: HashMap::new(),
         font_error: None,
         outlined: &outlined,
         cmaps: HashMap::new(),

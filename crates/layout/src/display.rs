@@ -34,6 +34,30 @@ pub use options::{BalloonMode, ChangeBar, CommentDisplay, DeleteMark, DisplayOpt
 pub use page::{CHANGE_BAR, ItemDisplay, MOVE_COLOR, object_display, page_display, page_layers, revision_color};
 pub use paint::{Paint, Stroke, UNDERLINE_DOUBLE_WAVE_GAP, UNDERLINE_WAVE_HALF_PERIOD, UNDERLINE_WAVE_PEN, paint_for, underline_waves};
 
+/// A font that isn't installed and that Word has character widths for (Aptos, Verdana,
+/// Univers...): its stand-in's glyphs are laid out with these widths, not their own.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MissingWidths {
+    /// The requested family, as the run names it.
+    pub family: String,
+    pub bold: bool,
+    pub italic: bool,
+}
+
+impl MissingWidths {
+    /// Word's advance of `c` in this font (share of the font size), when it has one.
+    pub fn advance(&self, c: char) -> Option<f64> {
+        missing_font_width(&self.family, self.bold, self.italic, c)
+    }
+}
+
+/// Word's advance (share of the font size) of `c` in the missing font `family` in a style, from
+/// the width tables in [`wordcraft_fonts::word`] and [`wordcraft_fonts::word_widths`].
+pub fn missing_font_width(family: &str, bold: bool, italic: bool, c: char) -> Option<f64> {
+    wordcraft_fonts::word::missing_font_advance(family, bold, c)
+        .or_else(|| wordcraft_fonts::word_widths::missing_font_advance(family, bold, italic, c))
+}
+
 #[derive(Clone, Debug)]
 pub enum Draw {
     Glyphs {
@@ -57,6 +81,9 @@ pub enum Draw {
         /// Horizontal scale of the letters (`w:w`, 1 = 100 %): each glyph is stretched across
         /// from its pen position. The positions already have the scaled advances.
         x_scale: f32,
+        /// The missing font whose widths (Word's, see [`MissingWidths`]) the glyphs are spaced
+        /// by, when `face` stands in for it. The PDF writer gives the glyphs those widths too.
+        missing_widths: Option<MissingWidths>,
     },
     Fill {
         rect: Rect,

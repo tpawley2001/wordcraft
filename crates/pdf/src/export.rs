@@ -136,6 +136,7 @@ fn write_attempt<'a>(
         drawings: opts.drawings,
         out_index: destinations,
         fonts: HashMap::new(),
+        missing_advances: HashMap::new(),
         font_error: None,
         outlined,
         cmaps: HashMap::new(),
@@ -206,7 +207,9 @@ fn write_attempt<'a>(
             KrillaError::Font(font, msg) => {
                 let bad = ex.fonts.iter().find(|(_, (_, f))| f.as_ref() == Some(&font));
                 match bad {
-                    Some((id, (face, _))) => Ok(Attempt::BadFont(*id, format!("font {} {} could not be embedded ({msg})", face.family, face.style))),
+                    Some(((id, _), (face, _))) => {
+                        Ok(Attempt::BadFont(*id, format!("font {} {} could not be embedded ({msg})", face.family, face.style)))
+                    }
                     None => Err(PdfError::Write(format!("a font could not be embedded ({msg})"))),
                 }
             }

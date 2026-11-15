@@ -1,6 +1,6 @@
 use super::{
-    Exporter, FaceRef, Fill, FillRule, KrillaGlyph, Point, Rgb, Stroke, Surface, Transform, baseline, cluster_ends, fill, glyph_id, glyph_outlines,
-    left_to_right, norm, ok, paint_of, rgb, split_clusters, visual_order,
+    Exporter, FaceRef, Fill, FillRule, KrillaGlyph, MissingWidths, Point, Rgb, Stroke, Surface, Transform, baseline, cluster_ends, fill, glyph_id,
+    glyph_outlines, left_to_right, norm, ok, paint_of, rgb, split_clusters, visual_order,
 };
 
 /// How a run of glyphs is painted: its colour, opacity and synthetic bold and italic.
@@ -86,6 +86,7 @@ impl Exporter<'_> {
         glyphs: &[(u32, f32, f32)],
         style: GlyphPaint,
         (text, known): (&str, &[std::ops::Range<usize>]),
+        missing: Option<&MissingWidths>,
     ) {
         let GlyphPaint { color, alpha, bold, italic } = style;
         if !size.is_finite() || size <= 0.0 || size > 5000.0 {
@@ -97,7 +98,10 @@ impl Exporter<'_> {
         if !glyphs.iter().all(|(_, x, y)| ok(*x) && ok(*y)) {
             return;
         }
-        let font = self.font(face);
+        // A stand-in for a missing font with Word's widths declares those widths (the layout's
+        // steps), so readers rebuilding words from positions see no gaps inside them.
+        let font = self.font(face, missing);
+        let own_advances = missing.filter(|_| font.is_some()).and_then(|m| self.missing_advances(face, m));
         if font.is_none() && !self.outlined.contains(&face.id()) {
             log::warn!("PDF: font {} {} could not be embedded", face.family, face.style);
             return;
@@ -125,7 +129,10 @@ impl Exporter<'_> {
             .map(|(k, (g, x, y, r))| {
                 let adv = match placed.get(k + 1) {
                     Some((_, nx, _, _)) => (nx - x) / size,
-                    None => face.advance(*g) as f32 / upem,
+                    None => match own_advances.as_ref().and_then(|a| a.get(&u16::try_from(*g).ok()?)) {
+                        Some(units) => f32::from(*units) / upem,
+                        None => face.advance(*g) as f32 / upem,
+                    },
                 };
                 KrillaGlyph::new(glyph_id(*g, count), adv, 0.0, (y0 - y) / size, 0.0, r.clone(), None)
             })
@@ -190,7 +197,7 @@ impl Exporter<'_> {
         let t = &*drawn;
         let glyphs: Vec<_> = shaped.iter().map(|g| (g.cluster, f64::from(g.x_advance), f64::from(g.x_offset), f64::from(g.y_offset))).collect();
         let Some(lay) = t.layout(face.upem, face.ascent, face.descent, &glyphs) else { return };
-        let font = self.font(&face);
+        let font = self.font(&face, None);
         if font.is_none() && !self.outlined.contains(&face.id()) {
             return;
         }
