@@ -1,5 +1,6 @@
 # File-format parity with Microsoft Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0555: RTF `\viewkind` keeps the view a document was saved in: Web Layout (5) and Outline (2, master document 3) reopen in that view, Draft (4) opens in Print Layout, and saving writes the document's view instead of a fixed `\viewkind4`. Readiness estimates unchanged; earlier: P0547: `.docx` keeps the view a document was saved in (`w:view`): Web Layout and Outline reopen in that view, Draft opens in Print Layout as in Word, and saving records the current view. Readiness estimates unchanged; earlier: P0542: RTF keeps five Word compatibility options on open and save: `\notabind`, `\truncex`, `\sprslnsp`, `\wpjst`, `\spltpgpar`. Readiness estimates unchanged; earlier: P0551: RTF `\spltpgpar`, `\ftnlytwnine`, `\expshrtn` and `\nocxsptable` turn their options off, absent = on, as Word reads them; they were read backwards. Readiness estimates unchanged)
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0536: Save as RTF writes `\trhdr` only for rows set to Repeat as header row and no longer makes header cells bold; a table look's Header Row stays a style option. Readiness estimates unchanged.)
@@ -412,6 +413,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | trivial | P0555: RTF reads `\viewkindN` into the saved view (5 Web Layout, 2 and 3 Outline, 4 Draft; 0, 1 and other numbers Print Layout; the last word wins) and writes the document's view (`\viewkind1` for Print Layout) instead of always `\viewkind4` (Draft). Readiness unchanged |
 | 2026-11-14 | trivial | P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged. |
 | 2026-11-14 | trivial | RTF `\dntblnsbdb` and `\lnbrkrule` turn off balanced single-byte/double-byte widths and Word 97 line breaking on open, and are written when those options are off; such documents had both on, so their spaces laid out at the wrong width. Readiness estimates unchanged |
 | 2026-11-14 | trivial | P0547: `.docx` reads and writes `w:view` (§17.15.1.92): a document saved in Web Layout or Outline (`masterPages` reads as Outline) reopens in that view; Draft (`normal`) opens in Print Layout, as Word does by default. Saving records the current view (Print and Read Mode write none), also into a merged settings part. Readiness unchanged |
