@@ -91,6 +91,7 @@ mod output_header_footer_counts;
 mod output_header_footer_session;
 mod output_header_footer_fields;
 mod printdate_output;
+mod savedate_output;
 mod output_if_fields;
 mod output_if_nested_fresh;
 mod output_if_nested_trigger;

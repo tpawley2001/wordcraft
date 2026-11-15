@@ -1,6 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (All Caps and Small Caps change only letters whose capital is one character, as Word draws them: Straße shows STRAßE. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0585: PDF, printing and page images show unlocked SAVEDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged; earlier: tab leaders in a missing font with Word's widths are spaced by Word's width of the leader character. Readiness estimates unchanged; earlier: PDFs of text in a missing font with Word's widths keep words whole for copy and search. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (PDFs of text in a missing font with Word's widths keep words whole for copy and search. Readiness estimates unchanged; earlier: tab leaders in a missing font with Word's widths are spaced by Word's width of the leader character. Readiness estimates unchanged; earlier: P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged)
 
@@ -374,6 +374,8 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei, Microsoft YaHei, PMingLiU and Yu Gothic now use Word's measured line metrics (P0504; `fonts/tests/missing_font_line_east_asian.rs`). Localized names remain unmeasured; broader pagination differences in gap #4 remain open.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0585: PDF, printing and page images show unlocked SAVEDATE fields at output time in all stories, as Word's PDF export treats output as a save; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
 
