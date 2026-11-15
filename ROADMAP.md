@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged; earlier: P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged)
@@ -187,6 +189,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-15: P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged.
 
 - 2026-11-15: P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.
 
@@ -1053,6 +1057,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | trivial | P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0545: Form Field Shading survives DOCX and RTF open/save, including RTF documents without `\formshade` (shading off). Rendering remains deferred; readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0512: Convert to Text inserts comma-space separators and converts nested tables with the same separator by default, preserving enclosing content controls. The dialog offers Convert nested tables, enabled when the converted rows contain a table. Readiness estimates unchanged. |
