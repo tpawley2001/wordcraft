@@ -231,35 +231,53 @@ fn outline_format(level: u8) -> (NumFormat, &'static str, &'static str) {
     }
 }
 
-/// AUTONUM, AUTONUMLGL and AUTONUMOUT's shared level counters (ECMA-376 §17.16.5.4-6), separate
-/// from LISTNUM's and SEQ's.
+/// AUTONUM, AUTONUMLGL and AUTONUMOUT's shared counters (ECMA-376 §17.16.5.4-6), separate from
+/// LISTNUM's and SEQ's. Only a heading that holds one of these fields moves them, as in Word: a
+/// heading without one changes nothing.
 #[derive(Default)]
 struct AutoNumCount {
+    /// One counter per heading level, counted by fields in headings.
     levels: [u32; 9],
+    /// The one counter of fields in body (non-heading) paragraphs; a counted heading restarts it.
+    body: u32,
+    /// The level of the last heading whose field was counted (0 when none).
     last_heading: u8,
 }
 
 impl AutoNumCount {
     /// Count a field of `name` in a paragraph of heading level `heading` and give its result.
     fn result(&mut self, name: &str, field: &FieldCode, heading: Option<u8>) -> String {
-        let level = heading.unwrap_or_else(|| self.last_heading.saturating_add(1).min(9));
-        let index = usize::from(level.saturating_sub(1));
-        for (i, n) in self.levels.iter_mut().enumerate() {
-            if i == index {
-                *n = n.saturating_add(1);
-            } else if i > index {
-                *n = 0;
+        let (level, n) = match heading.map(|l| l.clamp(1, 9)) {
+            Some(l) => {
+                let index = usize::from(l.saturating_sub(1));
+                for (i, n) in self.levels.iter_mut().enumerate() {
+                    if i == index {
+                        *n = n.saturating_add(1);
+                    } else if i > index {
+                        *n = 0;
+                    }
+                }
+                self.body = 0;
+                self.last_heading = l;
+                (l, self.levels.get(index).copied().unwrap_or(0))
             }
-        }
-        let n = self.levels.get(index).copied().unwrap_or(0);
+            None => {
+                self.body = self.body.saturating_add(1);
+                (self.last_heading.saturating_add(1), self.body)
+            }
+        };
         match name {
             "AUTONUMLGL" => {
-                let parts: Vec<String> = self.levels.iter().take(usize::from(level)).map(|n| n.max(&1).to_string()).collect();
+                let heads = usize::from(if heading.is_some() { level } else { self.last_heading });
+                let mut parts: Vec<String> = self.levels.iter().take(heads).map(|n| n.max(&1).to_string()).collect();
+                if heading.is_none() {
+                    parts.push(n.to_string());
+                }
                 let sep = if field.has('e') { "" } else { "." };
                 format!("{}{sep}", parts.join("."))
             }
             "AUTONUMOUT" => {
-                let (fmt, prefix, suffix) = outline_format(level);
+                let (fmt, prefix, suffix) = outline_format(level.min(9));
                 format!("{prefix}{}{suffix}", fmt.format(n))
             }
             _ => {
@@ -369,7 +387,6 @@ fn seq_walk(doc: &wordcraft_doc::Document, known: Option<std::collections::HashM
         let Some(p) = doc.para(StoryRef::Body, &path) else { continue };
         if let Some(l) = heading_style_level(p) {
             count.listnum.last_heading = l;
-            count.autonum.last_heading = l;
         }
         if let Some(l) = heading_style_level(p)
             && let Some(k) = (l as usize).checked_sub(1)
