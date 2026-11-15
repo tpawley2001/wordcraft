@@ -24,7 +24,10 @@ use crate::fkp::Bins;
 use crate::sections::{self, Section};
 use crate::sprm::Prl;
 use crate::table::{self, ParaOut};
-use crate::{DocbinError, FieldBuild, FieldResult, MAX_TOTAL_CHARS, MAX_WORK, ParaBuild, Work, finish_field, fmt, metadata};
+use crate::{
+    DocbinError, MAX_TOTAL_CHARS, MAX_WORK, OpenField, ParaBuild, Work, field_begin, field_end, field_separator, fmt, metadata, paragraph_in_result,
+    push_field_end,
+};
 
 /// Most pieces any real file has; more means a corrupt `PlcPcd`.
 const MAX_PIECES: usize = 1_000_000;
@@ -80,7 +83,10 @@ pub(crate) fn read<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, word: &[u8],
 
     let mut out: Vec<ParaOut> = Vec::new();
     let mut pb = ParaBuild::default();
-    let mut field: Option<FieldBuild> = None;
+    // Open fields, innermost last, read as the Word 97 reader reads them: a table of contents
+    // (and any field whose result runs over paragraphs) keeps its result as ordinary paragraphs
+    // between markers; any other field becomes one object with its result.
+    let mut fields: Vec<OpenField> = Vec::new();
     // The last CHPX resolved (by address in the stream), its properties and decoding.
     let mut memo: Option<(*const u8, usize, CharProps, Decode)> = None;
     let cp_text = fib.ccp.text;
@@ -107,45 +113,39 @@ pub(crate) fn read<F: Read + Seek>(comp: &mut cfb::CompoundFile<F>, word: &[u8],
             let section_mark = b == 0x0C && sect_ends.binary_search(&cp.saturating_add(1)).is_ok();
             match b {
                 0x0D | 0x07 | 0x0C if b != 0x0C || section_mark => {
+                    // A field result that runs over paragraphs keeps them.
+                    if b == 0x0D {
+                        paragraph_in_result(&mut fields, &mut pb);
+                    }
                     pb.mark = props;
                     apply_para_props(&mut pb.props, papx.papx_word6(word, fc));
                     let done = std::mem::take(&mut pb);
                     out.push(para_out(done, cp.saturating_add(1)));
                 }
-                // Field begin / separator / end: the result text is kept, as for Word 97.
-                0x13 => match field.as_mut() {
-                    Some(f) => f.depth = f.depth.saturating_add(1),
-                    None => field = Some(FieldBuild { depth: 1, instr: String::new(), sep: None, props, object: false, code: Default::default() }),
-                },
-                0x14 => {
-                    if let Some(f) = field.as_mut()
-                        && f.depth == 1
-                        && f.sep.is_none()
-                    {
-                        f.sep = Some(FieldResult::default());
-                    }
+                // Field begin / separator / end, with the Word 97 reader's rules.
+                0x13 => {
+                    field_begin(&mut fields, || props);
                 }
+                0x14 => field_separator(&mut fields, &mut pb),
                 0x15 => {
-                    if let Some(mut f) = field.take() {
-                        if f.depth > 1 {
-                            f.depth -= 1;
-                            field = Some(f);
-                        } else {
-                            finish_field(&mut pb, f, &work);
-                        }
-                    }
+                    field_end(&mut fields, &mut pb, &work);
                 }
-                0x09 => push(&mut pb, field.as_mut(), '\t', props),
-                0x0B => push(&mut pb, field.as_mut(), '\n', props),
-                0x0C => push(&mut pb, field.as_mut(), '\u{C}', props),
-                0x0E => push(&mut pb, field.as_mut(), '\u{E}', props),
-                0x1E => push(&mut pb, field.as_mut(), '\u{2011}', props),
-                0x1F => push(&mut pb, field.as_mut(), '\u{AD}', props),
+                0x09 => push(&mut pb, fields.last_mut(), '\t', props),
+                0x0B => push(&mut pb, fields.last_mut(), '\n', props),
+                0x0C => push(&mut pb, fields.last_mut(), '\u{C}', props),
+                0x0E => push(&mut pb, fields.last_mut(), '\u{E}', props),
+                0x1E => push(&mut pb, fields.last_mut(), '\u{2011}', props),
+                0x1F => push(&mut pb, fields.last_mut(), '\u{AD}', props),
                 // Pictures, note references and other anchors are not read yet.
                 b if b < 0x20 => {}
-                b => push(&mut pb, field.as_mut(), decode_byte(decode, b), props),
+                b => push(&mut pb, fields.last_mut(), decode_byte(decode, b), props),
             }
         }
+    }
+    // A range field still open when the text ends (a cut-off file) is closed, so its
+    // `FieldStart` never reaches a save without its end.
+    for _ in fields.iter().filter(|f| f.range) {
+        push_field_end(&mut pb);
     }
     if !pb.text.is_empty() {
         out.push(para_out(pb, cp_text));
@@ -185,9 +185,14 @@ fn para_out(done: ParaBuild, end_cp: u32) -> ParaOut {
     }
 }
 
-/// Add a visible character, or record it for the field being read.
-fn push(pb: &mut ParaBuild, field: Option<&mut FieldBuild>, c: char, props: CharProps) {
-    match field {
+/// Add a visible character, or record it for the field being read (`field`, the innermost open
+/// one). A range field's result is ordinary content; the code of a field counted past the nesting
+/// cap, or nested in a button field's code, is dropped.
+fn push(pb: &mut ParaBuild, field: Option<&mut OpenField>, c: char, props: CharProps) {
+    if field.as_ref().is_some_and(|f| f.over_hidden > 0 || f.code_hidden > 0) {
+        return;
+    }
+    match field.filter(|f| !f.range).map(|f| &mut f.build) {
         Some(f) => match f.sep.as_mut() {
             Some(result) => result.push(c, props),
             None => f.instr.push(c),
