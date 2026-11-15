@@ -483,7 +483,7 @@ impl<'a> Builder<'a> {
             let k = st.size / st.face.upem.max(1.0) as f32;
             let hscale = rc.scale / 100.0;
             // A missing font Word has advances for (Univers, Verdana, Tahoma, Century Gothic,
-            // SimSun) keeps them: the substitute's glyph is drawn at the start of a cell as wide
+            // SimSun, Aptos, Aptos Display, Trebuchet MS, Garamond) keeps them: the substitute's glyph is drawn at the start of a cell as wide
             // as the real font's (`missing_font_advance`).
             let word_advances = resolved.substituted && !key.complex && st.face.id() == primary.id() && st.size.is_finite() && st.size > 0.0;
             // Group glyphs by cluster byte offset; graphemes may span several shaper clusters.
