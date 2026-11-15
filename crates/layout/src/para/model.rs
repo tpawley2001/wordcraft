@@ -77,9 +77,10 @@ impl<'a> SymbolRun<'a> {
         true
     }
 
-    /// The advance (em) Word gives `c` when this is Symbol and Symbol itself isn't installed: the
-    /// width Symbol has ([`wordcraft_fonts::word::symbol_advance`]), not the drawn substitute's.
-    /// `c` is a Symbol code stored as U+F020-U+F0FF or as U+0020-U+00FF (never the soft hyphen).
+    /// The advance (em) Word gives `c` when this is Symbol, Wingdings, Wingdings 2 or Wingdings 3
+    /// and that font isn't installed: the width the font has
+    /// ([`wordcraft_fonts::word::symbol_advance`]), not the drawn substitute's. `c` is a code
+    /// stored as U+F020-U+F0FF or as U+0020-U+00FF (never the soft hyphen).
     pub(super) fn advance(&self, c: char) -> Option<f64> {
         if self.installed {
             return None;

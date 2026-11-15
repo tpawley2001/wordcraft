@@ -1,7 +1,8 @@
 //! A character in the Symbol font, when Symbol itself isn't installed, is drawn as its Unicode
 //! equivalent from another face but is as wide as Symbol makes it, as Word lays it out: a psi
 //! (Symbol 0x79) is 0.686 em, not the 0.660 em of a substitute's psi, so it wraps where Word wraps
-//! it. An installed Symbol keeps its own advances; Wingdings and the like keep the drawn face's.
+//! it. A missing Wingdings, Wingdings 2 or Wingdings 3 likewise keeps Word's widths for its
+//! characters. An installed font keeps its own advances; Webdings keeps the drawn face's.
 
 use std::sync::Arc;
 
@@ -161,19 +162,35 @@ fn a_symbol_code_without_a_glyph_is_still_the_box() {
     assert!((adv - want).abs() < 0.01, "{adv} vs {want}");
 }
 
-#[test]
-fn wingdings_keeps_the_drawn_faces_advance() {
+/// Whether Wingdings is missing here and drawn from a substitute; `None` when no face resolves
+/// for it at all.
+fn wingdings_missing() -> Option<bool> {
     crate::test_fonts();
-    if wordcraft_fonts::word::resolve("Wingdings", false, false).face.upem <= 0.0 {
-        return;
-    }
+    let r = wordcraft_fonts::word::resolve("Wingdings", false, false);
+    (r.face.upem > 0.0).then_some(r.substituted)
+}
+
+#[test]
+fn missing_wingdings_takes_words_advance() {
+    let Some(true) = wingdings_missing() else { return };
     let pl = first_para(&lay_out(para(&[("a", "Times New Roman"), ("\u{F06C}", "Wingdings"), ("b", "Times New Roman")], 12.0, None), 1000.0));
-    let c = &pl.clusters[cluster_at(&pl, 1)];
-    // No table applies to Wingdings: the cluster is as wide as the glyph drawn for it.
-    let st = &pl.styles[c.style as usize];
-    let drawn: f32 = pl.glyphs[c.g0 as usize..c.g1 as usize].iter().map(|g| st.face.advance(g.gid) as f32 * st.size / st.face.upem as f32).sum();
-    assert!(c.g1 > c.g0);
-    assert!((c.adv - drawn).abs() < 0.01, "{} vs {drawn}", c.adv);
+    let k = cluster_at(&pl, 1);
+    let adv = pl.clusters[k].adv;
+    assert!((adv - 0.747 * 12.0).abs() < 0.01, "{adv}");
+    let b = x_of(&pl, cluster_at(&pl, 1 + "\u{F06C}".len())) - x_of(&pl, k);
+    assert!((b - 0.747 * 12.0).abs() < 0.01, "{b}");
+}
+
+#[test]
+fn wingdings_check_boxes_wrap_where_word_wraps_them() {
+    let Some(true) = wingdings_missing() else { return };
+    let boxes = "\u{F0A8}".repeat(30);
+    let pl = first_para(&lay_out(para(&[(boxes.as_str(), "Wingdings")], 10.0, None), 260.0));
+    // 29 x 8.91 pt = 258.4 fits in 260 pt; 30 x 8.91 = 267.3 does not.
+    assert_eq!(pl.lines.len(), 2);
+    let w = "\u{F0A8}".len();
+    assert_eq!(line_of(&pl, cluster_at(&pl, 28 * w)), 0);
+    assert_eq!(line_of(&pl, cluster_at(&pl, 29 * w)), 1);
 }
 
 #[test]
