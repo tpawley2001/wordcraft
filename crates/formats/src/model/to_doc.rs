@@ -976,9 +976,20 @@ impl<'a> Builder<'a> {
                     Box::new(wordcraft_doc::props::CellPicture { media, size: [p.img.w, p.img.h], repeat: p.repeat, align: p.align })
                 });
                 let (margins, partial_margins) = cell_margins(c);
+                // The cell's own preferred width (RTF), none when it says auto, else the width
+                // of its columns.
+                let pct = c.pref_width_pct.filter(|p| p.is_finite() && *p > 0.0).map(|p| p.min(100.0));
+                let pt = c.pref_width.filter(|w| pct.is_none() && w.is_finite() && *w > 0.0).map(|w| w.min(1584.0));
+                let (pref, pref_pct) = match (pt, pct) {
+                    (None, None) if c.pref_auto => (None, None),
+                    (None, None) => (Some(w), None),
+                    own => own,
+                };
                 row.cells.push(wordcraft_doc::Cell {
                     props: CellProps {
-                        width: Some(w),
+                        width: pref,
+                        width_pct: pref_pct,
+                        hide_mark: c.hide_mark,
                         span: span as u32,
                         vmerge,
                         shading: c.shading,

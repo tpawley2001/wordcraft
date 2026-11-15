@@ -972,6 +972,8 @@ impl Reader {
             c.direction = d.direction;
             c.own_margins = d.own_margins();
             c.no_wrap = d.no_wrap;
+            (c.pref_width, c.pref_width_pct, c.pref_auto) = d.pref_width();
+            c.hide_mark = d.hide_mark;
             match d.vmerge {
                 1 => c.rowspan = 2,
                 2 => c.covered = true,

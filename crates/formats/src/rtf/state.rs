@@ -807,6 +807,12 @@ pub(super) struct CellDef {
     pub(super) pad_unit: [Option<i32>; 4],
     /// Wrap text off (`\clNoWrap`).
     pub(super) no_wrap: bool,
+    /// The preferred width's unit (`\clftsWidthN`: 2 fiftieths of a percent, 3 twips, else none)
+    /// and value (`\clwWidthN`), in either order.
+    pub(super) pref_unit: Option<i32>,
+    pub(super) pref_value: Option<i32>,
+    /// Hide end-of-cell mark (`\clhidemark`).
+    pub(super) hide_mark: bool,
     /// Whether the cell names a shading word of its own (`\clcbpat`, `\clcfpat`, `\clshdng`),
     /// so the row's shading does not replace it.
     pub(super) own_pattern: bool,
@@ -824,6 +830,26 @@ impl CellDef {
             }
         }
         out
+    }
+
+    /// The cell's preferred width: (points, percent, auto). With no unit (or unit 0) the cell
+    /// prefers its column's width, as in Word: (None, None, false). Auto (unit 1), a missing, zero
+    /// or negative value, or a twips value beyond 22 inches give no preferred width: (None, None,
+    /// true). A percentage is capped at 100%.
+    pub(super) fn pref_width(&self) -> (Option<f32>, Option<f32>, bool) {
+        let v = self.pref_value.filter(|v| *v > 0);
+        match self.pref_unit {
+            Some(1) => (None, None, true),
+            Some(2) => {
+                let pct = v.map(|v| (v as f32 / 50.0).min(100.0));
+                (None, pct, pct.is_none())
+            }
+            Some(3) => {
+                let pt = v.filter(|v| *v <= 31_680).map(|v| v as f32 / 20.0);
+                (pt, None, pt.is_none())
+            }
+            _ => (None, None, false),
+        }
     }
 }
 

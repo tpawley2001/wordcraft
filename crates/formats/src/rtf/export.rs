@@ -2033,6 +2033,15 @@ impl Writer {
             if c.no_wrap {
                 out.push_str("\\clNoWrap");
             }
+            // Its preferred width: a percentage in fiftieths of a percent, else points in twips.
+            if let Some(p) = c.pref_width_pct.filter(|p| p.is_finite() && *p > 0.0) {
+                out.push_str(&format!("\\clftsWidth2\\clwWidth{}", (p.min(100.0) * 50.0).round() as i32));
+            } else if let Some(w) = c.pref_width.filter(|w| w.is_finite() && *w > 0.0) {
+                out.push_str(&format!("\\clftsWidth3\\clwWidth{}", (w.min(1584.0) * 20.0).round() as i32));
+            }
+            if c.hide_mark {
+                out.push_str("\\clhidemark");
+            }
             match c.direction {
                 wordcraft_doc::props::TextDirection::Down => out.push_str("\\cltxtbrl"),
                 wordcraft_doc::props::TextDirection::Up => out.push_str("\\cltxbtlr"),
