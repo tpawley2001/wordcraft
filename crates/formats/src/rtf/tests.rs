@@ -1844,6 +1844,7 @@ mod cell_margins;
 mod cell_pref_width;
 mod char_border;
 mod char_effects;
+mod char_snap_grid;
 mod char_unit_indents;
 mod column_widths;
 mod custom_note_marks;
