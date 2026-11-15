@@ -1,5 +1,7 @@
 # File-format parity with Microsoft Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0527: Word 97/2000 `.doc` files keep their document-wide footnote and endnote options from the DOP — placement, restart, start number and number format. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0518: DOCX reads and writes Gutter position Top (`w:settings/w:gutterAtTop`), once also when the settings part is merged; RTF `\gutterprl`. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged.)
@@ -1003,3 +1005,4 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 | 2026-11-12 | trivial | DOCX: `w:lnNumType` without a positive `w:countBy` leaves line numbering off, as Word does, instead of numbering every line on screen, in PDF export and on re-save; saving then omits the element (`section_line_numbering.rs`, #6209) |
 | 2026-11-14 | trivial | P0497: DOCX footnote/endnote separator stories are used only when `w:settings/w:footnotePr` (`w:endnotePr`) lists their ids; an unlisted story is ignored and the built-in separator drawn, as measured in Word (`crates/docx/tests/it/note_separator_links.rs`). Readiness estimates unchanged |
 | 2026-11-14 | trivial | P0518: DOCX `w:settings/w:gutterAtTop` (§17.15.1.49) is read (`w:val="0"` is off) and written after `w:mirrorMargins`, once also when the file's settings part is merged; RTF `\gutterprl` is read and written for it. |
+| 2026-11-14 | trivial | P0527: `.doc` from Word 97 and Word 2000 (nFib <= 0x00D9) reads the DOP's note options ([MS-DOC] §2.7.2 `fpc`, `rncFtn`, `nFtn`, `rncEdn`, `nEdn`, `epc`; §2.7.4 `nfcFtnRef`, `nfcEdnRef`): footnotes beneath text, restart each section/page, start number, number format, endnotes at the end of each section. Word's defaults stay unset; later files ignore them (`crates/docbin/src/tests/dop_note_options.rs`). Readiness estimates unchanged |

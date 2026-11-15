@@ -310,7 +310,7 @@ fn read_limited(bytes: &[u8], password: Option<&str>, max_paragraphs: usize) -> 
     let mut doc = Document::new();
     // Word lays out every Word 97-2003 file in Compatibility Mode, with the file's options.
     doc.settings.compat_mode = wordcraft_doc::WORD2003_COMPAT_MODE;
-    dop::apply(&table, fib.pair(fib::pair::DOP), &mut doc.settings);
+    dop::apply(&table, fib.pair(fib::pair::DOP), &mut doc.settings, fib.version);
     // A missing font of the roman family class is drawn in a serif face, as for DOCX's
     // `w:family w:val="roman"`.
     doc.settings.roman_fonts = roman_fonts(font_entries.iter().map(|f| (f.ff, f.name.as_str())));
