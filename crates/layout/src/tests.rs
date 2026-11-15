@@ -159,6 +159,7 @@ mod table_contact;
 mod table_no_wrap;
 mod tall_footer_leading;
 mod textbox;
+mod trailing_page_break;
 mod turned_cell_autofit;
 mod underline_from_font;
 mod underline_style_geometry;
@@ -1475,7 +1476,8 @@ fn automatic_hyphenation_sees_only_the_text_laid_out() {
 #[test]
 fn page_break_char_starts_new_page() {
     crate::test_fonts();
-    let mut d = Document::from_text("one");
+    // Text after the break: a break that ends the document starts no page (see end_page_break tests).
+    let mut d = Document::from_text("one two");
     d.insert_text(&Pos::body(0, 3), "\u{000C}", &Default::default()).unwrap();
     let l = lay(&d);
     assert_eq!(l.pages.len(), 2);

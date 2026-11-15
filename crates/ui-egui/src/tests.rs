@@ -2762,6 +2762,8 @@ fn zoom_after_one_page_keeps_one_page_per_row() {
     for _ in 0..3 {
         a.run("insert.pageBreak", json!({})).unwrap();
     }
+    // Text on the last page: a page break that ends the document starts no page.
+    a.run("text.insert", json!({"text": "Page four"})).unwrap();
     let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0));
     let mut t = 0.0;
     let mut frame = |a: &mut WordApp| {

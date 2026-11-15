@@ -496,6 +496,8 @@ fn ruler_margin_drags_on_even_mirrored_pages_move_the_visible_edge() {
     app.run("layout.margins", json!({"left": 72.0, "right": 36.0})).unwrap();
     app.run("caret.docEnd", json!({})).unwrap();
     app.run("insert.pageBreak", json!({})).unwrap();
+    // Text on the second page: a page break that ends the document starts no page.
+    app.run("text.insert", json!({"text": "two"})).unwrap();
     let sect = wordcraft_engine::cmd::page::sect(&app.session);
     let body = |app: &mut WordApp, page: usize| {
         let l = app.session.layout();
@@ -697,6 +699,8 @@ fn dragging_the_scrollbar_names_the_page_at_the_top() {
             a.run("text.insert", json!({"text": "Page text"})).unwrap();
             a.run("layout.break", json!({"kind": "page"})).unwrap();
         }
+        // Text on the last page: a page break that ends the document starts no page.
+        a.run("text.insert", json!({"text": "Page text"})).unwrap();
         a.run("view.commentsPane", json!({"value": false})).unwrap();
         a.run("view.hideWhiteSpace", json!({"value": hide_white_space})).unwrap();
         a.run("caret.docStart", json!({})).unwrap();
@@ -848,6 +852,8 @@ fn clicking_vertical_scrollbar_track_advances_one_screen() {
         a.run("text.insert", json!({"text": "Page text"})).unwrap();
         a.run("layout.break", json!({"kind": "page"})).unwrap();
     }
+    // Text on the last page: a page break that ends the document starts no page.
+    a.run("text.insert", json!({"text": "Page text"})).unwrap();
     a.run("view.commentsPane", json!({"value": false})).unwrap();
     a.run("caret.docStart", json!({})).unwrap();
     let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(1.0 / 60.0).build_ui_state(
@@ -913,6 +919,8 @@ fn clicking_vertical_scrollbar_track_advances_one_screen_in_rtl() {
         a.run("text.insert", json!({"text": "Page text"})).unwrap();
         a.run("layout.break", json!({"kind": "page"})).unwrap();
     }
+    // Text on the last page: a page break that ends the document starts no page.
+    a.run("text.insert", json!({"text": "Page text"})).unwrap();
     a.run("view.commentsPane", json!({"value": false})).unwrap();
     a.run("caret.docStart", json!({})).unwrap();
     let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(1.0 / 60.0).build_ui_state(
@@ -978,6 +986,8 @@ fn clicking_thin_vertical_scrollbar_track_advances_one_screen() {
         a.run("text.insert", json!({"text": "Page text"})).unwrap();
         a.run("layout.break", json!({"kind": "page"})).unwrap();
     }
+    // Text on the last page: a page break that ends the document starts no page.
+    a.run("text.insert", json!({"text": "Page text"})).unwrap();
     a.run("view.commentsPane", json!({"value": false})).unwrap();
     a.run("caret.docStart", json!({})).unwrap();
     let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(1.0 / 60.0).build_ui_state(
@@ -1109,6 +1119,8 @@ fn the_status_bar_names_the_page_in_view_not_only_the_caret_page() {
         a.run("text.insert", json!({"text": "Page text"})).unwrap();
         a.run("layout.break", json!({"kind": "page"})).unwrap();
     }
+    // Text on the last page: a page break that ends the document starts no page.
+    a.run("text.insert", json!({"text": "Page text"})).unwrap();
     a.run("view.commentsPane", json!({"value": false})).unwrap();
     a.run("caret.docStart", json!({})).unwrap();
     let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(1.0 / 60.0).build_ui_state(
