@@ -256,3 +256,45 @@ fn a_picture_with_a_negative_crop_keeps_its_goal_size() {
     assert!(close(&got, (200.0, 100.0)), "{got:?}");
     assert_eq!(drawn, [0.0; 4]);
 }
+
+// PICMID crop fields (PICF offsets 36, 38, 40, 42: left, top, right, bottom in twips of the goal, signed).
+// Older Word versions store the crop there; when any is nonzero Word's box is the goal minus those crops,
+// times the scale (measured in Microsoft 365 Word's PDF of a Word 97-2003 file).
+
+/// `picf` with the four PICMID crop fields `[left, top, right, bottom]` (twips) set.
+fn picf_with_picmid_crop(goal: (i16, i16), scale: (u16, u16), crop: [i16; 4], rest: &[u8]) -> Vec<u8> {
+    let mut out = picf(goal, scale, rest);
+    for (i, c) in crop.iter().enumerate() {
+        out[36 + 2 * i..38 + 2 * i].copy_from_slice(&c.to_le_bytes());
+    }
+    out
+}
+
+#[test]
+fn a_picture_with_picmid_crop_fields_is_sized_from_the_cropped_goal() {
+    let fopt = [566.0 / 20475.0, 1700.0 / 15360.0, 1133.0 / 20475.0, 2267.0 / 15360.0];
+    let data = picf_with_picmid_crop((20475, 15360), (240, 218), [566, 1700, 1133, 2267], &cropped_picture(fopt));
+    let doc = doc_with(data);
+    let got = inline_sizes(&doc);
+    // (20475 - 566 - 1133) x 0.240 / 20 = 225.312; (15360 - 1700 - 2267) x 0.218 / 20 = 124.184.
+    assert!(close(&got, (225.312, 124.184)), "{got:?}");
+    let Some(InlineObject::Image { crop: drawn, .. }) = first_para(&doc).objects.first() else {
+        panic!("no image: {:?}", first_para(&doc).objects)
+    };
+    assert!(same_crop(*drawn, fopt), "{drawn:?}");
+}
+
+#[test]
+fn picmid_crop_fields_size_the_box_even_without_fopt_crops() {
+    // A negative left crop adds 1000 twips: (20475 + 1000) / 20 = 1073.75; height 15360 / 20 = 768.
+    let data = picf_with_picmid_crop((20475, 15360), (1000, 1000), [-1000, 0, 0, 0], &cropped_picture([0.0; 4]));
+    let got = inline_sizes(&doc_with(data));
+    assert!(close(&got, (1073.75, 768.0)), "{got:?}");
+}
+
+#[test]
+fn picmid_crops_larger_than_the_goal_clamp_the_box() {
+    let data = picf_with_picmid_crop((20475, 15360), (1000, 1000), [15000, 0, 15000, 0], &cropped_picture([0.0; 4]));
+    let got = inline_sizes(&doc_with(data));
+    assert!(close(&got, (1.0, 768.0)), "{got:?}");
+}
