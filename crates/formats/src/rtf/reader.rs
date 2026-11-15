@@ -603,7 +603,7 @@ impl Reader {
     /// options, linked styles, Shift+Return expansion, HTML paragraph auto spacing, Track Changes on,
     /// print form data only). False when `w` isn't one.
     pub(super) fn doc_setting_word(&mut self, w: &str, p: Option<i32>) -> bool {
-        use wordcraft_doc::ZoomFit;
+        use wordcraft_doc::{SavedView, ZoomFit};
         let on = p != Some(0);
         let pv = p.unwrap_or(0);
         let d = &mut self.doc_set;
@@ -637,6 +637,16 @@ impl Reader {
             "revisions" => d.track_changes = Some(on),
             "trackmoves" => d.track_moves = Some(on),
             "revprot" => d.old_prot = on.then_some("trackedChanges"),
+            // `\viewkindN`: the view the document was saved in. Master documents (3) show in
+            // Outline view; 0 (none), 1 (Page Layout) and unknown numbers are Print Layout.
+            "viewkind" => {
+                d.view = Some(match pv {
+                    2 | 3 => Some(SavedView::Outline),
+                    4 => Some(SavedView::Draft),
+                    5 => Some(SavedView::Web),
+                    _ => None,
+                })
+            }
             "viewscale" => d.percent = u32::try_from(pv).ok().filter(|n| (10..=500).contains(n)).or(d.percent),
             "viewzk" => match pv {
                 0 => d.fit = Some(None),
@@ -1294,6 +1304,8 @@ pub(super) fn apply_section_word(sec: &mut SecFmt, w: &str, p: Option<i32>) -> b
 /// document is built. `None` is a word the header doesn't name.
 #[derive(Default)]
 pub(super) struct DocSettingWords {
+    /// `\viewkind`: the saved view (`Some(None)` for Print Layout).
+    view: Option<Option<wordcraft_doc::SavedView>>,
     /// `\viewscale` (10–500) and `\viewzk` (`Some(None)` for `\viewzk0`).
     percent: Option<u32>,
     fit: Option<Option<wordcraft_doc::ZoomFit>>,
@@ -1348,6 +1360,9 @@ impl DocSettingWords {
     pub(super) fn apply(&self, s: &mut wordcraft_doc::Settings) {
         s.sum_paragraph_spacing = !self.html_auto_spacing;
         s.symbol_class_fonts.clone_from(&self.symbol_class_fonts);
+        if let Some(v) = self.view {
+            s.view = v;
+        }
         if self.percent.is_some() || self.fit.is_some() {
             let (percent, fit) = (self.percent.unwrap_or(100), self.fit.flatten());
             // 100% with no fit mode is the model's "no saved zoom".
