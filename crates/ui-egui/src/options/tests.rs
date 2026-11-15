@@ -556,3 +556,31 @@ fn screen_paper_color_options_round_trip_and_work_without_a_document() {
     h.run_steps(3);
     assert_eq!(h.state().session.prefs.paper_color, PaperColor::Cream);
 }
+
+#[test]
+fn advanced_insert_key_paste_checkbox_round_trips() {
+    let mut a = app();
+    a.run("file.options", json!({"pane": "advanced"})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        a,
+    );
+    h.run_steps(4);
+    assert!(!h.state().session.prefs.insert_key_paste);
+    h.get_by_label("Use the Insert key for paste").click();
+    h.run_steps(4);
+    assert!(h.state().session.prefs.insert_key_paste);
+    let saved = serde_json::to_vec(&h.state().prefs()).unwrap();
+    let mut restored = app();
+    restored.apply_prefs(UiState::from_json(&saved).unwrap());
+    assert!(restored.session.prefs.insert_key_paste);
+    h.get_by_label("Use the Insert key for paste").click();
+    h.run_steps(4);
+    assert!(!h.state().session.prefs.insert_key_paste);
+    let older: wordcraft_engine::Prefs = serde_json::from_value(json!({})).unwrap();
+    assert!(!older.insert_key_paste);
+}

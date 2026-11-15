@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0587: Find matches the text a field shows (a citation's `[7]`, a REF or SEQ result, a legacy form field's text), and a match may run into and out of it; with field codes shown it searches the code instead, never across the field's edge, and the drawn braces are not characters. A match in a field covers the whole field; Replace leaves it alone and Replace All reports it as skipped (from storytold/wordcraft#5560). Readiness estimates unchanged.)
@@ -204,6 +206,8 @@ Convert Text to Table (`table.fromText`) keeps spaces, tabs and no-break spaces 
 Word Count's shared counters follow the 2026-11-14 Word for Windows measurements for symbols, dash/bullet separators, spaces and invisible characters. U+2028/U+2029 as breaks, invisible-only tokens and the retained CJK punctuation exception remain unverified in Word.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0571: Shift+F3 (Change Case with no mode) picks the next case from the selected text as Word does: Sentence case, Capitalize Each Word, UPPERCASE or lowercase.

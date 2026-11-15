@@ -22,7 +22,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("file.options", "Options", "File", options)
             .params(
-                r#"{"pane"?: "general|display|proofing|save|language|accessibility|advanced|agents", "author"?: string, "initials"?: string, "units"?: "inches|centimeters|millimeters|points|picas|auto" (auto: the region's), "region"?: string (a locale tag like pl-PL, saved: the paper File › New starts on, the default units and the decimal separator; auto: the system's), "typingReplacesSelection"?: bool, "insertKeyOvertype"?: bool, "overtype"?: bool, "marks"?: {"tabs"?: bool, "spaces"?: bool, "paragraphs"?: bool, "hidden"?: bool}, "checkSpelling"?: bool, "markGrammar"?: bool, "printProperties"?: bool, "printBackground"?: bool (print the page color and picture), "printDrawings"?: bool (print shapes, text boxes, Decorative Text and drawing canvases), "printHiddenText"?: bool, "printFieldCodes"?: bool, "printFormsData"?: bool (this document: print only the data from its form fields), "printReverse"?: bool, "printDuplexFront"?: bool, "printDuplexBack"?: bool, "ignoreUppercase"?: bool, "ignoreNumbers"?: bool, "ignoreInternet"?: bool, "alwaysCreateBackup"?: bool, "dictionariesFolder"?: string (a folder of Hunspell .aff/.dic files searched first, saved; auto: the system locations only), "userTemplatesFolder"?: string (the folder File › New lists personal templates from, saved; auto: the app's own Templates folder; not a network folder), "addWords"?: [string], "removeWords"?: [string]} — with any setting it changes them and opens nothing; without, it opens File › Options (at `pane`). Returns the settings."#,
+                r#"{"pane"?: "general|display|proofing|save|language|accessibility|advanced|agents", "author"?: string, "initials"?: string, "units"?: "inches|centimeters|millimeters|points|picas|auto" (auto: the region's), "region"?: string (a locale tag like pl-PL, saved: the paper File › New starts on, the default units and the decimal separator; auto: the system's), "typingReplacesSelection"?: bool, "insertKeyPaste"?: bool, "insertKeyOvertype"?: bool, "overtype"?: bool, "marks"?: {"tabs"?: bool, "spaces"?: bool, "paragraphs"?: bool, "hidden"?: bool}, "checkSpelling"?: bool, "markGrammar"?: bool, "printProperties"?: bool, "printBackground"?: bool (print the page color and picture), "printDrawings"?: bool (print shapes, text boxes, Decorative Text and drawing canvases), "printHiddenText"?: bool, "printFieldCodes"?: bool, "printFormsData"?: bool (this document: print only the data from its form fields), "printReverse"?: bool, "printDuplexFront"?: bool, "printDuplexBack"?: bool, "ignoreUppercase"?: bool, "ignoreNumbers"?: bool, "ignoreInternet"?: bool, "alwaysCreateBackup"?: bool, "dictionariesFolder"?: string (a folder of Hunspell .aff/.dic files searched first, saved; auto: the system locations only), "userTemplatesFolder"?: string (the folder File › New lists personal templates from, saved; auto: the app's own Templates folder; not a network folder), "addWords"?: [string], "removeWords"?: [string]} — with any setting it changes them and opens nothing; without, it opens File › Options (at `pane`). Returns the settings."#,
             )
             .pure(),
         CommandSpec::new("text.overtype", "Overtype", "File › Options › Advanced", |s, v| {
@@ -53,9 +53,10 @@ fn style_area_width(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 /// The on/off settings by their `file.options` name.
-fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 16] {
+fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 17] {
     [
         ("typingReplacesSelection", |p| &mut p.typing_replaces_selection),
+        ("insertKeyPaste", |p| &mut p.insert_key_paste),
         ("insertKeyOvertype", |p| &mut p.insert_key_overtype),
         ("overtype", |p| &mut p.overtype),
         ("markGrammar", |p| &mut p.mark_grammar),
@@ -258,6 +259,7 @@ pub fn current(s: &Session) -> Value {
         "region": {"language": region.language, "territory": region.territory, "paper": region.paper().0, "decimal": region.decimal().to_string()},
         "regionFromSystem": pr.region.is_none(),
         "typingReplacesSelection": pr.typing_replaces_selection,
+        "insertKeyPaste": pr.insert_key_paste,
         "insertKeyOvertype": pr.insert_key_overtype,
         "overtype": pr.overtype,
         "marks": pr.marks,

@@ -49,6 +49,8 @@ pub struct Prefs {
     pub default_language: Option<String>,
     /// Typing over a selection replaces it; off, the typed text goes in front of it.
     pub typing_replaces_selection: bool,
+    /// Plain Insert pastes through the clipboard command (off by default).
+    pub insert_key_paste: bool,
     /// The Insert key switches overtype on and off.
     pub insert_key_overtype: bool,
     /// Overtype: typed characters replace the ones after the caret.
@@ -159,6 +161,7 @@ impl Default for Prefs {
             print_duplex_back: false,
             always_create_backup: false,
             typing_replaces_selection: true,
+            insert_key_paste: false,
             insert_key_overtype: false,
             overtype: false,
             units: Default::default(),
