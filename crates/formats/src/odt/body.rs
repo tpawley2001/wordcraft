@@ -1429,6 +1429,8 @@ impl Body<'_> {
             style: None,
             look: None,
             cell_margins: None,
+            bidi_visual: false,
+            float: None,
         };
         let background = get(a, "table:style-name").and_then(|s| self.styles.table_background(s));
         self.tables.push(TableB {

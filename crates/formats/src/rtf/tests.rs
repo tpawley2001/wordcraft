@@ -1901,6 +1901,7 @@ mod surrogate_boundaries;
 mod table_cell_padding;
 mod table_position;
 mod table_rows;
+mod table_rtl_row;
 mod table_styles;
 mod tabs_keep_para_words;
 mod tabs_spacing;
