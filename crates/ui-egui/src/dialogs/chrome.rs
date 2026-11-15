@@ -218,6 +218,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
         Dialog::AdjustListIndents { .. } => "Adjust List Indents",
         Dialog::TrackOptions { .. } => "Track Changes Options",
         Dialog::Review(d) => d.title(),
+        Dialog::RecognizedFunctions { .. } => "Recognized Math Functions",
         Dialog::CustomizeKeyboard { .. } => "Customize Keyboard",
         Dialog::CustomizeRibbon { .. } => "Customize Ribbon",
         Dialog::Control { .. } => "Content Control Properties",
@@ -270,8 +271,11 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
         }
     }
     if close {
-        if let Dialog::CustomizeKeyboard { resume: Some(resume), .. } = d {
-            app.dialog = Some(*resume);
+        match d {
+            Dialog::CustomizeKeyboard { resume: Some(resume), .. } | Dialog::RecognizedFunctions { resume: Some(resume), .. } => {
+                app.dialog = Some(*resume);
+            }
+            _ => {}
         }
         forget_nudge(ctx, id);
         // Not from a browser it opened as it closed (Save As): that one keeps the keyboard.
