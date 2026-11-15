@@ -78,6 +78,7 @@ mod keep_lines_float;
 mod keep_next_above_notes;
 mod keep_next_above_notes_rows;
 mod keep_next_long_chain;
+mod keep_next_page_break;
 mod keep_next_table_chain;
 mod kept_row_chain;
 mod kept_row_not_split;
