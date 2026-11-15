@@ -24,6 +24,7 @@ mod building_blocks;
 mod chrome;
 pub mod define_number;
 mod dispatch;
+mod edit_links;
 mod find;
 mod font;
 mod forms;
@@ -640,6 +641,12 @@ pub enum Dialog {
         issues: Vec<String>,
         version: String,
     },
+    /// File › Info › Related Documents › Edit Links to Files: the body's LINK fields
+    /// (`fields.links`), each set to update automatically or manually, locked, kept formatted,
+    /// pointed at another source, updated or broken (`fields.editLink`).
+    EditLinks {
+        form: Box<edit_links::EditLinksForm>,
+    },
 }
 
 impl Dialog {
@@ -729,6 +736,7 @@ impl Dialog {
             Dialog::ConvertDocument => "convertDocument",
             Dialog::MarkAsFinal => "markAsFinal",
             Dialog::Compatibility { .. } => "compatibilityChecker",
+            Dialog::EditLinks { .. } => "editLinks",
             Dialog::Layout(d) => d.name(),
         }
     }
@@ -1105,6 +1113,7 @@ impl Dialog {
             "customProperties" => Dialog::CustomProperties(Box::new(CustomPropertiesForm::read(app))),
             "convertDocument" => Dialog::ConvertDocument,
             "markAsFinal" => Dialog::MarkAsFinal,
+            "editLinks" => Dialog::EditLinks { form: Box::new(edit_links::EditLinksForm::read(app)) },
             "compatibilityChecker" => {
                 return Self::report("file.compatibility", &app.session.run("file.compatibility", &json!({})).unwrap_or_default());
             }

@@ -37,6 +37,8 @@ fn lines_of(text: &str, objects: &[(usize, InlineObject)], column: Option<f32>) 
 fn laid_out(text: &str, objects: &[(usize, InlineObject)], column: Option<f32>) -> std::sync::Arc<para::ParaLayout> {
     crate::test_fonts();
     let mut d = Document::from_text(text);
+    // The bundled face the letter counts were taken with, not a missing Aptos's widths.
+    std::sync::Arc::make_mut(&mut d.styles).default_chr.font = Some("Source Sans 3".into());
     if let Some(w) = column {
         d.last_section.page_w = d.last_section.margin_left + d.last_section.margin_right + w;
     }

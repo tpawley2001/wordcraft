@@ -125,7 +125,26 @@ pub(crate) type WrapArea = (Rect, bool, Option<Arc<contour::Contour>>, WrapText,
 /// index) placed above the top of their anchor paragraph, with text before it on the page, and
 /// their areas. Layout places a float only when it reaches its anchor, so the text above that
 /// was laid out without it: the pass is done again with these known from the page's start.
-pub(crate) type EarlyFloats = HashMap<usize, Vec<(usize, usize, WrapArea)>>;
+#[derive(Clone, Default)]
+pub(crate) struct EarlyFloats {
+    /// By page index: (block, object index, wrap area).
+    pub(crate) areas: HashMap<usize, Vec<(usize, usize, WrapArea)>>,
+    /// Body paragraphs that start a new page: the room a page started with for one of their
+    /// floats pushed them off it, so that page is laid out without the float and ends before
+    /// them, and they go on the next with it, as in Word ([`merge_early`]).
+    pub(crate) breaks: std::collections::HashSet<usize>,
+}
+
+impl EarlyFloats {
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    /// The early floats page `page` starts with.
+    pub(crate) fn get(&self, page: &usize) -> Option<&Vec<(usize, usize, WrapArea)>> {
+        self.areas.get(page)
+    }
+}
 
 /// Layout passes made again at most for [`EarlyFloats`] (a float moving with the text it pushes
 /// down may move again). The pass after the last one keeps each float clear of the text laid
@@ -173,20 +192,27 @@ fn settle_early(
 /// The early floats a pass found, `found`, are all among those the pass started with, `early`,
 /// each inside the area the page started with for it.
 pub(crate) fn early_covered(found: &EarlyFloats, early: &EarlyFloats) -> bool {
-    found.iter().all(|(page, v)| {
+    found.areas.iter().all(|(page, v)| {
         v.iter().all(|(b, k, area)| early.get(page).is_some_and(|w| w.iter().any(|(eb, ek, seed)| (eb, ek) == (b, k) && covers(seed, area))))
     })
 }
 
-/// Adds the early floats a pass found to those pages start with (#2048). Nothing is taken away:
-/// a float whose wrap area pushes its own anchor onto the next page has no settled place (back
-/// on the first page, its anchor fits there again), so the first page keeps the room it was
-/// given and the float goes on the next, rather than the passes swapping between the two. A
+/// Adds the early floats a pass found to those pages start with (#2048). A float whose wrap
+/// area pushed its own anchor paragraph off the page that started with it (`found.breaks`) has
+/// no place there: back on that page without it, its anchor fits again. Its room is taken away
+/// and the paragraph starts the next page from then on, as in Word, so the page ends before it
+/// and the float goes on the next page with it: a forced break the passes cannot swap back. A
 /// float found somewhere else on the same page keeps text clear of both places (one plain
-/// rectangle around them), so the areas only grow.
+/// rectangle around them), so the other areas only grow.
 pub(crate) fn merge_early(early: &mut EarlyFloats, found: EarlyFloats) {
-    for (page, v) in found {
-        let have = early.entry(page).or_default();
+    for b in found.breaks {
+        for v in early.areas.values_mut() {
+            v.retain(|(eb, ..)| *eb != b);
+        }
+        early.breaks.insert(b);
+    }
+    for (page, v) in found.areas {
+        let have = early.areas.entry(page).or_default();
         for (b, k, area) in v {
             match have.iter_mut().find(|(eb, ek, _)| (*eb, *ek) == (b, k)) {
                 Some((_, _, seed)) if !covers(seed, &area) => {
@@ -578,15 +604,21 @@ fn anchor_floats_but(
             {
                 r = up;
             }
+            // Positioned from its paragraph to start above the paper, it moves onto the page: to
+            // the paper's top edge before `compatibilityMode` 15, to the top margin from 15 (as in Word).
+            if matches!(float.v_rel, Anchor::Paragraph) && float.v_align.is_none() && r.y < 0.0 {
+                r.y = if ctx.doc.settings.compat_mode < wordcraft_doc::COMPAT_MODE_CURRENT { 0.0 } else { pb.sect.margin_top.max(0.0) };
+            }
             let mut area = wrap_area(r, float, outline);
             let seed = early.and_then(|v| v.iter().take(pb.seeded).find(|(b, k, _)| (*b, *k) == (block, oi))).map(|(_, _, a)| a);
             // A float the page started with keeps the place found for it when its paragraph moved
-            // down below it (pushed by the room it was given): Word places it once, from where its
-            // paragraph was laid out without it, and doesn't move it again with the text it pushes.
+            // (down below it, pushed by the room it was given, or on to the next column): Word
+            // places it once, from where its paragraph was laid out without it, and doesn't move
+            // it again with the text it pushes.
             if let (true, Some(s), Some(a)) = (text_before, seed, area.as_ref())
-                && a.0.y > s.0.y + 0.5
+                && (a.0.y > s.0.y + 0.5 || !covers(s, a))
             {
-                let back = Rect { y: r.y - (a.0.y - s.0.y), ..r };
+                let back = Rect { x: r.x - (a.0.x - s.0.x), y: r.y - (a.0.y - s.0.y), ..r };
                 if let Some(b) = wrap_area(back, float, outline).filter(|b| covers(s, b)) {
                     (r, area) = (back, Some(b));
                 }

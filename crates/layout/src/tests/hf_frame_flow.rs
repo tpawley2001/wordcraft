@@ -70,6 +70,9 @@ struct Fixture {
 fn fixture(mode: u32, footer: bool, fr: Option<TextFrame>, after: &[&str], body: &[&str]) -> Fixture {
     crate::test_fonts();
     let mut d = Document::new();
+    // The bundled face the probes were sized for: a missing Aptos (the default) takes Word's
+    // narrower underscores, which fit beside the frame.
+    Arc::make_mut(&mut d.styles).default_chr.font = Some("Source Sans 3".into());
     d.settings.compat_mode = mode;
     d.last_section.margin_top = TOP;
     d.last_section.margin_left = LEFT;

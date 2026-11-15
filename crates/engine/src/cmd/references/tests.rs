@@ -1307,3 +1307,46 @@ fn quote_date_picture_updates_in_a_header_story() {
     let results: Vec<String> = story_fields(&s, StoryRef::Part(hdr)).into_iter().map(|(_, result)| result).collect();
     assert_eq!(results, ["21:07:00", "HELLO"]);
 }
+
+#[test]
+fn empty_bookmark_refs_follow_set_order_and_format_the_value() {
+    let mut p = wordcraft_doc::Paragraph::default();
+    for name in ["who", "empty"] {
+        for o in [InlineObject::BookmarkStart { name: name.into() }, InlineObject::BookmarkEnd { name: name.into() }] {
+            p.insert_object(p.len(), o, &CharProps::default()).unwrap();
+        }
+    }
+    for (instr, result) in [
+        ("REF WHO", "OLD"),
+        ("SET who first", "Stored first"),
+        (r"REF who \* Upper", "OLD"),
+        ("SET WHO second", "Stored second"),
+        ("REF who", "OLD"),
+        ("REF missing", "OLD"),
+        ("REF empty", "OLD"),
+    ] {
+        p.insert_object(
+            p.len(),
+            InlineObject::Field {
+                instr: instr.into(),
+                result: result.into(),
+                locked: false,
+                dirty: false,
+                code: false,
+                form: String::new(),
+                code_paras: None,
+            },
+            &CharProps::default(),
+        )
+        .unwrap();
+    }
+    let mut doc = wordcraft_doc::Document::new();
+    doc.body = vec![wordcraft_doc::para_block(p)];
+    let refs =
+        |s: &Session| -> Vec<String> { fields(s).into_iter().filter(|(instr, _)| instr.starts_with("REF")).map(|(_, result)| result).collect() };
+    let output = output_fields(&doc).unwrap();
+    assert_eq!(refs(&Session::new(output)), ["Stored second", "STORED FIRST", "Stored second", fields::REFERENCE_NOT_FOUND, ""]);
+    let mut s = Session::new(doc);
+    s.run("references.updateFields", &json!({})).unwrap();
+    assert_eq!(refs(&s), ["second", "FIRST", "second", fields::REFERENCE_NOT_FOUND, ""]);
+}
