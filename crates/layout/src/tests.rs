@@ -96,6 +96,7 @@ mod missing_font_line_more;
 mod missing_font_line_tahoma;
 mod missing_font_line_windows;
 mod missing_font_univers;
+mod missing_font_widths;
 mod missing_glyphs;
 mod nb_hyphen_glyph;
 mod nbsp;
