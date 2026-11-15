@@ -1,17 +1,23 @@
 //! Advance widths Word gives Verdana, Tahoma, Century Gothic, SimSun, Aptos, Aptos Display,
-//! Trebuchet MS, Garamond, Corbel, Candara, Constantia and Tw Cen MT when the font isn't installed: their text is drawn with a substitute, but each character keeps the width Word
+//! Trebuchet MS, Garamond, Consolas, Comic Sans MS, Corbel, Candara, Constantia and Tw Cen MT when the font isn't installed: their text is drawn with a substitute, but each character keeps the width Word
 //! gives it, so lines break where Word breaks them.
 
 /// The advance (em) Word gives `c` in `family` (bold / italic) when that font isn't installed,
 /// or `None` to keep the drawn substitute's advance. `family` is matched case-insensitively
 /// ("Verdana", "Tahoma", "Century Gothic", "SimSun" or "宋体", "Aptos", "Aptos Display",
-/// "Trebuchet MS", "Garamond", "Corbel", "Candara", "Constantia", "Tw Cen MT"). A style with no
-/// table of its own (Tahoma Italic, SimSun Bold, Trebuchet MS Bold Italic) takes the regular
-/// widths: Word synthesises it from the regular face with the same advances. Tw Cen MT was only
-/// measured in bold, so its other styles keep the substitute's advances. Characters not in the
-/// table give `None`.
+/// "Trebuchet MS", "Garamond", "Consolas", "Comic Sans MS", "Corbel", "Candara", "Constantia",
+/// "Tw Cen MT"). Consolas is fixed-pitch: every Windows-1252 character except the controls is
+/// 0.55 em in every style. A style with no table of its own (Tahoma Italic, SimSun Bold,
+/// Trebuchet MS Bold Italic) takes the regular widths: Word synthesises it from the regular
+/// face with the same advances. Tw Cen MT was only measured in bold, so its other styles keep
+/// the substitute's advances. Characters not in the table give `None`.
 pub fn missing_font_advance(family: &str, bold: bool, italic: bool, c: char) -> Option<f64> {
-    let table = table(family.trim(), bold, italic)?;
+    let family = family.trim();
+    if family.eq_ignore_ascii_case("consolas") {
+        // Fixed-pitch: Word's PDFs give every character 550/1000 em in every style.
+        return cp1252_code(c).filter(|&code| code >= 0x20 && code != 0x7F).map(|_| 0.55);
+    }
+    let table = table(family, bold, italic)?;
     let code = cp1252_code(c)?;
     let i = table.binary_search_by_key(&code, |&(k, _)| k).ok()?;
     table.get(i).map(|&(_, w)| f64::from(w) / 1000.0)
@@ -37,6 +43,9 @@ fn table(family: &str, bold: bool, italic: bool) -> Option<&'static [(u8, u16)]>
         (TREBUCHET_MS, Some(TREBUCHET_MS_BOLD), Some(TREBUCHET_MS_ITALIC), None)
     } else if is("garamond") {
         (GARAMOND, Some(GARAMOND_BOLD), None, None)
+    } else if is("comic sans ms") {
+        // Word slants the upright face: italic takes the upright widths, bold italic the bold.
+        (COMIC_SANS_MS, Some(COMIC_SANS_MS_BOLD), Some(COMIC_SANS_MS), Some(COMIC_SANS_MS_BOLD))
     } else if is("corbel") {
         (CORBEL, Some(CORBEL_BOLD), Some(CORBEL_ITALIC), None)
     } else if is("candara") {
@@ -441,6 +450,35 @@ const TW_CEN_MT_BOLD: &[(u8, u16)] = &[
     (0x6F, 531), (0x70, 531), (0x71, 528), (0x72, 313), (0x73, 427), (0x74, 260), (0x75, 531), (0x78, 531), (0x79, 531), (0x7C, 588),
 ];
 
+/// 96 codes; italic takes these widths.
+#[rustfmt::skip]
+const COMIC_SANS_MS: &[(u8, u16)] = &[
+    (0x20, 299), (0x22, 424), (0x24, 693), (0x25, 820), (0x26, 654), (0x27, 388), (0x28, 366), (0x29, 366), (0x2A, 530), (0x2B, 480),
+    (0x2C, 277), (0x2D, 417), (0x2E, 249), (0x2F, 512), (0x30, 610), (0x31, 450), (0x32, 610), (0x33, 610), (0x34, 610), (0x35, 610),
+    (0x36, 610), (0x37, 610), (0x38, 610), (0x39, 610), (0x3A, 299), (0x3B, 299), (0x3C, 381), (0x3F, 524), (0x40, 931), (0x41, 731),
+    (0x42, 630), (0x43, 603), (0x44, 722), (0x45, 625), (0x46, 607), (0x47, 680), (0x48, 768), (0x49, 546), (0x4A, 665), (0x4B, 611),
+    (0x4C, 551), (0x4D, 883), (0x4E, 797), (0x4F, 798), (0x50, 521), (0x51, 876), (0x52, 628), (0x53, 693), (0x54, 680), (0x55, 737),
+    (0x56, 650), (0x57, 1040), (0x58, 724), (0x59, 635), (0x5A, 693), (0x5F, 627), (0x61, 512), (0x62, 593), (0x63, 514), (0x64, 587),
+    (0x65, 548), (0x66, 508), (0x67, 531), (0x68, 578), (0x69, 280), (0x6A, 403), (0x6B, 540), (0x6C, 274), (0x6D, 777), (0x6E, 523),
+    (0x6F, 526), (0x70, 535), (0x71, 520), (0x72, 480), (0x73, 487), (0x74, 471), (0x75, 520), (0x76, 486), (0x77, 684), (0x78, 590),
+    (0x79, 521), (0x7A, 538), (0xA8, 556), (0xB4, 556), (0xBA, 449), (0xBF, 524), (0xCD, 546), (0xD1, 797), (0xDA, 737), (0xE1, 512),
+    (0xE9, 548), (0xED, 280), (0xF1, 523), (0xF3, 526), (0xFA, 520), (0xFC, 520),
+];
+
+/// 88 codes; bold italic takes these widths.
+#[rustfmt::skip]
+const COMIC_SANS_MS_BOLD: &[(u8, u16)] = &[
+    (0x20, 434), (0x22, 438), (0x23, 843), (0x24, 693), (0x25, 820), (0x27, 434), (0x28, 366), (0x29, 366), (0x2A, 530), (0x2C, 434),
+    (0x2D, 610), (0x2E, 434), (0x2F, 512), (0x30, 610), (0x31, 610), (0x32, 610), (0x33, 610), (0x34, 610), (0x35, 610), (0x36, 610),
+    (0x37, 610), (0x38, 610), (0x39, 610), (0x3A, 434), (0x3B, 434), (0x3F, 566), (0x40, 931), (0x41, 731), (0x42, 630), (0x43, 619),
+    (0x44, 722), (0x45, 625), (0x46, 607), (0x47, 680), (0x48, 768), (0x49, 546), (0x4A, 665), (0x4B, 611), (0x4C, 551), (0x4D, 883),
+    (0x4E, 813), (0x4F, 798), (0x50, 533), (0x51, 876), (0x52, 640), (0x53, 693), (0x54, 696), (0x55, 737), (0x56, 675), (0x57, 1040),
+    (0x58, 724), (0x59, 635), (0x5A, 693), (0x5F, 627), (0x61, 556), (0x62, 593), (0x63, 514), (0x64, 587), (0x65, 559), (0x66, 508),
+    (0x67, 531), (0x68, 578), (0x69, 280), (0x6A, 403), (0x6B, 540), (0x6C, 274), (0x6D, 777), (0x6E, 523), (0x6F, 526), (0x70, 535),
+    (0x71, 520), (0x72, 480), (0x73, 487), (0x74, 471), (0x75, 520), (0x76, 486), (0x77, 684), (0x78, 590), (0x79, 553), (0x7A, 538),
+    (0xCD, 546), (0xD1, 813), (0xE1, 556), (0xE9, 559), (0xED, 280), (0xF1, 523), (0xF3, 526), (0xFA, 520),
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -478,6 +516,8 @@ mod tests {
             CONSTANTIA_BOLD,
             CONSTANTIA_ITALIC,
             TW_CEN_MT_BOLD,
+            COMIC_SANS_MS,
+            COMIC_SANS_MS_BOLD,
         ];
         for t in all {
             assert!(t.windows(2).all(|w| w[0].0 < w[1].0));

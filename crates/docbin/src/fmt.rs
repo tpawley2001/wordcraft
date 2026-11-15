@@ -149,15 +149,19 @@ const ICO: [Rgb; 17] = [
     Rgb(192, 192, 192),
 ];
 
-/// Highlight palette ([MS-DOC] §2.9.135 Highlight, order of Word's highlighter row).
+/// Highlight palette. The `sprmCHighlight` operand is an `Ico` ([MS-DOC] §2.9.135), the same
+/// index as the text-colour palette above (1 = black, 7 = yellow, 9 = dark blue, ...), not the
+/// order of Word's highlighter row. 0 = no highlight.
 const HL: [Highlight; 17] = [
     Highlight::None,
-    Highlight::Yellow,
-    Highlight::BrightGreen,
-    Highlight::Turquoise,
-    Highlight::Pink,
+    Highlight::Black,
     Highlight::Blue,
+    Highlight::Turquoise,
+    Highlight::BrightGreen,
+    Highlight::Pink,
     Highlight::Red,
+    Highlight::Yellow,
+    Highlight::White,
     Highlight::DarkBlue,
     Highlight::Teal,
     Highlight::Green,
@@ -166,8 +170,6 @@ const HL: [Highlight; 17] = [
     Highlight::DarkYellow,
     Highlight::Gray50,
     Highlight::Gray25,
-    Highlight::None,
-    Highlight::None,
 ];
 
 /// The `Ico` palette colour (0 = automatic → `None`).
@@ -1027,15 +1029,16 @@ fn builtin_by_sti(sti: u16) -> Option<(String, String, u8)> {
 }
 
 /// A stored style's id: by its built-in index when it has one, else by its name. A heading name
-/// whose `sti` is unspecified (0x0FFF, neither Word's nor marked as the user's) keeps the id of
-/// its name (`Heading 1`); Word's own headings carry `sti` 1-9 and get Word's ids.
-fn raw_style_id(raw: &crate::stsh::RawStyle) -> String {
+/// whose `sti` is unspecified (0x0FFF, neither Word's nor marked as the user's) gets Word's id
+/// (`Heading1`) only in the slot STSH reserves for that heading (istd 1-9, [MS-DOC] §2.9.271);
+/// elsewhere it keeps the id of its name (`Heading 1`). Word's own headings carry `sti` 1-9.
+fn raw_style_id(raw: &crate::stsh::RawStyle, istd: usize) -> String {
     if let Some(b) = builtin_by_sti(raw.sti) {
         return b.0;
     }
     let h = heading_level(&raw.name);
     if raw.sti == 0x0FFF && h > 0 {
-        return format!("Heading {h}");
+        return if istd == usize::from(h) { format!("Heading{h}") } else { format!("Heading {h}") };
     }
     style_id(&raw.name)
 }
@@ -1051,7 +1054,7 @@ pub(crate) fn style_ids(raw: &[crate::stsh::RawStyle]) -> Vec<String> {
     let order = (0..raw.len()).filter(|i| named(i, true)).chain((0..raw.len()).filter(|i| named(i, false)));
     for i in order {
         let Some(st) = raw.get(i) else { continue };
-        let base = raw_style_id(st);
+        let base = raw_style_id(st, i);
         // Ids differing only in case count as taken: Word treats them as the same style.
         let mut id = base.clone();
         while taken.contains(&id.to_ascii_lowercase()) {
