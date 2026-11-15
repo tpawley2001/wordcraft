@@ -108,6 +108,21 @@ pub fn decode_as(b: &[u8], label: &str) -> Option<String> {
     Some(enc.decode(b).0.into_owned())
 }
 
+/// The encoding [`decode`] would read `b` in.
+pub fn detect(_b: &[u8]) -> TxtEncoding {
+    todo!("P0603")
+}
+
+/// `b` read in `enc`; a BOM matching `enc` is dropped.
+pub fn decode_with(_b: &[u8], _enc: &TxtEncoding) -> String {
+    todo!("P0603")
+}
+
+/// [`import_on`] with the encoding chosen instead of guessed.
+pub fn import_with(_bytes: &[u8], _enc: &TxtEncoding, _page: &wordcraft_doc::SectionProps) -> Document {
+    todo!("P0603")
+}
+
 /// A document with one paragraph per line.
 pub fn import(bytes: &[u8]) -> Document {
     let text = decode(bytes);
