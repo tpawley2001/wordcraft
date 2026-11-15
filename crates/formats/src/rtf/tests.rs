@@ -1899,6 +1899,7 @@ mod style_entry_formatting;
 mod style_unstated_formatting;
 mod surrogate_boundaries;
 mod table_cell_padding;
+mod table_autofit;
 mod table_position;
 mod table_rows;
 mod table_styles;
