@@ -272,9 +272,11 @@ impl Reader<'_> {
                 let t = clean_text(raw);
                 self.emit_text(sc, pb, &t, props);
             }
-            // Outside any field Word shows instruction text as ordinary text, white space kept. A
-            // field begun past the nesting cap is not tracked but still open: its code stays hidden.
-            "w:instrText" | "w:delInstrText" if sc.ignored_begins == 0 && !sc.fields.iter().any(|f| f.phase == Phase::Instr) => {
+            // Outside any field Word shows instruction text as ordinary text, white space kept. In
+            // a field's result it is read the same way: a nested field's stored result written as
+            // instrText (some generators do) is that field's text in the outer code, as with `w:t`.
+            // A field begun past the nesting cap is not tracked but still open: its code stays hidden.
+            "w:instrText" | "w:delInstrText" if sc.ignored_begins == 0 && sc.fields.last().is_none_or(|f| f.phase == Phase::Result) => {
                 self.read_text_kids(sc, pb, k, (props, rels), note, depth, true);
             }
             "w:instrText" | "w:delInstrText" => {
