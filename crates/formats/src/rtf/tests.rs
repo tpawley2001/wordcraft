@@ -1914,6 +1914,7 @@ mod table_styles;
 mod tabs_keep_para_words;
 mod tabs_spacing;
 mod template_and_track_moves;
+mod form_shading;
 mod track_and_print_data;
 mod trailing_data;
 mod underline_styles;
