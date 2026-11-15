@@ -1430,3 +1430,42 @@ fn window_size_command_follows_word() {
     assert_eq!(cmd("ui.collapseRibbon", true), None);
     assert_eq!(cmd("ui.collapseRibbon", false), None);
 }
+
+/// One plain Insert press on the canvas.
+fn press_insert(ctx: &egui::Context, a: &mut WordApp) {
+    mods_frame(ctx, a, Modifiers::NONE, vec![key_event(Key::Insert, true, Modifiers::NONE)]);
+    mods_frame(ctx, a, Modifiers::NONE, vec![key_event(Key::Insert, false, Modifiers::NONE)]);
+}
+
+/// File › Options › Advanced › Cut, copy, and paste › "Use the Insert key for paste" (off by
+/// default, as in Word): Insert pastes like Ctrl+V.
+#[test]
+fn insert_key_pastes_only_when_asked_to() {
+    let ctx = egui::Context::default();
+    let mut a = picture_app();
+    press_insert(&ctx, &mut a);
+    assert_eq!(pictures(&mut a), 0, "off by default: Insert doesn't paste");
+
+    let o = a.session.run("file.options", &json!({"insertKeyPaste": true})).unwrap();
+    assert_eq!(o["insertKeyPaste"], json!(true));
+    press_insert(&ctx, &mut a);
+    assert_eq!(pictures(&mut a), 1, "on: Insert pastes the clipboard");
+}
+
+/// With both Insert options on, Insert pastes and overtype stays off.
+#[test]
+fn insert_key_paste_wins_over_the_overtype_switch() {
+    let ctx = egui::Context::default();
+    let mut a = picture_app();
+    a.session.run("file.options", &json!({"insertKeyPaste": true, "insertKeyOvertype": true})).unwrap();
+    press_insert(&ctx, &mut a);
+    assert_eq!(pictures(&mut a), 1);
+    assert!(!a.session.prefs.overtype, "Insert pasted instead of switching overtype on");
+}
+
+#[test]
+fn insert_key_paste_defaults_off_in_file_options() {
+    let mut s = wordcraft_engine::Session::new(wordcraft_doc::Document::new());
+    let o = s.run("file.options", &json!({})).unwrap();
+    assert_eq!(o["insertKeyPaste"], json!(false));
+}
