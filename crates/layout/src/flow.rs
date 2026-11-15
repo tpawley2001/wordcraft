@@ -34,14 +34,16 @@ pub(crate) fn place_para(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, blo
             place_para_in_flow(ctx, pb, p, block, body_top);
             return;
         }
-        // Its (empty) line stays where the text ended, even at the bottom of a full column.
+        // Its (empty) line stays where the text ended, even at the bottom of a full column. It takes
+        // no room, so it gets no line number and is not counted (Word).
         let (y, prev, bottom, content_bottom, at) = (pb.y, pb.prev.clone(), pb.bottom, pb.content_bottom, (pb.pages.len(), pb.col));
+        let line_no = pb.line_no;
         let drawn = pb.page().map_or(0, |page| page.items.len());
         pb.bottom = f32::MAX / 4.0;
         place_para_in_flow(ctx, pb, p, block, body_top);
         pb.bottom = bottom;
         if (pb.pages.len(), pb.col) == at {
-            (pb.y, pb.prev, pb.content_bottom) = (y, prev, content_bottom);
+            (pb.y, pb.prev, pb.content_bottom, pb.line_no) = (y, prev, content_bottom, line_no);
             if let Some(page) = pb.page() {
                 strip_mark(page, drawn, true);
             }
@@ -53,6 +55,7 @@ pub(crate) fn place_para(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, blo
         // new page just for a mark; later text starts there instead.
         let (y, prev, bottom, content_bottom, at) = (pb.y, pb.prev.clone(), pb.bottom, pb.content_bottom, (pb.pages.len(), pb.col));
         let drawn = pb.page().map_or(0, |page| page.items.len());
+        let line_no = pb.line_no;
         pb.bottom = f32::MAX / 4.0;
         place_para_in_flow(ctx, pb, p, block, body_top);
         if pb.pages.len() == at.0 {
@@ -64,6 +67,8 @@ pub(crate) fn place_para(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, blo
                 && let Some(page) = pb.page()
             {
                 strip_mark(page, drawn, false);
+                // Its line number went with it: the mark takes no room, so it is not counted.
+                pb.line_no = line_no;
             }
         }
         return;
@@ -116,7 +121,7 @@ fn mark_under_break(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block: u
     push_para(&mut items, (StoryRef::Body, &[block as u32]), &pl, (0, pl.lines.len()), (x, y), spot.w, Edges::default());
     let (col, line_no) = (pb.col, pb.line_no);
     (pb.col, pb.line_no) = (spot.col, spot.line_no);
-    let numbers = line_numbers(ctx, pb, &pl, (0, pl.lines.len()), y);
+    let numbers = line_numbers(ctx, pb, (p, &pl), (0, pl.lines.len()), y);
     pb.col = col;
     if let Some(pg) = pb.pages.get_mut(spot.page) {
         pg.items.extend(items);
@@ -130,7 +135,8 @@ fn mark_under_break(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block: u
     true
 }
 
-/// Remove the list label from a mark's lines; optionally keep its other drawing items.
+/// Remove the list label and the line numbers from a mark's lines; optionally keep its other
+/// drawing items.
 fn strip_mark(page: &mut Page, drawn: usize, keep_others: bool) {
     let tail = page.items.split_off(drawn.min(page.items.len()));
     page.items.extend(tail.into_iter().filter_map(|item| match item {
@@ -139,7 +145,7 @@ fn strip_mark(page: &mut Page, drawn: usize, keep_others: bool) {
             bare.label = None;
             Some(Placed::Lines { story, path, para: Arc::new(bare), l0, l1, x, y, turn })
         }
-        Placed::Lines { story, .. } if story == DECOR_STORY && !keep_others => None,
+        Placed::Lines { story, .. } if story == DECOR_STORY => None,
         line @ Placed::Lines { .. } => Some(line),
         other => keep_others.then_some(other),
     }));
@@ -864,7 +870,7 @@ impl<'a> Flow<'a> {
         );
         self.late.drew();
         items.extend(front);
-        items.extend(line_numbers(ctx, pb, &self.pl, (l0, l1), y));
+        items.extend(line_numbers(ctx, pb, (self.p, &self.pl), (l0, l1), y));
         add_items(pb, behind, items);
         if let (Some(f), Some(l)) = (self.pl.lines.get(l0), self.pl.lines.get(l1 - 1)) {
             pb.y = if !self.takes_no_room(ctx, pb, l) {
@@ -1120,11 +1126,14 @@ fn add_notes(pb: &mut PageBuilder, mut new_notes: Vec<NoteBox>, notes: &[(usize,
     }
 }
 
-/// Line numbers for lines `l0..l1` of `pl` laid out from `y`, left of the column they are in:
-/// each column of a multi-column section gets its own (#6018), as in Word.
-fn line_numbers(ctx: &mut Ctx, pb: &mut PageBuilder, pl: &ParaLayout, (l0, l1): (usize, usize), y: f32) -> Vec<Placed> {
+/// Line numbers for lines `l0..l1` of `p`'s layout `pl` laid out from `y`, beside the column they
+/// are in: each column of a multi-column section gets its own (#6018), as in Word. Left of the
+/// column, right-aligned there; in a right-to-left section right of it, left-aligned. A framed
+/// paragraph and an empty paragraph that only carries a section mark get none and are not counted.
+fn line_numbers(ctx: &mut Ctx, pb: &mut PageBuilder, (p, pl): (&Paragraph, &ParaLayout), (l0, l1): (usize, usize), y: f32) -> Vec<Placed> {
     let mut items = Vec::new();
-    if let Some(ln) = pb.sect.line_numbers.clone().filter(|_| !pb.web && pl.rp.style != "Header" && !pl.rp.suppress_line_numbers)
+    let numbered = !pb.web && pl.rp.style != "Header" && !pl.rp.suppress_line_numbers && pl.rp.frame.is_none() && !only_section_mark(p);
+    if let Some(ln) = pb.sect.line_numbers.clone().filter(|_| numbered)
         && let Some(first) = pl.lines.get(l0)
     {
         for li in l0..l1 {
@@ -1143,6 +1152,7 @@ fn line_numbers(ctx: &mut Ctx, pb: &mut PageBuilder, pl: &ParaLayout, (l0, l1): 
             } else {
                 18.0
             };
+            let x = if pb.sect.rtl { pb.col_x() + pb.col_w() + dist } else { pb.col_x() - dist - w };
             let ly = y + (line.top - first.top) + (line.baseline - line.top) - num.lines.first().map(|l| l.baseline).unwrap_or(10.0);
             items.push(Placed::Lines {
                 story: DECOR_STORY,
@@ -1150,13 +1160,21 @@ fn line_numbers(ctx: &mut Ctx, pb: &mut PageBuilder, pl: &ParaLayout, (l0, l1): 
                 para: num.clone(),
                 l0: 0,
                 l1: 1,
-                x: pb.col_x() - dist - w,
+                x,
                 y: ly,
                 turn: TextDirection::Horizontal,
             });
         }
     }
     items
+}
+
+/// A paragraph holding nothing but a section mark (and bookmarks): Word gives it no line number.
+fn only_section_mark(p: &Paragraph) -> bool {
+    p.section.is_some()
+        && p.text.char_indices().all(|(i, c)| {
+            c == wordcraft_doc::para::OBJ && matches!(p.object_at(i), Some(InlineObject::BookmarkStart { .. } | InlineObject::BookmarkEnd { .. }))
+        })
 }
 
 /// Add a piece's items to the last page: those `behind` the text at the front, the rest at the end.
