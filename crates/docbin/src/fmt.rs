@@ -794,7 +794,12 @@ pub(crate) fn stylesheet(raw: &[crate::stsh::RawStyle], ids: &[String], fonts: &
         }
         let name = builtin.map_or_else(|| display_name(st, istd), |b| b.1);
         // Word's own styles (`sti` below istiUser) are built in, as the DOCX reader marks them.
-        sheet.styles.push(Style { id, name, kind, based_on: base, chr, para, builtin: st.sti < crate::stsh::STI_USER, ..Default::default() });
+        // A table style's whole-table borders and cell margins, from its own table grpprl.
+        let table = (kind == StyleKind::Table).then(|| {
+            let (borders, cell_margins) = crate::table::style_parts(&st.tapx);
+            wordcraft_doc::styles::TableStyleParts { borders, cell_margins, ..Default::default() }
+        });
+        sheet.styles.push(Style { id, name, kind, based_on: base, chr, para, table, builtin: st.sti < crate::stsh::STI_USER, ..Default::default() });
     }
     sheet
 }
@@ -1105,8 +1110,8 @@ mod style_list_indent_tests {
         let normal = [prl(0x2461, &[3]), prl(0x845D, &170i16.to_le_bytes()), prl(0x845E, &1134i16.to_le_bytes())].concat();
         let numbered = [prl(0x460B, &1i16.to_le_bytes()), prl(0x260A, &[0]), own.to_vec()].concat();
         let raw = vec![
-            RawStyle { sti: 0, stk: 1, istd_base: 0x0FFF, name: "Normal".into(), papx: normal, chpx: Vec::new() },
-            RawStyle { sti: 0x0FFE, stk: 1, istd_base: 0, name: "Numbered".into(), papx: numbered, chpx: Vec::new() },
+            RawStyle { sti: 0, stk: 1, istd_base: 0x0FFF, name: "Normal".into(), papx: normal, chpx: Vec::new(), tapx: Vec::new() },
+            RawStyle { sti: 0x0FFE, stk: 1, istd_base: 0, name: "Numbered".into(), papx: numbered, chpx: Vec::new(), tapx: Vec::new() },
         ];
         let fonts = vec!["Times New Roman".to_string()];
         let ids = style_ids(&raw);

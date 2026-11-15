@@ -1,5 +1,7 @@
 # File-format parity with Microsoft Word
 
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0528: `.doc` table styles keep their borders, cell margins and paragraph and character formatting (the three UPXs of a stk 3 STD), tables keep the style their rows name (sprmTIstd), and cells keep Hide end-of-cell mark (sprmTCellFHideMark). Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0525: `.doc` text keeps outline, shadow, emboss, engrave, double strikethrough, Do not check spelling or grammar, web-hidden and special-hidden, emphasis marks, and text shading and borders (sprmCFOutline … sprmCBrc), as Word shows them. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0518: DOCX reads and writes Gutter position Top (`w:settings/w:gutterAtTop`), once also when the settings part is merged; RTF `\gutterprl`. Readiness estimates unchanged.)
@@ -64,6 +66,7 @@ Comment commands reject explicit negative, floating-point and wrong-type IDs bef
 
 Legacy DOC imports tolerate unreferenced FAT end markers beyond EOF and garbage in unused compound-file directory entries, while retaining other validation errors (P0001; synthetic `cfb_tolerance` tests).
 Legacy DOC character effects read from CHP sprms ([MS-DOC] §2.6.1): outline, shadow, emboss, engrave, double strikethrough, no-proof, web-hidden and special-hidden toggles (resolved against the style like bold), emphasis marks (sprmCKcd), text shading (sprmCShd80, then the exact sprmCShd) and text borders (sprmCBrc80, then sprmCBrc) (synthetic `char_sprms` tests).
+Legacy DOC table styles ([MS-DOC] §2.9.269 StkTableGRLPUPX) keep their whole-table borders (sprmTTableBorders80, sprmTTableBorders), default cell margins (sprmTCellPaddingDefault) and paragraph and character formatting; a table takes the style its first row names (sprmTIstd; an istd that is not a table style gives none), and cells keep Hide end-of-cell mark (sprmTCellFHideMark). Conditional formats (header row, bands) are not read (synthetic `table_styles` tests).
 
 Legacy DOC framed paragraphs (sprmPPc, sprmPDxaAbs/PDyaAbs, sprmPDxaWidth, sprmPWHeightAbs, sprmPDxa/PDyaFromText, sprmPWr) keep their frame, merged field by field from the style chain and direct formatting (synthetic `frames` tests). In a table they position the table instead: the first row's frame (or the TAP's sprmTPc, sprmTDxaAbs, sprmTDyaAbs and distance sprms over it) becomes a floating table, and its paragraphs keep no frame (`table_float`, `table_float_tap` tests).
 Legacy DOC linked pictures (an `INCLUDEPICTURE \d` result: an `MM_SHAPEFILE` PICF whose shape names the file in `pibName`/`pibFlags` but has no BLIP) keep their goal size and show as an empty frame, as Word does when the file is missing; the file is never read. DOCX saves them as `a:blip r:link` with an external relationship to the path and no image part, and reads such a link back the same way. Horizontal-line shapes without a BLIP are still dropped (synthetic `linked_pictures` tests).
@@ -388,6 +391,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0528: `.doc` table styles keep their borders, cell margins and paragraph and character formatting, tables keep the style their rows name (sprmTIstd), and cells keep Hide end-of-cell mark (sprmTCellFHideMark). Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0525: `.doc` text keeps outline, shadow, emboss, engrave, double strikethrough, Do not check spelling or grammar, web-hidden and special-hidden, emphasis marks, and text shading and borders (sprmCFOutline … sprmCBrc), as Word shows them. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0508: date/time pictures copy lowercase `a` runs literally and treat `A` immediately before `M` as literal text; AM/PM tokens and other uppercase `A` behavior are preserved. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0492: locked LISTNUM and AUTONUM fields renumber and count on update and output, as in Word. SEQ and tracked-deletion handling are unchanged; locked AUTONUMLGL/AUTONUMOUT follow AUTONUM but remain unmeasured. Readiness estimates unchanged. |
