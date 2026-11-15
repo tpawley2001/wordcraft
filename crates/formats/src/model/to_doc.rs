@@ -105,6 +105,7 @@ impl WithExtra for CharProps {
         self.lang_bidi = name(&x.lang_bidi, 64);
         self.lang_ea = name(&x.lang_ea, 64);
         self.no_proof = x.no_proof.filter(|b| *b);
+        self.snap_to_grid = x.snap_to_grid.filter(|b| !*b);
         // No highlight over a highlighted style is kept as such.
         self.highlight = x.highlight;
         // Saved formatting carries the highlight colour as its background: the shading under a

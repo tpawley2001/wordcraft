@@ -1015,6 +1015,8 @@ impl Reader {
             "embo" => self.set_extra(|x| x.emboss = on.then_some(true)),
             "impr" => self.set_extra(|x| x.engrave = on.then_some(true)),
             "noproof" => self.set_extra(|x| x.no_proof = on.then_some(true)),
+            // Snap to grid: on is the default and stored as nothing; only off is kept.
+            "cgrid" => self.set_extra(|x| x.snap_to_grid = (!on).then_some(false)),
             "accnone" => self.set_extra(|x| x.emphasis = None),
             "accdot" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Dot)),
             "acccomma" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Comma)),
@@ -1215,6 +1217,7 @@ fn style_line_word(def: &mut StyleDef, w: &str, on: bool, pv: i32) {
         "caps" => def.caps = Some(on),
         "scaps" => def.small_caps = Some(on),
         "v" => def.hidden_text = Some(on),
+        "cgrid" => def.snap_off = !on,
         "super" => def.vert_align = Some(if on { VertAlign::Superscript } else { VertAlign::Baseline }),
         "sub" => def.vert_align = Some(if on { VertAlign::Subscript } else { VertAlign::Baseline }),
         "nosupersub" => def.vert_align = Some(VertAlign::Baseline),
