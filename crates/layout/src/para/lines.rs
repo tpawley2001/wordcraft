@@ -289,7 +289,12 @@ impl<'e> Breaker<'e> {
             },
             wrap_trail_spaces: settings.wrap_trail_spaces,
             expand_break: !settings.do_not_expand_shift_return,
-            zone: Some(settings.hyphenation_zone).filter(|z| z.is_finite() && *z >= 0.0).unwrap_or(HYPHENATION_ZONE).min(1584.0),
+            // From compatibility mode 15 Word ignores the hyphenation zone and uses the default
+            // (measured: a 1-inch and a 1-twip zone break exactly like the default).
+            zone: Some(settings.hyphenation_zone)
+                .filter(|z| z.is_finite() && *z >= 0.0 && settings.compat_mode < 15)
+                .unwrap_or(HYPHENATION_ZONE)
+                .min(1584.0),
             hyph_limit: settings.consecutive_hyphen_limit as usize,
             widths: word_widths(&pl.clusters, &pl.hyph_after),
             rtl_para: rp.bidi,

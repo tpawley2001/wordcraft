@@ -69,6 +69,7 @@ mod hidden_rows;
 mod highlight_at_least;
 mod highlight_band;
 mod html_auto_spacing_off;
+mod hyphenation_zone_compat;
 mod inline_drawing_reach;
 mod item_display_clip;
 mod item_display_warp;
