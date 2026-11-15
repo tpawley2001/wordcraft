@@ -572,7 +572,6 @@ thread_local! {
     static OWN_STYLES: std::cell::RefCell<HashMap<String, u32>> = std::cell::RefCell::new(HashMap::new());
 }
 
-/// The `\stylesheet` number of the document's own style `id`, while [`export`] writes it.
 /// A table's direction (`\rtlrow`), preferred width (`\trftsWidthN\trwWidthN`) and floating
 /// position (RTF 1.9.1 "Positioned tables"), written in each of its row definitions.
 fn table_place_words(x: &model::TableExtra, out: &mut String) {
@@ -626,6 +625,7 @@ fn table_place_words(x: &model::TableExtra, out: &mut String) {
     }
 }
 
+/// The `\stylesheet` number of the document's own style `id`, while [`export`] writes it.
 fn own_style_num(id: &str) -> Option<u32> {
     OWN_STYLES.with(|m| m.try_borrow().ok().and_then(|m| m.get(id).copied()))
 }
