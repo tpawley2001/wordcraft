@@ -49,18 +49,9 @@ fn write_style_pane(w: &mut W, pane: &wordcraft_doc::StylePaneOptions) {
     }
 }
 
-/// `w:settings`, its children in the schema's order (CT_Settings is a sequence). `template_rel`
-/// is the id of the attached template's relationship, when there is one.
-pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, template_rel: Option<&str>) -> Vec<u8> {
-    let s = &doc.settings;
-    let s_notes = (&doc.footnote_separators, &doc.endnote_separators);
-    let mut w = W::new();
-    let ns = xml::body_ns();
-    let ns_refs: Vec<(&str, &str)> = ns.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-    w.open("w:settings", &ns_refs);
-    // §17.15.1.93: the first child of CT_Settings, before `w:view` and `w:zoom`.
-    write_protection(&mut w, s.write_protection.as_ref());
-    let zoom = s.zoom.unwrap_or(wordcraft_doc::Zoom { percent: 100, fit: None });
+/// `w:zoom` (§17.15.1.95): the saved zoom, 100% when there is none.
+fn write_zoom(w: &mut W, zoom: Option<wordcraft_doc::Zoom>) {
+    let zoom = zoom.unwrap_or(wordcraft_doc::Zoom { percent: 100, fit: None });
     let percent = zoom.percent.clamp(10, 500).to_string();
     match zoom.fit {
         Some(fit) => {
@@ -73,6 +64,20 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
         }
         None => w.empty("w:zoom", &[("w:percent", &percent)]),
     }
+}
+
+/// `w:settings`, its children in the schema's order (CT_Settings is a sequence). `template_rel`
+/// is the id of the attached template's relationship, when there is one.
+pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, template_rel: Option<&str>) -> Vec<u8> {
+    let s = &doc.settings;
+    let s_notes = (&doc.footnote_separators, &doc.endnote_separators);
+    let mut w = W::new();
+    let ns = xml::body_ns();
+    let ns_refs: Vec<(&str, &str)> = ns.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    w.open("w:settings", &ns_refs);
+    // §17.15.1.93: the first child of CT_Settings, before `w:view` and `w:zoom`.
+    write_protection(&mut w, s.write_protection.as_ref());
+    write_zoom(&mut w, s.zoom);
     // §17.15.1.70 / §17.15.1.69, right after `w:zoom` in CT_Settings.
     if s.remove_personal_info {
         w.empty("w:removePersonalInformation", &[]);
@@ -89,6 +94,10 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
     }
     if s.mirror_margins {
         w.empty("w:mirrorMargins", &[]);
+    }
+    // §17.15.1.49, after `w:mirrorMargins` and the border settings (which the model does not hold).
+    if s.gutter_at_top {
+        w.empty("w:gutterAtTop", &[]);
     }
     if let Some(id) = template_rel {
         w.empty("w:attachedTemplate", &[("r:id", id)]);

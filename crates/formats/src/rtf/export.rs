@@ -254,6 +254,9 @@ fn doc_opts_words(s: &wordcraft_doc::Settings) -> String {
     if s.mirror_margins {
         o.push_str("\\margmirror");
     }
+    if s.gutter_at_top {
+        o.push_str("\\gutterprl");
+    }
     if s.auto_hyphenation {
         o.push_str("\\hyphauto");
     }

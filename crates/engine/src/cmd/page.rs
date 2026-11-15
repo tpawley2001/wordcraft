@@ -14,7 +14,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("layout.margins", "Margins", "Layout › Page Setup", margins).params(
-            r#"{"preset"?: "normal|narrow|moderate|wide|mirrored|office2003", "top"?: pt, "bottom"?: pt, "left"?: pt, "right"?: pt, "gutter"?: pt, "header"?: pt, "footer"?: pt, "mirror"?: bool} (gutter and the header and footer distances from the page edge are clamped to 0–1584 pt)"#,
+            r#"{"preset"?: "normal|narrow|moderate|wide|mirrored|office2003", "top"?: pt, "bottom"?: pt, "left"?: pt, "right"?: pt, "gutter"?: pt, "header"?: pt, "footer"?: pt, "mirror"?: bool, "gutterPos"?: "left|top"} (gutterPos is the document's Gutter position: top puts every section's gutter above the text on every page, over mirror margins and a right-to-left gutter; gutter and the header and footer distances from the page edge are clamped to 0–1584 pt)"#,
         ),
         CommandSpec::new("layout.orientation", "Orientation", "Layout › Page Setup", |s, v| {
             let land = match p::str(v, "value") {
@@ -592,14 +592,31 @@ fn margins(s: &mut Session, v: &Value) -> CmdResult {
         }
     };
     let (header, footer) = (distance("header")?, distance("footer")?);
+    // Page Setup's Gutter position (`w:gutterAtTop`), the whole document's.
+    let gutter_at_top = match p::str(v, "gutterPos") {
+        None => None,
+        Some("left") => Some(false),
+        Some("top") => Some(true),
+        Some(x) => return Err(CmdError::Params(format!("unknown gutter position `{x}`"))),
+    };
     let cur = sect(s);
-    if !margins_fit((cur.page_w, cur.page_h), (t, b, l, r), gutter.unwrap_or(cur.gutter)) {
+    let g = gutter.unwrap_or(cur.gutter);
+    // A gutter at the top takes room from the text's height instead of its width.
+    let fits = if gutter_at_top.unwrap_or(s.doc.settings.gutter_at_top) {
+        margins_fit((cur.page_w, cur.page_h), (t + g, b, l, r), 0.0)
+    } else {
+        margins_fit((cur.page_w, cur.page_h), (t, b, l, r), g)
+    };
+    if !fits {
         return Err(CmdError::Params("margins leave no room for text".into()));
     }
     // A preset picks mirrored or not, as does `mirror` (Page Setup's Multiple pages); plain numbers
     // alone (a ruler drag, an agent) keep the setting.
     if let Some(on) = p::bool(v, "mirror").or(preset.map(|k| k == "mirrored")) {
         s.doc.settings.mirror_margins = on;
+    }
+    if let Some(on) = gutter_at_top {
+        s.doc.settings.gutter_at_top = on;
     }
     with_sect(s, |x| {
         x.margin_top = t;

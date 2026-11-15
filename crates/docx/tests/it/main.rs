@@ -35,6 +35,7 @@ mod fixtures;
 mod font_table_classes;
 mod footnote_layout_ww8;
 mod glossary;
+mod gutter_at_top;
 mod heading_levels;
 mod hidden_row;
 mod hyperlink_screen_tips;
