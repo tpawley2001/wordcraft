@@ -8,6 +8,7 @@ mod autofit_preferred;
 mod autospace;
 mod autospace_legacy_lists;
 mod balance_pinned_floats;
+mod balance_sbcs_spaces;
 mod bidi;
 mod blank_side_page;
 mod border_band;

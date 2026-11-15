@@ -29,7 +29,7 @@ fn no_words_keep_the_defaults() {
     assert_eq!(grid(&d.settings), grid(&def));
     assert_eq!(d.settings.protection, None);
     assert!(!d.settings.link_styles && !d.settings.remove_personal_info && !d.settings.remove_date_time);
-    assert!(!d.settings.do_not_expand_shift_return);
+    assert!(d.settings.do_not_expand_shift_return, "on unless \\expshrtn turns it off");
 }
 
 #[test]
@@ -82,10 +82,11 @@ fn older_protection_words_are_read_and_lose_to_protlevel() {
 fn flags_are_read_and_zero_turns_them_off() {
     let d = doc(r"{\rtf1\ansi\linkstyles\rempersonalinfo\remdttm\expshrtn\sectd a\par}");
     let s = &d.settings;
-    assert_eq!((s.link_styles, s.remove_personal_info, s.remove_date_time, s.do_not_expand_shift_return), (true, true, true, true));
+    assert_eq!((s.link_styles, s.remove_personal_info, s.remove_date_time, s.do_not_expand_shift_return), (true, true, true, false));
     let d = doc(r"{\rtf1\ansi\linkstyles\linkstyles0\rempersonalinfo0\expshrtn0\sectd a\par}");
     let s = &d.settings;
-    assert_eq!((s.link_styles, s.remove_personal_info, s.do_not_expand_shift_return), (false, false, false));
+    // `\expshrtn` turns Don't expand Shift+Return off; `\expshrtn0` is ignored (Word 365).
+    assert_eq!((s.link_styles, s.remove_personal_info, s.do_not_expand_shift_return), (false, false, true));
 }
 
 #[test]

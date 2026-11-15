@@ -552,8 +552,17 @@ fn doc_setting_words(set: &wordcraft_doc::Settings) -> String {
         (set.link_styles, "\\linkstyles"),
         (set.remove_personal_info, "\\rempersonalinfo"),
         (set.remove_date_time, "\\remdttm"),
-        (set.do_not_expand_shift_return, "\\expshrtn"),
-        (set.footnote_layout_like_ww8, "\\ftnlytwnine"),
+        // Word reads these four as on unless the word turns them off.
+        (!set.do_not_expand_shift_return, "\\expshrtn"),
+        (!set.footnote_layout_like_ww8, "\\ftnlytwnine"),
+        (!set.split_pg_break_and_para_mark, "\\spltpgpar"),
+        (!set.allow_space_of_same_style_in_table, "\\nocxsptable"),
+        (set.no_tab_hang_ind, "\\notabind"),
+        (set.no_leading, "\\truncex"),
+        (set.ext_leading_2pt_only, "\\sprslnsp"),
+        (set.wp_justification, "\\wpjst"),
+        (!set.balance_sbcs_dbcs_width, "\\dntblnsbdb"),
+        (!set.use_word97_line_break_rules, "\\lnbrkrule"),
         (set.track_changes, "\\revisions"),
         (set.print_forms_data, "\\printdata"),
         (!set.do_not_shade_form_data, "\\formshade"),
@@ -699,6 +708,47 @@ fn is_ranged(name: &str) -> bool {
 /// Set the bookmarks [`is_ranged`] knows, returning the ones it knew before.
 fn set_ranged(names: HashSet<String>) -> HashSet<String> {
     RANGED.with(|r| r.try_borrow_mut().map(|mut r| std::mem::replace(&mut *r, names)).unwrap_or_default())
+}
+
+thread_local! {
+    /// The document's default languages (Latin, East Asian, complex script) while [`export`]
+    /// writes it: a run states only the languages that differ from them.
+    static DEFAULT_LANGS: std::cell::RefCell<[Option<String>; 3]> = const { std::cell::RefCell::new([None, None, None]) };
+}
+
+fn set_default_langs(langs: [Option<String>; 3]) -> [Option<String>; 3] {
+    DEFAULT_LANGS.with(|l| l.try_borrow_mut().map(|mut l| std::mem::replace(&mut *l, langs)).unwrap_or_default())
+}
+
+/// The language words of a run whose languages are `x` (`\langN\langnpN`, `\langfeN\langfenpN`,
+/// `\alangN`): those that differ from the document's defaults and have an LCID.
+fn lang_words(x: &wordcraft_doc::props::CharProps, out: &mut String) {
+    let defaults = DEFAULT_LANGS.with(|l| l.try_borrow().map(|l| l.clone()).unwrap_or_default());
+    let [d, d_ea, d_bidi] = defaults;
+    for (own, def, words) in
+        [(&x.lang, d, &["lang", "langnp"][..]), (&x.lang_ea, d_ea, &["langfe", "langfenp"][..]), (&x.lang_bidi, d_bidi, &["alang"][..])]
+    {
+        let Some(tag) = own.as_deref().filter(|t| def.as_deref().is_none_or(|d| !d.eq_ignore_ascii_case(t))) else { continue };
+        if let Some(n) = super::lid::tag_lcid(tag) {
+            for w in words {
+                out.push_str(&format!("\\{w}{n}"));
+            }
+        }
+    }
+}
+
+/// The document's default language words for the header: `\deflangN` (1033, US English, when
+/// the default has no LCID), then `\deflangfeN` and `\adeflangN` where those defaults have one.
+fn default_lang_words(d: &wordcraft_doc::props::CharProps) -> String {
+    let lcid = |t: &Option<String>| t.as_deref().and_then(super::lid::tag_lcid);
+    let mut out = format!("\\deflang{}", lcid(&d.lang).unwrap_or(1033));
+    if let Some(n) = lcid(&d.lang_ea) {
+        out.push_str(&format!("\\deflangfe{n}"));
+    }
+    if let Some(n) = lcid(&d.lang_bidi) {
+        out.push_str(&format!("\\adeflang{n}"));
+    }
+    out
 }
 
 /// The first `\stylesheet` number of the document's own styles: 0-9 are the fixed entries.
@@ -1499,6 +1549,11 @@ impl Writer {
                     ctl.push_str(w);
                 }
             }
+            // Snap to grid is on by default: only off is written.
+            if x.snap_to_grid == Some(false) {
+                ctl.push_str("\\cgrid0");
+            }
+            lang_words(x, &mut ctl);
             // Horizontal scale in percent, 1-600; kerning from a size in half-points.
             if let Some(s) = x.scale.filter(|v| v.is_finite()).map(|v| v.round().clamp(1.0, 600.0) as i32).filter(|v| *v != 100) {
                 ctl.push_str(&format!("\\charscalex{s}"));
@@ -2300,6 +2355,8 @@ pub fn export(doc: &Document) -> String {
     let looks_before = set_style_looks(Some((plain, looks)));
     let before = set_own_styles(own);
     let ranged_before = set_ranged(HashSet::new());
+    let d = &doc.styles.default_chr;
+    let langs_before = set_default_langs([d.lang.clone(), d.lang_ea.clone(), d.lang_bidi.clone()]);
     let opts = rtf_flow_opts();
     let flow = model::from_doc_with(doc, opts);
     let mut w = Writer {
@@ -2358,6 +2415,7 @@ pub fn export(doc: &Document) -> String {
     set_own_styles(before);
     set_style_looks(looks_before);
     set_ranged(ranged_before);
+    set_default_langs(langs_before);
     export_with(&flow.meta, doc, &w, &own_entries, &body)
 }
 
@@ -2443,7 +2501,7 @@ fn user_props(props: &[wordcraft_doc::CustomProp]) -> String {
 /// The RTF file: its header (`own_styles`: the document's own stylesheet entries) and `body`.
 fn export_with(m: &Meta, doc: &Document, w: &Writer, own_styles: &str, body: &str) -> String {
     let (sec, settings, core) = (&doc.last_section, &doc.settings, &doc.core);
-    let mut out = String::from("{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\\uc1\n{\\fonttbl");
+    let mut out = format!("{{\\rtf1\\ansi\\ansicpg1252\\deff0{}\\uc1\n{{\\fonttbl", default_lang_words(&doc.styles.default_chr));
     for (i, f) in w.t.fonts.iter().enumerate() {
         let fam = if model::is_mono(f) { "\\fmodern" } else { "\\fswiss" };
         out.push_str(&format!("{{\\f{i}{fam}\\fcharset0 {};}}", esc_font(f)));

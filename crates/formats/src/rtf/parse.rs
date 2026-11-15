@@ -26,6 +26,8 @@ struct Parsed {
     /// The last section's properties (the others are on the paragraphs that end them).
     last_section: wordcraft_doc::SectionProps,
     default_font: Option<String>,
+    /// The document's default languages: Latin, East Asian and complex-script text.
+    def_langs: [Option<&'static str>; 3],
     /// Each section's headers and footers, in order, the last section's last.
     headers_footers: Vec<Vec<(HeaderFooter, Vec<FBlock>)>>,
     /// Another program's heading, title and quote styles: the document style each stands for,
@@ -441,6 +443,7 @@ fn finalize(mut r: Reader) -> Parsed {
         doc_opts: r.doc_opts,
         last_section,
         default_font,
+        def_langs: r.def_langs,
         headers_footers,
         foreign_styles,
         own_styles,
@@ -532,6 +535,7 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
         info,
         last_section,
         default_font,
+        def_langs,
         headers_footers,
         foreign_styles,
         own_styles,
@@ -613,6 +617,13 @@ pub fn import(bytes: &[u8]) -> Result<Document, String> {
     }
     if default_font.is_some() {
         Arc::make_mut(&mut doc.styles).default_chr.font = default_font;
+    }
+    let [lang, lang_ea, lang_bidi] = def_langs;
+    let chr = &mut Arc::make_mut(&mut doc.styles).default_chr;
+    for (tag, slot) in [(lang, &mut chr.lang), (lang_ea, &mut chr.lang_ea), (lang_bidi, &mut chr.lang_bidi)] {
+        if let Some(tag) = tag {
+            *slot = Some(tag.to_string());
+        }
     }
     // Another program's styles have what its stylesheet sets, not WordCraft's built-in
     // formatting; the outline level a heading style gives stays.

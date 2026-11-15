@@ -130,6 +130,7 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, look: Option<&str>, props: 
                 underline: e.underline.filter(|u| f.underline && *u != Underline::Single),
                 underline_color: e.underline_color,
                 no_proof: set(e.no_proof),
+                snap_to_grid: e.snap_to_grid.filter(|b| !*b),
                 emphasis: e.emphasis.filter(|m| *m != wordcraft_doc::props::EmphasisMark::None),
                 border: e.border.filter(|b| b.is_visible()),
                 highlight,
@@ -141,6 +142,10 @@ fn run_fmt(doc: &Document, para_style: Option<&str>, look: Option<&str>, props: 
                 size_cs: e.size_cs.filter(|s| s.is_finite()),
                 bold_cs: e.bold_cs,
                 italic_cs: e.italic_cs,
+                // The text's languages (Latin, complex script, East Asian).
+                lang: e.lang.clone().filter(|l| !l.is_empty()),
+                lang_bidi: e.lang_bidi.clone().filter(|l| !l.is_empty()),
+                lang_ea: e.lang_ea.clone().filter(|l| !l.is_empty()),
                 ..Default::default()
             };
             if x.double_strike.is_some() {
@@ -326,6 +331,7 @@ fn extra_of(e: &CharProps) -> Option<Box<CharProps>> {
         lang_bidi: e.lang_bidi.clone().filter(|l| !l.is_empty()),
         lang_ea: e.lang_ea.clone().filter(|l| !l.is_empty()),
         no_proof: set(e.no_proof),
+        snap_to_grid: e.snap_to_grid.filter(|b| !*b),
         east_asian_layout: e.east_asian_layout.clone().filter(|l| *l != Default::default()),
         highlight,
         shading,

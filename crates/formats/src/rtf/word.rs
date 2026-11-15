@@ -190,6 +190,10 @@ impl Reader {
             "pc" if self.ansicpg == 0 => self.ansicpg = 437,
             "pca" if self.ansicpg == 0 => self.ansicpg = 850,
             "deff" => self.deff = pv,
+            // The document's default languages: Latin, East Asian and complex-script text.
+            "deflang" => self.def_langs[0] = super::lid::lcid_tag(pv).or(self.def_langs[0]),
+            "deflangfe" => self.def_langs[1] = super::lid::lcid_tag(pv).or(self.def_langs[1]),
+            "adeflang" => self.def_langs[2] = super::lid::lcid_tag(pv).or(self.def_langs[2]),
             "f" => {
                 self.st.cp = self.font_cps.get(&pv).copied();
                 self.font_word(pv, false);
@@ -1015,6 +1019,12 @@ impl Reader {
             "embo" => self.set_extra(|x| x.emboss = on.then_some(true)),
             "impr" => self.set_extra(|x| x.engrave = on.then_some(true)),
             "noproof" => self.set_extra(|x| x.no_proof = on.then_some(true)),
+            // Snap to grid: on is the default and stored as nothing; only off is kept.
+            "cgrid" => self.set_extra(|x| x.snap_to_grid = (!on).then_some(false)),
+            // The text's languages (an LCID; 1024 "no language" or one not known leaves it unset).
+            "lang" | "langnp" => self.set_extra(|x| x.lang = super::lid::lcid_tag(pv).map(String::from)),
+            "langfe" | "langfenp" => self.set_extra(|x| x.lang_ea = super::lid::lcid_tag(pv).map(String::from)),
+            "alang" => self.set_extra(|x| x.lang_bidi = super::lid::lcid_tag(pv).map(String::from)),
             "accnone" => self.set_extra(|x| x.emphasis = None),
             "accdot" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Dot)),
             "acccomma" => self.set_extra(|x| x.emphasis = Some(EmphasisMark::Comma)),
@@ -1215,6 +1225,7 @@ fn style_line_word(def: &mut StyleDef, w: &str, on: bool, pv: i32) {
         "caps" => def.caps = Some(on),
         "scaps" => def.small_caps = Some(on),
         "v" => def.hidden_text = Some(on),
+        "cgrid" => def.snap_off = !on,
         "super" => def.vert_align = Some(if on { VertAlign::Superscript } else { VertAlign::Baseline }),
         "sub" => def.vert_align = Some(if on { VertAlign::Subscript } else { VertAlign::Baseline }),
         "nosupersub" => def.vert_align = Some(VertAlign::Baseline),

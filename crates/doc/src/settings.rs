@@ -458,6 +458,10 @@ pub struct Settings {
     /// without a fit mode.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub zoom: Option<Zoom>,
+    /// The view the document was saved in (`w:view`, ECMA-376 §17.15.1.92), restored when it is
+    /// opened; `None` for Print Layout or when the file doesn't say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<SavedView>,
     /// Remove personal information when saving (`w:removePersonalInformation`, ECMA-376
     /// §17.15.1.70): the saved file names comment and revision authors "Author" and leaves out
     /// the document's creator and last-modified-by. The open document keeps its real values.
@@ -631,6 +635,18 @@ pub struct Zoom {
     /// 10–500.
     pub percent: u32,
     pub fit: Option<ZoomFit>,
+}
+
+/// A view a document can be saved in other than Print Layout (`w:view`, ST_View §17.18.102).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SavedView {
+    /// Web Layout (`web`).
+    Web,
+    /// Outline (`outline`; `masterPages` reads as this).
+    Outline,
+    /// Draft (`normal`).
+    Draft,
 }
 
 /// View › Zoom's fit modes a document can be saved in.
@@ -850,6 +866,7 @@ impl Default for Settings {
             link_styles: false,
             style_pane: None,
             zoom: None,
+            view: None,
             remove_personal_info: false,
             remove_date_time: false,
             odf: None,

@@ -94,7 +94,7 @@ pub use position::{Path, Pos, StoryRef};
 pub use settings::{
     APP_KEPT, APP_KEPT_PROPS, AutoCaption, BUILTIN_CAPTION_LABELS, CAPTION_NUM_FORMATS, COMPAT_MODE_CURRENT, CaptionLabel, CaptionSep, Captions,
     CharSpacing, CoreProps, CustomProp, DEFAULT_GRID, DEFAULT_HYPHENATION_ZONE, DocVar, InFile, LEGACY_COMPAT_MODE, MAX_CAPTION_ENTRIES,
-    MAX_DIV_DEPTH, OdfLayout, PANE_ALL_STYLES, PANE_IN_USE, PagePicture, Settings, Source, StylePaneOptions, StylePaneSort, SummaryInFile,
+    MAX_DIV_DEPTH, OdfLayout, PANE_ALL_STYLES, PANE_IN_USE, PagePicture, SavedView, Settings, Source, StylePaneOptions, StylePaneSort, SummaryInFile,
     THEME_COLORS, WORD2003_COMPAT_MODE, Watermark, WebDiv, WriteProtection, Zoom, ZoomFit, div_margins, is_symbol_class_font, panose_from_hex,
 };
 pub(crate) use text_walk::{PARA_WALK_DEPTH, walk_between};

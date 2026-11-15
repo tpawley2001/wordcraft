@@ -27,6 +27,8 @@ pub(super) struct Reader {
     pub(super) ansicpg: u16,
     /// The default font (`\deff`), whose charset applies before any `\f`.
     pub(super) deff: i32,
+    /// The document's default languages (`\\deflang`, `\\deflangfe`, `\\adeflang`) as language tags.
+    pub(super) def_langs: [Option<&'static str>; 3],
     /// The document's page (`\paperw`, `\margl`…) and the current section's formatting.
     pub(super) page: PageGeom,
     /// The document formatting words that go into the document's settings (`\deftab`, `\facingp`…).
@@ -602,6 +604,11 @@ impl Reader {
     /// print form data only). False when `w` isn't one.
     pub(super) fn doc_setting_word(&mut self, w: &str, p: Option<i32>) -> bool {
         use wordcraft_doc::ZoomFit;
+        // Like `\jexpand`, these two only count among the document's own formatting words: in a
+        // style, a header or a note they are swallowed.
+        if matches!(w, "dntblnsbdb" | "lnbrkrule") && (self.st.dest != Dest::Body || self.sub.is_some() || self.hf.is_some()) {
+            return true;
+        }
         let on = p != Some(0);
         let pv = p.unwrap_or(0);
         let d = &mut self.doc_set;
@@ -615,8 +622,17 @@ impl Reader {
             "dgvshow" => d.every_v = u8::try_from(pv).ok().filter(|&n| n <= 127).or(d.every_v),
             "dgvspace" => d.grid_v = (pv >= 1).then(|| pv as f32 / 20.0).or(d.grid_v),
             "enforceprot" => d.enforce = Some(on),
-            "expshrtn" => d.expand_shift_return = Some(on),
-            "ftnlytwnine" => d.footnote_layout_like_ww8 = Some(on),
+            // These four turn their option off; with parameter 0 the word is ignored.
+            "expshrtn" => d.expand_shift_return |= on,
+            "ftnlytwnine" => d.no_footnote_layout_like_ww8 |= on,
+            "spltpgpar" => d.no_split_pg_break_and_para_mark |= on,
+            "nocxsptable" => d.no_space_of_same_style_in_table |= on,
+            "notabind" => d.no_tab_hang_ind = Some(on),
+            "truncex" => d.no_leading = Some(on),
+            "sprslnsp" => d.ext_leading_2pt_only = Some(on),
+            "wpjst" => d.wp_justification = Some(on),
+            "dntblnsbdb" => d.no_balance_sbcs_dbcs_width = Some(on),
+            "lnbrkrule" => d.no_word97_line_break_rules = Some(on),
             "formshade" => d.form_shade = on,
             "formprot" => d.old_prot = on.then_some("forms"),
             "htmautsp" => d.html_auto_spacing = on,
@@ -1304,9 +1320,28 @@ pub(super) struct DocSettingWords {
     link_styles: Option<bool>,
     remove_personal_info: Option<bool>,
     remove_date_time: Option<bool>,
-    expand_shift_return: Option<bool>,
-    /// `\ftnlytwnine` (emulate Word 6.0/95/97 footnote placement).
-    footnote_layout_like_ww8: Option<bool>,
+    /// Four compatibility options are on in an RTF file unless a word turns them off, as Word
+    /// reads them (Word 2007 and later write all four): `\expshrtn` (expand character spaces on a
+    /// line ending in Shift+Return), `\ftnlytwnine` (no Word 6.0/95/97 footnote placement),
+    /// `\spltpgpar` (no split page break and paragraph mark) and `\nocxsptable` (no space between
+    /// paragraphs of the same style in a table).
+    expand_shift_return: bool,
+    no_footnote_layout_like_ww8: bool,
+    no_split_pg_break_and_para_mark: bool,
+    no_space_of_same_style_in_table: bool,
+    /// Compatibility options (RTF 1.9.1 document formatting properties): `\notabind` (no
+    /// automatic tab stop at a hanging indent), `\truncex` (no leading between rows of text),
+    /// `\sprslnsp` (line spacing like WordPerfect 5.x), `\wpjst` (justification like
+    /// WordPerfect 6.x).
+    no_tab_hang_ind: Option<bool>,
+    no_leading: Option<bool>,
+    ext_leading_2pt_only: Option<bool>,
+    wp_justification: Option<bool>,
+    /// `\dntblnsbdb` (don't balance single-byte and double-byte character widths) and
+    /// `\lnbrkrule` (don't use Word 97 line breaking rules for Asian text): each turns off an
+    /// option every RTF document otherwise opens with on.
+    no_balance_sbcs_dbcs_width: Option<bool>,
+    no_word97_line_break_rules: Option<bool>,
     /// `\htmautsp` (Use HTML paragraph auto spacing): the space between two paragraphs is the
     /// larger of space after and space before. Without it Word adds the two.
     html_auto_spacing: bool,
@@ -1367,12 +1402,18 @@ impl DocSettingWords {
         if let Some(p) = prot {
             s.protection = Some(p.to_string());
         }
+        s.do_not_expand_shift_return = !self.expand_shift_return;
+        s.footnote_layout_like_ww8 = !self.no_footnote_layout_like_ww8;
+        s.split_pg_break_and_para_mark = !self.no_split_pg_break_and_para_mark;
+        s.allow_space_of_same_style_in_table = !self.no_space_of_same_style_in_table;
         for (v, field) in [
             (self.link_styles, &mut s.link_styles),
             (self.remove_personal_info, &mut s.remove_personal_info),
             (self.remove_date_time, &mut s.remove_date_time),
-            (self.expand_shift_return, &mut s.do_not_expand_shift_return),
-            (self.footnote_layout_like_ww8, &mut s.footnote_layout_like_ww8),
+            (self.no_tab_hang_ind, &mut s.no_tab_hang_ind),
+            (self.no_leading, &mut s.no_leading),
+            (self.ext_leading_2pt_only, &mut s.ext_leading_2pt_only),
+            (self.wp_justification, &mut s.wp_justification),
             (self.track_changes, &mut s.track_changes),
             (self.print_forms_data, &mut s.print_forms_data),
             (self.track_moves, &mut s.track_moves),
@@ -1380,6 +1421,12 @@ impl DocSettingWords {
             if let Some(v) = v {
                 *field = v;
             }
+        }
+        if self.no_balance_sbcs_dbcs_width == Some(true) {
+            s.balance_sbcs_dbcs_width = false;
+        }
+        if self.no_word97_line_break_rules == Some(true) {
+            s.use_word97_line_break_rules = false;
         }
         if let Some(t) = &self.template {
             s.attached_template = Some(t.clone());
