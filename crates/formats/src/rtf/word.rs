@@ -236,6 +236,8 @@ impl Reader {
             "saauto" => self.st.sa_auto = Some(on),
             "hyphpar" => self.st.no_hyph = Some(!on),
             "nosnaplinegrid" => self.st.snap_grid = Some(false),
+            "faauto" | "fahang" | "facenter" | "faroman" | "favar" | "fafixed" => self.st.font_align = font_alignment(w),
+            "adjustright" => self.st.adjust_right = true,
             "intbl" => self.st.intbl = true,
             "itap" => {
                 let n = pv.clamp(0, model::MAX_DEPTH as i32) as u8;
@@ -273,6 +275,7 @@ impl Reader {
                 self.row_height = (pv != 0 && pv.unsigned_abs() <= 31680).then(|| (pv.unsigned_abs() as f32 / 20.0, pv < 0));
             }
             "trkeep" => self.row_keep = on,
+            "trcbpat" | "trcfpat" | "trshdng" => self.row_pattern_word(w, pv),
             // AutoFit (`\trautofit1`); without it, or with 0, the columns keep their widths.
             "trautofit" => self.row_style.autofit = on,
             "clvmgf" => self.def_cur.vmerge = 1,
@@ -295,6 +298,9 @@ impl Reader {
             "clpadfb" => self.def_cur.pad_unit[2] = Some(pv),
             "clpadfr" => self.def_cur.pad_unit[3] = Some(pv),
             "clNoWrap" => self.def_cur.no_wrap = true,
+            "clftsWidth" => self.def_cur.pref_unit = Some(pv),
+            "clwWidth" => self.def_cur.pref_value = Some(pv),
+            "clhidemark" => self.def_cur.hide_mark = true,
             "sb" => self.st.sb = Some(pv),
             "sa" => self.st.sa = Some(pv),
             "sl" => self.st.sl = pv,
@@ -703,6 +709,8 @@ impl Reader {
                     "qr" => def.align = Some(Align::Right),
                     "qj" => def.align = Some(Align::Justify),
                     "qd" => def.align = Some(Align::Distribute),
+                    "faauto" | "fahang" | "facenter" | "faroman" | "favar" | "fafixed" => def.font_align = font_alignment(word),
+                    "adjustright" => def.adjust_right = true,
                     // Tab stops, character-unit indents and character spacing, as in the body.
                     "tqr" => def.tab_align = TabAlign::Right,
                     "tqc" => def.tab_align = TabAlign::Center,
@@ -1034,9 +1042,22 @@ impl Reader {
         }
         let colour = pat.colour();
         if cell {
+            self.def_cur.own_pattern = true;
             self.def_cur.shading = colour;
         } else {
             self.st.fmt.background = colour;
+        }
+    }
+
+    /// A row shading word (`\trcbpat`, `\trcfpat`, `\trshdng`): kept on the row's pattern,
+    /// which shades the cells without shading of their own when the row ends.
+    fn row_pattern_word(&mut self, w: &str, pv: i32) {
+        let c = self.colors.get(pv.max(0) as usize).copied().flatten();
+        let pat = self.row_style.pattern.get_or_insert_with(Default::default);
+        match w {
+            "trcfpat" => pat.ink = c,
+            "trshdng" => pat.pct = pv,
+            _ => pat.fill = c,
         }
     }
 
@@ -1334,6 +1355,20 @@ pub(super) fn push_tab_stop(tabs: &mut Vec<TabStop>, pending: (&mut TabAlign, &m
         *t = stop;
     } else if tabs.len() < MAX_TABS {
         tabs.push(stop);
+    }
+}
+
+/// The font alignment a paragraph word names (RTF 1.9.1 "Paragraph formatting properties");
+/// `\fafixed` has no model value and reads as automatic, as Word reads it.
+pub(super) fn font_alignment(word: &str) -> Option<wordcraft_doc::props::TextAlignment> {
+    use wordcraft_doc::props::TextAlignment;
+    match word {
+        "faauto" | "fafixed" => Some(TextAlignment::Auto),
+        "fahang" => Some(TextAlignment::Top),
+        "facenter" => Some(TextAlignment::Center),
+        "faroman" => Some(TextAlignment::Baseline),
+        "favar" => Some(TextAlignment::Bottom),
+        _ => None,
     }
 }
 

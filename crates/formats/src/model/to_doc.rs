@@ -229,6 +229,7 @@ fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
         out.auto_space_de = x.auto_space_de.or(out.auto_space_de);
         out.auto_space_dn = x.auto_space_dn.or(out.auto_space_dn);
         out.text_alignment = x.text_alignment.or(out.text_alignment);
+        out.adjust_right_indent = x.adjust_right_indent.or(out.adjust_right_indent);
         // An outline level apart from its heading style's.
         out.outline_level = x.outline_level.map(|l| l.min(8)).or(out.outline_level);
         // Indents in characters, beside the twips ones.
@@ -954,7 +955,14 @@ impl<'a> Builder<'a> {
                 row.props.height_rule = if exact { wordcraft_doc::props::HeightRule::Exact } else { wordcraft_doc::props::HeightRule::AtLeast };
             }
             row.props.cant_split = t.extra.as_ref().is_some_and(|x| x.keep_rows.get(ri) == Some(&true));
-            let mut g = 0usize;
+            // The grid columns it leaves empty before and after its cells, with their widths.
+            let gap = t.extra.as_ref().and_then(|x| x.row_gaps.get(ri)).copied().unwrap_or_default();
+            let before = (gap.before as usize).min(cols.saturating_sub(1));
+            let after = (gap.after as usize).min(cols.saturating_sub(before + 1));
+            let gap_width = |n: usize, w: Option<f32>| w.filter(|w| n > 0 && w.is_finite() && *w >= 0.0).map(|w| w.min(1584.0));
+            (row.props.grid_before, row.props.grid_after) = (before as u32, after as u32);
+            (row.props.w_before, row.props.w_after) = (gap_width(before, gap.w_before), gap_width(after, gap.w_after));
+            let mut g = before;
             for c in r.iter().take(wordcraft_doc::table::MAX_COLS) {
                 let span = (c.colspan.clamp(1, 63) as usize).min(cols.saturating_sub(g).max(1));
                 let w: f32 = tb.grid.get(g..(g + span).min(tb.grid.len())).map(|s| s.iter().sum()).unwrap_or(72.0);
@@ -976,9 +984,20 @@ impl<'a> Builder<'a> {
                     Box::new(wordcraft_doc::props::CellPicture { media, size: [p.img.w, p.img.h], repeat: p.repeat, align: p.align })
                 });
                 let (margins, partial_margins) = cell_margins(c);
+                // The cell's own preferred width (RTF), none when it says auto, else the width
+                // of its columns.
+                let pct = c.pref_width_pct.filter(|p| p.is_finite() && *p > 0.0).map(|p| p.min(100.0));
+                let pt = c.pref_width.filter(|w| pct.is_none() && w.is_finite() && *w > 0.0).map(|w| w.min(1584.0));
+                let (pref, pref_pct) = match (pt, pct) {
+                    (None, None) if c.pref_auto => (None, None),
+                    (None, None) => (Some(w), None),
+                    own => own,
+                };
                 row.cells.push(wordcraft_doc::Cell {
                     props: CellProps {
-                        width: Some(w),
+                        width: pref,
+                        width_pct: pref_pct,
+                        hide_mark: c.hide_mark,
                         span: span as u32,
                         vmerge,
                         shading: c.shading,

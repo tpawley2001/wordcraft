@@ -272,6 +272,9 @@ impl Reader {
             indent_right_chars: d.curi.map(chars),
             shading: self.def_para_shading(d),
             borders: self.def_para_borders(d),
+            text_alignment: d.font_align,
+            // A paragraph entry without `\adjustright` has it off; other entries leave it unset.
+            adjust_right_indent: (d.entry == StyleEntry::Para).then_some(d.adjust_right),
             ..Default::default()
         };
         let color = |i: i32| usize::try_from(i).ok().and_then(|i| self.colors.get(i).copied().flatten()).map_or(TextColor::Auto, TextColor::Rgb);
@@ -576,6 +579,14 @@ impl Reader {
             x.suppress_hyphens = st.no_hyph;
             x.snap_to_grid = st.snap_grid;
         }
+        // Adjust right indent only where it differs from the paragraph's style: in RTF a
+        // paragraph without `\adjustright` has it off, where the document's styles default to on.
+        let adjust = (st.adjust_right != self.style_adjust_right(st.style)).then_some(st.adjust_right);
+        if st.font_align.is_some() || adjust.is_some() {
+            let x = p.extra.get_or_insert_with(Default::default);
+            x.text_alignment = st.font_align;
+            x.adjust_right_indent = adjust;
+        }
         if let Some(f) = st.frame.as_deref() {
             f.apply(p.extra.get_or_insert_with(Default::default));
         }
@@ -600,6 +611,31 @@ impl Reader {
             p.extra.get_or_insert_with(Default::default).outline_level = Some(o);
         }
         p
+    }
+
+    /// The Automatically adjust right indent a paragraph in style `\sN` gets from its style: its
+    /// paragraph entry's, else the Normal entry's (a style the stylesheet doesn't define is
+    /// Normal), else on (no stylesheet: the document's built-in styles).
+    fn style_adjust_right(&self, n: i32) -> bool {
+        let entry = |k: i32| self.style_defs.get(&k).filter(|d| d.entry == StyleEntry::Para).map(|d| d.adjust_right);
+        entry(n).or_else(|| entry(0)).unwrap_or(true)
+    }
+
+    /// The font alignment and Automatically adjust right indent of each paragraph entry that
+    /// stands for one of the document's fixed styles (Normal, the headings…), which those styles
+    /// take from the file; the document's own styles have them in [`Reader::own_styles`].
+    pub(super) fn fixed_style_flags(&self) -> Vec<(String, Option<wordcraft_doc::props::TextAlignment>, bool)> {
+        let ids = self.style_ids();
+        let mut out: Vec<(String, Option<wordcraft_doc::props::TextAlignment>, bool)> = Vec::new();
+        for key in &self.style_order {
+            let Some(d) = self.style_defs.get(key).filter(|d| d.entry == StyleEntry::Para) else { continue };
+            let Some((id, false)) = ids.ids.get(key) else { continue };
+            // The first entry naming a style gives it its formatting.
+            if !out.iter().any(|(s, _, _)| s == id) {
+                out.push((id.clone(), d.font_align, d.adjust_right));
+            }
+        }
+        out
     }
 
     /// The paragraph's shading colour (`\cbpat`, `\cfpat`, `\shading`): the colour the pattern
@@ -740,6 +776,10 @@ pub(super) struct StyleDef {
     pub(super) keep_next: Option<bool>,
     pub(super) keep_lines: Option<bool>,
     pub(super) align: Option<Align>,
+    /// Font alignment (`\fa…`) and Automatically adjust right indent (`\adjustright`; a
+    /// paragraph entry without it has the setting off).
+    pub(super) font_align: Option<wordcraft_doc::props::TextAlignment>,
+    pub(super) adjust_right: bool,
     /// Tab stops (`\tx`, `\tb`), and the alignment and leader words read for the next one.
     pub(super) tabs: Vec<wordcraft_doc::props::TabStop>,
     pub(super) tab_align: wordcraft_doc::props::TabAlign,

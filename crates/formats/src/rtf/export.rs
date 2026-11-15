@@ -572,6 +572,16 @@ thread_local! {
     static OWN_STYLES: std::cell::RefCell<HashMap<String, u32>> = std::cell::RefCell::new(HashMap::new());
 }
 
+/// The widths of a row's gaps before and after its cells (`\trftsWidthB3\trwWidthBN`,
+/// `\trftsWidthA3\trwWidthAN`, twips), where it has a gap with a width.
+fn row_gap_words(gap: &model::RowGap, out: &mut String) {
+    for (n, w, side) in [(gap.before, gap.w_before, 'B'), (gap.after, gap.w_after, 'A')] {
+        if let Some(w) = w.filter(|w| n > 0 && w.is_finite() && *w >= 0.0) {
+            out.push_str(&format!("\\trftsWidth{side}3\\trwWidth{side}{}", (w.min(1584.0) * 20.0).round() as i64));
+        }
+    }
+}
+
 /// A table's direction (`\rtlrow`), preferred width (`\trftsWidthN\trwWidthN`) and floating
 /// position (RTF 1.9.1 "Positioned tables"), written in each of its row definitions.
 fn table_place_words(x: &model::TableExtra, out: &mut String) {
@@ -786,6 +796,7 @@ fn own_style_entries(doc: &Document, t: &mut Tables) -> String {
             }
         } else {
             out.push_str(&format!("{{\\s{n}"));
+            style_para_flag_words(doc, &s.id, s.para.text_alignment, &mut out);
         }
         if let Some(b) = s.based_on.as_deref().and_then(style_ref_num) {
             out.push_str(&format!("\\sbasedon{b}"));
@@ -825,6 +836,7 @@ fn builtin_style_entries(doc: &Document, t: &mut Tables) -> String {
     use wordcraft_doc::styles::StyleKind;
     let defined = |id: &str| doc.styles.get(id).filter(|s| s.kind == StyleKind::Paragraph);
     let mut out = String::from("{\\s0\\snext0");
+    style_para_flag_words(doc, "Normal", defined("Normal").and_then(|s| s.para.text_alignment), &mut out);
     if let Some(normal) = defined("Normal") {
         let mut chr = doc.styles.effective_default_chr();
         chr.overlay(&normal.chr);
@@ -835,6 +847,7 @@ fn builtin_style_entries(doc: &Document, t: &mut Tables) -> String {
     out.push_str(" Normal;}");
     let mut entry = |n: u32, id: &str, head: String, fixed: String, name: &str| {
         out.push_str(&format!("{{\\s{n}{head}"));
+        style_para_flag_words(doc, id, defined(id).and_then(|s| s.para.text_alignment), &mut out);
         match defined(id) {
             Some(s) => {
                 style_def_words(s, t, &mut out);
@@ -854,6 +867,54 @@ fn builtin_style_entries(doc: &Document, t: &mut Tables) -> String {
     entry(8, "Quote", based(), "\\li720\\ri720\\i".into(), "Quote");
     entry(9, model::CODE_STYLE, "\\sbasedon0\\snext9".into(), "\\sa0\\fs20".into(), "Code");
     out
+}
+
+/// The Automatically adjust right indent and font alignment words of paragraph style `id`'s
+/// `\stylesheet` entry: `\adjustright` when the style has it on (its own, else its chain's,
+/// else on; RTF reads an entry without the word as off), and the font alignment it sets itself.
+fn style_para_flag_words(doc: &Document, id: &str, fa: Option<wordcraft_doc::props::TextAlignment>, out: &mut String) {
+    let probe = wordcraft_doc::props::ParaProps { style: Some(id.to_string()), ..Default::default() };
+    if doc.styles.resolve_para(&probe).adjust_right_indent {
+        out.push_str("\\adjustright");
+    }
+    if let Some(fa) = fa {
+        out.push_str(font_align_word(fa));
+    }
+}
+
+/// The paragraph words RTF reads as off when absent: automatic space between Asian and Latin
+/// text and numbers (`\aspalpha`, `\aspnum`) and Automatically adjust right indent
+/// (`\adjustright`), from the flow's effective values (unset when on); then the font alignment.
+fn off_unless_written_words(x: Option<&wordcraft_doc::props::ParaProps>) -> String {
+    let mut out = String::new();
+    // Automatic space between Asian and Latin text and numbers: off in RTF unless written
+    // (the flow model holds the effective value, unset when on).
+    if x.and_then(|x| x.auto_space_de) != Some(false) {
+        out.push_str("\\aspalpha");
+    }
+    if x.and_then(|x| x.auto_space_dn) != Some(false) {
+        out.push_str("\\aspnum");
+    }
+    // Automatically adjust right indent: likewise off in RTF unless written.
+    if x.and_then(|x| x.adjust_right_indent) != Some(false) {
+        out.push_str("\\adjustright");
+    }
+    if let Some(w) = x.and_then(|x| x.text_alignment).map(font_align_word) {
+        out.push_str(w);
+    }
+    out
+}
+
+/// The RTF word for font alignment `fa` (RTF 1.9.1 "Paragraph formatting properties").
+fn font_align_word(fa: wordcraft_doc::props::TextAlignment) -> &'static str {
+    use wordcraft_doc::props::TextAlignment;
+    match fa {
+        TextAlignment::Auto => "\\faauto",
+        TextAlignment::Top => "\\fahang",
+        TextAlignment::Center => "\\facenter",
+        TextAlignment::Baseline => "\\faroman",
+        TextAlignment::Bottom => "\\favar",
+    }
 }
 
 /// The paragraph and character formatting words of style `s`'s own definition, for its
@@ -1772,15 +1833,7 @@ impl Writer {
             Some(false) => out.push_str("\\nowidctlpar"),
             None => {}
         }
-        // Automatic space between Asian and Latin text and numbers: off in RTF unless written
-        // (the flow model holds the effective value, unset when on).
-        let x = p.extra.as_deref();
-        if x.and_then(|x| x.auto_space_de) != Some(false) {
-            out.push_str("\\aspalpha");
-        }
-        if x.and_then(|x| x.auto_space_dn) != Some(false) {
-            out.push_str("\\aspnum");
-        }
+        out.push_str(&off_unless_written_words(p.extra.as_deref()));
         if let Some(x) = p.extra.as_deref() {
             if x.contextual_spacing == Some(true) {
                 out.push_str("\\contextualspace");
@@ -1957,16 +2010,21 @@ impl Writer {
             Some(Align::Center | Align::Right) => 0,
             _ => extra.and_then(|x| x.indent).filter(|i| i.is_finite()).map_or(0, |i| ((i * 20.0).round() as i64).clamp(-31_680, 31_680)),
         };
+        // A row that starts short of the grid starts at its first cell's column: its own left edge.
+        let gap = extra.and_then(|x| x.row_gaps.get(ri)).copied().unwrap_or_default();
+        let mut g = (gap.before as usize).min(widths.len());
+        let mut x: f32 = widths.get(..g).map_or(0.0, |w| w.iter().sum());
+        let row_left = (x.round() as i64).saturating_add(left);
         // Its default cell padding: the gap is the left padding, each side stated in twips.
         let pad = extra.and_then(|x| x.cell_margins).filter(|m| m.iter().all(|v| v.is_finite()));
         match pad {
             Some(m) => {
                 let [t, l, b, r] = m.map(|v| ((v * 20.0).round() as i64).clamp(0, 31_680));
                 out.push_str(&format!(
-                    "\\trgaph{l}\\trleft{left}\\trpaddl{l}\\trpaddt{t}\\trpaddb{b}\\trpaddr{r}\\trpaddfl3\\trpaddft3\\trpaddfb3\\trpaddfr3"
+                    "\\trgaph{l}\\trleft{row_left}\\trpaddl{l}\\trpaddt{t}\\trpaddb{b}\\trpaddr{r}\\trpaddfl3\\trpaddft3\\trpaddfb3\\trpaddfr3"
                 ));
             }
-            None => out.push_str(&format!("\\trgaph108\\trleft{left}")),
+            None => out.push_str(&format!("\\trgaph108\\trleft{row_left}")),
         }
         // The table's style and its look.
         if let Some(n) = extra.and_then(|x| x.style.as_deref()).and_then(own_style_num) {
@@ -2003,8 +2061,7 @@ impl Writer {
         if extra.is_some_and(|x| x.keep_rows.get(ri) == Some(&true)) {
             out.push_str("\\trkeep");
         }
-        let mut g = 0usize;
-        let mut x = 0.0f32;
+        row_gap_words(&gap, out);
         for c in row {
             let span = c.colspan.clamp(1, 63) as usize;
             for k in g..(g + span).min(widths.len()) {
@@ -2032,6 +2089,15 @@ impl Writer {
             }
             if c.no_wrap {
                 out.push_str("\\clNoWrap");
+            }
+            // Its preferred width: a percentage in fiftieths of a percent, else points in twips.
+            if let Some(p) = c.pref_width_pct.filter(|p| p.is_finite() && *p > 0.0) {
+                out.push_str(&format!("\\clftsWidth2\\clwWidth{}", (p.min(100.0) * 50.0).round() as i32));
+            } else if let Some(w) = c.pref_width.filter(|w| w.is_finite() && *w > 0.0) {
+                out.push_str(&format!("\\clftsWidth3\\clwWidth{}", (w.min(1584.0) * 20.0).round() as i32));
+            }
+            if c.hide_mark {
+                out.push_str("\\clhidemark");
             }
             match c.direction {
                 wordcraft_doc::props::TextDirection::Down => out.push_str("\\cltxtbrl"),

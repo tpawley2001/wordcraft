@@ -412,6 +412,7 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         let rp = doc.styles.resolve_para(p);
         x.auto_space_de = (!rp.auto_space_de).then_some(false);
         x.auto_space_dn = (!rp.auto_space_dn).then_some(false);
+        x.adjust_right_indent = (!rp.adjust_right_indent).then_some(false);
     }
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }
@@ -1427,6 +1428,10 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
                 // The sides the cell sets itself, for formats that write only those (RTF).
                 own_margins: c.props.margins.map(|m| m.map(Some)).or(c.props.partial_margins).unwrap_or([None; 4]),
                 no_wrap: c.props.no_wrap,
+                pref_width: c.props.width,
+                pref_width_pct: c.props.width_pct,
+                pref_auto: c.props.width.is_none() && c.props.width_pct.is_none(),
+                hide_mark: c.props.hide_mark,
                 direction: c.props.text_direction,
                 // Its background picture, for formats that keep cell formatting (ODT).
                 picture: c.props.picture.as_deref().filter(|_| tracked.paras).and_then(|p| {
@@ -1474,10 +1479,17 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
         || t.props.bidi_visual
         || t.props.float.is_some();
     let cell_margins = t.props.cell_margins.filter(|m| m.iter().all(|v| v.is_finite()));
+    let row_gaps = row_gaps(t);
     let rows_only = (!tracked.paras && tracked.rows)
         .then(|| (heights(), keep_rows()))
         .filter(|(h, k)| {
-            h.iter().any(Option::is_some) || k.contains(&true) || t.props.style.is_some() || placed || cell_margins.is_some() || t.props.fixed
+            h.iter().any(Option::is_some)
+                || k.contains(&true)
+                || t.props.style.is_some()
+                || placed
+                || cell_margins.is_some()
+                || t.props.fixed
+                || !row_gaps.is_empty()
         })
         .map(|(heights, keep_rows)| super::types::TableExtra {
             align: t.props.align,
@@ -1492,6 +1504,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             look: t.props.style.is_some().then_some(t.props.look),
             cell_margins,
             fixed: t.props.fixed,
+            row_gaps,
             ..Default::default()
         });
     let extra = tracked.paras.then(|| {
@@ -1511,6 +1524,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             cell_margins: None,
             bidi_visual: false,
             float: None,
+            row_gaps: Vec::new(),
         }
     });
     // Kept whole for formats that ask for it: its header rows count even without the rest.
@@ -1518,6 +1532,24 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
     let kept = (tracked.paras && depth == 0).then(|| doc.kept.of("odt").and_then(|k| k.table(t)).cloned()).flatten();
     let wrap = (tracked.paras && depth == 0).then(|| doc.kept.of("odt").and_then(|k| k.table_wrap(t)).cloned().map(Box::new)).flatten();
     FTable { rows, widths: t.grid.clone(), borderless, extra, kept, wrap }
+}
+
+/// Each row's empty grid columns before and after its cells and their widths, by row; empty when
+/// no row has any.
+fn row_gaps(t: &Table) -> Vec<super::types::RowGap> {
+    if t.rows.iter().all(|r| r.first_grid() == 0 && r.grid_after() == 0) {
+        return Vec::new();
+    }
+    let width = |n: usize, w: Option<f32>| w.filter(|w| n > 0 && w.is_finite() && *w >= 0.0).map(|w| w.min(1584.0));
+    t.rows
+        .iter()
+        .map(|r| super::types::RowGap {
+            before: r.first_grid() as u32,
+            after: r.grid_after() as u32,
+            w_before: width(r.first_grid(), r.props.w_before),
+            w_after: width(r.grid_after(), r.props.w_after),
+        })
+        .collect()
 }
 
 /// The document body as a flow.

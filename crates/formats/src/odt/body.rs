@@ -1431,6 +1431,7 @@ impl Body<'_> {
             cell_margins: None,
             bidi_visual: false,
             float: None,
+            row_gaps: Vec::new(),
         };
         let background = get(a, "table:style-name").and_then(|s| self.styles.table_background(s));
         self.tables.push(TableB {

@@ -369,6 +369,7 @@ pub(super) struct Output {
     pub(super) rule_pending: bool,
     pub(super) table_rights: Vec<Vec<i32>>,
     pub(super) table_lefts: Vec<i32>,
+    pub(super) table_gap_widths: Vec<[Option<f32>; 2]>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
     pub(super) row_style: RowStyle,
@@ -390,6 +391,7 @@ pub(super) struct TableLevel {
     pub(super) row_keep: bool,
     pub(super) table_rights: Vec<Vec<i32>>,
     pub(super) table_lefts: Vec<i32>,
+    pub(super) table_gap_widths: Vec<[Option<f32>; 2]>,
     pub(super) table_heights: Vec<Option<(f32, bool)>>,
     pub(super) table_keeps: Vec<bool>,
     pub(super) row_style: RowStyle,
@@ -417,6 +419,9 @@ pub(super) struct RowStyle {
     /// the order top, left, bottom, right.
     pub(super) pad: [i32; 4],
     pub(super) pad_unit: [i32; 4],
+    /// The row's shading pattern (`\trcbpatN`, `\trcfpatN`, `\trshdngN`), once one of them is
+    /// read: it shades each cell of the row that has no shading of its own.
+    pub(super) pattern: Option<Pattern>,
     /// Whether the row is AutoFit (`\trautofitN`, N nonzero); otherwise its columns are fixed.
     pub(super) autofit: bool,
     /// The row runs right to left (`\rtlrow`; `\ltrrow` left to right).
@@ -432,11 +437,15 @@ pub(super) struct RowStyle {
     pub(super) pos_v_rel: Option<wordcraft_doc::para::Anchor>,
     pub(super) no_overlap: bool,
     pub(super) floats: bool,
+    /// The preferred widths of the gaps before and after the row's cells (`\trwWidthBN`,
+    /// `\trwWidthAN`) and their units (`\trftsWidthBN`, `\trftsWidthAN`: 3 twips, else none).
+    pub(super) gap_width: [i32; 2],
+    pub(super) gap_width_unit: [i32; 2],
 }
 
 impl RowStyle {
-    /// A direction, preferred width or positioned-table word (RTF 1.9.1 "Table row definitions"
-    /// and "Positioned tables"); false when `w` is none of them.
+    /// A direction, preferred width, positioned-table or gap width word (RTF 1.9.1 "Table row
+    /// definitions" and "Positioned tables"); false when `w` is none of them.
     pub(super) fn table_word(&mut self, w: &str, pv: i32) -> bool {
         use wordcraft_doc::para::{Anchor, FloatAlign};
         let off = |v: i32| v.clamp(-31_680, 31_680) as f32 / 20.0;
@@ -470,12 +479,34 @@ impl RowStyle {
             "tdfrmtxtRight" => p.dist[2] = dist(pv),
             "tdfrmtxtBottom" => p.dist[3] = dist(pv),
             "tabsnoovrlp" => self.no_overlap = true,
-            _ => return false,
+            _ => return self.gap_width_word(w, pv),
         }
         if w.starts_with("tpos") {
             self.floats = true;
         }
         true
+    }
+
+    /// A width-before or width-after word (`\trftsWidthB`, `\trwWidthB`, `\trftsWidthA`,
+    /// `\trwWidthA`); false when `w` is none of them.
+    pub(super) fn gap_width_word(&mut self, w: &str, pv: i32) -> bool {
+        match w {
+            "trftsWidthB" => self.gap_width_unit[0] = pv,
+            "trwWidthB" => self.gap_width[0] = pv,
+            "trftsWidthA" => self.gap_width_unit[1] = pv,
+            "trwWidthA" => self.gap_width[1] = pv,
+            _ => return false,
+        }
+        true
+    }
+
+    /// The preferred widths of the gaps before and after the row's cells, points: only a width
+    /// in twips counts, and a negative one is none.
+    pub(super) fn gap_widths(&self) -> [Option<f32>; 2] {
+        let one = |unit: i32, v: i32| (unit == 3 && v >= 0).then(|| v.min(31_680) as f32 / 20.0);
+        let [ub, ua] = self.gap_width_unit;
+        let [wb, wa] = self.gap_width;
+        [one(ub, wb), one(ua, wa)]
     }
 
     /// The table's preferred width: points, or percent of the text width.
@@ -614,6 +645,11 @@ pub(super) struct St {
     pub(super) sa_auto: Option<bool>,
     pub(super) no_hyph: Option<bool>,
     pub(super) snap_grid: Option<bool>,
+    /// Font alignment (`\faauto`, `\fahang`, `\facenter`, `\faroman`, `\favar`, `\fafixed`);
+    /// `None` until the paragraph says. Automatically adjust right indent when a document grid
+    /// is defined (`\adjustright`): off unless the paragraph says (RTF 1.9.1).
+    pub(super) font_align: Option<wordcraft_doc::props::TextAlignment>,
+    pub(super) adjust_right: bool,
     pub(super) field: Option<usize>,
     /// The code page of the current font's charset (`\fcharset`), when it names one.
     pub(super) cp: Option<u16>,
@@ -725,6 +761,8 @@ impl Default for St {
             sa_auto: None,
             no_hyph: None,
             snap_grid: None,
+            font_align: None,
+            adjust_right: false,
             field: None,
             cp: None,
             borders: Default::default(),
@@ -804,6 +842,15 @@ pub(super) struct CellDef {
     pub(super) pad_unit: [Option<i32>; 4],
     /// Wrap text off (`\clNoWrap`).
     pub(super) no_wrap: bool,
+    /// The preferred width's unit (`\clftsWidthN`: 2 fiftieths of a percent, 3 twips, else none)
+    /// and value (`\clwWidthN`), in either order.
+    pub(super) pref_unit: Option<i32>,
+    pub(super) pref_value: Option<i32>,
+    /// Hide end-of-cell mark (`\clhidemark`).
+    pub(super) hide_mark: bool,
+    /// Whether the cell names a shading word of its own (`\clcbpat`, `\clcfpat`, `\clshdng`),
+    /// so the row's shading does not replace it.
+    pub(super) own_pattern: bool,
 }
 
 impl CellDef {
@@ -818,6 +865,26 @@ impl CellDef {
             }
         }
         out
+    }
+
+    /// The cell's preferred width: (points, percent, auto). With no unit (or unit 0) the cell
+    /// prefers its column's width, as in Word: (None, None, false). Auto (unit 1), a missing, zero
+    /// or negative value, or a twips value beyond 22 inches give no preferred width: (None, None,
+    /// true). A percentage is capped at 100%.
+    pub(super) fn pref_width(&self) -> (Option<f32>, Option<f32>, bool) {
+        let v = self.pref_value.filter(|v| *v > 0);
+        match self.pref_unit {
+            Some(1) => (None, None, true),
+            Some(2) => {
+                let pct = v.map(|v| (v as f32 / 50.0).min(100.0));
+                (None, pct, pct.is_none())
+            }
+            Some(3) => {
+                let pt = v.filter(|v| *v <= 31_680).map(|v| v as f32 / 20.0);
+                (pt, None, pt.is_none())
+            }
+            _ => (None, None, false),
+        }
     }
 }
 

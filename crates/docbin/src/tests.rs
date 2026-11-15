@@ -23,6 +23,7 @@ mod char_styles;
 mod compat_mode;
 mod char_sprms;
 mod char_lang;
+mod char_snap_grid;
 mod contextual_spacing;
 mod para_grid_flags;
 mod para_sprms;

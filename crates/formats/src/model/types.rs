@@ -557,9 +557,9 @@ pub struct FlowOpts {
     /// heading), for formats that write the level on its own (RTF `\outlinelevelN`).
     pub outline_apart: bool,
     /// The paragraph's effective automatic space between Asian and Latin text and between Asian
-    /// text and numbers (its own, else its style chain's, else on) in [`Para::extra`]: `None` when
-    /// on, `Some(false)` when off, for formats where a missing setting means off (RTF
-    /// `\aspalpha`, `\aspnum`).
+    /// text and numbers, and its Automatically adjust right indent (its own, else its style
+    /// chain's, else on) in [`Para::extra`]: `None` when on, `Some(false)` when off, for formats
+    /// where a missing setting means off (RTF `\aspalpha`, `\aspnum`, `\adjustright`).
     pub auto_space: bool,
     /// Without [`FlowOpts::chars`]: in a paragraph of the document's own style
     /// ([`super::is_custom_style`]) of kind [`Kind::Normal`], the effective alignment, spacing,
@@ -1022,6 +1022,16 @@ pub struct Cell {
     /// The width, points, the source gives a cell spanning one column (HTML): see
     /// [`FTable::widths_from_cells`].
     pub width: Option<f32>,
+    /// Its preferred width, points (Word's `w:tcW` in twips; RTF `\clftsWidth3`): kept on the
+    /// cell, never used for the column grid.
+    pub pref_width: Option<f32>,
+    /// Its preferred width, percent of the table's (`w:tcW` pct; RTF `\clftsWidth2`).
+    pub pref_width_pct: Option<f32>,
+    /// It has no preferred width (auto). Otherwise a cell giving neither of the above prefers
+    /// the width of its columns.
+    pub pref_auto: bool,
+    /// Hide end-of-cell mark (`w:hideMark`; RTF `\clhidemark`).
+    pub hide_mark: bool,
 }
 
 /// A cell's background picture: the picture at its own size, how it fills the cell, and where an
@@ -1050,6 +1060,10 @@ impl Default for Cell {
             direction: Default::default(),
             picture: None,
             width: None,
+            pref_width: None,
+            pref_width_pct: None,
+            pref_auto: false,
+            hide_mark: false,
         }
     }
 }
@@ -1122,11 +1136,33 @@ pub struct TableExtra {
     /// Where it floats, when it does, for formats that state it by row (RTF's positioned-table
     /// words).
     pub float: Option<wordcraft_doc::props::TableFloat>,
+    /// Each row's empty grid columns before and after its cells, with their widths, by row, for
+    /// formats that state each row's edges (RTF); empty when no row starts or ends short.
+    pub row_gaps: Vec<RowGap>,
+}
+
+/// The grid columns a row leaves empty before its first cell and after its last
+/// (`w:gridBefore`, `w:gridAfter`), and those gaps' preferred widths in points.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RowGap {
+    pub before: u32,
+    pub after: u32,
+    pub w_before: Option<f32>,
+    pub w_after: Option<f32>,
 }
 
 impl FTable {
     pub fn cols(&self) -> usize {
-        self.rows.iter().map(|r| r.iter().map(|c| c.colspan.clamp(1, 63) as usize).sum::<usize>()).max().unwrap_or(0)
+        let gaps = self.extra.as_deref().map(|x| x.row_gaps.as_slice()).unwrap_or_default();
+        self.rows
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let gap = gaps.get(i).map_or(0, |g| g.before.min(63) as usize + g.after.min(63) as usize);
+                r.iter().map(|c| c.colspan.clamp(1, 63) as usize).sum::<usize>() + gap
+            })
+            .max()
+            .unwrap_or(0)
     }
     /// Grid column widths from the cells that give one (after [`Self::insert_covered`], so a
     /// cell's column counts those spanned from rows above), when every column has one.
