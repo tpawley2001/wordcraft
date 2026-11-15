@@ -1,5 +1,7 @@
 # Layout and pagination parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (the Windows 3.x font names Helv and Tms Rmn are drawn in Arial and Times New Roman, as in Word. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (a page break at the end of the document starts no blank last page, as in Word. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0548: with Balance SBCS characters and DBCS characters a space touching East Asian text is half an em wide, as in Word. Readiness estimates unchanged.)
@@ -454,6 +456,7 @@ Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei,
 > 2026-11-03 · A missing Lucida Console spaces its lines like Lucida Console (1.0 em: 10 pt lines 10.0 pt apart, as in Word's PDF), not like its substitute (1.133 em); glyph widths unchanged (`layout::tests::missing_font_line`).
 > 2026-11-03 · A SYMBOL field stored without a result shows its character (`Copyright { SYMBOL 211 \f "Symbol" }` reads ©): Symbol, Wingdings and Webdings codes map to Unicode, `\u` codes are Unicode, others Windows-1252; Symbol 0xD2–0xD4 and 0xE2–0xE4 now map to ®, ©, ™ (also for `w:sym`) (`layout::tests::symbol_field`, `doc::symbol_fonts::tests::symbol_serif_and_sans_signs_map_to_the_unified_signs`).
 > 2026-11-04 · A missing Century is drawn in its metric clone C059 (then Century Schoolbook L, TeX Gyre Schola), whose advances match the widths in Word's PDFs, and a missing Microsoft Sans Serif (MS Sans Serif) in Liberation Sans, not in the generic substitutes Caladea and Carlito; bold and italic resolve as usual (`fonts/tests/century_substitute.rs`).
+> 2026-11-15 · The Windows 3.x font names "Helv" and "Tms Rmn" are drawn and measured in Arial and Times New Roman (then their metric twins Liberation Sans and Liberation Serif), as Word draws them, not in the generic sans substitute Carlito; the document keeps the names (`fonts::word::legacy_names_tests`).
 > 2026-11-04 · A missing Arial Narrow is drawn in its metric clone Liberation Sans Narrow (then Nimbus Sans Narrow), whose advances match Word's Arial Narrow, not in the generic sans substitute Carlito (about a quarter wider); bold and italic resolve as usual (`fonts/tests/arial_narrow_substitute.rs`).
 
 > 2026-11-01 · Wrap text on the largest side: with equal room on both sides the text goes to the right, as in Word's PDF of a real `.doc`; two such objects on one line keep the text between them when their narrower sides face outwards (`layout::tests::largest_wrap_side_goes_right_on_a_tie`, `layout::para::lines::tests::largest_wrap_floats_side_by_side_keep_text_between_them`).
@@ -810,6 +813,7 @@ Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei,
 | 2026-11-14 | trivial | A Top and Bottom or Square object placed above its anchor paragraph whose wrap area pushes that paragraph off the page goes to the next page with it: the page it left is laid out without the object and ends before the paragraph (it kept an empty band, and the object was drawn on the next page over a second band); in columns the paragraph moves to the next column and the object stays; an object positioned from its paragraph above the paper moves onto the page (paper top before mode 15, top margin in 15), as measured in Word (`layout::tests::early_float_anchor_moves`). Readiness estimates unchanged |
 | 2026-11-14 | trivial | P0553: a missing Verdana, Tahoma, Century Gothic or SimSun is drawn with its substitute but keeps the advance widths Word's PDFs give the real font (characters U+0020-U+00FF it was measured on; others keep the substitute's), so 40 words of Verdana break where Word breaks them (before, the substitute's narrower widths put more words on a line; `layout::tests::missing_font_widths`). Readiness estimates unchanged |
 | 2026-11-15 | trivial | P0554: a missing Aptos, Aptos Display, Trebuchet MS or Garamond is drawn with its substitute but keeps the advance widths Word's PDFs give the real font (characters it was measured on; others keep the substitute's), so lines hold Word's words (`layout::tests::missing_font_widths`). Readiness estimates unchanged |
+| 2026-11-15 | trivial | P0570: the Windows 3.x font names Helv and Tms Rmn are drawn in Arial and Times New Roman (then Liberation Sans and Liberation Serif), as in Word, not in Carlito |
 
 Maintenance on 2026-10-12 retains current tracked-deletion, endnote, footer-total, text-box
 and balloon layout while supplying explicit cell identity at every box call. The native Word

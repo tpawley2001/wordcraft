@@ -24,6 +24,10 @@ pub struct CodeParas {
     /// conditions or replacing branch fields when preparing output.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub nested: Vec<NestedCode>,
+    /// The byte length of each nested field's stored text in the code, in the order of
+    /// [`Self::nested`] (empty when it was not recorded, as in sessions saved before it was).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub nested_len: Vec<usize>,
 }
 
 /// A paragraph mark inside a field's code: the paragraph that starts after it.
