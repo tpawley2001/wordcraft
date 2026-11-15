@@ -417,6 +417,8 @@ pub(super) struct RowStyle {
     /// the order top, left, bottom, right.
     pub(super) pad: [i32; 4],
     pub(super) pad_unit: [i32; 4],
+    /// Whether the row is AutoFit (`\trautofitN`, N nonzero); otherwise its columns are fixed.
+    pub(super) autofit: bool,
 }
 
 impl RowStyle {

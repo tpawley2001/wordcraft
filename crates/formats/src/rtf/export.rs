@@ -1890,6 +1890,10 @@ impl Writer {
         let extra = t.extra.as_deref();
         // Its alignment, else its left edge (`\trleft`, which each `\cellx` is measured with).
         out.push_str("\\trowd");
+        // AutoFit, unless the table's columns are fixed (RTF's default).
+        if !extra.is_some_and(|x| x.fixed) {
+            out.push_str("\\trautofit1");
+        }
         let align = extra.and_then(|x| x.align);
         match align {
             Some(Align::Center) => out.push_str("\\trqc"),

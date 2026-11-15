@@ -272,6 +272,8 @@ impl Reader {
                 self.row_height = (pv != 0 && pv.unsigned_abs() <= 31680).then(|| (pv.unsigned_abs() as f32 / 20.0, pv < 0));
             }
             "trkeep" => self.row_keep = on,
+            // AutoFit (`\trautofit1`); without it, or with 0, the columns keep their widths.
+            "trautofit" => self.row_style.autofit = on,
             "clvmgf" => self.def_cur.vmerge = 1,
             "clvmrg" => self.def_cur.vmerge = 2,
             "clmgf" => self.def_cur.hmerge = 1,
