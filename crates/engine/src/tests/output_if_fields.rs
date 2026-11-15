@@ -1,6 +1,7 @@
 //! Output (PDF export, printing, page images) shows unlocked IF fields in the body with their fresh
-//! result. Expected results read from Microsoft 365 Word's PDF export of probe documents whose IF fields
-//! all stored the stale result "OLD" (or the losing branch); `=` formulas keep their stored result.
+//! result when the body also holds a field output refreshes (SEQ, REF, DATE, PAGE ...), except the
+//! body's last field. Expected results read from Microsoft 365 Word's PDF export of probe documents
+//! whose IF fields all stored a stale result; `=` formulas keep their stored result.
 
 use wordcraft_doc::{CharProps, Document, InlineObject, StoryRef};
 
@@ -34,11 +35,50 @@ fn results(doc: &Document) -> Vec<String> {
     out
 }
 
-/// What output shows for each field code (stored result "OLD").
+/// What output shows for each field code (stored result "OLD"), between a `SEQ fig` field first
+/// and one last (as in Word's probes: the SEQ makes output refresh, and the body's last field
+/// keeps its stored result).
 fn shown(codes: &[&str]) -> Vec<String> {
-    let doc = doc_with(codes.iter().map(|c| field(c, "OLD", false)).collect());
+    let mut fields = vec![field("SEQ fig", "9", false)];
+    fields.extend(codes.iter().map(|c| field(c, "OLD", false)));
+    fields.push(field("SEQ fig", "9", false));
+    let doc = doc_with(fields);
     let out = output_fields(&doc).unwrap_or_else(|| doc.clone());
-    results(&out)
+    let mut r = results(&out);
+    assert_eq!(r.len(), codes.len() + 2);
+    r.pop();
+    r.remove(0);
+    r
+}
+
+/// The four IF fields of Word's probes after a first field `first` (stored `stored`), as output shows them.
+fn probe(first: &str, stored: &str) -> Vec<String> {
+    let mut fields = vec![field(first, stored, false)];
+    for n in 2..=5 {
+        fields.push(field(&format!(r#"IF {n} = {n} "A{n}" "B{n}""#), &format!("B{n}"), false));
+    }
+    let doc = doc_with(fields);
+    let out = output_fields(&doc).unwrap_or_else(|| doc.clone());
+    results(&out).split_off(1)
+}
+
+fn strs(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn if_fields_refresh_only_with_a_refreshed_field_and_never_as_the_last_field() {
+    for first in ["SEQ fig", r#"DATE \@ "yyyy""#, "SECTION", "PAGE", "NUMPAGES", "SECTIONPAGES"] {
+        assert_eq!(probe(first, "1"), strs(&["A2", "A3", "A4", "B5"]), "{first}");
+    }
+    for first in ["AUTHOR", "= 1 + 1", "NUMWORDS", "FILENAME", "DOCVARIABLE x", "SYMBOL 169", "LISTNUM", "AUTONUM"] {
+        assert_eq!(probe(first, "1"), strs(&["B2", "B3", "B4", "B5"]), "{first}");
+    }
+    // No other field at all: every IF keeps its stored result.
+    let fields: Vec<InlineObject> = (2..=5).map(|n| field(&format!(r#"IF {n} = {n} "A{n}" "B{n}""#), &format!("B{n}"), false)).collect();
+    let doc = doc_with(fields);
+    let out = output_fields(&doc).unwrap_or_else(|| doc.clone());
+    assert_eq!(results(&out), strs(&["B2", "B3", "B4", "B5"]));
 }
 
 const ERR: &str = "Error! Unknown op code for conditional.";
@@ -111,15 +151,20 @@ fn if_without_spaces_around_the_operator_is_words_error() {
 
 #[test]
 fn locked_if_and_formulas_keep_their_stored_result() {
-    let doc = doc_with(vec![field("IF 5 > 3 yes no", "OLD", true), field("= 1 + 1", "3", false)]);
+    let doc = doc_with(vec![
+        field("SEQ fig", "9", false),
+        field("IF 5 > 3 yes no", "OLD", true),
+        field("= 1 + 1", "3", false),
+        field("SEQ fig", "9", false),
+    ]);
     let out = output_fields(&doc).unwrap_or_else(|| doc.clone());
-    assert_eq!(results(&out), vec!["OLD".to_string(), "3".to_string()]);
+    assert_eq!(results(&out)[1..3], strs(&["OLD", "3"]));
 }
 
 #[test]
 fn output_leaves_the_document_itself_alone() {
-    let doc = doc_with(vec![field("IF 5 > 3 yes no", "OLD", false)]);
+    let doc = doc_with(vec![field("SEQ fig", "1", false), field("IF 5 > 3 yes no", "OLD", false), field("SEQ fig", "2", false)]);
     let out = output_fields(&doc).expect("the IF shows a fresh result, so output is a copy");
-    assert_eq!(results(&out), vec!["yes".to_string()]);
-    assert_eq!(results(&doc), vec!["OLD".to_string()]);
+    assert_eq!(results(&out)[1], "yes");
+    assert_eq!(results(&doc)[1], "OLD");
 }
