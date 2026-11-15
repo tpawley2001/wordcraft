@@ -4,6 +4,7 @@
 //! default, except that Dop95/Dop97 predate HTML paragraph auto spacing and therefore sum paragraph spacing.
 
 use wordcraft_doc::Settings;
+use wordcraft_doc::section::{MAX_NOTE_START, NotePos, NoteRestart};
 
 /// Offset of `Dop95.copts80` (after the 84-byte `DopBase`, [MS-DOC] §2.7, Dop95); its first two
 /// bytes are `Copts60` (§2.7.2).
@@ -103,14 +104,82 @@ fn apply_base(dop: &[u8], settings: &mut Settings) {
     }
 }
 
+/// The last version whose DOP holds the document-wide note options (Word 2000, nFib 0x00D9).
+/// Later versions keep them in each section's sprms and the DOP values are to be ignored
+/// ([MS-DOC] §2.7.2 DopBase: fpc, rncFtn, nFtn, rncEdn, nEdn, epc; §2.7.4 Dop97).
+const NOTE_OPTIONS_LAST_NFIB: u16 = 0x00D9;
+/// `DopBase.fpc` (byte 0, bits 5-6; [MS-DOC] §2.7.2): 2 = beneath text.
+const FPC_BENEATH_TEXT: u8 = 2;
+/// `DopBase` u16 holding `rncFtn` (bits 0-1) and `nFtn` (bits 2-15) ([MS-DOC] §2.7.2).
+const OFF_FTN: usize = 2;
+/// `DopBase` u16 holding `rncEdn` (bits 0-1) and `nEdn` (bits 2-15) ([MS-DOC] §2.7.2).
+const OFF_EDN: usize = 52;
+/// `DopBase` byte holding `epc` (bits 0-1; [MS-DOC] §2.7.2): 0 = end of section.
+const OFF_EPC: usize = 54;
+/// `Dop97.nfcFtnRef` and `Dop97.nfcEdnRef` ([MS-DOC] §2.7.4): MSONFC number formats.
+const OFF_NFC_FTN_REF: usize = 492;
+const OFF_NFC_EDN_REF: usize = 494;
+/// Size of `Dop97` ([MS-DOC] §2.7.4).
+const DOP97_LEN: usize = 500;
+
+/// `rnc` ([MS-DOC] §2.7.2): 1 restarts each section, 2 each page; 0 (continuous) is the default.
+fn note_restart(rnc: u16) -> Option<NoteRestart> {
+    match rnc & 3 {
+        1 => Some(NoteRestart::EachSect),
+        2 => Some(NoteRestart::EachPage),
+        _ => None,
+    }
+}
+
+/// The start number in bits 2-15; 1 (the default) and 0 stay unset.
+fn note_start(word: u16) -> Option<u32> {
+    Some(u32::from(word >> 2)).filter(|n| (2..=MAX_NOTE_START).contains(n))
+}
+
+/// Apply the Word 97/2000 document-wide footnote and endnote options ([MS-DOC] §2.7.2, §2.7.4).
+/// Values equal to Word's defaults stay unset; fields beyond the DOP's length are skipped.
+fn apply_notes(dop: &[u8], settings: &mut Settings) {
+    if let Some(&b0) = dop.first()
+        && let Some(ftn) = u16_at(dop, OFF_FTN)
+    {
+        if (b0 >> 5) & 3 == FPC_BENEATH_TEXT {
+            settings.footnote_pr.pos = Some(NotePos::BeneathText);
+        }
+        settings.footnote_pr.num_restart = note_restart(ftn);
+        settings.footnote_pr.num_start = note_start(ftn);
+    }
+    if let Some(edn) = u16_at(dop, OFF_EDN)
+        && let Some(&epc) = dop.get(OFF_EPC)
+    {
+        settings.endnote_pr.num_restart = note_restart(edn);
+        settings.endnote_pr.num_start = note_start(edn);
+        if epc & 3 == 0 {
+            settings.endnote_pr.pos = Some(NotePos::SectEnd);
+        }
+    }
+    if dop.len() >= DOP97_LEN {
+        let nfc = |at| u16_at(dop, at).and_then(|v| u8::try_from(v).ok()).map(crate::list::num_format);
+        if let Some(f) = nfc(OFF_NFC_FTN_REF) {
+            settings.footnote_format = f;
+        }
+        if let Some(f) = nfc(OFF_NFC_EDN_REF) {
+            settings.endnote_format = f;
+        }
+    }
+}
+
 /// Apply the DOP's compatibility options to `settings`. A DOP outside the Table stream is
 /// ignored (the defaults stay). A valid Dop95/Dop97 sums paragraph spacing because HTML
 /// paragraph auto spacing was introduced with Dop2000. A DOP shorter than Dop2007 splits a page
-/// break from its paragraph mark.
-pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Settings) {
+/// break from its paragraph mark. Files written by Word 2000 or earlier (`version`, the FIB's
+/// nFib) also carry the document-wide note options.
+pub(crate) fn apply(table: &[u8], pair: Option<(u32, u32)>, settings: &mut Settings, version: u16) {
     let Some((fc, lcb)) = pair else { return };
     let (Ok(fc), Ok(lcb)) = (usize::try_from(fc), usize::try_from(lcb)) else { return };
     let Some(dop) = fc.checked_add(lcb).and_then(|end| table.get(fc..end)) else { return };
+    if version <= NOTE_OPTIONS_LAST_NFIB {
+        apply_notes(dop, settings);
+    }
     apply_base(dop, settings);
     if dop.len() >= DOP95_LEN
         && let Some(copts60) = u16_at(dop, OFF_COPTS60)
