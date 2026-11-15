@@ -88,3 +88,5 @@ mod print_background_tests;
 
 #[cfg(test)]
 mod fill_alpha_tests;
+#[cfg(test)]
+mod form_shading_tests;
