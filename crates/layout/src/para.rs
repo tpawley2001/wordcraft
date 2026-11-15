@@ -33,9 +33,9 @@ mod view;
 
 pub use bidi::{bidi_levels, visual_order};
 pub(crate) use builder::left_out;
+pub(crate) use chars::caps_char;
 #[cfg(test)]
 use chars::{MISSING_ROMAN_FONT, lookup_family};
-pub(crate) use chars::{caps_char, push_caps};
 pub use chars::{draws_something, east_asian_substitute_face, reported_font_name, substitute_face};
 #[cfg(test)]
 pub(crate) use chars::{ligature_features, number_and_set_features, remap_range, thai_run_face};

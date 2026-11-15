@@ -1,7 +1,7 @@
 use super::bidi::{Dir, bidi_levels, strong_rtl, visual_order};
 use super::chars::{
-    FeatureList, SegKey, caps_expands, context_digit_dirs, drawn_hyphen, draws_something, is_khmer, is_mark, is_numeral_digit, ligature_features,
-    lookup_family, number_and_set_features, remap_range, reported_font_name, thai_run_face, upper_char,
+    FeatureList, SegKey, context_digit_dirs, drawn_hyphen, draws_something, is_khmer, is_mark, is_numeral_digit, ligature_features, lookup_family,
+    number_and_set_features, remap_range, reported_font_name, thai_run_face, upper_char,
 };
 use super::grid::east_asian;
 use super::model::{ClKind, Cluster, Enclosed, Glyph, ParaEnv, RubyLayout, StyleRun, SymbolRun};
@@ -404,15 +404,13 @@ impl<'a> Builder<'a> {
             let line_font = missing.east_asian.filter(|_| !key.complex && sub.chars().any(east_asian));
             let si = self.style_with_line(rc, key.face, small, line_font);
             let Some(st) = self.styles.get(si as usize).cloned() else { continue };
-            let upper = rc.caps || small;
-            // All Caps and Small Caps draw a letter's full capital, which can be several
-            // characters (ß → SS, ﬀ → FF, ŉ → ʼN), as Word does (#1581). A symbol-font run
-            // draws its codes as symbols, never as expanded capitals.
-            let expands = sym.is_none() && upper && sub.chars().any(caps_expands);
-            // Displayed text: numeral substitution is 1 char → 1 char and a capital may be
-            // several; `map_starts` holds where each document char's displayed form starts and
-            // `orig_of` maps it back to the char's original byte offset (+ a `sub.len()` sentinel).
-            let substituted = expands || sub.char_indices().any(|(i, c)| self.numeral_char(&context, a + i, c, key.rtl) != c);
+            // All Caps and Small Caps draw each letter's one-character capital ([`upper_char`]):
+            // one document character is one drawn character.
+            let upper = rc.caps || rc.small_caps;
+            // Displayed text: numeral substitution is 1 char → 1 char; `map_starts` holds where
+            // each document char's displayed form starts and `orig_of` maps it back to the char's
+            // original byte offset (+ a `sub.len()` sentinel).
+            let substituted = sub.char_indices().any(|(i, c)| self.numeral_char(&context, a + i, c, key.rtl) != c);
             let mut mapped = String::new();
             let mut map_starts: Vec<usize> = Vec::new();
             let mut orig_of: Vec<usize> = Vec::new();
@@ -421,12 +419,7 @@ impl<'a> Builder<'a> {
                 for (i, c) in sub.char_indices() {
                     map_starts.push(mapped.len());
                     orig_of.push(i);
-                    let d = self.numeral_char(&context, a + i, c, key.rtl);
-                    if expands {
-                        mapped.extend(d.to_uppercase());
-                    } else {
-                        mapped.push(d);
-                    }
+                    mapped.push(self.numeral_char(&context, a + i, c, key.rtl));
                 }
                 orig_of.push(sub.len());
             }
@@ -491,12 +484,7 @@ impl<'a> Builder<'a> {
             // Group glyphs by cluster byte offset; graphemes may span several shaper clusters.
             // Complex-script syllables the graphemes split (Myanmar vowel signs, stacked
             // consonants) stay one cluster: the caret never stops inside them.
-            let mut bounds: Vec<usize> = wordcraft_doc::cluster::cluster_starts(shape_text);
-            if expands {
-                // The capitals drawn for one character (the two S of ß) are one cluster: the
-                // caret, selection and line breaking never stop inside the character.
-                bounds.retain(|b| map_starts.binary_search(b).is_ok());
-            }
+            let bounds: Vec<usize> = wordcraft_doc::cluster::cluster_starts(shape_text);
             let seg_c0 = self.clusters.len();
             let mut gi = 0usize;
             for (bi, &gs) in bounds.iter().enumerate() {

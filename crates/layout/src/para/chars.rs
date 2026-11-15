@@ -17,23 +17,28 @@ impl SegKey {
     }
 }
 
-/// The first character of `c`'s capital (ß → S): the shaper's one-to-one mapping, and the
-/// text read back for labels and field results, whose byte ranges can't grow.
+/// The capital All Caps and Small Caps draw for `c`, as Word draws them: a letter changes only
+/// when its capital is one character (ά → Ά, ǆ → Ǆ, ı → I). A letter whose capital is several
+/// characters (ß → SS, ﬁ → FI, ŉ → ʼN) is drawn unchanged, so Straße shows STRAßE; ΐ and ΰ
+/// draw as Ϊ and Ϋ. One document character is always one drawn character, so the glyphs, the
+/// caret, hit testing and the PDF text layer share this mapping.
 pub(super) fn upper_char(c: char) -> char {
-    c.to_uppercase().next().unwrap_or(c)
+    let mut up = c.to_uppercase();
+    match (up.next(), up.next()) {
+        (Some(u), None) => u,
+        _ => match c {
+            '\u{390}' => '\u{3AA}',
+            '\u{3B0}' => '\u{3AB}',
+            _ => c,
+        },
+    }
 }
 
-/// The character drawn for `c` in a run formatted `rc`: All Caps capitalises every letter,
-/// Small Caps the lowercase ones (as the shaper draws them). The PDF text layer uses it so
-/// the text read back is the text shown (#1473).
+/// The character drawn for `c` in a run formatted `rc` ([`upper_char`] under All Caps or Small
+/// Caps; Small Caps sets only the lowercase letters smaller). The PDF text layer uses it so the
+/// text read back is the text shown (#1473).
 pub(crate) fn caps_char(rc: &ResolvedChar, c: char) -> char {
-    if rc.caps || (rc.small_caps && c.is_lowercase()) { upper_char(c) } else { c }
-}
-
-/// Appends the text drawn for `c` in a run formatted `rc`: like [`caps_char`], but with a
-/// letter's full capital (ß → SS), as body text draws it (#1581).
-pub(crate) fn push_caps(rc: &ResolvedChar, c: char, out: &mut String) {
-    if rc.caps || (rc.small_caps && c.is_lowercase()) { out.extend(c.to_uppercase()) } else { out.push(c) }
+    if rc.caps || rc.small_caps { upper_char(c) } else { c }
 }
 
 /// The OpenType ligature features a `w14:ligatures` value sets, each on or off. Required
@@ -109,12 +114,6 @@ pub(crate) fn number_and_set_features(rc: &ResolvedChar, khmer: bool) -> Feature
 /// A Khmer letter, sign or digit (U+1780–U+17FF, Khmer Symbols U+19E0–U+19FF).
 pub(super) fn is_khmer(c: char) -> bool {
     matches!(u32::from(c), 0x1780..=0x17FF | 0x19E0..=0x19FF)
-}
-
-/// Whether `c`'s capital is more than one character (ß → SS), so All Caps draws more
-/// characters than the document holds.
-pub(super) fn caps_expands(c: char) -> bool {
-    c.to_uppercase().nth(1).is_some()
 }
 
 /// Combining marks and joiners (bidi classes NSM, BN: harakat, ZWNJ, ZWJ) belong to the
