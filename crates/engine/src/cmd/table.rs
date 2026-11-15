@@ -234,6 +234,26 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .key("Alt+PageDown")
         .pure()),
+        t(CommandSpec::new("table.selectToRowStart", "Select to First Cell in Row", "Table Layout › Table › Select", |s, _| {
+            ends::select_to_cell_end(s, true, true)
+        })
+        .key("Alt+Shift+Home")
+        .pure()),
+        t(CommandSpec::new("table.selectToRowEnd", "Select to Last Cell in Row", "Table Layout › Table › Select", |s, _| {
+            ends::select_to_cell_end(s, true, false)
+        })
+        .key("Alt+Shift+End")
+        .pure()),
+        t(CommandSpec::new("table.selectToColumnTop", "Select to First Cell in Column", "Table Layout › Table › Select", |s, _| {
+            ends::select_to_cell_end(s, false, true)
+        })
+        .key("Alt+Shift+PageUp")
+        .pure()),
+        t(CommandSpec::new("table.selectToColumnBottom", "Select to Last Cell in Column", "Table Layout › Table › Select", |s, _| {
+            ends::select_to_cell_end(s, false, false)
+        })
+        .key("Alt+Shift+PageDown")
+        .pure()),
         t(CommandSpec::new("table.selectColumn", "Select Column", "Table Layout › Table › Select", select_column).pure()),
         t(CommandSpec::new("table.selectCell", "Select Cell", "Table Layout › Table › Select", |s, _| {
             let (tp, r, c) = cell(s)?;
