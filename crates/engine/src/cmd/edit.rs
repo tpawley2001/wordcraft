@@ -552,16 +552,23 @@ pub(crate) struct Found {
     pub a: Pos,
     pub b: Pos,
     pub rep: Option<String>,
+    /// The match takes in some of a field's text (#5552). Its range then covers the whole
+    /// field, and Replace leaves it alone: replacing it would delete the field.
+    pub field: bool,
 }
 
 /// A stretch of searched text: `len` bytes from `hay` are paragraph `para`'s bytes from `raw`.
-/// A paragraph mark is a one-byte stretch at the paragraph's end (`mark`).
+/// A paragraph mark is a one-byte stretch at the paragraph's end (`mark`). A field's text
+/// (`field`) is `len` bytes standing for the field's one object character at `raw`; `code` when
+/// that is its code between the field's start and end marks, which `^d` takes whole.
 struct Seg {
     hay: usize,
     para: usize,
     raw: usize,
     len: usize,
     mark: bool,
+    field: bool,
+    code: bool,
 }
 
 /// All matches of the find state in the current story. Text marked deleted by
@@ -604,7 +611,7 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
             let rep = with_rep.then(|| {
                 find_pattern::expand(&pieces, s.doc.para_at(&a).and_then(|p| p.text.get(a.off..b.off)).unwrap_or(""), &|_| None, &s.clipboard_text)
             });
-            Found { a, b, rep }
+            Found { a, b, rep, field: false }
         });
         return Ok(out.collect());
     }
@@ -620,6 +627,7 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
         find_pattern::resolve_names(find_pattern::parse_replace(&f.replace, &opts), &index)
     });
     let paths = s.doc.para_paths(story);
+    let show = super::fields::FieldShow::of(s, story);
     // The final story mark is searchable in normal Find, but cannot be deleted. Keep its
     // synthetic byte out of document positions and out of Replace with's matched text.
     let final_mark = c.spans_paras && !opts.wildcards && !opts.regex && !opts.literal;
@@ -646,7 +654,7 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 cuts.push(hay.len());
                 continue;
             };
-            let objs = search_objects(p, opts.field_codes);
+            let objs = search_objects(p, opts.field_codes, &show);
             let mut next_obj = 0;
             let mut expect = 0;
             for (r, ch) in p.run_ranges() {
@@ -670,12 +678,18 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                         None => (r.end, None),
                     };
                     let skip = obj.is_some_and(|o| o.at <= at) && sentinel.is_none();
-                    if !skip {
+                    // A field that shows text reads as that text (#5552).
+                    if let Some((text, code)) = obj.filter(|o| o.at <= at).and_then(|o| o.text.as_ref()) {
+                        segs.push(Seg { hay: hay.len(), para: i, raw: at, len: text.len(), mark: false, field: true, code: *code });
+                        hay.push_str(text);
+                    } else if !skip {
                         let Some(piece) = p.text.get(at..piece_end) else { break };
                         let len = piece.len();
                         match segs.last_mut() {
-                            Some(sg) if !sg.mark && sg.para == i && sg.raw + sg.len == at && sg.hay + sg.len == hay.len() => sg.len += len,
-                            _ => segs.push(Seg { hay: hay.len(), para: i, raw: at, len, mark: false }),
+                            Some(sg) if !sg.mark && !sg.field && sg.para == i && sg.raw + sg.len == at && sg.hay + sg.len == hay.len() => {
+                                sg.len += len
+                            }
+                            _ => segs.push(Seg { hay: hay.len(), para: i, raw: at, len, mark: false, field: false, code: false }),
                         }
                         match sentinel {
                             // Every sentinel is as long as the U+FFFC it stands for.
@@ -691,7 +705,7 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 if expect != p.text.len() {
                     cuts.push(hay.len());
                 }
-                segs.push(Seg { hay: hay.len(), para: i, raw: p.text.len(), len: 1, mark: true });
+                segs.push(Seg { hay: hay.len(), para: i, raw: p.text.len(), len: 1, mark: true, field: false, code: false });
                 hay.push(if p.section.is_some() { find_pattern::SECT_MARK } else { find_pattern::PARA_MARK });
             }
         }
@@ -705,7 +719,19 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 let path = paths.get(sg.para)?;
                 return Some(Pos { story, path: path.with_last(path.last() + 1), off: 0 });
             }
-            Some(Pos { story, path: paths.get(sg.para)?.clone(), off: sg.raw + if sg.mark { 0 } else { x - sg.hay } })
+            // A match starting or ending in a field's text takes in the whole field.
+            let off = match (sg.field, end) {
+                (true, false) => sg.raw,
+                (true, true) => sg.raw + wordcraft_doc::para::OBJ.len_utf8(),
+                (false, _) => sg.raw + if sg.mark { 0 } else { x - sg.hay },
+            };
+            Some(Pos { story, path: paths.get(sg.para)?.clone(), off })
+        };
+        // Whether hay bytes `a..b` take in some of a field's text: any of a field's result, or
+        // part of a shown code (all of it, from its start mark to its end mark, is the field).
+        let in_field = |a: usize, b: usize| {
+            let k = segs.partition_point(|sg| sg.hay + sg.len <= a);
+            segs.get(k..).unwrap_or(&[]).iter().take_while(|sg| sg.hay < b).any(|sg| sg.field && (!sg.code || a > sg.hay || b < sg.hay + sg.len))
         };
         cuts.push(hay.len());
         let mut from = 0;
@@ -736,6 +762,11 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 if cond.as_ref().is_some_and(|c| !c.range_matches(s, &a, &b)) {
                     continue;
                 }
+                // Two matches in one field's text select the same whole field: one match.
+                if out.last().is_some_and(|f: &Found| f.a == a && f.b == b) {
+                    continue;
+                }
+                let field = in_field(m.start(), m.end());
                 let rep = pieces.as_ref().map(|pc| {
                     let group = |n: usize| caps.get_group(n).and_then(|g| hay.get(g.range())).map(str::to_string);
                     let end =
@@ -746,7 +777,7 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                         };
                     find_pattern::expand(pc, hay.get(m.start()..end).unwrap_or(""), &group, &s.clipboard_text)
                 });
-                out.push(Found { a, b, rep });
+                out.push(Found { a, b, rep, field });
                 if out.len() >= 100_000 {
                     return Ok(out);
                 }
@@ -756,12 +787,14 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
     Ok(out)
 }
 
-/// One stretch of a paragraph's text that Find reads as an object: `at..end`, read as the
-/// sentinel `ch`, or left out of the searched text when `ch` is `None`.
+/// One stretch of a paragraph's text that Find reads as an object: `at..end`, read as `text`
+/// (a field's text, and whether that is its code), else as the sentinel `ch`, or left out of the
+/// searched text when both are `None`.
 struct SearchObj {
     at: usize,
     end: usize,
     ch: Option<char>,
+    text: Option<(String, bool)>,
 }
 
 /// What Find sees of each object in `p`, in text order: drawings stay U+FFFC (`^g`), note marks
@@ -771,7 +804,10 @@ struct SearchObj {
 /// with its result (and any field nested in it) left out, so `^d` takes the outermost field
 /// whole; hidden, its markers are left out and its result is searched as text. Fields are
 /// paired within the paragraph: a range field running on into the next paragraph is left open.
-fn search_objects(p: &wordcraft_doc::Paragraph, field_codes: bool) -> Vec<SearchObj> {
+/// A simple field reads as what it shows ([`super::fields::FieldShow`], #5552): its result text,
+/// or its code between the start and end sentinels while it shows its code; one that shows no
+/// searchable text is the `^d` sentinel.
+fn search_objects(p: &wordcraft_doc::Paragraph, field_codes: bool, show: &super::fields::FieldShow) -> Vec<SearchObj> {
     use wordcraft_doc::para::NoteKind;
     const W: usize = '\u{FFFC}'.len_utf8();
     let mut out: Vec<SearchObj> = Vec::new();
@@ -783,7 +819,7 @@ fn search_objects(p: &wordcraft_doc::Paragraph, field_codes: bool) -> Vec<Search
                 InlineObject::FieldStart { .. } => {
                     depth = depth.saturating_add(1);
                     if depth == 1 {
-                        out.push(SearchObj { at, end, ch: Some(find_pattern::FIELD_START) });
+                        out.push(SearchObj { at, end, ch: Some(find_pattern::FIELD_START), text: None });
                     }
                     continue;
                 }
@@ -794,9 +830,9 @@ fn search_objects(p: &wordcraft_doc::Paragraph, field_codes: bool) -> Vec<Search
                         if let Some(start) = out.last().map(|s| s.end)
                             && start < at
                         {
-                            out.push(SearchObj { at: start, end: at, ch: None });
+                            out.push(SearchObj { at: start, end: at, ch: None, text: None });
                         }
-                        out.push(SearchObj { at, end, ch: Some(find_pattern::FIELD_END) });
+                        out.push(SearchObj { at, end, ch: Some(find_pattern::FIELD_END), text: None });
                     }
                     continue;
                 }
@@ -804,6 +840,13 @@ fn search_objects(p: &wordcraft_doc::Paragraph, field_codes: bool) -> Vec<Search
                 _ => {}
             }
         }
+        let text = show.read(o).map(|t| match t {
+            super::fields::FieldText::Code(instr) => {
+                let code = wordcraft_layout::fields::field_code_text(instr);
+                (format!("{}{code}{}", find_pattern::FIELD_START, find_pattern::FIELD_END), true)
+            }
+            super::fields::FieldText::Shown(t) => (t, false),
+        });
         let ch = match o {
             InlineObject::NoteRef { kind: NoteKind::Footnote, .. } => Some(find_pattern::FOOTNOTE_MARK),
             InlineObject::NoteRef { .. } => Some(find_pattern::ENDNOTE_MARK),
@@ -812,14 +855,14 @@ fn search_objects(p: &wordcraft_doc::Paragraph, field_codes: bool) -> Vec<Search
             o if o.is_marker() => None,
             _ => Some(find_pattern::OBJ_MARK),
         };
-        out.push(SearchObj { at, end, ch });
+        out.push(SearchObj { at, end, ch, text });
     }
     // A range field still open at the paragraph's end: its result here is left out too.
     if depth > 0
         && let Some(start) = out.iter().rev().find(|s| s.ch == Some(find_pattern::FIELD_START)).map(|s| s.end)
         && start < p.text.len()
     {
-        out.push(SearchObj { at: start, end: p.text.len(), ch: None });
+        out.push(SearchObj { at: start, end: p.text.len(), ch: None, text: None });
     }
     out
 }
@@ -980,8 +1023,9 @@ fn replace(s: &mut Session, v: &Value) -> CmdResult {
     let story = s.sel.focus.story;
     let results = search_full(s, story, true)?;
     let (a, b) = s.sel.ordered();
-    // Replace the current match if selected, then move to the next.
-    if let Some(f) = results.into_iter().find(|f| f.a == a && f.b == b) {
+    // Replace the current match if selected, then move to the next. A match in a field's text
+    // is only found: replacing it would delete the field (#5552).
+    if let Some(f) = results.into_iter().find(|f| f.a == a && f.b == b && !f.field) {
         let rf = s.find.replace_format.clone();
         replace_match(s, f.a, f.b, &f.rep.unwrap_or_default(), rf.as_ref(), false)?;
     }
@@ -1040,7 +1084,8 @@ fn replace_all(s: &mut Session, v: &Value) -> CmdResult {
     need_query(s, v)?;
     read_opts(s, v)?;
     let story = s.sel.focus.story;
-    let results = search_full(s, story, true)?;
+    // Matches in fields' text are left as they are: replacing one would delete its field (#5552).
+    let (results, in_fields): (Vec<Found>, Vec<Found>) = search_full(s, story, true)?.into_iter().partition(|f| !f.field);
     let n = results.len();
     let rf = s.find.replace_format.clone();
     // Only formatting changes when Replace with is empty and has a format: nothing is deleted.
@@ -1049,12 +1094,22 @@ fn replace_all(s: &mut Session, v: &Value) -> CmdResult {
         super::controls::check_deletions(s, story, results.iter().map(|f| (&f.a, &f.b)))?;
     }
     let direct = !s.doc.settings.track_changes;
-    for Found { a, b, rep } in results.into_iter().rev() {
+    for Found { a, b, rep, .. } in results.into_iter().rev() {
         // Tracked, it takes the same path as a single replace, so the change is a reviewable revision.
         replace_match(s, a, b, &rep.unwrap_or_default(), rf.as_ref(), direct)?;
     }
-    s.status = format!("All done. We made {n} replacements.");
-    Ok(json!({"replaced": n}))
+    s.status = replace_all_message(n, in_fields.len());
+    Ok(json!({"replaced": n, "skippedInFields": in_fields.len()}))
+}
+
+/// What Replace All reports: how many matches it replaced and, when some were in fields' text,
+/// that those were left alone, so a count that Find gave isn't left unexplained (#5552).
+pub fn replace_all_message(replaced: usize, skipped_in_fields: usize) -> String {
+    match skipped_in_fields {
+        0 => format!("All done. We made {replaced} replacements."),
+        1 => format!("All done. We made {replaced} replacements. 1 match is in a field and was left as it is."),
+        k => format!("All done. We made {replaced} replacements. {k} matches are in fields and were left as they are."),
+    }
 }
 
 pub(super) fn goto(s: &mut Session, v: &Value) -> CmdResult {
