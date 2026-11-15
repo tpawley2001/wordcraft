@@ -540,7 +540,10 @@ fn ref_results(doc: &wordcraft_doc::Document, stored: &wordcraft_doc::Document) 
             let key = target.to_lowercase();
             let set_value = || set.get(&key).or_else(|| last_set.get(&key)).cloned();
             let Some(start) = starts.get(target) else {
-                let result = set_value().map(|r| text_result(instr, r)).unwrap_or_else(|| REFERENCE_NOT_FOUND.to_string());
+                // Word's SET creates its bookmark when it is updated: without a bookmark of that
+                // name (any case), output shows the error rather than the SET's stored text.
+                let bookmarked = || starts.keys().any(|b| b.to_lowercase() == key);
+                let result = bookmarked().then(set_value).flatten().map(|r| text_result(instr, r)).unwrap_or_else(|| REFERENCE_NOT_FOUND.to_string());
                 out.push((StoryRef::Body, path.clone(), k, result));
                 continue;
             };
