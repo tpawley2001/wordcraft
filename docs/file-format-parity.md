@@ -1,6 +1,6 @@
 # File-format parity with Microsoft Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0551: RTF `\spltpgpar`, `\ftnlytwnine`, `\expshrtn` and `\nocxsptable` turn their options off, absent = on, as Word reads them; they were read backwards. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-14 · **Change:** trivial (P0547: `.docx` keeps the view a document was saved in (`w:view`): Web Layout and Outline reopen in that view, Draft opens in Print Layout as in Word, and saving records the current view. Readiness estimates unchanged; earlier: P0542: RTF keeps five Word compatibility options on open and save: `\notabind`, `\truncex`, `\sprslnsp`, `\wpjst`, `\spltpgpar`. Readiness estimates unchanged; earlier: P0551: RTF `\spltpgpar`, `\ftnlytwnine`, `\expshrtn` and `\nocxsptable` turn their options off, absent = on, as Word reads them; they were read backwards. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (RTF text keeps Snap to grid turned off, `\cgrid0`, on open and save. Readiness estimates unchanged; earlier: P0539: RTF paragraphs and paragraph styles keep their font alignment (`\fa…`) and Automatically adjust right indent (`\adjustright`) on open and save. Readiness estimates unchanged; earlier: P0528: `.doc` table styles keep their borders, cell margins and paragraph and character formatting (the three UPXs of a stk 3 STD), tables keep the style their rows name (sprmTIstd), and cells keep Hide end-of-cell mark (sprmTCellFHideMark). Readiness estimates unchanged)
 
@@ -403,6 +403,7 @@ For field results, the engine parser treats a backslash in quoted arguments as e
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | trivial | P0547: `.docx` reads and writes `w:view` (§17.15.1.92): a document saved in Web Layout or Outline (`masterPages` reads as Outline) reopens in that view; Draft (`normal`) opens in Print Layout, as Word does by default. Saving records the current view (Print and Read Mode write none), also into a merged settings part. Readiness unchanged |
 | 2026-11-14 | trivial | P0551: RTF `\spltpgpar`, `\ftnlytwnine`, `\expshrtn` and `\nocxsptable` turn split page break and paragraph mark, Word 6/95/97 footnote layout, don't expand Shift+Return and space between same-style paragraphs in a table off; without them the options are on (Word 365 probes). They were read the other way round. Readiness estimates unchanged. |
 | 2026-11-14 | trivial | P0538: Word 6.0/95 `.doc`: a field whose result runs over paragraphs (a table of contents, or any top-level field whose result reaches a paragraph mark) keeps its result as paragraphs between `FieldStart` and `FieldEnd`, with the Word 97 reader's rules; the entries came out as empty paragraphs and one run-together paragraph. A range field left open at the end of the text is closed. Readiness unchanged |
 | 2026-11-14 | trivial | P0528: `.doc` table styles keep their borders, cell margins and paragraph and character formatting, tables keep the style their rows name (sprmTIstd), and cells keep Hide end-of-cell mark (sprmTCellFHideMark). Readiness estimates unchanged. |

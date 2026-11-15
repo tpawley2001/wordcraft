@@ -88,9 +88,10 @@ impl Session {
     /// Stamp the document's save metadata (modified time, last modified by, revision; created
     /// when it has none) the way Word does on every save. `file.save` calls it, and so does any
     /// front end that writes the bytes itself (the web build's download, #262). Like Word, the
-    /// document also keeps the zoom it is shown at (#995).
+    /// document also keeps the zoom it is shown at (#995) and the view it is shown in (`w:view`).
     pub fn stamp_save(&mut self) {
         self.doc.settings.zoom = crate::cmd::view::saved_zoom(&self.view);
+        self.doc.settings.view = crate::cmd::view::saved_view(&self.view);
         let core = &mut self.doc.core;
         core.modified = crate::cmd::now_iso();
         if core.created.is_empty() {
