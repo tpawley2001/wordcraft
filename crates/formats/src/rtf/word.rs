@@ -254,7 +254,6 @@ impl Reader {
                 self.row_style = Default::default();
             }
             _ if self.row_style.table_word(w, pv) => {}
-            _ if self.row_style.gap_width_word(w, pv) => {}
             // The row's table style: the document style its stylesheet entry became, if one did.
             "ts" => self.row_style.style = self.table_style_id(pv),
             "tbllkhdrrows" | "tbllklastrow" | "tbllkhdrcols" | "tbllklastcol" | "tbllknorowband" | "tbllknocolband" => self.look_word(w, on),

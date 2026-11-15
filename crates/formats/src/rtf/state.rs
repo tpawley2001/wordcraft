@@ -439,8 +439,8 @@ pub(super) struct RowStyle {
 }
 
 impl RowStyle {
-    /// A direction, preferred width or positioned-table word (RTF 1.9.1 "Table row definitions"
-    /// and "Positioned tables"); false when `w` is none of them.
+    /// A direction, preferred width, positioned-table or gap width word (RTF 1.9.1 "Table row
+    /// definitions" and "Positioned tables"); false when `w` is none of them.
     pub(super) fn table_word(&mut self, w: &str, pv: i32) -> bool {
         use wordcraft_doc::para::{Anchor, FloatAlign};
         let off = |v: i32| v.clamp(-31_680, 31_680) as f32 / 20.0;
@@ -474,7 +474,7 @@ impl RowStyle {
             "tdfrmtxtRight" => p.dist[2] = dist(pv),
             "tdfrmtxtBottom" => p.dist[3] = dist(pv),
             "tabsnoovrlp" => self.no_overlap = true,
-            _ => return false,
+            _ => return self.gap_width_word(w, pv),
         }
         if w.starts_with("tpos") {
             self.floats = true;
