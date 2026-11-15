@@ -197,6 +197,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-15: P0571: Shift+F3 cycles case as Word does: lowercase text with a full stop, ! or ? goes to Sentence case, other lowercase to Capitalize Each Word, all caps to lowercase, mixed text to UPPERCASE (or Sentence case when it starts lowercase and holds a full stop). It went lower, UPPER, Title. Readiness estimates unchanged.
 - 2026-11-15: P0561: Greeting Line and Address Block evaluate format groups, greeting fallback text and country exclusion switches; insertion commands accept the corresponding options. Country-specific address layout remains deferred; readiness estimates unchanged.
 - 2026-11-15: P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged.
 
