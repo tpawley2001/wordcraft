@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0586: a number outside a field `\*` format's range now shows Word's "Error! Number cannot be represented in specified format.", so that follow-up is closed, from storytold/wordcraft#4571. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0572: date/time pictures show the Japanese era items (`g`/`gg`/`ggg` era initial, kanji and name; `e`/`n` era year, `元` before `年` in an era's first year) and Japanese numerals (`A` day, `O` month, `I` minutes, `C` seconds; zero is `○`), from storytold/wordcraft#2643; a bare `A` is the day numeral, not AM/PM, as in Word. Readiness estimates unchanged; earlier: P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged)
@@ -236,7 +238,6 @@ Small follow-ups from the 2026-10-25 field, table and AutoFormat batch (#4232):
 
 - Convert Table to Text has no "Convert nested tables" check box; nested tables always stay tables, which is Word's default (#4155).
 - PAGE with a section page-number format of cardinal or ordinal text (`w:pgNumType`) shows the words in lowercase; only a `\* CardText` or `\* OrdText` switch should lowercase them (#4224).
-- A number outside a text format's range (`\* CardText` or `\* OrdText` past 999,999, `\* roman` past 50,000) keeps its digits; Word shows "Error! Number cannot be represented in specified format." (#4224).
 - Paste, Accept and Reject are big split buttons now, as in Word: the icon half pastes, or runs Accept (Reject) and Move to Next; the label half opens the menu (#4205, `widgets::big_split`).
 
 Ink replay, eraser picking, lasso selection and arrow-candidate discovery reuse the paragraph prefixes they have already scanned (#3614). Page item order, stroke geometry and saved data retain their behavior. This narrows the stability work; ink import fidelity, native pen input and broader corpus qualification remain open.
@@ -268,6 +269,9 @@ Formatting restriction settings now include theme and style set switching locks,
 
 ## Revision history
 
+> 2026-11-15 · trivial · P0589: below compatibility mode 15 with Compress punctuation, and in documents opened from RTF, hyphenated words are not split at their hyphen at a line end, as in Word. Readiness estimates unchanged.
+
+> 2026-11-15 · trivial · P0586: closed the follow-up for numbers outside a field `\*` format's range; they show Word's error text (from storytold/wordcraft#4571).
 > 2026-11-15 · trivial · P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0568: PDF, printing and page images work out an unlocked body formula (`=`) holding nested REF fields from the bookmarks' current text under the same condition as IF fields (`= { REF x } +1` with x = 5 prints 6, as Microsoft 365 Word's PDF export does); other formulas keep their stored results. Readiness estimates unchanged.

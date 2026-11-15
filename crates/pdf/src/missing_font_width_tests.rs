@@ -139,3 +139,28 @@ fn installed_and_missing_fonts_in_one_document_both_keep_words_whole() {
     let (gap, at) = worst_gap(&gs);
     assert!(gap.abs() < 0.05, "gap {gap:.3} em between {at:?}");
 }
+
+#[test]
+fn a_missing_traditional_arabic_keeps_layouts_per_form_steps() {
+    // The glyphs sit where layout put them: Word's per-form widths, not the substitute's.
+    let r = wordcraft_fonts::word::resolve("Traditional Arabic", false, false);
+    if !r.substituted {
+        return;
+    }
+    let text = "\u{628}\u{644}\u{645} \u{645}\u{627} \u{628}\u{644}\u{627}";
+    let chr = CharProps { font_cs: Some("Traditional Arabic".into()), size: Some(14.0), size_cs: Some(14.0), rtl: Some(true), ..Default::default() };
+    let mut p = Paragraph::with_text(text, chr);
+    p.props.bidi = Some(true);
+    let mut d = Document::new();
+    d.body = vec![para_block(p)];
+    let gs: Vec<G> = glyphs(&export(&d, &PdfOptions::default()).unwrap()).into_iter().filter(|g| g.c.trim() != "").collect();
+    assert!(!gs.is_empty());
+    // From the leftmost glyph (at the line's left edge) to the rightmost (inside the first word's
+    // initial beh, 379 units wide; a substitute may draw its dot as a mark glyph within it): the
+    // line's width less part of that beh. The substitute's own widths make it over twice as wide.
+    let (lo, hi) = gs.iter().fold((f64::MAX, f64::MIN), |(lo, hi), g| (lo.min(g.x), hi.max(g.x)));
+    let line = 14.0 * f64::from(1468 + 500 + 1026 + 500 + 1440) / 2048.0;
+    let beh = 14.0 * 379.0 / 2048.0;
+    let span = hi - lo;
+    assert!(span > line - beh - 0.05 && span < line + 0.05, "glyphs span {span:.3} pt, want {:.3} to {line:.3}", line - beh);
+}

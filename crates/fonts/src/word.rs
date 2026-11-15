@@ -348,6 +348,7 @@ fn missing_font_metrics_no_leading(family: &str) -> Option<(f64, f64)> {
 /// Univers: `/Ascent` 989, the descent the rest of the line; 12 pt lines 14.88 pt apart (1.24 em).
 /// SimSun: `/Ascent` 859, `/Descent` -141; 10.5, 12 and 14 pt lines 13.62, 15.56 and 18.16 pt apart (1.297 em), the extra split evenly above and below.
 /// MS Mincho, MS PMincho, MS Gothic, MS PGothic and MS UI Gothic (also as written in Japanese): SimSun's descriptor and line; 10, 10.5, 12 and 14 pt lines 12.96, 13.64, 15.57 and 18.16 pt apart (1.297 em).
+/// Traditional Arabic: the font's win ascent 2036 and descent 1025 of 2048 units (1.4946 em).
 /// Shruti: `/Ascent` 1021, `/Descent` -660; 10, 12 and 14 pt lines 16.80, 20.16 and 23.57 pt apart (1.681 em), the first baseline 1.021 em below the top of the body.
 /// Segoe UI: `/Ascent` 1079, the descent the rest of the line; 12 and 24 pt lines 15.96 and 31.93 pt apart (1.330 em).
 /// Perpetua: `/Ascent` 820, the descent the rest of the line; 12 and 24 pt lines 13.75 and 27.51 pt apart (1.146 em).
@@ -397,6 +398,7 @@ fn missing_font_metrics(family: &str) -> Option<(f64, f64)> {
         | "ＭＳ Ｐゴシック"
         | "ms ui gothic" => Some((1.007, 0.290)),
         "shruti" => Some((1.021, 0.660)),
+        "traditional arabic" => Some((0.994, 0.500)),
         "segoe ui" | "segoe ui light" | "segoe ui semibold" => Some((1.079, 0.251)),
         "perpetua" => Some((0.820, 0.326)),
         "gill sans mt" => Some((0.929, 0.231)),
