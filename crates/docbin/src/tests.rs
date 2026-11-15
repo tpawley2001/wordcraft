@@ -24,6 +24,7 @@ mod compat_mode;
 mod char_sprms;
 mod char_lang;
 mod contextual_spacing;
+mod para_grid_flags;
 mod para_sprms;
 mod dop_base;
 mod dop_options;
