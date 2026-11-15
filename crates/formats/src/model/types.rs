@@ -1022,6 +1022,13 @@ pub struct Cell {
     /// The width, points, the source gives a cell spanning one column (HTML): see
     /// [`FTable::widths_from_cells`].
     pub width: Option<f32>,
+    /// Its preferred width, points (Word's `w:tcW` in twips; RTF `\clftsWidth3`): kept on the
+    /// cell, never used for the column grid.
+    pub pref_width: Option<f32>,
+    /// Its preferred width, percent of the table's (`w:tcW` pct; RTF `\clftsWidth2`).
+    pub pref_width_pct: Option<f32>,
+    /// Hide end-of-cell mark (`w:hideMark`; RTF `\clhidemark`).
+    pub hide_mark: bool,
 }
 
 /// A cell's background picture: the picture at its own size, how it fills the cell, and where an
@@ -1050,6 +1057,9 @@ impl Default for Cell {
             direction: Default::default(),
             picture: None,
             width: None,
+            pref_width: None,
+            pref_width_pct: None,
+            hide_mark: false,
         }
     }
 }
@@ -1116,6 +1126,9 @@ pub struct TableExtra {
     /// The table's default cell padding (top, left, bottom, right), points, for formats that
     /// state it by row (RTF).
     pub cell_margins: Option<[f32; 4]>,
+    /// Its cells' preferred widths are their own ([`Cell::pref_width`], [`Cell::pref_width_pct`]),
+    /// none when they give none (RTF); otherwise each cell prefers the width of its columns.
+    pub cell_pref_widths: bool,
 }
 
 impl FTable {

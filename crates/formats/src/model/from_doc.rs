@@ -1427,6 +1427,9 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
                 // The sides the cell sets itself, for formats that write only those (RTF).
                 own_margins: c.props.margins.map(|m| m.map(Some)).or(c.props.partial_margins).unwrap_or([None; 4]),
                 no_wrap: c.props.no_wrap,
+                pref_width: c.props.width,
+                pref_width_pct: c.props.width_pct,
+                hide_mark: c.props.hide_mark,
                 direction: c.props.text_direction,
                 // Its background picture, for formats that keep cell formatting (ODT).
                 picture: c.props.picture.as_deref().filter(|_| tracked.paras).and_then(|p| {
@@ -1497,6 +1500,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: FlowOpts) -> FTa
             style: None,
             look: None,
             cell_margins: None,
+            cell_pref_widths: false,
         }
     });
     // Kept whole for formats that ask for it: its header rows count even without the rest.

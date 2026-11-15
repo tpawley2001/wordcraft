@@ -939,6 +939,7 @@ impl<'a> Builder<'a> {
                 tb.props.look = look;
             }
         }
+        let own_widths = t.extra.as_ref().is_some_and(|x| x.cell_pref_widths);
         for (ri, r) in rows {
             let mut row = wordcraft_doc::Row { props: RowProps::default(), cells: Vec::new(), controls: Default::default() };
             row.props.header = !r.is_empty() && r.iter().all(|c| c.header);
@@ -972,9 +973,20 @@ impl<'a> Builder<'a> {
                     Box::new(wordcraft_doc::props::CellPicture { media, size: [p.img.w, p.img.h], repeat: p.repeat, align: p.align })
                 });
                 let (margins, partial_margins) = cell_margins(c);
+                // A format that gives each cell's preferred width (RTF) sets it; others prefer
+                // the width of the cell's columns.
+                let (pref, pref_pct) = if own_widths {
+                    let pct = c.pref_width_pct.filter(|p| p.is_finite() && *p > 0.0).map(|p| p.min(100.0));
+                    let pt = c.pref_width.filter(|w| pct.is_none() && w.is_finite() && *w > 0.0).map(|w| w.min(1584.0));
+                    (pt, pct)
+                } else {
+                    (Some(w), None)
+                };
                 row.cells.push(wordcraft_doc::Cell {
                     props: CellProps {
-                        width: Some(w),
+                        width: pref,
+                        width_pct: pref_pct,
+                        hide_mark: c.hide_mark,
                         span: span as u32,
                         vmerge,
                         shading: c.shading,

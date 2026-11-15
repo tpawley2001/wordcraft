@@ -968,6 +968,8 @@ impl Reader {
             c.direction = d.direction;
             c.own_margins = d.own_margins();
             c.no_wrap = d.no_wrap;
+            (c.pref_width, c.pref_width_pct) = d.pref_width();
+            c.hide_mark = d.hide_mark;
             match d.vmerge {
                 1 => c.rowspan = 2,
                 2 => c.covered = true,
@@ -1052,6 +1054,8 @@ impl Reader {
             let x = extra.get_or_insert_with(Default::default);
             (x.style, x.look) = (ts.style, ts.look);
         }
+        // Each cell's preferred width is the one its definition gives, if any.
+        extra.get_or_insert_with(Default::default).cell_pref_widths = true;
         // Word draws only the borders the cells name: no grid style, each cell its own.
         Some(FTable { rows, widths, borderless: true, extra, kept: None, wrap: None })
     }

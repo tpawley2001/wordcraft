@@ -1155,6 +1155,7 @@ impl<'r> Builder<'r> {
                     direction: Default::default(),
                     picture: None,
                     width: if colspan == 1 { cell_width(&css, attrs) } else { None },
+                    ..Default::default()
                 });
                 fmt.background = None;
                 self.containers.push(Vec::new());

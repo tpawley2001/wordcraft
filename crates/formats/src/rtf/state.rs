@@ -727,6 +727,12 @@ pub(super) struct CellDef {
     pub(super) pad_unit: [Option<i32>; 4],
     /// Wrap text off (`\clNoWrap`).
     pub(super) no_wrap: bool,
+    /// The preferred width's unit (`\clftsWidthN`: 2 fiftieths of a percent, 3 twips, else none)
+    /// and value (`\clwWidthN`), in either order.
+    pub(super) pref_unit: Option<i32>,
+    pub(super) pref_value: Option<i32>,
+    /// Hide end-of-cell mark (`\clhidemark`).
+    pub(super) hide_mark: bool,
 }
 
 impl CellDef {
@@ -741,6 +747,17 @@ impl CellDef {
             }
         }
         out
+    }
+
+    /// The cell's preferred width: (points, percent). A percentage is capped at 100%; a missing,
+    /// zero or negative value, or a twips value beyond 22 inches, gives none.
+    pub(super) fn pref_width(&self) -> (Option<f32>, Option<f32>) {
+        let v = self.pref_value.filter(|v| *v > 0);
+        match self.pref_unit {
+            Some(2) => (None, v.map(|v| (v as f32 / 50.0).min(100.0))),
+            Some(3) => (v.filter(|v| *v <= 31_680).map(|v| v as f32 / 20.0), None),
+            _ => (None, None),
+        }
     }
 }
 
