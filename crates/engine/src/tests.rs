@@ -86,6 +86,7 @@ mod output_header_footer_counts;
 mod output_header_footer_session;
 mod output_header_footer_fields;
 mod output_if_fields;
+mod output_nested_ref_formula;
 mod para_sort_case;
 mod para_sort_keys;
 mod paste_link;
