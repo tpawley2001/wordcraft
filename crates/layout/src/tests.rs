@@ -80,6 +80,7 @@ mod kept_row_chain;
 mod kept_row_not_split;
 mod legacy_font_effects;
 mod ligature;
+mod line_numbers_section_mark;
 pub(crate) mod linear;
 mod list_label_decorations;
 mod list_numbers_merged_cells;
