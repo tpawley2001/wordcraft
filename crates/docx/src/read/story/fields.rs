@@ -305,6 +305,8 @@ impl Reader<'_> {
 }
 
 #[cfg(test)]
+mod instr_text_result_tests;
+#[cfg(test)]
 mod nested_len_tests;
 #[cfg(test)]
 mod tests;
