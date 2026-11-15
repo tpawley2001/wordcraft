@@ -412,6 +412,7 @@ fn flow_para_extra(doc: &Document, p: &wordcraft_doc::props::ParaProps, opts: Fl
         let rp = doc.styles.resolve_para(p);
         x.auto_space_de = (!rp.auto_space_de).then_some(false);
         x.auto_space_dn = (!rp.auto_space_dn).then_some(false);
+        x.adjust_right_indent = (!rp.adjust_right_indent).then_some(false);
     }
     (x != wordcraft_doc::props::ParaProps::default()).then(|| Box::new(x))
 }

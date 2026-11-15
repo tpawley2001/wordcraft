@@ -617,6 +617,11 @@ pub(super) struct St {
     pub(super) sa_auto: Option<bool>,
     pub(super) no_hyph: Option<bool>,
     pub(super) snap_grid: Option<bool>,
+    /// Font alignment (`\faauto`, `\fahang`, `\facenter`, `\faroman`, `\favar`, `\fafixed`);
+    /// `None` until the paragraph says. Automatically adjust right indent when a document grid
+    /// is defined (`\adjustright`): off unless the paragraph says (RTF 1.9.1).
+    pub(super) font_align: Option<wordcraft_doc::props::TextAlignment>,
+    pub(super) adjust_right: bool,
     pub(super) field: Option<usize>,
     /// The code page of the current font's charset (`\fcharset`), when it names one.
     pub(super) cp: Option<u16>,
@@ -728,6 +733,8 @@ impl Default for St {
             sa_auto: None,
             no_hyph: None,
             snap_grid: None,
+            font_align: None,
+            adjust_right: false,
             field: None,
             cp: None,
             borders: Default::default(),

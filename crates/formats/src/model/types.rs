@@ -557,9 +557,9 @@ pub struct FlowOpts {
     /// heading), for formats that write the level on its own (RTF `\outlinelevelN`).
     pub outline_apart: bool,
     /// The paragraph's effective automatic space between Asian and Latin text and between Asian
-    /// text and numbers (its own, else its style chain's, else on) in [`Para::extra`]: `None` when
-    /// on, `Some(false)` when off, for formats where a missing setting means off (RTF
-    /// `\aspalpha`, `\aspnum`).
+    /// text and numbers, and its Automatically adjust right indent (its own, else its style
+    /// chain's, else on) in [`Para::extra`]: `None` when on, `Some(false)` when off, for formats
+    /// where a missing setting means off (RTF `\aspalpha`, `\aspnum`, `\adjustright`).
     pub auto_space: bool,
     /// Without [`FlowOpts::chars`]: in a paragraph of the document's own style
     /// ([`super::is_custom_style`]) of kind [`Kind::Normal`], the effective alignment, spacing,
