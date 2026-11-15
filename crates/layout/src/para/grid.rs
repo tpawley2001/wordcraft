@@ -121,6 +121,69 @@ pub(super) fn auto_space(b: &mut Builder, text: &str, de: bool, dn: bool) -> Vec
     out
 }
 
+/// Balance SBCS characters and DBCS characters (`w:balanceSingleByteDoubleByteWidth`, ECMA-376
+/// §17.15.3.1): in a paragraph with East Asian text, a space (U+0020) touching East Asian text,
+/// and every space of a run of two or more, is half an em wide (0.528 em when no East Asian font
+/// is named), plus the run's character spacing. Measured in Word for Windows; any compatibility
+/// mode, across runs, zero-width markers skipped as [`auto_space`] does. Other spaces keep their
+/// width. Runs fitted to a width (`w:fitText`) keep theirs.
+pub(super) fn widen_balanced_spaces(b: &mut Builder, text: &str) {
+    if !b.env.doc.settings.balance_sbcs_dbcs_width || !text.chars().any(crate::kinsoku::is_east_asian) {
+        return;
+    }
+    // What a visible cluster is to its neighbours: a space, or its first and last characters
+    // (`None` for a tab, object or break, which no space touches as text).
+    #[derive(Clone, Copy)]
+    enum Item {
+        Space,
+        Other(Option<(char, char)>),
+    }
+    let mut shown = b.shown.iter().map(|s| (s.0, s.1.as_str())).peekable();
+    let mut items: Vec<(usize, Item)> = Vec::new();
+    for (k, c) in b.clusters.iter().enumerate() {
+        if c.kind == ClKind::Marker && c.adv == 0.0 {
+            continue;
+        }
+        while shown.next_if(|s| s.0 < k).is_some() {}
+        let s = match shown.peek() {
+            Some(&(i, t)) if i == k => t,
+            _ => text.get(c.start..c.end).unwrap_or(""),
+        };
+        let item = match c.kind {
+            ClKind::Space if s == " " => Item::Space,
+            ClKind::Text | ClKind::Space => Item::Other(s.chars().next().zip(s.chars().next_back())),
+            _ => Item::Other(None),
+        };
+        items.push((k, item));
+    }
+    let ea_end = |i: Option<&(usize, Item)>, last: bool| match i {
+        Some(&(_, Item::Other(Some((a, z))))) => crate::kinsoku::is_east_asian(if last { z } else { a }),
+        _ => false,
+    };
+    let is_space = |i: Option<&(usize, Item)>| matches!(i, Some((_, Item::Space)));
+    for (n, &(k, item)) in items.iter().enumerate() {
+        if !matches!(item, Item::Space) {
+            continue;
+        }
+        let before = n.checked_sub(1).and_then(|m| items.get(m));
+        let after = items.get(n + 1);
+        if !(ea_end(before, true) || ea_end(after, false) || is_space(before) || is_space(after)) {
+            continue;
+        }
+        let Some(c) = b.clusters.get(k) else { continue };
+        let Some(st) = b.styles.get(c.style as usize) else { continue };
+        if st.rc.fit_text.is_some() || !st.size.is_finite() {
+            continue;
+        }
+        let em = if st.rc.font_ea.as_deref().is_some_and(|f| !f.trim().is_empty()) { 0.5 } else { 0.528 };
+        let extra = if b.env.text_spacing { super::paragraph::TEXT_SPACING_WORD * st.rc.size } else { 0.0 };
+        let adv = (st.size * em + st.rc.spacing + extra).clamp(0.0, 1e4);
+        if let Some(c) = b.clusters.get_mut(k) {
+            c.adv = adv;
+        }
+    }
+}
+
 /// An area text wraps around.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Exclusion {
