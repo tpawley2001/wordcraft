@@ -240,8 +240,8 @@ pub fn notdef_advance(family: &str) -> Option<f64> {
 /// Advance (em) of code `code` in a symbol font when that font isn't installed and its characters
 /// are drawn from another face: Word sizes them by the real font, not by the face drawn. `family`
 /// is matched case-insensitively against each `;`-separated name, first match wins: "Symbol",
-/// "Symbol (PCL6)", "Wingdings", "Wingdings 2" and "Wingdings 3". Other fonts (Webdings
-/// included), codes below 0x20 and codes without a known width give `None`.
+/// "Symbol (PCL6)", "Wingdings", "Wingdings 2", "Wingdings 3" and "Webdings". Other fonts, codes
+/// below 0x20 and codes without a known width give `None`.
 ///
 /// Symbol's source: the published Adobe font metrics for the PDF core font Symbol (Symbol.afm, "Font
 /// Metrics for PDF Core 14 Fonts", free to use, copy and distribute); no font file was read. Fifteen
@@ -251,6 +251,8 @@ pub fn notdef_advance(family: &str) -> Option<f64> {
 ///
 /// Wingdings, Wingdings 2 and Wingdings 3: Word's own advances, measured from its PDF output (the
 /// widths it wrote for the embedded subsets in its exports of 115 documents); no font file was read.
+/// Webdings: Word's own advances, measured from its PDF output (its exports of 7 documents) the
+/// same way; nearly every code is 1 em and the space 0.5 em.
 pub fn symbol_advance(family: &str, code: u8) -> Option<f64> {
     // (table, the code of its first entry)
     let (table, first): (&[u16], u8) = family.split(';').map(str::trim).find_map(|f| match f.to_ascii_lowercase().as_str() {
@@ -258,6 +260,7 @@ pub fn symbol_advance(family: &str, code: u8) -> Option<f64> {
         "wingdings" => Some((&WINGDINGS_WIDTHS[..], 0x20)),
         "wingdings 2" => Some((&WINGDINGS2_WIDTHS[..], 0x20)),
         "wingdings 3" => Some((&WINGDINGS3_WIDTHS[..], 0x20)),
+        "webdings" => Some((&WEBDINGS_WIDTHS[..], 0x20)),
         _ => None,
     })?;
     let w = table.get(usize::from(code.checked_sub(first)?)).copied().unwrap_or(0);
@@ -340,6 +343,25 @@ const WINGDINGS3_WIDTHS: [u16; 224] = [
     630, 958, 958, 891, 891, 752, 752, 752, 752, 1023, 1023, 891, 891, 824, 824, 824,
     824, 1112, 1112, 891, 891, 920, 920, 920, 920, 265, 265, 602, 602, 374, 374, 602,
     602, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+
+/// Webdings: codes 0x20-0xFF, 1/1000 em, 0 = not measured (codes ['0x7f']).
+#[rustfmt::skip]
+const WEBDINGS_WIDTHS: [u16; 224] = [
+    500, 1000, 1000, 1000, 1000, 990, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 537, 537, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 559, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 0,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1221, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 672, 672, 1000, 843,
+    517, 1000, 1000, 1000, 1000, 428, 606, 1000, 1000, 1000, 1000, 663, 1000, 1000, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+    1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1292, 1000, 1000, 1000, 1000,
 ];
 
 /// The (ascent, descent) in em Word gives a line with a run in a symbol font, when that isn't the
