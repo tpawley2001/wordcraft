@@ -1,13 +1,15 @@
 //! Advance widths Word gives Verdana, Tahoma, Century Gothic, SimSun, Aptos, Aptos Display,
-//! Trebuchet MS and Garamond when the font isn't installed: their text is drawn with a substitute, but each character keeps the width Word
+//! Trebuchet MS, Garamond, Corbel, Candara, Constantia and Tw Cen MT when the font isn't installed: their text is drawn with a substitute, but each character keeps the width Word
 //! gives it, so lines break where Word breaks them.
 
 /// The advance (em) Word gives `c` in `family` (bold / italic) when that font isn't installed,
 /// or `None` to keep the drawn substitute's advance. `family` is matched case-insensitively
 /// ("Verdana", "Tahoma", "Century Gothic", "SimSun" or "宋体", "Aptos", "Aptos Display",
-/// "Trebuchet MS", "Garamond"). A style with no table of its own (Tahoma Italic, SimSun Bold,
-/// Trebuchet MS Bold Italic) takes the regular widths: Word synthesises it from the regular
-/// face with the same advances. Characters not in the table give `None`.
+/// "Trebuchet MS", "Garamond", "Corbel", "Candara", "Constantia", "Tw Cen MT"). A style with no
+/// table of its own (Tahoma Italic, SimSun Bold, Trebuchet MS Bold Italic) takes the regular
+/// widths: Word synthesises it from the regular face with the same advances. Tw Cen MT was only
+/// measured in bold, so its other styles keep the substitute's advances. Characters not in the
+/// table give `None`.
 pub fn missing_font_advance(family: &str, bold: bool, italic: bool, c: char) -> Option<f64> {
     let table = table(family.trim(), bold, italic)?;
     let code = cp1252_code(c)?;
@@ -35,6 +37,15 @@ fn table(family: &str, bold: bool, italic: bool) -> Option<&'static [(u8, u16)]>
         (TREBUCHET_MS, Some(TREBUCHET_MS_BOLD), Some(TREBUCHET_MS_ITALIC), None)
     } else if is("garamond") {
         (GARAMOND, Some(GARAMOND_BOLD), None, None)
+    } else if is("corbel") {
+        (CORBEL, Some(CORBEL_BOLD), Some(CORBEL_ITALIC), None)
+    } else if is("candara") {
+        (CANDARA, Some(CANDARA_BOLD), None, None)
+    } else if is("constantia") {
+        (CONSTANTIA, Some(CONSTANTIA_BOLD), Some(CONSTANTIA_ITALIC), None)
+    } else if is("tw cen mt") {
+        // Only bold was measured: the empty regular table leaves other styles the substitute's widths.
+        (&[], Some(TW_CEN_MT_BOLD), None, None)
     } else {
         return None;
     };
@@ -350,6 +361,86 @@ const TREBUCHET_MS_ITALIC: &[(u8, u16)] = &[
     (0x65, 537), (0x69, 307), (0x6E, 546), (0x72, 417), (0x73, 405), (0x74, 420),
 ];
 
+/// 67 codes.
+#[rustfmt::skip]
+const CORBEL: &[(u8, u16)] = &[
+    (0x20, 200), (0x24, 513), (0x2C, 264), (0x2D, 333), (0x2E, 264), (0x2F, 275), (0x30, 514), (0x32, 511), (0x37, 428), (0x3A, 264),
+    (0x3B, 267), (0x41, 635), (0x42, 593), (0x43, 589), (0x44, 671), (0x45, 551), (0x46, 504), (0x47, 668), (0x48, 667), (0x49, 246),
+    (0x4A, 375), (0x4B, 605), (0x4C, 521), (0x4D, 822), (0x4E, 696), (0x4F, 730), (0x50, 570), (0x51, 739), (0x52, 592), (0x53, 552),
+    (0x54, 555), (0x55, 671), (0x56, 607), (0x57, 882), (0x58, 584), (0x59, 594), (0x5A, 585), (0x5B, 315), (0x5D, 315), (0x61, 490),
+    (0x62, 536), (0x63, 438), (0x64, 536), (0x65, 498), (0x66, 318), (0x67, 531), (0x68, 532), (0x69, 232), (0x6A, 241), (0x6B, 487),
+    (0x6C, 232), (0x6D, 829), (0x6E, 527), (0x6F, 533), (0x70, 531), (0x71, 523), (0x72, 335), (0x73, 404), (0x74, 347), (0x75, 518),
+    (0x76, 462), (0x77, 712), (0x78, 455), (0x79, 480), (0x7A, 444), (0x7C, 227), (0x7D, 300),
+];
+
+/// 38 codes.
+#[rustfmt::skip]
+const CORBEL_BOLD: &[(u8, u16)] = &[
+    (0x20, 206), (0x2C, 317), (0x2E, 292), (0x41, 657), (0x43, 584), (0x45, 568), (0x46, 521), (0x49, 276), (0x4C, 538), (0x4D, 826),
+    (0x4E, 728), (0x4F, 734), (0x50, 601), (0x52, 628), (0x54, 570), (0x5B, 315), (0x5D, 315), (0x61, 515), (0x62, 557), (0x63, 441),
+    (0x64, 558), (0x65, 513), (0x67, 550), (0x68, 560), (0x69, 249), (0x6B, 516), (0x6C, 252), (0x6D, 852), (0x6E, 555), (0x6F, 554),
+    (0x70, 550), (0x71, 550), (0x72, 350), (0x73, 424), (0x74, 379), (0x75, 545), (0x77, 749), (0x79, 514),
+];
+
+/// 24 codes.
+#[rustfmt::skip]
+const CORBEL_ITALIC: &[(u8, u16)] = &[
+    (0x20, 200), (0x2C, 265), (0x42, 591), (0x4E, 674), (0x52, 581), (0x53, 547), (0x54, 517), (0x59, 536), (0x5B, 309), (0x5D, 309),
+    (0x61, 506), (0x63, 415), (0x65, 456), (0x66, 314), (0x68, 522), (0x69, 213), (0x6C, 240), (0x6E, 518), (0x6F, 491), (0x72, 318),
+    (0x73, 398), (0x74, 341), (0x75, 498), (0x79, 470),
+];
+
+/// 39 codes.
+#[rustfmt::skip]
+const CANDARA: &[(u8, u16)] = &[
+    (0x20, 217), (0x30, 549), (0x31, 350), (0x32, 462), (0x33, 486), (0x34, 533), (0x35, 491), (0x36, 552), (0x37, 473), (0x38, 550),
+    (0x39, 548), (0x41, 616), (0x43, 549), (0x44, 643), (0x46, 489), (0x4A, 416), (0x4D, 854), (0x4E, 674), (0x4F, 694), (0x53, 511),
+    (0x61, 491), (0x62, 556), (0x63, 452), (0x64, 550), (0x65, 513), (0x67, 540), (0x68, 542), (0x69, 218), (0x6C, 229), (0x6D, 819),
+    (0x6E, 542), (0x6F, 559), (0x70, 556), (0x72, 355), (0x73, 419), (0x74, 359), (0x75, 536), (0x76, 480), (0x79, 465),
+];
+
+/// 16 codes.
+#[rustfmt::skip]
+const CANDARA_BOLD: &[(u8, u16)] = &[
+    (0x20, 217), (0x41, 630), (0x44, 645), (0x45, 527), (0x46, 491), (0x48, 653), (0x49, 279), (0x4D, 864), (0x4E, 665), (0x4F, 697),
+    (0x52, 596), (0x53, 523), (0x54, 526), (0x55, 658), (0x57, 917), (0x59, 552),
+];
+
+/// 57 codes.
+#[rustfmt::skip]
+const CONSTANTIA: &[(u8, u16)] = &[
+    (0x20, 251), (0x2C, 256), (0x2D, 359), (0x2E, 256), (0x30, 539), (0x31, 313), (0x32, 484), (0x34, 531), (0x35, 476), (0x37, 483),
+    (0x38, 537), (0x3A, 256), (0x41, 674), (0x43, 651), (0x44, 751), (0x45, 581), (0x46, 539), (0x49, 340), (0x4C, 556), (0x4D, 905),
+    (0x4E, 749), (0x4F, 804), (0x50, 582), (0x52, 631), (0x53, 510), (0x54, 613), (0x55, 744), (0x59, 593), (0x5A, 577), (0x5B, 345),
+    (0x5D, 345), (0x61, 480), (0x62, 557), (0x63, 461), (0x64, 567), (0x65, 479), (0x66, 310), (0x67, 508), (0x68, 580), (0x69, 283),
+    (0x6A, 265), (0x6B, 535), (0x6C, 281), (0x6D, 866), (0x6E, 582), (0x6F, 541), (0x70, 560), (0x71, 553), (0x72, 383), (0x73, 405),
+    (0x74, 353), (0x75, 569), (0x76, 483), (0x77, 732), (0x78, 480), (0x79, 481), (0x7C, 348),
+];
+
+/// 13 codes.
+#[rustfmt::skip]
+const CONSTANTIA_BOLD: &[(u8, u16)] = &[
+    (0x20, 239), (0x4E, 756), (0x52, 705), (0x5B, 355), (0x5D, 355), (0x61, 536), (0x63, 484), (0x65, 538), (0x69, 332), (0x6D, 936),
+    (0x6E, 640), (0x70, 611), (0x74, 390),
+];
+
+/// 14 codes.
+#[rustfmt::skip]
+const CONSTANTIA_ITALIC: &[(u8, u16)] = &[
+    (0x20, 236), (0x2C, 256), (0x53, 509), (0x54, 602), (0x5B, 345), (0x5D, 345), (0x63, 457), (0x65, 447), (0x69, 272), (0x6C, 270),
+    (0x6E, 558), (0x72, 387), (0x74, 360), (0x79, 480),
+];
+
+/// 50 codes.
+#[rustfmt::skip]
+const TW_CEN_MT_BOLD: &[(u8, u16)] = &[
+    (0x20, 266), (0x3A, 260), (0x41, 688), (0x42, 530), (0x43, 583), (0x44, 635), (0x45, 479), (0x46, 479), (0x48, 635), (0x49, 260),
+    (0x4A, 427), (0x4B, 635), (0x4C, 427), (0x4D, 792), (0x4E, 688), (0x4F, 740), (0x50, 531), (0x52, 583), (0x53, 476), (0x54, 479),
+    (0x55, 635), (0x56, 635), (0x58, 635), (0x59, 583), (0x5B, 313), (0x5D, 313), (0x61, 528), (0x62, 531), (0x63, 404), (0x64, 531),
+    (0x65, 479), (0x66, 313), (0x67, 529), (0x68, 531), (0x69, 260), (0x6A, 260), (0x6B, 479), (0x6C, 260), (0x6D, 792), (0x6E, 531),
+    (0x6F, 531), (0x70, 531), (0x71, 528), (0x72, 313), (0x73, 427), (0x74, 260), (0x75, 531), (0x78, 531), (0x79, 531), (0x7C, 588),
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -378,6 +469,15 @@ mod tests {
             TREBUCHET_MS_ITALIC,
             GARAMOND,
             GARAMOND_BOLD,
+            CORBEL,
+            CORBEL_BOLD,
+            CORBEL_ITALIC,
+            CANDARA,
+            CANDARA_BOLD,
+            CONSTANTIA,
+            CONSTANTIA_BOLD,
+            CONSTANTIA_ITALIC,
+            TW_CEN_MT_BOLD,
         ];
         for t in all {
             assert!(t.windows(2).all(|w| w[0].0 < w[1].0));

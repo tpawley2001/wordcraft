@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0595: a missing Corbel, Candara, Constantia or Tw Cen MT keeps Word's advance widths. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0586: a number outside a field `\*` format's range now shows Word's "Error! Number cannot be represented in specified format.", so that follow-up is closed, from storytold/wordcraft#4571. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged.)
@@ -268,6 +270,8 @@ Convert to Text now uses comma-space separators and offers recursive nested-tabl
 Formatting restriction settings now include theme and style set switching locks, with DOCX and RTF persistence (P0560); broader dialog depth remains open.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0595: a missing Corbel, Candara, Constantia or Tw Cen MT (bold only) keeps Word's advance widths, so their lines break where Word's do. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0589: below compatibility mode 15 with Compress punctuation, and in documents opened from RTF, hyphenated words are not split at their hyphen at a line end, as in Word. Readiness estimates unchanged.
 
