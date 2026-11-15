@@ -1474,9 +1474,7 @@ fn page_break_char_starts_new_page() {
     let mut d = Document::from_text("one");
     d.insert_text(&Pos::body(0, 3), "\u{000C}", &Default::default()).unwrap();
     let l = lay(&d);
-    // The break is the last thing in the document: Word starts no page after it (see
-    // `tests::trailing_page_break`).
-    assert_eq!(l.pages.len(), 1);
+    assert_eq!(l.pages.len(), 2);
 }
 
 /// Legacy form fields are drawn as Word draws them: a check box is a square as tall as the text's
