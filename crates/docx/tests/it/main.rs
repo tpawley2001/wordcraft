@@ -73,6 +73,7 @@ mod row_property_exceptions;
 mod rtf_saved_compat;
 mod run_content_in_text;
 mod run_props;
+mod saved_view;
 mod section_form_protection;
 mod section_line_numbering;
 mod section_metadata_preservation;
