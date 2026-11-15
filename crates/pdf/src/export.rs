@@ -313,6 +313,24 @@ impl Fit {
 mod tests {
     use super::*;
 
+    #[test]
+    fn mixed_paper_substitution_preserves_other_sizes_and_centres_content() {
+        let doc = Document::from_text("One\u{c}Two\u{c}Three\u{c}Four");
+        let mut lay = layout(&doc, &mut LayoutCache::new(), &Default::default());
+        let sizes = [(595.0, 842.0), (842.0, 595.0), (612.0, 1008.0), (598.0, 842.0)];
+        for (page, (w, h)) in lay.pages.iter_mut().zip(sizes) {
+            page.w = w;
+            page.h = h;
+        }
+        let opts = PdfOptions { paper_substitution: Some(((595.28, 841.89), (612.0, 792.0))), ..Default::default() };
+        let sheets = print_sheets(&lay, &[0, 1, 2, 3], imposition::Imposition::Single, &opts).unwrap();
+        assert_eq!(sheets.iter().map(|s| (s.width, s.height)).collect::<Vec<_>>(), vec![(612.0, 792.0), (792.0, 612.0), sizes[2], sizes[3]]);
+        let actual = Fit::in_slot(&lay.pages[0], sheets[0].slots[0]);
+        let expected = Fit::of(&lay.pages[0], Some((612.0, 792.0)));
+        assert_eq!((actual.k, actual.dx, actual.dy), (expected.k, expected.dx, expected.dy));
+        assert!(actual.dx > 0.0);
+    }
+
     /// N-up fits the whole markup page once, with the same centering as the physical-sheet preview.
     #[test]
     fn imposed_markup_pages_fit_the_slot_without_double_scaling() {

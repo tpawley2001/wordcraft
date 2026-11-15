@@ -778,6 +778,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a4_letter_preferences_and_strict_job_params() {
+        let prefs: crate::prefs::Prefs = serde_json::from_value(json!({})).unwrap();
+        assert!(prefs.print_scale_a4_letter);
+        for value in [json!(null), json!(1), json!("true")] {
+            assert!(paper_substitution(&json!({"scaleA4Letter": value}), true).is_err());
+        }
+        for value in [json!(""), json!(null), json!("Legal")] {
+            assert_eq!(paper_substitution(&json!({"printerPaper": value}), true).unwrap(), None);
+        }
+        assert!(paper_substitution(&json!({"paper": "Legal", "printerPaper": "Quarto"}), true).is_err());
+    }
+
+    #[test]
     fn ranges_parse_and_hostile_ones_are_errors() {
         assert_eq!(parse_page_range("1-3, 5", 6), Ok(vec![0, 1, 2, 4]));
         assert_eq!(parse_page_range("5,1-2,2", 6), Ok(vec![0, 1, 4]), "document order, no repeats");
