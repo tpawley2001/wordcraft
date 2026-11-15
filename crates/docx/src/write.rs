@@ -113,6 +113,8 @@ pub(crate) struct Writer<'d> {
     wm_header: u32,
     /// The watermark shape to put at the start of the next top-level paragraph (a header's first).
     pending_watermark: Option<String>,
+    /// Writing a header or footer story: it may end in a table, with no paragraph after it.
+    hf_story: bool,
     /// Paragraphs that need a `w14:paraId` (last paragraph of each comment), by address.
     para_ids: HashMap<usize, String>,
     /// A note reference mark to put at the start of the next paragraph.

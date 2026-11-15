@@ -54,6 +54,7 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
         linked_headers: Default::default(),
         wm_header: (0..=u32::MAX).rev().find(|id| !doc.parts.contains_key(id)).unwrap_or(u32::MAX),
         pending_watermark: None,
+        hf_story: false,
         para_ids: HashMap::new(),
         pending_mark: None,
         current_note: None,
@@ -115,8 +116,10 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
             Some(wm) if !footer => watermark::run(wm, done, &doc.last_section),
             _ => None,
         };
+        wr.hf_story = true;
         wr.blocks(&mut w, &blocks, &mut prels, false, 0);
-        // Always taken: the story ends with a top-level paragraph.
+        wr.hf_story = false;
+        // Always taken by then: a pending watermark keeps the story's trailing paragraph.
         wr.pending_watermark = None;
         w.close(tag);
         push_part(
