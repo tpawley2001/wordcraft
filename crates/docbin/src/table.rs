@@ -405,14 +405,7 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
             T_F_NO_ALLOW_OVERLAP => r.tap_no_overlap = prl.operand.first().map(|b| *b != 0),
             T_F_AUTOFIT => r.autofit = prl.operand.first() == Some(&1),
             T_ISTD => r.style_istd = u16_of(&prl),
-            T_CELL_HIDE_MARK => {
-                // A cell range past the row's cells only reaches the cells there are.
-                if let [_, a, b, flag, ..] = prl.operand {
-                    for c in *a..(*b).min(MAX_COLS as u8) {
-                        set(&mut r.hide_mark, c, *flag != 0);
-                    }
-                }
-            }
+            T_CELL_HIDE_MARK => apply_hide_mark(&mut r.hide_mark, prl.operand),
             T_VERT_ALIGN => {
                 if let [_, a, b, va, ..] = prl.operand {
                     let v = match va {
@@ -436,6 +429,16 @@ pub(crate) fn decode_in(papx: &[u8], version: u16, prc: Option<&[u8]>) -> RowInf
     r.indent = edge0.and_then(|e| row_indent(e, gap_half, r.cell_margins));
     r.cant_split = cant_split(prc.unwrap_or(papx), version);
     r
+}
+
+/// Apply a `sprmTCellFHideMark` operand (cb, itcFirst, itcLim, fHideMark) to its cells, one slot
+/// per cell; a range past the row's cells only reaches the cells there are.
+fn apply_hide_mark(slots: &mut Vec<(u8, bool)>, operand: &[u8]) {
+    if let [_, a, b, flag, ..] = operand {
+        for c in *a..(*b).min(MAX_COLS as u8) {
+            set(slots, c, *flag != 0);
+        }
+    }
 }
 
 /// "Don't break this row across pages" from `grpprl`: `sprmTFCantSplit` in every version (a later
