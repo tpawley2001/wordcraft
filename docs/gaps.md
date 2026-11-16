@@ -1,8 +1,8 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0626: #10 narrowed: editing text in a turned text box (#6056): a click lands on the character drawn there, and the box and its text are shown straight while you edit it; the two #10 rows merged into one. Readiness estimates unchanged; earlier: P0615: print jobs scale A4 pages onto Letter printer paper and Letter pages onto A4 by default, preserving orientation; explicit paper scaling wins and other sizes stay unchanged. Readiness estimates unchanged; earlier: #7: Font Substitution dialog: pick what each missing font is shown in, or convert it permanently; dialog count +1. Readiness estimates unchanged)
+> **Last updated:** 2026-11-16 · **Change:** trivial (P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.)
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged; earlier: P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged; earlier: P0626: #10 narrowed: editing text in a turned text box (#6056): a click lands on the character drawn there, and the box and its text are shown straight while you edit it; the two #10 rows merged into one. Readiness estimates unchanged; earlier: P0615: print jobs scale A4 pages onto Letter printer paper and Letter pages onto A4 by default, preserving orientation; explicit paper scaling wins and other sizes stay unchanged. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (#7: Font Substitution dialog: pick what each missing font is shown in, or convert it permanently; dialog count +1. Readiness estimates unchanged; earlier: P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged; earlier: P0603: opening a .txt file can ask for its encoding in File Conversion, with a preview (Confirm file format conversion on open). Readiness estimates unchanged)
 
@@ -293,11 +293,11 @@ Use Normal style for bulleted or numbered lists (File › Options › Advanced) 
 
 ## Revision history
 
+> 2026-11-16 · trivial · P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.
+
 > 2026-11-15 · trivial · P0626: #10 narrowed: editing text in a turned text box (#6056): a click lands on the character drawn there, and the box and its text are shown straight while you edit it; the two #10 rows merged into one. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0622: #7 narrowed: File › Options › Save › Preserve fidelity when sharing this document (`document.fontEmbedding`); .docx saves embed the installed TrueType fonts the document uses (#6329). Readiness estimates unchanged.
-
 > 2026-11-15 · trivial · P0623: #13 narrowed: trendlines on charts from Word (linear, exponential, logarithmic, power, polynomial, moving average) are drawn over line, column/bar and scatter series. Readiness estimates unchanged.
-
 > 2026-11-15 · trivial · P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.
 
