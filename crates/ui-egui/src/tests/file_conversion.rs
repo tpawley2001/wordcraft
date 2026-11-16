@@ -183,3 +183,34 @@ fn the_open_dialog_draws_its_preview() {
     assert_eq!(dialog(&a), Some("fileConversion"), "the dialog stays open until answered");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn insert_line_breaks_checkbox_reaches_save_and_is_remembered() {
+    let dir = scratch("line-breaks");
+    let path = dir.join("wrapped.text");
+    let text = (0..90).map(|i| format!("word{i}")).collect::<Vec<_>>().join(" ");
+    let mut a = app(&text);
+    // Repeated Save applies to a document whose own file is plain text.
+    a.session.path = Some(path.clone());
+    a.run("file.saveAs", json!({"path": path})).unwrap();
+    let Some(crate::dialogs::Dialog::FileConversion { form }) = &mut a.dialog else { panic!("File Conversion is open") };
+    assert!(!form.insert_line_breaks);
+    assert!(!form.preview.contains('\n'));
+    assert!(form.wrapped_preview.contains('\n'));
+    // The checkbox edits this field; OK carries it through the command parameters.
+    form.insert_line_breaks = true;
+    a.run("ui.fileConversion", json!({"answer": "ok", "encoding": "utf-8", "lineEnd": "lf"})).unwrap();
+    let out = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(out.trim_start_matches('\u{feff}').split('\n').collect::<Vec<_>>().join(" "), text);
+    assert!(out.contains('\n'));
+    assert!(a.txt_save.options.as_ref().unwrap().insert_line_breaks);
+    assert_eq!(crate::file_conversion::remembered(&a)["insertLineBreaks"], true);
+    a.run("file.save", json!({})).unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), out);
+    a.run("file.saveAs", json!({"path": dir.join("next.txt")})).unwrap();
+    let Some(crate::dialogs::Dialog::FileConversion { form }) = &a.dialog else { panic!("File Conversion is open") };
+    assert!(form.insert_line_breaks);
+    a.run("ui.fileConversion", json!({"answer": "ok", "insertLineBreaks": false})).unwrap();
+    assert!(!a.txt_save.options.as_ref().unwrap().insert_line_breaks);
+    let _ = std::fs::remove_dir_all(dir);
+}

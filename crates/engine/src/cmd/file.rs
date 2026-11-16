@@ -94,9 +94,9 @@ pub fn specs() -> Vec<CommandSpec> {
             .pure(),
         CommandSpec::new("file.save", "Save", "File", save)
             .key("Mod+S / Shift+F12 / Alt+Shift+F2")
-            .params(r#"{"path"?: string, "password"?: string (encrypt this and later saves with it, as file.encrypt does), "markup"?: bool (Print Markup for a PDF, PNG, HTML, Markdown or text copy: comments shown; default file.printMarkup), "format"?: "wordml2003" (an .xml file as a Word 2003 XML Document) | "flatopc" (as a Word XML Document, the default; saving over a Word 2003 XML file keeps that format), "strict"?: bool (a .pdf or .png only: refuse, writing nothing, if a character can't be drawn or a picture is missing; see file.strictReport), "backup"?: bool (false: don't make the backup copy for this save (AutoSave)), "encoding"?: "windows" | "msdos" | "utf-8" | "utf-16le" | "utf-16be" | label (a .txt file: Word's File Conversion encoding, e.g. "windows-1251"; without encoding, lineEnd and allowSubstitution a .txt file is UTF-8), "lineEnd"?: "crlf" | "cr" | "lf" | "lfcr", "allowSubstitution"?: bool (a character the encoding lacks becomes its closest match, else ?)}"#)
+            .params(r#"{"path"?: string, "password"?: string (encrypt this and later saves with it, as file.encrypt does), "markup"?: bool (Print Markup for a PDF, PNG, HTML, Markdown or text copy: comments shown; default file.printMarkup), "format"?: "wordml2003" (an .xml file as a Word 2003 XML Document) | "flatopc" (as a Word XML Document, the default; saving over a Word 2003 XML file keeps that format), "strict"?: bool (a .pdf or .png only: refuse, writing nothing, if a character can't be drawn or a picture is missing; see file.strictReport), "backup"?: bool (false: don't make the backup copy for this save (AutoSave)), "encoding"?: "windows" | "msdos" | "utf-8" | "utf-16le" | "utf-16be" | label (a .txt file: Word's File Conversion encoding, e.g. "windows-1251"; without encoding, lineEnd, allowSubstitution and insertLineBreaks a .txt file is UTF-8), "lineEnd"?: "crlf" | "cr" | "lf" | "lfcr", "allowSubstitution"?: bool (a character the encoding lacks becomes its closest match, else ?), "insertLineBreaks"?: bool (text output: end every body layout line; default false)}"#)
             .pure(),
-        CommandSpec::new("file.saveAs", "Save As", "File", save_as).key(super::mac_or("F12 / Mod+Shift+S", "F12 / Alt+F2")).params(r#"{"path": string, "password"?: string, "markup"?: bool, "format"?: string (as file.save), "strict"?: bool (as file.save), "encoding"?: string, "lineEnd"?: string, "allowSubstitution"?: bool (as file.save)}"#).pure(),
+        CommandSpec::new("file.saveAs", "Save As", "File", save_as).key(super::mac_or("F12 / Mod+Shift+S", "F12 / Alt+F2")).params(r#"{"path": string, "password"?: string, "markup"?: bool, "format"?: string (as file.save), "strict"?: bool (as file.save), "encoding"?: string, "lineEnd"?: string, "allowSubstitution"?: bool (as file.save), "insertLineBreaks"?: bool (as file.save)}"#).pure(),
         // Pure: the password must not land in Repeat or a recorded macro, and it isn't an edit
         // to undo; it marks the document as changed itself.
         // Word's "(Read-Only)": the document can be edited, but Save can't overwrite its file.
@@ -574,9 +574,12 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
         s.doc.core.revision,
     );
     s.stamp_save();
+    let layout = (matches!(ext.as_str(), "txt" | "text") && opts.txt.as_ref().is_some_and(|o| o.insert_line_breaks)).then(|| s.layout());
     let password = s.password.as_ref().map(crate::io::Password::as_str);
     // A header/footer just made and left empty isn't saved (#960).
-    let copy = super::insert::saved_copy(s);
+    let mut copy = super::insert::saved_copy(s);
+    let copy =
+        if let Some(layout) = layout { crate::io::txt_layout_copy(copy.as_ref().unwrap_or(&s.doc), &layout).map(Some) } else { Ok(copy.take()) };
     // Always create backup copy: a save over the document's own file keeps its previous version.
     // A backup that can't be made doesn't stop the save; the result reports why.
     let backup = (s.prefs.always_create_backup && s.path.as_deref() == Some(path.as_path()) && p::bool(v, "backup") != Some(false))
@@ -585,9 +588,10 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
     // once it doesn't (an edit in the formatted view), the document is written out again.
     let exact = super::md_source::text_to_save(s, &path, opts.markup);
     let rewritten = exact.is_none() && !s.md_file.is_empty() && super::md_source::is_markdown_file(&path);
-    let written = match &exact {
-        Some(text) => crate::io::save_text_path(&path, text),
-        None => crate::io::save_path_with(&path, copy.as_ref().unwrap_or(&s.doc), password, &opts),
+    let written = match (&exact, copy) {
+        (_, Err(e)) => Err(e),
+        (Some(text), _) => crate::io::save_text_path(&path, text),
+        (None, Ok(copy)) => crate::io::save_path_with(&path, copy.as_ref().unwrap_or(&s.doc), password, &opts),
     };
     if let Err(e) = written {
         (s.doc.settings.zoom, s.doc.settings.view, s.doc.core.last_modified_by, s.doc.core.created, s.doc.core.modified, s.doc.core.revision) =
@@ -660,13 +664,14 @@ pub fn export_options(s: &Session, v: &Value) -> crate::io::ExportOptions {
 /// A plain-text save's File Conversion choices from `encoding` (`"windows"`, `"msdos"`,
 /// `"utf-8"`, `"utf-16le"`, `"utf-16be"` or any other encoding label such as `"windows-1251"`;
 /// an unknown label is windows-1252), `lineEnd` (`"crlf"`, `"cr"`, `"lf"`, `"lfcr"`) and
-/// `allowSubstitution`; `None` when none is given (UTF-8, CRLF, as before).
+/// `allowSubstitution` and `insertLineBreaks`; `None` when none is given (UTF-8, CRLF, as before).
 pub fn txt_options(v: &Value) -> Option<wordcraft_formats::txt::TxtSaveOptions> {
     use wordcraft_formats::txt::{LineEnd, TxtSaveOptions};
     let encoding = p::str(v, "encoding");
     let line_end = p::str(v, "lineEnd");
     let allow = p::bool(v, "allowSubstitution");
-    if encoding.is_none() && line_end.is_none() && allow.is_none() {
+    let breaks = p::bool(v, "insertLineBreaks");
+    if encoding.is_none() && line_end.is_none() && allow.is_none() && breaks.is_none() {
         return None;
     }
     let mut o = TxtSaveOptions::default();
@@ -682,6 +687,7 @@ pub fn txt_options(v: &Value) -> Option<wordcraft_formats::txt::TxtSaveOptions> 
         };
     }
     o.allow_substitution = allow.unwrap_or(false);
+    o.insert_line_breaks = breaks.unwrap_or(false);
     Some(o)
 }
 

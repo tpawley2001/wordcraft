@@ -1,7 +1,6 @@
 # WordCraft roadmap
 
-> **Last updated:** 2026-11-16 · **Change:** trivial (P0638: Ctrl+Enter (Cmd+Enter on macOS) at paragraph end adds an empty paragraph after the page break and moves the caret there; ribbon Page Break uses the same command behavior. Mid-paragraph and table-cell insertion stay unchanged. Readiness estimates unchanged.)
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0631: Shift+End selects an interior paragraph mark; typing and partial-paragraph deletion preserve it. Home/End collapse selections by line. Existing smart spacing and IME effects retained; readiness estimates unchanged; earlier: P0632: European keyboard font-size shortcuts: Ctrl+< shrinks and Ctrl+Shift+< (typing >) grows; Customize Keyboard records Mod+< / Mod+Shift+>. Existing US shortcuts are preserved. Readiness estimates unchanged)
+> **Last updated:** 2026-11-16 · **Change:** trivial (P0638: Ctrl+Enter (Cmd+Enter on macOS) at paragraph end adds an empty paragraph after the page break and moves the caret there; ribbon Page Break uses the same command behavior. Mid-paragraph and table-cell insertion stay unchanged. Readiness estimates unchanged; earlier: P0627: Plain Text File Conversion adds Insert line breaks, saving each body layout line with the chosen line end and previewing the wraps. Readiness estimates unchanged; earlier: P0631: Shift+End selects an interior paragraph mark; typing and partial-paragraph deletion preserve it. Home/End collapse selections by line. Existing smart spacing and IME effects retained; readiness estimates unchanged)
 
 > **Last updated:** 2026-11-16 · **Change:** trivial (P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged; earlier: P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged; earlier: P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged)
 
@@ -208,6 +207,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-15: P0627: Plain Text File Conversion adds Insert line breaks, saving each body layout line with the chosen line end and previewing the wraps. Readiness estimates unchanged.
 - 2026-11-16: Track Changes: a deletion by one author inside another author's insertion or move destination is listed in `review.changes` as its own change, right after the insertion, so the Reviewing Pane and Next/Previous Change reach it (#5228). Accept on it removes the text; Reject brings the text back as the first author's insertion. Readiness estimates unchanged.
 - 2026-11-16: P0641: the pointer is the arrow over the workspace beside and between the pages, as in Word; only the page shows the I-beam, and a selection drag from a page keeps it (#4114, from #4427). Readiness estimates unchanged.
 - 2026-11-15: P0632: European keyboard font-size shortcuts: Ctrl+< shrinks and Ctrl+Shift+< (typing >) grows; Customize Keyboard records Mod+< / Mod+Shift+>. Existing US shortcuts are preserved. Readiness estimates unchanged.
@@ -1100,6 +1100,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 ## Revision history
 
+> 2026-11-15 · trivial · P0627: Plain Text File Conversion adds Insert line breaks, saving each body layout line with the chosen line end and previewing the wraps. Readiness estimates unchanged.
 > 2026-11-16 · trivial · P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.
 > 2026-11-16 · trivial · P0638: Ctrl+Enter (Cmd+Enter on macOS) at paragraph end adds an empty paragraph after the page break and moves the caret there; ribbon Page Break uses the same command behavior. Mid-paragraph and table-cell insertion stay unchanged. Readiness estimates unchanged.
 
