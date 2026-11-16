@@ -15,7 +15,11 @@ pub mod edit;
 pub mod equation;
 pub mod fields;
 pub mod file;
+<<<<<<< HEAD
 pub mod find_format;
+=======
+pub mod find_fold;
+>>>>>>> a844c4677 (Find and Replace: Match Diacritics, Kashida and Alef Hamza options (#4800))
 pub mod find_pattern;
 pub mod fmt_revisions;
 pub mod font;

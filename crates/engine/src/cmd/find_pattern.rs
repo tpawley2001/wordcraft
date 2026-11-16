@@ -54,8 +54,21 @@ pub struct Opts {
     pub regex: bool,
     /// Take the text literally: no `^` codes.
     pub literal: bool,
+<<<<<<< HEAD
     /// Field codes are shown (View › Field Codes): only then does `^d` find fields, as in Word.
     pub field_codes: bool,
+=======
+    /// Differences the search ignores (Match Diacritics, Kashida, Alef Hamza off; #4800). Only
+    /// a normal search folds: wildcard and regular-expression patterns match exactly.
+    pub fold: super::find_fold::Fold,
+}
+
+impl Opts {
+    /// The text and Find what text are folded before they are compared.
+    pub fn folds(&self) -> bool {
+        self.fold.any() && !self.regex && !self.wildcards
+    }
+>>>>>>> a844c4677 (Find and Replace: Match Diacritics, Kashida and Alef Hamza options (#4800))
 }
 
 /// A pattern ready for the regex engine.
@@ -214,7 +227,7 @@ pub fn compile(query: &str, o: &Opts) -> Result<Compiled, String> {
     let (pat, spans) = if o.regex {
         (query.to_string(), false)
     } else if o.literal {
-        (escape(query), false)
+        (escape(&super::find_fold::fold_str(query, if o.folds() { o.fold } else { Default::default() })), false)
     } else if o.wildcards {
         wildcards(query)?
     } else {
@@ -243,17 +256,31 @@ fn special(query: &str, o: &Opts) -> (String, bool) {
     let chars: Vec<char> = query.chars().collect();
     let mut atoms: Vec<String> = Vec::new();
     let mut spans = false;
+    let fold = if o.folds() { o.fold } else { Default::default() };
+    // Literal characters since the last code, folded together (a mark folds with its letter).
+    let mut text = String::new();
+    let flush = |text: &mut String, atoms: &mut Vec<String>| {
+        atoms.extend(super::find_fold::fold_str(text, fold).chars().map(lit));
+        text.clear();
+    };
     let mut i = 0;
     while let Some(&c) = chars.get(i) {
         i += 1;
         if c == '^'
             && let Some(&n) = chars.get(i)
         {
+<<<<<<< HEAD
             if let Some(code) = object_code(n, o) {
+=======
+            if let Some(code) = find_code(n) {
+                spans |= matches!(n, 'p' | 'b');
+                flush(&mut text, &mut atoms);
+>>>>>>> a844c4677 (Find and Replace: Match Diacritics, Kashida and Alef Hamza options (#4800))
                 atoms.push(code.to_string());
                 i += 1;
                 continue;
             }
+<<<<<<< HEAD
             if let Some(code) = find_code(n) {
                 spans |= matches!(n, 'p' | 'b' | '?');
                 atoms.push(if n == '?' { r"[^\x{AD}]".to_string() } else { code.to_string() });
@@ -263,6 +290,11 @@ fn special(query: &str, o: &Opts) -> (String, bool) {
             if let Some((ch, used)) = find_numeric(&chars, i) {
                 spans |= ch == Some(PARA_MARK);
                 atoms.push(ch.map(lit).unwrap_or_else(|| r"[^\s\S]".into()));
+=======
+            if let Some((ch, used)) = numeric_code(&chars, i) {
+                spans |= ch == PARA_MARK;
+                text.push(ch);
+>>>>>>> a844c4677 (Find and Replace: Match Diacritics, Kashida and Alef Hamza options (#4800))
                 i += used;
                 continue;
             }
@@ -271,10 +303,15 @@ fn special(query: &str, o: &Opts) -> (String, bool) {
         if (o.ignore_punct && is_punct(c)) || (o.ignore_space && is_space(c)) {
             continue;
         }
+<<<<<<< HEAD
         // A keyboard apostrophe also finds text produced by smart quotes. Explicit character
         // codes above, and literal/regex/wildcard searches, keep exact character matching.
         atoms.push(if c == '\'' { "['‘’]".into() } else { lit(c) });
+=======
+        text.push(c);
+>>>>>>> a844c4677 (Find and Replace: Match Diacritics, Kashida and Alef Hamza options (#4800))
     }
+    flush(&mut text, &mut atoms);
     let filler = match (o.ignore_punct, o.ignore_space) {
         (true, true) => r"[\p{P} \t\x{A0}]*",
         (true, false) => r"\p{P}*",

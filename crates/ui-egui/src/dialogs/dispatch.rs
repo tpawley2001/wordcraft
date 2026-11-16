@@ -566,6 +566,14 @@ fn find_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ui.add_enabled_ui(plain, |ui| ui.checkbox(&mut extra.ignore_punct, tl!("Ignore punctuation characters")));
             ui.add_enabled_ui(plain, |ui| ui.checkbox(&mut extra.ignore_space, tl!("Ignore white-space characters")));
         });
+        // Word's options for Arabic, Hebrew and accented text (#4800). Wildcards and regular
+        // expressions always match these exactly.
+        let folds = plain && !*regex;
+        ui.horizontal(|ui| {
+            ui.add_enabled(folds, egui::Checkbox::new(&mut extra.match_diacritics, tl!("Match diacritics")));
+            ui.add_enabled(folds, egui::Checkbox::new(&mut extra.match_kashida, tl!("Match kashida")));
+            ui.add_enabled(folds, egui::Checkbox::new(&mut extra.match_alef_hamza, tl!("Match alef hamza")));
+        });
         ui.horizontal(|ui| {
             ui.checkbox(regex, tl!("Regular expressions"));
             if let Some(code) = special_menu(ui, extra) {
@@ -585,8 +593,14 @@ fn find_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         "matchSuffix": extra.suffix,
         "ignorePunct": extra.ignore_punct,
         "ignoreSpace": extra.ignore_space,
+<<<<<<< HEAD
         "format": extra.format,
         "replaceFormat": if replace_mode { json!(extra.replace_format) } else { json!(app.session.find.replace_format) },
+=======
+        "matchDiacritics": extra.match_diacritics,
+        "matchKashida": extra.match_kashida,
+        "matchAlefHamza": extra.match_alef_hamza,
+>>>>>>> a844c4677 (Find and Replace: Match Diacritics, Kashida and Alef Hamza options (#4800))
     });
     if !replace_mode {
         ui.horizontal(|ui| {
