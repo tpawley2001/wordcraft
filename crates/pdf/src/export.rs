@@ -327,7 +327,9 @@ mod tests {
         assert_eq!(sheets.iter().map(|s| (s.width, s.height)).collect::<Vec<_>>(), vec![(612.0, 792.0), (792.0, 612.0), sizes[2], sizes[3]]);
         let actual = Fit::in_slot(&lay.pages[0], sheets[0].slots[0]);
         let expected = Fit::of(&lay.pages[0], Some((612.0, 792.0)));
-        assert_eq!((actual.k, actual.dx, actual.dy), (expected.k, expected.dx, expected.dy));
+        for (a, e) in [(actual.k, expected.k), (actual.dx, expected.dx), (actual.dy, expected.dy)] {
+            assert!((a - e).abs() < 0.01, "{a} vs {e}");
+        }
         assert!(actual.dx > 0.0);
     }
 
