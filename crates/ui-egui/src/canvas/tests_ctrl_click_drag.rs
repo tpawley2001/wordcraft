@@ -17,6 +17,9 @@ fn with_the_option_off_a_drag_from_a_link_selects_and_does_not_follow() {
     a.run("insert.link", json!({"url": "#Spot"})).unwrap();
     a.run("caret.docEnd", json!({})).unwrap();
     a.run("ui.ctrlClickFollowsLinks", json!({"value": false})).unwrap();
+    // Character-exact drag ends: When selecting, automatically select entire word (on by default)
+    // would widen the selection to whole words.
+    a.run("file.options", json!({"autoWordSelection": false})).unwrap();
     let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
         |ui, app: &mut WordApp| {
             let ctx = ui.ctx().clone();

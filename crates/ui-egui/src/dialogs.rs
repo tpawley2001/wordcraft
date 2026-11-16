@@ -587,6 +587,13 @@ pub enum Dialog {
     },
     /// Compare / Combine Documents and AutoCorrect Options ([`crate::dialogs_review`], #412).
     Review(Box<crate::dialogs_review::ReviewDialog>),
+    /// AutoCorrect Options › Math AutoCorrect › Recognized Functions… (`tools.autocorrect`'s
+    /// `addFunction` / `deleteFunction`, applied on OK).
+    RecognizedFunctions {
+        form: Box<crate::dialogs_review::FunctionsForm>,
+        /// The AutoCorrect dialog that comes back when this closes.
+        resume: Option<Box<Dialog>>,
+    },
     /// Tools › Customize Keyboard (#368).
     CustomizeKeyboard {
         form: Box<crate::dialogs_keyboard::KeyboardForm>,
@@ -646,6 +653,11 @@ pub enum Dialog {
     /// pointed at another source, updated or broken (`fields.editLink`).
     EditLinks {
         form: Box<edit_links::EditLinksForm>,
+    },
+    /// File Conversion: a save as Plain Text asks for the encoding, the line ends and character
+    /// substitution first (`ui.fileConversion`).
+    FileConversion {
+        form: Box<crate::file_conversion::FileConversionForm>,
     },
 }
 
@@ -724,6 +736,7 @@ impl Dialog {
             Dialog::AdjustListIndents { .. } => "adjustListIndents",
             Dialog::TrackOptions { .. } => "trackChangesOptions",
             Dialog::Review(d) => d.name(),
+            Dialog::RecognizedFunctions { .. } => "recognizedFunctions",
             Dialog::CustomizeKeyboard { .. } => "customizeKeyboard",
             Dialog::CustomizeRibbon { .. } => "customizeRibbon",
             Dialog::Control { .. } => "controlProperties",
@@ -735,6 +748,7 @@ impl Dialog {
             Dialog::CustomProperties(..) => "customProperties",
             Dialog::ConvertDocument => "convertDocument",
             Dialog::MarkAsFinal => "markAsFinal",
+            Dialog::FileConversion { .. } => "fileConversion",
             Dialog::Compatibility { .. } => "compatibilityChecker",
             Dialog::EditLinks { .. } => "editLinks",
             Dialog::Layout(d) => d.name(),
@@ -1099,6 +1113,7 @@ impl Dialog {
             "defineList" => Dialog::DefineList { form: Box::new(crate::dialogs_lists::ListForm::read(app)) },
             "defineNumber" => Dialog::DefineNumber { form: Box::new(define_number::NumberForm::read(app)) },
             "trackChangesOptions" => Dialog::TrackOptions { form: Box::new(crate::dialogs_lists::TrackForm::read(app)) },
+            "recognizedFunctions" => Dialog::RecognizedFunctions { form: Box::new(crate::dialogs_review::FunctionsForm::new(app)), resume: None },
             "customizeKeyboard" => Dialog::CustomizeKeyboard { form: Box::new(crate::dialogs_keyboard::KeyboardForm::read(app)), resume: None },
             "customizeRibbon" => {
                 Dialog::CustomizeRibbon { form: Box::new(crate::dialogs_ribbon::RibbonForm::read(app, crate::dialogs_ribbon::Page::Ribbon)) }

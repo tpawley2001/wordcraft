@@ -49,8 +49,16 @@ pub struct Prefs {
     pub default_language: Option<String>,
     /// Typing over a selection replaces it; off, the typed text goes in front of it.
     pub typing_replaces_selection: bool,
+    /// Plain Insert pastes through the clipboard command (off by default).
+    pub insert_key_paste: bool,
     /// The Insert key switches overtype on and off.
     pub insert_key_overtype: bool,
+    /// File › Options › Advanced › When selecting, automatically select entire word (on, as in
+    /// Word): a plain mouse drag from one word into another selects whole words.
+    pub auto_word_selection: bool,
+    /// File › Options › Advanced › Use smart paragraph selection (on, as in Word): a drag over a
+    /// whole paragraph's text takes its paragraph mark too.
+    pub smart_paragraph_selection: bool,
     /// Overtype: typed characters replace the ones after the caret.
     pub overtype: bool,
     /// The unit rulers and dialogs show lengths in, when the user chose one (File › Options ›
@@ -159,7 +167,10 @@ impl Default for Prefs {
             print_duplex_back: false,
             always_create_backup: false,
             typing_replaces_selection: true,
+            insert_key_paste: false,
             insert_key_overtype: false,
+            auto_word_selection: true,
+            smart_paragraph_selection: true,
             overtype: false,
             units: Default::default(),
             region: None,

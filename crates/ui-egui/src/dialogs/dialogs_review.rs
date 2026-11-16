@@ -329,8 +329,15 @@ pub struct AutoCorrectForm {
     /// Exceptions shown, and the exception being typed.
     pub show_exceptions: bool,
     pub exception: String,
-    /// Math AutoCorrect filter.
-    pub math_filter: String,
+    /// Math AutoCorrect's Replace / With boxes.
+    pub math_from: String,
+    pub math_to: String,
+    /// The Replace text the list last scrolled to.
+    #[serde(skip)]
+    pub math_scrolled: Option<String>,
+    /// Recognized Functions… was pressed: the AutoCorrect dialog gives way to it.
+    #[serde(skip)]
+    pub open_functions: bool,
     pub message: String,
 }
 
@@ -343,7 +350,10 @@ impl AutoCorrectForm {
             to: String::new(),
             show_exceptions: false,
             exception: String::new(),
-            math_filter: String::new(),
+            math_from: String::new(),
+            math_to: String::new(),
+            math_scrolled: None,
+            open_functions: false,
             message: String::new(),
         }
     }
@@ -372,6 +382,8 @@ impl AutoCorrectForm {
             "doubleSpacePeriod": o.double_space_period,
             "autoAddFirstLetter": o.auto_add_first_letter,
             "autoAddInitialCaps": o.auto_add_initial_caps,
+            "mathReplaceText": o.math_replace_text,
+            "mathOutside": o.math_outside,
         })
     }
 }
@@ -385,6 +397,8 @@ fn list_change(app: &mut WordApp, f: &mut AutoCorrectForm, params: Value) -> boo
             f.options.removed = now.removed;
             f.options.exceptions = now.exceptions;
             f.options.exceptions_removed = now.exceptions_removed;
+            f.options.math_entries = now.math_entries;
+            f.options.math_removed = now.math_removed;
             f.message.clear();
             true
         }
@@ -421,7 +435,14 @@ fn autocorrect_ui(app: &mut WordApp, ui: &mut Ui, f: &mut AutoCorrectForm) -> bo
             heading(ui, "Automatically as you type");
             ui.checkbox(&mut o.tab_indent, tl!("Set left- and first-indent with tabs and backspaces"));
         }
-        _ => math_tab(ui, f),
+        _ => math_tab(app, ui, f),
+    }
+    if f.open_functions {
+        // Recognized Functions… opens over this dialog, which comes back as it was when it closes.
+        f.open_functions = false;
+        let back = crate::dialogs::Dialog::Review(Box::new(ReviewDialog::AutoCorrect(Box::new(f.clone()))));
+        app.dialog = Some(crate::dialogs::Dialog::RecognizedFunctions { form: Box::new(FunctionsForm::new(app)), resume: Some(Box::new(back)) });
+        return true;
     }
     error(ui, &f.message);
     let (ok, cancel) = buttons(ui, true);
@@ -549,24 +570,175 @@ fn exceptions(app: &mut WordApp, ui: &mut Ui, f: &mut AutoCorrectForm) {
     });
 }
 
-/// Filters the math-symbol table by the typed prefix and lists each `\name` with its character.
-fn math_tab(ui: &mut Ui, f: &mut AutoCorrectForm) {
-    ui.label(egui::RichText::new(tl!("In equations, typing a name after a backslash replaces it with its symbol.")).small().weak());
-    ui.horizontal(|ui| {
-        let label = ui.label(tl!("Replace:"));
-        ui.add(egui::TextEdit::singleline(&mut f.math_filter).desired_width(140.0)).labelled_by(label.id);
-    });
-    let filter = f.math_filter.trim().trim_start_matches('\\').to_string();
-    egui::ScrollArea::vertical().id_salt("ac_math").max_height(240.0).auto_shrink([false, true]).show(ui, |ui| {
-        crate::rtl::Table::new("ac_math_grid").columns(2).spacing(vec2(16.0, 1.0)).striped(true).show(ui, |t| {
-            for (name, c) in wordcraft_doc::math_symbols::SYMBOLS.iter().filter(|(n, _)| filter.is_empty() || n.starts_with(filter.as_str())) {
-                t.row(|r| {
-                    r.cell(|ui| ui.label(format!("\\{name}")));
-                    r.cell(|ui| ui.label(c.to_string()));
-                });
-            }
+/// Math AutoCorrect, laid out as Word's: the two switches (applied on OK), Replace and With,
+/// the list (typing in Replace scrolls to the first entry starting with it; a click fills both
+/// boxes), Add or Replace and Delete (at once, as in Word) and Recognized Functions….
+fn math_tab(app: &mut WordApp, ui: &mut Ui, f: &mut AutoCorrectForm) {
+    ui.checkbox(&mut f.options.math_outside, tl!("Use Math AutoCorrect rules outside of math regions"));
+    ui.checkbox(&mut f.options.math_replace_text, tl!("Replace text as you type"));
+    crate::rtl::Table::new("ac_math_boxes").columns(2).spacing(vec2(8.0, 2.0)).show(ui, |t| {
+        let (replace_label, with_label) = t.row(|r| (r.cell(|ui| ui.label(tl!("Replace:"))), r.cell(|ui| ui.label(tl!("With:")))));
+        t.row(|r| {
+            r.cell(|ui| ui.add(egui::TextEdit::singleline(&mut f.math_from).desired_width(140.0)).labelled_by(replace_label.id));
+            r.cell(|ui| ui.add(egui::TextEdit::singleline(&mut f.math_to).desired_width(230.0)).labelled_by(with_label.id));
         });
     });
+    let list = f.options.math().list();
+    // The first entry starting with what's typed in Replace is selected and scrolled to.
+    let typed = f.math_from.clone();
+    let first = (!typed.is_empty()).then(|| list.iter().position(|(n, _, _)| n.starts_with(typed.as_str()))).flatten();
+    let scroll = f.math_scrolled.as_deref() != Some(typed.as_str());
+    f.math_scrolled = Some(typed);
+    let mut picked: Option<(String, String)> = None;
+    let row_h = 18.0;
+    let mut area = egui::ScrollArea::vertical().id_salt("ac_math").max_height(200.0).auto_shrink([false, true]);
+    if scroll && let Some(i) = first {
+        area = area.vertical_scroll_offset(i as f32 * (row_h + ui.spacing().item_spacing.y));
+    }
+    area.show_rows(ui, row_h, list.len(), |ui, rows| {
+        for (i, (name, value, _)) in list.iter().enumerate().skip(rows.start).take(rows.len()) {
+            ui.horizontal(|ui| {
+                let selected = first == Some(i) || f.math_from == *name;
+                if ui.add_sized(vec2(140.0, row_h), egui::Button::selectable(selected, name.as_str())).clicked() {
+                    picked = Some((name.clone(), value.clone()));
+                }
+                ui.label(value.as_str());
+            });
+        }
+    });
+    if let Some((name, value)) = picked {
+        f.math_from = name.clone();
+        f.math_to = value;
+        f.math_scrolled = Some(name);
+    }
+    let exists = list.iter().any(|(n, _, _)| *n == f.math_from);
+    let same = list.iter().any(|(n, v, _)| *n == f.math_from && *v == f.math_to);
+    ui.horizontal(|ui| {
+        let label = if exists { tl!("Replace") } else { tl!("Add") };
+        let can_add = wordcraft_doc::math_autocorrect::valid_name(&f.math_from) && wordcraft_doc::math_autocorrect::valid_value(&f.math_to);
+        if ui.add_enabled(can_add && !same, egui::Button::new(label)).clicked() {
+            math_add(app, f);
+        }
+        if ui.add_enabled(exists, egui::Button::new(tl!("Delete"))).clicked() {
+            math_delete(app, f);
+        }
+        if ui.button(tl!("Recognized Functions…")).clicked() {
+            f.open_functions = true;
+        }
+    });
+}
+
+/// Math AutoCorrect's Add (or Replace): the Replace / With boxes become an entry.
+pub(crate) fn math_add(app: &mut WordApp, f: &mut AutoCorrectForm) -> bool {
+    let p = json!({"mathAdd": {"from": f.math_from, "to": f.math_to}});
+    let done = list_change(app, f, p);
+    if done {
+        f.math_from.clear();
+        f.math_to.clear();
+    }
+    done
+}
+
+/// Math AutoCorrect's Delete: the entry named in Replace goes.
+pub(crate) fn math_delete(app: &mut WordApp, f: &mut AutoCorrectForm) -> bool {
+    let p = json!({"mathDelete": f.math_from});
+    let done = list_change(app, f, p);
+    if done {
+        f.math_from.clear();
+        f.math_to.clear();
+    }
+    done
+}
+
+/// Recognized Math Functions: the names typing sets upright as functions in equations. Add and
+/// Delete change the list shown; OK applies them (`tools.autocorrect`'s `addFunction` and
+/// `deleteFunction`), Cancel forgets them.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FunctionsForm {
+    /// The name box.
+    pub name: String,
+    /// The list as edited.
+    pub functions: Vec<String>,
+    /// The changes to apply on OK, in order: `(add, name)`.
+    pub changes: Vec<(bool, String)>,
+    pub message: String,
+}
+
+impl FunctionsForm {
+    pub fn new(app: &WordApp) -> FunctionsForm {
+        let functions = app.session.prefs.autocorrect.math().functions().into_iter().map(str::to_string).collect();
+        FunctionsForm { name: String::new(), functions, changes: Vec::new(), message: String::new() }
+    }
+
+    /// Add the name in the box to the list (applied on OK).
+    pub fn add(&mut self) {
+        let name = self.name.trim().to_string();
+        if !wordcraft_doc::math_autocorrect::valid_function(&name) {
+            self.message = tl!("A function name is letters only (up to 31).").to_string();
+            return;
+        }
+        if !self.functions.contains(&name) {
+            self.functions.push(name.clone());
+            self.changes.push((true, name));
+        }
+        self.name.clear();
+        self.message.clear();
+    }
+
+    /// Delete the name in the box from the list (applied on OK).
+    pub fn delete(&mut self) {
+        let name = self.name.trim().to_string();
+        if let Some(i) = self.functions.iter().position(|f| *f == name) {
+            self.functions.remove(i);
+            self.changes.push((false, name));
+            self.name.clear();
+        }
+    }
+
+    /// Apply the changes; `Err` with the first command error.
+    pub fn apply(&self, app: &mut WordApp) -> Result<(), String> {
+        for (add, name) in &self.changes {
+            let key = if *add { "addFunction" } else { "deleteFunction" };
+            app.run("tools.autocorrect", json!({ key: name }))?;
+        }
+        Ok(())
+    }
+}
+
+/// Draws Recognized Math Functions; returns true to close.
+pub fn functions_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FunctionsForm) -> bool {
+    ui.add(egui::TextEdit::singleline(&mut f.name).desired_width(200.0));
+    let mut picked = None;
+    egui::ScrollArea::vertical().id_salt("ac_functions").max_height(200.0).auto_shrink([false, true]).show(ui, |ui| {
+        for name in &f.functions {
+            if ui.add(egui::Button::selectable(f.name == *name, name.as_str())).clicked() {
+                picked = Some(name.clone());
+            }
+        }
+    });
+    if let Some(name) = picked {
+        f.name = name;
+    }
+    let known = f.functions.iter().any(|n| *n == f.name.trim());
+    ui.horizontal(|ui| {
+        if ui.add_enabled(!f.name.trim().is_empty() && !known, egui::Button::new(tl!("Add"))).clicked() {
+            f.add();
+        }
+        if ui.add_enabled(known, egui::Button::new(tl!("Delete"))).clicked() {
+            f.delete();
+        }
+    });
+    error(ui, &f.message);
+    let (ok, cancel) = buttons(ui, true);
+    if ok {
+        if let Err(e) = f.apply(app) {
+            f.message = e;
+            return false;
+        }
+        return true;
+    }
+    cancel
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -212,11 +212,31 @@ fn handle_page_pointer(app: &mut WordApp, pointer: PagePointer<'_>) {
     } else if app.canvas.dragging && ui.input(|i| i.pointer.primary_down()) {
         // Through the command, so from one table cell into another the drag takes whole cells
         // (Word); straight to the session, as the app's `run` would scroll on every frame.
+        let last = match &app.canvas.plain_drag {
+            Some((_, last)) => last.clone(),
+            None => app.session.sel_ends().focus.clone(),
+        };
         if let Some(pos) = layout.hit(page, x, y, story)
-            && pos != app.session.sel_ends().focus
+            && pos != last
         {
+            // Whole words and a whole paragraph's mark (File › Options › Advanced) were added
+            // to the last frame's selection; the drag goes on from the press.
+            let press = app.canvas.plain_drag.as_ref().map(|(press, _)| press.clone());
+            if let Some(press) = &press
+                && app.session.sel_ends() == &app.session.sel
+            {
+                app.session.sel = wordcraft_engine::Selection { anchor: press.clone(), focus: last };
+            }
             let pj = serde_json::to_value(&pos).unwrap_or_default();
             let _ = app.session.run("caret.set", &json!({"pos": pj, "extend": true}));
+            if let Some(press) = press {
+                let focus = app.session.sel.focus.clone();
+                // Not when the drag took whole table cells (the command widened it).
+                if app.session.sel_ends() == &app.session.sel && app.session.sel.anchor == press {
+                    app.session.sel = wordcraft_engine::cmd::caret::plain_drag_selection(&mut app.session, &press, &focus);
+                }
+                app.canvas.plain_drag = Some((press, pos));
+            }
             app.session.page_hint = page;
             app.canvas.caret_visible_since = crate::now_ms();
         }
@@ -226,6 +246,7 @@ fn handle_page_pointer(app: &mut WordApp, pointer: PagePointer<'_>) {
         app.canvas.dragging = false;
         app.canvas.column_drag = None;
         app.canvas.unit_drag = None;
+        app.canvas.plain_drag = None;
         apply_format_painter(app);
     }
     // Use Ctrl+Click to follow hyperlink off: a press on a link released without a drag follows it.
@@ -255,6 +276,7 @@ fn handle_primary_press(
     app.canvas.last_press = Some((now, p, clicks));
     app.canvas.unit_drag = None;
     app.canvas.link_press = None;
+    app.canvas.plain_drag = None;
     if clicks <= 1 {
         app.canvas.hf_press_switched = false;
     }
@@ -390,6 +412,10 @@ fn handle_primary_press(
         let _ = app.run(&format!("select.{unit}"), json!({}));
         let (start, end) = app.session.sel.ordered();
         app.canvas.unit_drag = Some(UnitDrag { unit, clicks, start, end, last: pos });
+    } else if !mods.shift {
+        // A plain press: the drag from it may select whole words and paragraph marks.
+        let at = app.session.sel.focus.clone();
+        app.canvas.plain_drag = Some((at.clone(), at));
     }
     app.session.page_hint = page;
     app.canvas.dragging = true;

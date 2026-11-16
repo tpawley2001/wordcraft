@@ -507,6 +507,46 @@ fn drag_unit(s: &mut Session, v: &Value) -> CmdResult {
     sel_result(s)
 }
 
+/// The selection a plain (single-click) mouse drag from `press` to `at` makes, with File ›
+/// Options › Advanced's two selection switches applied as in Word:
+/// - "When selecting, automatically select entire word" (`auto_word_selection`): once the pointer
+///   leaves the word the drag began in, the selection takes whole words (the same words, with
+///   their trailing spaces, as `select.word`): from the start of that word to the end of the word
+///   under the pointer, or, dragging back, from its end to the start of the word under the pointer.
+/// - "Use smart paragraph selection" (`smart_paragraph_selection`): a selection that runs to the
+///   end of a paragraph whose text it covers from the start takes that paragraph's mark too, when
+///   another paragraph follows in the same container.
+///
+/// Off, and across stories, the selection runs from `press` to `at`.
+pub fn plain_drag_selection(s: &mut Session, press: &Pos, at: &Pos) -> Selection {
+    let raw = Selection { anchor: press.clone(), focus: at.clone() };
+    if press.story != at.story || s.doc.para_at(press).is_none() || s.doc.para_at(at).is_none() {
+        return raw;
+    }
+    let mut sel = raw;
+    if s.prefs.auto_word_selection {
+        let (ws, we) = unit_range(s, press, Unit::Word);
+        if *at > we {
+            let (_, e) = unit_range(s, at, Unit::Word);
+            sel = Selection { anchor: ws, focus: e.max(at.clone()) };
+        } else if *at < ws {
+            let (b, _) = unit_range(s, at, Unit::Word);
+            sel = Selection { anchor: we, focus: b.min(at.clone()) };
+        }
+    }
+    if s.prefs.smart_paragraph_selection {
+        let forward = sel.anchor <= sel.focus;
+        let (a, b) = sel.ordered();
+        let at_para_end = s.doc.para_at(&b).is_some_and(|p| b.off >= p.len());
+        if a != b && a.story == b.story && at_para_end && (a.off == 0 || a.path != b.path) {
+            let (_, mark) = unit_range(s, &b, Unit::Paragraph);
+            let end = mark.max(b);
+            sel = if forward { Selection { anchor: a, focus: end } } else { Selection { anchor: end, focus: a } };
+        }
+    }
+    sel
+}
+
 /// Select the n-th occurrence of `text` in the body (agents: "select the word X").
 fn select_text(s: &mut Session, v: &Value) -> CmdResult {
     let needle = p::req_str(v, "text")?;
@@ -538,6 +578,13 @@ fn select_text(s: &mut Session, v: &Value) -> CmdResult {
 pub(crate) const EXTEND_HISTORY: usize = 8;
 
 const EXTEND_STATUS: &str = "Extend Selection: arrow keys extend, Esc ends";
+
+impl Session {
+    /// Extend mode (F8) is on: caret movement extends the selection.
+    pub fn extend_mode_on(&self) -> bool {
+        self.extend_mode
+    }
+}
 
 /// Turn extend mode (F8) off and forget its growth history; the selection stays.
 pub(crate) fn extend_mode_off(s: &mut Session) {
