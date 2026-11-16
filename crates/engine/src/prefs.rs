@@ -51,6 +51,9 @@ pub struct Prefs {
     /// Its Settings › Adjust sentence and word spacing automatically (on): with both on,
     /// deleting, cutting or pasting a word fixes the spaces around it.
     pub paste_adjust_word_spacing: bool,
+    /// File › Options › Advanced › General › Confirm file format conversion on open (off): the
+    /// app asks for a plain-text file's encoding (File Conversion) before opening it.
+    pub confirm_conversions: bool,
     /// Language › Detect language automatically (per user, as in Word).
     pub detect_language: bool,
     /// Set Proofing Language › Set As Default: overrides the interface language for future
@@ -185,6 +188,7 @@ impl Default for Prefs {
             always_create_backup: false,
             smart_cut_paste: true,
             paste_adjust_word_spacing: true,
+            confirm_conversions: false,
             typing_replaces_selection: true,
             insert_key_paste: false,
             insert_key_overtype: false,

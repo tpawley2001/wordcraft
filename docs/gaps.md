@@ -1,7 +1,6 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0615: print jobs scale A4 pages onto Letter printer paper and Letter pages onto A4 by default, preserving orientation; explicit paper scaling wins and other sizes stay unchanged. Readiness estimates unchanged.)
-> **Last updated:** 2026-11-15 · **Change:** trivial (#7: Font Substitution dialog: pick what each missing font is shown in, or convert it permanently; dialog count +1. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0603: opening a .txt file can ask for its encoding in File Conversion, with a preview (Confirm file format conversion on open). Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0595: a missing Corbel, Candara, Constantia or Tw Cen MT keeps Word's advance widths. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click.. Readiness estimates unchanged.)
@@ -283,14 +282,16 @@ Convert to Text now uses comma-space separators and offers recursive nested-tabl
 
 Formatting restriction settings now include theme and style set switching locks, with DOCX and RTF persistence (P0560); broader dialog depth remains open.
 
+Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM437) or another encoding (Unicode with a byte order mark, Windows and East Asian code pages), the line ends and character substitution, with a preview that shows in red what won't save (P0602). With File › Options › Advanced › Confirm file format conversion on open (off by default), opening a .txt file shows File Conversion too, with the guessed encoding chosen and a preview of the file read in the chosen one (`txt::detect`/`decode_with`/`import_with`, `file.open` `encoding`; P0603). Insert line breaks and Word's converter list for other formats remain open in gap #7.
 Automatically update now redefines paragraph styles for paragraph formatting and whole-paragraph character formatting (P0608); broader style and dialog depth work remains open.
 
-Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM437) or another encoding (Unicode with a byte order mark, Windows and East Asian code pages), the line ends and character substitution, with a preview that shows in red what won't save (P0602). Insert line breaks and the open-side encoding dialog remain open in gap #7.
 ## Revision history
 
 > 2026-11-15 · trivial · P0615: print jobs scale A4 pages onto Letter printer paper and Letter pages onto A4 by default, preserving orientation; explicit paper scaling wins and other sizes stay unchanged. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0616: #6 narrowed: File › Options › Display › Update linked data before printing (off) runs Update Now on every link before a print job (`printUpdateLinks`; `file.printPdf` `updateLinks`; `fields.updateLinks`). Readiness estimates unchanged.
 > 2026-11-15 · trivial · #7: Font Substitution dialog (`font.substitution`, `font.setSubstitute`, `font.convertPermanently`): a display substitute per missing font, kept in the user's preferences, and Convert Permanently…; dialog count +1. Readiness estimates unchanged.
+> 2026-11-15 · trivial · P0603: Confirm file format conversion on open (`file.options` `confirmConversions`, off by default) shows File Conversion on opening a .txt file, with a preview; OK opens it in the chosen encoding (`file.open` `encoding`). Readiness estimates unchanged.
+> 2026-11-15 · trivial · P0602: Save as Plain Text asks for the encoding, line ends and character substitution in a File Conversion dialog, as in Word (`txt::export_with`; `file.save` `encoding`/`lineEnd`/`allowSubstitution`). Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.
 

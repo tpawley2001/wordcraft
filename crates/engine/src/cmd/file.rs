@@ -90,7 +90,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("file.new", "New", "File", new).key("Mod+N").params(r#"{"template"?: "blank|sample|letter|resume|report"}"#).pure(),
         CommandSpec::new("file.open", "Open", "File", open)
             .key("Mod+O / Mod+F12 / Mod+Alt+F2")
-            .params(r#"{"path": string, "data"?: base64 (the file's bytes; `path` then only names it), "password"?: string (for a password-protected Word document), "modifyPassword"?: string (the file's password to modify), "readOnly"?: bool (open read-only instead of giving the password to modify)} → {"readOnly": bool, "readOnlyRecommended": bool, …}"#)
+            .params(r#"{"path": string, "data"?: base64 (the file's bytes; `path` then only names it), "password"?: string (for a password-protected Word document), "modifyPassword"?: string (the file's password to modify), "readOnly"?: bool (open read-only instead of giving the password to modify), "encoding"?: "windows" | "msdos" | "utf-8" | "utf-16le" | "utf-16be" | label (a .txt file: read it in this encoding instead of the guessed one, as File Conversion on open chooses)} → {"readOnly": bool, "readOnlyRecommended": bool, …}"#)
             .pure(),
         CommandSpec::new("file.save", "Save", "File", save)
             .key("Mod+S / Shift+F12 / Alt+Shift+F2")
@@ -364,19 +364,25 @@ fn markdown_file_text(path: &str, v: &Value) -> super::md_source::FileText {
 /// in the editing language.
 fn read_document(s: &Session, path: &str, v: &Value) -> Result<(Document, bool), CmdError> {
     let password = p::str(v, "password");
+    let ext = std::path::Path::new(path).extension().and_then(std::ffi::OsStr::to_str).unwrap_or("").to_ascii_lowercase();
+    // A plain-text file read in the encoding File Conversion chose, not the guessed one.
+    let encoding = p::str(v, "encoding").filter(|_| matches!(ext.as_str(), "txt" | "text")).map(txt_encoding);
     let (mut doc, encrypted) = if let Some(data) = p::str(v, "data") {
         let bytes = super::insert::base64_decode(data).ok_or_else(|| CmdError::Params("bad base64".into()))?;
         if bytes.is_empty() {
             (normal_document(s), false)
+        } else if let Some(enc) = &encoding {
+            (crate::io::open_text_in(&bytes, enc, &s.region()), false)
         } else {
             crate::io::open_bytes_in(path, &bytes, password, &s.region()).map_err(CmdError::Failed)?
         }
     } else if crate::io::is_empty_file(std::path::Path::new(path)) {
         (normal_document(s), false)
+    } else if let Some(enc) = &encoding {
+        (crate::io::open_text_path_in(std::path::Path::new(path), enc, &s.region()).map_err(CmdError::Failed)?, false)
     } else {
         crate::io::open_path_in(std::path::Path::new(path), password, &s.region()).map_err(CmdError::Failed)?
     };
-    let ext = std::path::Path::new(path).extension().and_then(std::ffi::OsStr::to_str).unwrap_or("").to_ascii_lowercase();
     if let Some(lang) = s.prefs.default_language.as_ref().or(s.editing_lang.as_ref())
         && matches!(ext.as_str(), "txt" | "text" | "md" | "markdown")
     {
@@ -622,7 +628,7 @@ pub fn export_options(s: &Session, v: &Value) -> crate::io::ExportOptions {
 /// an unknown label is windows-1252), `lineEnd` (`"crlf"`, `"cr"`, `"lf"`, `"lfcr"`) and
 /// `allowSubstitution`; `None` when none is given (UTF-8, CRLF, as before).
 pub fn txt_options(v: &Value) -> Option<wordcraft_formats::txt::TxtSaveOptions> {
-    use wordcraft_formats::txt::{LineEnd, TxtEncoding, TxtSaveOptions};
+    use wordcraft_formats::txt::{LineEnd, TxtSaveOptions};
     let encoding = p::str(v, "encoding");
     let line_end = p::str(v, "lineEnd");
     let allow = p::bool(v, "allowSubstitution");
@@ -631,14 +637,7 @@ pub fn txt_options(v: &Value) -> Option<wordcraft_formats::txt::TxtSaveOptions> 
     }
     let mut o = TxtSaveOptions::default();
     if let Some(e) = encoding {
-        o.encoding = match e.trim().to_ascii_lowercase().as_str() {
-            "windows" | "ansi" => TxtEncoding::Windows,
-            "msdos" | "ms-dos" | "oem" | "ibm437" | "cp437" | "437" => TxtEncoding::MsDos,
-            "utf-8" | "utf8" => TxtEncoding::Utf8,
-            "utf-16le" | "utf-16" | "unicode" => TxtEncoding::Utf16Le,
-            "utf-16be" | "unicodefffe" => TxtEncoding::Utf16Be,
-            label => TxtEncoding::Label(label.to_string()),
-        };
+        o.encoding = txt_encoding(e);
     }
     if let Some(l) = line_end {
         o.line_end = match l.trim().to_ascii_lowercase().as_str() {
@@ -650,6 +649,21 @@ pub fn txt_options(v: &Value) -> Option<wordcraft_formats::txt::TxtSaveOptions> 
     }
     o.allow_substitution = allow.unwrap_or(false);
     Some(o)
+}
+
+/// A File Conversion `encoding` parameter as an encoding: `"windows"`, `"msdos"`, `"utf-8"`,
+/// `"utf-16le"`, `"utf-16be"` or any other encoding label (an unknown one reads and writes as
+/// windows-1252).
+pub fn txt_encoding(e: &str) -> wordcraft_formats::txt::TxtEncoding {
+    use wordcraft_formats::txt::TxtEncoding;
+    match e.trim().to_ascii_lowercase().as_str() {
+        "windows" | "ansi" => TxtEncoding::Windows,
+        "msdos" | "ms-dos" | "oem" | "ibm437" | "cp437" | "437" => TxtEncoding::MsDos,
+        "utf-8" | "utf8" => TxtEncoding::Utf8,
+        "utf-16le" | "utf-16" | "unicode" => TxtEncoding::Utf16Le,
+        "utf-16be" | "unicodefffe" => TxtEncoding::Utf16Be,
+        label => TxtEncoding::Label(label.to_string()),
+    }
 }
 
 /// `strict: true` is for a PDF or a page image only: any other output is a parameter error.

@@ -820,6 +820,10 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
             let _ = app.run("tools.customizeRibbon", json!({}));
         }
     });
+    // Last, as Word's Advanced pane ends with General.
+    ui.add_space(8.0);
+    section(ui, "General");
+    flag(app, ui, "Confirm file format conversion on open", "confirmConversions", pr.confirm_conversions);
 }
 
 /// The user templates folder (#2852): where File › New finds personal templates and Save as Word
