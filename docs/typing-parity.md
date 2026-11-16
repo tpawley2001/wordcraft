@@ -11,6 +11,7 @@
 
 > **Last reviewed:** 2026-10-11 · **Last updated:** 2026-11-14 · **Change:** trivial (in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows; earlier: Decrease Font Size steps one point below 8 pt and 10 pt above 72 pt; earlier: AutoFormat Now under Track Changes records a tracked deletion and insertion, skips locked content controls and labels inside field results)
 
+
 What Word does when you type, observed black-box (same keystrokes typed into Word and
 WordCraft, results read back paragraph by paragraph) and pinned by tests in
 `crates/engine/src/tests/typing.rs`. When typing behaviour changes, change it here and in the

@@ -159,6 +159,16 @@ pub(super) fn set_props(s: &mut Session, v: &Value) -> CmdResult {
     sel_result(s)
 }
 
+/// A list item that moves to another level takes that level's indents: a direct indent (a ruler
+/// drag, a pasted block, a Word file's `w:ind`) would otherwise win over them and leave the item
+/// out of line with its level (#4287).
+pub(super) fn drop_direct_indents(p: &mut ParaProps) {
+    p.indent_left = None;
+    p.indent_first = None;
+    p.indent_left_chars = None;
+    p.indent_first_chars = None;
+}
+
 pub fn indent(s: &mut Session, _: &Value) -> CmdResult {
     let a = s.sel.ordered().0;
     let paths = crate::cmd::selected_paths(s);
@@ -170,7 +180,13 @@ pub fn indent(s: &mut Session, _: &Value) -> CmdResult {
         };
         let para = s.doc.para_mut(a.story, &path)?;
         match num {
-            Some(n) => para.props.numbering = Some(NumRef { num: n.num, level: n.level.saturating_add(1).min(8) }),
+            Some(n) => {
+                let level = n.level.saturating_add(1).min(8);
+                para.props.numbering = Some(NumRef { num: n.num, level });
+                if level != n.level {
+                    drop_direct_indents(&mut para.props);
+                }
+            }
             None => {
                 let edge = r.indent_left.min(r.indent_left + r.indent_first);
                 let next = (((edge / tab).floor() + 1.0) * tab).max(0.0);
@@ -194,7 +210,13 @@ pub fn outdent(s: &mut Session, _: &Value) -> CmdResult {
         };
         let para = s.doc.para_mut(a.story, &path)?;
         match num {
-            Some(n) => para.props.numbering = Some(NumRef { num: n.num, level: n.level.saturating_sub(1) }),
+            Some(n) => {
+                let level = n.level.saturating_sub(1);
+                para.props.numbering = Some(NumRef { num: n.num, level });
+                if level != n.level {
+                    drop_direct_indents(&mut para.props);
+                }
+            }
             None => {
                 let edge = r.indent_left.min(r.indent_left + r.indent_first);
                 // A hanging first line at the margin must not be pushed into it.
