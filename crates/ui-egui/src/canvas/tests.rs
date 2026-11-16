@@ -2826,6 +2826,8 @@ fn context_menu_offers_the_ribbons_paste_items() {
         a.session.relayout();
         a.run("select.text", json!({"text": "Bold"})).unwrap();
         a.run("edit.copy", json!({})).unwrap();
+        // Pastes land against other words; smart cut and paste spacing has its own tests.
+        a.run("file.options", json!({"smartCutPaste": false})).unwrap();
         let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
             |ui, app: &mut WordApp| {
                 let ctx = ui.ctx().clone();
