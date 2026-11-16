@@ -420,7 +420,6 @@ fn float_table_areas(page: &Page) -> Vec<(&Path, Rect)> {
         .collect()
 }
 
-/// How far `v` is outside the band `top..top + h`.
 /// The point (x, y) on page `p` taken back into the upright frame of the text box showing story
 /// `id` that it falls in, when that box's text is drawn turned (see [`crate::box_text_spin`]).
 /// Linked boxes show one story in several frames: the one whose turned area holds the point,
@@ -439,6 +438,7 @@ fn unturn_in_box(p: &Page, id: u32, x: f32, y: f32) -> (f32, f32) {
     frames.min_by(|a, b| a.1.total_cmp(&b.1)).map_or((x, y), |(pt, _)| pt)
 }
 
+/// How far `v` is outside the band `top..top + h`.
 fn band_dist(v: f32, top: f32, h: f32) -> f32 {
     if v < top {
         top - v
