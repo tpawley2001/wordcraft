@@ -131,7 +131,7 @@ pub fn menu(response: &egui::Response) -> egui::Popup<'_> {
 
 /// A right-to-left menu's layout: items against the right edge. Not justified, because egui
 /// starts a full-width button's text at its left.
-fn menu_layout() -> Layout {
+pub(crate) fn menu_layout() -> Layout {
     Layout::top_down(Align::Max)
 }
 

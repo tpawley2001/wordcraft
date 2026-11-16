@@ -1,6 +1,8 @@
 //! Advance widths Word gives Verdana, Tahoma, Century Gothic, SimSun, Aptos, Aptos Display,
 //! Trebuchet MS, Garamond, Consolas, Comic Sans MS, Corbel, Candara, Constantia, Tw Cen MT, Georgia,
-//! Arial Black, Segoe UI, Bookman Old Style, Perpetua, Gill Sans MT, Palatino Linotype and Microsoft Sans Serif when the font isn't installed: their text is drawn with a substitute, but each character keeps the width Word
+//! Arial Black, Segoe UI, Bookman Old Style, Perpetua, Gill Sans MT, Palatino Linotype,
+//! Microsoft Sans Serif, Yu Mincho, Yu Gothic, MS PGothic, MS Mincho and MS Gothic when the
+//! font isn't installed: their text is drawn with a substitute, but each character keeps the width Word
 //! gives it, so lines break where Word breaks them.
 
 /// The advance (em) Word gives `c` in `family` (bold / italic) when that font isn't installed,
@@ -8,7 +10,11 @@
 /// ("Verdana", "Tahoma", "Century Gothic", "SimSun" or "宋体", "Aptos", "Aptos Display",
 /// "Trebuchet MS", "Garamond", "Consolas", "Comic Sans MS", "Corbel", "Candara", "Constantia",
 /// "Tw Cen MT", "Georgia", "Arial Black", "Segoe UI", "Bookman Old Style", "Perpetua",
-/// "Gill Sans MT", "Palatino Linotype", "Microsoft Sans Serif"). Consolas is fixed-pitch: every Windows-1252 character except the controls is
+/// "Gill Sans MT", "Palatino Linotype", "Microsoft Sans Serif", "Yu Mincho" / "游明朝",
+/// "Yu Gothic" / "游ゴシック", "MS PGothic" / "ＭＳ Ｐゴシック", "MS Mincho" / "ＭＳ 明朝",
+/// "MS Gothic" / "ＭＳ ゴシック"). MS Mincho and MS Gothic give printable ASCII U+0020-U+007E
+/// 0.5 em in every style; other characters keep the substitute's advance.
+/// Consolas is fixed-pitch: every Windows-1252 character except the controls is
 /// 0.55 em in every style. A style with no table of its own (Tahoma Italic, SimSun Bold,
 /// Trebuchet MS Bold Italic) takes the regular widths: Word synthesises it from the regular
 /// face with the same advances. Tw Cen MT was only measured in bold, so its other styles keep
@@ -18,6 +24,11 @@ pub fn missing_font_advance(family: &str, bold: bool, italic: bool, c: char) -> 
     if family.eq_ignore_ascii_case("consolas") {
         // Fixed-pitch: Word's PDFs give every character 550/1000 em in every style.
         return cp1252_code(c).filter(|&code| code >= 0x20 && code != 0x7F).map(|_| 0.55);
+    }
+    if family.eq_ignore_ascii_case("ms mincho") || family == "ＭＳ 明朝" || family.eq_ignore_ascii_case("ms gothic") || family == "ＭＳ ゴシック"
+    {
+        // Only printable ASCII is half-width; Latin-1 signs can be full-width in these faces.
+        return (' '..='~').contains(&c).then_some(0.5);
     }
     let table = table(family, bold, italic)?;
     let code = cp1252_code(c)?;
@@ -74,6 +85,12 @@ fn table(family: &str, bold: bool, italic: bool) -> Option<&'static [(u8, u16)]>
         (PALATINO_LINOTYPE, Some(PALATINO_LINOTYPE_BOLD), Some(PALATINO_LINOTYPE_ITALIC), Some(PALATINO_LINOTYPE_BOLD_ITALIC))
     } else if is("microsoft sans serif") {
         (MICROSOFT_SANS_SERIF, None, None, None)
+    } else if is("yu mincho") || family == "游明朝" {
+        (YU_MINCHO, None, None, None)
+    } else if is("yu gothic") || family == "游ゴシック" {
+        (YU_GOTHIC, Some(YU_GOTHIC_BOLD), None, None)
+    } else if is("ms pgothic") || family == "ＭＳ Ｐゴシック" {
+        (MS_PGOTHIC, None, None, None)
     } else {
         return None;
     };
@@ -719,6 +736,39 @@ const MICROSOFT_SANS_SERIF: &[(u8, u16)] = &[
     (0x7A, 500),
 ];
 
+/// 33 codes.
+#[rustfmt::skip]
+const YU_MINCHO: &[(u8, u16)] = &[
+    (0x20, 260), (0x21, 320), (0x2D, 393), (0x2E, 273), (0x30, 542), (0x31, 542), (0x32, 542), (0x33, 542), (0x41, 707), (0x42, 689),
+    (0x45, 641), (0x46, 603), (0x48, 823), (0x53, 559), (0x57, 983), (0x61, 479), (0x62, 557), (0x63, 463), (0x64, 561), (0x65, 490),
+    (0x66, 333), (0x67, 524), (0x69, 287), (0x6B, 506), (0x6C, 268), (0x6D, 851), (0x6E, 581), (0x6F, 535), (0x70, 568), (0x72, 388),
+    (0x73, 409), (0x74, 346), (0x76, 485),
+];
+
+/// 50 codes.
+#[rustfmt::skip]
+const YU_GOTHIC: &[(u8, u16)] = &[
+    (0x20, 285), (0x21, 332), (0x24, 578), (0x28, 386), (0x29, 386), (0x2C, 258), (0x2D, 435), (0x2E, 258), (0x30, 556), (0x31, 556),
+    (0x32, 556), (0x33, 556), (0x34, 556), (0x35, 556), (0x37, 556), (0x39, 556), (0x41, 649), (0x49, 292), (0x4D, 919), (0x4E, 748),
+    (0x4F, 732), (0x50, 661), (0x53, 628), (0x54, 629), (0x55, 738), (0x57, 930), (0x61, 558), (0x62, 580), (0x63, 516), (0x64, 578),
+    (0x65, 558), (0x66, 345), (0x67, 548), (0x68, 580), (0x69, 262), (0x6B, 530), (0x6C, 262), (0x6D, 861), (0x6E, 580), (0x6F, 561),
+    (0x70, 580), (0x72, 364), (0x73, 509), (0x74, 352), (0x75, 581), (0x76, 489), (0x79, 492), (0x7A, 460), (0x7B, 386), (0x7D, 386),
+];
+
+/// 18 codes.
+#[rustfmt::skip]
+const YU_GOTHIC_BOLD: &[(u8, u16)] = &[
+    (0x20, 285), (0x24, 621), (0x49, 322), (0x61, 582), (0x63, 552), (0x64, 614), (0x65, 588), (0x67, 581), (0x69, 286), (0x6C, 288),
+    (0x6E, 618), (0x6F, 593), (0x72, 392), (0x74, 380), (0x75, 618), (0x7A, 483), (0x7B, 404), (0x7D, 404),
+];
+
+/// 19 codes.
+#[rustfmt::skip]
+const MS_PGOTHIC: &[(u8, u16)] = &[
+    (0x20, 305), (0x40, 668), (0x41, 633), (0x47, 680), (0x4D, 742), (0x50, 617), (0x53, 602), (0x55, 641), (0x61, 477), (0x63, 500),
+    (0x64, 496), (0x65, 500), (0x68, 500), (0x69, 211), (0x6C, 211), (0x6E, 500), (0x6F, 508), (0x72, 348), (0x74, 352),
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -779,6 +829,10 @@ mod tests {
             PALATINO_LINOTYPE_ITALIC,
             PALATINO_LINOTYPE_BOLD_ITALIC,
             MICROSOFT_SANS_SERIF,
+            YU_MINCHO,
+            YU_GOTHIC,
+            YU_GOTHIC_BOLD,
+            MS_PGOTHIC,
         ];
         for t in all {
             assert!(t.windows(2).all(|w| w[0].0 < w[1].0));

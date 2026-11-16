@@ -704,6 +704,8 @@ mod tests {
         app.run("caret.docEnd", serde_json::json!({})).unwrap();
         app.run("text.insert", serde_json::json!({"text": " encore"})).unwrap();
         app.run("file.save", serde_json::json!({})).unwrap();
+        // A plain-text save asks for its encoding first (File Conversion): the default choice.
+        app.run("ui.fileConversion", serde_json::json!({"answer": "ok"})).unwrap();
         assert!(std::fs::read_to_string(&path).unwrap().contains("Bonjour encore"));
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "a second file was written");
 

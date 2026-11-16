@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::math::{Arg, LimLoc, MAX_DEPTH, MNode, MRun, MScr, MSty, ScriptKind, has_number_mark, merge_runs, to_linear};
+use crate::math_autocorrect::MathAutoCorrect;
 
 /// A caret position inside an equation.
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -740,9 +741,20 @@ pub fn next_placeholder(root: &Arg, pos: &MathPos, back: bool) -> Option<MathPos
     pick.map(|p| MathPos { path: (*p).clone(), off: 0 })
 }
 
-/// Math AutoCorrect: replace `\name` just before the caret with its character. Returns the new
-/// caret when something changed.
+/// Math AutoCorrect with Word's built-in list: replace `\name` just before the caret with its
+/// value. Returns the new caret when something changed.
 pub fn autocorrect(root: &mut Arg, pos: &MathPos) -> Option<MathPos> {
+    autocorrect_with(root, pos, &MathAutoCorrect::default(), false)
+}
+
+/// Math AutoCorrect with the options `ac`: replace `\name` just before the caret with its value
+/// and, with `operators` (the next character is a space, tab or relation), an entry not starting
+/// with `\` (`->`, `<=`…) too. A value of several characters (`\quadratic`) goes in as linear
+/// text, to be built up like typed text. Returns the new caret when something changed.
+pub fn autocorrect_with(root: &mut Arg, pos: &MathPos, ac: &MathAutoCorrect, operators: bool) -> Option<MathPos> {
+    if !ac.replace_text {
+        return None;
+    }
     let pos = clamp(root, pos);
     let a = arg_at_mut(root, &pos.path)?;
     let (i, k) = match locate(a, pos.off) {
@@ -757,16 +769,25 @@ pub fn autocorrect(root: &mut Arg, pos: &MathPos) -> Option<MathPos> {
         return None;
     }
     let before: Vec<char> = r.text.chars().take(k).collect();
-    let slash = before.iter().rposition(|c| *c == '\\')?;
-    let name: String = before.get(slash + 1..)?.iter().collect();
-    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return None;
-    }
-    let c = crate::math_symbols::symbol(&name)?;
-    let b0 = byte_at(&r.text, slash);
+    let backslash = before.iter().rposition(|c| *c == '\\').and_then(|slash| {
+        let name: String = before.get(slash..)?.iter().collect();
+        let ok = name.chars().count() > 1 && name.chars().skip(1).all(|c| c.is_ascii_alphanumeric());
+        let value = if ok { ac.replacement(&name) } else { None };
+        value.map(|v| (k - slash, v.to_string()))
+    });
+    let found = backslash.or_else(|| {
+        if !operators {
+            return None;
+        }
+        let text: String = before.iter().collect();
+        ac.operator_suffix(&text).map(|(n, v)| (n, v.to_string()))
+    });
+    let (n, value) = found?;
+    let from = k.checked_sub(n)?;
+    let b0 = byte_at(&r.text, from);
     let b1 = byte_at(&r.text, k);
-    r.text.replace_range(b0..b1, &c.to_string());
-    Some(MathPos { path: pos.path, off: pos.off - name.chars().count() })
+    r.text.replace_range(b0..b1, &value);
+    Some(MathPos { path: pos.path, off: pos.off.saturating_sub(n).saturating_add(value.chars().count()) })
 }
 
 /// The character just before the caret is an n-ary operator (∫, ∑…) in plain math text, as
@@ -793,8 +814,9 @@ pub fn nary_node_before(root: &Arg, pos: &MathPos) -> bool {
     i.checked_sub(1).and_then(|i| a.get(i)).is_some_and(|n| matches!(n, MNode::Nary { .. }))
 }
 
-/// Characters that make typed linear text build up into structures.
-fn builds(s: &str) -> bool {
+/// Characters that make typed linear text build up into structures (`functions`: the
+/// recognized function names).
+fn builds(s: &str, functions: &[&str]) -> bool {
     s.chars().any(|c| {
         matches!(
             c,
@@ -831,7 +853,7 @@ fn builds(s: &str) -> bool {
                 | '\u{2061}'
         ) || crate::math_linear::is_combining(c)
             || crate::math::is_nary_char(c)
-    }) || crate::math_linear::FUNCTION_NAMES.iter().any(|f| s.contains(f))
+    }) || functions.iter().any(|f| s.contains(f))
 }
 
 /// A run is plain math text that build-up may rewrite.
@@ -859,6 +881,11 @@ fn unbalanced(nodes: &[MNode], depth: usize) -> bool {
 /// Build up the linear text before the caret in its argument (`latex`: read it as LaTeX).
 /// Returns the new caret when the structure changed.
 pub fn build_up(root: &mut Arg, pos: &MathPos, latex: bool) -> Option<MathPos> {
+    build_up_with(root, pos, latex, crate::math_linear::FUNCTION_NAMES)
+}
+
+/// [`build_up`] with `functions` as the recognized function names.
+pub fn build_up_with(root: &mut Arg, pos: &MathPos, latex: bool, functions: &[&str]) -> Option<MathPos> {
     let pos = clamp(root, pos);
     let a = arg_at_mut(root, &pos.path)?;
     let at = split_at(a, pos.off);
@@ -870,11 +897,11 @@ pub fn build_up(root: &mut Arg, pos: &MathPos, latex: bool) -> Option<MathPos> {
         return None;
     }
     let text = to_linear(&region);
-    if !latex && !builds(&text) {
+    if !latex && !builds(&text, functions) {
         tidy(root);
         return None;
     }
-    let mut built = if latex { crate::math_latex::parse_latex(&text) } else { crate::math_linear::parse(&text) };
+    let mut built = if latex { crate::math_latex::parse_latex(&text) } else { crate::math_linear::parse_with_functions(&text, functions) };
     // `#` numbering wraps the whole equation, not a piece of it.
     if let [MNode::EqArr { rows }] = built.as_slice()
         && rows.len() == 1

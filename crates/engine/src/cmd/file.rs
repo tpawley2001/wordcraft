@@ -94,9 +94,9 @@ pub fn specs() -> Vec<CommandSpec> {
             .pure(),
         CommandSpec::new("file.save", "Save", "File", save)
             .key("Mod+S / Shift+F12 / Alt+Shift+F2")
-            .params(r#"{"path"?: string, "password"?: string (encrypt this and later saves with it, as file.encrypt does), "markup"?: bool (Print Markup for a PDF, PNG, HTML, Markdown or text copy: comments shown; default file.printMarkup), "format"?: "wordml2003" (an .xml file as a Word 2003 XML Document) | "flatopc" (as a Word XML Document, the default; saving over a Word 2003 XML file keeps that format), "strict"?: bool (a .pdf or .png only: refuse, writing nothing, if a character can't be drawn or a picture is missing; see file.strictReport), "backup"?: bool (false: don't make the backup copy for this save (AutoSave))}"#)
+            .params(r#"{"path"?: string, "password"?: string (encrypt this and later saves with it, as file.encrypt does), "markup"?: bool (Print Markup for a PDF, PNG, HTML, Markdown or text copy: comments shown; default file.printMarkup), "format"?: "wordml2003" (an .xml file as a Word 2003 XML Document) | "flatopc" (as a Word XML Document, the default; saving over a Word 2003 XML file keeps that format), "strict"?: bool (a .pdf or .png only: refuse, writing nothing, if a character can't be drawn or a picture is missing; see file.strictReport), "backup"?: bool (false: don't make the backup copy for this save (AutoSave)), "encoding"?: "windows" | "msdos" | "utf-8" | "utf-16le" | "utf-16be" | label (a .txt file: Word's File Conversion encoding, e.g. "windows-1251"; without encoding, lineEnd and allowSubstitution a .txt file is UTF-8), "lineEnd"?: "crlf" | "cr" | "lf" | "lfcr", "allowSubstitution"?: bool (a character the encoding lacks becomes its closest match, else ?)}"#)
             .pure(),
-        CommandSpec::new("file.saveAs", "Save As", "File", save_as).key(super::mac_or("F12 / Mod+Shift+S", "F12 / Alt+F2")).params(r#"{"path": string, "password"?: string, "markup"?: bool, "format"?: string (as file.save), "strict"?: bool (as file.save)}"#).pure(),
+        CommandSpec::new("file.saveAs", "Save As", "File", save_as).key(super::mac_or("F12 / Mod+Shift+S", "F12 / Alt+F2")).params(r#"{"path": string, "password"?: string, "markup"?: bool, "format"?: string (as file.save), "strict"?: bool (as file.save), "encoding"?: string, "lineEnd"?: string, "allowSubstitution"?: bool (as file.save)}"#).pure(),
         // Pure: the password must not land in Repeat or a recorded macro, and it isn't an edit
         // to undo; it marks the document as changed itself.
         // Word's "(Read-Only)": the document can be edited, but Save can't overwrite its file.
@@ -612,7 +612,43 @@ pub fn export_options(s: &Session, v: &Value) -> crate::io::ExportOptions {
         word2003: p::str(v, "format") == Some(FORMAT_WORD_2003),
         numeral: s.view.numeral.resolve(crate::session::system_locale()),
         strict: p::bool(v, "strict").unwrap_or(false),
+        txt: txt_options(v),
     }
+}
+
+/// A plain-text save's File Conversion choices from `encoding` (`"windows"`, `"msdos"`,
+/// `"utf-8"`, `"utf-16le"`, `"utf-16be"` or any other encoding label such as `"windows-1251"`;
+/// an unknown label is windows-1252), `lineEnd` (`"crlf"`, `"cr"`, `"lf"`, `"lfcr"`) and
+/// `allowSubstitution`; `None` when none is given (UTF-8, CRLF, as before).
+pub fn txt_options(v: &Value) -> Option<wordcraft_formats::txt::TxtSaveOptions> {
+    use wordcraft_formats::txt::{LineEnd, TxtEncoding, TxtSaveOptions};
+    let encoding = p::str(v, "encoding");
+    let line_end = p::str(v, "lineEnd");
+    let allow = p::bool(v, "allowSubstitution");
+    if encoding.is_none() && line_end.is_none() && allow.is_none() {
+        return None;
+    }
+    let mut o = TxtSaveOptions::default();
+    if let Some(e) = encoding {
+        o.encoding = match e.trim().to_ascii_lowercase().as_str() {
+            "windows" | "ansi" => TxtEncoding::Windows,
+            "msdos" | "ms-dos" | "oem" | "ibm437" | "cp437" | "437" => TxtEncoding::MsDos,
+            "utf-8" | "utf8" => TxtEncoding::Utf8,
+            "utf-16le" | "utf-16" | "unicode" => TxtEncoding::Utf16Le,
+            "utf-16be" | "unicodefffe" => TxtEncoding::Utf16Be,
+            label => TxtEncoding::Label(label.to_string()),
+        };
+    }
+    if let Some(l) = line_end {
+        o.line_end = match l.trim().to_ascii_lowercase().as_str() {
+            "cr" => LineEnd::Cr,
+            "lf" => LineEnd::Lf,
+            "lfcr" => LineEnd::LfCr,
+            _ => LineEnd::CrLf,
+        };
+    }
+    o.allow_substitution = allow.unwrap_or(false);
+    Some(o)
 }
 
 /// `strict: true` is for a PDF or a page image only: any other output is a parameter error.
