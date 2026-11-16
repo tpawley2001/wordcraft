@@ -432,6 +432,13 @@ fn band_dist(v: f32, top: f32, h: f32) -> f32 {
 }
 
 impl DocLayout {
+    /// [`DocLayout::hit`] while text box story `straight` is drawn straight for editing (#6056).
+    /// STUB: the task implements it.
+    pub fn hit_with(&self, page: usize, x: f32, y: f32, story: StoryRef, straight: Option<u32>) -> Option<Pos> {
+        let _ = straight;
+        self.hit(page, x, y, story)
+    }
+
     /// The position nearest to (x, y) on `page`, in `story`.
     pub fn hit(&self, page: usize, x: f32, y: f32, story: StoryRef) -> Option<Pos> {
         let p = self.pages.get(page)?;

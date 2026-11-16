@@ -164,6 +164,7 @@ mod table_no_wrap;
 mod tall_footer_leading;
 mod textbox;
 mod trailing_page_break;
+mod turned_box_edit;
 mod turned_cell_autofit;
 mod underline_from_font;
 mod underline_style_geometry;
