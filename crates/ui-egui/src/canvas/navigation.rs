@@ -66,9 +66,15 @@ pub(super) fn top_page(rects: &[Rect], bands: &[(f32, f32)], y: f32) -> usize {
 /// the window's top ([`top_page`]).
 pub(super) fn viewed_page(caret: Option<(usize, f32, f32)>, rects: &[Rect], bands: &[(f32, f32)], top: f32, height: f32) -> usize {
     match caret {
-        Some((page, from, to)) if to >= top && from <= top + height => page,
+        Some((page, from, to)) if on_screen(from, to, top, height) => page,
         _ => top_page(rects, bands, top),
     }
+}
+
+/// Whether any of `from` .. `to` (content coordinates) is inside the window `top` .. `top + height`:
+/// the "caret on screen" test of [`viewed_page`] and Use smart cursoring.
+pub(super) fn on_screen(from: f32, to: f32, top: f32, height: f32) -> bool {
+    to >= top && from <= top + height
 }
 
 /// Convert a page position (points) to screen coordinates (for agents and tests).

@@ -1,5 +1,5 @@
 //! Charts WordCraft makes and edits (Insert › Chart): the chart type, its data (categories and
-//! series), title, legend and data labels.
+//! series), title, legend, data labels and the value axis's bounds, major unit and number format.
 //!
 //! A chart object ([`crate::graphic::Graphic`] with `chart` set) keeps this model next to the
 //! items it is drawn with; the DOCX writer turns it into a chart part (`c:chartSpace`) with the
@@ -132,6 +132,54 @@ pub struct ChartSeries {
     pub values: Vec<Option<f64>>,
 }
 
+/// Longest value axis number format code, bytes.
+pub const MAX_FORMAT: usize = 255;
+/// Most major-unit steps between a value axis's minimum and maximum.
+pub const MAX_AXIS_STEPS: f64 = 1000.0;
+
+/// The value axis (Format Axis): each setting `None` = Auto (number format: General).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ValueAxis {
+    #[serde(default)]
+    pub min: Option<f64>,
+    #[serde(default)]
+    pub max: Option<f64>,
+    /// The step between ticks.
+    #[serde(default)]
+    pub major_unit: Option<f64>,
+    /// Number format code of the tick labels.
+    #[serde(default)]
+    pub number_format: Option<String>,
+}
+
+impl ValueAxis {
+    /// Whether every setting is automatic.
+    pub fn is_auto(&self) -> bool {
+        *self == ValueAxis::default()
+    }
+
+    /// Drop what can't be drawn or saved: values that aren't finite, a maximum not above the
+    /// minimum, a major unit not above zero or giving more than [`MAX_AXIS_STEPS`] steps, and an
+    /// empty or longer than [`MAX_FORMAT`] bytes number format.
+    pub fn sanitize(&mut self) {
+        self.min = self.min.filter(|v| v.is_finite());
+        self.max = self.max.filter(|v| v.is_finite());
+        if let (Some(lo), Some(hi)) = (self.min, self.max)
+            && hi <= lo
+        {
+            self.max = None;
+        }
+        self.major_unit = self.major_unit.filter(|u| u.is_finite() && *u > 0.0);
+        if let (Some(lo), Some(hi), Some(u)) = (self.min, self.max, self.major_unit)
+            && (hi - lo) / u > MAX_AXIS_STEPS
+        {
+            self.major_unit = None;
+        }
+        self.number_format = self.number_format.take().filter(|f| !f.is_empty() && f.len() <= MAX_FORMAT);
+    }
+}
+
 /// A chart WordCraft can edit.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -151,6 +199,9 @@ pub struct ChartSpec {
     /// Show each point's value next to it.
     #[serde(default)]
     pub data_labels: bool,
+    /// The value axis's settings (scatter charts: the Y axis). Pie and doughnut charts have none.
+    #[serde(default)]
+    pub value_axis: ValueAxis,
 }
 
 impl ChartSpec {
@@ -172,6 +223,7 @@ impl ChartSpec {
             title: None,
             legend: Some(LegendPos::Bottom),
             data_labels: false,
+            value_axis: ValueAxis::default(),
         }
     }
 
@@ -229,6 +281,7 @@ impl ChartSpec {
             s.values.resize(n, None);
         }
         self.title = self.title.as_deref().map(clean_text).filter(|t| !t.is_empty());
+        self.value_axis.sanitize();
     }
 
     /// The chart after `sanitize`.
@@ -281,5 +334,27 @@ mod tests {
         assert_eq!(c.categories, vec!["a".to_string(), String::new()]);
         assert_eq!(ChartType::from_id("BARSTACKED"), Some(ChartType::BarStacked));
         assert_eq!(LegendPos::from_id("top"), Some(LegendPos::Top));
+    }
+
+    #[test]
+    fn sanitize_drops_axis_settings_that_cannot_be_drawn() {
+        let axis = |min, max, major_unit, f: &str| {
+            let mut a = ValueAxis { min, max, major_unit, number_format: Some(f.to_string()) };
+            a.sanitize();
+            a
+        };
+        let a = axis(Some(f64::NAN), Some(f64::INFINITY), Some(-1.0), "");
+        assert!(a.is_auto(), "{a:?}");
+        let a = axis(Some(5.0), Some(5.0), Some(0.0), &"0".repeat(MAX_FORMAT + 1));
+        assert_eq!(a, ValueAxis { min: Some(5.0), ..Default::default() });
+        let a = axis(Some(0.0), Some(1e9), Some(1.0), "0.0");
+        assert_eq!(a, ValueAxis { min: Some(0.0), max: Some(1e9), major_unit: None, number_format: Some("0.0".into()) });
+        let a = axis(Some(0.0), Some(60.0), Some(20.0), "0%");
+        assert_eq!(a.major_unit, Some(20.0));
+        // Old saved charts without an axis still read.
+        let c: ChartSpec = serde_json::from_str(r#"{"type":"column"}"#).unwrap();
+        assert!(c.value_axis.is_auto());
+        let j = serde_json::to_string(&ValueAxis { major_unit: Some(2.0), ..Default::default() }).unwrap();
+        assert!(j.contains("\"majorUnit\":2.0") && j.contains("\"numberFormat\":null"), "{j}");
     }
 }

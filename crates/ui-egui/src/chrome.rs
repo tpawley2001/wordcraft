@@ -52,8 +52,12 @@ fn qat_button(ui: &mut Ui, app: &mut WordApp, icon: &str, tip: &str, id: &str, e
     }
     let c = if enabled { t.icon } else { t.text_disabled };
     icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(16.0, 16.0)), icon, c, if enabled { t.accent } else { c });
-    let sc = crate::widgets::shortcut_text(app, id);
-    let resp = resp.on_hover_text(if sc.is_empty() { tip.to_string() } else { format!("{tip} ({sc})") });
+    let sc = if app.ui.show_shortcuts_in_tips { crate::widgets::shortcut_text(app, id) } else { String::new() };
+    let resp = if app.ui.screen_tip_style == crate::widgets::ScreenTipStyle::Hidden {
+        resp
+    } else {
+        resp.on_hover_text(if sc.is_empty() { tip.to_string() } else { format!("{tip} ({sc})") })
+    };
     if resp.clicked() && enabled {
         let _ = app.run(id, json!({}));
     }

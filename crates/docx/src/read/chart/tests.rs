@@ -106,10 +106,10 @@ fn doughnut_slices_are_annuli() {
 
 #[test]
 fn nice_scale_rounds_to_round_steps() {
-    assert_eq!(nice_scale(0.0, 22.3, true, None, None), Scale { lo: 0.0, hi: 25.0, step: 5.0 });
-    assert_eq!(nice_scale(0.0, 100.0, true, None, None), Scale { lo: 0.0, hi: 120.0, step: 20.0 });
-    assert_eq!(nice_scale(0.0, 22.3, true, Some(0.0), Some(30.0)).hi, 30.0);
-    let flat = nice_scale(0.0, 0.0, true, None, None);
+    assert_eq!(nice_scale(0.0, 22.3, true, None, None, None), Scale { lo: 0.0, hi: 25.0, step: 5.0 });
+    assert_eq!(nice_scale(0.0, 100.0, true, None, None, None), Scale { lo: 0.0, hi: 120.0, step: 20.0 });
+    assert_eq!(nice_scale(0.0, 22.3, true, Some(0.0), Some(30.0), None).hi, 30.0);
+    let flat = nice_scale(0.0, 0.0, true, None, None, None);
     assert!(flat.lo == 0.0 && (flat.hi - 1.2).abs() < 1e-9 && flat.step == 0.2, "{flat:?}");
 }
 
@@ -278,16 +278,16 @@ fn series_without_values_draw_nothing() {
 #[test]
 fn value_scale_starts_bars_at_zero_for_negative_data() {
     // All-negative data pads below only: the axis ends at zero, as positive data's starts there.
-    assert_eq!(nice_scale(-10.0, -2.0, true, None, None), Scale { lo: -12.0, hi: 0.0, step: 2.0 });
-    assert_eq!(nice_scale(-1050.0, -1000.0, false, None, None).hi, -1000.0);
+    assert_eq!(nice_scale(-10.0, -2.0, true, None, None, None), Scale { lo: -12.0, hi: 0.0, step: 2.0 });
+    assert_eq!(nice_scale(-1050.0, -1000.0, false, None, None, None).hi, -1000.0);
 }
 
 #[test]
 fn narrow_line_scales_leave_zero_out_but_bars_keep_it() {
     assert!(narrow(1000.0, 1050.0) && narrow(-1050.0, -1000.0));
     assert!(!narrow(10.0, 100.0) && !narrow(0.0, 1.0));
-    assert_eq!(nice_scale(1000.0, 1050.0, false, None, None).lo, 1000.0);
-    assert_eq!(nice_scale(1000.0, 1050.0, true, None, None).lo, 0.0);
+    assert_eq!(nice_scale(1000.0, 1050.0, false, None, None, None).lo, 1000.0);
+    assert_eq!(nice_scale(1000.0, 1050.0, true, None, None, None).lo, 0.0);
 }
 
 #[test]
@@ -590,4 +590,41 @@ fn series_without_a_usable_c_idx_take_their_place() {
     // The largest unsignedInt `c:idx` allows draws, without a panic.
     let big = [renumbered(&a, &format!(r#"<c:idx val="{}"/>"#, u32::MAX))];
     assert_eq!(column_colours(&big).0.len(), 1);
+}
+
+/// The value axis's tick label texts of a chart, in drawing order.
+fn digit_texts(items: &[GraphicItem]) -> Vec<String> {
+    let mut out: Vec<String> = items
+        .iter()
+        .filter_map(|it| match it {
+            GraphicItem::Text { text, .. } if text.chars().any(|c| c.is_ascii_digit()) => Some(text.trim().to_string()),
+            _ => None,
+        })
+        .collect();
+    out.sort_by_key(|t| t.parse::<i64>().unwrap_or(i64::MAX));
+    out
+}
+
+#[test]
+fn a_word_chart_s_major_unit_sets_its_ticks() {
+    let chart = |val_ax: &str| {
+        let plot = format!(
+            r#"<c:barChart><c:barDir val="col"/><c:grouping val="clustered"/>{}<c:axId val="1"/><c:axId val="2"/></c:barChart><c:catAx><c:axId val="1"/><c:delete val="1"/></c:catAx><c:valAx><c:axId val="2"/>{val_ax}</c:valAx>"#,
+            ser(0, "S", None, &["A", "B", "C"], &["3", "17", "37"]),
+        );
+        digit_texts(&chart_items(&space(&plot), &theme(), 300.0, 200.0))
+    };
+    // Without a major unit: the automatic scale, 0 to 40 in steps of 10.
+    assert_eq!(chart(""), ["0", "10", "20", "30", "40"]);
+    // Word's major unit: the step, with the automatic top rounded out to a multiple of it.
+    assert_eq!(chart(r#"<c:crossBetween val="between"/><c:majorUnit val="15"/>"#), ["0", "15", "30", "45"]);
+    assert_eq!(
+        chart(r#"<c:scaling><c:orientation val="minMax"/><c:max val="60"/><c:min val="0"/></c:scaling><c:majorUnit val="20"/>"#),
+        ["0", "20", "40", "60"]
+    );
+    // A hostile major unit (too many ticks, zero, negative, not a number) falls back to the automatic step.
+    for bad in ["0.0001", "0", "-5", "NaN", "inf", "x"] {
+        assert_eq!(chart(&format!(r#"<c:majorUnit val="{bad}"/>"#)), ["0", "10", "20", "30", "40"], "{bad}");
+    }
+    assert_eq!(nice_scale(3.0, 37.0, true, None, None, Some(5.0)), Scale { lo: 0.0, hi: 40.0, step: 5.0 });
 }

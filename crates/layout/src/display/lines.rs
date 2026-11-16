@@ -59,6 +59,12 @@ impl LineContext<'_, '_, '_> {
             _ => text_color(color, background),
         }
     }
+
+    /// The run's highlight as drawn: none with Show highlighter marks off
+    /// ([`DisplayOptions::hide_highlight`]); the text keeps it.
+    fn highlight(&self, rc: &wordcraft_doc::resolve::ResolvedChar) -> Option<Rgb> {
+        rc.highlight.filter(|_| !self.opts.hide_highlight)
+    }
 }
 
 pub(super) fn lines(input: LineRender<'_, '_, '_>, out: &mut Vec<Draw>) {
@@ -261,17 +267,17 @@ fn draw_glyph_runs(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
         // Moved text marked (none) is plain text, its colour setting aside (Word for Mac).
         let plain_move = (moved_from && m.move_from_mark == DeleteMark::None) || (moved_to && m.move_to_mark == InsertMark::None);
         let color = match (ins, del) {
-            _ if plain_move => text_color(&rc.color, rc.shading.or(rc.highlight)),
+            _ if plain_move => text_color(&rc.color, rc.shading.or(ctx.highlight(rc))),
             (_, Some(r)) if moved_from => m.move_from_color.unwrap_or_else(|| author(r)),
             (Some(r), _) if moved_to => m.move_to_color.unwrap_or_else(|| author(r)),
             (Some(r), _) => m.insert_color.unwrap_or_else(|| author(r)),
             (None, Some(r)) => m.delete_color.unwrap_or_else(|| author(r)),
-            _ => ctx.ink(&rc.color, rc.shading.or(rc.highlight)),
+            _ => ctx.ink(&rc.color, rc.shading.or(ctx.highlight(rc))),
         };
         // The highlight or shading drawn under this run (as filled in the backgrounds pass),
         // else a form field's grey.
         let form_bg = (form_shading_on(ctx) && is_form_cluster(ctx, run_start)).then_some(FIELD_SHADING);
-        let text_bg = rc.highlight.or(rc.shading).or(form_bg);
+        let text_bg = ctx.highlight(rc).or(rc.shading).or(form_bg);
         let ins_mark = ins.map(|_| if moved_to { m.move_to_mark } else { m.insert_mark });
         let del_mark = del.map(|_| if moved_from { m.move_from_mark } else { m.delete_mark });
         if del_mark == Some(DeleteMark::Caret) {
@@ -598,7 +604,7 @@ fn character_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
         if cluster.kind == ClKind::Marker {
             continue;
         }
-        if let Some(color) = style.rc.highlight.or(style.rc.shading)
+        if let Some(color) = ctx.highlight(&style.rc).or(style.rc.shading)
             && !(color == FIELD_SHADING && screen_code_grey(ctx, cluster.start))
         {
             out.push(Draw::Fill {
@@ -830,7 +836,7 @@ fn draw_label_and_hyphen(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
     {
         let gx = ctx.x + label.x;
         let decor = ctx.pl.styles.get(label.style as usize);
-        let fill = decor.and_then(|st| st.rc.highlight.or(st.rc.shading));
+        let fill = decor.and_then(|st| ctx.highlight(&st.rc).or(st.rc.shading));
         if let Some(st) = decor {
             label_backgrounds(ctx, gx, label.width, st, fill, out);
         }
@@ -973,14 +979,14 @@ fn draw_rubies(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
                 face: st.face,
                 size: st.size,
                 glyphs: run.iter().map(|(_, g)| (g.gid, cx + g.dx, y - g.dy)).collect(),
-                color: ctx.ink(&st.rc.color, st.rc.shading.or(st.rc.highlight)),
+                color: ctx.ink(&st.rc.color, st.rc.shading.or(ctx.highlight(&st.rc))),
                 alpha,
                 synth_bold: st.synth_bold,
                 synth_italic: st.synth_italic,
                 text: r.text.clone(),
                 link: None,
                 ranges,
-                text_bg: st.rc.highlight.or(st.rc.shading),
+                text_bg: ctx.highlight(&st.rc).or(st.rc.shading),
                 x_scale: 1.0,
                 missing_widths: st.missing_widths(),
             });

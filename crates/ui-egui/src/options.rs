@@ -241,6 +241,7 @@ fn general(app: &mut WordApp, ui: &mut Ui) {
         ));
     });
     ui.checkbox(&mut app.ui.mini_toolbar, tl!("Show the mini toolbar when text is selected"));
+    screen_tip_style_picker(app, ui);
     let mut dark_page = app.session.view.dark_mode;
     if ui
         .checkbox(&mut dark_page, tl!("Dark page (white text on black)"))
@@ -332,6 +333,10 @@ fn display(app: &mut WordApp, ui: &mut Ui) {
     let mut ruler = app.session.view.ruler;
     if ui.checkbox(&mut ruler, tl!("Show rulers")).changed() {
         let _ = app.run("view.ruler", json!({"value": ruler}));
+    }
+    let mut highlight = app.ui.show_highlight;
+    if ui.checkbox(&mut highlight, tl!("Show highlighter marks")).changed() {
+        let _ = app.run("ui.showHighlight", json!({"value": highlight}));
     }
     numeral_picker(app, ui);
     ui.add_space(8.0);
@@ -593,13 +598,16 @@ fn accessibility(app: &mut WordApp, ui: &mut Ui) {
     }
 }
 
-/// Advanced › Show document content, in Word's order: picture placeholders, text boundaries, crop
-/// marks, field shading, and the draft font with its name and size. Screen settings, kept between
-/// runs. Font Substitution… opens the dialog of the fonts the document shows that aren't installed.
+/// Advanced › Show document content, in Word's order: background colors and images, picture
+/// placeholders, drawings and text boxes, text boundaries, crop marks, field shading, and the draft
+/// font with its name and size. Screen settings, kept between runs. Font Substitution… opens the
+/// dialog of the fonts the document shows that aren't installed.
 fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Show document content");
     for (label, id, mut on) in [
+        (tl!("Show background colors and images in Print Layout view"), "ui.showBackgrounds", app.ui.show_backgrounds),
         (tl!("Show picture placeholders"), "ui.picturePlaceholders", app.ui.picture_placeholders),
+        (tl!("Show drawings and text boxes on screen"), "ui.showDrawings", app.ui.show_drawings),
         (tl!("Show text boundaries"), "ui.textBoundaries", app.ui.text_boundaries),
         (tl!("Show crop marks"), "ui.cropMarks", app.ui.crop_marks),
     ] {
@@ -668,6 +676,8 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     flag(app, ui, "Overtype (typing replaces the characters after the caret)", "overtype", pr.overtype);
     flag(app, ui, "When selecting, automatically select entire word", "autoWordSelection", pr.auto_word_selection);
     flag(app, ui, "Use smart paragraph selection", "smartParagraphSelection", pr.smart_paragraph_selection);
+    flag(app, ui, "Use smart cursoring", "smartCursoring", pr.smart_cursoring);
+    flag(app, ui, "Use Normal style for bulleted or numbered lists", "normalStyleForLists", pr.normal_style_for_lists);
     let mut guides = app.ui.alignment_guides;
     if ui
         .checkbox(&mut guides, tl!("Show alignment guides when moving pictures and shapes"))
@@ -766,6 +776,7 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
             });
         });
     });
+    ui.checkbox(&mut app.ui.show_shortcuts_in_tips, tl!("Show shortcut keys in ScreenTips"));
     let mut keytips = app.ui.keytips_enabled;
     if ui.checkbox(&mut keytips, tl!("Show KeyTips (Alt or F10)")).changed() {
         let _ = app.run("ui.keytips", json!({"value": keytips}));
@@ -1148,3 +1159,26 @@ fn numeral_picker(app: &mut WordApp, ui: &mut Ui) {
 
 #[cfg(test)]
 mod tests;
+
+/// General › ScreenTip style: Word's three choices for the hints over ribbon and toolbar controls.
+fn screen_tip_style_picker(app: &mut WordApp, ui: &mut Ui) {
+    use crate::widgets::ScreenTipStyle;
+    const STYLES: [(ScreenTipStyle, &str); 3] = [
+        (ScreenTipStyle::Descriptions, "Show feature descriptions in ScreenTips"),
+        (ScreenTipStyle::NoDescriptions, "Don't show feature descriptions in ScreenTips"),
+        (ScreenTipStyle::Hidden, "Don't show ScreenTips"),
+    ];
+    ui.horizontal(|ui| {
+        let label = ui.label(tl!("ScreenTip style:"));
+        let current = app.ui.screen_tip_style;
+        let shown = STYLES.iter().find(|(s, _)| *s == current).map_or("", |(_, n)| n);
+        let combo = craft_ui::ComboBox::from_id_salt("screen_tip_style").selected_text(tl!(shown)).width(300.0).show_ui(ui, |ui| {
+            for (style, name) in STYLES {
+                if ui.selectable_label(current == style, tl!(name)).clicked() {
+                    app.ui.screen_tip_style = style;
+                }
+            }
+        });
+        combo.response.labelled_by(label.id);
+    });
+}

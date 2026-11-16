@@ -1,5 +1,5 @@
-//! Insert › Chart and the Chart Design tab: insert a chart, change its type, data, title, legend
-//! and data labels.
+//! Insert › Chart and the Chart Design tab: insert a chart, change its type, data, title, legend,
+//! data labels and value axis (Format Axis: bounds, major unit, number format).
 //!
 //! A chart is an inline [`InlineObject::Graphic`] whose graphic keeps its model
 //! ([`ChartSpec`]); it is drawn by the same code that draws charts read from files, and saved as
@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use serde_json::{Value, json};
-use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, LegendPos, MAX_POINTS, MAX_SERIES};
+use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, LegendPos, MAX_AXIS_STEPS, MAX_FORMAT, MAX_POINTS, MAX_SERIES};
 use wordcraft_doc::graphic::{Graphic, GraphicKind};
 use wordcraft_doc::para::{Float, InlineObject};
 use wordcraft_doc::props::Rgb;
@@ -113,7 +113,75 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"on"?: bool} (no value: switch the data labels on or off)"#)
         .when(has_chart),
+        CommandSpec::new("chart.axis", "Axis Options", "Chart Design › Chart Layouts › Add Chart Element", axis)
+            .params(
+                r#"{"min"?: number|null, "max"?: number|null, "majorUnit"?: number|null, "numberFormat"?: string|null} (the value axis; a key left out keeps its setting, null = Auto, "" = General; returns the axis)"#,
+            )
+            .when(has_chart),
     ]
+}
+
+/// Format Axis for the selected chart's value axis: change the settings named in `v`, and
+/// return the axis as it then is.
+fn axis(s: &mut Session, v: &Value) -> CmdResult {
+    let spec = selected_chart(s).ok_or_else(|| CmdError::Disabled("select a chart first".into()))?;
+    if spec.kind.is_round() {
+        return Err(CmdError::Params(format!("a {} chart has no value axis", spec.kind.label().to_lowercase())));
+    }
+    let mut next = spec.value_axis.clone();
+    // A key left out keeps its value; null is Auto.
+    let number = |k: &str| -> Result<Option<Option<f64>>, CmdError> {
+        match v.get(k) {
+            None => Ok(None),
+            Some(Value::Null) => Ok(Some(None)),
+            Some(n) => match n.as_f64().filter(|x| x.is_finite()) {
+                Some(x) => Ok(Some(Some(x))),
+                None => Err(CmdError::Params(format!("`{k}`: a number, or null for Auto"))),
+            },
+        }
+    };
+    if let Some(x) = number("min")? {
+        next.min = x;
+    }
+    if let Some(x) = number("max")? {
+        next.max = x;
+    }
+    if let Some(x) = number("majorUnit")? {
+        next.major_unit = x;
+    }
+    match v.get("numberFormat") {
+        None => {}
+        Some(Value::Null) => next.number_format = None,
+        Some(Value::String(f)) if f.len() > MAX_FORMAT => {
+            return Err(CmdError::Params(format!("`numberFormat`: at most {MAX_FORMAT} bytes")));
+        }
+        Some(Value::String(f)) => next.number_format = (!f.is_empty()).then(|| f.clone()),
+        Some(_) => return Err(CmdError::Params("`numberFormat`: a format code, or null or \"\" for General".into())),
+    }
+    if let (Some(lo), Some(hi)) = (next.min, next.max)
+        && lo >= hi
+    {
+        return Err(CmdError::Params(format!("the minimum ({lo}) must be less than the maximum ({hi})")));
+    }
+    if let Some(u) = next.major_unit {
+        if u <= 0.0 {
+            return Err(CmdError::Params("`majorUnit`: a number greater than 0".into()));
+        }
+        if let (Some(lo), Some(hi)) = (next.min, next.max)
+            && (hi - lo) / u > MAX_AXIS_STEPS
+        {
+            return Err(CmdError::Params(format!("`majorUnit` {u} gives more than {MAX_AXIS_STEPS} steps from {lo} to {hi}")));
+        }
+    }
+    if next != spec.value_axis {
+        let set = next.clone();
+        edit(s, move |c| {
+            c.value_axis = set.clone();
+            Ok(())
+        })?;
+    }
+    let now = selected_chart(s).map(|c| c.value_axis.clone()).unwrap_or(next);
+    Ok(json!({"min": now.min, "max": now.max, "majorUnit": now.major_unit, "numberFormat": now.number_format}))
 }
 
 /// The selected chart's model, when it has one.
