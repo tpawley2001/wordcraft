@@ -26,6 +26,11 @@ fn push_theme(doc: &Document, rels: &mut PartRels, entries: &mut Vec<(String, Ve
 /// The parts of the package [`write_as`] zips, in order, `[Content_Types].xml` first: (part name
 /// without the leading `/`, bytes).
 pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String, Vec<u8>)>, DocxError> {
+    write_parts_with(doc, flavor, &[])
+}
+
+/// [`write_parts`], embedding `fonts` when the document asks for embedded fonts.
+pub(crate) fn write_parts_with(doc: &Document, flavor: Flavor, fonts: &[super::font_embed::FontFile]) -> Result<Vec<(String, Vec<u8>)>, DocxError> {
     // A range field must be whole in the file: drop markers that lost their partner in editing.
     let balanced;
     let doc = if doc.has_unbalanced_field_ranges() {
@@ -176,7 +181,7 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
     );
     push_theme(doc, &mut rels, &mut entries, &mut overrides);
 
-    wr.embeds.font_table(&doc.settings, &mut rels);
+    wr.embeds.font_table(&doc.settings, &mut rels, fonts);
 
     // Media referenced by some drawing (orphan parts would make the package suspect).
     let mut media_types: BTreeMap<String, &str> = BTreeMap::new();
