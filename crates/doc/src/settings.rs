@@ -296,6 +296,15 @@ pub struct Settings {
     /// puts only what was filled into the legacy form fields on the paper, where the full page
     /// has it (for pre-printed forms). PDF export is unaffected.
     pub print_forms_data: bool,
+    /// Embed fonts in the file (`w:embedTrueTypeFonts`, ECMA-376 Part 1 §17.8.3.8; File › Options ›
+    /// Save): a .docx save writes the installed TrueType fonts the document uses into the package.
+    pub embed_true_type_fonts: bool,
+    /// Embed only the characters used in the document (`w:saveSubsetFonts`, §17.8.3.16). Saved
+    /// and read back; WordCraft embeds whole font files either way.
+    pub save_subset_fonts: bool,
+    /// Embed common system fonts too (`w:embedSystemFonts`, §17.8.3.7): the cleared "Do not embed
+    /// common system fonts" box.
+    pub embed_system_fonts: bool,
     /// Form Field Shading turned off (`w:doNotShadeFormData`, ECMA-376 Part 1 §17.15.1.42; RTF
     /// `\formshade` is its opposite). Preserved on open/save. While it is off the editor draws legacy
     /// form fields on grey (screen only; print and PDF never show the shading).
@@ -824,6 +833,9 @@ impl Default for Settings {
             mirror_margins: false,
             gutter_at_top: false,
             print_forms_data: false,
+            embed_true_type_fonts: false,
+            save_subset_fonts: false,
+            embed_system_fonts: false,
             do_not_shade_form_data: false,
             auto_hyphenation: false,
             hyphenation_zone: DEFAULT_HYPHENATION_ZONE,

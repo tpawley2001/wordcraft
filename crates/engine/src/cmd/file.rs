@@ -112,6 +112,11 @@ pub fn specs() -> Vec<CommandSpec> {
         // (`w:writeProtection`), saved by the next save.
         CommandSpec::new("file.generalOptions", "General Options", "File › Save As › Tools", general_options)
             .params(r#"{"modifyPassword"?: string ("" removes it), "readOnlyRecommended"?: bool} → {"modifyPassword": bool, "readOnlyRecommended": bool}"#),
+        // File › Options › Save › Preserve fidelity when sharing this document (#6329): per
+        // document settings, one undo step.
+        CommandSpec::new("document.fontEmbedding", "Embed Fonts in the File", "File › Options › Save", font_embedding).params(
+            r#"{"embed"?: bool (Embed fonts in the file: a .docx save writes the installed TrueType fonts the document uses into it), "subset"?: bool (Embed only the characters used in the document; saved, the whole font is still embedded), "skipSystemFonts"?: bool (Do not embed common system fonts; default true)} → {"embed": bool, "subset": bool, "skipSystemFonts": bool}; without settings it only reports them"#,
+        ),
         CommandSpec::new("file.encrypt", "Encrypt with Password", "File › Info › Protect Document", encrypt)
             .params(r#"{"password": string (Word documents are saved encrypted with it) | null or "" (saved unencrypted)}"#)
             .pure(),
@@ -452,6 +457,35 @@ fn general_options(s: &mut Session, v: &Value) -> CmdResult {
     }
     s.doc.settings.write_protection = Some(wp).filter(|w| !w.is_empty());
     Ok(general_options_state(s))
+}
+
+/// A setting of `document.fontEmbedding`: absent leaves it, anything but true or false is refused.
+fn embed_flag(v: &Value, k: &str) -> Result<Option<bool>, CmdError> {
+    match v.get(k) {
+        None => Ok(None),
+        Some(Value::Bool(b)) => Ok(Some(*b)),
+        Some(_) => Err(CmdError::Params(format!("`{k}` must be true or false"))),
+    }
+}
+
+/// File › Options › Save › Embed fonts in the file, Embed only the characters used in the
+/// document and Do not embed common system fonts (`w:embedTrueTypeFonts`, `w:saveSubsetFonts`,
+/// `w:embedSystemFonts`).
+fn font_embedding(s: &mut Session, v: &Value) -> CmdResult {
+    let embed = embed_flag(v, "embed")?;
+    let subset = embed_flag(v, "subset")?;
+    let skip = embed_flag(v, "skipSystemFonts")?;
+    let st = &mut s.doc.settings;
+    if let Some(b) = embed {
+        st.embed_true_type_fonts = b;
+    }
+    if let Some(b) = subset {
+        st.save_subset_fonts = b;
+    }
+    if let Some(b) = skip {
+        st.embed_system_fonts = !b;
+    }
+    Ok(json!({"embed": st.embed_true_type_fonts, "subset": st.save_subset_fonts, "skipSystemFonts": !st.embed_system_fonts}))
 }
 
 /// The General Options state, as `file.generalOptions` returns it.

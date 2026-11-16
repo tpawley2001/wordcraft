@@ -385,7 +385,7 @@ fn value_format_code_length_is_capped() {
 fn axis_format_code_length_is_capped() {
     let fmt = |code: &str| -> Option<String> {
         let x = format!(r#"<c:valAx {NS}><c:numFmt formatCode="{code}" sourceLinked="0"/></c:valAx>"#);
-        axis(Some(&crate::xml::parse(x.as_bytes()).unwrap())).fmt
+        axis(Some(&crate::xml::parse(x.as_bytes()).unwrap()), &[]).fmt
     };
     let ok = format!("{}0", "x".repeat(254));
     assert_eq!(fmt(&ok), Some(ok.clone()));

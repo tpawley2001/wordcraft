@@ -164,6 +164,7 @@ mod table_no_wrap;
 mod tall_footer_leading;
 mod textbox;
 mod trailing_page_break;
+mod turned_box_edit;
 mod turned_cell_autofit;
 mod underline_from_font;
 mod underline_style_geometry;
@@ -8202,6 +8203,7 @@ fn graphic_items_draw_inside_the_object() {
             bold: false,
             align: TextAlign::Center,
             font: None,
+            rotation: 0.0,
         },
     ];
     let mut d = Document::from_text("Chart");
@@ -8232,6 +8234,7 @@ fn graphic_text_in_a_degenerate_rectangle_is_not_drawn() {
         bold: false,
         align: TextAlign::Center,
         font: None,
+        rotation: 0.0,
     };
     let items = vec![text([f32::NAN, 0.0, 10.0, 10.0], 10.0), text([0.0, 0.0, f32::INFINITY, 10.0], 10.0), text([0.0, 0.0, 10.0, 10.0], f32::NAN)];
     let graphic = Graphic { kind: GraphicKind::Diagram, items, ..Default::default() };
@@ -8262,6 +8265,7 @@ fn chart_text_the_font_lacks_is_drawn_in_a_fallback_face() {
         bold: false,
         align: TextAlign::Center,
         font: None,
+        rotation: 0.0,
     }];
     let graphic = Graphic { kind: GraphicKind::Chart, items, ..Default::default() };
     let obj = InlineObject::Graphic { w: 216.0, h: 144.0, alt: String::new(), float: Default::default(), graphic: Arc::new(graphic) };
@@ -11565,7 +11569,10 @@ fn ligatures_follow_w14_ligatures() {
     let letters = text.chars().count();
     let none = Ligatures::from_ooxml("none");
     let standard = Ligatures::from_ooxml("standard");
-    assert!(glyphs(None, None) < letters, "WordCraft's default draws ligatures");
+    // Word draws no ligatures unless the document asks (observed: a Word-made PDF of "office
+    // affinity" breaks lines exactly like `w14:ligatures="none"`), so neither does WordCraft.
+    assert_eq!(glyphs(None, None), letters, "no w14:ligatures: none, as in Word");
+    assert!(glyphs(None, standard) < letters, "standard draws them");
     assert_eq!(glyphs(None, none), letters, "none: one glyph per letter");
     assert_eq!(glyphs(none, None), letters, "none from the character style");
     assert!(glyphs(none, standard) < letters, "standard over a style with none draws them again");

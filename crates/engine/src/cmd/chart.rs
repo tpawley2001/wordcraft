@@ -1,5 +1,6 @@
 //! Insert › Chart and the Chart Design tab: insert a chart, change its type, data, title, legend,
-//! data labels and value axis (Format Axis: bounds, major unit, number format).
+//! data labels, axis titles, gridlines and value axis (Format Axis: bounds, major unit, number
+//! format).
 //!
 //! A chart is an inline [`InlineObject::Graphic`] whose graphic keeps its model
 //! ([`ChartSpec`]); it is drawn by the same code that draws charts read from files, and saved as
@@ -9,7 +10,7 @@
 use std::sync::Arc;
 
 use serde_json::{Value, json};
-use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, LegendPos, MAX_AXIS_STEPS, MAX_FORMAT, MAX_POINTS, MAX_SERIES};
+use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, GridKind, LegendPos, MAX_AXIS_STEPS, MAX_FORMAT, MAX_POINTS, MAX_SERIES};
 use wordcraft_doc::graphic::{Graphic, GraphicKind};
 use wordcraft_doc::para::{Float, InlineObject};
 use wordcraft_doc::props::Rgb;
@@ -33,7 +34,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("chart.type", "Change Chart Type", "Chart Design › Type", |s, v| {
             let kind = chart_type(v)?.ok_or_else(|| CmdError::Params(format!("`type` is required: {TYPES}")))?;
             edit(s, |c| {
-                c.kind = kind;
+                c.set_kind(kind);
                 Ok(())
             })
         })
@@ -113,6 +114,14 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"on"?: bool} (no value: switch the data labels on or off)"#)
         .when(has_chart),
+        CommandSpec::new("chart.axisTitle", "Axis Titles", "Chart Design › Chart Layouts › Add Chart Element", axis_title)
+            .params(
+                r#"{"axis": "horizontal|vertical", "text"?: string|null} (no text: switch the title on ("Axis Title") or off; null or "" removes it; returns both titles)"#,
+            )
+            .when(has_chart),
+        CommandSpec::new("chart.gridlines", "Gridlines", "Chart Design › Chart Layouts › Add Chart Element", gridlines)
+            .params(r#"{"kind": "majorHorizontal|majorVertical|minorHorizontal|minorVertical", "on"?: bool} (no on: switch them on or off; returns all four)"#)
+            .when(has_chart),
         CommandSpec::new("chart.axis", "Axis Options", "Chart Design › Chart Layouts › Add Chart Element", axis)
             .params(
                 r#"{"min"?: number|null, "max"?: number|null, "majorUnit"?: number|null, "numberFormat"?: string|null} (the value axis; a key left out keeps its setting, null = Auto, "" = General; returns the axis)"#,
@@ -182,6 +191,70 @@ fn axis(s: &mut Session, v: &Value) -> CmdResult {
     }
     let now = selected_chart(s).map(|c| c.value_axis.clone()).unwrap_or(next);
     Ok(json!({"min": now.min, "max": now.max, "majorUnit": now.major_unit, "numberFormat": now.number_format}))
+}
+
+/// The selected chart, when it has axes (not a pie or doughnut chart).
+fn chart_with_axes(s: &Session) -> Result<Arc<ChartSpec>, CmdError> {
+    let spec = selected_chart(s).ok_or_else(|| CmdError::Disabled("select a chart first".into()))?;
+    if spec.kind.is_round() {
+        return Err(CmdError::Params(format!("a {} chart has no axes", spec.kind.label().to_lowercase())));
+    }
+    Ok(spec)
+}
+
+fn titles_json(c: &ChartSpec) -> Value {
+    json!({"horizontal": c.axis_titles.horizontal, "vertical": c.axis_titles.vertical})
+}
+
+/// Add Chart Element › Axis Titles: set, remove or switch the title of the horizontal or the
+/// vertical axis (as drawn), and return both titles.
+fn axis_title(s: &mut Session, v: &Value) -> CmdResult {
+    let vertical = match v.get("axis").and_then(Value::as_str).map(|a| a.trim().to_ascii_lowercase()).as_deref() {
+        Some("horizontal") => false,
+        Some("vertical") => true,
+        _ => return Err(CmdError::Params("`axis`: horizontal|vertical".into())),
+    };
+    let text = match v.get("text") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(Value::String(t)) => Some(Some(t.clone())),
+        Some(_) => return Err(CmdError::Params("`text`: a string, or null for no title".into())),
+    };
+    chart_with_axes(s)?;
+    edit(s, move |c| {
+        let slot = if vertical { &mut c.axis_titles.vertical } else { &mut c.axis_titles.horizontal };
+        *slot = match &text {
+            Some(t) => t.clone(),
+            // No text given: switch the title on (placeholder) or off.
+            None if slot.is_some() => None,
+            None => Some("Axis Title".into()),
+        };
+        Ok(())
+    })?;
+    let now = selected_chart(s).ok_or_else(|| CmdError::Disabled("select a chart first".into()))?;
+    Ok(titles_json(&now))
+}
+
+/// Add Chart Element › Gridlines: switch one kind of gridline on or off, and return all four.
+fn gridlines(s: &mut Session, v: &Value) -> CmdResult {
+    let kind = v
+        .get("kind")
+        .and_then(Value::as_str)
+        .and_then(GridKind::from_id)
+        .ok_or_else(|| CmdError::Params("`kind`: majorHorizontal|majorVertical|minorHorizontal|minorVertical".into()))?;
+    let on = match v.get("on") {
+        None | Some(Value::Null) => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(_) => return Err(CmdError::Params("`on`: true or false".into())),
+    };
+    chart_with_axes(s)?;
+    edit(s, move |c| {
+        let next = on.unwrap_or(!c.gridlines.get(kind));
+        c.gridlines.set(kind, next);
+        Ok(())
+    })?;
+    let now = selected_chart(s).ok_or_else(|| CmdError::Disabled("select a chart first".into()))?;
+    serde_json::to_value(now.gridlines).map_err(|e| CmdError::Params(e.to_string()))
 }
 
 /// The selected chart's model, when it has one.

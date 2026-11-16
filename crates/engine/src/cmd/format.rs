@@ -104,7 +104,7 @@ pub fn specs() -> Vec<CommandSpec> {
             .key(super::mac_or("", "Mod+Shift+Q")),
         CommandSpec::new("format.size", "Font Size", "Home › Font", size).key("Mod+Shift+P").params(r#"{"size": number}"#),
         CommandSpec::new("format.growFont", "Increase Font Size", "Home › Font", |s, _| step_size(s, 1)).key("Mod+Shift+. / Mod+Shift+>"),
-        CommandSpec::new("format.shrinkFont", "Decrease Font Size", "Home › Font", |s, _| step_size(s, -1)).key("Mod+Shift+, / Mod+Shift+<"),
+        CommandSpec::new("format.shrinkFont", "Decrease Font Size", "Home › Font", |s, _| step_size(s, -1)).key("Mod+Shift+, / Mod+Shift+< / Mod+<"),
         CommandSpec::new("format.growFont1", "Grow Font 1 Point", "Home › Font", |s, _| nudge_size(s, 1.0)).key("Mod+]"),
         CommandSpec::new("format.shrinkFont1", "Shrink Font 1 Point", "Home › Font", |s, _| nudge_size(s, -1.0)).key("Mod+["),
         CommandSpec::new("format.color", "Font Color", "Home › Font", color).params(r#"{"color": "RRGGBB" | "auto"}"#),
@@ -331,9 +331,10 @@ fn resolved_with(s: &Session, edit: Option<&dyn Fn(&mut CharProps)>) -> Vec<Reso
     if out.is_empty() {
         let p = s.doc.para_at(&a);
         let style = p.and_then(|p| p.props.style.clone());
-        // An empty selected text box has only its paragraph mark, which is what gets formatted.
-        let empty_box = selected_text_box(s).and(p).map(|p| &p.mark);
-        out.push(resolve(style.as_deref(), empty_box.unwrap_or(&s.typing_props())));
+        // An empty selected text box has only its paragraph mark, which is what gets formatted;
+        // so does a selection of just a paragraph break: its own paragraph's mark (#5400).
+        let mark = (selected_text_box(s).is_some() || a.path != b.path).then_some(p).flatten().map(|p| &p.mark);
+        out.push(resolve(style.as_deref(), mark.unwrap_or(&s.typing_props())));
     }
     out
 }

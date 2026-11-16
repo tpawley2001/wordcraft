@@ -124,7 +124,7 @@ impl<'a> ItemDisplay<'a> {
                 warped_boxes(doc, items).into_iter().map(move |(id, rect, warp)| PageWarp { id, rect, warp, lines: story_lines(items, id) })
             })
             .collect();
-        let turned = [&page.items, &page.header, &page.footer].into_iter().flat_map(|items| text_frames(items)).collect();
+        let turned = [&page.items, &page.header, &page.footer].into_iter().flat_map(|items| text_frames(items, None)).collect();
         ItemDisplay { doc, page, authors: Authors::new(doc), clips: clipped_cells(&cells), warps, turned }
     }
 
@@ -133,6 +133,8 @@ impl<'a> ItemDisplay<'a> {
     /// display was made for, or a copy of one: a warped box's lines are matched by value.
     pub fn draws(&self, it: &Placed, opts: &DisplayOptions) -> Vec<Draw> {
         let mut out = Vec::new();
+        let straight = straight_objects(&[&self.page.items, &self.page.header, &self.page.footer], opts.straight_text_box);
+        let it = &*straightened(it, &straight);
         let items = std::slice::from_ref(it);
         let (_, ba) = dimming(opts);
         if let Some(w) = self.warp_of(it) {
@@ -146,7 +148,9 @@ impl<'a> ItemDisplay<'a> {
             stories_display(self.doc, &[items], Some(&self.clips), opts, &self.authors, ba, &mut out);
         }
         // A line of a turned text box turns with it (as `stories_display` turns them on a page).
-        if let Some((_, rect, spin)) = turned_frame(&self.turned, it).and_then(|k| self.turned.get(k)) {
+        if let Some((_, rect, spin)) =
+            turned_frame(&self.turned, it).and_then(|k| self.turned.get(k)).filter(|(id, ..)| opts.straight_text_box != Some(*id))
+        {
             let mut turned = Vec::new();
             spun(*spin, *rect, std::mem::take(&mut out), &mut turned);
             out = turned;
@@ -240,9 +244,10 @@ fn stories_display(
     out: &mut Vec<Draw>,
 ) {
     let hidden = opts.hide_object.as_ref().map(|p| Hidden::new(doc, p));
+    let straight = straight_objects(stories, opts.straight_text_box);
     for items in stories {
         let warps = warped_boxes(doc, items);
-        let frames = text_frames(items);
+        let frames = text_frames(items, opts.straight_text_box);
         let mut spun_frames: Vec<usize> = Vec::new();
         let own;
         let clips = match shared {
@@ -254,6 +259,7 @@ fn stories_display(
         };
         let mut done: Vec<u32> = Vec::new();
         for it in items.iter() {
+            let it = &*straightened(it, &straight);
             // The object being dragged is drawn by its preview instead: leave it out here.
             if hidden.as_ref().is_some_and(|h| h.hides(it)) {
                 continue;
@@ -314,18 +320,49 @@ fn stories_display(
 }
 
 /// The text boxes among `items`: the story each shows, its frame (unturned) and how its text
-/// turns with it (not at all for most). As in Word, the text turns with the box but isn't
-/// mirrored: a box flipped across turns its text upside down, one flipped side to side leaves it
-/// readable. Linked boxes all show the first box's story, so a story can have several frames.
-fn text_frames(items: &[Placed]) -> Vec<(u32, Rect, Spin)> {
+/// turns with it (not at all for most; see [`crate::box_text_spin`]). Linked boxes all show the
+/// first box's story, so a story can have several frames. The story `straight` (being edited) is
+/// drawn straight: its frames don't turn their text.
+fn text_frames(items: &[Placed], straight: Option<u32>) -> Vec<(u32, Rect, Spin)> {
     items
         .iter()
         .filter_map(|it| {
             let Placed::Object { rect, spin, text_box: Some(id), .. } = it else { return None };
-            let text = Spin::new(spin.deg + if spin.flip_v { 180.0 } else { 0.0 }, false, false);
+            let text = if straight == Some(*id) { Spin::default() } else { crate::box_text_spin(*spin) };
             Some((*id, *rect, text))
         })
         .collect()
+}
+
+/// The text box objects among `lists` that show story `straight` (being edited, so drawn
+/// straight): their anchors, which their shapes name (see [`Placed::Shape`]'s `object`).
+fn straight_objects(lists: &[&[Placed]], straight: Option<u32>) -> Vec<wordcraft_doc::Pos> {
+    let Some(id) = straight else { return Vec::new() };
+    lists
+        .iter()
+        .flat_map(|items| items.iter())
+        .filter_map(|it| match it {
+            Placed::Object { story, path, off, text_box: Some(t), .. } if *t == id => {
+                Some(wordcraft_doc::Pos { story: *story, path: path.clone(), off: *off })
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// `it` as drawn while the text boxes anchored at `straight` are edited: the shape of one of
+/// them unturned (its text is unturned by [`text_frames`]); anything else as it is.
+fn straightened<'a>(it: &'a Placed, straight: &[wordcraft_doc::Pos]) -> std::borrow::Cow<'a, Placed> {
+    match it {
+        Placed::Shape { object: Some(o), spin, .. } if !spin.is_identity() && straight.contains(o) => {
+            let mut flat = it.clone();
+            if let Placed::Shape { spin, .. } = &mut flat {
+                *spin = Spin::default();
+            }
+            std::borrow::Cow::Owned(flat)
+        }
+        _ => std::borrow::Cow::Borrowed(it),
+    }
 }
 
 /// Which of `frames` the text box line `it` was laid out in, if that frame is turned: of the

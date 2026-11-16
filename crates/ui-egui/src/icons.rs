@@ -463,6 +463,21 @@ fn paint_clipboard_to_insert(pen: &Pen, name: &str) -> bool {
             pen.rect(2.5, 5.5, 8.0, 9.0, c);
             pen.rect(11.0, 2.5, 16.5, 6.0, c);
         }
+        "axisTitles" => {
+            pen.line(&[(6.0, 3.0), (6.0, 15.0), (18.0, 15.0)]);
+            pen.frect(2.0, 5.0, 4.0, 13.0, a);
+            pen.frect(8.0, 17.0, 16.0, 19.0, a);
+            pen.frect(8.5, 9.0, 11.0, 15.0, c);
+            pen.frect(13.0, 6.0, 15.5, 15.0, c);
+        }
+        "gridlines" => {
+            for y in [4.0, 8.0, 12.0] {
+                pen.line(&[(3.0, y), (17.0, y)]);
+            }
+            pen.line(&[(3.0, 16.5), (17.0, 16.5)]);
+            pen.frect(5.0, 10.0, 8.0, 16.5, a);
+            pen.frect(11.5, 6.0, 14.5, 16.5, orange);
+        }
         "screenshot" => {
             pen.line(&[(3.0, 7.0), (3.0, 3.0), (7.0, 3.0)]);
             pen.line(&[(13.0, 3.0), (17.0, 3.0), (17.0, 7.0)]);

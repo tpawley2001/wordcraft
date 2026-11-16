@@ -187,14 +187,27 @@ pub struct Drag {
     pub rect: Rect,
     /// Past the drag threshold (a press that never gets there is a click).
     pub moved: bool,
-    /// The frame's angle (degrees clockwise): as it started, or where turning puts it.
+    /// The frame's angle (degrees clockwise) as shown: as it started, or where turning puts it.
     pub deg: f32,
+    /// How far the object is really turned beyond `deg` (degrees clockwise): a turned text box
+    /// shown straight while it is edited (#6056) is turned by `base + deg` once dropped.
+    pub base: f32,
 }
 
 impl Drag {
     /// A drag of the frame at `start` on `page`, turned `deg`, grabbed at screen point `press`.
     pub fn new(grab: Grab, page: usize, start: Rect, deg: f32, press: Pos2) -> Drag {
-        Drag { grab, page, start, press, to_page: page, rect: start, moved: false, deg: wordcraft_geom::normalize_degrees(deg) }
+        Drag { grab, page, start, press, to_page: page, rect: start, moved: false, deg: wordcraft_geom::normalize_degrees(deg), base: 0.0 }
+    }
+
+    /// This drag for an object shown `base` degrees short of its real turn (see [`Drag::base`]).
+    pub fn with_base(self, base: f32) -> Drag {
+        Drag { base: wordcraft_geom::normalize_degrees(base), ..self }
+    }
+
+    /// The object's real angle once dropped: where turning puts it, plus [`Drag::base`].
+    pub fn real_deg(&self) -> f32 {
+        wordcraft_geom::normalize_degrees(self.base + self.deg)
     }
 
     /// Move along the dominant pointer axis, keeping the grab point fixed in the document
@@ -211,7 +224,7 @@ impl Drag {
     }
 
     /// Follow the pointer with the rotation handle: the frame turns to face it, by whole degrees
-    /// (or `snap`ping to 15° steps, Shift).
+    /// (or `snap`ping to 15° steps, Shift). The steps are of the real angle ([`Drag::real_deg`]).
     pub fn turn_to(&mut self, pointer: Pos2, pages: &[egui::Rect], scale: f32, snap: bool) {
         if !self.moved && pointer.distance(self.press) < DRAG_START {
             return;
@@ -224,9 +237,9 @@ impl Drag {
             return;
         }
         // The handle is straight up (-90°) when unturned.
-        let deg = dy.atan2(dx).to_degrees() + 90.0;
+        let deg = dy.atan2(dx).to_degrees() + 90.0 + self.base;
         let step = if snap { SNAP_DEG } else { 1.0 };
-        self.deg = wordcraft_geom::normalize_degrees((deg / step).round() * step);
+        self.deg = wordcraft_geom::normalize_degrees((deg / step).round() * step - self.base);
     }
 
     /// Follow the pointer. A move keeps the grabbed point under it, across pages too; a resize

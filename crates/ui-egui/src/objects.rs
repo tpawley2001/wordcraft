@@ -238,9 +238,22 @@ pub fn active(app: &WordApp, layout: &DocLayout) -> Option<(ObjectHit, bool)> {
         return Some((canvas, false));
     }
     match app.session.sel.focus.story {
-        StoryRef::Part(id) if crate::canvas::in_text_box(app) => layout.text_box(id, hint).map(|o| (o, true)),
+        // A turned box being edited is shown straight (#6056): its frame and handles too.
+        StoryRef::Part(id) if crate::canvas::in_text_box(app) => layout.text_box(id, hint).map(|o| {
+            let o = if app.canvas.straight_box == Some(id) { ObjectHit { spin: Default::default(), ..o } } else { o };
+            (o, true)
+        }),
         _ => None,
     }
+}
+
+/// How far `o` is really turned beyond the way it is shown: a turned text box shown straight
+/// while it is edited (see [`active`]) is its own angle; anything else 0.
+fn straight_turn(app: &WordApp, o: &ObjectHit) -> f32 {
+    if o.text_box.is_none() || o.text_box != app.canvas.straight_box || !o.spin.is_identity() {
+        return 0.0;
+    }
+    hit_object(app, o).and_then(InlineObject::frame).map_or(0.0, |(_, _, f)| f.spin().deg)
 }
 
 fn screen(pages: &[Rect], scale: f32, page: usize, r: wordcraft_geom::Rect) -> Option<Rect> {
@@ -425,7 +438,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
             None => return false,
         };
         app.canvas.obj_drag = Some(ObjectDrag {
-            drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at),
+            drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at).with_base(straight_turn(app, &object)),
             press_origin: pages.get(object.page).map_or(at, |p| p.min),
             object,
             min,
@@ -453,7 +466,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         if !fixed(app, &object) && (grab != Grab::Move || (movable(app, &object) && !size_only)) {
             let copy = grab == Grab::Move && ui.input(|i| i.modifiers.command);
             app.canvas.obj_drag = Some(ObjectDrag {
-                drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at),
+                drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at).with_base(straight_turn(app, &object)),
                 press_origin: pages.get(object.page).map_or(at, |p| p.min),
                 object,
                 min,
@@ -483,7 +496,7 @@ fn press_member(app: &mut WordApp, layout: &DocLayout, pages: &[Rect], scale: f3
     {
         // A box linked from another shows (and edits) that box's story.
         let id = app.session.doc.text_box_chain(id).and_then(|c| c.first().copied()).unwrap_or(id);
-        if let Some(pos) = layout.hit(page, x, y, StoryRef::Part(id)) {
+        if let Some(pos) = layout.hit_with(page, x, y, StoryRef::Part(id), app.canvas.straight_box) {
             let _ = app.run("caret.set", json!({"pos": pos}));
         }
         return true;
@@ -497,7 +510,7 @@ fn press_member(app: &mut WordApp, layout: &DocLayout, pages: &[Rect], scale: f3
     let Some(o) = hit_object(app, &object) else { return true };
     let (min, picture, locked) = (wordcraft_engine::cmd::objects::min_size(o), matches!(o, InlineObject::Image { .. }), locks_aspect(o));
     app.canvas.obj_drag = Some(ObjectDrag {
-        drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at),
+        drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at).with_base(straight_turn(app, &object)),
         press_origin: pages.get(object.page).map_or(at, |p| p.min),
         object,
         min,
@@ -530,7 +543,7 @@ pub(crate) fn dragged_off_page(drag: Option<&ObjectDrag>) -> Option<(usize, Pos)
 /// own story's text there, with the insertion cursor's colour (the same contrast as the caret's).
 fn drop_point(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Pos2, d: &ObjectDrag) -> Option<(Pos, Color32)> {
     let (page, x, y) = crate::canvas::page_at(pages, layout, scale, at)?;
-    let pos = layout.hit(page, x, y, d.object.story)?;
+    let pos = layout.hit_with(page, x, y, d.object.story, app.canvas.straight_box)?;
     if let Some((was, color)) = &d.drop_at
         && *was == pos
     {
@@ -666,6 +679,11 @@ fn grab_at(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Po
         }
         frame::handle_at(f, o.spin.deg, at).map(|h| (o, Grab::Resize(h)))
     });
+    if handle.is_none()
+        && let Some(grab) = straight_grab(app, layout, pages, scale, at)
+    {
+        return grab;
+    }
     handle.or_else(|| {
         let (page, x, y) = crate::canvas::page_at(pages, layout, scale, at)?;
         // A Behind Text picture is normally hit only where no body text is present, so text above
@@ -686,6 +704,23 @@ fn grab_at(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Po
         let o = layout.object_at_in(page, x, y, edge, story)?;
         Some((member_at(app, &o, x, y, edge).unwrap_or(o), Grab::Move))
     })
+}
+
+/// A press on the turned text box being edited, which is shown straight (#6056): on its straight
+/// border it grabs the box, inside it is the text (nothing to grab, whatever is drawn under it
+/// turned); `None` off it.
+fn straight_grab(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Pos2) -> Option<Option<(ObjectHit, Grab)>> {
+    let (o, editing) = active(app, layout)?;
+    if !editing || app.canvas.straight_box.is_none() || o.text_box != app.canvas.straight_box {
+        return None;
+    }
+    let (page, x, y) = crate::canvas::page_at(pages, layout, scale, at)?;
+    let edge = EDGE / scale.max(0.01);
+    if page != o.page || !o.rect.expand(edge).contains(o.unspin(x, y)) {
+        return None;
+    }
+    let grabs = !in_text(&o, x, y, edge) && movable(app, &o) && !fixed(app, &o);
+    Some(grabs.then_some((o, Grab::Move)))
 }
 
 /// Objects that can be dragged to a new place: those in the own paragraphs of the body or of a
@@ -780,7 +815,7 @@ fn drop(app: &mut WordApp, d: &ObjectDrag) {
     }
     let params = match d.drag.grab {
         Grab::Rotate => {
-            let _ = app.run("arrange.rotation", json!({"degrees": d.drag.deg}));
+            let _ = app.run("arrange.rotation", json!({"degrees": d.drag.real_deg()}));
             return;
         }
         // An In Line with Text object stays in the text, at the insertion cursor; dropped on
