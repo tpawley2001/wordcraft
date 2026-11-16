@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0627: Plain Text File Conversion adds Insert line breaks, saving each body layout line with the chosen line end and previewing the wraps. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (Font Substitution dialog: see which fonts aren't installed, pick what each is shown in, or convert them permanently. Readiness estimates unchanged; earlier: P0587: Find matches the text a field shows (a citation's `[7]`, a REF or SEQ result, a legacy form field's text), and a match may run into and out of it; with field codes shown it searches the code instead, never across the field's edge, and the drawn braces are not characters. A match in a field covers the whole field; Replace leaves it alone and Replace All reports it as skipped (from storytold/wordcraft#5560). Readiness estimates unchanged; earlier: P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click.. Readiness estimates unchanged)
@@ -214,6 +216,8 @@ Modify Style’s existing Automatically update flag is honoured by engine format
 Chart Design › Data places Switch Row/Column beside Edit Data for editable charts (`chart.switchRowColumn`).
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0627: Plain Text File Conversion adds Insert line breaks, saving each body layout line with the chosen line end and previewing the wraps. Readiness estimates unchanged.
 
 | 2026-11-15 | trivial | P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged. |
 
