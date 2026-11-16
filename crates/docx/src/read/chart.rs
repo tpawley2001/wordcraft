@@ -32,6 +32,7 @@ mod polar;
 mod stock;
 mod sunburst;
 mod three_d;
+mod trendline;
 
 #[cfg(test)]
 use canvas::SWATCH;
@@ -223,3 +224,5 @@ mod tests;
 mod three_d_tests;
 #[cfg(test)]
 mod treemap_tests;
+#[cfg(test)]
+mod trendline_tests;
