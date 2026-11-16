@@ -36,7 +36,9 @@ pub(crate) use builder::left_out;
 pub(crate) use chars::caps_char;
 #[cfg(test)]
 use chars::{MISSING_ROMAN_FONT, lookup_family};
-pub use chars::{draws_something, east_asian_substitute_face, reported_font_name, substitute_face};
+pub use chars::{
+    draws_something, east_asian_substitute_face, east_asian_substitute_face_with, reported_font_name, substitute_face, substitute_face_with,
+};
 #[cfg(test)]
 pub(crate) use chars::{ligature_features, number_and_set_features, remap_range, thai_run_face};
 pub use grid::{Exclusion, Grid, is_east_asian};
@@ -361,6 +363,7 @@ mod label_spacing_tests {
     fn measured_label_lines(spacing: LineSpacing, label_metrics: (f32, f32), label_ascent: f32, wrap: bool, text_metrics: (f32, f32)) -> Vec<Line> {
         let doc = Document::new();
         let fields = FieldCtx::default();
+        let font_substitutes = crate::FontSubstitutes::default();
         let level = Level { chr: CharProps { size: Some(24.0), ..Default::default() }, suffix: LevelSuffix::Nothing, ..Default::default() };
         let env = ParaEnv {
             doc: &doc,
@@ -382,6 +385,7 @@ mod label_spacing_tests {
             fit_objects: false,
             fitted: &[],
             draft_font: None,
+            font_substitutes: &font_substitutes,
         };
         let mut p = Paragraph::with_text(if wrap { "Alpha probe synthetic business text repeated" } else { "Alpha probe" }, Default::default());
         p.props.line_spacing = Some(spacing);
@@ -495,9 +499,9 @@ mod tests {
         let mut d = Document::new();
         d.settings.roman_fonts = vec!["Symbol (PCL6)".into(), "Wingdings".into(), "No Such Roman Font".into()];
         for family in ["Symbol (PCL6)", "Wingdings"] {
-            assert_eq!(lookup_family(&d, family), family);
+            assert_eq!(lookup_family(&d, &crate::FontSubstitutes::default(), family), family);
         }
-        assert_eq!(lookup_family(&d, "No Such Roman Font"), MISSING_ROMAN_FONT);
+        assert_eq!(lookup_family(&d, &crate::FontSubstitutes::default(), "No Such Roman Font"), MISSING_ROMAN_FONT);
     }
 
     #[test]
@@ -505,7 +509,7 @@ mod tests {
         crate::test_fonts();
         let mut d = Document::new();
         d.settings.roman_fonts = vec!["CG Times".into(), "Zzyzx Roman".into()];
-        assert_eq!(lookup_family(&d, "CG Times"), "CG Times");
-        assert_eq!(lookup_family(&d, "Zzyzx Roman"), MISSING_ROMAN_FONT);
+        assert_eq!(lookup_family(&d, &crate::FontSubstitutes::default(), "CG Times"), "CG Times");
+        assert_eq!(lookup_family(&d, &crate::FontSubstitutes::default(), "Zzyzx Roman"), MISSING_ROMAN_FONT);
     }
 }

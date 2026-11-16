@@ -112,6 +112,7 @@ pub(crate) fn env_hash(doc: &Document, opts: &LayoutOptions) -> u64 {
     opts.filename.hash(&mut h);
     opts.filepath.hash(&mut h);
     opts.draft_font().map(|(name, size)| (name, size.to_bits())).hash(&mut h);
+    opts.font_substitutes.hash(&mut h);
     h.finish()
 }
 

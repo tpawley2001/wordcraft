@@ -162,7 +162,14 @@ fn readability(ui: &mut Ui, stats: &Value) {
                 ("Characters per Word", decimal("charactersPerWord")),
             ],
         ),
-        ("Readability", vec![("Flesch Reading Ease", decimal("fleschReadingEase")), ("Flesch-Kincaid Grade Level", decimal("fleschKincaidGrade"))]),
+        (
+            "Readability",
+            vec![
+                ("Passive Sentences", format!("{}%", count("passiveSentences"))),
+                ("Flesch Reading Ease", decimal("fleschReadingEase")),
+                ("Flesch-Kincaid Grade Level", decimal("fleschKincaidGrade")),
+            ],
+        ),
     ];
     ui.label(egui::RichText::new(tl!("Readability Statistics")).font(semibold(13.0)));
     for (title, rows) in groups {

@@ -414,6 +414,9 @@ pub struct UiState {
     /// File › Options › Advanced › Editing: moving a picture or shape snaps it to alignment
     /// guides (on by default; Alt moves freely).
     pub alignment_guides: bool,
+    /// File › Options › Advanced › Editing: Use Ctrl+Click to follow hyperlink (on by default, as
+    /// in Word); off, a plain click on a link follows it.
+    pub ctrl_click_follows_links: bool,
     /// File › Options › Advanced › Show document content: crop marks at the corners of the text
     /// area in Print Layout (on, as in Word). Screen only.
     pub crop_marks: bool,
@@ -430,6 +433,12 @@ pub struct UiState {
     pub text_boundaries: bool,
     /// … pictures drawn as empty outlined rectangles. Screen only.
     pub picture_placeholders: bool,
+    /// File › Options › General › ScreenTip style: feature descriptions (Word's default), none,
+    /// or no ScreenTips on ribbon and toolbar controls.
+    #[serde(deserialize_with = "lenient_screen_tip_style")]
+    pub screen_tip_style: widgets::ScreenTipStyle,
+    /// File › Options › Advanced › Display › Show shortcut keys in ScreenTips (on, as in Word).
+    pub show_shortcuts_in_tips: bool,
     /// … Field shading: `never`, `always` or `selected` (When selected, Word's default): which
     /// fields are drawn on grey. Screen only.
     pub field_shading: String,
@@ -564,12 +573,15 @@ impl Default for UiState {
             recent_count: 12,
             mini_toolbar: true,
             alignment_guides: true,
+            ctrl_click_follows_links: true,
             crop_marks: true,
             show_highlight: true,
             show_drawings: true,
             show_backgrounds: true,
             text_boundaries: false,
             picture_placeholders: false,
+            screen_tip_style: widgets::ScreenTipStyle::Descriptions,
+            show_shortcuts_in_tips: true,
             field_shading: FIELD_SHADING_VALUES[2].into(),
             draft_font: false,
             draft_font_name: DEFAULT_DRAFT_FONT.into(),
@@ -659,6 +671,11 @@ pub fn recent_fonts_from<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<St
 fn lenient_styles_pane_dock<'de, D: serde::Deserializer<'de>>(d: D) -> Result<wordcraft_engine::StylesPaneDock, D::Error> {
     let v = Value::deserialize(d)?;
     Ok(v.as_str().and_then(wordcraft_engine::StylesPaneDock::parse).unwrap_or_default())
+}
+
+/// An unknown saved ScreenTip style reads as the default.
+fn lenient_screen_tip_style<'de, D: serde::Deserializer<'de>>(d: D) -> Result<widgets::ScreenTipStyle, D::Error> {
+    Ok(serde_json::from_value(Value::deserialize(d)?).unwrap_or_default())
 }
 
 /// Anything but four finite numbers reads as no saved rect; `craft_ui::panes` brings a saved one

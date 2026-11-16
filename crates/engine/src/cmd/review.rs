@@ -11,6 +11,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
 mod changes;
 mod comments;
+mod passive;
 mod proofing;
 mod readability;
 
@@ -86,7 +87,7 @@ pub fn specs() -> Vec<CommandSpec> {
             .key(super::non_mac("Mod+Shift+G"))
             .pure(),
         CommandSpec::new("review.readability", "Readability Statistics", "Review › Proofing", readability)
-            .params(r#"{} → {"words", "characters", "paragraphs", "sentences", "syllables" (integers), "sentencesPerParagraph", "wordsPerSentence", "charactersPerWord", "fleschReadingEase", "fleschKincaidGrade" (unrounded): the selection, else the main text}"#)
+            .params(r#"{} → {"words", "characters", "paragraphs", "sentences", "syllables", "passiveCount", "passiveSentences" (whole percent, integers), "sentencesPerParagraph", "wordsPerSentence", "charactersPerWord", "fleschReadingEase", "fleschKincaidGrade" (unrounded): the selection, else the main text}"#)
             .pure(),
         CommandSpec::new("review.showReadability", "Show readability statistics", "File › Options › Proofing", |s, v| {
             s.prefs.show_readability = p::bool(v, "value").unwrap_or(!s.prefs.show_readability);

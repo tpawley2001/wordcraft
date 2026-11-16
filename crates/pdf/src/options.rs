@@ -47,6 +47,9 @@ pub struct PdfOptions {
     /// is scaled to fit and centred, the paper turned to the page's orientation (Scale to paper
     /// size, #2108). `None` keeps the document's page sizes.
     pub paper: Option<(f32, f32)>,
+    /// Print-only source/target paper pair, matched within 2 pt in either orientation.
+    /// Explicit `paper` takes precedence. Other page sizes retain their own dimensions.
+    pub paper_substitution: Option<((f32, f32), (f32, f32))>,
     /// How [`export`] shows digits (the Numeral setting; callers resolve `System`, see
     /// [`NumeralMode::resolve`]). [`export_layout`] keeps the layout it is given.
     pub numeral: NumeralMode,
@@ -114,6 +117,7 @@ impl Default for PdfOptions {
             compress: true,
             links: true,
             paper: None,
+            paper_substitution: None,
             numeral: NumeralMode::Arabic,
             forms_data_only: false,
             background: true,

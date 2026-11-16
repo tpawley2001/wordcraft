@@ -87,6 +87,10 @@ impl WordApp {
         if let Some(r) = crate::file_conversion::before_save(self, id, &mut params) {
             return r;
         }
+        // With Confirm file format conversion on open, opening plain text asks for its encoding.
+        if let Some(r) = crate::file_conversion::before_open(self, id, &params) {
+            return r;
+        }
         let applied = applied_font(id, &params);
         let r = self.execute_user(id, params);
         // A save error already on the status line is the reason to see; the refusal shows otherwise.
@@ -994,6 +998,17 @@ impl WordApp {
                 }
                 json!({"alignmentGuides": self.ui.alignment_guides})
             }
+            "ui.ctrlClickFollowsLinks" => {
+                // File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink:
+                // `value` true (the default) or false; no value reads it. Off, a plain click on a
+                // link in the text follows it.
+                match p.get("value") {
+                    None => {}
+                    Some(Value::Bool(on)) => self.ui.ctrl_click_follows_links = *on,
+                    Some(_) => return Some(Err("`value` must be true or false".into())),
+                }
+                json!({"ctrlClickFollowsLinks": self.ui.ctrl_click_follows_links})
+            }
             "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" | "ui.showHighlight" | "ui.showDrawings" | "ui.showBackgrounds" => {
                 return Some(self.show_content_option(id, p));
             }
@@ -1364,6 +1379,7 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.makeDefaultApp"
             | "ui.pirateSpeak"
             | "ui.caretAnimation"
+            | "ui.ctrlClickFollowsLinks"
             | "ui.startScreen"
             | "ui.recentRemove"
             | "ui.recentClear"

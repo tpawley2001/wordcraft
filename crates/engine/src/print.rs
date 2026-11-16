@@ -475,6 +475,35 @@ pub fn paper(v: &Value) -> Result<Option<(&'static str, f32, f32)>, CmdError> {
     }
 }
 
+/// Resolve the optional A4/Letter substitution. Validate even when explicit scaling wins.
+fn paper_substitution(v: &Value, enabled: bool) -> Result<Option<((f32, f32), (f32, f32))>, CmdError> {
+    let printer = match v.get("printerPaper") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(name)) if name.chars().count() <= 40 => {
+            if name.trim().is_empty() {
+                None
+            } else {
+                Some(wordcraft_geom::paper_by_name(name).ok_or_else(|| CmdError::Params("unknown printerPaper".into()))?)
+            }
+        }
+        Some(_) => return Err(CmdError::Params("printerPaper must be a paper name of at most 40 characters".into())),
+    };
+    let enabled = match v.get("scaleA4Letter") {
+        None => enabled,
+        Some(Value::Bool(value)) => *value,
+        Some(_) => return Err(CmdError::Params("scaleA4Letter must be a boolean".into())),
+    };
+    if !enabled || paper(v)?.is_some() {
+        return Ok(None);
+    }
+    let source = match printer.map(|p| p.0) {
+        Some("Letter") => "A4",
+        Some("A4") => "Letter",
+        _ => return Ok(None),
+    };
+    Ok(printer.zip(wordcraft_geom::paper_by_name(source)).map(|((_, w, h), (_, sw, sh))| ((sw, sh), (w, h))))
+}
+
 /// Validate the physical sheet layout without touching document page setup.
 pub fn imposition(v: &Value) -> Result<wordcraft_pdf::imposition::Imposition, CmdError> {
     match v.get("pagesPerSheet") {
@@ -648,6 +677,7 @@ impl Session {
         if !v.is_object() {
             return Err(CmdError::Params("print settings must be an object".into()));
         }
+        let paper_substitution = paper_substitution(v, self.prefs.print_scale_a4_letter)?;
         // Print Markup (File › Print) decides whether tracked changes and comments print.
         let mut markup = crate::cmd::file::export_options(self, v);
         let out = crate::cmd::references::output_fields_in(&self.doc, Some(&self.output_context()));
@@ -693,6 +723,7 @@ impl Session {
             include_markup: markup.markup,
             comments: markup.comments,
             paper,
+            paper_substitution,
             links,
             // Print only the data from a form (File › Options › Advanced): the document's own
             // setting; a Document Info report prints in full.
@@ -739,6 +770,16 @@ impl Session {
 pub(crate) fn print_pdf_to_file(s: &mut Session, v: &Value) -> Result<Value, CmdError> {
     let path = p::req_str(v, "path")?;
     let path = if path.to_ascii_lowercase().ends_with(".pdf") { path.to_string() } else { format!("{path}.pdf") };
+    // File › Options › Display › Update linked data before printing, or this job's `updateLinks`.
+    let update_links = match v.get("updateLinks") {
+        None | Some(Value::Null) => s.prefs.print_update_links,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(CmdError::Params("`updateLinks` must be true or false".into())),
+    };
+    if update_links {
+        // A link that can't be updated keeps its result; the job still prints.
+        let _ = s.run("fields.updateLinks", &json!({}));
+    }
     let (bytes, plan) = s.print_pdf(v)?;
     // Through `io`, so an agent confined to an automation write root (#769) can't print elsewhere.
     #[cfg(not(target_arch = "wasm32"))]
@@ -751,6 +792,19 @@ pub(crate) fn print_pdf_to_file(s: &mut Session, v: &Value) -> Result<Value, Cmd
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a4_letter_preferences_and_strict_job_params() {
+        let prefs: crate::prefs::Prefs = serde_json::from_value(json!({})).unwrap();
+        assert!(prefs.print_scale_a4_letter);
+        for value in [json!(null), json!(1), json!("true")] {
+            assert!(paper_substitution(&json!({"scaleA4Letter": value}), true).is_err());
+        }
+        for value in [json!(""), json!(null), json!("Legal")] {
+            assert_eq!(paper_substitution(&json!({"printerPaper": value}), true).unwrap(), None);
+        }
+        assert!(paper_substitution(&json!({"paper": "Legal", "printerPaper": "Quarto"}), true).is_err());
+    }
 
     #[test]
     fn ranges_parse_and_hostile_ones_are_errors() {
