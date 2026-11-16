@@ -144,6 +144,7 @@ mod cross_ref_missing;
 mod cross_ref_self;
 mod cross_ref_notes;
 mod typing;
+mod paragraph_mark_selection;
 mod view_split;
 mod word_alternate_keys;
 mod word_window_keys;

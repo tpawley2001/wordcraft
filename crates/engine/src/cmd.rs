@@ -201,11 +201,6 @@ pub(crate) fn delete_selection_effect(s: &mut Session) -> Result<SelectionDelete
     Ok(effect)
 }
 
-<<<<<<< ours
-/// Delete the selection (respecting track changes); returns the collapsed position. With a
-/// Drawing Canvas member picked (#2637) the selection is the whole canvas, which a command that
-/// replaces the selection (Insert › Table, Equation, Symbol, Field…) would take away: refused.
-=======
 /// Keep the paragraph mark a selection ends with, as Word does: when the selection ends at the
 /// start of a paragraph, it stops before the mark of the paragraph before. Typing over the
 /// selection (`typing`) always keeps that mark. Delete and Backspace keep it only when the
@@ -226,8 +221,9 @@ pub(crate) fn keep_final_mark(s: &mut Session, typing: bool) {
     s.sel = crate::Selection { anchor: a, focus: end };
 }
 
-/// Delete the selection (respecting track changes); returns the collapsed position.
->>>>>>> theirs
+/// Delete the selection (respecting track changes); returns the collapsed position. With a
+/// Drawing Canvas member picked (#2637) the selection is the whole canvas, which a command that
+/// replaces the selection (Insert › Table, Equation, Symbol, Field…) would take away: refused.
 pub fn delete_selection(s: &mut Session) -> Result<Pos, CmdError> {
     delete_selection_effect(s).map(|e| e.at)
 }

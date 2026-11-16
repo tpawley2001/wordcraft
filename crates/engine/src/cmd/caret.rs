@@ -268,10 +268,6 @@ fn line(s: &mut Session, v: &Value, home: bool) -> CmdResult {
     sel_result(s)
 }
 
-<<<<<<< ours
-/// Page Up (`dir < 0`) / Page Down: the same place on the page before or after, or in the views
-/// that are one long page, the line a printed page's text above or below.
-=======
 /// Where Home and End measure the line from, as in Word. With Shift, from the focus. Without
 /// Shift a selection collapses: Home goes to the start of the line where the selection starts,
 /// End to the end of the line where it ends. A selection end at a paragraph's start, after the
@@ -303,14 +299,16 @@ fn line_from(s: &Session, ext: bool, home: bool) -> Pos {
 /// start of the next paragraph in the same container. With none (the last paragraph of a story
 /// or a cell, or a table next) it stops at the end of the text.
 fn past_mark(s: &Session, end: Pos) -> Pos {
-    let next = end.path.with_last(end.path.last() + 1);
+    let Some(i) = end.path.last().checked_add(1) else { return end };
+    let next = end.path.with_last(i);
     match (s.doc.para(end.story, &end.path), s.doc.para(end.story, &next)) {
         (Some(p), Some(_)) if end.off == p.len() => Pos { story: end.story, path: next, off: 0 },
         _ => end,
     }
 }
 
->>>>>>> theirs
+/// Page Up (`dir < 0`) / Page Down: the same place on the page before or after, or in the views
+/// that are one long page, the line a printed page's text above or below.
 fn page(s: &mut Session, v: &Value, dir: i32) -> CmdResult {
     let ext = extend(v);
     let l = s.layout();
