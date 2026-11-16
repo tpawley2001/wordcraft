@@ -112,6 +112,13 @@ pub enum Placed {
     },
 }
 
+/// How the text of a text box turned by `spin` turns with it. As in Word, the text turns with
+/// the box but isn't mirrored: a box flipped across turns its text upside down, one flipped side
+/// to side leaves it readable. Drawing and hit-testing both go by this.
+pub fn box_text_spin(spin: Spin) -> Spin {
+    Spin::new(spin.deg + if spin.flip_v { 180.0 } else { 0.0 }, false, false)
+}
+
 impl Placed {
     pub(crate) fn translate(&mut self, dx: f32, dy: f32) {
         match self {

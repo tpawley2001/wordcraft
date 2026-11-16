@@ -75,6 +75,10 @@ pub struct Prefs {
     /// File › Options › Advanced › Use smart cursoring (on, as in Word): after scrolling the caret
     /// out of view, a plain arrow key puts it on the page in view instead of scrolling back.
     pub smart_cursoring: bool,
+    /// File › Options › Advanced › Use Normal style for bulleted or numbered lists (off, as in
+    /// Word): on, Bullets and Numbering keep a Normal paragraph's style instead of
+    /// switching it to List Paragraph.
+    pub normal_style_for_lists: bool,
     /// Overtype: typed characters replace the ones after the caret.
     pub overtype: bool,
     /// The unit rulers and dialogs show lengths in, when the user chose one (File › Options ›
@@ -198,6 +202,7 @@ impl Default for Prefs {
             auto_word_selection: true,
             smart_paragraph_selection: true,
             smart_cursoring: true,
+            normal_style_for_lists: false,
             overtype: false,
             units: Default::default(),
             region: None,

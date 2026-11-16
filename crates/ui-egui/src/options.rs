@@ -334,6 +334,10 @@ fn display(app: &mut WordApp, ui: &mut Ui) {
     if ui.checkbox(&mut ruler, tl!("Show rulers")).changed() {
         let _ = app.run("view.ruler", json!({"value": ruler}));
     }
+    let mut highlight = app.ui.show_highlight;
+    if ui.checkbox(&mut highlight, tl!("Show highlighter marks")).changed() {
+        let _ = app.run("ui.showHighlight", json!({"value": highlight}));
+    }
     numeral_picker(app, ui);
     ui.add_space(8.0);
     section(ui, "Status bar");
@@ -542,6 +546,24 @@ fn save(app: &mut WordApp, ui: &mut Ui) {
         }
     }
     note(ui, "The document you are editing keeps the names and dates; only the saved file leaves them out.");
+    ui.add_space(8.0);
+    // The open document's `document.fontEmbedding` (#6329): saved with it, used by .docx saves.
+    section(ui, "Preserve fidelity when sharing this document");
+    let settings = &app.session.doc.settings;
+    let embed = settings.embed_true_type_fonts;
+    let rows = [
+        ("Embed fonts in the file", "embed", embed, true),
+        ("Embed only the characters used in the document (best for reducing file size)", "subset", settings.save_subset_fonts, embed),
+        ("Do not embed common system fonts", "skipSystemFonts", !settings.embed_system_fonts, embed),
+    ];
+    for (label, key, value, enabled) in rows {
+        let mut v = value;
+        if ui.add_enabled(enabled, egui::Checkbox::new(&mut v, tl!(label))).changed()
+            && let Err(e) = app.run("document.fontEmbedding", json!({ key: v }))
+        {
+            app.status(e);
+        }
+    }
 }
 
 fn language(app: &mut WordApp, ui: &mut Ui) {
@@ -594,13 +616,16 @@ fn accessibility(app: &mut WordApp, ui: &mut Ui) {
     }
 }
 
-/// Advanced › Show document content, in Word's order: picture placeholders, text boundaries, crop
-/// marks, field shading, and the draft font with its name and size. Screen settings, kept between
-/// runs. Font Substitution… opens the dialog of the fonts the document shows that aren't installed.
+/// Advanced › Show document content, in Word's order: background colors and images, picture
+/// placeholders, drawings and text boxes, text boundaries, crop marks, field shading, and the draft
+/// font with its name and size. Screen settings, kept between runs. Font Substitution… opens the
+/// dialog of the fonts the document shows that aren't installed.
 fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Show document content");
     for (label, id, mut on) in [
+        (tl!("Show background colors and images in Print Layout view"), "ui.showBackgrounds", app.ui.show_backgrounds),
         (tl!("Show picture placeholders"), "ui.picturePlaceholders", app.ui.picture_placeholders),
+        (tl!("Show drawings and text boxes on screen"), "ui.showDrawings", app.ui.show_drawings),
         (tl!("Show text boundaries"), "ui.textBoundaries", app.ui.text_boundaries),
         (tl!("Show crop marks"), "ui.cropMarks", app.ui.crop_marks),
     ] {
@@ -670,6 +695,7 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     flag(app, ui, "When selecting, automatically select entire word", "autoWordSelection", pr.auto_word_selection);
     flag(app, ui, "Use smart paragraph selection", "smartParagraphSelection", pr.smart_paragraph_selection);
     flag(app, ui, "Use smart cursoring", "smartCursoring", pr.smart_cursoring);
+    flag(app, ui, "Use Normal style for bulleted or numbered lists", "normalStyleForLists", pr.normal_style_for_lists);
     let mut guides = app.ui.alignment_guides;
     if ui
         .checkbox(&mut guides, tl!("Show alignment guides when moving pictures and shapes"))

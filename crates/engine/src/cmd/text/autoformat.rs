@@ -223,12 +223,11 @@ pub(super) fn make_list_item(s: &mut Session, story: StoryRef, path: &Path, kind
         Some(n) => n,
         None => Arc::make_mut(&mut s.doc.numbering).try_add_list(kind)?,
     };
+    let normal_for_lists = s.prefs.normal_style_for_lists;
     let para = s.doc.para_mut(story, path)?;
     para.props.numbering = Some(NumRef { num, level: 0 });
     // A heading stays a heading (Word: "1. " in a Heading 1 gives a numbered Heading 1).
-    if para.props.style.as_deref().is_none_or(|st| st == "Normal") {
-        para.props.style = Some("ListParagraph".into());
-    }
+    para.props.style = crate::cmd::lists::list_style_for(normal_for_lists, para.props.style.as_deref());
     Ok(true)
 }
 

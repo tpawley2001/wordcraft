@@ -1217,3 +1217,46 @@ fn tab_cycles_floating_shapes_and_escape_leaves_them() {
     // With a caret, Tab is the document's again.
     assert!(!key(&mut app, egui::Key::Tab, egui::Modifiers::NONE));
 }
+
+/// While a turned text box is edited it is shown straight (#6056): its frame and handles sit on
+/// its unturned rect, a press on that straight border grabs it, and turning it adds to its real
+/// angle.
+#[test]
+fn a_turned_text_box_being_edited_has_its_handles_on_the_straight_frame() {
+    let mut app = WordApp::new(wordcraft_engine::Session::new(Document::new()), Default::default());
+    app.run("insert.textBox", json!({"text": "Turned words"})).unwrap();
+    let bx = app.session.layout().find_object(0, |o| o.text_box.is_some()).unwrap();
+    app.run("select.range", json!({"anchor": bx.pos(), "focus": Pos { off: bx.off + OBJ.len_utf8(), ..bx.pos() }})).unwrap();
+    app.run("arrange.bounds", json!({"page": 0, "x": 150, "y": 180, "width": 200, "height": 100})).unwrap();
+    app.run("arrange.rotation", json!({"degrees": 30})).unwrap();
+    let layout = app.session.layout();
+    let bx = layout.find_object(0, |o| o.text_box.is_some()).unwrap();
+    let id = bx.text_box.unwrap();
+    assert_eq!(bx.spin.deg, 30.0);
+    // The object selected, not its text: shown turned, handles on the turned frame.
+    app.canvas.straight_box = layout.turned_box_story(app.session.sel.focus.story);
+    assert_eq!(app.canvas.straight_box, None);
+    assert_eq!(active(&app, &layout).map(|(o, editing)| (o.spin.deg, editing)), Some((30.0, false)));
+    // The caret in its text, as the canvas sets it each frame: straight.
+    app.run("caret.set", json!({"pos": Pos { story: StoryRef::Part(id), path: wordcraft_doc::Path::top(0), off: 0 }})).unwrap();
+    let layout = app.session.layout();
+    app.canvas.straight_box = layout.turned_box_story(app.session.sel.focus.story);
+    assert_eq!(app.canvas.straight_box, Some(id));
+    let (o, editing) = active(&app, &layout).expect("the box being edited");
+    assert!(editing && o.spin.is_identity(), "{o:?}");
+    assert_eq!(o.rect, bx.rect, "the unturned frame");
+    let page = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(612.0, 792.0));
+    let f = frame::to_screen(page, 1.0, o.rect);
+    assert_eq!(frame::handle_at(f, o.spin.deg, f.right_bottom()), Some(frame::Handle { x: 1, y: 1 }));
+    assert_eq!(frame::handle_at(f, bx.spin.deg, f.right_bottom()), None, "not where the turned frame's corner is");
+    // A press on the straight border grabs the box; one inside is its text.
+    let pages = [page];
+    let border = egui::pos2(f.left() + f.width() * 0.25, f.top());
+    assert!(matches!(grab_at(&app, &layout, &pages, 1.0, border), Some((_, Grab::Move))));
+    assert!(grab_at(&app, &layout, &pages, 1.0, f.center() + egui::vec2(10.0, 5.0)).is_none());
+    // Turning it from the straight frame adds to its real angle.
+    assert_eq!(straight_turn(&app, &o), 30.0);
+    let mut d = Drag::new(Grab::Rotate, 0, o.rect, o.spin.deg, f.center_top()).with_base(straight_turn(&app, &o));
+    d.turn_to(egui::pos2(f.center().x + 300.0, f.center().y), &pages, 1.0, false);
+    assert_eq!((d.deg, d.real_deg()), (90.0, 120.0));
+}

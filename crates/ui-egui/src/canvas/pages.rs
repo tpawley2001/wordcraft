@@ -14,6 +14,7 @@ pub(super) fn view_key(app: &WordApp, dim_body: bool, hidden: Option<&Pos>, hint
     (v.marks, app.session.prefs.marks, v.show_markup, v.dark_mode, wordcraft_render::DARK_PAPER, v.hide_ink, v.draw.replay).hash(&mut h);
     (v.read_mode, v.read_page_color, app.session.prefs.paper_color).hash(&mut h);
     (app.ui.picture_placeholders, app.session.doc.settings.do_not_shade_form_data).hash(&mut h);
+    (app.ui.show_highlight, app.ui.show_drawings, app.ui.show_backgrounds).hash(&mut h);
     (field_shading(app), selected_fields(app)).hash(&mut h);
     app.session.prefs.markup.hash(&mut h);
     (dim_body, v.show_document_text).hash(&mut h);
@@ -23,6 +24,8 @@ pub(super) fn view_key(app: &WordApp, dim_body: bool, hidden: Option<&Pos>, hint
     // A page drawn without a dragged object must not pass for the page with it: the drag starts
     // and ends change the key once each, so the page is rendered again then and only then.
     hidden.hash(&mut h);
+    // A turned text box is drawn straight while it is edited: redrawn when editing starts or stops.
+    app.canvas.straight_box.hash(&mut h);
     h.finish()
 }
 
@@ -362,6 +365,16 @@ pub(super) fn page_render_options(app: &WordApp, dim_body: bool) -> wordcraft_re
     // Header & Footer › Show Document Text off: the body isn't drawn while a header or footer is edited.
     opts.display.hide_body = dim_body && !app.session.view.show_document_text;
     opts.display.picture_placeholders = app.ui.picture_placeholders;
+    // The turned text box being edited is drawn straight, on screen only (#6056).
+    opts.display.straight_text_box = app.canvas.straight_box;
+    // Show highlighter marks and Show drawings and text boxes on screen off: not drawn here.
+    opts.display.hide_highlight = !app.ui.show_highlight;
+    opts.display.hide_drawings = !app.ui.show_drawings;
+    // Show background colors and images in Print Layout view off: the page shows the paper it
+    // would without a page color. Read Mode and Immersive Reader keep their own.
+    if !app.ui.show_backgrounds && opts.read_paper.is_none() {
+        opts.read_paper = Some(app.session.prefs.paper_color.color());
+    }
     // Form Field Shading is a screen aid: on here, where the document asks for it, never in print or PDF.
     opts.display.form_field_shading = true;
     // Field shading too: never in print or PDF.
