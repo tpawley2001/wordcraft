@@ -21,6 +21,9 @@ pub struct SubstitutionRow {
     pub substitute: Option<String>,
     /// The choice when the dialog opened: OK changes only the rows that differ.
     pub was: Option<String>,
+    /// The face Default draws the font in (`shown_as` holds the chosen font while there is a
+    /// choice).
+    pub default: Option<String>,
 }
 
 impl SubstitutionRow {
@@ -31,14 +34,21 @@ impl SubstitutionRow {
             shown_as: v.get("shownAs").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect(),
             was: substitute.clone(),
             substitute,
+            default: v.get("default").and_then(Value::as_str).map(str::to_string),
         }
     }
 
     /// The Substituted font column: the picked font, else the face Default draws it in.
     fn shown(&self) -> String {
-        match &self.substitute {
-            Some(f) => f.clone(),
-            None => self.shown_as.first().cloned().unwrap_or_else(|| tl!("Default").to_string()),
+        self.substitute.clone().or_else(|| self.default_face()).unwrap_or_else(|| tl!("Default").to_string())
+    }
+
+    /// The face the font is drawn in with no choice: as drawn now when there was none when the
+    /// dialog opened, else Default's own substitute (not the choice being taken back).
+    fn default_face(&self) -> Option<String> {
+        match &self.was {
+            None => self.shown_as.first().cloned(),
+            Some(_) => self.default.clone(),
         }
     }
 }
@@ -170,7 +180,7 @@ fn details(app: &mut WordApp, ui: &mut Ui, f: &mut FontSubstitutionForm) {
 /// The font Convert Permanently… puts in place of `r`'s: the one picked, else the one it is
 /// drawn in.
 fn convert_to(r: &SubstitutionRow) -> Option<String> {
-    r.substitute.clone().or_else(|| r.shown_as.first().cloned())
+    r.substitute.clone().or_else(|| r.default_face())
 }
 
 /// Convert Permanently…'s question, Yes and No.
@@ -197,4 +207,22 @@ fn confirm(app: &mut WordApp, ui: &mut Ui, f: &mut FontSubstitutionForm) {
             f.confirm_convert = false;
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn going_back_to_default_shows_the_default_substitute() {
+        let v = json!({"font": "Gone", "shownAs": ["Chosen Face"], "substitute": "Chosen Face", "default": "Default Face"});
+        let mut r = SubstitutionRow::read(&v);
+        assert_eq!(r.shown(), "Chosen Face");
+        r.substitute = None;
+        assert_eq!(r.shown(), "Default Face", "not the choice being taken back");
+        assert_eq!(convert_to(&r).as_deref(), Some("Default Face"));
+        // No choice when the dialog opened: the face it is drawn in now.
+        let r = SubstitutionRow::read(&json!({"font": "Gone", "shownAs": ["Drawn Face"], "substitute": null, "default": "Other"}));
+        assert_eq!(r.shown(), "Drawn Face");
+    }
 }

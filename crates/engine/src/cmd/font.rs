@@ -286,7 +286,9 @@ fn substitution(s: &mut Session, _: &Value) -> CmdResult {
     let subs = &s.prefs.font_substitutes;
     let fonts: Vec<Value> = missing_fonts_with(&s.doc, subs, &layout)
         .iter()
-        .map(|f| json!({"font": f.font, "shownAs": f.shown_as, "substitute": subs.chosen(&f.font)}))
+        // `default`: the face Default (no choice) draws the font in, for showing it after a
+        // choice is taken back.
+        .map(|f| json!({"font": f.font, "shownAs": f.shown_as, "substitute": subs.chosen(&f.font), "default": shown_as(&s.doc, &f.font)}))
         .collect();
     Ok(json!({"fonts": fonts}))
 }
@@ -325,6 +327,16 @@ fn convert_permanently(s: &mut Session, v: &Value) -> CmdResult {
     changed += convert_props(&mut styles.default_chr, &key, &to);
     for st in &mut styles.styles {
         changed += convert_props(&mut st.chr, &key, &to);
+        // A table style's conditional formatting: header row, bands, first/last column, total
+        // row and the other regions.
+        if let Some(t) = &mut st.table {
+            for c in [&mut t.header_chr, &mut t.band_chr, &mut t.first_col_chr, &mut t.total_chr, &mut t.last_col_chr, &mut t.col_band_chr] {
+                changed += convert_props(c, &key, &to);
+            }
+            for part in t.regions.values_mut() {
+                changed += convert_props(&mut part.chr, &key, &to);
+            }
+        }
     }
     let numbering = Arc::make_mut(&mut doc.numbering);
     for level in numbering.abstracts.iter_mut().flat_map(|a| a.levels.iter_mut()) {
@@ -478,6 +490,76 @@ mod tests {
         assert!(p.runs.iter().all(|r| r.props.font_ea.as_deref() == Some(BUNDLED)), "{:?}", p.runs);
         s.run("edit.undo", &json!({})).unwrap();
         assert!(s.doc.numbering.abstracts.iter().flat_map(|a| a.levels.iter()).all(|l| l.chr.font.as_deref() == Some(MISSING)), "one undo step");
+    }
+
+    #[test]
+    fn convert_permanently_reaches_table_style_regions() {
+        let mut s = session();
+        let styles = Arc::make_mut(&mut s.doc.styles);
+        let Some(st) = styles.styles.iter_mut().find(|st| st.kind == wordcraft_doc::styles::StyleKind::Table) else { panic!("no table style") };
+        let id = st.id.clone();
+        let t = st.table.get_or_insert_with(Default::default);
+        t.header_chr.font = Some(MISSING.into());
+        t.band_chr.font_ea = Some(MISSING.into());
+        t.first_col_chr.font_cs = Some(MISSING.into());
+        t.last_col_chr.font = Some(MISSING.into());
+        t.total_chr.font = Some(MISSING.into());
+        t.col_band_chr.font = Some(MISSING.into());
+        t.regions.entry(wordcraft_doc::styles::TablePart::NeCell).or_default().chr.font = Some(MISSING.into());
+        s.run("font.convertPermanently", &json!({"font": MISSING, "to": BUNDLED})).unwrap();
+        let Some(t) = s.doc.styles.styles.iter().find(|st| st.id == id).and_then(|st| st.table.as_ref()) else { panic!("style gone") };
+        for c in [&t.header_chr, &t.band_chr, &t.first_col_chr, &t.last_col_chr, &t.total_chr, &t.col_band_chr] {
+            assert!(!uses(c, MISSING) && uses(c, BUNDLED), "{c:?}");
+        }
+        assert!(t.regions.values().all(|p| !uses(&p.chr, MISSING)));
+        s.run("edit.undo", &json!({})).unwrap();
+        let t = s.doc.styles.styles.iter().find(|st| st.id == id).and_then(|st| st.table.as_ref());
+        assert!(t.is_some_and(|t| uses(&t.header_chr, MISSING)), "one undo step");
+    }
+
+    #[test]
+    fn a_missing_east_asian_font_is_drawn_in_its_chosen_substitute() {
+        const MINCHO: &str = "MS Mincho";
+        if !wordcraft_fonts::word::resolve(MINCHO, false, false).substituted {
+            return; // installed here: nothing is substituted
+        }
+        let mut s = Session::new(Document::new());
+        s.run("document.setText", &json!({"text": "Hello 日本語の文章"})).unwrap();
+        s.run("select.all", &json!({})).unwrap();
+        s.run("format.font", &json!({"name": BUNDLED, "eastAsia": MINCHO})).unwrap();
+        let shown = |s: &mut Session| -> Vec<String> {
+            let v = s.run("font.substitution", &json!({})).unwrap();
+            let row = v["fonts"].as_array().and_then(|f| f.iter().find(|f| f["font"] == MINCHO).cloned()).unwrap_or_default();
+            row["shownAs"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default()
+        };
+        let default = shown(&mut s);
+        assert!(!default.is_empty(), "MS Mincho is listed as missing");
+        // Another installed face with the ideographs.
+        let db = FontDb::global();
+        let Some(other) = db.families().into_iter().filter(|f| !default.iter().any(|d| d.eq_ignore_ascii_case(f))).find(|f| {
+            let r = wordcraft_fonts::word::resolve(f, false, false);
+            !r.substituted && "日本語文章".chars().all(|c| r.face.covers(c))
+        }) else {
+            return; // only one CJK face here
+        };
+        s.run("font.setSubstitute", &json!({"font": MINCHO, "substitute": other})).unwrap();
+        assert_eq!(shown(&mut s), vec![other.clone()], "the CJK text is laid out in the chosen face");
+        s.run("font.setSubstitute", &json!({"font": MINCHO, "substitute": null})).unwrap();
+        assert_eq!(shown(&mut s), default);
+    }
+
+    #[test]
+    fn a_pdf_copy_draws_missing_fonts_in_their_chosen_substitutes() {
+        let mut s = session();
+        let pdf = |s: &Session| crate::io::save_bytes_opts("copy.pdf", &s.doc, &crate::cmd::file::export_options(s, &json!({}))).unwrap();
+        let default = pdf(&s);
+        assert_eq!(pdf(&s), default, "the same copy each time");
+        s.run("font.setSubstitute", &json!({"font": MISSING, "substitute": BUNDLED})).unwrap();
+        let chosen = pdf(&s);
+        assert_ne!(chosen, default, "laid out with the chosen font, as printing is");
+        // Laid out as the session lays it out for printing.
+        s.run("font.setSubstitute", &json!({"font": MISSING, "substitute": null})).unwrap();
+        assert_eq!(pdf(&s), default);
     }
 
     #[test]

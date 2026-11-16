@@ -53,7 +53,7 @@ pub fn is_word_package(ext: &str) -> bool {
 }
 
 /// How a copy in another format is written.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExportOptions {
     /// Print Markup: PDFs show tracked changes marked up and, with `comments`, each page scaled
     /// down beside a markup area with the comments in balloons (page images get the area too);
@@ -70,6 +70,9 @@ pub struct ExportOptions {
     /// face can draw, a picture that is missing or can't be decoded); else the save fails with
     /// `strict: …` (#6005). Ignored for other formats.
     pub strict: bool,
+    /// The fonts the user picked to show missing fonts in (Font Substitution): a PDF or page
+    /// image draws them as the screen and printing do.
+    pub font_substitutes: wordcraft_layout::FontSubstitutes,
 }
 
 /// A document password: wiped from memory when dropped, never printed (`Debug` shows `***`).
