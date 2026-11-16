@@ -540,6 +540,24 @@ fn save(app: &mut WordApp, ui: &mut Ui) {
         }
     }
     note(ui, "The document you are editing keeps the names and dates; only the saved file leaves them out.");
+    ui.add_space(8.0);
+    // The open document's `document.fontEmbedding` (#6329): saved with it, used by .docx saves.
+    section(ui, "Preserve fidelity when sharing this document");
+    let settings = &app.session.doc.settings;
+    let embed = settings.embed_true_type_fonts;
+    let rows = [
+        ("Embed fonts in the file", "embed", embed, true),
+        ("Embed only the characters used in the document (best for reducing file size)", "subset", settings.save_subset_fonts, embed),
+        ("Do not embed common system fonts", "skipSystemFonts", !settings.embed_system_fonts, embed),
+    ];
+    for (label, key, value, enabled) in rows {
+        let mut v = value;
+        if ui.add_enabled(enabled, egui::Checkbox::new(&mut v, tl!(label))).changed()
+            && let Err(e) = app.run("document.fontEmbedding", json!({ key: v }))
+        {
+            app.status(e);
+        }
+    }
 }
 
 fn language(app: &mut WordApp, ui: &mut Ui) {

@@ -104,6 +104,16 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
     if s.print_forms_data {
         w.empty("w:printFormsData", &[]);
     }
+    // §17.8.3.8, §17.8.3.7, §17.8.3.16, in CT_Settings order, after `w:printFormsData`.
+    if s.embed_true_type_fonts {
+        w.empty("w:embedTrueTypeFonts", &[]);
+    }
+    if s.embed_system_fonts {
+        w.empty("w:embedSystemFonts", &[]);
+    }
+    if s.save_subset_fonts {
+        w.empty("w:saveSubsetFonts", &[]);
+    }
     if s.mirror_margins {
         w.empty("w:mirrorMargins", &[]);
     }

@@ -55,7 +55,8 @@ fn draw_charts(doc: &mut Document) {
 pub fn save(ext: &str, doc: &Document, opts: &crate::io::ExportOptions) -> Option<Result<Vec<u8>, String>> {
     // .docx/.docm/.dotx/.dotm: the extension picks the package flavour Word expects.
     if let Some(flavor) = wordcraft_docx::Flavor::from_ext(ext) {
-        return Some(wordcraft_docx::write_as(doc, flavor).map_err(|e| e.to_string()));
+        let fonts = crate::font_embed::fonts_to_embed(doc);
+        return Some(wordcraft_docx::write_as_with_fonts(doc, flavor, &fonts).map_err(|e| e.to_string()));
     }
     match ext {
         "xml" if opts.word2003 => Some(wordcraft_docx::write_wordml2003(doc).map_err(|e| e.to_string())),
