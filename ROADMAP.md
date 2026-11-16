@@ -1,5 +1,7 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0615: print jobs scale A4 pages onto Letter printer paper and Letter pages onto A4 by default, preserving orientation; explicit paper scaling wins and other sizes stay unchanged. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged; earlier: P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged)
@@ -202,6 +204,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
    (20–30 h).
 
 ## Progress log
+
+- 2026-11-15: P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.
 
 - 2026-11-15: P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.
 
@@ -1075,7 +1079,12 @@ Quoted field escapes are interpreted like Word, and body `PAGE` fields use their
 Section page-numbering settings preserve `w:chapStyle` values across the full unsigned-byte range.
 MATH glyphs that reference the same construction now share its immutable variants and assembly data (#3630). Glyph mappings, values and the existing partial-record fallback stay unchanged. Repeated glyph IDs keep their last valid reference without retaining superseded constructions. Distinct overlapping constructions and assembly-only sharing remain separate.
 
+- 2026-11-15: P0615: print jobs scale A4 pages onto Letter printer paper and Letter pages onto A4 by default, preserving orientation; explicit paper scaling wins and other sizes stay unchanged. Readiness estimates unchanged.
+
 ## Revision history
+
+> 2026-11-15 · trivial · P0615: print jobs scale A4 pages onto Letter printer paper and Letter pages onto A4 by default, preserving orientation; explicit paper scaling wins and other sizes stay unchanged. Readiness estimates unchanged.
+> 2026-11-15 · trivial · P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.
 

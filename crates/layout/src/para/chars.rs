@@ -191,8 +191,12 @@ pub(super) const MISSING_ROMAN_FONT: &str = "Cambria";
 /// A font with substitutes of its own keeps them: Times New Roman is roman in every font table,
 /// and where it isn't installed Liberation Serif has its metrics; Word never meets it missing.
 /// A missing font the document's font table marks as a symbol font is looked up as Symbol
-/// ([`symbol_class_as`]).
-pub(super) fn lookup_family<'f>(doc: &Document, font: &'f str) -> &'f str {
+/// ([`symbol_class_as`]). Before all that, the font the user picked to show a missing font in
+/// ([`crate::FontSubstitutes::chosen`]).
+pub(super) fn lookup_family<'f>(doc: &Document, subs: &'f crate::FontSubstitutes, font: &'f str) -> &'f str {
+    if let Some(chosen) = subs.chosen(font) {
+        return chosen;
+    }
     if let Some(symbol) = symbol_class_as(doc, font) {
         return symbol;
     }
@@ -275,10 +279,15 @@ fn thai_or_latin(c: char) -> bool {
 /// missing font the document classes as roman is drawn in [`MISSING_ROMAN_FONT`]); `None` when it
 /// is installed. Characters the face lacks are drawn in fallback faces.
 pub fn substitute_face(doc: &Document, font: &str) -> Option<FaceRef> {
+    substitute_face_with(doc, &crate::FontSubstitutes::default(), font)
+}
+
+/// [`substitute_face`] with the fonts the user picked to show missing fonts in.
+pub fn substitute_face_with(doc: &Document, subs: &crate::FontSubstitutes, font: &str) -> Option<FaceRef> {
     if font.trim().is_empty() {
         return None;
     }
-    let family = lookup_family(doc, font);
+    let family = lookup_family(doc, subs, font);
     let r = wordcraft_fonts::word::resolve(family, false, false);
     (r.substituted || family != font).then_some(r.face)
 }
@@ -289,12 +298,21 @@ pub fn substitute_face(doc: &Document, font: &str) -> Option<FaceRef> {
 /// [`substitute_face`] is for the run's font), and the text goes to the run's font when it has the
 /// characters, else to the first fallback face that does.
 pub fn east_asian_substitute_face(doc: &Document, font_ea: &str, font: &str) -> Option<FaceRef> {
+    east_asian_substitute_face_with(doc, &crate::FontSubstitutes::default(), font_ea, font)
+}
+
+/// [`east_asian_substitute_face`] with the fonts the user picked to show missing fonts in: the
+/// run's font and the East Asian font each take their choice.
+pub fn east_asian_substitute_face_with(doc: &Document, subs: &crate::FontSubstitutes, font_ea: &str, font: &str) -> Option<FaceRef> {
     if font_ea.trim().is_empty() || !wordcraft_fonts::word::resolve(font_ea, false, false).substituted {
         return None;
     }
+    if let Some(chosen) = subs.chosen(font_ea) {
+        return Some(wordcraft_fonts::word::resolve(chosen, false, false).face);
+    }
     // 日: one ideograph stands for the text, which isn't known yet.
     const IDEOGRAPH: char = '\u{65E5}';
-    let primary = wordcraft_fonts::word::resolve(lookup_family(doc, font), false, false).face;
+    let primary = wordcraft_fonts::word::resolve(lookup_family(doc, subs, font), false, false).face;
     if primary.covers(IDEOGRAPH) {
         return Some(primary);
     }
