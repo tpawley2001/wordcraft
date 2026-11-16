@@ -62,6 +62,10 @@ pub struct DisplayOptions {
     /// Print drawings created in Word off: nothing is drawn for shapes (ink excepted), text boxes
     /// and their text, WordArt and drawing canvases. The layout is unchanged.
     pub hide_drawings: bool,
+    /// File › Options › Display › Show highlighter marks off: highlight colour is not drawn (the
+    /// text keeps its highlight; shading still draws). Set on screen and for print jobs; PDF
+    /// export leaves it off.
+    pub hide_highlight: bool,
     /// Draw legacy form fields on grey when the document's Form Field Shading is on. Screen
     /// only; print and PDF leave it off.
     pub form_field_shading: bool,
@@ -116,6 +120,7 @@ impl Default for DisplayOptions {
             picture_placeholders: false,
             forms_data_only: false,
             hide_drawings: false,
+            hide_highlight: false,
             form_field_shading: false,
             field_shading: FieldShading::Never,
             field_shading_selection: None,

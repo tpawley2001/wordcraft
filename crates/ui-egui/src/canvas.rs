@@ -29,6 +29,8 @@ mod navigation;
 mod pages;
 mod reading;
 mod rulers;
+#[cfg(test)]
+mod show_options_tests;
 mod story;
 mod style_area;
 
