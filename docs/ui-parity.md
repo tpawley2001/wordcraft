@@ -1,6 +1,6 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-16 · **Change:** trivial (P0645: Home › Shading on whole selected table cells shades the cells, not their paragraphs (#4783). Readiness estimates unchanged.)
+> **Last updated:** 2026-11-16 · **Change:** trivial (P0639: Save As starts in the folder of the open file, as in Word (#4143, from #4209); a document never saved keeps the default folder, and a relatively opened file starts in the working folder. Export and Print to PDF unchanged. Readiness estimates unchanged; earlier: P0645: Home › Shading on whole selected table cells shades the cells, not their paragraphs (#4783). Readiness estimates unchanged; earlier: P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-16 · **Change:** trivial (P0641: the pointer is the arrow over the workspace beside and between the pages, as in Word (#4114). Readiness estimates unchanged; earlier: P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged; earlier: P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged)
 
@@ -239,6 +239,9 @@ File › Options › Advanced › Editing has Use Normal style for bulleted or n
 Chart Design › Chart Layouts › Add Chart Element has Axis Titles (Primary Horizontal, Primary Vertical; a new one reads "Axis Title", the vertical one turned) and Gridlines (Primary Major/Minor Horizontal/Vertical) as check items beside Legend and Data Labels, hidden for pie and doughnut charts (`chart.axisTitle`, `chart.gridlines`).
 ## Revision history
 
+> 2026-11-16 · trivial · P0639: Save As starts in the folder of the open file, as in Word (#4143, from #4209); a document never saved keeps the default folder, and a relatively opened file starts in the working folder. Export and Print to PDF unchanged. Readiness estimates unchanged.
+
+> 2026-11-15 · trivial · P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.
 > 2026-11-16 · trivial · P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0627: Plain Text File Conversion adds Insert line breaks, saving each body layout line with the chosen line end and previewing the wraps. Readiness estimates unchanged.
 

@@ -54,7 +54,7 @@ fn imported_word_save_asks_for_docx_and_preserves_the_original() {
         let revision = a.session.rev();
         let result = a.run("file.save", json!({})).unwrap();
         assert_eq!(result["pending"], "saveAs");
-        assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "contract.docx".into(), dir: None });
+        assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "contract.docx".into(), dir: Some(dir.to_string_lossy().into_owned()) });
         answer(&shown, None);
         assert_eq!(a.poll_file_dialog().unwrap().unwrap()["saved"], false);
         assert_eq!(a.session.doc, draft);
@@ -204,7 +204,7 @@ fn imported_word_save_controls_ask_for_docx() {
     h.get_by_label("Save").click();
     h.run_steps(3);
     assert!(h.state().file_dialog_open(), "the Save button asks for a supported target");
-    assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "contract.docx".into(), dir: None });
+    assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "contract.docx".into(), dir: Some(dir.to_string_lossy().into_owned()) });
     answer(&shown, None);
     h.run_steps(3);
 
@@ -215,7 +215,7 @@ fn imported_word_save_controls_ask_for_docx() {
     h.event(egui::Event::Key { key: egui::Key::S, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::COMMAND });
     h.run_steps(3);
     assert!(h.state().file_dialog_open(), "the focused editor's Mod+S asks too");
-    assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "contract.docx".into(), dir: None });
+    assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "contract.docx".into(), dir: Some(dir.to_string_lossy().into_owned()) });
     answer(&shown, None);
     h.run_steps(3);
     assert!(h.state().session.dirty);
@@ -375,7 +375,7 @@ fn save_as_with_a_new_filename_saves_under_it() {
     let r = a.run("file.saveAs", json!({})).unwrap();
     assert_eq!(r, json!({"saved": false}));
     assert!(a.file_dialog_open(), "F12's saveAs request opens the dialog");
-    assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "two.docx".into(), dir: None });
+    assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "two.docx".into(), dir: Some(dir.join("sub").to_string_lossy().into_owned()) });
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -764,4 +764,41 @@ fn many_failed_fonts_end_with_a_count() {
     a.add_fonts(paths).unwrap();
     let msg = a.status_msg.as_ref().map(|(m, _)| m.clone()).unwrap_or_default();
     assert_eq!(msg, "Added 0 fonts; 5 couldn't be read: f0.ttf, f1.ttf, f2.ttf and 2 more");
+}
+
+/// #4143: Save As starts in the folder of the open file, not in the home folder; a document
+/// that was never saved has no folder to offer.
+#[test]
+fn save_as_starts_in_the_folder_of_the_open_file() {
+    let dir = scratch("save-as-folder");
+    let opened = dir.join("one.docx");
+    wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("original"))
+        .run("file.save", &json!({"path": opened.to_string_lossy()}))
+        .unwrap();
+    let (mut a, shown) = async_app();
+    a.services.templates_dir = Some(dir.join("Templates"));
+    a.run("file.open", json!({"path": opened.to_string_lossy()})).unwrap();
+    a.save_as_dialog();
+    assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "one.docx".into(), dir: Some(dir.to_string_lossy().into_owned()) });
+    answer(&shown, None);
+
+    let (mut fresh, shown) = async_app();
+    typed(&mut fresh);
+    fresh.save_as_dialog();
+    assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: format!("{UNSAVED}.docx"), dir: None });
+    answer(&shown, None);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A file opened by a relative path (`wordcraft one.docx`) has an empty parent: Save As starts
+/// in the working folder, not with an empty folder the dialog would drop.
+#[test]
+fn save_as_starts_in_the_working_folder_for_a_relative_path() {
+    let (mut a, shown) = async_app();
+    typed(&mut a);
+    a.session.path = Some(std::path::PathBuf::from("one.docx"));
+    a.save_as_dialog();
+    let cwd = std::env::current_dir().unwrap().to_string_lossy().into_owned();
+    assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "one.docx".into(), dir: Some(cwd) });
+    answer(&shown, None);
 }
