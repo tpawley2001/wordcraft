@@ -53,7 +53,7 @@ fn style_area_width(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 /// The on/off settings by their `file.options` name.
-fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 18] {
+fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 20] {
     [
         ("typingReplacesSelection", |p| &mut p.typing_replaces_selection),
         ("insertKeyOvertype", |p| &mut p.insert_key_overtype),
