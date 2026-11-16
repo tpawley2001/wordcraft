@@ -20,7 +20,7 @@ mod tabs_borders;
 mod tools;
 
 use format::{align, asian_typography, cur, direction, hanging_indent, line_spacing, ls, remove_hanging, set_align, set_props, tog};
-pub use format::{cur as selection_para, fmt, indent, outdent};
+pub use format::{cur as selection_para, drop_direct_indents, fmt, indent, outdent};
 pub use lists::{ListButtons, list_buttons, manage_list, style_description, touch_all};
 use lists::{list, restart_numbering};
 pub(crate) use outline::{ensure_heading_style, set_heading};
@@ -160,7 +160,11 @@ pub fn specs() -> Vec<CommandSpec> {
             let lvl = p::u64(v, "level").unwrap_or(0).min(8) as u8;
             fmt(s, &|p| {
                 if let Some(n) = p.numbering.as_mut() {
+                    let moved = n.level != lvl;
                     n.level = lvl;
+                    if moved {
+                        format::drop_direct_indents(p);
+                    }
                 }
             })
         })
