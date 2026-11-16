@@ -647,16 +647,6 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
         let _ = app.run("ui.alignmentGuides", json!({"value": guides}));
     }
     ui.add_space(8.0);
-    section(ui, "Cut, copy, and paste");
-    flag(app, ui, "Use smart cut and paste", "smartCutPaste", pr.smart_cut_paste);
-    // Word keeps this under the Settings button; it only counts while smart cut and paste is on.
-    ui.horizontal(|ui| {
-        ui.add_space(20.0);
-        ui.add_enabled_ui(pr.smart_cut_paste, |ui| {
-            flag(app, ui, "Adjust sentence and word spacing automatically", "pasteAdjustWordSpacing", pr.paste_adjust_word_spacing);
-        });
-    });
-    ui.add_space(8.0);
     show_document_content(app, ui);
     ui.add_space(8.0);
     section(ui, "Print");
@@ -756,6 +746,16 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     {
         let _ = app.run("ui.caretAnimation", json!({"value": caret}));
     }
+    ui.add_space(8.0);
+    section(ui, "Cut, copy, and paste");
+    flag(app, ui, "Use smart cut and paste", "smartCutPaste", pr.smart_cut_paste);
+    // Word keeps this under the Settings button; it only counts while smart cut and paste is on.
+    ui.horizontal(|ui| {
+        ui.add_space(20.0);
+        ui.add_enabled_ui(pr.smart_cut_paste, |ui| {
+            flag(app, ui, "Adjust sentence and word spacing automatically", "pasteAdjustWordSpacing", pr.paste_adjust_word_spacing);
+        });
+    });
     if cfg!(all(unix, not(target_os = "macos"))) {
         ui.add_space(8.0);
         section(ui, "Linux display server");

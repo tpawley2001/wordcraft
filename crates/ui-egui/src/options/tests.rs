@@ -563,7 +563,7 @@ fn screen_paper_color_options_round_trip_and_work_without_a_document() {
 fn advanced_smart_cut_and_paste_checkboxes_set_the_preferences() {
     let mut a = app();
     a.run("file.options", json!({"pane": "advanced"})).unwrap();
-    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 1800.0)).build_ui_state(
         |ui, app: &mut WordApp| {
             let ctx = ui.ctx().clone();
             app.logic(&ctx);
