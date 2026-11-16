@@ -61,7 +61,7 @@ pub(crate) use margins::{MarginEdge, dragged_margin, margin_drag};
 #[cfg(test)]
 use navigation::top_page;
 pub use navigation::{nearest_page, page_at, page_to_screen, window_edge};
-use navigation::{scrollbar_page_tip, viewed_page};
+use navigation::{on_screen, scrollbar_page_tip, viewed_page};
 #[cfg(test)]
 use pages::{DRAWING_GRID_MAX_LINES, DRAWING_GRID_MIN_PX};
 pub(crate) use pages::{PageKeys, dark_page, page_doc, page_screen_scale, preview_sel, screen_render_options};
@@ -181,6 +181,9 @@ pub struct CanvasState {
     /// caret is on screen, else the page at the top of the window. None until the canvas is drawn,
     /// and in Read Mode.
     pub viewed_page: Option<usize>,
+    /// Whether the caret's line was inside the window when the canvas was last drawn (true until
+    /// then, and in Read Mode), for Use smart cursoring.
+    pub caret_in_view: bool,
     /// Effective scale (screen points per document point).
     pub scale: f32,
     /// Whether this frame's pages were drawn hinted ([`hint_pages`]).
@@ -431,6 +434,7 @@ impl Default for CanvasState {
             page_rects: Vec::new(),
             scrollbar_page: None,
             viewed_page: None,
+            caret_in_view: true,
             scale: PX_PER_PT,
             pages_hinted: screen_render_options().hinting,
             rasters: 0,
@@ -922,12 +926,16 @@ fn update_canvas_scroll_state(
     scrollbar_page_tip(app, ui, out.id, &geo.rects, &geo.bands, layout.pages.len());
     // The page the status bar names (#3880): the caret's, or a whole-story selection's page, while
     // it is on screen; else the page at the top of the window.
+    let caret_extent =
+        caret.and_then(|c| geo.rects.get(c.page).map(|r| (c.page, r.top() + c.top * geo.scale, r.top() + (c.top + c.height) * geo.scale)));
+    app.canvas.caret_in_view = app.session.view.read_mode
+        || caret_extent.is_none_or(|(_, from, to)| on_screen(from, to, app.canvas.scroll_offset.y, out.inner_rect.height()));
     app.canvas.viewed_page = (!app.session.view.read_mode && !geo.rects.is_empty()).then(|| {
         let extent = if app.session.selects_whole_story() {
             let page = app.session.page_hint.min(geo.rects.len() - 1);
             geo.rects.get(page).map(|r| (page, r.top(), r.bottom()))
         } else {
-            caret.and_then(|c| geo.rects.get(c.page).map(|r| (c.page, r.top() + c.top * geo.scale, r.top() + (c.top + c.height) * geo.scale)))
+            caret_extent
         };
         viewed_page(extent, &geo.rects, &geo.bands, app.canvas.scroll_offset.y, out.inner_rect.height()).min(layout.pages.len().saturating_sub(1))
     });
@@ -2151,3 +2159,5 @@ mod tests_ctrl_click_drag;
 mod tests_ctrl_click_links;
 #[cfg(test)]
 mod tests_rtl_gutter;
+#[cfg(test)]
+mod tests_smart_cursoring;
