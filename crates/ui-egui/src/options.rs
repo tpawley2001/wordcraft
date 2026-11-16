@@ -636,6 +636,7 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Editing");
     let pr = app.session.prefs.clone();
     flag(app, ui, "Typing replaces selected text", "typingReplacesSelection", pr.typing_replaces_selection);
+    flag(app, ui, "Use the Insert key for paste", "insertKeyPaste", pr.insert_key_paste);
     flag(app, ui, "Use the Insert key to switch overtype on and off", "insertKeyOvertype", pr.insert_key_overtype);
     flag(app, ui, "Overtype (typing replaces the characters after the caret)", "overtype", pr.overtype);
     flag(app, ui, "When selecting, automatically select entire word", "autoWordSelection", pr.auto_word_selection);

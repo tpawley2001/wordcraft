@@ -1,6 +1,7 @@
 # Typing parity with Word
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0609: smart cut and paste fixes the spaces around a deleted, cut or pasted word, as in Word.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0517: applying a paragraph style clears direct paragraph formatting and a direct bullet or number.)
 
@@ -660,6 +661,8 @@ Change Case: title and sentence case keep words in capitals when the selection c
 Underline shortcuts and font effects follow Word: Ctrl+U makes any other underline style single, Ctrl+Shift+D and Ctrl+Shift+W toggle their own style off again, and turning on All Caps/Small Caps, Strikethrough/Double strikethrough or Emboss/Engrave/Outline/Shadow turns its exclusive partners off (Outline and Shadow can both be on) (`tests::char_toggles_word`).
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.
 
 > 2026-11-14 · trivial · P0514: Ctrl+Space and Clear All Formatting keep highlighting; Ctrl+Space also removes the character style and Ctrl+Q a directly applied bullet or number, as measured in Word. Readiness estimates unchanged.
 

@@ -444,6 +444,9 @@ fn advanced_animation_turns_the_caret_animation_off_and_on() {
     );
     h.run_steps(4);
     assert!(h.query_by_label("Animation").is_some(), "the section is there");
+    // Additional editing options can put this setting below the visible scroll area.
+    h.get_by_label("Animate the caret (it glides and fades)").scroll_to_me();
+    h.run_steps(4);
     h.get_by_label("Animate the caret (it glides and fades)").click();
     h.run_steps(4);
     assert!(!h.state().ui.caret_animation, "the checkbox turns it off");
@@ -579,4 +582,32 @@ fn advanced_smart_cut_and_paste_checkboxes_set_the_preferences() {
     h.get_by_label("Use smart cut and paste").click();
     h.run_steps(4);
     assert!(!h.state().session.prefs.smart_cut_paste);
+}
+
+#[test]
+fn advanced_insert_key_paste_checkbox_round_trips() {
+    let mut a = app();
+    a.run("file.options", json!({"pane": "advanced"})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        a,
+    );
+    h.run_steps(4);
+    assert!(!h.state().session.prefs.insert_key_paste);
+    h.get_by_label("Use the Insert key for paste").click();
+    h.run_steps(4);
+    assert!(h.state().session.prefs.insert_key_paste);
+    let saved = serde_json::to_vec(&h.state().prefs()).unwrap();
+    let mut restored = app();
+    restored.apply_prefs(UiState::from_json(&saved).unwrap());
+    assert!(restored.session.prefs.insert_key_paste);
+    h.get_by_label("Use the Insert key for paste").click();
+    h.run_steps(4);
+    assert!(!h.state().session.prefs.insert_key_paste);
+    let older: wordcraft_engine::Prefs = serde_json::from_value(json!({})).unwrap();
+    assert!(!older.insert_key_paste);
 }

@@ -54,6 +54,8 @@ pub struct Prefs {
     pub default_language: Option<String>,
     /// Typing over a selection replaces it; off, the typed text goes in front of it.
     pub typing_replaces_selection: bool,
+    /// Plain Insert pastes through the clipboard command (off by default).
+    pub insert_key_paste: bool,
     /// The Insert key switches overtype on and off.
     pub insert_key_overtype: bool,
     /// File › Options › Advanced › When selecting, automatically select entire word (on, as in
@@ -172,6 +174,7 @@ impl Default for Prefs {
             smart_cut_paste: true,
             paste_adjust_word_spacing: true,
             typing_replaces_selection: true,
+            insert_key_paste: false,
             insert_key_overtype: false,
             auto_word_selection: true,
             smart_paragraph_selection: true,
