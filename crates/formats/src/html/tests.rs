@@ -773,7 +773,7 @@ fn listed<'a>(build: impl FnOnce(&mut wordcraft_doc::numbering::Numbering) -> Ve
     use wordcraft_doc::para::Paragraph;
     use wordcraft_doc::props::{CharProps, NumRef};
     let mut d = Document::new();
-    let items = build(&mut d.numbering);
+    let items = build(std::sync::Arc::make_mut(&mut d.numbering));
     d.body = items
         .into_iter()
         .map(|(t, num)| {
