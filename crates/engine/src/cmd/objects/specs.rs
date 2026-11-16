@@ -3,7 +3,8 @@ use super::group::{add_object, group, ungroup};
 use super::picture::{adjust, adjust_media, clear_lum, crop, original_media, recolor, relook, remove_background, reset, size};
 use super::select::{
     all_objects, alt_text, can_group, edit_obj, has_floating, has_group, has_movable, has_object, has_picture, has_placeable, has_shape,
-    has_shape_or_canvas, has_sizable, obj_size, objects_list, pane_all, pane_rename, pane_select, pane_visible, selected, with_float, with_obj,
+    has_shape_or_canvas, has_sizable, next_floating_shape, obj_size, objects_list, pane_all, pane_rename, pane_select, pane_visible, selected,
+    with_float, with_obj,
 };
 use super::shape::{NO_TEXT_BOX, can_link, has_text_box, link_text_box, set_text_body, shape_effects, text_box_target};
 use super::{CmdError, CommandSpec, InlineObject, Pos, Rgb, Selection, Spin, TextVert, VAlign, Wrap, WrapText, json, p, sel_result};
@@ -295,6 +296,10 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"index"?: n}"#)
         .pure(),
+        CommandSpec::new("select.nextFloatingShape", "Next Floating Shape", "Navigation", next_floating_shape)
+            .params(r#"{"backward"?: bool}  (selects the next floating picture, shape or text box of the body in document order, wrapping around; from anything else selected, the first (backward: the last). Ctrl+Alt+5, then Tab / Shift+Tab)"#)
+            .key(crate::cmd::non_mac("Mod+Alt+5"))
+            .pure(),
         CommandSpec::new("shape.outline", "Shape Outline", "Shape Format › Shape Styles", |s, v| {
             let c = p::str(v, "color").and_then(Rgb::parse);
             let w = p::f32(v, "width").map(|w| w.clamp(0.0, 72.0));

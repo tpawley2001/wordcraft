@@ -11,6 +11,13 @@ impl Session {
         self.layout_with(typing)
     }
 
+    /// The newest layout already made for the document as it is now, without laying it out:
+    /// for readers that only have `&self` (the status bar's caret position). `None` before the
+    /// first layout or after an edit not yet laid out.
+    pub fn laid_out(&self) -> Option<Arc<DocLayout>> {
+        self.layout[0].as_ref().filter(|e| e.0.0 == self.rev).map(|e| e.5.clone())
+    }
+
     /// [`Session::layout`] with `typing` as the word being typed.
     fn layout_with(&mut self, typing: Option<wordcraft_layout::TypingWord>) -> Arc<DocLayout> {
         // Read Mode's Paper Layout shows the printed pages: Print Layout's layout, unchanged.

@@ -593,8 +593,8 @@ fn accessibility(app: &mut WordApp, ui: &mut Ui) {
 }
 
 /// Advanced › Show document content, in Word's order: picture placeholders, text boundaries, crop
-/// marks, and the draft font with its name and size. Screen settings, kept between runs. Font
-/// Substitution… opens the dialog of the fonts the document shows that aren't installed.
+/// marks, field shading, and the draft font with its name and size. Screen settings, kept between
+/// runs. Font Substitution… opens the dialog of the fonts the document shows that aren't installed.
 fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Show document content");
     for (label, id, mut on) in [
@@ -606,6 +606,26 @@ fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
             let _ = app.run(id, json!({"value": on}));
         }
     }
+    ui.horizontal(|ui| {
+        let label = ui.label(tl!("Field shading:"));
+        let name = |v: &str| match v {
+            "never" => tl!("Never"),
+            "always" => tl!("Always"),
+            _ => tl!("When selected"),
+        };
+        let current = app.ui.field_shading.clone();
+        craft_ui::ComboBox::from_id_salt("options_field_shading")
+            .selected_text(name(&current))
+            .show_ui(ui, |ui| {
+                for v in crate::FIELD_SHADING_VALUES {
+                    if ui.selectable_label(current == v, name(v)).clicked() && current != v {
+                        let _ = app.run("ui.fieldShading", json!({"value": v}));
+                    }
+                }
+            })
+            .response
+            .labelled_by(label.id);
+    });
     let mut draft = app.ui.draft_font;
     if ui.checkbox(&mut draft, tl!("Use draft font in Draft and Outline views")).changed() {
         let _ = app.run("ui.draftFont", json!({"value": draft}));
@@ -636,14 +656,17 @@ fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     });
 }
 
-/// Draws Advanced options: typing and overtype behavior, alignment guides, recent-document count,
+/// Draws Advanced options: typing and overtype behavior, alignment guides, following links, recent-document count,
 /// measurement units, region, keytips, caret animation, file locations and customization.
 fn advanced(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Editing");
     let pr = app.session.prefs.clone();
     flag(app, ui, "Typing replaces selected text", "typingReplacesSelection", pr.typing_replaces_selection);
+    flag(app, ui, "Use the Insert key for paste", "insertKeyPaste", pr.insert_key_paste);
     flag(app, ui, "Use the Insert key to switch overtype on and off", "insertKeyOvertype", pr.insert_key_overtype);
     flag(app, ui, "Overtype (typing replaces the characters after the caret)", "overtype", pr.overtype);
+    flag(app, ui, "When selecting, automatically select entire word", "autoWordSelection", pr.auto_word_selection);
+    flag(app, ui, "Use smart paragraph selection", "smartParagraphSelection", pr.smart_paragraph_selection);
     let mut guides = app.ui.alignment_guides;
     if ui
         .checkbox(&mut guides, tl!("Show alignment guides when moving pictures and shapes"))
@@ -651,6 +674,11 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
         .changed()
     {
         let _ = app.run("ui.alignmentGuides", json!({"value": guides}));
+    }
+    let mut ctrl_click = app.ui.ctrl_click_follows_links;
+    let label = if cfg!(target_os = "macos") { tl!("Use ⌘+Click to follow hyperlink") } else { tl!("Use Ctrl+Click to follow hyperlink") };
+    if ui.checkbox(&mut ctrl_click, label).on_hover_text(tl!("Cleared, a plain click on a link in the text follows it.")).changed() {
+        let _ = app.run("ui.ctrlClickFollowsLinks", json!({"value": ctrl_click}));
     }
     ui.add_space(8.0);
     show_document_content(app, ui);
@@ -752,6 +780,16 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     {
         let _ = app.run("ui.caretAnimation", json!({"value": caret}));
     }
+    ui.add_space(8.0);
+    section(ui, "Cut, copy, and paste");
+    flag(app, ui, "Use smart cut and paste", "smartCutPaste", pr.smart_cut_paste);
+    // Word keeps this under the Settings button; it only counts while smart cut and paste is on.
+    ui.horizontal(|ui| {
+        ui.add_space(20.0);
+        ui.add_enabled_ui(pr.smart_cut_paste, |ui| {
+            flag(app, ui, "Adjust sentence and word spacing automatically", "pasteAdjustWordSpacing", pr.paste_adjust_word_spacing);
+        });
+    });
     if cfg!(all(unix, not(target_os = "macos"))) {
         ui.add_space(8.0);
         section(ui, "Linux display server");

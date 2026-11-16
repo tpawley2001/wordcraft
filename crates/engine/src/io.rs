@@ -73,6 +73,9 @@ pub struct ExportOptions {
     /// The fonts the user picked to show missing fonts in (Font Substitution): a PDF or page
     /// image draws them as the screen and printing do.
     pub font_substitutes: wordcraft_layout::FontSubstitutes,
+    /// A plain-text file's encoding, line ends and character substitution (Word's File
+    /// Conversion dialog); `None` writes UTF-8 with CRLF line ends as before.
+    pub txt: Option<wordcraft_formats::txt::TxtSaveOptions>,
 }
 
 /// A document password: wiped from memory when dropped, never printed (`Debug` shows `***`).
@@ -471,7 +474,11 @@ pub fn save_bytes_opts(name: &str, doc: &Document, opts: &ExportOptions) -> Resu
         // List paragraphs get their label and a tab, as in Word's plain-text save.
         "txt" | "text" => {
             let bytes = wordcraft_formats::txt::export(doc);
-            Ok(if opts.markup && opts.comments { wordcraft_formats::comments::append("txt", doc, bytes) } else { bytes })
+            let bytes = if opts.markup && opts.comments { wordcraft_formats::comments::append("txt", doc, bytes) } else { bytes };
+            Ok(match &opts.txt {
+                Some(o) => wordcraft_formats::txt::encode_text(&String::from_utf8_lossy(&bytes).replace("\r\n", "\n"), o),
+                None => bytes,
+            })
         }
         "json" => serde_json::to_vec_pretty(doc).map_err(|e| e.to_string()),
         other => match crate::io_ext::save(other, doc, opts) {

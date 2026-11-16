@@ -92,12 +92,15 @@ pub fn autocorrect_word(s: &mut Session, on_enter: bool) -> Result<(), CmdError>
         Some(r) => (start, Some(r)),
         None if sym.is_some() => (start, sym.map(|(c, _)| c.to_string())),
         None if ac.replace_text && word.len() > 3 && word.ends_with("...") => (start + word.len() - 3, Some("…".to_string())),
-        None if ac.replace_text => match SMILEYS.iter().find(|m| word.len() > m.len() && word.ends_with(**m)) {
+        None => match SMILEYS.iter().find(|m| ac.replace_text && word.len() > m.len() && word.ends_with(**m)) {
             // "ok:)" → "ok😊": only the smiley at the end of the word is replaced.
             Some(m) => (start + word.len() - m.len(), AUTOCORRECT.iter().find(|(a, _)| a == m).map(|(_, b)| b.to_string())),
-            None => (start, None),
+            // Use Math AutoCorrect rules outside of math regions: after ordinary AutoCorrect.
+            None => match math_outside(&ac, &word) {
+                Some((at, value)) => (start + at, Some(value)),
+                None => (start, None),
+            },
         },
-        None => (start, None),
     };
     let replaced = rep.is_some();
     let mut caret = f.off;
@@ -191,6 +194,27 @@ pub fn autocorrect_word(s: &mut Session, on_enter: bool) -> Result<(), CmdError>
         }
     }
     Ok(())
+}
+
+/// With Use Math AutoCorrect rules outside of math regions on, the Math AutoCorrect entry
+/// `\name` that `word` ends with: its byte offset in `word` and its value (a formula's linear
+/// text stays plain text here). The entries without a backslash (`->`, `<=`, `...`) are left to
+/// ordinary AutoCorrect and AutoFormat in body text.
+fn math_outside(ac: &AutoCorrectPrefs, word: &str) -> Option<(usize, String)> {
+    if !ac.math_outside || !ac.math_replace_text {
+        return None;
+    }
+    let at = word.rfind('\\')?;
+    let name = word.get(at..)?;
+    if !wordcraft_doc::math_autocorrect::valid_name(name) {
+        return None;
+    }
+    let value = match ac.math_entries.iter().find(|(n, _)| n == name) {
+        Some((_, v)) => v.clone(),
+        None if ac.math_removed.iter().any(|r| r == name) => return None,
+        None => wordcraft_doc::math_autocorrect::builtin_value(name)?.to_string(),
+    };
+    Some((at, value))
 }
 
 /// The lowercase token before a word that starts a sentence ("there." in "there. world"), as

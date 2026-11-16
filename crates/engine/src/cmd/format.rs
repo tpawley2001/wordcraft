@@ -226,7 +226,7 @@ fn apply_to(s: &mut Session, target: fn(&Session) -> Option<(Pos, Pos)>, f: &dyn
     // A column selection formats each row's piece.
     if let Some(rows) = column_rows(s) {
         for (a, b) in rows {
-            s.doc.format_range(&a, &b, f)?;
+            super::style_auto_redefine::format_range(s, &a, &b, f)?;
             // An empty cell's paragraph only had its mark formatted: lay it out again.
             if a == b {
                 s.doc.para_mut(a.story, &a.path)?.touch();
@@ -236,7 +236,11 @@ fn apply_to(s: &mut Session, target: fn(&Session) -> Option<(Pos, Pos)>, f: &dyn
     }
     match selected_text_box(s).or_else(|| target(s)) {
         Some((a, b)) => {
-            s.doc.format_range(&a, &b, f)?;
+            if s.sel.is_collapsed() && selected_text_box(s).is_none() {
+                s.doc.format_range(&a, &b, f)?;
+            } else {
+                super::style_auto_redefine::format_range(s, &a, &b, f)?;
+            }
             // The word at a caret took the change: so does formatting waiting for typing (#4086).
             if s.sel.is_collapsed()
                 && let Some(pend) = s.pending.as_mut()
@@ -246,13 +250,19 @@ fn apply_to(s: &mut Session, target: fn(&Session) -> Option<(Pos, Pos)>, f: &dyn
         }
         None => {
             let mut pend = s.typing_props();
+            let fpos = s.sel.focus.clone();
+            let empty = s.doc.para_at(&fpos).is_some_and(|p| p.is_empty());
+            let automatic = empty && s.doc.para_at(&fpos).and_then(|p| super::style_auto_redefine::style_id(s, &p.props)).is_some();
+            let patch = automatic.then(|| super::style_auto_redefine::Patch::character(&pend, f)).transpose()?;
             f(&mut pend);
+            if let Some(patch) = patch {
+                patch.clear(&mut pend)?;
+            }
             s.pending = Some(pend);
             // An empty paragraph's mark takes the formatting too (so it shows the new size).
-            let fpos = s.sel.focus.clone();
-            if s.doc.para_at(&fpos).is_some_and(|p| p.is_empty())
-                && let Ok(para) = s.doc.para_mut(fpos.story, &fpos.path)
-            {
+            if automatic {
+                super::style_auto_redefine::format_range(s, &fpos, &fpos, f)?;
+            } else if empty && let Ok(para) = s.doc.para_mut(fpos.story, &fpos.path) {
                 f(&mut para.mark);
                 para.touch();
             }

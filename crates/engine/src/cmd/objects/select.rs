@@ -306,6 +306,30 @@ fn pane_pos(s: &Session, v: &Value) -> Result<Pos, CmdError> {
     pane_objects(s).into_iter().nth(n).map(|(_, pos, _)| pos).ok_or_else(|| CmdError::Params(format!("no object {n} in the Selection Pane")))
 }
 
+/// Ctrl+Alt+5, then Tab / Shift+Tab: select the next (`backward`: previous) floating drawing of the
+/// body in document order, skipping those hidden in the Selection Pane and wrapping around. From
+/// anything but one of them selected, the first (`backward`: the last).
+pub(super) fn next_floating_shape(s: &mut Session, v: &Value) -> CmdResult {
+    let backward = p::bool(v, "backward").unwrap_or(false);
+    let shapes: Vec<Pos> =
+        all_objects(s).into_iter().filter(|(_, o)| o.is_floating() && !o.frame().is_some_and(|(_, _, f)| f.hidden)).map(|(pos, _)| pos).collect();
+    let n = shapes.len();
+    if n == 0 {
+        return Err(CmdError::Failed("no floating shapes".into()));
+    }
+    let current = object_selection(s).and_then(|(pos, _)| shapes.iter().position(|p| *p == pos));
+    let i = match (current, backward) {
+        (Some(i), false) => (i + 1) % n,
+        (Some(i), true) => (i + n - 1) % n,
+        (None, false) => 0,
+        (None, true) => n - 1,
+    };
+    let pos = shapes.get(i).cloned().ok_or_else(|| CmdError::Failed("no floating shapes".into()))?;
+    s.also_selected.clear();
+    select_object(s, &pos);
+    Ok(json!({"pos": crate::cmd::pos_json(&pos)}))
+}
+
 /// Selection Pane: click an entry to select its object.
 pub(super) fn pane_select(s: &mut Session, v: &Value) -> CmdResult {
     let pos = pane_pos(s, v)?;

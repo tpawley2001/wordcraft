@@ -83,6 +83,10 @@ impl WordApp {
         {
             return r;
         }
+        // Saving as Plain Text asks for the encoding first (File Conversion).
+        if let Some(r) = crate::file_conversion::before_save(self, id, &mut params) {
+            return r;
+        }
         let applied = applied_font(id, &params);
         let r = self.execute_user(id, params);
         // A save error already on the status line is the reason to see; the refusal shows otherwise.
@@ -841,6 +845,11 @@ impl WordApp {
                 }
                 json!({"statusCount": self.ui.status_count.code()})
             }
+            "ui.statusItem" => {
+                // Customize Status Bar: `{"item": code, "value"?: bool}` shows or hides one
+                // item (toggles without a value); no item reads them all.
+                return Some(crate::chrome::status_items::command(self, p));
+            }
             "ui.scrollSpeed" => {
                 // `slow`, `normal` (the default) or `fast`: mouse-wheel scroll speed (#6146);
                 // no value reads it.
@@ -907,6 +916,7 @@ impl WordApp {
                     json!({"pending": "discardRecovery"})
                 }
             }
+            "ui.fileConversion" => return Some(crate::file_conversion::answer(self, p)),
             "ui.saveChanges" => {
                 let Some(choice) = s("answer").and_then(SaveChoice::parse) else {
                     return Some(Err("`answer` must be save, dontSave or cancel".into()));
@@ -980,7 +990,28 @@ impl WordApp {
                 }
                 json!({"alignmentGuides": self.ui.alignment_guides})
             }
+            "ui.ctrlClickFollowsLinks" => {
+                // File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink:
+                // `value` true (the default) or false; no value reads it. Off, a plain click on a
+                // link in the text follows it.
+                match p.get("value") {
+                    None => {}
+                    Some(Value::Bool(on)) => self.ui.ctrl_click_follows_links = *on,
+                    Some(_) => return Some(Err("`value` must be true or false".into())),
+                }
+                json!({"ctrlClickFollowsLinks": self.ui.ctrl_click_follows_links})
+            }
             "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" => return Some(self.show_content_option(id, p)),
+            "ui.fieldShading" => {
+                // File › Options › Advanced › Show document content › Field shading: `value`
+                // `never`, `always` or `selected` (When selected); no value reads it. Screen only.
+                match p.get("value") {
+                    None => {}
+                    Some(Value::String(v)) if crate::FIELD_SHADING_VALUES.contains(&v.as_str()) => self.ui.field_shading = v.clone(),
+                    Some(_) => return Some(Err("`value` must be \"never\", \"always\" or \"selected\"".into())),
+                }
+                json!({"fieldShading": self.ui.field_shading})
+            }
             "ui.draftFont" => return Some(self.draft_font_command(p)),
             "ui.startScreen" => {
                 // File › Options › General › Start-up (#766): `value` true or false turns showing
@@ -1338,11 +1369,13 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.makeDefaultApp"
             | "ui.pirateSpeak"
             | "ui.caretAnimation"
+            | "ui.ctrlClickFollowsLinks"
             | "ui.startScreen"
             | "ui.recentRemove"
             | "ui.recentClear"
             | "ui.displayServer"
             | "ui.statusCount"
+            | "ui.statusItem"
             | "ui.scrollSpeed"
             | "ui.touchpadScrollSpeed"
             | "ui.checkForUpdates"

@@ -22,7 +22,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("file.options", "Options", "File", options)
             .params(
-                r#"{"pane"?: "general|display|proofing|save|language|accessibility|advanced|agents", "author"?: string, "initials"?: string, "units"?: "inches|centimeters|millimeters|points|picas|auto" (auto: the region's), "region"?: string (a locale tag like pl-PL, saved: the paper File › New starts on, the default units and the decimal separator; auto: the system's), "typingReplacesSelection"?: bool, "insertKeyOvertype"?: bool, "overtype"?: bool, "marks"?: {"tabs"?: bool, "spaces"?: bool, "paragraphs"?: bool, "hidden"?: bool}, "checkSpelling"?: bool, "markGrammar"?: bool, "printProperties"?: bool, "printBackground"?: bool (print the page color and picture), "printDrawings"?: bool (print shapes, text boxes, Decorative Text and drawing canvases), "printHiddenText"?: bool, "printFieldCodes"?: bool, "printFormsData"?: bool (this document: print only the data from its form fields), "printReverse"?: bool, "printDuplexFront"?: bool, "printDuplexBack"?: bool, "ignoreUppercase"?: bool, "ignoreNumbers"?: bool, "ignoreInternet"?: bool, "alwaysCreateBackup"?: bool, "dictionariesFolder"?: string (a folder of Hunspell .aff/.dic files searched first, saved; auto: the system locations only), "userTemplatesFolder"?: string (the folder File › New lists personal templates from, saved; auto: the app's own Templates folder; not a network folder), "addWords"?: [string], "removeWords"?: [string]} — with any setting it changes them and opens nothing; without, it opens File › Options (at `pane`). Returns the settings."#,
+                r#"{"pane"?: "general|display|proofing|save|language|accessibility|advanced|agents", "author"?: string, "initials"?: string, "units"?: "inches|centimeters|millimeters|points|picas|auto" (auto: the region's), "region"?: string (a locale tag like pl-PL, saved: the paper File › New starts on, the default units and the decimal separator; auto: the system's), "typingReplacesSelection"?: bool, "insertKeyOvertype"?: bool, "insertKeyPaste"?: bool, "overtype"?: bool, "autoWordSelection"?: bool (a mouse drag into another word selects whole words), "smartParagraphSelection"?: bool (a drag over a whole paragraph takes its mark), "marks"?: {"tabs"?: bool, "spaces"?: bool, "paragraphs"?: bool, "hidden"?: bool}, "checkSpelling"?: bool, "markGrammar"?: bool, "printProperties"?: bool, "printBackground"?: bool (print the page color and picture), "printDrawings"?: bool (print shapes, text boxes, Decorative Text and drawing canvases), "printHiddenText"?: bool, "printFieldCodes"?: bool, "printFormsData"?: bool (this document: print only the data from its form fields), "printReverse"?: bool, "printDuplexFront"?: bool, "printDuplexBack"?: bool, "ignoreUppercase"?: bool, "ignoreNumbers"?: bool, "ignoreInternet"?: bool, "alwaysCreateBackup"?: bool, "dictionariesFolder"?: string (a folder of Hunspell .aff/.dic files searched first, saved; auto: the system locations only), "userTemplatesFolder"?: string (the folder File › New lists personal templates from, saved; auto: the app's own Templates folder; not a network folder), "addWords"?: [string], "removeWords"?: [string]} — with any setting it changes them and opens nothing; without, it opens File › Options (at `pane`). Returns the settings."#,
             )
             .pure(),
         CommandSpec::new("text.overtype", "Overtype", "File › Options › Advanced", |s, v| {
@@ -53,10 +53,13 @@ fn style_area_width(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 /// The on/off settings by their `file.options` name.
-fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 16] {
+fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 21] {
     [
         ("typingReplacesSelection", |p| &mut p.typing_replaces_selection),
+        ("insertKeyPaste", |p| &mut p.insert_key_paste),
         ("insertKeyOvertype", |p| &mut p.insert_key_overtype),
+        ("autoWordSelection", |p| &mut p.auto_word_selection),
+        ("smartParagraphSelection", |p| &mut p.smart_paragraph_selection),
         ("overtype", |p| &mut p.overtype),
         ("markGrammar", |p| &mut p.mark_grammar),
         ("printProperties", |p| &mut p.print_properties),
@@ -71,6 +74,8 @@ fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 16] {
         ("ignoreNumbers", |p| &mut p.ignore_numbers),
         ("ignoreInternet", |p| &mut p.ignore_internet),
         ("alwaysCreateBackup", |p| &mut p.always_create_backup),
+        ("smartCutPaste", |p| &mut p.smart_cut_paste),
+        ("pasteAdjustWordSpacing", |p| &mut p.paste_adjust_word_spacing),
     ]
 }
 
@@ -258,7 +263,10 @@ pub fn current(s: &Session) -> Value {
         "region": {"language": region.language, "territory": region.territory, "paper": region.paper().0, "decimal": region.decimal().to_string()},
         "regionFromSystem": pr.region.is_none(),
         "typingReplacesSelection": pr.typing_replaces_selection,
+        "insertKeyPaste": pr.insert_key_paste,
         "insertKeyOvertype": pr.insert_key_overtype,
+        "autoWordSelection": pr.auto_word_selection,
+        "smartParagraphSelection": pr.smart_paragraph_selection,
         "overtype": pr.overtype,
         "marks": pr.marks,
         "checkSpelling": s.view.proofing,
@@ -276,6 +284,8 @@ pub fn current(s: &Session) -> Value {
         "ignoreNumbers": pr.ignore_numbers,
         "ignoreInternet": pr.ignore_internet,
         "alwaysCreateBackup": pr.always_create_backup,
+        "smartCutPaste": pr.smart_cut_paste,
+        "pasteAdjustWordSpacing": pr.paste_adjust_word_spacing,
         "dictionary": wordcraft_proof::user_dictionary(),
         "dictionariesFolder": pr.dictionaries_folder,
         "userTemplatesFolder": pr.user_templates_folder,
