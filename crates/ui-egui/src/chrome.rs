@@ -52,8 +52,12 @@ fn qat_button(ui: &mut Ui, app: &mut WordApp, icon: &str, tip: &str, id: &str, e
     }
     let c = if enabled { t.icon } else { t.text_disabled };
     icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(16.0, 16.0)), icon, c, if enabled { t.accent } else { c });
-    let sc = crate::widgets::shortcut_text(app, id);
-    let resp = resp.on_hover_text(if sc.is_empty() { tip.to_string() } else { format!("{tip} ({sc})") });
+    let sc = if app.ui.show_shortcuts_in_tips { crate::widgets::shortcut_text(app, id) } else { String::new() };
+    let resp = if app.ui.screen_tip_style == crate::widgets::ScreenTipStyle::Hidden {
+        resp
+    } else {
+        resp.on_hover_text(if sc.is_empty() { tip.to_string() } else { format!("{tip} ({sc})") })
+    };
     if resp.clicked() && enabled {
         let _ = app.run(id, json!({}));
     }
@@ -923,6 +927,10 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
                                 let _ = app.run("font.add", json!({}));
                                 ui.close();
                             }
+                            if ui.button(tl!("Font Substitution…")).clicked() {
+                                let _ = app.run("ui.dialog", json!({"name": "fontSubstitution"}));
+                                ui.close();
+                            }
                         });
                     }
                     if shown(app, StatusItem::Overtype) && app.session.prefs.overtype {
@@ -1106,7 +1114,7 @@ impl WordApp {
     /// removing a font lays it out again).
     pub fn cached_missing_fonts(&mut self, layout: &std::sync::Arc<wordcraft_layout::DocLayout>) -> MissingFontsCache {
         if !self.missing_fonts.0.upgrade().is_some_and(|seen| std::sync::Arc::ptr_eq(&seen, layout)) {
-            let found = wordcraft_engine::cmd::font::missing_fonts(&self.session.doc, layout);
+            let found = wordcraft_engine::cmd::font::missing_fonts_with(&self.session.doc, &self.session.prefs.font_substitutes, layout);
             let warnings = found
                 .iter()
                 .filter(|f| !f.metric_compatible)
@@ -1124,14 +1132,14 @@ impl WordApp {
     /// of a line), the substitute layout will draw it in is named instead.
     pub fn font_box_warning(&mut self, font: &str) -> Option<String> {
         let ahead = self.session.sel.is_collapsed();
-        self.font_box_warning_or(font, ahead, |doc| wordcraft_engine::cmd::font::shown_as(doc, font))
+        self.font_box_warning_or(font, ahead, |doc, subs| wordcraft_engine::cmd::font::shown_as_with(doc, subs, font))
     }
 
     /// The Font dialog's font box's warning for `font`, the font OK applies: from the status
     /// bar's list, else the substitute layout will draw it in, whatever is selected, as no text
     /// may show the font yet.
     pub fn font_dialog_warning(&mut self, font: &str) -> Option<String> {
-        self.font_box_warning_or(font, true, |doc| wordcraft_engine::cmd::font::shown_as(doc, font))
+        self.font_box_warning_or(font, true, |doc, subs| wordcraft_engine::cmd::font::shown_as_with(doc, subs, font))
     }
 
     /// The Font dialog's Asian text font box's warning for `font_ea` (the Latin text font being
@@ -1141,13 +1149,18 @@ impl WordApp {
     /// in. Whatever is selected: selected Latin text shows no East Asian font, but text typed or
     /// pasted into it would be in it.
     pub fn east_asian_font_box_warning(&mut self, font_ea: &str, font: &str) -> Option<String> {
-        let shown = wordcraft_engine::cmd::font::east_asian_shown_as(&self.session.doc, font_ea, font)?;
+        let shown = wordcraft_engine::cmd::font::east_asian_shown_as_with(&self.session.doc, &self.session.prefs.font_substitutes, font_ea, font)?;
         wordcraft_engine::cmd::font::warns(font_ea, &shown).then_some(shown)
     }
 
     /// The font box's warning for `font`: from the status bar's list, else, when the box shows
     /// a font to come (`ahead`), the family `unshown` says its text will be drawn in.
-    fn font_box_warning_or(&mut self, font: &str, ahead: bool, unshown: impl FnOnce(&wordcraft_doc::Document) -> Option<String>) -> Option<String> {
+    fn font_box_warning_or(
+        &mut self,
+        font: &str,
+        ahead: bool,
+        unshown: impl FnOnce(&wordcraft_doc::Document, &wordcraft_layout::FontSubstitutes) -> Option<String>,
+    ) -> Option<String> {
         let layout = self.session.layout();
         let key = wordcraft_engine::cmd::font::font_key(font);
         if let Some(w) = self.cached_missing_fonts(&layout).1.get(&key) {
@@ -1156,7 +1169,7 @@ impl WordApp {
         // A font to come (typing at a collapsed caret, or what the Font dialog applies) may be in
         // no shown text yet, so the list can't have it: name the family it will be drawn in. A
         // ribbon box over a selection shows the selected text's font, which the list covers.
-        let shown = ahead.then(|| unshown(&self.session.doc)).flatten()?;
+        let shown = ahead.then(|| unshown(&self.session.doc, &self.session.prefs.font_substitutes)).flatten()?;
         wordcraft_engine::cmd::font::warns(font, &shown).then_some(shown)
     }
 

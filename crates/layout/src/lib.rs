@@ -242,6 +242,86 @@ pub struct LayoutOptions {
     /// in this one font and size there (bold, italic, underline and colour kept). Ignored in the
     /// other views; see [`LayoutOptions::draft_font`].
     pub draft_font: Option<DraftFont>,
+    /// File › Options › Advanced › Font Substitution: the font the user picked to show each
+    /// missing font in. Text keeps naming the missing font; only the face it is drawn and
+    /// measured in changes.
+    pub font_substitutes: FontSubstitutes,
+}
+
+/// The fonts the user picked to show missing fonts in ([`LayoutOptions::font_substitutes`]):
+/// (missing font's [`FontSubstitutes::key`], family) pairs, oldest first, each key once, at most
+/// [`FontSubstitutes::MAX`]. A choice applies only while the missing font isn't installed and its
+/// substitute is.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct FontSubstitutes(Arc<Vec<(String, String)>>);
+
+/// Saved as its (key, family) pairs, oldest first.
+impl serde::Serialize for FontSubstitutes {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(s)
+    }
+}
+
+impl FontSubstitutes {
+    /// Most choices kept: setting another drops the oldest.
+    pub const MAX: usize = 1024;
+
+    /// The choices `pairs` (missing font, family), oldest first: a later choice for the same
+    /// font replaces an earlier one; blank names are left out; only the newest [`Self::MAX`] stay.
+    pub fn from_pairs<I: IntoIterator<Item = (String, String)>>(pairs: I) -> FontSubstitutes {
+        let mut out: Vec<(String, String)> = Vec::new();
+        for (font, family) in pairs {
+            let key = Self::key(&font);
+            let family = family.trim().to_string();
+            if key.is_empty() || family.is_empty() {
+                continue;
+            }
+            out.retain(|(k, _)| *k != key);
+            out.push((key, family));
+            if out.len() > Self::MAX {
+                out.remove(0);
+            }
+        }
+        FontSubstitutes(Arc::new(out))
+    }
+
+    /// These choices with `font` shown in `family` (the newest choice), or with no choice for
+    /// `font` (`None`).
+    pub fn with(&self, font: &str, family: Option<&str>) -> FontSubstitutes {
+        let key = Self::key(font);
+        let kept = self.0.iter().filter(|(k, _)| *k != key).cloned();
+        FontSubstitutes::from_pairs(kept.chain(family.map(|f| (key.clone(), f.to_string()))))
+    }
+
+    /// The key a font name is looked up under: its first 256 characters, trimmed, in lower case.
+    pub fn key(font: &str) -> String {
+        para::reported_font_name(font).trim().to_lowercase()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Every choice as (key, family), oldest first.
+    pub fn pairs(&self) -> &[(String, String)] {
+        &self.0
+    }
+
+    /// The family stored for `font`, whether or not it applies now.
+    pub fn get(&self, font: &str) -> Option<&str> {
+        if self.0.is_empty() {
+            return None;
+        }
+        let key = Self::key(font);
+        self.0.iter().find(|(k, _)| *k == key).map(|(_, f)| f.as_str())
+    }
+
+    /// The family the user picked for `font`, when there is a choice for it, `font` isn't
+    /// installed and the choice is.
+    pub fn chosen(&self, font: &str) -> Option<&str> {
+        let sub = self.get(font)?;
+        (wordcraft_fonts::word::resolve(font, false, false).substituted && wordcraft_fonts::FontDb::global().has_family(sub)).then_some(sub)
+    }
 }
 
 /// The draft font ([`LayoutOptions::draft_font`]): a family name and a size in points.

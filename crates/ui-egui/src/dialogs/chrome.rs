@@ -233,6 +233,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
         Dialog::FileConversion { .. } => "File Conversion",
         Dialog::Compatibility { .. } => "Compatibility Checker",
         Dialog::EditLinks { .. } => "Links",
+        Dialog::FontSubstitution { .. } => "Font Substitution",
         Dialog::Layout(d) => d.title(),
     };
     let id = egui::Id::unique(("dialog", title));

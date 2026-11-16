@@ -70,6 +70,9 @@ pub struct ExportOptions {
     /// face can draw, a picture that is missing or can't be decoded); else the save fails with
     /// `strict: …` (#6005). Ignored for other formats.
     pub strict: bool,
+    /// The fonts the user picked to show missing fonts in (Font Substitution): a PDF or page
+    /// image draws them as the screen and printing do.
+    pub font_substitutes: wordcraft_layout::FontSubstitutes,
     /// A plain-text file's encoding, line ends and character substitution (Word's File
     /// Conversion dialog); `None` writes UTF-8 with CRLF line ends as before.
     pub txt: Option<wordcraft_formats::txt::TxtSaveOptions>,
@@ -494,6 +497,35 @@ pub fn save_bytes_with(name: &str, doc: &Document, password: Option<&str>, opts:
         Some(pw) if can_encrypt(name) => wordcraft_docx::encrypt(&bytes, pw).map_err(|e| e.to_string()),
         _ => Ok(bytes),
     }
+}
+
+/// A plain-text file's `bytes` read in `enc` (File Conversion on open) instead of the guessed
+/// encoding, on `region`'s paper as [`open_bytes_in`] opens text.
+pub fn open_text_in(bytes: &[u8], enc: &wordcraft_formats::txt::TxtEncoding, region: &wordcraft_geom::Region) -> Document {
+    let mut doc = wordcraft_formats::txt::import_with(bytes, enc, &region_page(region));
+    opened(&mut doc);
+    doc
+}
+
+/// [`open_text_in`] for the file at `path`, read as [`open_path_in`] reads it.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn open_text_path_in(
+    path: &std::path::Path,
+    enc: &wordcraft_formats::txt::TxtEncoding,
+    region: &wordcraft_geom::Region,
+) -> Result<Document, String> {
+    let bytes = read_document(path)?;
+    Ok(open_text_in(&bytes, enc, region))
+}
+
+/// [`open_text_path_in`]: on the web files come through the browser, never by path.
+#[cfg(target_arch = "wasm32")]
+pub fn open_text_path_in(
+    path: &std::path::Path,
+    _enc: &wordcraft_formats::txt::TxtEncoding,
+    _region: &wordcraft_geom::Region,
+) -> Result<Document, String> {
+    Err(format!("{}: files are opened through the browser on the web", path.display()))
 }
 
 pub fn open_path(path: &std::path::Path) -> Result<Document, String> {

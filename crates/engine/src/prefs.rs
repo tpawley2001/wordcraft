@@ -24,6 +24,11 @@ pub struct Prefs {
     pub print_field_codes: bool,
     /// File › Options › Advanced › Print pages in reverse order (off).
     pub print_reverse: bool,
+    /// Scale A4 pages onto Letter printer paper and Letter pages onto A4 (print jobs only).
+    pub print_scale_a4_letter: bool,
+    /// File › Options › Display › Update linked data before printing (off): every link to another
+    /// file is updated from its source just before a print job, as Update Now does.
+    pub print_update_links: bool,
     /// File › Options › Display › Print document properties (off): a print of the document is
     /// followed by the Document Properties report on its own page.
     pub print_properties: bool,
@@ -46,6 +51,9 @@ pub struct Prefs {
     /// Its Settings › Adjust sentence and word spacing automatically (on): with both on,
     /// deleting, cutting or pasting a word fixes the spaces around it.
     pub paste_adjust_word_spacing: bool,
+    /// File › Options › Advanced › General › Confirm file format conversion on open (off): the
+    /// app asks for a plain-text file's encoding (File Conversion) before opening it.
+    pub confirm_conversions: bool,
     /// Language › Detect language automatically (per user, as in Word).
     pub detect_language: bool,
     /// Set Proofing Language › Set As Default: overrides the interface language for future
@@ -64,6 +72,9 @@ pub struct Prefs {
     /// File › Options › Advanced › Use smart paragraph selection (on, as in Word): a drag over a
     /// whole paragraph's text takes its paragraph mark too.
     pub smart_paragraph_selection: bool,
+    /// File › Options › Advanced › Use smart cursoring (on, as in Word): after scrolling the caret
+    /// out of view, a plain arrow key puts it on the page in view instead of scrolling back.
+    pub smart_cursoring: bool,
     /// Overtype: typed characters replace the ones after the caret.
     pub overtype: bool,
     /// The unit rulers and dialogs show lengths in, when the user chose one (File › Options ›
@@ -110,6 +121,11 @@ pub struct Prefs {
     /// points (0: no style area, Word's default). An application setting, never saved in documents.
     #[serde(deserialize_with = "lenient_style_area_width")]
     pub style_area_width: f32,
+    /// File › Options › Advanced › Font Substitution: the font each missing font is shown and
+    /// printed in on this computer, in every document (`font.setSubstitute`). The documents keep
+    /// naming the missing fonts.
+    #[serde(deserialize_with = "lenient_font_substitutes")]
+    pub font_substitutes: wordcraft_layout::FontSubstitutes,
 }
 
 /// Widest style area, in points (22 in).
@@ -165,6 +181,8 @@ impl Default for Prefs {
             print_hidden_text: false,
             print_field_codes: false,
             print_reverse: false,
+            print_scale_a4_letter: true,
+            print_update_links: false,
             print_properties: false,
             print_background: false,
             print_drawings: true,
@@ -173,11 +191,13 @@ impl Default for Prefs {
             always_create_backup: false,
             smart_cut_paste: true,
             paste_adjust_word_spacing: true,
+            confirm_conversions: false,
             typing_replaces_selection: true,
             insert_key_paste: false,
             insert_key_overtype: false,
             auto_word_selection: true,
             smart_paragraph_selection: true,
+            smart_cursoring: true,
             overtype: false,
             units: Default::default(),
             region: None,
@@ -197,6 +217,7 @@ impl Default for Prefs {
             clipboard: Default::default(),
             insert_table: Default::default(),
             style_area_width: 0.0,
+            font_substitutes: Default::default(),
         }
     }
 }
@@ -210,6 +231,18 @@ impl Prefs {
             ignore_internet: self.ignore_internet,
         }
     }
+}
+
+/// Read saved font substitutes ([`Prefs::font_substitutes`]) leniently: pairs that aren't two
+/// strings are skipped, and anything else reads as none, without discarding the other
+/// preferences.
+fn lenient_font_substitutes<'de, D: serde::Deserializer<'de>>(d: D) -> Result<wordcraft_layout::FontSubstitutes, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    let pairs = value.as_array().into_iter().flatten().filter_map(|p| match p.as_array().map(Vec::as_slice) {
+        Some([font, family]) => Some((font.as_str()?.to_string(), family.as_str()?.to_string())),
+        _ => None,
+    });
+    Ok(wordcraft_layout::FontSubstitutes::from_pairs(pairs))
 }
 
 /// Ignore malformed saved language tags without discarding the other preferences.

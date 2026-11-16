@@ -241,6 +241,7 @@ fn general(app: &mut WordApp, ui: &mut Ui) {
         ));
     });
     ui.checkbox(&mut app.ui.mini_toolbar, tl!("Show the mini toolbar when text is selected"));
+    screen_tip_style_picker(app, ui);
     let mut dark_page = app.session.view.dark_mode;
     if ui
         .checkbox(&mut dark_page, tl!("Dark page (white text on black)"))
@@ -344,6 +345,7 @@ fn display(app: &mut WordApp, ui: &mut Ui) {
     flag(app, ui, "Print document properties", "printProperties", app.session.prefs.print_properties);
     flag(app, ui, "Print hidden text", "printHiddenText", app.session.prefs.print_hidden_text);
     ui.checkbox(&mut app.ui.update_fields_before_print, tl!("Update fields before printing"));
+    flag(app, ui, "Update linked data before printing", "printUpdateLinks", app.session.prefs.print_update_links);
 }
 
 fn proofing(app: &mut WordApp, ui: &mut Ui) {
@@ -594,7 +596,7 @@ fn accessibility(app: &mut WordApp, ui: &mut Ui) {
 
 /// Advanced › Show document content, in Word's order: picture placeholders, text boundaries, crop
 /// marks, field shading, and the draft font with its name and size. Screen settings, kept between
-/// runs.
+/// runs. Font Substitution… opens the dialog of the fonts the document shows that aren't installed.
 fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Show document content");
     for (label, id, mut on) in [
@@ -630,8 +632,8 @@ fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     if ui.checkbox(&mut draft, tl!("Use draft font in Draft and Outline views")).changed() {
         let _ = app.run("ui.draftFont", json!({"value": draft}));
     }
-    ui.add_enabled_ui(app.ui.draft_font, |ui| {
-        ui.horizontal(|ui| {
+    ui.horizontal(|ui| {
+        ui.add_enabled_ui(app.ui.draft_font, |ui| {
             ui.add_space(24.0);
             ui.label(tl!("Name:"));
             let fams = app.previews.families();
@@ -648,6 +650,11 @@ fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
                 let _ = app.run("ui.draftFont", json!({"size": size}));
             }
         });
+        // On the draft font's row, which keeps the section as tall as before.
+        ui.add_space(12.0);
+        if ui.button(tl!("Font Substitution…")).clicked() {
+            let _ = app.run("ui.dialog", json!({"name": "fontSubstitution"}));
+        }
     });
 }
 
@@ -662,6 +669,7 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     flag(app, ui, "Overtype (typing replaces the characters after the caret)", "overtype", pr.overtype);
     flag(app, ui, "When selecting, automatically select entire word", "autoWordSelection", pr.auto_word_selection);
     flag(app, ui, "Use smart paragraph selection", "smartParagraphSelection", pr.smart_paragraph_selection);
+    flag(app, ui, "Use smart cursoring", "smartCursoring", pr.smart_cursoring);
     let mut guides = app.ui.alignment_guides;
     if ui
         .checkbox(&mut guides, tl!("Show alignment guides when moving pictures and shapes"))
@@ -682,6 +690,7 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     flag(app, ui, "Print pages in reverse order", "printReverse", pr.print_reverse);
     flag(app, ui, "Print on front of the sheet for duplex printing", "printDuplexFront", pr.print_duplex_front);
     flag(app, ui, "Print on back of the sheet for duplex printing", "printDuplexBack", pr.print_duplex_back);
+    flag(app, ui, "Scale content for A4 or 8.5 x 11\" paper sizes", "printScaleA4Letter", pr.print_scale_a4_letter);
     flag(app, ui, "Print field codes instead of their values", "printFieldCodes", pr.print_field_codes);
     let forms_data = app.session.doc.settings.print_forms_data;
     flag(app, ui, "Print only the data from a form", "printFormsData", forms_data);
@@ -759,6 +768,7 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
             });
         });
     });
+    ui.checkbox(&mut app.ui.show_shortcuts_in_tips, tl!("Show shortcut keys in ScreenTips"));
     let mut keytips = app.ui.keytips_enabled;
     if ui.checkbox(&mut keytips, tl!("Show KeyTips (Alt or F10)")).changed() {
         let _ = app.run("ui.keytips", json!({"value": keytips}));
@@ -813,6 +823,10 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
             let _ = app.run("tools.customizeRibbon", json!({}));
         }
     });
+    // Last, as Word's Advanced pane ends with General.
+    ui.add_space(8.0);
+    section(ui, "General");
+    flag(app, ui, "Confirm file format conversion on open", "confirmConversions", pr.confirm_conversions);
 }
 
 /// The user templates folder (#2852): where File › New finds personal templates and Save as Word
@@ -1137,3 +1151,26 @@ fn numeral_picker(app: &mut WordApp, ui: &mut Ui) {
 
 #[cfg(test)]
 mod tests;
+
+/// General › ScreenTip style: Word's three choices for the hints over ribbon and toolbar controls.
+fn screen_tip_style_picker(app: &mut WordApp, ui: &mut Ui) {
+    use crate::widgets::ScreenTipStyle;
+    const STYLES: [(ScreenTipStyle, &str); 3] = [
+        (ScreenTipStyle::Descriptions, "Show feature descriptions in ScreenTips"),
+        (ScreenTipStyle::NoDescriptions, "Don't show feature descriptions in ScreenTips"),
+        (ScreenTipStyle::Hidden, "Don't show ScreenTips"),
+    ];
+    ui.horizontal(|ui| {
+        let label = ui.label(tl!("ScreenTip style:"));
+        let current = app.ui.screen_tip_style;
+        let shown = STYLES.iter().find(|(s, _)| *s == current).map_or("", |(_, n)| n);
+        let combo = craft_ui::ComboBox::from_id_salt("screen_tip_style").selected_text(tl!(shown)).width(300.0).show_ui(ui, |ui| {
+            for (style, name) in STYLES {
+                if ui.selectable_label(current == style, tl!(name)).clicked() {
+                    app.ui.screen_tip_style = style;
+                }
+            }
+        });
+        combo.response.labelled_by(label.id);
+    });
+}

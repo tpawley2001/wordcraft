@@ -240,6 +240,7 @@ impl Ctx<'_> {
             fit_objects: false,
             fitted: &[],
             draft_font: None,
+            font_substitutes: &self.opts.font_substitutes,
         };
         let pl = Arc::new(para::layout_para(&p, &env));
         self.numbers.insert(n, pl.clone());
@@ -490,6 +491,7 @@ impl Ctx<'_> {
             fit_objects: self.boxes.inside(),
             fitted,
             draft_font: self.opts.draft_font(),
+            font_substitutes: &self.opts.font_substitutes,
         }
     }
 }

@@ -59,6 +59,15 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"data": {"categories"?: [string], "series"?: [{"name": string, "values": [number|null]}]}}"#)
         .when(has_chart),
+        CommandSpec::new("chart.switchRowColumn", "Switch Row/Column", "Chart Design › Data", |s, _| {
+            edit(s, |c| {
+                *c = c.switch_row_column().map_err(CmdError::Params)?;
+                Ok(())
+            })?;
+            let chart = selected_chart(s).ok_or_else(|| CmdError::Disabled("select a chart first".into()))?;
+            Ok(json!({"categories": chart.categories.len(), "series": chart.series.len()}))
+        })
+        .when(has_chart),
         CommandSpec::new("chart.title", "Chart Title", "Chart Design › Chart Layouts › Add Chart Element", |s, v| {
             let text = match v.get("text") {
                 Some(Value::String(t)) => Some(Some(t.clone())),

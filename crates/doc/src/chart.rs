@@ -232,6 +232,30 @@ impl ChartSpec {
         self.categories.len()
     }
 
+    /// Exchange series and categories, filling missing values with gaps.
+    pub fn switch_row_column(&self) -> Result<ChartSpec, String> {
+        // Scatter categories are x coordinates, so transposing would change their meaning.
+        if self.kind == ChartType::Scatter {
+            return Err("cannot switch rows and columns of a scatter chart".into());
+        }
+        // Each old category becomes a series; refuse rather than silently drop categories.
+        if self.categories.len() > MAX_SERIES {
+            return Err(format!("Switch Row/Column supports at most {MAX_SERIES} categories"));
+        }
+        let mut next = self.clone();
+        next.categories = self.series.iter().take(MAX_POINTS).map(|s| s.name.clone()).collect();
+        next.series = self
+            .categories
+            .iter()
+            .enumerate()
+            .map(|(i, name)| ChartSeries {
+                name: name.clone(),
+                values: self.series.iter().take(MAX_POINTS).map(|s| s.values.get(i).copied().flatten()).collect(),
+            })
+            .collect();
+        Ok(next.sanitized())
+    }
+
     /// Make the chart safe to store and draw: text cut to [`MAX_TEXT`] characters with control
     /// characters turned into spaces and the ends trimmed (an empty title is none); at most
     /// [`MAX_POINTS`] categories, [`MAX_SERIES`] series and [`MAX_CELLS`] cells; values that
