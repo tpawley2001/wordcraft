@@ -214,8 +214,9 @@ fn reflow_sect(first: &SectionProps, opts: &LayoutOptions) -> SectionProps {
 /// Draft and Outline wrapping at the margins ([`LayoutOptions::wrap_to_window`] off): each
 /// section as [`reflow_sect`] makes it, with its text as wide as the section's text column on
 /// paper (a multi-column section shown as one column, as wide as its first). All share one page
-/// width, the widest section's; narrower sections take the difference on the right. Outline's
-/// symbols stand left of the text, so its page is that much wider.
+/// width: the view's ([`reflow_sect`]), or the widest section's when that is wider; narrower
+/// sections take the difference on the right. Outline's symbols stand left of the text, so its
+/// page is that much wider.
 fn draft_sects(sections: &[(usize, &SectionProps)], first: &SectionProps, opts: &LayoutOptions) -> Vec<SectionProps> {
     const MARGIN: f32 = 18.0;
     let text_w = |s: &SectionProps| {
@@ -225,11 +226,11 @@ fn draft_sects(sections: &[(usize, &SectionProps)], first: &SectionProps, opts: 
     let widths: Vec<f32> = sections.iter().map(|(_, s)| text_w(s)).collect();
     let widest = widths.iter().copied().fold(text_w(first), f32::max);
     let symbol = if opts.view == ViewMode::Outline { crate::outline::SYMBOL_W } else { 0.0 };
-    let page_w = widest + 2.0 * MARGIN + symbol;
+    let page_w = (widest + 2.0 * MARGIN + symbol).max(reflow_sect(first, opts).page_w);
     let one = |s: &SectionProps, w: f32| {
         let mut r = reflow_sect(s, opts);
         r.page_w = page_w;
-        r.margin_right = MARGIN + symbol + (widest - w).max(0.0);
+        r.margin_right = (page_w - MARGIN - w).max(MARGIN);
         r
     };
     let mut out: Vec<SectionProps> = sections.iter().zip(&widths).map(|((_, s), w)| one(s, *w)).collect();
