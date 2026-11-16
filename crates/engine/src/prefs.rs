@@ -24,6 +24,8 @@ pub struct Prefs {
     pub print_field_codes: bool,
     /// File › Options › Advanced › Print pages in reverse order (off).
     pub print_reverse: bool,
+    /// Scale A4 pages onto Letter printer paper and Letter pages onto A4 (print jobs only).
+    pub print_scale_a4_letter: bool,
     /// File › Options › Display › Update linked data before printing (off): every link to another
     /// file is updated from its source just before a print job, as Update Now does.
     pub print_update_links: bool,
@@ -173,6 +175,7 @@ impl Default for Prefs {
             print_hidden_text: false,
             print_field_codes: false,
             print_reverse: false,
+            print_scale_a4_letter: true,
             print_update_links: false,
             print_properties: false,
             print_background: false,

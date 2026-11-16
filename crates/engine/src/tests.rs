@@ -116,6 +116,7 @@ mod form_shading;
 mod print_forms_data;
 mod print_options;
 mod print_display_options;
+mod print_scale_a4_letter;
 mod print_selection;
 mod reveal_formatting;
 mod reveal_compare;
