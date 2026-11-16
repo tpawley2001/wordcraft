@@ -7,9 +7,21 @@ use super::{
 /// even page or the default), made when there is none: with Different First Page on, a header
 /// inserted on page 1 is the one page 1 shows (#2826).
 pub(super) fn hf_part(s: &mut Session, header: bool) -> u32 {
-    let block = s.sel.focus.path.0.first().copied().unwrap_or(0) as usize;
+    let block = crate::cmd::page::section_end_of_focus(s);
     let layout = s.layout();
-    let page = if s.sel.focus.story == StoryRef::Body { layout.page_of(&s.sel.focus) } else { Some(s.page_hint) };
+    let page = if s.sel.focus.story == StoryRef::Body {
+        layout.page_of(&s.sel.focus)
+    } else {
+        match s.sel.focus.story {
+            StoryRef::Part(id) => layout
+                .pages
+                .get(s.page_hint)
+                .filter(|pg| pg.header_story == Some(id) || pg.footer_story == Some(id))
+                .map(|_| s.page_hint)
+                .or_else(|| layout.page_of(&s.sel.focus)),
+            StoryRef::Body => None,
+        }
+    };
     let slot = page.and_then(|pg| layout.pages.get(pg)).map(|pg| pg.hf_slot).unwrap_or_default();
     fn slot_of(slot: wordcraft_layout::HfSlot, set: &mut wordcraft_doc::section::HeaderSet) -> &mut Option<u32> {
         match slot {
@@ -31,8 +43,8 @@ pub(super) fn hf_part(s: &mut Session, header: bool) -> u32 {
 }
 
 /// Three independently editable cells spanning the section's text width.
-fn three_column_hf(s: &Session, style: &str) -> wordcraft_doc::Blocks {
-    let block = s.sel.focus.path.0.first().copied().unwrap_or(0) as usize;
+fn three_column_hf(s: &mut Session, style: &str) -> wordcraft_doc::Blocks {
+    let block = crate::cmd::page::section_end_of_focus(s);
     // The section `section_mut` would pick, read without making anything unique.
     let sections = s.doc.sections();
     let own = sections.iter().position(|(end, _)| block <= *end).filter(|i| i + 1 < sections.len()).and_then(|i| sections.get(i));
@@ -106,15 +118,15 @@ pub(super) fn edit_hf(s: &mut Session, v: &Value, header: bool) -> CmdResult {
     let shown = match page {
         Some(page) => shown_hf(s, page, header)?,
         None => {
-            let block = s.sel.focus.path.0.first().copied().unwrap_or(0) as usize;
-            let set = s
-                .doc
-                .sections()
-                .into_iter()
-                .find(|(end, _)| block <= *end)
-                .or_else(|| s.doc.sections().pop())
-                .map(|(_, sp)| if header { sp.headers.default } else { sp.footers.default });
-            set.flatten().filter(|id| s.doc.parts.contains_key(id))
+            // Editing an inherited header or footer keeps the link to the previous section.
+            let section = crate::cmd::page::hf_section_of_focus(s);
+            let sections = s.doc.sections();
+            let set = sections
+                .iter()
+                .take(section.saturating_add(1))
+                .rev()
+                .find_map(|(_, sp)| if header { sp.headers.default } else { sp.footers.default });
+            set.filter(|id| s.doc.parts.contains_key(id))
         }
     };
     let Some(id) = shown else {

@@ -550,3 +550,32 @@ fn shared_base64_preserves_command_payload_bytes() {
     assert_eq!(super::objects::base64_decode("Z g\n"), Some(b"f".to_vec()));
     assert_eq!(super::objects::base64_decode("!!!!"), None);
 }
+
+/// A footer's paragraph zero belongs to its own story, not section one's body.
+#[test]
+fn page_number_from_third_section_footer_preserves_earlier_sections() {
+    let mut s = Session::new(wordcraft_doc::Document::new());
+    for text in ["One", "Two"] {
+        s.run("text.insert", &json!({"text": text})).unwrap();
+        s.run("layout.break", &json!({"kind": "nextPage"})).unwrap();
+    }
+    s.run("text.insert", &json!({"text": "Three"})).unwrap();
+    let footer = s.doc.add_part(PartKind::Footer, vec![para_block(Paragraph::new().styled("Footer"))]);
+    s.doc.last_section.footers.default = Some(footer);
+    let earlier: Vec<_> = s.doc.sections().iter().take(2).map(|(_, sec)| (*sec).clone()).collect();
+    s.sel = Selection::caret(s.doc.start_of(StoryRef::Part(footer)));
+    // A stale page hint must not turn footer paragraph zero into body paragraph zero.
+    s.page_hint = 0;
+    s.run("insert.pageNumber", &json!({"position": "bottom"})).unwrap();
+    assert_eq!(s.doc.last_section.footers.default, Some(footer));
+    assert!(
+        s.doc
+            .para_at(&s.doc.start_of(StoryRef::Part(footer)))
+            .unwrap()
+            .objects
+            .iter()
+            .any(|o| matches!(o, InlineObject::Field { instr, .. } if instr == "PAGE"))
+    );
+    let after: Vec<_> = s.doc.sections().iter().take(2).map(|(_, sec)| (*sec).clone()).collect();
+    assert_eq!(after, earlier);
+}
