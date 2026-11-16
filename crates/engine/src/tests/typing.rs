@@ -2245,6 +2245,8 @@ fn para_formats(s: &Session) -> Vec<(String, wordcraft_doc::props::ParaProps)> {
 #[test]
 fn plain_text_paste_gives_every_line_the_formatting_of_its_paragraph() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     run(&mut s, "text.insert", json!({"text": "بداية نهاية", "raw": true}));
     run(&mut s, "para.rtl", json!({}));
     run(&mut s, "para.indents", json!({"left": 18, "right": 36}));

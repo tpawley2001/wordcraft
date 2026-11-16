@@ -18,18 +18,6 @@ pub const FUNCTION_NAMES: &[&str] = &[
     "tanh",
 ];
 
-/// Length of the longest of [`FUNCTION_NAMES`].
-const MAX_NAME: usize = {
-    let (mut max, mut i) = (0, 0);
-    while i < FUNCTION_NAMES.len() {
-        if FUNCTION_NAMES[i].len() > max {
-            max = FUNCTION_NAMES[i].len();
-        }
-        i += 1;
-    }
-    max
-};
-
 /// Function names whose subscripts go underneath (`lim_(n→∞)`).
 const LIMIT_NAMES: &[&str] = &["lim", "liminf", "limsup", "max", "min", "sup", "inf", "det", "gcd", "Pr"];
 
@@ -38,7 +26,15 @@ pub const PLACEHOLDER: char = '⬚';
 
 /// Parse linear-format text. Never fails: what isn't understood stays as text.
 pub fn parse(s: &str) -> Arg {
-    let mut p = P { c: s.chars().take(20_000).collect(), i: 0, depth: 0, no_limits: 0, steps: 0 };
+    parse_with_functions(s, FUNCTION_NAMES)
+}
+
+/// [`parse`] with `functions` as the function names (Math AutoCorrect's Recognized Functions
+/// while typing).
+pub fn parse_with_functions(s: &str, functions: &[&str]) -> Arg {
+    // Look no further than the longest name in `word`.
+    let max_name = functions.iter().map(|f| f.len()).max().unwrap_or(0);
+    let mut p = P { c: s.chars().take(20_000).collect(), i: 0, depth: 0, no_limits: 0, steps: 0, functions, max_name };
     let mut out = Vec::new();
     // Stray closers at the top level are text.
     while p.i < p.c.len() {
@@ -97,7 +93,7 @@ fn is_boundary(c: char) -> bool {
         || matches!(math_class(c), MClass::Bin | MClass::Rel | MClass::Punct)
 }
 
-struct P {
+struct P<'a> {
     c: Vec<char>,
     i: usize,
     depth: usize,
@@ -105,11 +101,15 @@ struct P {
     no_limits: usize,
     /// Work done (bounds hostile input).
     steps: usize,
+    /// Function names set upright and applied to their operand.
+    functions: &'a [&'a str],
+    /// Length of the longest of `functions`.
+    max_name: usize,
 }
 
 const MAX_STEPS: usize = 400_000;
 
-impl P {
+impl P<'_> {
     fn peek(&self) -> Option<char> {
         self.c.get(self.i).copied()
     }
@@ -320,7 +320,8 @@ impl P {
             body.iter().filter(|c| **c == opener).count() > body.iter().filter(|c| *c == last).count()
         };
         let end = if !inner.is_empty() && inner.last().is_some_and(bracket) && !paired(&inner) { inner.pop() } else { None };
-        let mut sub = P { c: inner, i: 0, depth: self.depth + 1, no_limits: 0, steps: self.steps };
+        let mut sub =
+            P { c: inner, i: 0, depth: self.depth + 1, no_limits: 0, steps: self.steps, functions: self.functions, max_name: self.max_name };
         let mut elems = vec![Vec::new()];
         while sub.i < sub.c.len() {
             if let Some(e) = elems.last_mut() {
@@ -424,11 +425,11 @@ impl P {
         let mut end = start;
         // Look no further than the longest name (and one past it, to see the run is longer): a
         // scan to the end of every run made a long run of letters quadratic (CWE-407).
-        while end - start <= MAX_NAME && self.c.get(end).is_some_and(char::is_ascii_alphabetic) {
+        while end - start <= self.max_name && self.c.get(end).is_some_and(char::is_ascii_alphabetic) {
             end += 1;
         }
-        let word: String = if end - start > MAX_NAME { String::new() } else { self.c.get(start..end).unwrap_or(&[]).iter().collect() };
-        if !FUNCTION_NAMES.contains(&word.as_str()) {
+        let word: String = if end - start > self.max_name { String::new() } else { self.c.get(start..end).unwrap_or(&[]).iter().collect() };
+        if !self.functions.contains(&word.as_str()) {
             self.i = start + 1;
             return vec![text(self.c.get(start).copied().unwrap_or(' '))];
         }
@@ -647,7 +648,7 @@ impl P {
                 }
                 let t: String = self.c.get(start..self.i).unwrap_or(&[]).iter().collect();
                 // A known function name stays upright, as Word builds it.
-                vec![MNode::Run(if FUNCTION_NAMES.contains(&t.as_str()) { MRun::plain(t) } else { MRun::new(t) })]
+                vec![MNode::Run(if self.functions.contains(&t.as_str()) { MRun::plain(t) } else { MRun::new(t) })]
             }
             Some(c) if !stops.contains(&c) && c != ' ' && !is_closer(c) => {
                 self.i += 1;

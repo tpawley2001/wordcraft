@@ -764,6 +764,16 @@ impl Session {
 pub(crate) fn print_pdf_to_file(s: &mut Session, v: &Value) -> Result<Value, CmdError> {
     let path = p::req_str(v, "path")?;
     let path = if path.to_ascii_lowercase().ends_with(".pdf") { path.to_string() } else { format!("{path}.pdf") };
+    // File › Options › Display › Update linked data before printing, or this job's `updateLinks`.
+    let update_links = match v.get("updateLinks") {
+        None | Some(Value::Null) => s.prefs.print_update_links,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(CmdError::Params("`updateLinks` must be true or false".into())),
+    };
+    if update_links {
+        // A link that can't be updated keeps its result; the job still prints.
+        let _ = s.run("fields.updateLinks", &json!({}));
+    }
     let (bytes, plan) = s.print_pdf(v)?;
     // Through `io`, so an agent confined to an automation write root (#769) can't print elsewhere.
     #[cfg(not(target_arch = "wasm32"))]

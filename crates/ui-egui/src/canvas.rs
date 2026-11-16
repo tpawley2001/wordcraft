@@ -156,12 +156,18 @@ pub struct CanvasState {
     /// The last primary press on the page (time, screen point, clicks in a row), to count
     /// double- and triple-presses as they go down (egui reports them on release).
     pub(crate) last_press: Option<(f64, Pos2, u8)>,
+    /// With Use Ctrl+Click to follow hyperlink off: the link a plain press landed on, followed
+    /// when the button comes up without a drag.
+    link_press: Option<String>,
     /// The first press of the current run of presses moved header/footer editing into another
     /// header/footer; the double-click it starts doesn't select a word there.
     hf_press_switched: bool,
     /// A drag after a double-click, triple-click or Ctrl/⌘+click: the unit it extends by, the
     /// unit first selected, and the last position the pointer hit.
     unit_drag: Option<UnitDrag>,
+    /// A plain single-click drag: where the press put the caret and the last position the
+    /// pointer hit (character-precise), for automatic word and smart paragraph selection.
+    plain_drag: Option<(Pos, Pos)>,
     pub last_highlight: String,
     pub last_font_color: String,
     pub last_shading: String,
@@ -368,6 +374,7 @@ impl CanvasState {
         self.dragging = false;
         self.column_drag = None;
         self.unit_drag = None;
+        self.plain_drag = None;
     }
 
     /// The object a drag has taken off its page: which page, and which object. `None` unless an
@@ -413,8 +420,10 @@ impl Default for CanvasState {
             dragging: false,
             column_drag: None,
             last_press: None,
+            link_press: None,
             hf_press_switched: false,
             unit_drag: None,
+            plain_drag: None,
             last_highlight: "yellow".into(),
             last_font_color: "C00000".into(),
             last_shading: "FFF2CC".into(),
@@ -764,6 +773,7 @@ fn scroll_motion(app: &mut WordApp, ui: &Ui, full: Rect, view: &CanvasView) -> S
         app.canvas.dragging = false;
         app.canvas.column_drag = None;
         app.canvas.unit_drag = None;
+        app.canvas.plain_drag = None;
     }
     let auto_delta = if !app.session.view.read_mode
         && app.canvas.drag_selecting()
@@ -2126,8 +2136,18 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
 }
 
 #[cfg(test)]
+mod field_shading_more_tests;
+#[cfg(test)]
+mod field_shading_tests;
+#[cfg(test)]
 mod show_content_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_auto_word_select;
+#[cfg(test)]
+mod tests_ctrl_click_drag;
+#[cfg(test)]
+mod tests_ctrl_click_links;
 #[cfg(test)]
 mod tests_rtl_gutter;

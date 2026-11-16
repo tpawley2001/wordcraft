@@ -1,6 +1,6 @@
 use super::page::revision_color;
 use super::paint::Stroke;
-use super::{Document, Draw, HashMap, Rect, Rgb, ShapeKind, Spin, TextColor};
+use super::{Document, Draw, HashMap, Rect, Rgb, ShapeKind, Spin, StoryRef, TextColor};
 
 /// Each author's place among `authors` in order of first appearance (which colour marks their
 /// changes and comments), found in one pass.
@@ -19,11 +19,22 @@ pub(crate) fn author_order<'a>(authors: impl Iterator<Item = &'a str>) -> HashMa
 pub(super) struct Authors<'a> {
     doc: &'a Document,
     order: std::cell::OnceCell<HashMap<&'a str, u32>>,
+    /// The document's range fields (every story), found once per drawing when field shading
+    /// asks for them: their results can run over many paragraphs.
+    field_ranges: std::cell::OnceCell<Vec<wordcraft_doc::FieldRange>>,
 }
 
 impl<'a> Authors<'a> {
     pub(super) fn new(doc: &'a Document) -> Self {
-        Authors { doc, order: std::cell::OnceCell::new() }
+        Authors { doc, order: std::cell::OnceCell::new(), field_ranges: std::cell::OnceCell::new() }
+    }
+
+    /// Every range field of the document, body first, then each part's.
+    pub(super) fn field_ranges(&self) -> &[wordcraft_doc::FieldRange] {
+        self.field_ranges.get_or_init(|| {
+            let stories = std::iter::once(StoryRef::Body).chain(self.doc.parts.keys().map(|k| StoryRef::Part(*k)));
+            stories.flat_map(|s| self.doc.field_ranges(s)).collect()
+        })
     }
 
     /// The colour of revision `r`'s author.

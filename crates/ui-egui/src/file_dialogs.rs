@@ -373,7 +373,10 @@ impl WordApp {
                         if let Some(Err(error)) = result {
                             return Err(self.save_failed(&error, then, params, document));
                         }
-                        if !self.safely_saved(saved) || document != self.session.document_id() {
+                        // A plain-text copy asks for its encoding first (File Conversion); it never
+                        // keeps everything, so what was held back can't go on either way.
+                        let converting = matches!(&result, Some(Ok(v)) if v.get("pending").and_then(Value::as_str) == Some("fileConversion"));
+                        if !self.safely_saved(saved || converting) || document != self.session.document_id() {
                             return Ok(json!({"done": false}));
                         }
                         self.execute_held_back(&then, params).map(|r| json!({"done": true, "result": r}))

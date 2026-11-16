@@ -1,5 +1,6 @@
 use super::typing::{INITIAL_CAPS_EXCEPTIONS, NOT_SENTENCE_END};
 use super::{CmdError, CmdResult, Deserialize, Pos, Serialize, Session, Value, json, p};
+use wordcraft_doc::math_autocorrect as ma;
 
 /// Smileys replaced even when typed straight after a word ("ok:)"), as Word does.
 pub(super) const SMILEYS: &[&str] = &[":-)", ":-(", ":-|", ";-)", ":)", ":(", ":|", ";)"];
@@ -138,6 +139,18 @@ pub struct AutoCorrectPrefs {
     pub auto_add_first_letter: bool,
     /// The same for undoing a TWo INitial CApitals fix (INitial CAps's switch).
     pub auto_add_initial_caps: bool,
+    /// Math AutoCorrect's Replace text as you type (in equations).
+    pub math_replace_text: bool,
+    /// Use Math AutoCorrect rules outside of math regions; off by default.
+    pub math_outside: bool,
+    /// The user's Math AutoCorrect entries: added, or replacing a built-in one.
+    pub math_entries: Vec<(String, String)>,
+    /// Built-in Math AutoCorrect entries the user deleted.
+    pub math_removed: Vec<String>,
+    /// Recognized Functions the user added.
+    pub functions_added: Vec<String>,
+    /// Built-in Recognized Functions the user deleted.
+    pub functions_removed: Vec<String>,
 }
 
 impl Default for AutoCorrectPrefs {
@@ -169,6 +182,12 @@ impl Default for AutoCorrectPrefs {
             initial_caps_exceptions: Vec::new(),
             auto_add_first_letter: true,
             auto_add_initial_caps: true,
+            math_replace_text: true,
+            math_outside: false,
+            math_entries: Vec::new(),
+            math_removed: Vec::new(),
+            functions_added: Vec::new(),
+            functions_removed: Vec::new(),
         }
     }
 }
@@ -198,7 +217,28 @@ impl AutoCorrectPrefs {
             list.retain(|a| ok(a, MAX_FROM) && seen.insert(a.clone()));
             list.truncate(MAX_ENTRIES);
         }
+        let mut seen = std::collections::HashSet::new();
+        self.math_entries.retain(|(a, b)| ma::valid_name(a) && ma::valid_value(b) && seen.insert(a.clone()));
+        self.math_entries.truncate(MAX_ENTRIES);
+        let mut seen = std::collections::HashSet::new();
+        self.math_removed.retain(|a| ma::builtin_value(a).is_some() && seen.insert(a.clone()));
+        for list in [&mut self.functions_added, &mut self.functions_removed] {
+            let mut seen = std::collections::HashSet::new();
+            list.retain(|a| ma::valid_function(a) && seen.insert(a.clone()));
+            list.truncate(MAX_ENTRIES);
+        }
         self
+    }
+
+    /// The Math AutoCorrect options in effect for typing.
+    pub fn math(&self) -> ma::MathAutoCorrect {
+        ma::MathAutoCorrect {
+            replace_text: self.math_replace_text,
+            entries: self.math_entries.clone(),
+            removed: self.math_removed.clone(),
+            functions_added: self.functions_added.clone(),
+            functions_removed: self.functions_removed.clone(),
+        }
     }
 
     /// The replacement for `word` in English text, if any: the user's entry, else a built-in
@@ -374,6 +414,8 @@ pub(super) fn autocorrect_options(s: &mut Session, v: &Value) -> CmdResult {
         ("doubleSpacePeriod", &mut ac.double_space_period),
         ("autoAddFirstLetter", &mut ac.auto_add_first_letter),
         ("autoAddInitialCaps", &mut ac.auto_add_initial_caps),
+        ("mathReplaceText", &mut ac.math_replace_text),
+        ("mathOutside", &mut ac.math_outside),
     ] {
         if let Some(b) = p::bool(v, k) {
             *f = b;
@@ -429,7 +471,9 @@ pub(super) fn autocorrect_options(s: &mut Session, v: &Value) -> CmdResult {
         let w = w.trim();
         ac.initial_caps_exceptions.retain(|e| e != w);
     }
+    math_options(ac, v)?;
     let ac = &s.prefs.autocorrect;
+    let math = ac.math();
     Ok(json!({
         "enabled": ac.enabled,
         "replaceText": ac.replace_text,
@@ -456,7 +500,66 @@ pub(super) fn autocorrect_options(s: &mut Session, v: &Value) -> CmdResult {
         "user": ac.entries,
         "exceptions": ac.exception_list(),
         "initialCapsExceptions": INITIAL_CAPS_EXCEPTIONS.iter().map(|e| e.to_string()).chain(ac.initial_caps_exceptions.iter().cloned()).collect::<Vec<_>>(),
+        "mathReplaceText": ac.math_replace_text,
+        "mathOutside": ac.math_outside,
+        "mathEntryCount": math.count(),
+        "mathUser": ac.math_entries,
+        "functions": math.functions(),
     }))
+}
+
+/// `tools.autocorrect`'s Math AutoCorrect changes: `mathAdd`, `mathDelete`, `addFunction`,
+/// `deleteFunction`.
+fn math_options(ac: &mut AutoCorrectPrefs, v: &Value) -> Result<(), CmdError> {
+    if let Some(add) = v.get("mathAdd") {
+        let (Some(f), Some(t)) = (add.get("from").and_then(Value::as_str), add.get("to").and_then(Value::as_str)) else {
+            return Err(CmdError::Params("`mathAdd` is {\"from\": string, \"to\": string}".into()));
+        };
+        if !ma::valid_name(f) || !ma::valid_value(t) {
+            return Err(CmdError::Params(format!(
+                "a Math AutoCorrect entry replaces 1–{} characters (no spaces) with 1–{} (one line)",
+                ma::MAX_NAME,
+                ma::MAX_VALUE
+            )));
+        }
+        ac.math_entries.retain(|(a, _)| a != f);
+        if ac.math_entries.len() >= MAX_ENTRIES {
+            return Err(CmdError::Params("too many Math AutoCorrect entries".into()));
+        }
+        ac.math_entries.push((f.to_string(), t.to_string()));
+        ac.math_removed.retain(|r| r != f);
+    }
+    if let Some(f) = p::str(v, "mathDelete") {
+        let n = ac.math_entries.len();
+        ac.math_entries.retain(|(a, _)| a != f);
+        if ma::builtin_value(f).is_some() && !ac.math_removed.iter().any(|r| r == f) {
+            ac.math_removed.push(f.to_string());
+        } else if n == ac.math_entries.len() {
+            return Err(CmdError::Params(format!("no Math AutoCorrect entry {f:?}")));
+        }
+    }
+    if let Some(f) = p::str(v, "addFunction") {
+        if !ma::valid_function(f) {
+            return Err(CmdError::Params(format!("a function name is 1–{} letters", ma::MAX_FUNCTION)));
+        }
+        ac.functions_removed.retain(|r| r != f);
+        if !ma::WORD_FUNCTIONS.contains(&f) && !ac.functions_added.iter().any(|a| a == f) {
+            if ac.functions_added.len() >= MAX_ENTRIES {
+                return Err(CmdError::Params("too many functions".into()));
+            }
+            ac.functions_added.push(f.to_string());
+        }
+    }
+    if let Some(f) = p::str(v, "deleteFunction") {
+        let n = ac.functions_added.len();
+        ac.functions_added.retain(|a| a != f);
+        if ma::WORD_FUNCTIONS.contains(&f) && !ac.functions_removed.iter().any(|r| r == f) {
+            ac.functions_removed.push(f.to_string());
+        } else if n == ac.functions_added.len() {
+            return Err(CmdError::Params(format!("no recognized function {f:?}")));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
