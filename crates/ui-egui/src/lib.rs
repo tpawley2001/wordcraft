@@ -420,6 +420,15 @@ pub struct UiState {
     /// File › Options › Advanced › Show document content: crop marks at the corners of the text
     /// area in Print Layout (on, as in Word). Screen only.
     pub crop_marks: bool,
+    /// File › Options › Display › Show highlighter marks: text highlight drawn on screen and in
+    /// print jobs (on, as in Word). The document keeps its highlight; PDF export ignores it.
+    pub show_highlight: bool,
+    /// … Advanced › Show document content › Show drawings and text boxes on screen (on): off,
+    /// shapes, text boxes and their text aren't drawn on screen. Layout and exports unchanged.
+    pub show_drawings: bool,
+    /// … Show background colors and images in Print Layout view (on): off, the page color isn't
+    /// drawn on screen outside Read Mode. The document keeps it; exports unchanged.
+    pub show_backgrounds: bool,
     /// … a dotted outline round the text area (each column) in Print Layout. Screen only.
     pub text_boundaries: bool,
     /// … pictures drawn as empty outlined rectangles. Screen only.
@@ -566,6 +575,9 @@ impl Default for UiState {
             alignment_guides: true,
             ctrl_click_follows_links: true,
             crop_marks: true,
+            show_highlight: true,
+            show_drawings: true,
+            show_backgrounds: true,
             text_boundaries: false,
             picture_placeholders: false,
             screen_tip_style: widgets::ScreenTipStyle::Descriptions,

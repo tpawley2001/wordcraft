@@ -23,6 +23,8 @@ mod eqfield;
 mod grid;
 mod justify;
 #[cfg(test)]
+mod ligature_default_tests;
+#[cfg(test)]
 pub(crate) use justify::compress_space_room;
 mod lines;
 mod model;

@@ -5,6 +5,7 @@ use super::model::{Axis, AxisTitle, Depth, Group, Grouping, Kind, Pos, Series, S
 use super::of_pie::OfPie;
 use super::plot::label;
 use super::three_d::View3d;
+use super::trendline;
 use super::{Chart, El, FONT, GRID, LINE_W, MAX_CELLS, MAX_POINTS, MAX_RADAR_SERIES, MAX_SERIES, MAX_SPOKES, Rgb, fill_colour, int, measure, slot};
 
 /// The most chart-type groups read from one plot area. A plot area holds each chart type at most
@@ -358,7 +359,22 @@ impl Series {
         }
         let labels = show_values(ser.child("c:dLbls"));
         let order = ser.child("c:order").and_then(|e| e.attr("val")).and_then(int);
-        Series { name, idx, order, color, line_w, line, values, xs, points, fmt, x_fmt, labels, raw: Vec::new() }
+        Series {
+            name,
+            idx,
+            order,
+            color,
+            line_w,
+            line,
+            values,
+            xs,
+            points,
+            fmt,
+            x_fmt,
+            labels,
+            raw: Vec::new(),
+            trendlines: trendline::parse(ser, theme),
+        }
     }
 }
 
