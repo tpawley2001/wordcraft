@@ -1336,7 +1336,6 @@ fn typing_with_smart_art_selected_types_into_an_item() {
     assert_eq!(g.items[0].text, "Ada", "one undo step for the typing");
 }
 
-<<<<<<< ours
 /// Ctrl+Alt+PageUp / Ctrl+Alt+PageDown (Word for Windows' StartOfWindow / EndOfWindow) take the
 /// window's edges from the canvas and leave the view where it is.
 #[cfg(not(target_os = "macos"))]
@@ -1469,7 +1468,8 @@ fn insert_key_paste_defaults_off_in_file_options() {
     let mut s = wordcraft_engine::Session::new(wordcraft_doc::Document::new());
     let o = s.run("file.options", &json!({})).unwrap();
     assert_eq!(o["insertKeyPaste"], json!(false));
-=======
+}
+
 /// The key beside the left Shift on European keyboards, which egui gives as `IntlBackslash`, is
 /// < and, with Shift, >: the registry and Customize Keyboard write it so.
 #[test]
@@ -1508,5 +1508,4 @@ fn the_european_less_than_key_changes_the_font_size() {
     h.key_press_modifiers(Modifiers::COMMAND, Key::IntlBackslash);
     h.run_steps(2);
     assert_eq!(size(&h), Some(start), "Ctrl+< shrinks it back");
->>>>>>> theirs
 }
