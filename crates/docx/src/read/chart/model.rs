@@ -119,11 +119,29 @@ pub(super) enum Pos {
     Bottom,
 }
 
+/// An axis title as the file gives it: its text and the look of its first run.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct AxisTitle {
+    pub(super) text: String,
+    /// Points.
+    pub(super) size: f32,
+    pub(super) color: Rgb,
+    pub(super) bold: bool,
+}
+
 /// One value axis (or category axis) as the file states it.
 #[derive(Default)]
 pub(super) struct Axis {
     pub(super) deleted: bool,
+    /// Major gridlines (`c:majorGridlines`), drawn even when the axis is deleted.
     pub(super) grid: bool,
+    /// Colour and width of the major gridlines.
+    pub(super) grid_style: (Rgb, f32),
+    /// Minor gridlines (`c:minorGridlines`).
+    pub(super) minor_grid: bool,
+    pub(super) minor_style: (Rgb, f32),
+    /// The axis title (`c:title`), drawn even when the axis is deleted.
+    pub(super) title: Option<AxisTitle>,
     pub(super) line: bool,
     /// `c:crossBetween val="midCat"`: categories sit on the tick marks, not between them.
     pub(super) mid: bool,

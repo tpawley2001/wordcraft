@@ -127,6 +127,10 @@ pub enum GraphicItem {
         align: TextAlign,
         #[serde(default)]
         font: Option<String>,
+        /// Degrees turned clockwise about the centre of `rect` (`rect` is the line unturned):
+        /// 270 reads bottom to top, as a vertical axis title.
+        #[serde(default, skip_serializing_if = "is_upright")]
+        rotation: f32,
     },
     /// A picture (`Document::media` key) stretched into `rect`.
     Image { rect: [f32; 4], media: String },
@@ -148,4 +152,9 @@ pub enum PathSeg {
     Line(f32, f32),
     Cubic(f32, f32, f32, f32, f32, f32),
     Close,
+}
+
+/// Whether a text item is drawn unturned (serde: the turn is left out then).
+fn is_upright(deg: &f32) -> bool {
+    *deg == 0.0
 }

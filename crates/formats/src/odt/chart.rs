@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, LegendPos, MAX_CELLS, MAX_POINTS, MAX_SERIES, MAX_TEXT};
+use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, Gridlines, LegendPos, MAX_CELLS, MAX_POINTS, MAX_SERIES, MAX_TEXT};
 
 use super::xml::Attrs;
 use super::{Ev, events, get};
@@ -248,7 +248,20 @@ impl Reader {
             _ => LegendPos::Right,
         });
         let title = self.title.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string);
-        Some(ChartSpec { kind, categories, series, title, legend, data_labels, value_axis: Default::default() }.sanitized())
+        Some(
+            ChartSpec {
+                kind,
+                categories,
+                series,
+                title,
+                legend,
+                data_labels,
+                value_axis: Default::default(),
+                axis_titles: Default::default(),
+                gridlines: Gridlines::for_kind(kind),
+            }
+            .sanitized(),
+        )
     }
 }
 

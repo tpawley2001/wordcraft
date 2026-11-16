@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0625: Chart Design › Add Chart Element adds Axis Titles (Primary Horizontal, Primary Vertical) and Gridlines (major/minor, horizontal/vertical) for WordCraft's charts, hidden for pie and doughnut charts (`chart.axisTitle`, `chart.gridlines`).)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (Font Substitution dialog: see which fonts aren't installed, pick what each is shown in, or convert them permanently. Readiness estimates unchanged; earlier: P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged)
@@ -218,7 +220,11 @@ Modify Style’s existing Automatically update flag is honoured by engine format
 File › Options › General › ScreenTip style (Show feature descriptions, Don't show feature descriptions, Don't show ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips shape every ribbon and Quick Access Toolbar hint, as in Word (P0618). Our reason line on a disabled control stays under "Don't show feature descriptions" (unverified in Word).
 
 Chart Design › Data places Switch Row/Column beside Edit Data for editable charts (`chart.switchRowColumn`).
+
+Chart Design › Chart Layouts › Add Chart Element has Axis Titles (Primary Horizontal, Primary Vertical; a new one reads "Axis Title", the vertical one turned) and Gridlines (Primary Major/Minor Horizontal/Vertical) as check items beside Legend and Data Labels, hidden for pie and doughnut charts (`chart.axisTitle`, `chart.gridlines`).
 ## Revision history
+
+> 2026-11-15 · trivial · P0625: Chart Design › Add Chart Element adds Axis Titles (Primary Horizontal, Primary Vertical) and Gridlines (major/minor, horizontal/vertical) for WordCraft's charts, hidden for pie and doughnut charts (`chart.axisTitle`, `chart.gridlines`).
 
 > 2026-11-15 · trivial · P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.
 

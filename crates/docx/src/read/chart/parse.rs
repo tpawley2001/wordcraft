@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use super::format::{date_text, excel_stamp, format_value, is_date_code};
-use super::model::{Axis, Depth, Group, Grouping, Kind, Pos, Series, Stock};
+use super::model::{Axis, AxisTitle, Depth, Group, Grouping, Kind, Pos, Series, Stock};
 use super::of_pie::OfPie;
 use super::plot::label;
 use super::three_d::View3d;
-use super::{Chart, El, FONT, LINE_W, MAX_CELLS, MAX_POINTS, MAX_RADAR_SERIES, MAX_SERIES, MAX_SPOKES, Rgb, fill_colour, int, measure, slot};
+use super::{Chart, El, FONT, GRID, LINE_W, MAX_CELLS, MAX_POINTS, MAX_RADAR_SERIES, MAX_SERIES, MAX_SPOKES, Rgb, fill_colour, int, measure, slot};
 
 /// The most chart-type groups read from one plot area. A plot area holds each chart type at most
 /// once per axis group; this is far above any real file and bounds the work hostile ones cause.
@@ -42,7 +42,7 @@ impl Chart {
                 .take(MAX_CHART_GROUPS)
                 .collect()
         };
-        let (cat, val, sec, axes) = chart_axes(plot, scatter, &tys);
+        let (cat, val, sec, axes) = chart_axes(plot, scatter, &tys, theme);
         let (mut budget, mut left) = (MAX_CELLS, MAX_SERIES);
         let mut groups: Vec<Group> = Vec::new();
         for ((ty, k), secondary) in tys.iter().zip(axes) {
@@ -261,14 +261,14 @@ fn to_percent(series: &mut [Series], n: usize) {
 /// The category axis (scatter: the horizontal value axis) and the (primary) value axis of a plot
 /// area, the secondary value axis (that of the first chart type not on the primary one) and for
 /// each chart type whether it is on it.
-fn chart_axes(plot: &El, scatter: bool, tys: &[(&El, Kind)]) -> (Axis, Axis, Option<Axis>, Vec<bool>) {
+fn chart_axes(plot: &El, scatter: bool, tys: &[(&El, Kind)], theme: &[Rgb]) -> (Axis, Axis, Option<Axis>, Vec<bool>) {
     let vals_ax: Vec<&El> = plot.children("c:valAx").take(MAX_VAL_AXES).collect();
     let horiz_pos = |a: &&El| matches!(a.child("c:axPos").and_then(|p| p.attr("val")), Some("b" | "t"));
     let cat_el = plot.els().find(|e| matches!(e.name.as_str(), "c:catAx" | "c:dateAx"));
     if scatter {
         let x = vals_ax.iter().copied().find(horiz_pos).or_else(|| vals_ax.first().copied());
         let y = vals_ax.iter().copied().find(|a| !horiz_pos(a)).or_else(|| vals_ax.iter().copied().find(|a| Some(*a) != x));
-        return (axis(x), axis(y), None, vec![false; tys.len()]);
+        return (axis(x, theme), axis(y, theme), None, vec![false; tys.len()]);
     }
     // One id -> axis map (the first axis with an id wins), so matching stays linear in the axes.
     let mut by_id: HashMap<&str, &El> = HashMap::new();
@@ -287,8 +287,8 @@ fn chart_axes(plot: &El, scatter: bool, tys: &[(&El, Kind)]) -> (Axis, Axis, Opt
         vals_ax.first().copied()
     };
     let secondary: Vec<bool> = refs.iter().map(|r| tys.len() > 1 && r.is_some_and(|a| primary.is_some_and(|p| !std::ptr::eq(a, p)))).collect();
-    let sec = refs.iter().zip(&secondary).find(|(_, s)| **s).map(|(r, _)| axis(*r));
-    (axis(cat_el), axis(primary), sec, secondary)
+    let sec = refs.iter().zip(&secondary).find(|(_, s)| **s).map(|(r, _)| axis(*r, theme));
+    (axis(cat_el, theme), axis(primary, theme), sec, secondary)
 }
 
 /// The value axis a chart type element names by its `c:axId`s: the first of its first
@@ -424,14 +424,20 @@ fn pts(cache: &El, cap: usize) -> Vec<Option<String>> {
     out
 }
 
-pub(super) fn axis(a: Option<&El>) -> Axis {
+pub(super) fn axis(a: Option<&El>, theme: &[Rgb]) -> Axis {
     let Some(a) = a else { return Axis { deleted: true, ..Default::default() } };
+    let (grid, grid_style) = gridlines(a.child("c:majorGridlines"), theme, GRID);
+    let (minor_grid, minor_style) = gridlines(a.child("c:minorGridlines"), theme, MINOR_GRID);
     let scaling = a.child("c:scaling");
     let num =
         |n: &str| scaling.and_then(|s| s.child(n)).and_then(|e| e.attr("val")).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite());
     Axis {
         deleted: a.child("c:delete").and_then(|d| d.attr("val")).is_some_and(truthy),
-        grid: a.child("c:majorGridlines").is_some(),
+        grid,
+        grid_style,
+        minor_grid,
+        minor_style,
+        title: a.child("c:title").map(|t| axis_title(t, theme)),
         line: a.child("c:spPr").and_then(|p| p.child("a:ln")).and_then(|l| l.child("a:noFill")).is_none(),
         mid: a.child("c:crossBetween").and_then(|c| c.attr("val")) == Some("midCat"),
         min: num("c:min"),
@@ -444,6 +450,40 @@ pub(super) fn axis(a: Option<&El>) -> Axis {
             .filter(|f| f.len() <= MAX_FORMAT_CODE)
             .map(str::to_string),
     }
+}
+
+/// Default minor gridlines: text colour at 5 % on white.
+const MINOR_GRID: Rgb = Rgb(0xF2, 0xF2, 0xF2);
+/// Default axis title: 10 pt, not bold, in the chart text colour.
+const AXIS_TITLE_SIZE: f32 = 10.0;
+const AXIS_TITLE_COLOR: Rgb = super::TEXT;
+
+/// Whether gridlines `g` are drawn (present and their line not `a:noFill`) and their colour and
+/// width (`c:spPr/a:ln`, else `default` at 0.75 pt).
+fn gridlines(g: Option<&El>, theme: &[Rgb], default: Rgb) -> (bool, (Rgb, f32)) {
+    let Some(g) = g else { return (false, (default, 0.75)) };
+    let ln = g.child("c:spPr").and_then(|p| p.child("a:ln"));
+    let on = ln.and_then(|l| l.child("a:noFill")).is_none();
+    let color = ln.and_then(|l| fill_colour(l, theme)).unwrap_or(default);
+    let width = ln.and_then(|l| l.attr("w")).and_then(|v| measure(v, 12_700.0)).filter(|w| w.is_finite()).unwrap_or(0.75).clamp(0.25, 6.0);
+    (on, (color, width))
+}
+
+/// An axis's `c:title`: its text (Word's placeholder "Axis Title" when it has none) in the size,
+/// colour and weight of its first run, else of the paragraph's or the title's own `c:txPr`
+/// defaults, else 10 pt, not bold, grey.
+fn axis_title(t: &El, theme: &[Rgb]) -> AxisTitle {
+    let text = title_text(t).unwrap_or_else(|| "Axis Title".to_string());
+    let rich = t.child("c:tx").and_then(|x| x.child("c:rich"));
+    let props: Vec<&El> =
+        [rich.and_then(|r| r.find("a:rPr")), rich.and_then(|r| r.find("a:defRPr")), t.child("c:txPr").and_then(|x| x.find("a:defRPr"))]
+            .into_iter()
+            .flatten()
+            .collect();
+    let size = props.iter().find_map(|p| p.attr("sz")).and_then(int).map_or(AXIS_TITLE_SIZE, |v| (v as f32 / 100.0).clamp(6.0, 36.0));
+    let bold = props.iter().find_map(|p| p.attr("b")).is_some_and(truthy);
+    let color = props.iter().find_map(|p| fill_colour(p, theme)).unwrap_or(AXIS_TITLE_COLOR);
+    AxisTitle { text, size, color, bold }
 }
 
 fn title_text(t: &El) -> Option<String> {
