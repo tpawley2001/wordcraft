@@ -608,14 +608,18 @@ impl WordApp {
     }
 
     /// Commands that live in the UI layer.
-    /// `ui.cropMarks`, `ui.textBoundaries`, `ui.picturePlaceholders`.
+    /// `ui.cropMarks`, `ui.textBoundaries`, `ui.picturePlaceholders`, `ui.showHighlight`,
+    /// `ui.showDrawings`, `ui.showBackgrounds`.
     fn show_content_option(&mut self, id: &str, p: &Value) -> Result<Value, String> {
-        // File › Options › Advanced › Show document content: `value` true or false turns
-        // crop marks, text boundaries or picture placeholders on or off; no value reads
-        // it. Screen only: the document, printing and exports never see them.
+        // File › Options › Advanced › Show document content (and Display › Show highlighter
+        // marks): `value` true or false turns the option on or off; no value reads it. Screen
+        // only (highlight also in print jobs): the document and exports never see them.
         let (key, slot) = match id {
             "ui.cropMarks" => ("cropMarks", &mut self.ui.crop_marks),
             "ui.textBoundaries" => ("textBoundaries", &mut self.ui.text_boundaries),
+            "ui.showHighlight" => ("showHighlight", &mut self.ui.show_highlight),
+            "ui.showDrawings" => ("showDrawings", &mut self.ui.show_drawings),
+            "ui.showBackgrounds" => ("showBackgrounds", &mut self.ui.show_backgrounds),
             _ => ("picturePlaceholders", &mut self.ui.picture_placeholders),
         };
         match p.get("value") {
@@ -990,7 +994,9 @@ impl WordApp {
                 }
                 json!({"alignmentGuides": self.ui.alignment_guides})
             }
-            "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" => return Some(self.show_content_option(id, p)),
+            "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" | "ui.showHighlight" | "ui.showDrawings" | "ui.showBackgrounds" => {
+                return Some(self.show_content_option(id, p));
+            }
             "ui.fieldShading" => {
                 // File › Options › Advanced › Show document content › Field shading: `value`
                 // `never`, `always` or `selected` (When selected); no value reads it. Screen only.

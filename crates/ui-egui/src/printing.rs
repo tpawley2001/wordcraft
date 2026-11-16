@@ -202,6 +202,13 @@ pub fn submit(app: &mut crate::WordApp, params: &serde_json::Value) -> Result<se
     {
         log::warn!("updating fields before printing: {error}");
     }
+    // File › Options › Display › Show highlighter marks off: the job prints no highlight, unless
+    // its params say otherwise.
+    if !app.ui.show_highlight
+        && let Some(object) = pdf_params.as_object_mut()
+    {
+        object.entry("highlight").or_insert(json!(false));
+    }
     // The job follows File › Options › Display › Print background colors and images.
     let pdf = app.session.print_job_pdf(&pdf_params).map_err(|error| error.to_string());
     let result = pdf.and_then(|(bytes, plan)| {

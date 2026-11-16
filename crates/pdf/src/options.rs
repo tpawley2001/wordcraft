@@ -61,6 +61,9 @@ pub struct PdfOptions {
     /// Draw shapes, text boxes, WordArt and drawing canvases (File › Options › Display › Print
     /// drawings created in Word). On by default.
     pub drawings: bool,
+    /// Draw text highlight. Print jobs follow File › Options › Display › Show highlighter marks;
+    /// export keeps it on (the default).
+    pub highlight: bool,
 }
 
 /// How many characters of the watermark text the PDF draws.
@@ -79,6 +82,7 @@ impl PdfOptions {
             placeholders: false,
             forms_data_only: self.forms_data_only,
             hide_drawings: !self.drawings,
+            hide_highlight: !self.highlight,
             ..Default::default()
         }
     }
@@ -114,6 +118,7 @@ impl Default for PdfOptions {
             forms_data_only: false,
             background: true,
             drawings: true,
+            highlight: true,
         }
     }
 }
