@@ -421,6 +421,24 @@ fn float_table_areas(page: &Page) -> Vec<(&Path, Rect)> {
 }
 
 /// How far `v` is outside the band `top..top + h`.
+/// The point (x, y) on page `p` taken back into the upright frame of the text box showing story
+/// `id` that it falls in, when that box's text is drawn turned (see [`crate::box_text_spin`]).
+/// Linked boxes show one story in several frames: the one whose turned area holds the point,
+/// else the nearest. Unchanged when no frame of the story is on the page or it is upright.
+fn unturn_in_box(p: &Page, id: u32, x: f32, y: f32) -> (f32, f32) {
+    let frames = p.items.iter().chain(&p.header).chain(&p.footer).filter_map(|it| match it {
+        Placed::Object { rect, spin, text_box: Some(t), .. } if *t == id => {
+            let (cx, cy) = (rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
+            let (ux, uy) = crate::box_text_spin(*spin).unapply(cx, cy, x, y);
+            let dx = (rect.x - ux).max(ux - rect.right()).max(0.0);
+            let dy = (rect.y - uy).max(uy - rect.bottom()).max(0.0);
+            Some(((ux, uy), dx * dx + dy * dy))
+        }
+        _ => None,
+    });
+    frames.min_by(|a, b| a.1.total_cmp(&b.1)).map_or((x, y), |(pt, _)| pt)
+}
+
 fn band_dist(v: f32, top: f32, h: f32) -> f32 {
     if v < top {
         top - v
@@ -432,16 +450,40 @@ fn band_dist(v: f32, top: f32, h: f32) -> f32 {
 }
 
 impl DocLayout {
-    /// [`DocLayout::hit`] while text box story `straight` is drawn straight for editing (#6056).
-    /// STUB: the task implements it.
-    pub fn hit_with(&self, page: usize, x: f32, y: f32, story: StoryRef, straight: Option<u32>) -> Option<Pos> {
-        let _ = straight;
-        self.hit(page, x, y, story)
+    /// The position nearest to (x, y) on `page`, in `story`, as the page is drawn for print
+    /// and export: a click on the text of a turned text box lands on the character drawn under
+    /// it (#6056). [`DocLayout::hit_with`] with nothing drawn straight.
+    pub fn hit(&self, page: usize, x: f32, y: f32, story: StoryRef) -> Option<Pos> {
+        self.hit_with(page, x, y, story, None)
     }
 
-    /// The position nearest to (x, y) on `page`, in `story`.
-    pub fn hit(&self, page: usize, x: f32, y: f32, story: StoryRef) -> Option<Pos> {
+    /// [`DocLayout::hit`] while text box story `straight` is drawn straight for editing
+    /// ([`crate::display::DisplayOptions::straight_text_box`]): a click on it goes by its upright
+    /// text, as it is drawn; one on another turned box is turned back into the box first.
+    pub fn hit_with(&self, page: usize, x: f32, y: f32, story: StoryRef, straight: Option<u32>) -> Option<Pos> {
         let p = self.pages.get(page)?;
+        let (x, y) = match story {
+            StoryRef::Part(id) if straight != Some(id) => unturn_in_box(p, id, x, y),
+            _ => (x, y),
+        };
+        self.hit_upright(p, x, y, story)
+    }
+
+    /// Whether `story` is a text box shown turned somewhere (on any page): the story to draw
+    /// straight while the caret is in it ([`crate::display::DisplayOptions::straight_text_box`]).
+    pub fn turned_box_story(&self, story: StoryRef) -> Option<u32> {
+        let StoryRef::Part(id) = story else { return None };
+        let turned = |items: &[Placed]| {
+            items
+                .iter()
+                .any(|it| matches!(it, Placed::Object { text_box: Some(t), spin, .. } if *t == id && !crate::box_text_spin(*spin).is_identity()))
+        };
+        self.pages.iter().any(|p| turned(&p.items) || turned(&p.header) || turned(&p.footer)).then_some(id)
+    }
+
+    /// The position nearest to the upright point (x, y) on page `p`, in `story`: text boxes' text
+    /// as laid out, unturned.
+    fn hit_upright(&self, p: &Page, x: f32, y: f32, story: StoryRef) -> Option<Pos> {
         // Like Word, a click outside a floating table doesn't land in its cells while there's
         // other text on the page: below one, it goes to the text beside or after it (#2038).
         let floats = if story == StoryRef::Body { float_table_areas(p) } else { Vec::new() };

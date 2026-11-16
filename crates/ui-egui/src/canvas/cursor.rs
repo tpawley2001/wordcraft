@@ -21,7 +21,7 @@ pub fn pos_from_screen(app: &mut WordApp, p: Pos2) -> Option<Pos> {
     let layout = app.session.layout();
     let (page, x, y) = page_at(&app.canvas.page_rects, &layout, app.canvas.scale, p)?;
     let story = app.session.sel.focus.story;
-    app.session.layout().hit(page, x, y, story)
+    app.session.layout().hit_with(page, x, y, story, app.canvas.straight_box)
 }
 
 /// The caret colour that shows against `bg`: black or white, whichever contrasts more (WCAG
