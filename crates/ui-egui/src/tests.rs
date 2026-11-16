@@ -8924,3 +8924,21 @@ fn screen_tip_settings_survive_a_restart() {
     assert_eq!(junk.screen_tip_style, crate::widgets::ScreenTipStyle::Descriptions);
     assert_eq!(junk.recent_count, 3, "the rest of the settings still load");
 }
+
+/// Mod+Enter at the end of a paragraph puts the caret on the next page at once, not after a
+/// second press.
+#[test]
+fn mod_enter_moves_the_caret_to_the_next_page() {
+    let mut h = harness(app());
+    for _ in 0..6 {
+        h.step();
+    }
+    let key = |key, modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+    h.event(egui::Event::Text("Kilns".into()));
+    h.step();
+    h.event(key(egui::Key::Enter, egui::Modifiers::COMMAND));
+    h.run_steps(3);
+    let focus = h.state().session.sel.focus.clone();
+    let caret = h.state_mut().session.layout().caret(&focus).expect("caret");
+    assert_eq!(caret.page, 1, "one press reaches the new page");
+}

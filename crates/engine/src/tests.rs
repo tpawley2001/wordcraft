@@ -10,6 +10,7 @@ use wordcraft_doc::{Pos, StoryRef};
 
 use crate::{Session, cmd};
 
+mod page_break_caret;
 mod autonum_fields;
 mod autonum_heading_rule;
 mod auto_caption;
