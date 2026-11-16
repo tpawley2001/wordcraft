@@ -491,7 +491,7 @@ fn treemap(space: &El, chart: &El, series: &El, theme: &[Rgb], w: f32, h: f32) -
         }
         let rect = Rect { x: r[0] + TILE_INSET, y: top, w: width, h: lh };
         let text = clip_text(s, width, size);
-        out.push(GraphicItem::Text { rect: rect.arr(), text, size, color: colour, bold, align: TextAlign::Left, font: None });
+        out.push(GraphicItem::Text { rect: rect.arr(), text, size, color: colour, bold, align: TextAlign::Left, font: None, rotation: 0.0 });
     };
     // Group labels sit at their group's top-left, over the first tile, whose own label moves down.
     let mut group_tiles: Vec<Option<[f32; 4]>> = vec![None; groups.len()];

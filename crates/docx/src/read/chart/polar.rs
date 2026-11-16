@@ -173,7 +173,7 @@ pub(super) fn draw_data_labels(out: &mut Vec<GraphicItem>, labels: &[DataLabel],
             (Rect { x: l.x - w / 2.0, y: l.y - lh, w, h: lh }, TextAlign::Center)
         };
         let color = if l.inside { Rgb::WHITE } else { TEXT };
-        out.push(GraphicItem::Text { rect: rect.arr(), text: l.text.clone(), size: fs, color, bold: false, align, font: None });
+        out.push(GraphicItem::Text { rect: rect.arr(), text: l.text.clone(), size: fs, color, bold: false, align, font: None, rotation: 0.0 });
     }
 }
 

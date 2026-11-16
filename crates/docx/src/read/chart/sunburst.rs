@@ -221,6 +221,7 @@ pub(super) fn draw_sunburst(out: &mut Vec<GraphicItem>, leaves: &[(Vec<String>, 
             bold: false,
             align: TextAlign::Center,
             font: Some(LABEL_FONT.to_string()),
+            rotation: 0.0,
         });
     }
 }

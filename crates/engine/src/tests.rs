@@ -13951,4 +13951,5 @@ mod row_deletion_resolve;
 mod sentence_bounds_word;
 mod apply_style_resets_para;
 mod formatting_lock_settings;
+mod chart_axis_titles;
 mod normal_style_lists;
