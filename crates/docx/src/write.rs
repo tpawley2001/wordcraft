@@ -2,6 +2,8 @@
 
 mod bidi;
 mod embed;
+pub(crate) mod font_embed;
+pub use font_embed::{COMMON_SYSTEM_FONTS, FaceStyle, FontFile, MAX_EMBED_FILE_BYTES, NotEmbeddable, embeddable, is_common_system_font};
 mod glossary;
 mod settings_merge;
 pub(crate) use settings_merge::has_unowned as settings_has_unowned;
@@ -63,6 +65,20 @@ impl PartRels {
             return;
         }
         self.list.push((id.to_string(), kind.to_string(), target.to_string(), external));
+    }
+    /// Add a relationship under an id no relationship of this part has yet (safe beside
+    /// [`PartRels::add_with_id`]); returns its id.
+    pub fn add_unique(&mut self, kind: &str, target: &str) -> String {
+        let mut n = self.list.len().saturating_add(1);
+        let id = loop {
+            let id = format!("rId{n}");
+            if !self.list.iter().any(|(i, ..)| *i == id) {
+                break id;
+            }
+            n = n.saturating_add(1);
+        };
+        self.list.push((id.clone(), kind.to_string(), target.to_string(), false));
+        id
     }
     pub(crate) fn is_empty(&self) -> bool {
         self.list.is_empty()
@@ -170,6 +186,12 @@ pub fn write(doc: &Document) -> Result<Vec<u8>, DocxError> {
 /// Write a package of the given flavour (`.docx`, `.docm`, `.dotx`, `.dotm`).
 pub fn write_as(doc: &Document, flavor: Flavor) -> Result<Vec<u8>, DocxError> {
     zip_entries(&write_parts(doc, flavor)?)
+}
+
+/// [`write_as`], embedding `fonts` when the document's Embed fonts in the file setting is on
+/// (#6329). The caller gathers the installed font files; see [`FontFile`] and [`embeddable`].
+pub fn write_as_with_fonts(doc: &Document, flavor: Flavor, fonts: &[FontFile]) -> Result<Vec<u8>, DocxError> {
+    zip_entries(&parts::write_parts_with(doc, flavor, fonts)?)
 }
 
 impl Writer<'_> {

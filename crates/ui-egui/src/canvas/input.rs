@@ -198,7 +198,7 @@ fn handle_page_pointer(app: &mut WordApp, pointer: PagePointer<'_>) {
         let target = match d.unit {
             "line" => layout.body_line_at(page, y),
             "document" => None,
-            _ => layout.hit(page, x, y, story),
+            _ => layout.hit_with(page, x, y, story, app.canvas.straight_box),
         };
         if let Some(pos) = target
             && pos != d.last
@@ -216,7 +216,7 @@ fn handle_page_pointer(app: &mut WordApp, pointer: PagePointer<'_>) {
             Some((_, last)) => last.clone(),
             None => app.session.sel_ends().focus.clone(),
         };
-        if let Some(pos) = layout.hit(page, x, y, story)
+        if let Some(pos) = layout.hit_with(page, x, y, story, app.canvas.straight_box)
             && pos != last
         {
             // Whole words and a whole paragraph's mark (File › Options › Advanced) were added
@@ -299,7 +299,7 @@ fn handle_primary_press(
         let id = if header { "insert.editHeader" } else { "insert.editFooter" };
         if app.run(id, json!({ "page": page })).is_ok() {
             let to = app.session.sel.focus.story;
-            if let Some(pos) = app.session.layout().hit(page, x, y, to) {
+            if let Some(pos) = app.session.layout().hit_with(page, x, y, to, app.canvas.straight_box) {
                 app.session.sel = wordcraft_engine::Selection::caret(pos);
             }
             app.session.page_hint = page;
@@ -361,7 +361,7 @@ fn handle_primary_press(
         app.canvas.dragging = true;
         return true;
     }
-    let Some(pos) = layout.hit(page, x, y, story) else { return true };
+    let Some(pos) = layout.hit_with(page, x, y, story, app.canvas.straight_box) else { return true };
     // Ctrl/⌘+click follows a hyperlink. With File › Options › Advanced › Use Ctrl+Click to follow
     // hyperlink off, a plain click does instead, on release, so a drag from a link still selects.
     if app.ui.ctrl_click_follows_links {
@@ -475,7 +475,7 @@ fn handle_completed_click(app: &mut WordApp, pointer: &PagePointer<'_>) -> bool 
         {
             let id = if header { "insert.editHeader" } else { "insert.editFooter" };
             if app.run(id, json!({ "page": page })).is_ok()
-                && let Some(pos) = app.session.layout().hit(page, x, y, app.session.sel.focus.story)
+                && let Some(pos) = app.session.layout().hit_with(page, x, y, app.session.sel.focus.story, app.canvas.straight_box)
             {
                 app.session.sel = wordcraft_engine::Selection::caret(pos);
             }
@@ -483,13 +483,13 @@ fn handle_completed_click(app: &mut WordApp, pointer: &PagePointer<'_>) -> bool 
         }
         if matches!(story, StoryRef::Part(_)) && !in_text_box(app) && hf_zone.is_none() {
             let _ = app.run("insert.closeHeader", json!({}));
-            if let Some(pos) = layout.hit(page, x, y, StoryRef::Body) {
+            if let Some(pos) = layout.hit_with(page, x, y, StoryRef::Body, app.canvas.straight_box) {
                 app.session.sel = wordcraft_engine::Selection::caret(pos);
             }
             return true;
         }
         // Double-click a field showing its code: edit the code.
-        if let Some(pos) = layout.hit(page, x, y, story)
+        if let Some(pos) = layout.hit_with(page, x, y, story, app.canvas.straight_box)
             && let Some(field) = field_showing_code(app, &pos)
         {
             app.session.sel = wordcraft_engine::Selection::caret(field);
@@ -497,7 +497,7 @@ fn handle_completed_click(app: &mut WordApp, pointer: &PagePointer<'_>) -> bool 
             return true;
         }
         // Double-clicking a GOTOBUTTON follows it, as Alt+Shift+F9 does.
-        if let Some(pos) = layout.hit(page, x, y, story)
+        if let Some(pos) = layout.hit_with(page, x, y, story, app.canvas.straight_box)
             && wordcraft_engine::cmd::fields::field_name_at(&app.session, &pos).as_deref() == Some("GOTOBUTTON")
         {
             app.session.sel = wordcraft_engine::Selection::caret(pos);
@@ -551,7 +551,7 @@ fn show_hover_link(app: &WordApp, pointer: &PagePointer<'_>) {
         && let Some((link, screen_tip, ctrl_click)) =
             crate::objects::link_at(app, layout, rects, *scale, *p).map(|link| (link, None, true)).or_else(|| {
                 layout
-                    .hit(*page, *x, *y, *story)
+                    .hit_with(*page, *x, *y, *story, app.canvas.straight_box)
                     .and_then(|pos| link_and_tip_under(app, layout, *page, *x, *y, &pos))
                     .map(|(link, tip)| (link, tip, app.ui.ctrl_click_follows_links))
             })

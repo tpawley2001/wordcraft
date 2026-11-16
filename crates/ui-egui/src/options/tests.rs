@@ -328,6 +328,33 @@ fn save_privacy_checkboxes_set_the_privacy_options() {
     assert!(!h.state().session.doc.settings.remove_personal_info, "and off again");
 }
 
+/// File › Options › Save › Preserve fidelity (#6329): Embed fonts in the file runs
+/// `document.fontEmbedding`; the other two boxes wait for it.
+#[test]
+fn save_embed_fonts_checkbox_turns_font_embedding_on() {
+    let mut a = app();
+    a.run("file.options", json!({"pane": "save"})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        a,
+    );
+    h.run_steps(4);
+    assert!(h.query_by_label("Preserve fidelity when sharing this document").is_some(), "the section is there");
+    assert!(h.get_by_label("Do not embed common system fonts").accesskit_node().is_disabled(), "greyed while embedding is off");
+    h.get_by_label("Embed fonts in the file").click();
+    h.run_steps(4);
+    let state = h.state_mut().session.run("document.fontEmbedding", &json!({})).unwrap();
+    assert_eq!(state, json!({"embed": true, "subset": false, "skipSystemFonts": true}));
+    assert!(!h.get_by_label("Do not embed common system fonts").accesskit_node().is_disabled());
+    h.get_by_label("Do not embed common system fonts").click();
+    h.run_steps(4);
+    assert!(h.state().session.doc.settings.embed_system_fonts);
+}
+
 /// File › Options › Accessibility › Animation effects: Use system setting (the default), On
 /// or Off, with a line saying what the system's own setting is while it is followed.
 #[test]
@@ -420,12 +447,41 @@ fn advanced_always_create_backup_copy_checkbox_sets_the_preference() {
     );
     h.run_steps(4);
     assert!(!h.state().session.prefs.always_create_backup, "off by default");
+    // The Save section sits below the Editing options: bring it into view before clicking.
+    h.get_by_label("Always create backup copy").scroll_to_me();
+    h.run_steps(4);
     h.get_by_label("Always create backup copy").click();
     h.run_steps(4);
     assert!(h.state().session.prefs.always_create_backup, "the checkbox turns it on");
+    h.get_by_label("Always create backup copy").scroll_to_me();
+    h.run_steps(4);
     h.get_by_label("Always create backup copy").click();
     h.run_steps(4);
     assert!(!h.state().session.prefs.always_create_backup, "and off again");
+}
+
+/// File › Options › Advanced › Editing: the checkbox is the `normalStyleForLists` preference.
+#[test]
+fn advanced_normal_style_for_lists_checkbox_sets_the_preference() {
+    let mut a = app();
+    a.run("file.options", json!({"pane": "advanced"})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        a,
+    );
+    h.run_steps(4);
+    let label = "Use Normal style for bulleted or numbered lists";
+    assert!(!h.state().session.prefs.normal_style_for_lists, "off by default");
+    h.get_by_label(label).click();
+    h.run_steps(4);
+    assert!(h.state().session.prefs.normal_style_for_lists, "the checkbox turns it on");
+    h.get_by_label(label).click();
+    h.run_steps(4);
+    assert!(!h.state().session.prefs.normal_style_for_lists, "and off again");
 }
 
 /// File › Options › Advanced › Animation: the checkbox is the `ui.caretAnimation` setting,
@@ -451,6 +507,8 @@ fn advanced_animation_turns_the_caret_animation_off_and_on() {
     h.get_by_label("Animate the caret (it glides and fades)").click();
     h.run_steps(4);
     assert!(!h.state().ui.caret_animation, "the checkbox turns it off");
+    h.get_by_label("Animate the caret (it glides and fades)").scroll_to_me();
+    h.run_steps(4);
     h.get_by_label("Animate the caret (it glides and fades)").click();
     h.run_steps(4);
     assert!(h.state().ui.caret_animation, "and on again");

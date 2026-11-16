@@ -164,6 +164,7 @@ mod table_no_wrap;
 mod tall_footer_leading;
 mod textbox;
 mod trailing_page_break;
+mod turned_box_edit;
 mod turned_cell_autofit;
 mod underline_from_font;
 mod underline_style_geometry;
@@ -11565,7 +11566,10 @@ fn ligatures_follow_w14_ligatures() {
     let letters = text.chars().count();
     let none = Ligatures::from_ooxml("none");
     let standard = Ligatures::from_ooxml("standard");
-    assert!(glyphs(None, None) < letters, "WordCraft's default draws ligatures");
+    // Word draws no ligatures unless the document asks (observed: a Word-made PDF of "office
+    // affinity" breaks lines exactly like `w14:ligatures="none"`), so neither does WordCraft.
+    assert_eq!(glyphs(None, None), letters, "no w14:ligatures: none, as in Word");
+    assert!(glyphs(None, standard) < letters, "standard draws them");
     assert_eq!(glyphs(None, none), letters, "none: one glyph per letter");
     assert_eq!(glyphs(none, None), letters, "none from the character style");
     assert!(glyphs(none, standard) < letters, "standard over a style with none draws them again");

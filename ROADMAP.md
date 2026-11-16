@@ -1,6 +1,8 @@
 # WordCraft roadmap
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-16 · **Change:** trivial (P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged; earlier: P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged; earlier: P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged; earlier: P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged)
 
@@ -205,6 +207,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-16: P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.
+
 - 2026-11-15: P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.
 
 - 2026-11-15: P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged.
@@ -308,6 +312,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 - 2026-10-31: List labels: a numbering level with format `none` and literal text, such as `RESPONSE:` with a one-inch hanging indent, shows that text as its label, as Word does; it used to show nothing. As in Word, a `none` level still counts and restarts the levels below it, its own number is empty (in legal numbering too), and an empty label still tabs the text to the indent (#4985). Readiness unchanged.
 - 2026-10-31: Font menus draw their entries from a few shared textures written in place, as the Equation tab's pictures are (#1002), instead of a texture per font: on Windows (DirectX 12) browsing the list showed the names on black strips in light mode and white or red ones in dark mode (#5105). Readiness unchanged.
 - 2026-11-02: A picture linked from its context menu shows its address on hover and opens it with Ctrl/⌘+click, in line or floating, as linked text does; DOCX files keep the link where Word does, on the drawing (`a:hlinkClick`), so links on pictures from Word open too (#5267). Readiness unchanged.
+- 2026-11-02: Hebrew and Arabic text the font lacks falls back to the same font whatever was laid out before it (#4300). The ranked right-to-left fallback families are loaded before a fallback is chosen, for a single character and for a run, so a word no longer takes Liberation Sans because a document had asked for Arial first while the next one takes DejaVu Sans (in the issue's reproduction, a Hebrew document's lines moved by about 0.2 pt). Readiness unchanged.
+
 - 2026-11-01: DOCX tables keep rows and cells wrapped in `mc:AlternateContent`, selecting one supported Choice or Fallback with the existing reader policy (#5219). Original synthetic checks cover namespace aliases, unsupported requirements, nested row/cell content controls and two save/reopen cycles; broader corpus and native Word qualification remain open.
 
 - 2026-11-01: Shapes: a line's arrowheads are as long and as wide as Word draws them: 2, 3 or 5 times the line's width for small, medium and large (a line under 2 points as a 2-point one). Their kind, width and length are read from DOCX (DrawingML and VML) and saved back; before, every arrowhead was one size and saved as a medium triangle.
@@ -481,6 +487,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 - 2026-11-01: Tab leaders are drawn as Word draws them: the dots are spaced by their advance in whole 600-dpi pixels (2.64 pt for TH SarabunPSK at 16 pt, not 2.59), from the first place on that grid after the text before the tab to the last one that ends before the text after it.
 - 2026-10-31: List numbers count as Word counts them when a deeper item comes first: a list that opens with 10.1–10.4 goes on with 11, not a second 10, and 1.1, 1.2 are followed by 2. A level above that hasn't counted yet takes its first number at the first deeper item.
 - 2026-11-01: Paragraph side borders lie outside the text, so a thick border no longer covers the first letter (#5036).
+- 2026-10-31: Find and Replace has Match diacritics, Match kashida and Match alef hamza (Search Options and the `matchDiacritics`, `matchKashida`, `matchAlefHamza` params of the find and replace commands). They start checked, an exact search as before; cleared, `cafe` finds `café`, Hebrew points and Arabic harakat are skipped, the tatweel is skipped, and `أ إ آ ٱ` find `ا`. Each paragraph is folded once with a map back to the original, so matches and replacements cover whole original letters. Not compared with Word; wildcards and regular expressions stay exact (#4800). Readiness unchanged.
 - 2026-10-31: DOCX: a paragraph naming a style the file doesn't define is formatted as Normal, as in Word, not with the document defaults alone, so a Pandoc footer naming an undefined `Footer` style is as tall as Word's and no longer pushes the last paragraph to the next page (#5077). Readiness unchanged.
 - 2026-10-31: Table of contents: with Word's table over entries in columns, where the title sits in a one-column section above a continuous break, Insert Table of Contents with new settings keeps the title above the break and the entries in their columns (the new title went under the break, into the columns), and Remove Table of Contents takes the title, the blank paragraph and its break with the entries, as Word does (observed in Word for Mac); a paragraph of another style above the break stays (#4041).
 - 2026-10-31: A table of contents writes its page numbers as `PAGEREF` fields to the headings' bookmarks, as Word does, so updating the fields in Word moves the numbers with the headings; they were plain text (#5097).
@@ -1086,6 +1093,8 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 ## Revision history
 
+> 2026-11-16 · trivial · P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.
+
 > 2026-11-15 · trivial · P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.
 
 | 2026-11-15 | trivial | P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged. |
@@ -1113,6 +1122,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | trivial | P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0567: Ctrl+G opens Go To on Linux/Windows; Find Next keeps Shift+F4 and Ctrl+Alt+Y. macOS shortcuts and readiness estimates unchanged. |
@@ -1304,6 +1314,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 | 2026-10-31 | trivial | P0001: legacy DOC imports repair stale FAT end markers beyond EOF and garbage in unused directory entries; other compound-file refusals and readiness estimates unchanged. |
 | 2026-11-01 | trivial | References › Table of Contents › Mark Table of Contents Entry (`references.markTocEntry`, Alt+Shift+O on Linux/Windows) inserts a hidden TC field at the end of the selection; `references.toc` with `tcFields` lists it (gap #24) |
 | 2026-10-31 | trivial | P0004: `.doc` header/footer imports omit one trailing guard paragraph while preserving intentional empty paragraphs and single-mark stories; readiness unchanged ([MS-DOC] §2.8.25 Plcfhdd) |
+| 2026-11-02 | trivial | Progress log: the right-to-left fallback font no longer depends on what was laid out before (#4300) |
 | 2026-11-01 | trivial | Progress log: arrowheads keep their kind, width and length and are drawn at Word's sizes |
 | 2026-11-01 | trivial | Progress log: columns for selected text draw their line between (#5178) |
 | 2026-10-31 | trivial | Progress log: a Word 365 .doc in Aptos opens in Aptos (#5066); readiness unchanged |
@@ -1315,6 +1326,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 | 2026-11-01 | trivial | Progress log: proofing moved to craft-proof (craft-libs) and its data to craft-i18n `language-data/` (CP1) |
 | 2026-11-01 | trivial | #3915: preserve guarded whole-line ordinary-tab alignment with current main. Existing controls retained; source checks only, primary qualification pending. |
 | 2026-11-01 | trivial | #2437: Preserve finite paragraph-border flow extents and terminal-break keep preflight with current-main changes. Recursive terminal-successor lookahead remains outside scope. Source checks only; primary qualification pending. |
+| 2026-10-31 | trivial | Progress log: Find and Replace's Match diacritics, kashida and alef hamza (#4800) |
 | 2026-10-31 | trivial | Progress log: a paragraph naming an undefined DOCX style is formatted as Normal (#5077) |
 | 2026-10-31 | minor | #3398: persistent screen-only green, cream and gray paper presets, with document backgrounds and export colors retained. Read Mode None follows the screen preset; Sepia/Inverse retain priority. |
 | 2026-10-31 | trivial | Progress log: TOC page numbers are PAGEREF fields (#5097) |
