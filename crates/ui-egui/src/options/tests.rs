@@ -444,6 +444,9 @@ fn advanced_animation_turns_the_caret_animation_off_and_on() {
     );
     h.run_steps(4);
     assert!(h.query_by_label("Animation").is_some(), "the section is there");
+    // The section sits low in the pane: bring it into view before clicking.
+    h.get_by_label("Animate the caret (it glides and fades)").scroll_to_me();
+    h.run_steps(4);
     h.get_by_label("Animate the caret (it glides and fades)").click();
     h.run_steps(4);
     assert!(!h.state().ui.caret_animation, "the checkbox turns it off");
