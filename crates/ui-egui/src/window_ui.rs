@@ -305,6 +305,7 @@ impl WordApp {
             recent_count: _,
             mini_toolbar: _,
             alignment_guides: _,
+            ctrl_click_follows_links: _,
             crop_marks: _,
             text_boundaries: _,
             picture_placeholders: _,

@@ -651,7 +651,7 @@ fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     });
 }
 
-/// Draws Advanced options: typing and overtype behavior, alignment guides, recent-document count,
+/// Draws Advanced options: typing and overtype behavior, alignment guides, following links, recent-document count,
 /// measurement units, region, keytips, caret animation, file locations and customization.
 fn advanced(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Editing");
@@ -669,6 +669,11 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
         .changed()
     {
         let _ = app.run("ui.alignmentGuides", json!({"value": guides}));
+    }
+    let mut ctrl_click = app.ui.ctrl_click_follows_links;
+    let label = if cfg!(target_os = "macos") { tl!("Use ⌘+Click to follow hyperlink") } else { tl!("Use Ctrl+Click to follow hyperlink") };
+    if ui.checkbox(&mut ctrl_click, label).on_hover_text(tl!("Cleared, a plain click on a link in the text follows it.")).changed() {
+        let _ = app.run("ui.ctrlClickFollowsLinks", json!({"value": ctrl_click}));
     }
     ui.add_space(8.0);
     show_document_content(app, ui);

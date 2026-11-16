@@ -414,6 +414,9 @@ pub struct UiState {
     /// File › Options › Advanced › Editing: moving a picture or shape snaps it to alignment
     /// guides (on by default; Alt moves freely).
     pub alignment_guides: bool,
+    /// File › Options › Advanced › Editing: Use Ctrl+Click to follow hyperlink (on by default, as
+    /// in Word); off, a plain click on a link follows it.
+    pub ctrl_click_follows_links: bool,
     /// File › Options › Advanced › Show document content: crop marks at the corners of the text
     /// area in Print Layout (on, as in Word). Screen only.
     pub crop_marks: bool,
@@ -555,6 +558,7 @@ impl Default for UiState {
             recent_count: 12,
             mini_toolbar: true,
             alignment_guides: true,
+            ctrl_click_follows_links: true,
             crop_marks: true,
             text_boundaries: false,
             picture_placeholders: false,
