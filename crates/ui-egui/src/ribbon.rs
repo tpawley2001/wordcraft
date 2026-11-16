@@ -302,17 +302,13 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                     // Every tab: they only place the legacy keys' hint (#1697).
                                     crate::keytips::record_tab(r, tab, "", &mut app.keytip_rects);
                                 }
-<<<<<<< ours
-                                let active = app.ui.tab == tab && !app.ui.backstage;
+                                // A minimized ribbon shows no tab as active (Word), until a tab is clicked.
+                                let active = app.ui.tab == tab && !app.ui.backstage && !app.ui.ribbon_collapsed;
                                 if ghost.is_none() {
                                     // F6 brings the keyboard to the selected tab (the first one shown when the
                                     // selected tab sits in the More tabs menu).
                                     crate::panes::note_f6_target(app, ui.ctx(), crate::panes::F6Stop::Ribbon, resp.id, active);
                                 }
-=======
-                                // A minimized ribbon shows no tab as active (Word), until a tab is clicked.
-                                let active = app.ui.tab == tab && !app.ui.backstage && !app.ui.ribbon_collapsed;
->>>>>>> theirs
                                 resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, active, shown));
                                 let hover = ui.ctx().animate_bool_responsive(resp.id.with("hover"), resp.hovered() && !active && ghost.is_none());
                                 if hover > 0.0 {
@@ -400,21 +396,13 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                 let more = tl!("More tabs");
                                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, more));
                                 let resp = resp.on_hover_text(more);
-<<<<<<< ours
                                 crate::theme::off_band(|| {
                                     crate::rtl::menu(&resp).show(|ui| {
                                         for (tab, shown) in left_out {
-                                            if ui.selectable_label(app.ui.tab == tab, shown).clicked() {
+                                            if ui.selectable_label(!app.ui.ribbon_collapsed && app.ui.tab == tab, shown).clicked() {
                                                 let _ = app.run("ui.tab", json!({"tab": tab}));
                                                 ui.close();
                                             }
-=======
-                                crate::rtl::menu(&resp).show(|ui| {
-                                    for (tab, shown) in left_out {
-                                        if ui.selectable_label(!app.ui.ribbon_collapsed && app.ui.tab == tab, shown).clicked() {
-                                            let _ = app.run("ui.tab", json!({"tab": tab}));
-                                            ui.close();
->>>>>>> theirs
                                         }
                                     })
                                 });
