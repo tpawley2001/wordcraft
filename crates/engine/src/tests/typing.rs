@@ -3904,7 +3904,6 @@ fn backspace_cannot_join_into_locked_content_control() {
     assert_eq!(s.doc, before);
 }
 
-<<<<<<< ours
 // #3693 is an additional editing shortcut, not a claim of Word's default key behaviour.
 #[test]
 fn delete_previous_sentence_respects_caret_boundaries_and_unicode() {
@@ -4084,7 +4083,8 @@ fn autoformat_now_follows_the_switches_and_keeps_the_caret() {
     run(&mut s, "format.autoFormatNow", json!({}));
     assert_eq!(text(&s), "a -- \"b\"");
     assert_eq!(s.undo_depth(), depth, "nothing changed, no undo step");
-=======
+}
+
 /// The body's paragraphs as plain text, as typed (not lowercased).
 fn para_texts(s: &Session) -> Vec<String> {
     s.doc.body.iter().filter_map(|b| b.as_para()).map(|p| p.text.clone()).collect()
@@ -4310,5 +4310,4 @@ fn a_selection_ending_with_a_mark_in_a_table_cell_stays_in_the_cell() {
     run(&mut s, "caret.set", json!({"pos": Pos::body(first, 3)}));
     run(&mut s, "caret.end", json!({"extend": true}));
     assert_eq!(s.sel.focus, Pos::body(first, 10), "before a table Shift+End stops at the end of the text");
->>>>>>> theirs
 }
