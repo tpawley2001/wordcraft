@@ -331,9 +331,16 @@ fn resolved_with(s: &Session, edit: Option<&dyn Fn(&mut CharProps)>) -> Vec<Reso
     if out.is_empty() {
         let p = s.doc.para_at(&a);
         let style = p.and_then(|p| p.props.style.clone());
+<<<<<<< ours
         // An empty selected text box has only its paragraph mark, which is what gets formatted.
         let empty_box = selected_text_box(s).and(p).map(|p| &p.mark);
         out.push(resolve(style.as_deref(), empty_box.unwrap_or(&s.typing_props())));
+=======
+        // An empty selected text box has only its paragraph mark, which is what gets formatted;
+        // so does a selection of just a paragraph break: its own paragraph's mark (#5400).
+        let mark = (selected_text_box(s).is_some() || a.path != b.path).then_some(p).flatten().map(|p| &p.mark);
+        out.push(s.doc.styles.resolve_char(style.as_deref(), mark.unwrap_or(&s.typing_props())));
+>>>>>>> theirs
     }
     out
 }
