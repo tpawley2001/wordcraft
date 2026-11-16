@@ -1,3 +1,5 @@
+use wordcraft_layout::display::FieldShading;
+
 use super::{DocLayout, Hash, Hasher, Page, Placed, Pos, Pos2, Rect, StoryRef, WordApp, json, pos2};
 
 /// Fingerprint of everything outside the layout that changes how pages render: the view's
@@ -12,6 +14,7 @@ pub(super) fn view_key(app: &WordApp, dim_body: bool, hidden: Option<&Pos>, hint
     (v.marks, app.session.prefs.marks, v.show_markup, v.dark_mode, wordcraft_render::DARK_PAPER, v.hide_ink, v.draw.replay).hash(&mut h);
     (v.read_mode, v.read_page_color, app.session.prefs.paper_color).hash(&mut h);
     (app.ui.picture_placeholders, app.session.doc.settings.do_not_shade_form_data).hash(&mut h);
+    (field_shading(app), selected_fields(app)).hash(&mut h);
     app.session.prefs.markup.hash(&mut h);
     (dim_body, v.show_document_text).hash(&mut h);
     format!("{:?}{:?}{:?}", app.session.doc.settings.page_color, app.session.doc.settings.page_picture, app.session.doc.settings.watermark)
@@ -361,7 +364,46 @@ pub(super) fn page_render_options(app: &WordApp, dim_body: bool) -> wordcraft_re
     opts.display.picture_placeholders = app.ui.picture_placeholders;
     // Form Field Shading is a screen aid: on here, where the document asks for it, never in print or PDF.
     opts.display.form_field_shading = true;
+    // Field shading too: never in print or PDF.
+    opts.display.field_shading = field_shading(app);
+    if opts.display.field_shading == FieldShading::WhenSelected {
+        opts.display.field_shading_selection = Some(app.session.sel.ordered());
+    }
     opts
+}
+
+/// File › Options › Advanced › Field shading ([`crate::UiState::field_shading`]) for drawing.
+pub(super) fn field_shading(app: &WordApp) -> FieldShading {
+    match app.ui.field_shading.as_str() {
+        "never" => FieldShading::Never,
+        "always" => FieldShading::Always,
+        _ => FieldShading::WhenSelected,
+    }
+}
+
+/// With Field shading When selected, the fields the selection shades (their starts), for the
+/// page key: a page is drawn again when the caret enters or leaves a field, not at every move.
+fn selected_fields(app: &WordApp) -> Vec<Pos> {
+    if field_shading(app) != FieldShading::WhenSelected {
+        return Vec::new();
+    }
+    let doc = &app.session.doc;
+    let sel = app.session.sel.ordered();
+    let (a, b) = &sel;
+    let mut out: Vec<Pos> =
+        doc.field_ranges(a.story).into_iter().filter(|r| FieldShading::WhenSelected.shades(Some(&sel), &r.start, &r.end)).map(|r| r.start).collect();
+    if a != b {
+        for path in doc.para_paths_in(a, b) {
+            let Some(p) = doc.para(a.story, &path) else { continue };
+            for (off, o) in p.objects_with_offsets() {
+                let at = Pos::new(a.story, path.clone(), off);
+                if matches!(o, wordcraft_doc::InlineObject::Field { .. }) && FieldShading::WhenSelected.shades(Some(&sel), &at, &at) {
+                    out.push(at);
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Render options for page rasters shown on screen, so a page looks as text does in the

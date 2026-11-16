@@ -24,6 +24,11 @@ pub struct Prefs {
     pub print_field_codes: bool,
     /// File › Options › Advanced › Print pages in reverse order (off).
     pub print_reverse: bool,
+    /// Scale A4 pages onto Letter printer paper and Letter pages onto A4 (print jobs only).
+    pub print_scale_a4_letter: bool,
+    /// File › Options › Display › Update linked data before printing (off): every link to another
+    /// file is updated from its source just before a print job, as Update Now does.
+    pub print_update_links: bool,
     /// File › Options › Display › Print document properties (off): a print of the document is
     /// followed by the Document Properties report on its own page.
     pub print_properties: bool,
@@ -41,6 +46,14 @@ pub struct Prefs {
     pub print_duplex_back: bool,
     /// File › Options › Advanced › Save › Always create backup copy (off).
     pub always_create_backup: bool,
+    /// File › Options › Advanced › Cut, copy, and paste › Use smart cut and paste (on).
+    pub smart_cut_paste: bool,
+    /// Its Settings › Adjust sentence and word spacing automatically (on): with both on,
+    /// deleting, cutting or pasting a word fixes the spaces around it.
+    pub paste_adjust_word_spacing: bool,
+    /// File › Options › Advanced › General › Confirm file format conversion on open (off): the
+    /// app asks for a plain-text file's encoding (File Conversion) before opening it.
+    pub confirm_conversions: bool,
     /// Language › Detect language automatically (per user, as in Word).
     pub detect_language: bool,
     /// Set Proofing Language › Set As Default: overrides the interface language for future
@@ -49,8 +62,19 @@ pub struct Prefs {
     pub default_language: Option<String>,
     /// Typing over a selection replaces it; off, the typed text goes in front of it.
     pub typing_replaces_selection: bool,
+    /// Plain Insert pastes through the clipboard command (off by default).
+    pub insert_key_paste: bool,
     /// The Insert key switches overtype on and off.
     pub insert_key_overtype: bool,
+    /// File › Options › Advanced › When selecting, automatically select entire word (on, as in
+    /// Word): a plain mouse drag from one word into another selects whole words.
+    pub auto_word_selection: bool,
+    /// File › Options › Advanced › Use smart paragraph selection (on, as in Word): a drag over a
+    /// whole paragraph's text takes its paragraph mark too.
+    pub smart_paragraph_selection: bool,
+    /// File › Options › Advanced › Use smart cursoring (on, as in Word): after scrolling the caret
+    /// out of view, a plain arrow key puts it on the page in view instead of scrolling back.
+    pub smart_cursoring: bool,
     /// File › Options › Advanced › Use Normal style for bulleted or numbered lists (off, as in
     /// Word): on, Bullets and Numbering keep a Normal paragraph's style instead of
     /// switching it to List Paragraph.
@@ -101,6 +125,11 @@ pub struct Prefs {
     /// points (0: no style area, Word's default). An application setting, never saved in documents.
     #[serde(deserialize_with = "lenient_style_area_width")]
     pub style_area_width: f32,
+    /// File › Options › Advanced › Font Substitution: the font each missing font is shown and
+    /// printed in on this computer, in every document (`font.setSubstitute`). The documents keep
+    /// naming the missing fonts.
+    #[serde(deserialize_with = "lenient_font_substitutes")]
+    pub font_substitutes: wordcraft_layout::FontSubstitutes,
 }
 
 /// Widest style area, in points (22 in).
@@ -156,14 +185,23 @@ impl Default for Prefs {
             print_hidden_text: false,
             print_field_codes: false,
             print_reverse: false,
+            print_scale_a4_letter: true,
+            print_update_links: false,
             print_properties: false,
             print_background: false,
             print_drawings: true,
             print_duplex_front: false,
             print_duplex_back: false,
             always_create_backup: false,
+            smart_cut_paste: true,
+            paste_adjust_word_spacing: true,
+            confirm_conversions: false,
             typing_replaces_selection: true,
+            insert_key_paste: false,
             insert_key_overtype: false,
+            auto_word_selection: true,
+            smart_paragraph_selection: true,
+            smart_cursoring: true,
             normal_style_for_lists: false,
             overtype: false,
             units: Default::default(),
@@ -184,6 +222,7 @@ impl Default for Prefs {
             clipboard: Default::default(),
             insert_table: Default::default(),
             style_area_width: 0.0,
+            font_substitutes: Default::default(),
         }
     }
 }
@@ -197,6 +236,18 @@ impl Prefs {
             ignore_internet: self.ignore_internet,
         }
     }
+}
+
+/// Read saved font substitutes ([`Prefs::font_substitutes`]) leniently: pairs that aren't two
+/// strings are skipped, and anything else reads as none, without discarding the other
+/// preferences.
+fn lenient_font_substitutes<'de, D: serde::Deserializer<'de>>(d: D) -> Result<wordcraft_layout::FontSubstitutes, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    let pairs = value.as_array().into_iter().flatten().filter_map(|p| match p.as_array().map(Vec::as_slice) {
+        Some([font, family]) => Some((font.as_str()?.to_string(), family.as_str()?.to_string())),
+        _ => None,
+    });
+    Ok(wordcraft_layout::FontSubstitutes::from_pairs(pairs))
 }
 
 /// Ignore malformed saved language tags without discarding the other preferences.

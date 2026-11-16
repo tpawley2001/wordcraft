@@ -103,3 +103,83 @@ fn an_answer_without_the_dialog_leaves_other_dialogs_alone() {
     assert!(a.run("ui.fileConversion", json!({"answer": "maybe"})).is_err());
     assert_eq!(dialog(&a), Some("markAsFinal"));
 }
+
+/// The document's paragraph texts.
+fn texts(a: &WordApp) -> Vec<String> {
+    a.session.doc.body.iter().filter_map(|b| if let wordcraft_doc::Block::Para(p) = &**b { Some(p.plain_text()) } else { None }).collect()
+}
+
+#[test]
+fn opening_text_asks_for_its_encoding_only_with_confirm_conversions_on() {
+    let dir = scratch("open");
+    let path = dir.join("cyrillic.txt");
+    // "Жук" in windows-1251: too short to guess.
+    let bytes = b"\xC6\xF3\xEA\r\nline two";
+    std::fs::write(&path, bytes).unwrap();
+    let guessed = wordcraft_engine::txt::detect(bytes);
+    let path = path.to_string_lossy().to_string();
+
+    // Off (the default): opens at once, as before.
+    let mut a = app("");
+    assert!(!a.session.prefs.confirm_conversions, "off by default");
+    a.open_file(&path, None).unwrap();
+    assert_eq!(dialog(&a), None);
+    assert_eq!(a.session.path.as_deref(), Some(std::path::Path::new(&path)));
+
+    // On: File Conversion with the guessed encoding chosen; Cancel opens nothing.
+    let mut a = app("");
+    a.run("file.options", json!({"confirmConversions": true})).unwrap();
+    let r = a.open_file(&path, None).unwrap();
+    assert_eq!(r["pending"], "fileConversion");
+    let Some(crate::dialogs::Dialog::FileConversion { form }) = &a.dialog else { panic!("File Conversion is open") };
+    assert!(form.opening);
+    let guessed = match guessed {
+        wordcraft_engine::txt::TxtEncoding::Label(l) => l,
+        other => panic!("a legacy guess, not {other:?}"),
+    };
+    assert_eq!(form.encoding(), guessed, "the guess is chosen");
+    let mut chosen = form.clone();
+    chosen.other = "windows-1251".into();
+    assert!(chosen.source_text().starts_with("\u{416}\u{443}\u{43a}"), "the preview reads the file in the choice");
+    a.run("ui.fileConversion", json!({"answer": "cancel"})).unwrap();
+    assert_eq!(dialog(&a), None);
+    assert_eq!(a.session.path, None, "Cancel opens nothing");
+
+    // OK with another encoding: the file opens read in it.
+    a.open_file(&path, None).unwrap();
+    assert_eq!(dialog(&a), Some("fileConversion"));
+    a.run("ui.fileConversion", json!({"answer": "ok", "encoding": "windows-1251"})).unwrap();
+    assert_eq!(dialog(&a), None);
+    assert_eq!(a.session.path.as_deref(), Some(std::path::Path::new(&path)));
+    assert_eq!(texts(&a), ["\u{416}\u{443}\u{43a}", "line two"]);
+
+    // Scripts never see it.
+    let mut b = app("");
+    b.run("file.options", json!({"confirmConversions": true})).unwrap();
+    b.execute("file.open", json!({"path": path})).unwrap();
+    assert_eq!(dialog(&b), None);
+    assert_eq!(b.session.path.as_deref(), Some(std::path::Path::new(&path)));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_open_dialog_draws_its_preview() {
+    let dir = scratch("open-draw");
+    let path = dir.join("n.txt");
+    std::fs::write(&path, b"Caf\x82").unwrap();
+    let mut a = app("");
+    a.run("file.options", json!({"confirmConversions": true})).unwrap();
+    a.open_file(&path.to_string_lossy(), None).unwrap();
+    let ctx = egui::Context::default();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0));
+    for t in 1..4 {
+        let input = egui::RawInput { time: Some(f64::from(t) / 60.0), screen_rect: Some(screen), ..Default::default() };
+        ctx.run_ui(input, |ui| {
+            a.logic(ui.ctx());
+            a.ui(ui);
+        })
+        .drop_without_applying_deltas();
+    }
+    assert_eq!(dialog(&a), Some("fileConversion"), "the dialog stays open until answered");
+    let _ = std::fs::remove_dir_all(&dir);
+}

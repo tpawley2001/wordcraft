@@ -61,7 +61,7 @@ pub(crate) use margins::{MarginEdge, dragged_margin, margin_drag};
 #[cfg(test)]
 use navigation::top_page;
 pub use navigation::{nearest_page, page_at, page_to_screen, window_edge};
-use navigation::{scrollbar_page_tip, viewed_page};
+use navigation::{on_screen, scrollbar_page_tip, viewed_page};
 #[cfg(test)]
 use pages::{DRAWING_GRID_MAX_LINES, DRAWING_GRID_MIN_PX};
 pub(crate) use pages::{PageKeys, dark_page, page_doc, page_screen_scale, preview_sel, screen_render_options};
@@ -156,12 +156,18 @@ pub struct CanvasState {
     /// The last primary press on the page (time, screen point, clicks in a row), to count
     /// double- and triple-presses as they go down (egui reports them on release).
     pub(crate) last_press: Option<(f64, Pos2, u8)>,
+    /// With Use Ctrl+Click to follow hyperlink off: the link a plain press landed on, followed
+    /// when the button comes up without a drag.
+    link_press: Option<String>,
     /// The first press of the current run of presses moved header/footer editing into another
     /// header/footer; the double-click it starts doesn't select a word there.
     hf_press_switched: bool,
     /// A drag after a double-click, triple-click or Ctrl/⌘+click: the unit it extends by, the
     /// unit first selected, and the last position the pointer hit.
     unit_drag: Option<UnitDrag>,
+    /// A plain single-click drag: where the press put the caret and the last position the
+    /// pointer hit (character-precise), for automatic word and smart paragraph selection.
+    plain_drag: Option<(Pos, Pos)>,
     pub last_highlight: String,
     pub last_font_color: String,
     pub last_shading: String,
@@ -175,6 +181,9 @@ pub struct CanvasState {
     /// caret is on screen, else the page at the top of the window. None until the canvas is drawn,
     /// and in Read Mode.
     pub viewed_page: Option<usize>,
+    /// Whether the caret's line was inside the window when the canvas was last drawn (true until
+    /// then, and in Read Mode), for Use smart cursoring.
+    pub caret_in_view: bool,
     /// Effective scale (screen points per document point).
     pub scale: f32,
     /// Whether this frame's pages were drawn hinted ([`hint_pages`]).
@@ -368,6 +377,7 @@ impl CanvasState {
         self.dragging = false;
         self.column_drag = None;
         self.unit_drag = None;
+        self.plain_drag = None;
     }
 
     /// The object a drag has taken off its page: which page, and which object. `None` unless an
@@ -413,8 +423,10 @@ impl Default for CanvasState {
             dragging: false,
             column_drag: None,
             last_press: None,
+            link_press: None,
             hf_press_switched: false,
             unit_drag: None,
+            plain_drag: None,
             last_highlight: "yellow".into(),
             last_font_color: "C00000".into(),
             last_shading: "FFF2CC".into(),
@@ -422,6 +434,7 @@ impl Default for CanvasState {
             page_rects: Vec::new(),
             scrollbar_page: None,
             viewed_page: None,
+            caret_in_view: true,
             scale: PX_PER_PT,
             pages_hinted: screen_render_options().hinting,
             rasters: 0,
@@ -764,6 +777,7 @@ fn scroll_motion(app: &mut WordApp, ui: &Ui, full: Rect, view: &CanvasView) -> S
         app.canvas.dragging = false;
         app.canvas.column_drag = None;
         app.canvas.unit_drag = None;
+        app.canvas.plain_drag = None;
     }
     let auto_delta = if !app.session.view.read_mode
         && app.canvas.drag_selecting()
@@ -912,12 +926,16 @@ fn update_canvas_scroll_state(
     scrollbar_page_tip(app, ui, out.id, &geo.rects, &geo.bands, layout.pages.len());
     // The page the status bar names (#3880): the caret's, or a whole-story selection's page, while
     // it is on screen; else the page at the top of the window.
+    let caret_extent =
+        caret.and_then(|c| geo.rects.get(c.page).map(|r| (c.page, r.top() + c.top * geo.scale, r.top() + (c.top + c.height) * geo.scale)));
+    app.canvas.caret_in_view = app.session.view.read_mode
+        || caret_extent.is_none_or(|(_, from, to)| on_screen(from, to, app.canvas.scroll_offset.y, out.inner_rect.height()));
     app.canvas.viewed_page = (!app.session.view.read_mode && !geo.rects.is_empty()).then(|| {
         let extent = if app.session.selects_whole_story() {
             let page = app.session.page_hint.min(geo.rects.len() - 1);
             geo.rects.get(page).map(|r| (page, r.top(), r.bottom()))
         } else {
-            caret.and_then(|c| geo.rects.get(c.page).map(|r| (c.page, r.top() + c.top * geo.scale, r.top() + (c.top + c.height) * geo.scale)))
+            caret_extent
         };
         viewed_page(extent, &geo.rects, &geo.bands, app.canvas.scroll_offset.y, out.inner_rect.height()).min(layout.pages.len().saturating_sub(1))
     });
@@ -2126,8 +2144,20 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
 }
 
 #[cfg(test)]
+mod field_shading_more_tests;
+#[cfg(test)]
+mod field_shading_tests;
+#[cfg(test)]
 mod show_content_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_auto_word_select;
+#[cfg(test)]
+mod tests_ctrl_click_drag;
+#[cfg(test)]
+mod tests_ctrl_click_links;
+#[cfg(test)]
 mod tests_rtl_gutter;
+#[cfg(test)]
+mod tests_smart_cursoring;

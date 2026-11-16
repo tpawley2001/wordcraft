@@ -66,10 +66,12 @@ mod shrink_font_steps;
 mod sort_number_date_word;
 mod grid_settings;
 mod fonts;
+mod font_substitution;
 mod includetext;
 mod includetext_update_source;
 mod edit_links;
 mod link_update;
+mod print_update_links;
 mod goto_what;
 mod goto_line;
 mod ime_noop;
@@ -112,8 +114,10 @@ mod manual_duplex;
 mod print_document_properties;
 mod form_shading;
 mod print_forms_data;
+mod chart_switch_row_column;
 mod print_options;
 mod print_display_options;
+mod print_scale_a4_letter;
 mod print_selection;
 mod reveal_formatting;
 mod reveal_compare;
@@ -123,6 +127,7 @@ mod para_tools;
 mod revision_checks;
 mod selection_pane;
 mod shape_format_painter;
+mod smart_cut_paste;
 mod table_insert_delete_cells;
 mod text_from_file_range;
 mod text_from_file_stories;
@@ -1365,6 +1370,8 @@ fn find_next_with_options_visits_every_match() {
 #[test]
 fn clipboard_round_trip() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     run(&mut s, "document.setText", json!({"text": "alpha beta\ngamma"}));
     run(&mut s, "select.range", json!({"anchor": {"block": 0, "off": 6}, "focus": {"block": 1, "off": 2}}));
     run(&mut s, "edit.copy", json!({}));
@@ -1951,6 +1958,8 @@ fn props_at(s: &Session, off: usize) -> wordcraft_doc::CharProps {
 #[test]
 fn paste_keeps_source_formatting_from_other_programs() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     run(&mut s, "document.setText", json!({"text": "x"}));
     run(&mut s, "caret.docEnd", json!({}));
     let html = "<p><span style=\"font-family:'Courier New';color:#ff0000\">red <b>bold</b></span></p>";
@@ -2085,6 +2094,8 @@ fn paste_special_lists_and_pastes_a_picture() {
 #[test]
 fn clipboard_pane_collects_copies_and_pastes_one_undoably() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     run(&mut s, "document.setText", json!({"text": "one two three"}));
     for (a, b) in [(0, 3), (4, 7), (8, 13)] {
         run(&mut s, "select.range", json!({"anchor": {"block": 0, "off": a}, "focus": {"block": 0, "off": b}}));
@@ -2216,6 +2227,8 @@ fn spike_outside_the_editable_regions_changes_nothing() {
 #[test]
 fn clipboard_pane_is_capped_and_rejects_bad_indexes() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     let words: Vec<String> = (0..30).map(|i| format!("w{i}")).collect();
     run(&mut s, "document.setText", json!({"text": words.join(" ")}));
     // Cutting each word in turn leaves the spaces: word `off` starts at `off`.
@@ -13783,6 +13796,7 @@ fn drop_cap_menu_availability_uses_the_resolved_cap() {
     assert_eq!(s.why_disabled("insert.dropCap"), None);
 }
 mod readability;
+mod readability_passive;
 mod linked_style_apply;
 mod style_pane_options;
 mod backup_copy;

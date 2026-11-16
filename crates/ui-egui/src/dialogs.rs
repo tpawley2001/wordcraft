@@ -27,6 +27,7 @@ mod dispatch;
 mod edit_links;
 mod find;
 mod font;
+mod font_substitution;
 mod forms;
 mod mailings;
 mod page_setup;
@@ -654,6 +655,12 @@ pub enum Dialog {
     EditLinks {
         form: Box<edit_links::EditLinksForm>,
     },
+    /// File › Options › Advanced › Font Substitution…: the fonts the document shows that aren't
+    /// installed and what each is shown in (`font.substitution`, `font.setSubstitute`,
+    /// `font.convertPermanently`); a message when none is missing.
+    FontSubstitution {
+        form: Box<font_substitution::FontSubstitutionForm>,
+    },
     /// File Conversion: a save as Plain Text asks for the encoding, the line ends and character
     /// substitution first (`ui.fileConversion`).
     FileConversion {
@@ -751,6 +758,7 @@ impl Dialog {
             Dialog::FileConversion { .. } => "fileConversion",
             Dialog::Compatibility { .. } => "compatibilityChecker",
             Dialog::EditLinks { .. } => "editLinks",
+            Dialog::FontSubstitution { .. } => "fontSubstitution",
             Dialog::Layout(d) => d.name(),
         }
     }
@@ -1129,6 +1137,7 @@ impl Dialog {
             "convertDocument" => Dialog::ConvertDocument,
             "markAsFinal" => Dialog::MarkAsFinal,
             "editLinks" => Dialog::EditLinks { form: Box::new(edit_links::EditLinksForm::read(app)) },
+            "fontSubstitution" => Dialog::FontSubstitution { form: Box::new(font_substitution::FontSubstitutionForm::read(app)) },
             "compatibilityChecker" => {
                 return Self::report("file.compatibility", &app.session.run("file.compatibility", &json!({})).unwrap_or_default());
             }
