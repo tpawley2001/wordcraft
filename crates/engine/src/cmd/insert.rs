@@ -28,7 +28,6 @@ pub use objects::{base64_decode, base64_encode};
 use objects::{icon, shape, table, text_box};
 pub(crate) use objects::{image_ext, picture};
 
-<<<<<<< ours
 /// Insert Style Separator (Word's Ctrl+Alt+Enter): split the paragraph at the caret unless the
 /// caret is at its end, then hide the mark of the paragraph the caret was in (`w:vanish` and
 /// `w:specVanish`), so it is laid out on one line with the next paragraph. The caret ends at the
@@ -43,7 +42,10 @@ fn style_separator(s: &mut Session, _: &Value) -> CmdResult {
     p.touch();
     if let Some(next) = next {
         s.sel = Selection::caret(next);
-=======
+    }
+    sel_result(s)
+}
+
 /// Insert a page break at the caret. At the end of a paragraph the caret moves on to a new
 /// paragraph, which starts the next page (Word); otherwise it would stay after the break, drawn
 /// on the page the break ends, and a second press would be needed to reach the new one. A table
@@ -55,15 +57,11 @@ pub(super) fn page_break(s: &mut Session) -> CmdResult {
     if at.path.cell().is_none() && s.doc.para_at(&at).is_some_and(|p| at.off >= p.len()) {
         let at = split_para(s, &at)?;
         s.sel = Selection::caret(at);
->>>>>>> theirs
     }
     sel_result(s)
 }
 
-<<<<<<< ours
 /// Command specifications for the Insert ribbon tab and menu.
-=======
->>>>>>> theirs
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("insert.pageBreak", "Page Break", "Insert › Pages", |s, _| page_break(s)),
