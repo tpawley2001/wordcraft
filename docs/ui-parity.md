@@ -1,6 +1,8 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged; earlier: Font Substitution dialog: see which fonts aren't installed, pick what each is shown in, or convert them permanently. Readiness estimates unchanged; earlier: P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (Font Substitution dialog: see which fonts aren't installed, pick what each is shown in, or convert them permanently. Readiness estimates unchanged; earlier: P0587: Find matches the text a field shows (a citation's `[7]`, a REF or SEQ result, a legacy form field's text), and a match may run into and out of it; with field codes shown it searches the code instead, never across the field's edge, and the drawn braces are not characters. A match in a field covers the whole field; Replace leaves it alone and Replace All reports it as skipped (from storytold/wordcraft#5560). Readiness estimates unchanged; earlier: P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click.. Readiness estimates unchanged)
 
@@ -211,10 +213,12 @@ Word Count's shared counters follow the 2026-11-14 Word for Windows measurements
 
 Modify Style’s existing Automatically update flag is honoured by engine formatting commands (P0608). Only paragraph styles redefine, and only whole paragraphs promote character formatting; tracked edits retain direct formatting.
 
-Chart Design › Data places Switch Row/Column beside Edit Data for editable charts (`chart.switchRowColumn`).
+File › Options › General › ScreenTip style (Show feature descriptions, Don't show feature descriptions, Don't show ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips shape every ribbon and Quick Access Toolbar hint, as in Word (P0618). Our reason line on a disabled control stays under "Don't show feature descriptions" (unverified in Word).
 
+Chart Design › Data places Switch Row/Column beside Edit Data for editable charts (`chart.switchRowColumn`).
 ## Revision history
 
+> 2026-11-15 · trivial · P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged.
 | 2026-11-15 | trivial | P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged. |
 
 > 2026-11-15 · trivial · Font Substitution dialog (File › Options › Advanced › Show document content; `font.substitution`, `font.setSubstitute`, `font.convertPermanently`): the missing fonts with what each is drawn in, a per-computer display substitute (not saved in the document), Convert Permanently… as one undo step. Readiness estimates unchanged.

@@ -1,6 +1,6 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged; earlier: P0603: opening a .txt file can ask for its encoding in File Conversion, with a preview (Confirm file format conversion on open). Readiness estimates unchanged; earlier: P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0603: opening a .txt file can ask for its encoding in File Conversion, with a preview (Confirm file format conversion on open). Readiness estimates unchanged; earlier: P0595: a missing Corbel, Candara, Constantia or Tw Cen MT keeps Word's advance widths. Readiness estimates unchanged; earlier: P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click.. Readiness estimates unchanged)
 
@@ -284,8 +284,11 @@ Formatting restriction settings now include theme and style set switching locks,
 Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM437) or another encoding (Unicode with a byte order mark, Windows and East Asian code pages), the line ends and character substitution, with a preview that shows in red what won't save (P0602). With File › Options › Advanced › Confirm file format conversion on open (off by default), opening a .txt file shows File Conversion too, with the guessed encoding chosen and a preview of the file read in the chosen one (`txt::detect`/`decode_with`/`import_with`, `file.open` `encoding`; P0603). Insert line breaks and Word's converter list for other formats remain open in gap #7.
 Automatically update now redefines paragraph styles for paragraph formatting and whole-paragraph character formatting (P0608); broader style and dialog depth work remains open.
 
+File › Options has ScreenTip style (feature descriptions, none, or no ScreenTips) and Show shortcut keys in ScreenTips (P0618); the rest of gap #7 is unchanged.
+
 ## Revision history
 
+> 2026-11-15 · trivial · P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged.
 | 2026-11-15 | trivial | P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged. |
 
 > 2026-11-15 · trivial · P0615: print jobs scale A4 pages onto Letter printer paper and Letter pages onto A4 by default, preserving orientation; explicit paper scaling wins and other sizes stay unchanged. Readiness estimates unchanged.

@@ -1,5 +1,5 @@
 use super::groups::command_menu;
-use super::tooltip::{keytip_badge, shortcut_text, show_hint, tooltip, tooltip_lines};
+use super::tooltip::{keytip_badge, shortcut_text, show_screen_tip, tooltip, tooltip_lines};
 use super::{Color32, CornerRadius, Rect, Response, Sense, Stroke, Tokens, Ui, Value, WordApp, icons, pos2, regular, vec2};
 
 /// Height of the ribbon content area (without group labels).
@@ -265,7 +265,7 @@ pub fn split(
         run_from_ribbon(app, id, params);
     }
     let (arrow_title, _) = tooltip_lines(&crate::i18n::fmt(tl!("{name} options"), &[("name", tip)]), "", "", None);
-    show_hint(&aresp, &arrow_title, &[]);
+    show_screen_tip(app, &aresp, &arrow_title, "", "", None);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, on, tip));
     // The arrow opens the choices beside the button: it says whose, so it is not just "button"
     // (#3172).
@@ -343,8 +343,7 @@ pub fn menu_button(ui: &mut Ui, app: &mut WordApp, options: MenuButtonOptions<'_
         resp
     };
     let reason = if on { None } else { Some(app.session.why_disabled(id).unwrap_or("")) };
-    let (title, notes) = tooltip_lines(tip, &shortcut_text(app, id), "", reason);
-    show_hint(&resp, &title, &notes);
+    show_screen_tip(app, &resp, tip, &shortcut_text(app, id), "", reason);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, on, tip));
     if !on {
         return;

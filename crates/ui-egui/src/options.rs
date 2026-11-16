@@ -241,6 +241,7 @@ fn general(app: &mut WordApp, ui: &mut Ui) {
         ));
     });
     ui.checkbox(&mut app.ui.mini_toolbar, tl!("Show the mini toolbar when text is selected"));
+    screen_tip_style_picker(app, ui);
     let mut dark_page = app.session.view.dark_mode;
     if ui
         .checkbox(&mut dark_page, tl!("Dark page (white text on black)"))
@@ -767,6 +768,7 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
             });
         });
     });
+    ui.checkbox(&mut app.ui.show_shortcuts_in_tips, tl!("Show shortcut keys in ScreenTips"));
     let mut keytips = app.ui.keytips_enabled;
     if ui.checkbox(&mut keytips, tl!("Show KeyTips (Alt or F10)")).changed() {
         let _ = app.run("ui.keytips", json!({"value": keytips}));
@@ -1149,3 +1151,26 @@ fn numeral_picker(app: &mut WordApp, ui: &mut Ui) {
 
 #[cfg(test)]
 mod tests;
+
+/// General › ScreenTip style: Word's three choices for the hints over ribbon and toolbar controls.
+fn screen_tip_style_picker(app: &mut WordApp, ui: &mut Ui) {
+    use crate::widgets::ScreenTipStyle;
+    const STYLES: [(ScreenTipStyle, &str); 3] = [
+        (ScreenTipStyle::Descriptions, "Show feature descriptions in ScreenTips"),
+        (ScreenTipStyle::NoDescriptions, "Don't show feature descriptions in ScreenTips"),
+        (ScreenTipStyle::Hidden, "Don't show ScreenTips"),
+    ];
+    ui.horizontal(|ui| {
+        let label = ui.label(tl!("ScreenTip style:"));
+        let current = app.ui.screen_tip_style;
+        let shown = STYLES.iter().find(|(s, _)| *s == current).map_or("", |(_, n)| n);
+        let combo = craft_ui::ComboBox::from_id_salt("screen_tip_style").selected_text(tl!(shown)).width(300.0).show_ui(ui, |ui| {
+            for (style, name) in STYLES {
+                if ui.selectable_label(current == style, tl!(name)).clicked() {
+                    app.ui.screen_tip_style = style;
+                }
+            }
+        });
+        combo.response.labelled_by(label.id);
+    });
+}
