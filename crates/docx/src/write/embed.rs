@@ -113,19 +113,43 @@ impl<'d> EmbedWriter<'d> {
 
     /// Write the font table kept from a file, with the fonts it embeds, relating it from `rels`.
     /// Without a kept table, a document whose settings class some fonts (roman, symbol; read from
-    /// a .doc, Word 6 or RTF font table) gets a generated one holding those classes.
-    pub fn font_table(&mut self, settings: &wordcraft_doc::Settings, rels: &mut PartRels) {
+    /// a .doc, Word 6 or RTF font table) gets a generated one holding those classes. With
+    /// Embed fonts in the file on, `fonts` are embedded too (#6329): in the kept table, for the
+    /// families it doesn't embed already; else in the generated one.
+    pub fn font_table(&mut self, settings: &wordcraft_doc::Settings, rels: &mut PartRels, fonts: &[super::font_embed::FontFile]) {
+        let fonts = if settings.embed_true_type_fonts { fonts } else { &[] };
         let mut written = Vec::new();
         let Some(root) = crate::package::font_table_key(self.passthrough).map(str::to_string) else {
-            if let Some(xml) = generated_font_table(&settings.roman_fonts, &settings.symbol_class_fonts) {
-                let name = self.alloc(crate::package::FONT_TABLE_PART);
+            if settings.roman_fonts.is_empty() && settings.symbol_class_fonts.is_empty() && fonts.is_empty() {
+                return;
+            }
+            let name = self.alloc(crate::package::FONT_TABLE_PART);
+            let mut table_rels = PartRels::default();
+            let embeds = self.embed_fonts(&name, fonts, &HashSet::new(), &mut table_rels);
+            if let Some(xml) = generated_font_table(&settings.roman_fonts, &settings.symbol_class_fonts, &embeds) {
                 rels.add(rt::FONT_TABLE, &relative(STORY_PART, &name), false);
-                self.parts.push((name, xml, CT_FONT_TABLE.to_string(), PartRels::default()));
+                self.parts.push((name, xml, CT_FONT_TABLE.to_string(), table_rels));
             }
             return;
         };
-        if let Some(name) = self.copy_tree(&root, &mut HashMap::new(), &mut written) {
-            rels.add(rt::FONT_TABLE, &relative(STORY_PART, &name), false);
+        let Some(name) = self.copy_tree(&root, &mut HashMap::new(), &mut written) else { return };
+        rels.add(rt::FONT_TABLE, &relative(STORY_PART, &name), false);
+        if fonts.is_empty() {
+            return;
+        }
+        let Some(at) = written.iter().copied().find(|&i| self.parts.get(i).is_some_and(|p| p.0 == name)) else { return };
+        let Some(table) = self.parts.get(at).and_then(|p| xml::parse(&p.1).ok()).filter(|t| t.name == "w:fonts") else {
+            log::warn!("docx: the font table can't be read; no fonts are embedded");
+            return;
+        };
+        let skip = super::font_embed::embedded_families(&table);
+        let mut table_rels = self.parts.get_mut(at).map(|p| std::mem::take(&mut p.3)).unwrap_or_default();
+        let embeds = self.embed_fonts(&name, fonts, &skip, &mut table_rels);
+        if let Some(part) = self.parts.get_mut(at) {
+            if !embeds.is_empty() {
+                part.1 = super::font_embed::add_embeds(table, embeds);
+            }
+            part.3 = table_rels;
         }
     }
 
@@ -190,7 +214,7 @@ impl<'d> EmbedWriter<'d> {
     }
 
     /// A free part name `{stem}{n}{ext}` for a new part, from n = 1 up.
-    fn fresh(&mut self, stem: &str, ext: &str) -> String {
+    pub(super) fn fresh(&mut self, stem: &str, ext: &str) -> String {
         let mut n: u32 = 1;
         loop {
             let name = format!("{stem}{n}{ext}");
@@ -886,8 +910,9 @@ fn valid_part_name(name: &str) -> String {
 /// keeps: one `w:font` (§17.8.3.10) per distinct name, roman fonts first, then symbol fonts (a
 /// symbol font named like a roman one, ignoring case, shares its entry). A symbol font gets a
 /// pictorial PANOSE (family kind 5) and the symbol character set; a roman one the roman family.
-/// `None` when there is nothing to list.
-fn generated_font_table(roman: &[String], symbol: &[String]) -> Option<Vec<u8>> {
+/// Families with fonts embedded (`embeds`) list them, in a `w:font` of their own when no class
+/// names them. `None` when there is nothing to list.
+fn generated_font_table(roman: &[String], symbol: &[String], embeds: &[super::font_embed::FamilyEmbeds]) -> Option<Vec<u8>> {
     // (name, roman, symbol), in order.
     let mut fonts: Vec<(&str, bool, bool)> = Vec::new();
     let mut index: HashMap<String, usize> = HashMap::new();
@@ -912,18 +937,31 @@ fn generated_font_table(roman: &[String], symbol: &[String]) -> Option<Vec<u8>> 
         index.insert(key, fonts.len());
         fonts.push((name, is_roman, !is_roman));
     }
+    for (name, _) in embeds {
+        if index.insert(name.to_lowercase(), fonts.len()).is_none() {
+            fonts.push((name, false, false));
+        }
+    }
     if fonts.is_empty() {
         return None;
     }
+    let embedded = |name: &str| embeds.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, els)| els.as_slice()).unwrap_or(&[]);
     let mut x = String::with_capacity(fonts.len().saturating_mul(96).saturating_add(160));
     x.push_str(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#);
-    x.push_str("<w:fonts xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">");
+    x.push_str("<w:fonts xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"");
+    if !embeds.is_empty() {
+        x.push_str(" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"");
+    }
+    x.push('>');
     for (name, is_roman, is_symbol) in fonts {
         x.push_str(&format!("<w:font w:name=\"{}\">", xml::esc(name)));
         if is_symbol {
             x.push_str("<w:panose1 w:val=\"05000000000000000000\"/><w:charset w:val=\"02\"/>");
         }
         x.push_str(if is_roman { "<w:family w:val=\"roman\"/>" } else { "<w:family w:val=\"auto\"/>" });
+        for e in embedded(name) {
+            x.push_str(&e.to_xml());
+        }
         x.push_str("</w:font>");
     }
     x.push_str("</w:fonts>");

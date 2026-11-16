@@ -77,6 +77,18 @@ fn write_zoom(w: &mut W, zoom: Option<wordcraft_doc::Zoom>) {
     }
 }
 
+/// File › Options › Save › Embed fonts in the file and its sub-options (§17.8.3.8, §17.8.3.7,
+/// §17.8.3.16), in CT_Settings order, after `w:printFormsData`.
+fn write_font_embedding(w: &mut W, s: &wordcraft_doc::Settings) {
+    for (on, el) in
+        [(s.embed_true_type_fonts, "w:embedTrueTypeFonts"), (s.embed_system_fonts, "w:embedSystemFonts"), (s.save_subset_fonts, "w:saveSubsetFonts")]
+    {
+        if on {
+            w.empty(el, &[]);
+        }
+    }
+}
+
 /// `w:settings`, its children in the schema's order (CT_Settings is a sequence). `template_rel`
 /// is the id of the attached template's relationship, when there is one.
 pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, template_rel: Option<&str>) -> Vec<u8> {
@@ -104,6 +116,7 @@ pub(super) fn settings_xml(doc: &Document, footnotes: bool, endnotes: bool, temp
     if s.print_forms_data {
         w.empty("w:printFormsData", &[]);
     }
+    write_font_embedding(&mut w, s);
     if s.mirror_margins {
         w.empty("w:mirrorMargins", &[]);
     }

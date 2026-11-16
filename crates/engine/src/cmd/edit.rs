@@ -163,7 +163,7 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"tab"?: "find|replace|goto" (default replace)}"#)
         .pure(),
         CommandSpec::new("edit.replaceAll", "Replace All", "Home › Editing › Replace", replace_all)
-            .params(r#"{"text": string, "with": string (^p ^t ^& ^c …; \\1 with wildcards; with regex also $1 ${n} ${name} $0 $$ \\1 \\n (paragraph mark) \\t), "format"?, "replaceFormat"?: {…} | null (Replace with's formatting; empty `with` keeps the text and only formats it), …options of edit.find}"#),
+            .params(r#"{"text": string, "with": string (^p ^t ^& ^c …; \\1 with wildcards; with regex also $1 ${n} ${name} $0 $$ \\1 \\n (paragraph mark) \\t), "format"?, "replaceFormat"?: {…} | null (Replace with's formatting; empty `with` keeps the text and only formats it), …options of edit.find}; replaces in the main text, headers, footers, footnotes, endnotes and text boxes, wherever the caret is"#),
         // Word for Windows binds Ctrl+G to Go To (Ctrl+G first, so menus and tooltips show it);
         // on the Mac Cmd+G is Find Next, as in Word for Mac.
         CommandSpec::new("edit.goto", "Go To", "Home › Editing › Find", goto)
@@ -1135,29 +1135,55 @@ fn replace_match(s: &mut Session, a: Pos, b: Pos, with: &str, rf: Option<&crate:
     Ok(())
 }
 
-/// Every match replaced, last first so earlier positions stay valid (one undo step). A `\r` in
-/// the replacement (`^p`) splits the paragraph. Replace with's formatting goes on each
-/// replacement (or each match, when Replace with is empty).
+/// The stories Replace All covers, as in Word: the main text, then headers, footers, footnotes,
+/// endnotes and text boxes. Comments keep their words.
+fn replace_stories(s: &Session) -> Vec<StoryRef> {
+    use wordcraft_doc::PartKind;
+    let parts = s.doc.parts.iter().filter(|(_, p)| !matches!(p.kind, PartKind::Comment)).map(|(id, _)| StoryRef::Part(*id));
+    std::iter::once(StoryRef::Body).chain(parts).collect()
+}
+
+/// Every match in every story replaced (wherever the caret is), last first so earlier positions
+/// stay valid (one undo step). A `\r` in the replacement (`^p`) splits the paragraph. Replace
+/// with's formatting goes on each replacement (or each match, when Replace with is empty).
+/// Locked content in any story stops it before anything changes.
 fn replace_all(s: &mut Session, v: &Value) -> CmdResult {
     need_query(s, v)?;
     read_opts(s, v)?;
-    let story = s.sel.focus.story;
-    // Matches in fields' text are left as they are: replacing one would delete its field (#5552).
-    let (results, in_fields): (Vec<Found>, Vec<Found>) = search_full(s, story, true)?.into_iter().partition(|f| !f.field);
-    let n = results.len();
     let rf = s.find.replace_format.clone();
-    // Only formatting changes when Replace with is empty and has a format: nothing is deleted.
-    let deletes = rf.is_none() || results.iter().any(|f| f.rep.as_deref().is_some_and(|r| !r.is_empty()));
-    if deletes {
-        super::controls::check_deletions(s, story, results.iter().map(|f| (&f.a, &f.b)))?;
+    let mut found = Vec::new();
+    let mut skipped = 0usize;
+    for story in replace_stories(s) {
+        // Matches in fields' text are left as they are: replacing one would delete its field (#5552).
+        let (results, in_fields): (Vec<Found>, Vec<Found>) = search_full(s, story, true)?.into_iter().partition(|f| !f.field);
+        skipped += in_fields.len();
+        if results.is_empty() {
+            continue;
+        }
+        // Only formatting changes when Replace with is empty and has a format: nothing is deleted.
+        let deletes = rf.is_none() || results.iter().any(|f| f.rep.as_deref().is_some_and(|r| !r.is_empty()));
+        if deletes {
+            super::controls::check_deletions(s, story, results.iter().map(|f| (&f.a, &f.b)))?;
+        }
+        found.push(results);
     }
+    let n: usize = found.iter().map(Vec::len).sum();
     let direct = !s.doc.settings.track_changes;
+    // The main text comes last, so under Track Changes the caret ends where it did before.
+    for results in found.into_iter().rev() {
+        replace_found(s, results, rf.as_ref(), direct)?;
+    }
+    s.status = replace_all_message(n, skipped);
+    Ok(json!({"replaced": n, "skippedInFields": skipped}))
+}
+
+/// Replace the matches of one story, last first.
+fn replace_found(s: &mut Session, results: Vec<Found>, rf: Option<&crate::session::FindFormat>, direct: bool) -> Result<(), CmdError> {
     for Found { a, b, rep, .. } in results.into_iter().rev() {
         // Tracked, it takes the same path as a single replace, so the change is a reviewable revision.
-        replace_match(s, a, b, &rep.unwrap_or_default(), rf.as_ref(), direct)?;
+        replace_match(s, a, b, &rep.unwrap_or_default(), rf, direct)?;
     }
-    s.status = replace_all_message(n, in_fields.len());
-    Ok(json!({"replaced": n, "skippedInFields": in_fields.len()}))
+    Ok(())
 }
 
 /// What Replace All reports: how many matches it replaced and, when some were in fields' text,

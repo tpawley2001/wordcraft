@@ -456,20 +456,19 @@ impl<'a> Builder<'a> {
                 }
             };
             // The shaper kerns by default; Word kerns only when Kerning for fonts covers the size.
-            // Without `w14:ligatures` the shaper's default (standard and contextual) stays.
+            // Word draws no ligatures unless the run asks for them (`w14:ligatures`; Font ›
+            // Advanced › Ligatures defaults to None), so without it every ligature feature is
+            // turned off instead of leaving the shaper's default (standard and contextual on).
+            // Required ligatures and complex-script forms (`rlig`, `ccmp`, init/medi/fina…) stay.
             let [kern_off] = no_kern;
             // Khmer shaping builds its syllables (pre-base vowels, stacked signs) in `liga` and
             // `clig`, so a run's ligature setting never reaches Khmer text: Word ignores it there.
-            let ligatures = rc.ligatures.filter(|_| !shape_text.chars().any(is_khmer));
-            let all = match ligatures {
-                Some(l) => {
-                    let [a, b, c, d] = ligature_features(l);
-                    [kern_off, a, b, c, d]
-                }
-                None => [kern_off; 5],
-            };
+            let khmer = shape_text.chars().any(is_khmer);
+            let ligatures = rc.ligatures.filter(|_| !khmer);
+            let [liga, clig, hlig, dlig] = ligature_features(ligatures.unwrap_or_default());
+            let all = [kern_off, liga, clig, hlig, dlig];
             let from = usize::from(rc.kerned());
-            let to = if ligatures.is_some() { all.len() } else { 1 };
+            let to = if khmer { 1 } else { all.len() };
             // Number forms, number spacing, stylistic sets and contextual alternates come after.
             let mut list = FeatureList::new();
             list.extend(all.get(from..to).unwrap_or_default());
