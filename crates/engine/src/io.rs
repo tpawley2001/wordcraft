@@ -70,6 +70,9 @@ pub struct ExportOptions {
     /// face can draw, a picture that is missing or can't be decoded); else the save fails with
     /// `strict: …` (#6005). Ignored for other formats.
     pub strict: bool,
+    /// The fonts the user picked to show missing fonts in (Font Substitution): a PDF or page
+    /// image draws them as the screen and printing do.
+    pub font_substitutes: wordcraft_layout::FontSubstitutes,
     /// A plain-text file's encoding, line ends and character substitution (Word's File
     /// Conversion dialog); `None` writes UTF-8 with CRLF line ends as before.
     pub txt: Option<wordcraft_formats::txt::TxtSaveOptions>,

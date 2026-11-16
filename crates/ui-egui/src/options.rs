@@ -595,7 +595,7 @@ fn accessibility(app: &mut WordApp, ui: &mut Ui) {
 
 /// Advanced › Show document content, in Word's order: picture placeholders, text boundaries, crop
 /// marks, field shading, and the draft font with its name and size. Screen settings, kept between
-/// runs.
+/// runs. Font Substitution… opens the dialog of the fonts the document shows that aren't installed.
 fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Show document content");
     for (label, id, mut on) in [
@@ -631,8 +631,8 @@ fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     if ui.checkbox(&mut draft, tl!("Use draft font in Draft and Outline views")).changed() {
         let _ = app.run("ui.draftFont", json!({"value": draft}));
     }
-    ui.add_enabled_ui(app.ui.draft_font, |ui| {
-        ui.horizontal(|ui| {
+    ui.horizontal(|ui| {
+        ui.add_enabled_ui(app.ui.draft_font, |ui| {
             ui.add_space(24.0);
             ui.label(tl!("Name:"));
             let fams = app.previews.families();
@@ -649,6 +649,11 @@ fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
                 let _ = app.run("ui.draftFont", json!({"size": size}));
             }
         });
+        // On the draft font's row, which keeps the section as tall as before.
+        ui.add_space(12.0);
+        if ui.button(tl!("Font Substitution…")).clicked() {
+            let _ = app.run("ui.dialog", json!({"name": "fontSubstitution"}));
+        }
     });
 }
 

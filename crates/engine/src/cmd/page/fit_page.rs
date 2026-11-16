@@ -935,6 +935,7 @@ fn fit_layout_options(s: &Session) -> LayoutOptions {
         numeral: s.view.numeral.resolve(crate::locale::system_locale()),
         filename: Some(Arc::from(fn_name.as_str())),
         filepath: Some(Arc::from(fn_path.as_str())),
+        font_substitutes: s.prefs.font_substitutes.clone(),
         ..LayoutOptions::default()
     }
 }
