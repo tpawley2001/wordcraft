@@ -2,6 +2,10 @@
 //! whether a character the encoding lacks may become its closest match, as Word does. The
 //! preview shows in red what won't save correctly. The choice is remembered for the session
 //! (not on disk), and a later Save of the same .txt file uses it without asking again.
+//!
+//! With File › Options › Advanced › Confirm file format conversion on open, opening a plain-text
+//! file asks the same way for the encoding to read it in: the guessed one is chosen, and the
+//! preview shows the file's beginning read in the encoding chosen.
 
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -15,6 +19,9 @@ const KEYS: [&str; 3] = ["encoding", "lineEnd", "allowSubstitution"];
 
 /// Most characters the preview shows.
 const PREVIEW_CHARS: usize = 4000;
+
+/// Most bytes of a file being opened that its preview reads.
+const PREVIEW_BYTES: usize = 4096;
 
 /// Other encoding's list: the WHATWG label and its name.
 pub const OTHER_ENCODINGS: [(&str, &str); 17] = [
@@ -68,6 +75,11 @@ pub struct FileConversionForm {
     /// The text the save writes (its beginning).
     #[serde(skip)]
     pub preview: String,
+    /// Asked on opening a plain-text file (`then` is `file.open`), not on saving one.
+    pub opening: bool,
+    /// When opening: the file's first bytes, read in the chosen encoding for the preview.
+    #[serde(skip)]
+    pub source: Vec<u8>,
 }
 
 /// The dialog's fields for `o`: the encoding kind, the Other encoding label, the line end.
@@ -110,11 +122,38 @@ impl FileConversionForm {
             line_end: line_end.to_string(),
             allow_substitution: o.allow_substitution,
             preview,
+            opening: false,
+            source: Vec::new(),
         }
     }
 
+    /// The dialog for opening the plain-text file whose bytes are `bytes` with `params`: the
+    /// encoding [`wordcraft_engine::txt::detect`] guesses is chosen.
+    fn opening(app: &WordApp, params: Value, bytes: &[u8]) -> FileConversionForm {
+        let o = TxtSaveOptions { encoding: wordcraft_engine::txt::detect(bytes), ..TxtSaveOptions::default() };
+        let (kind, other, line_end) = fields(&o);
+        FileConversionForm {
+            then: "file.open".to_string(),
+            params,
+            document: app.session.document_id(),
+            kind: kind.to_string(),
+            other,
+            line_end: line_end.to_string(),
+            allow_substitution: false,
+            preview: String::new(),
+            opening: true,
+            source: bytes.get(..bytes.len().min(PREVIEW_BYTES)).unwrap_or(bytes).to_vec(),
+        }
+    }
+
+    /// When opening: the file's beginning read in the chosen encoding.
+    pub(crate) fn source_text(&self) -> String {
+        let enc = wordcraft_engine::cmd::file::txt_encoding(self.encoding());
+        wordcraft_engine::txt::decode_with(&self.source, &enc).chars().take(PREVIEW_CHARS).collect()
+    }
+
     /// The encoding parameter for the choice.
-    fn encoding(&self) -> &str {
+    pub(crate) fn encoding(&self) -> &str {
         match self.kind.as_str() {
             "msdos" => "msdos",
             "other" => self.other.as_str(),
@@ -171,6 +210,48 @@ pub fn before_save(app: &mut WordApp, id: &str, params: &mut Value) -> Option<Re
     Some(Ok(json!({"pending": "fileConversion"})))
 }
 
+/// The bytes of the file `file.open` would read with `params`: its `data`, else the file at
+/// `path` (not on the web, where files only arrive as `data`).
+fn open_bytes(params: &Value, path: &str) -> Option<Vec<u8>> {
+    if let Some(data) = params.get("data").and_then(Value::as_str) {
+        return wordcraft_engine::cmd::insert::base64_decode(data);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        wordcraft_engine::io::read_document(std::path::Path::new(path)).ok()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = path;
+        None
+    }
+}
+
+/// Before a user's open of a plain-text file with Confirm file format conversion on open on:
+/// File Conversion asks which encoding to read it in (`Some`, the pending result), and the file
+/// opens once it is answered (`ui.fileConversion`). An open that already says `encoding`, of a
+/// file already open, or of a file that can't be read or isn't text goes ahead as it is.
+pub fn before_open(app: &mut WordApp, id: &str, params: &Value) -> Option<Result<Value, String>> {
+    if id != "file.open" || !app.session.prefs.confirm_conversions || params.get("encoding").is_some_and(|v| !v.is_null()) {
+        return None;
+    }
+    let path = params.get("path").and_then(Value::as_str)?;
+    let ext = std::path::Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    if !matches!(ext.as_str(), "txt" | "text") {
+        return None;
+    }
+    if params.get("data").is_none() && app.session.find_open(std::path::Path::new(path)).is_some() {
+        return None;
+    }
+    let bytes = open_bytes(params, path)?;
+    if bytes.is_empty() || !wordcraft_engine::txt::is_text(&bytes) {
+        return None;
+    }
+    let form = FileConversionForm::opening(app, params.clone(), &bytes);
+    app.dialog = Some(Dialog::FileConversion { form: Box::new(form) });
+    Some(Ok(json!({"pending": "fileConversion"})))
+}
+
 /// The parameters for a Save of the document's own file that the Save Changes prompt makes:
 /// the remembered choice for a plain-text file saved with one this session, else none.
 pub fn remembered(app: &WordApp) -> Value {
@@ -188,7 +269,8 @@ pub fn remembered(app: &WordApp) -> Value {
 
 /// `ui.fileConversion`: answer the open File Conversion dialog. `answer` is `ok` (save with
 /// the choice, which `encoding`, `lineEnd` and `allowSubstitution` may change first) or
-/// `cancel` (nothing is saved).
+/// `cancel` (nothing is saved). Asked on opening a file, `ok` opens it in the chosen encoding
+/// and `cancel` opens nothing.
 pub fn answer(app: &mut WordApp, p: &Value) -> Result<Value, String> {
     let ok = match p.get("answer").and_then(Value::as_str) {
         Some("ok") => true,
@@ -209,7 +291,21 @@ pub fn answer(app: &mut WordApp, p: &Value) -> Result<Value, String> {
         return Err("no File Conversion dialog is open".into());
     };
     if !ok {
-        return Ok(json!({"saved": false, "cancelled": true}));
+        return Ok(if form.opening { json!({"opened": false, "cancelled": true}) } else { json!({"saved": false, "cancelled": true}) });
+    }
+    if form.opening {
+        if let Some(e) = p.get("encoding").and_then(Value::as_str) {
+            form.kind = if matches!(e, "windows" | "msdos") { e.to_string() } else { "other".into() };
+            if form.kind == "other" {
+                form.other = e.to_string();
+            }
+        }
+        let mut params = form.params.clone();
+        if !params.is_object() {
+            params = json!({});
+        }
+        params["encoding"] = json!(form.encoding());
+        return app.run(&form.then, params);
     }
     if form.document != app.session.document_id() {
         return Err("the document for this save is no longer the one shown".into());
@@ -266,6 +362,10 @@ pub fn dialog(app: &mut WordApp, ui: &mut egui::Ui, form: &mut FileConversionFor
             });
         });
     });
+    if form.opening {
+        opening_preview(ui, form);
+        return close(app, ui, form);
+    }
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         let label = ui.label(tl!("End lines with:"));
@@ -304,6 +404,24 @@ pub fn dialog(app: &mut WordApp, ui: &mut egui::Ui, form: &mut FileConversionFor
     if !bad.is_empty() {
         ui.label(egui::RichText::new(tl!("Text marked in red won't save correctly in the chosen encoding.")).color(tokens.red));
     }
+    close(app, ui, form)
+}
+
+/// The preview when opening: the file's beginning read in the chosen encoding.
+fn opening_preview(ui: &mut egui::Ui, form: &FileConversionForm) {
+    ui.add_space(4.0);
+    ui.label(tl!("Preview:"));
+    let text = egui::RichText::new(form.source_text()).font(egui::FontId::monospace(12.0));
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        ui.set_min_width(420.0);
+        egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
+            ui.label(text);
+        });
+    });
+}
+
+/// OK and Cancel; true to close.
+fn close(app: &mut WordApp, ui: &mut egui::Ui, form: &FileConversionForm) -> bool {
     let (ok, cancel) = crate::dialogs::buttons(ui, tl!("OK"));
     if !(ok || cancel) {
         return false;

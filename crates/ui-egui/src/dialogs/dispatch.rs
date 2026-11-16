@@ -86,6 +86,7 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         Dialog::FileConversion { form } => crate::file_conversion::dialog(app, ui, form),
         Dialog::Compatibility { issues, version } => compatibility_dialog(ui, issues, version),
         Dialog::EditLinks { form } => super::edit_links::edit_links(app, ui, form),
+        Dialog::FontSubstitution { form } => super::font_substitution::font_substitution(app, ui, form),
     }
 }
 

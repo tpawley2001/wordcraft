@@ -1,6 +1,6 @@
 use super::glyphs::{Authors, check_box, text_color, upright_in_vertical};
 use super::objects::{graphic_draws, inline_rect, object_draws, spun};
-use super::options::DisplayOptions;
+use super::options::{DisplayOptions, FieldShading};
 use super::page::{char_box, stroke_of};
 use super::paint::Stroke;
 use super::{
@@ -9,9 +9,9 @@ use super::{
 };
 use crate::display::Paint;
 use crate::fields::FIELD_SHADING;
-use wordcraft_doc::Paragraph;
 use wordcraft_doc::graphic::PathSeg;
 use wordcraft_doc::para::ShapeKind;
+use wordcraft_doc::{Paragraph, Pos};
 
 /// Append display items for the half-open line range `l0..l1` of a laid-out paragraph.
 /// `(x, y)` positions the paragraph's left origin and the first selected line's top; later lines
@@ -587,7 +587,9 @@ fn character_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
     } else {
         (ctx.top, ctx.line.band_height())
     };
-    // Form Field Shading goes first: a run's own shading or highlight is drawn over it.
+    // Field shading and Form Field Shading go first: a run's own shading or highlight is drawn
+    // over them.
+    field_shading(ctx, band_top, band_height, out);
     form_field_shading(ctx, band_top, band_height, out);
     let mut open: Option<(Border, f32, f32)> = None;
     for k in ctx.line.c0..ctx.line.c1 {
@@ -596,7 +598,9 @@ fn character_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
         if cluster.kind == ClKind::Marker {
             continue;
         }
-        if let Some(color) = style.rc.highlight.or(style.rc.shading) {
+        if let Some(color) = style.rc.highlight.or(style.rc.shading)
+            && !(color == FIELD_SHADING && screen_code_grey(ctx, cluster.start))
+        {
             out.push(Draw::Fill {
                 rect: Rect::new(ctx.x + left, band_top, (right - left).max(0.0), band_height),
                 color,
@@ -621,6 +625,73 @@ fn character_backgrounds(ctx: &LineContext<'_, '_, '_>, out: &mut Vec<Draw>) {
         run_box(&border, x0, x1, ctx.top, ctx.bottom, ctx.alpha, out);
     }
 }
+
+/// Whether the field at paragraph offset `at` shows its code on the grey layout gave it, drawn on
+/// screen ([`DisplayOptions::placeholders`]) by [`field_shading`] instead, as its setting says.
+/// Print and PDF keep the code's grey.
+fn screen_code_grey(ctx: &LineContext<'_, '_, '_>, at: usize) -> bool {
+    ctx.opts.placeholders && ctx.pl.fields.binary_search_by_key(&at, |f| f.0).ok().and_then(|i| ctx.pl.fields.get(i)).is_some_and(|f| f.1)
+}
+
+/// Field shading ([`DisplayOptions::field_shading`]): one grey fill behind each stretch of the
+/// line that shows a shaded field (an object field's result or code, a range field's result),
+/// the height of the character shading. Screen only.
+fn field_shading(ctx: &LineContext<'_, '_, '_>, band_top: f32, band_height: f32, out: &mut Vec<Draw>) {
+    let opts = ctx.opts;
+    if opts.field_shading == FieldShading::Never || opts.forms_data_only {
+        return;
+    }
+    let (mode, sel) = (opts.field_shading, opts.field_shading_selection.as_ref());
+    let at = |off: usize| Pos::new(ctx.story, ctx.path.clone(), off);
+    // The paragraph's byte spans inside shaded range fields' results.
+    let spans: Vec<(usize, usize)> = ctx
+        .authors
+        .field_ranges()
+        .iter()
+        .filter(|r| r.start.story == ctx.story && r.start.path <= *ctx.path && r.end.path >= *ctx.path)
+        .filter(|r| mode.shades(sel, &r.start, &r.end))
+        .map(|r| {
+            let from = if r.start.path == *ctx.path { r.start.off.saturating_add(OBJ_LEN) } else { 0 };
+            let to = if r.end.path == *ctx.path { r.end.off } else { usize::MAX };
+            (from, to)
+        })
+        .collect();
+    let object_shaded = |off: usize| ctx.pl.fields.binary_search_by_key(&off, |f| f.0).is_ok() && mode.shades(sel, &at(off), &at(off));
+    let mut fill = |x0: f32, x1: f32| {
+        if x1 - x0 > 0.0 && x0.is_finite() && x1.is_finite() {
+            out.push(Draw::Fill { rect: Rect::new(x0, band_top, x1 - x0, band_height), color: FIELD_SHADING, alpha: ctx.alpha, text_bg: true });
+        }
+    };
+    // The shaded stretch so far: its extent.
+    let mut open: Option<(f32, f32)> = None;
+    for k in ctx.line.c0..ctx.line.c1 {
+        let (Some(cluster), Some(left), Some(right)) = (ctx.pl.clusters.get(k), ctx.line.cl_left(k), ctx.line.cl_right(k)) else { continue };
+        if cluster.kind == ClKind::Marker {
+            continue;
+        }
+        let shaded = object_shaded(cluster.start) || spans.iter().any(|&(from, to)| from <= cluster.start && cluster.start < to);
+        if !shaded {
+            if let Some((a, b)) = open.take() {
+                fill(a, b);
+            }
+            continue;
+        }
+        let (x0, x1) = (ctx.x + left.min(right), ctx.x + left.max(right));
+        match open.as_mut() {
+            Some((a, b)) => {
+                *a = a.min(x0);
+                *b = b.max(x1);
+            }
+            None => open = Some((x0, x1)),
+        }
+    }
+    if let Some((a, b)) = open {
+        fill(a, b);
+    }
+}
+
+/// The length of an object's placeholder character in a paragraph's text.
+const OBJ_LEN: usize = wordcraft_doc::para::OBJ.len_utf8();
 
 /// Whether legacy form fields are drawn on grey ([`DisplayOptions::form_field_shading`], the
 /// document's Form Field Shading on, not Print only the data from a form).
