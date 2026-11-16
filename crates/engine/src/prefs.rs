@@ -51,6 +51,9 @@ pub struct Prefs {
     pub typing_replaces_selection: bool,
     /// The Insert key switches overtype on and off.
     pub insert_key_overtype: bool,
+    /// File › Options › Advanced › Use Normal style for bulleted or numbered lists (off, as in
+    /// Word): on, Bullets and Numbering keep a Normal paragraph's style (stub: not applied yet).
+    pub normal_style_for_lists: bool,
     /// Overtype: typed characters replace the ones after the caret.
     pub overtype: bool,
     /// The unit rulers and dialogs show lengths in, when the user chose one (File › Options ›
@@ -160,6 +163,7 @@ impl Default for Prefs {
             always_create_backup: false,
             typing_replaces_selection: true,
             insert_key_overtype: false,
+            normal_style_for_lists: false,
             overtype: false,
             units: Default::default(),
             region: None,
