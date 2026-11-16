@@ -910,14 +910,11 @@ impl Dialog {
                         || app.session.find.match_suffix
                         || app.session.find.ignore_punct
                         || app.session.find.ignore_space
-<<<<<<< HEAD
                         || app.session.find.format.is_some()
-                        || app.session.find.replace_format.is_some(),
-=======
+                        || app.session.find.replace_format.is_some()
                         || app.session.find.ignore_diacritics
                         || app.session.find.ignore_kashida
                         || app.session.find.ignore_alef_hamza,
->>>>>>> a844c4677 (Find and Replace: Match Diacritics, Kashida and Alef Hamza options (#4800))
                     to_replace: false,
                     format: app.session.find.format.clone(),
                     replace_format: app.session.find.replace_format.clone(),

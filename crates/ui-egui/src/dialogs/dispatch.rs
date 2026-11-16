@@ -593,14 +593,11 @@ fn find_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
         "matchSuffix": extra.suffix,
         "ignorePunct": extra.ignore_punct,
         "ignoreSpace": extra.ignore_space,
-<<<<<<< HEAD
         "format": extra.format,
         "replaceFormat": if replace_mode { json!(extra.replace_format) } else { json!(app.session.find.replace_format) },
-=======
         "matchDiacritics": extra.match_diacritics,
         "matchKashida": extra.match_kashida,
         "matchAlefHamza": extra.match_alef_hamza,
->>>>>>> a844c4677 (Find and Replace: Match Diacritics, Kashida and Alef Hamza options (#4800))
     });
     if !replace_mode {
         ui.horizontal(|ui| {

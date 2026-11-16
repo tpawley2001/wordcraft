@@ -124,11 +124,7 @@ pub fn specs() -> Vec<CommandSpec> {
         .pure(),
         CommandSpec::new("edit.find", "Find", "Home › Editing", find)
             .key("Mod+F")
-<<<<<<< HEAD
-            .params(r#"{"text": string, "matchCase"?: bool, "wholeWord"?: bool, "matchPrefix"?: bool, "matchSuffix"?: bool, "ignorePunct"?: bool, "ignoreSpace"?: bool, "wildcards"?: bool, "special"?: bool (^p ^t ^# … codes, default true), "regex"?: bool, "format"?: {"bold"?, "italic"?, "underline"?: bool, "font"?: string, "size"?: pt, "color"?: "RRGGBB|auto", "highlight"?: name|"none", "style"?: name} | null (No Formatting; text may be empty to find by format alone), "replaceFormat"?: {same} | null}"#)
-=======
-            .params(r#"{"text": string, "matchCase"?: bool, "wholeWord"?: bool, "matchPrefix"?: bool, "matchSuffix"?: bool, "ignorePunct"?: bool, "ignoreSpace"?: bool, "matchDiacritics"?: bool (default true; false: é finds e, Hebrew points and Arabic harakat are skipped), "matchKashida"?: bool (default true; false skips the tatweel), "matchAlefHamza"?: bool (default true; false: أ إ آ ٱ find ا) — the three apply to a normal search, not wildcards or regex, "wildcards"?: bool, "special"?: bool (^p ^t ^# … codes, default true), "regex"?: bool}"#)
->>>>>>> a844c4677 (Find and Replace: Match Diacritics, Kashida and Alef Hamza options (#4800))
+            .params(r#"{"text": string, "matchCase"?: bool, "wholeWord"?: bool, "matchPrefix"?: bool, "matchSuffix"?: bool, "ignorePunct"?: bool, "ignoreSpace"?: bool, "matchDiacritics"?: bool (default true; false: é finds e, Hebrew points and Arabic harakat are skipped), "matchKashida"?: bool (default true; false skips the tatweel), "matchAlefHamza"?: bool (default true; false: أ إ آ ٱ find ا) — the three apply to a normal search, not wildcards or regex, "wildcards"?: bool, "special"?: bool (^p ^t ^# … codes, default true), "regex"?: bool, "format"?: {"bold"?, "italic"?, "underline"?: bool, "font"?: string, "size"?: pt, "color"?: "RRGGBB|auto", "highlight"?: name|"none", "style"?: name} | null (No Formatting; text may be empty to find by format alone), "replaceFormat"?: {same} | null}"#)
             .pure(),
         CommandSpec::new("edit.advancedFind", "Advanced Find", "Home › Editing › Find", advanced_find)
             .params(r#"{"text"?: string, …options of edit.find, "in"?: "main|selection", "highlight"?: bool}"#)
@@ -604,11 +600,8 @@ fn find_opts(f: &crate::session::FindState, field_codes: bool) -> find_pattern::
         wildcards: f.wildcards,
         regex: f.regex,
         literal: f.literal,
-<<<<<<< HEAD
         field_codes,
-=======
         fold: find_fold::Fold { diacritics: f.ignore_diacritics, kashida: f.ignore_kashida, alef_hamza: f.ignore_alef_hamza },
->>>>>>> a844c4677 (Find and Replace: Match Diacritics, Kashida and Alef Hamza options (#4800))
     }
 }
 
@@ -787,8 +780,7 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 if m.is_empty() {
                     continue;
                 }
-<<<<<<< HEAD
-                let (Some(a), Some(b)) = (pos_of(m.start(), false), pos_of(m.end(), true)) else { continue };
+                let (Some(a), Some(b)) = (pos_of(orig(m.start(), false), false), pos_of(orig(m.end(), true), true)) else { continue };
                 // Text and a format: every character of the match has the format.
                 if cond.as_ref().is_some_and(|c| !c.range_matches(s, &a, &b)) {
                     continue;
@@ -797,22 +789,18 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 if out.last().is_some_and(|f: &Found| f.a == a && f.b == b) {
                     continue;
                 }
-                let field = in_field(m.start(), m.end());
-                let rep = pieces.as_ref().map(|pc| {
-                    let group = |n: usize| caps.get_group(n).and_then(|g| hay.get(g.range())).map(str::to_string);
-                    let end =
-                        if final_mark && m.end() == hay.len() && segs.last().is_some_and(|sg| sg.mark && sg.para == paths.len().saturating_sub(1)) {
-                            m.end().saturating_sub(1)
-                        } else {
-                            m.end()
-                        };
-                    find_pattern::expand(pc, hay.get(m.start()..end).unwrap_or(""), &group, &s.clipboard_text)
-=======
-                let (Some(a), Some(b)) = (pos_of(orig(m.start(), false), false), pos_of(orig(m.end(), true), true)) else { continue };
+                let field = in_field(orig(m.start(), false), orig(m.end(), true));
                 let rep = pieces.as_ref().map(|pc| {
                     let group = |n: usize| caps.get_group(n).and_then(|g| hay.get(orig_range(g.range()))).map(str::to_string);
-                    find_pattern::expand(pc, hay.get(orig_range(m.range())).unwrap_or(""), &group, &s.clipboard_text)
->>>>>>> a844c4677 (Find and Replace: Match Diacritics, Kashida and Alef Hamza options (#4800))
+                    let end = if final_mark
+                        && orig(m.end(), true) == hay.len()
+                        && segs.last().is_some_and(|sg| sg.mark && sg.para == paths.len().saturating_sub(1))
+                    {
+                        orig(m.end(), true).saturating_sub(1)
+                    } else {
+                        orig(m.end(), true)
+                    };
+                    find_pattern::expand(pc, hay.get(orig(m.start(), false)..end).unwrap_or(""), &group, &s.clipboard_text)
                 });
                 out.push(Found { a, b, rep, field });
                 if out.len() >= 100_000 {
