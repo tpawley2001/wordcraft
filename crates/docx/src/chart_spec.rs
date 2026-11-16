@@ -6,7 +6,7 @@
 //! [`spec_of`] turns a chart part back into the model only when writing that model again gives
 //! the same markup, so a chart with anything the model leaves out stays as it was read.
 
-use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, LegendPos, MAX_POINTS, MAX_SERIES, ValueAxis};
+use wordcraft_doc::chart::{AxisTitles, ChartSeries, ChartSpec, ChartType, Gridlines, LegendPos, MAX_POINTS, MAX_SERIES, ValueAxis};
 use wordcraft_doc::graphic::GraphicItem;
 use wordcraft_doc::props::Rgb;
 
@@ -108,6 +108,8 @@ fn bounded(spec: &ChartSpec) -> ChartSpec {
         legend: spec.legend,
         data_labels: spec.data_labels,
         value_axis: spec.value_axis.clone(),
+        axis_titles: spec.axis_titles.clone(),
+        gridlines: spec.gridlines,
     }
     .sanitized()
 }
@@ -183,16 +185,65 @@ fn plot(w: &mut W, spec: &ChartSpec) {
         w.empty("c:axId", &[("val", VAL_AX)]);
     }
     w.close(el);
+    // The axis drawn across the bottom has the horizontal title and the vertical gridlines; the
+    // one drawn up the left side the vertical (turned) title and the horizontal gridlines.
+    let (t, g) = (&spec.axis_titles, spec.gridlines);
+    let across = Look { title: t.horizontal.as_deref(), turned: false, major: g.major_vertical, minor: g.minor_vertical };
+    let up = Look { title: t.vertical.as_deref(), turned: true, major: g.major_horizontal, minor: g.minor_horizontal };
     match k {
         ChartType::Pie | ChartType::Doughnut => {}
         ChartType::Scatter => {
-            value_axis(w, CAT_AX, VAL_AX, "b", false, "midCat", &ValueAxis::default());
-            value_axis(w, VAL_AX, CAT_AX, "l", true, "midCat", &spec.value_axis);
+            value_axis(w, CAT_AX, VAL_AX, "b", &across, "midCat", &ValueAxis::default());
+            value_axis(w, VAL_AX, CAT_AX, "l", &up, "midCat", &spec.value_axis);
+        }
+        _ if horizontal => {
+            category_axis(w, "l", &up);
+            value_axis(w, VAL_AX, CAT_AX, "b", &across, "between", &spec.value_axis);
         }
         _ => {
-            category_axis(w, if horizontal { "l" } else { "b" });
-            value_axis(w, VAL_AX, CAT_AX, if horizontal { "b" } else { "l" }, true, "between", &spec.value_axis);
+            category_axis(w, "b", &across);
+            value_axis(w, VAL_AX, CAT_AX, "l", &up, "between", &spec.value_axis);
         }
+    }
+}
+
+/// What an axis shows besides its scale: its title (`turned` for the vertical axis's, read bottom
+/// to top) and its major and minor gridlines.
+struct Look<'a> {
+    title: Option<&'a str>,
+    turned: bool,
+    major: bool,
+    minor: bool,
+}
+
+/// An axis's gridlines and title, in their place in `c:catAx` / `c:valAx` (ECMA-376 Part 1
+/// §21.2.2.25, §21.2.2.226: after `c:axPos`, before `c:numFmt`).
+fn axis_look(w: &mut W, look: &Look) {
+    if look.major {
+        w.empty("c:majorGridlines", &[]);
+    }
+    if look.minor {
+        w.empty("c:minorGridlines", &[]);
+    }
+    if let Some(t) = look.title {
+        w.open("c:title", &[]);
+        w.open("c:tx", &[]);
+        w.open("c:rich", &[]);
+        if look.turned {
+            w.empty("a:bodyPr", &[("rot", "-5400000"), ("vert", "horz")]);
+        } else {
+            w.empty("a:bodyPr", &[]);
+        }
+        w.empty("a:lstStyle", &[]);
+        w.open("a:p", &[]);
+        w.open("a:r", &[]);
+        w.leaf("a:t", &[], t);
+        w.close("a:r");
+        w.close("a:p");
+        w.close("c:rich");
+        w.close("c:tx");
+        w.empty("c:overlay", &[("val", "0")]);
+        w.close("c:title");
     }
 }
 
@@ -286,7 +337,7 @@ fn num(v: f64) -> String {
     if v == 0.0 { "0".to_string() } else { format!("{v}") }
 }
 
-fn category_axis(w: &mut W, pos: &str) {
+fn category_axis(w: &mut W, pos: &str, look: &Look) {
     w.open("c:catAx", &[]);
     w.empty("c:axId", &[("val", CAT_AX)]);
     w.open("c:scaling", &[]);
@@ -294,6 +345,7 @@ fn category_axis(w: &mut W, pos: &str) {
     w.close("c:scaling");
     w.empty("c:delete", &[("val", "0")]);
     w.empty("c:axPos", &[("val", pos)]);
+    axis_look(w, look);
     w.empty("c:majorTickMark", &[("val", "none")]);
     w.empty("c:minorTickMark", &[("val", "none")]);
     w.empty("c:tickLblPos", &[("val", "nextTo")]);
@@ -306,10 +358,11 @@ fn category_axis(w: &mut W, pos: &str) {
     w.close("c:catAx");
 }
 
-/// A value axis: with gridlines and no axis line (`grid`), else with its line and no gridlines;
-/// `set` gives its bounds (ECMA-376 Part 1 §21.2.2.164 `c:scaling`: orientation, max, min), major
+/// A value axis: with major gridlines it has no axis line, else it has its line (`look` gives its
+/// gridlines and title); `set` gives its bounds (ECMA-376 Part 1 §21.2.2.164 `c:scaling`: orientation, max, min), major
 /// unit (§21.2.2.100) and number format (§21.2.2.121), each written only when not automatic.
-fn value_axis(w: &mut W, id: &str, cross: &str, pos: &str, grid: bool, between: &str, set: &ValueAxis) {
+fn value_axis(w: &mut W, id: &str, cross: &str, pos: &str, look: &Look, between: &str, set: &ValueAxis) {
+    let grid = look.major;
     w.open("c:valAx", &[]);
     w.empty("c:axId", &[("val", id)]);
     w.open("c:scaling", &[]);
@@ -323,9 +376,7 @@ fn value_axis(w: &mut W, id: &str, cross: &str, pos: &str, grid: bool, between: 
     w.close("c:scaling");
     w.empty("c:delete", &[("val", "0")]);
     w.empty("c:axPos", &[("val", pos)]);
-    if grid {
-        w.empty("c:majorGridlines", &[]);
-    }
+    axis_look(w, look);
     if let Some(f) = &set.number_format {
         w.empty("c:numFmt", &[("formatCode", f), ("sourceLinked", "0")]);
     }
@@ -400,7 +451,8 @@ pub(crate) fn spec_of(space: &El) -> Option<ChartSpec> {
     });
     let data_labels = ty.child("c:dLbls").and_then(|d| d.child("c:showVal")).and_then(|v| v.attr("val")) == Some("1");
     let value_axis = axis_of(plot, kind).unwrap_or_default();
-    let spec = ChartSpec { kind, categories, series, title, legend, data_labels, value_axis }.sanitized();
+    let (axis_titles, gridlines) = looks_of(plot, kind);
+    let spec = ChartSpec { kind, categories, series, title, legend, data_labels, value_axis, axis_titles, gridlines }.sanitized();
     // Editable only when nothing would be lost: writing the model again gives the same part.
     let again = xml::parse(chart_xml(&spec).as_bytes()).ok()?;
     same(space, &again, 0).then_some(spec)
@@ -421,6 +473,30 @@ fn axis_of(plot: &El, kind: ChartType) -> Option<ValueAxis> {
         major_unit: num(ax.child("c:majorUnit")),
         number_format: ax.child("c:numFmt").and_then(|f| f.attr("formatCode")).map(str::to_string),
     })
+}
+
+/// The axis titles and gridlines of the axes [`chart_xml`] writes for a chart of type `kind`
+/// (pie and doughnut charts: none, and a new chart's gridlines).
+fn looks_of(plot: &El, kind: ChartType) -> (AxisTitles, Gridlines) {
+    if kind.is_round() {
+        return (AxisTitles::default(), Gridlines::for_kind(kind));
+    }
+    let by_id =
+        |id: &str| plot.els().find(|a| matches!(a.name.as_str(), "c:catAx" | "c:valAx") && a.child("c:axId").and_then(|i| i.attr("val")) == Some(id));
+    let (cat, val) = (by_id(CAT_AX), by_id(VAL_AX));
+    // The axis drawn across the bottom, and the one up the side.
+    let (across, up) = if kind.is_across() { (val, cat) } else { (cat, val) };
+    let title = |a: Option<&El>| a.and_then(|a| a.child("c:title")).and_then(|t| t.find("a:t")).map(|t| t.text());
+    let has = |a: Option<&El>, n: &str| a.is_some_and(|a| a.child(n).is_some());
+    (
+        AxisTitles { horizontal: title(across), vertical: title(up) },
+        Gridlines {
+            major_horizontal: has(up, "c:majorGridlines"),
+            major_vertical: has(across, "c:majorGridlines"),
+            minor_horizontal: has(up, "c:minorGridlines"),
+            minor_vertical: has(across, "c:minorGridlines"),
+        },
+    )
 }
 
 /// The points of a `c:strLit` / `c:numLit` (or a cache) as texts by index, `ptCount` long.
@@ -499,6 +575,8 @@ mod tests {
             legend: None,
             data_labels: false,
             value_axis: Default::default(),
+            axis_titles: Default::default(),
+            gridlines: Default::default(),
         };
         let x = chart_xml(&spec);
         let series = x.matches("<c:ser>").count();

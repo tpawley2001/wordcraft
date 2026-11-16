@@ -1318,7 +1318,9 @@ pub(crate) fn place_outline_para(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragr
     let level = o.levels.get(block).copied().unwrap_or(outline::BODY);
     let indent = outline::indent(&o.levels, block);
     let x = pb.col_x() + indent + outline::SYMBOL_W;
-    let width = (pb.col_w() - indent - outline::SYMBOL_W).max(72.0);
+    // Wrapped at the margins, the symbol stands left of the text column, as wide as on paper.
+    let symbol = if ctx.opts.wrap_to_window { outline::SYMBOL_W } else { 0.0 };
+    let width = (pb.col_w() - indent - symbol).max(72.0);
     let q = outline::outline_para(ctx.doc, p, o.view.plain);
     ctx.fields.page = pb.number;
     let pl = ctx.para_labelled(&q, width, None, &[], label);

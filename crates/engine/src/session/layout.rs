@@ -30,8 +30,14 @@ impl Session {
             ViewMode::Read if immersive => self.view.immersive_column_width.points(self.view.immersive_window),
             ViewMode::Read => self.view.read_width,
             ViewMode::Web => self.view.web_width,
+            // Show text wrapped within the document window: Draft and Outline follow the window.
+            ViewMode::Draft | ViewMode::Outline if self.prefs.wrap_to_window => self.view.web_width,
             _ => DRAFT_WIDTH,
         };
+        // Wrapped at the margins, Draft and Outline lay out the same whatever the window; a width
+        // no window has keeps that layout apart from a window-wrapped one in the memo below.
+        let margins = matches!(mode, ViewMode::Draft | ViewMode::Outline) && !self.prefs.wrap_to_window;
+        let (width, opts_width) = if margins { (-DRAFT_WIDTH, DRAFT_WIDTH) } else { (width, width) };
         let height = if mode == ViewMode::Read { self.view.read_height } else { 0.0 };
         let line_spacing = if mode == ViewMode::Read && !immersive { self.view.read_line_spacing.map(f32::to_bits) } else { None };
         let spacing = (line_spacing, immersive && self.view.text_spacing);
@@ -78,7 +84,7 @@ impl Session {
         let (filename, filepath): (Option<Arc<str>>, Option<Arc<str>>) = (Some(Arc::from(fn_name.as_str())), Some(Arc::from(fn_path.as_str())));
         let opts = LayoutOptions {
             view: mode,
-            web_width: width,
+            web_width: opts_width,
             read_height: height,
             read_line_spacing: spacing.0.map(f32::from_bits),
             read_text_spacing: spacing.1,
@@ -96,6 +102,7 @@ impl Session {
             filename: filename.clone(),
             filepath: filepath.clone(),
             draft_font: self.view.draft_font.clone(),
+            wrap_to_window: self.prefs.wrap_to_window,
             font_substitutes: self.prefs.font_substitutes.clone(),
         };
         let l = Arc::new(wordcraft_layout::layout(&self.doc, &mut self.cache, &opts));

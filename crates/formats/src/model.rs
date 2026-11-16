@@ -22,8 +22,8 @@ mod types;
 
 pub use color::parse_color;
 pub use from_doc::{
-    ListCounter, flow_paras, flow_paras_with, from_doc, from_doc_tracked, from_doc_with, is_custom_char_style, is_custom_style, is_fixed_char_style,
-    is_fixed_style, is_mono, para_kind, part_flow, style_look, tabs_from_indent,
+    ListCounter, count_list_para, flow_paras, flow_paras_with, from_doc, from_doc_counting_from, from_doc_tracked, from_doc_with,
+    is_custom_char_style, is_custom_style, is_fixed_char_style, is_fixed_style, is_mono, para_kind, part_flow, style_look, tabs_from_indent,
 };
 pub use media::{base64_decode, base64_encode, data_uri, decode_bounded, image_px, make_img, mime_of, percent_decode, sized_img, sniff_image};
 pub use to_doc::{char_props, part_blocks, to_doc, to_doc_in};

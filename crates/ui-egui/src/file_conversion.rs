@@ -15,7 +15,7 @@ use crate::WordApp;
 use crate::dialogs::Dialog;
 
 /// The parameters that carry the choice on `file.save` / `file.saveAs`.
-const KEYS: [&str; 3] = ["encoding", "lineEnd", "allowSubstitution"];
+const KEYS: [&str; 4] = ["encoding", "lineEnd", "allowSubstitution", "insertLineBreaks"];
 
 /// Most characters the preview shows.
 const PREVIEW_CHARS: usize = 4000;
@@ -72,6 +72,9 @@ pub struct FileConversionForm {
     /// A value from [`LINE_ENDS`].
     pub line_end: String,
     pub allow_substitution: bool,
+    pub insert_line_breaks: bool,
+    #[serde(skip)]
+    pub wrapped_preview: String,
     /// The text the save writes (its beginning).
     #[serde(skip)]
     pub preview: String,
@@ -105,14 +108,18 @@ fn fields(o: &TxtSaveOptions) -> (&'static str, String, &'static str) {
 fn params_of(o: &TxtSaveOptions) -> Value {
     let (kind, other, line_end) = fields(o);
     let encoding = if kind == "other" { other } else { kind.to_string() };
-    json!({"encoding": encoding, "lineEnd": line_end, "allowSubstitution": o.allow_substitution})
+    json!({"encoding": encoding, "lineEnd": line_end, "allowSubstitution": o.allow_substitution, "insertLineBreaks": o.insert_line_breaks})
 }
 
 impl FileConversionForm {
-    fn new(app: &WordApp, then: &str, params: Value) -> FileConversionForm {
+    fn new(app: &mut WordApp, then: &str, params: Value) -> FileConversionForm {
         let o = app.txt_save.options.clone().unwrap_or_default();
         let (kind, other, line_end) = fields(&o);
         let preview: String = wordcraft_engine::txt::export_text(&app.session.doc).chars().take(PREVIEW_CHARS).collect();
+        let layout = app.session.layout();
+        let wrapped_preview = wordcraft_engine::io::txt_layout_copy(&app.session.doc, &layout)
+            .map(|doc| wordcraft_engine::txt::export_text(&doc).chars().take(PREVIEW_CHARS).collect())
+            .unwrap_or_else(|_| preview.clone());
         FileConversionForm {
             then: then.to_string(),
             params,
@@ -121,6 +128,8 @@ impl FileConversionForm {
             other,
             line_end: line_end.to_string(),
             allow_substitution: o.allow_substitution,
+            insert_line_breaks: o.insert_line_breaks,
+            wrapped_preview,
             preview,
             opening: false,
             source: Vec::new(),
@@ -140,6 +149,8 @@ impl FileConversionForm {
             other,
             line_end: line_end.to_string(),
             allow_substitution: false,
+            insert_line_breaks: false,
+            wrapped_preview: String::new(),
             preview: String::new(),
             opening: true,
             source: bytes.get(..bytes.len().min(PREVIEW_BYTES)).unwrap_or(bytes).to_vec(),
@@ -163,7 +174,7 @@ impl FileConversionForm {
 
     /// The choice as `file.save` parameters.
     fn choice(&self) -> Value {
-        json!({"encoding": self.encoding(), "lineEnd": self.line_end, "allowSubstitution": self.allow_substitution})
+        json!({"encoding": self.encoding(), "lineEnd": self.line_end, "allowSubstitution": self.allow_substitution, "insertLineBreaks": self.insert_line_breaks})
     }
 
     fn options(&self) -> TxtSaveOptions {
@@ -184,7 +195,7 @@ fn txt_target(app: &WordApp, id: &str, params: &Value) -> Option<std::path::Path
 /// Before a user's save of a plain-text file: a Save of a file already saved with a choice this
 /// session gets that choice; any other opens File Conversion (`Some`, the pending result), and
 /// the save runs once it is answered (`ui.fileConversion`). A save that already says how
-/// (`encoding`, `lineEnd`, `allowSubstitution`) goes ahead as it is.
+/// (`encoding`, `lineEnd`, `allowSubstitution`, `insertLineBreaks`) goes ahead as it is.
 pub fn before_save(app: &mut WordApp, id: &str, params: &mut Value) -> Option<Result<Value, String>> {
     if KEYS.iter().any(|k| params.get(k).is_some_and(|v| !v.is_null())) {
         return None;
@@ -268,7 +279,7 @@ pub fn remembered(app: &WordApp) -> Value {
 }
 
 /// `ui.fileConversion`: answer the open File Conversion dialog. `answer` is `ok` (save with
-/// the choice, which `encoding`, `lineEnd` and `allowSubstitution` may change first) or
+/// the choice, which `encoding`, `lineEnd`, `allowSubstitution` and `insertLineBreaks` may change first) or
 /// `cancel` (nothing is saved). Asked on opening a file, `ok` opens it in the chosen encoding
 /// and `cancel` opens nothing.
 pub fn answer(app: &mut WordApp, p: &Value) -> Result<Value, String> {
@@ -325,6 +336,9 @@ pub fn answer(app: &mut WordApp, p: &Value) -> Result<Value, String> {
     if let Some(a) = p.get("allowSubstitution").and_then(Value::as_bool) {
         form.allow_substitution = a;
     }
+    if let Some(b) = p.get("insertLineBreaks").and_then(Value::as_bool) {
+        form.insert_line_breaks = b;
+    }
     let mut params = form.params.clone();
     if !params.is_object() {
         params = json!({});
@@ -377,18 +391,20 @@ pub fn dialog(app: &mut WordApp, ui: &mut egui::Ui, form: &mut FileConversionFor
         });
         combo.response.labelled_by(label.id);
     });
+    ui.checkbox(&mut form.insert_line_breaks, tl!("Insert line breaks"));
     ui.checkbox(&mut form.allow_substitution, tl!("Allow character substitution"));
     ui.add_space(4.0);
     ui.label(tl!("Preview:"));
     let options = form.options();
-    let bad = wordcraft_engine::txt::unencodable(&form.preview, &options);
+    let preview = if form.insert_line_breaks { &form.wrapped_preview } else { &form.preview };
+    let bad = wordcraft_engine::txt::unencodable(preview, &options);
     let tokens = crate::theme::Tokens::get(ui.ctx());
     let normal = egui::TextFormat { font_id: egui::FontId::monospace(12.0), color: ui.visuals().text_color(), ..Default::default() };
     let red = egui::TextFormat { color: tokens.red, ..normal.clone() };
     let mut job = egui::text::LayoutJob::default();
     let mut bad_at = bad.iter().peekable();
     let mut one = [0u8; 4];
-    for (i, c) in form.preview.chars().enumerate() {
+    for (i, c) in preview.chars().enumerate() {
         let is_bad = bad_at.peek().is_some_and(|b| **b == i);
         if is_bad {
             bad_at.next();

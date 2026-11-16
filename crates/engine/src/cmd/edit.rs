@@ -300,7 +300,9 @@ pub(crate) fn copy_result(s: &mut Session) -> Value {
             if d.media.is_empty() {
                 d.media = s.doc.media.clone();
             }
-            (wordcraft_formats::html::export_fragment(&d), wordcraft_formats::rtf::export(&d))
+            let rtf = wordcraft_formats::rtf::export(&d);
+            let lists = clipboard_lists(s, &mut d);
+            (wordcraft_formats::html::export_fragment(&d, lists), rtf)
         }
         None => (String::new(), String::new()),
     };
@@ -318,6 +320,27 @@ pub(crate) fn copy_result(s: &mut Session) -> Value {
         r["mathml"] = json!(wordcraft_formats::mathml::linear_to_mathml(linear, display));
     }
     r
+}
+
+/// Gives `d`, the copy as a document, the source's styles and list definitions for the HTML Copy
+/// puts on the system clipboard, so its numbered and bulleted paragraphs stay lists when another
+/// program pastes them (Word turns the HTML list back into numbering); and returns the source's
+/// list counters where the copy starts, so each copied item keeps the number the page shows for
+/// it: a copy of items 3 and 4 reads 3 and 4, as Word's does. The copy's paragraphs are the
+/// source's from its first on, in order (whole tables, or the paragraphs of the cells it spans),
+/// so counting on through them gives each one its number there, in the body, a table cell or any
+/// other story.
+fn clipboard_lists(s: &Session, d: &mut wordcraft_doc::Document) -> wordcraft_doc::numbering::Counters {
+    d.styles = s.doc.styles.clone();
+    d.numbering = s.doc.numbering.clone();
+    let (a, _) = s.sel.ordered();
+    let mut counters = wordcraft_doc::numbering::Counters::default();
+    for path in s.doc.para_paths(a.story).into_iter().take_while(|p| *p != a.path) {
+        if let Some(p) = s.doc.para(a.story, &path) {
+            wordcraft_formats::model::count_list_para(&s.doc, p, &mut counters);
+        }
+    }
+    counters
 }
 
 fn cut(s: &mut Session, _: &Value) -> CmdResult {
@@ -1525,5 +1548,68 @@ mod shortcut_tests {
         let restored = KeyMap::from_value(&serde_json::to_value(&keys).unwrap());
         assert_eq!(restored.resolve(&registry, "Mod+Alt+Shift+C").map(|c| c.id), Some("format.bold"));
         assert_eq!(restored.resolve(&registry, "Mod+Shift+C").map(|c| c.id), Some("edit.copyFormat"));
+    }
+}
+
+#[cfg(test)]
+mod copy_list_tests {
+    use serde_json::{Value, json};
+    use wordcraft_doc::{Document, Pos};
+
+    use crate::{Selection, Session};
+
+    fn listed(text: &str, cmd: &str) -> Session {
+        let mut s = Session::new(Document::new());
+        s.run("document.setText", &json!({ "text": text })).unwrap();
+        s.run("select.all", &json!({})).unwrap();
+        if !cmd.is_empty() {
+            s.run(cmd, &json!({})).unwrap();
+        }
+        s
+    }
+
+    fn copied(s: &mut Session, from: (usize, usize), to: (usize, usize)) -> String {
+        s.sel = Selection { anchor: Pos::body(from.0, from.1), focus: Pos::body(to.0, to.1) };
+        let r: Value = s.run("edit.copy", &json!({})).unwrap();
+        r["html"].as_str().unwrap_or_default().replace('\n', "")
+    }
+
+    /// Items 3 and 4 of a decimal list copy as a list that starts at 3.
+    #[test]
+    fn a_copy_of_items_three_and_four_starts_at_three() {
+        let mut s = listed("One\nTwo\nThree\nFour", "para.numbering");
+        let html = copied(&mut s, (2, 0), (3, 4));
+        assert!(html.contains("<ol start=\"3\"><li>Three</li><li>Four</li></ol>"), "{html}");
+        assert_eq!(html.matches("<li>").count(), 2, "{html}");
+    }
+
+    /// Sub-items on a lowerLetter level copy as `<ol type="a">`.
+    #[test]
+    fn a_copy_of_lettered_sub_items_keeps_their_letters() {
+        let mut s = listed("One\nSub A\nSub B", "para.numbering");
+        for k in [1, 2] {
+            s.sel = Selection::caret(Pos::body(k, 0));
+            s.run("para.listLevel", &json!({"level": 1})).unwrap();
+        }
+        let html = copied(&mut s, (1, 0), (2, 5));
+        assert!(html.contains("<ol type=\"a\"><li>Sub A</li><li>Sub B</li></ol>"), "{html}");
+    }
+
+    /// Bulleted items stay an unordered list.
+    #[test]
+    fn a_copy_of_bullets_is_an_unordered_list() {
+        let mut s = listed("One\nTwo", "para.bullets");
+        let html = copied(&mut s, (0, 0), (1, 3));
+        assert!(html.contains("<ul><li>One</li><li>Two</li></ul>"), "{html}");
+        assert!(!html.contains("<ol"), "{html}");
+    }
+
+    /// Plain paragraphs copy as paragraphs, no list.
+    #[test]
+    fn a_copy_of_plain_paragraphs_has_no_list() {
+        let mut s = listed("One\nTwo", "");
+        let html = copied(&mut s, (0, 0), (1, 3));
+        assert!(html.contains("One") && html.contains("Two"), "{html}");
+        assert!(!html.contains("<ol") && !html.contains("<ul"), "{html}");
     }
 }

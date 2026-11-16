@@ -10,8 +10,10 @@ use wordcraft_doc::{Pos, StoryRef};
 
 use crate::{Session, cmd};
 
+mod page_break_caret;
 mod replace_all_stories;
 mod autonum_fields;
+mod copy_html_list;
 mod autonum_heading_rule;
 mod auto_caption;
 mod autocorrect_symbols_word;
@@ -21,6 +23,7 @@ mod change_case_word;
 mod change_case_cycle;
 mod convert_text_spaces_word;
 mod table_to_text_word;
+mod txt_insert_line_breaks;
 mod txt_save_encoding;
 mod find_caret_word;
 mod find_objects_word;
@@ -146,6 +149,7 @@ mod cross_ref_missing;
 mod cross_ref_self;
 mod cross_ref_notes;
 mod typing;
+mod paragraph_mark_selection;
 mod view_split;
 mod word_alternate_keys;
 mod word_window_keys;
@@ -13772,7 +13776,8 @@ fn page_down_and_up_never_stay_on_a_line_in_the_continuous_views() {
     for view in ["view.draft", "view.outline", "view.webLayout"] {
         let mut s = s();
         run(&mut s, "layout.margins", json!({"top": 370, "bottom": 370}));
-        let long = "Lorem ipsum dolor sit amet ".repeat(4);
+        // Two repeats fit one line inside 6.5 in margins (Draft and Outline wrap there, as Word does).
+        let long = "Lorem ipsum dolor sit amet ".repeat(2);
         run(&mut s, "text.insert", json!({"text": long}));
         run(&mut s, "text.newParagraph", json!({}));
         run(&mut s, "para.indents", json!({"right": 700}));
@@ -13950,4 +13955,6 @@ mod row_deletion_resolve;
 mod sentence_bounds_word;
 mod apply_style_resets_para;
 mod formatting_lock_settings;
+mod draft_wrap;
+mod chart_axis_titles;
 mod normal_style_lists;

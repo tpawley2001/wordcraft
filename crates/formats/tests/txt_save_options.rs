@@ -7,7 +7,7 @@ use wordcraft_formats::txt::{LineEnd, TxtEncoding, TxtSaveOptions, export_text, 
 const LINE: &str = "Caf\u{e9} \u{201c}quoted\u{201d} \u{2265} 5";
 
 fn opts(encoding: TxtEncoding, line_end: LineEnd, allow_substitution: bool) -> TxtSaveOptions {
-    TxtSaveOptions { encoding, line_end, allow_substitution }
+    TxtSaveOptions { encoding, line_end, allow_substitution, insert_line_breaks: false }
 }
 
 fn doc(text: &str) -> Document {

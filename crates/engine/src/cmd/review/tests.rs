@@ -1129,3 +1129,52 @@ mod spelling_navigation_tests {
         }
     }
 }
+
+/// Bob's deletion inside Alice's insertion is a change of its own: accepting it removes the text,
+/// rejecting it brings the text back as Alice's insertion.
+#[test]
+fn accept_and_reject_a_deletion_inside_another_authors_insertion() {
+    for accept in [true, false] {
+        let mut s = Session::new(Document::new());
+        s.view.proofing = false;
+        s.run("review.trackChanges", &json!({"value": true})).unwrap();
+        s.author = "Alice".into();
+        s.run("text.insert", &json!({"text": "Hello world"})).unwrap();
+        s.author = "Bob".into();
+        s.run("select.range", &json!({"anchor": {"block": 0, "off": 5}, "focus": {"block": 0, "off": 11}})).unwrap();
+        s.run("text.delete", &json!({})).unwrap();
+        s.run("select.range", &json!({"anchor": {"block": 0, "off": 7}, "focus": {"block": 0, "off": 7}})).unwrap();
+        s.run(if accept { "review.accept" } else { "review.reject" }, &json!({})).unwrap();
+        let p = body_para(&s);
+        assert!(p.runs.iter().all(|r| r.props.del.is_none()), "Bob's deletion is resolved");
+        if accept {
+            assert_eq!(p.text, "Hello");
+        } else {
+            assert_eq!(p.text, "Hello world");
+            let alice = s.run("review.changes", &json!({})).unwrap();
+            let list = alice.as_array().cloned().unwrap_or_default();
+            assert!(list.iter().all(|c| c["kind"] == "insert" && c["author"] == "Alice"), "{list:?}");
+        }
+    }
+}
+
+/// Reject on Bob's deletion of Alice's paragraph mark keeps the mark, still Alice's insertion.
+#[test]
+fn reject_a_deletion_of_another_authors_paragraph_mark_keeps_the_insertion() {
+    let mut s = Session::new(Document::new());
+    s.view.proofing = false;
+    s.run("review.trackChanges", &json!({"value": true})).unwrap();
+    s.author = "Alice".into();
+    s.run("text.insert", &json!({"text": "One"})).unwrap();
+    s.run("text.newParagraph", &json!({})).unwrap();
+    s.run("text.insert", &json!({"text": "Two"})).unwrap();
+    s.author = "Bob".into();
+    s.run("select.range", &json!({"anchor": {"block": 0, "off": 3}, "focus": {"block": 1, "off": 0}})).unwrap();
+    s.run("text.delete", &json!({})).unwrap();
+    // Select just the mark: from the end of "One" to the start of "Two".
+    s.run("select.range", &json!({"anchor": {"block": 0, "off": 3}, "focus": {"block": 1, "off": 0}})).unwrap();
+    s.run("review.reject", &json!({})).unwrap();
+    let p = body_para(&s);
+    assert_eq!(p.text, "One");
+    assert!(p.mark.ins.is_some() && p.mark.del.is_none(), "the mark is Alice's insertion again");
+}

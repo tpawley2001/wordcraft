@@ -286,12 +286,14 @@ pub struct TxtSaveOptions {
     pub encoding: TxtEncoding,
     pub line_end: LineEnd,
     pub allow_substitution: bool,
+    /// File Conversion's Insert line breaks: a line end after every wrapped line of the main text.
+    pub insert_line_breaks: bool,
 }
 
 impl Default for TxtSaveOptions {
     /// What Word's File Conversion dialog shows first: Windows (Default), CR/LF, no substitution.
     fn default() -> Self {
-        TxtSaveOptions { encoding: TxtEncoding::Windows, line_end: LineEnd::CrLf, allow_substitution: false }
+        TxtSaveOptions { encoding: TxtEncoding::Windows, line_end: LineEnd::CrLf, allow_substitution: false, insert_line_breaks: false }
     }
 }
 

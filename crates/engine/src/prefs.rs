@@ -46,6 +46,9 @@ pub struct Prefs {
     pub print_duplex_back: bool,
     /// File › Options › Advanced › Save › Always create backup copy (off).
     pub always_create_backup: bool,
+    /// File › Options › Advanced › Show text wrapped within the document window (off): Draft and
+    /// Outline wrap to the window instead of each section's margins.
+    pub wrap_to_window: bool,
     /// File › Options › Advanced › Cut, copy, and paste › Use smart cut and paste (on).
     pub smart_cut_paste: bool,
     /// Its Settings › Adjust sentence and word spacing automatically (on): with both on,
@@ -193,6 +196,7 @@ impl Default for Prefs {
             print_duplex_front: false,
             print_duplex_back: false,
             always_create_backup: false,
+            wrap_to_window: false,
             smart_cut_paste: true,
             paste_adjust_word_spacing: true,
             confirm_conversions: false,

@@ -42,7 +42,7 @@ pub(super) fn widest(items: &[String], size: f32) -> f32 {
 }
 
 pub(super) fn text(out: &mut Vec<GraphicItem>, rect: Rect, s: &str, size: f32, align: TextAlign, bold: bool) {
-    out.push(GraphicItem::Text { rect: rect.arr(), text: s.to_string(), size, color: TEXT, bold, align, font: None });
+    out.push(GraphicItem::Text { rect: rect.arr(), text: s.to_string(), size, color: TEXT, bold, align, font: None, rotation: 0.0 });
 }
 
 /// Text centred on `cx` with its top at `y`.

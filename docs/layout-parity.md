@@ -1,5 +1,6 @@
 # Layout and pagination parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0614: Draft and Outline wrap each section's lines at its own margins, as on the printed page (one column, as wide as its first); File › Options › Advanced › Show text wrapped within the document window (`file.options` `wrapToWindow`, off, per user) wraps them to the window instead. Print Layout, Web Layout and Read Mode unchanged. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0626: Turned text boxes (#6056): a click on a turned box's text lands on the character drawn there (30°, 90°, 180°, flipped across); while the caret is in a turned box it is shown straight on screen, its frame and handles too, and turning it adds to its real angle. PDF, PNG and print always draw it turned (`layout::tests::turned_box_edit`, `ui-egui objects::tests::a_turned_text_box_being_edited_has_its_handles_on_the_straight_frame`). Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0630: no ligatures unless the run asks for them (`w14:ligatures`), as in Word. Readiness estimates unchanged; earlier: P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged)
@@ -393,6 +394,7 @@ Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei,
 ## Revision history
 
 > 2026-11-15 · trivial · P0626: Turned text boxes (#6056): a click on a turned box's text lands on the character drawn there (30°, 90°, 180°, flipped across); while the caret is in a turned box it is shown straight on screen, its frame and handles too, and turning it adds to its real angle. PDF, PNG and print always draw it turned (`layout::tests::turned_box_edit`, `ui-egui objects::tests::a_turned_text_box_being_edited_has_its_handles_on_the_straight_frame`). Readiness estimates unchanged.
+> 2026-11-15 · trivial · P0614: Draft and Outline wrap each section's lines at its own margins, as on the printed page (one column, as wide as its first); File › Options › Advanced › Show text wrapped within the document window (`file.options` `wrapToWindow`, off, per user) wraps them to the window instead. Print Layout, Web Layout and Read Mode unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0630: no ligatures unless the run asks for them (`w14:ligatures`), as in Word. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged.

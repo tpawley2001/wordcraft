@@ -462,6 +462,41 @@ fn open_by_content(
     Ok((doc, encrypted))
 }
 
+/// An export-only copy with body paragraph wraps taken from the session's layout.
+/// Editing through paragraph primitives keeps field, object and run offsets valid.
+pub fn txt_layout_copy(doc: &Document, layout: &wordcraft_layout::DocLayout) -> Result<Document, String> {
+    use std::collections::{BTreeMap, BTreeSet};
+    use wordcraft_doc::StoryRef;
+    let mut starts = BTreeMap::<_, BTreeSet<usize>>::new();
+    for item in layout.pages.iter().flat_map(|page| &page.items) {
+        // Table cells are body story too; only top-level paragraphs gain wraps.
+        if let wordcraft_layout::Placed::Lines { story: StoryRef::Body, path, para, l0, l1, .. } = item
+            && path.0.len() == 1
+        {
+            for line in para.lines.get(*l0..*l1).unwrap_or(&[]) {
+                if line.start > 0 {
+                    starts.entry(path.clone()).or_default().insert(line.start);
+                }
+            }
+        }
+    }
+    let mut copy = doc.clone();
+    for (path, offsets) in starts {
+        let para = copy.para_mut(StoryRef::Body, &path).map_err(|e| e.to_string())?;
+        // Reverse order leaves the earlier layout byte offsets valid.
+        for off in offsets.into_iter().rev() {
+            let Some(before) = para.text.get(..off) else { continue };
+            if before.ends_with('\n') {
+                continue;
+            }
+            let end = before.trim_end_matches([' ', '\t']).len();
+            para.delete(end, off).map_err(|e| e.to_string())?;
+            para.insert_text(end, "\n", &Default::default()).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(copy)
+}
+
 /// Serialise a document; `name` gives the format by extension.
 pub fn save_bytes(name: &str, doc: &Document) -> Result<Vec<u8>, String> {
     save_bytes_opts(name, doc, &ExportOptions::default())
