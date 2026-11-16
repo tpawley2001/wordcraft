@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click.. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.)
@@ -210,7 +212,11 @@ Word Count's shared counters follow the 2026-11-14 Word for Windows measurements
 
 Modify Style’s existing Automatically update flag is honoured by engine formatting commands (P0608). Only paragraph styles redefine, and only whole paragraphs promote character formatting; tracked edits retain direct formatting.
 
+Chart Design › Data places Switch Row/Column beside Edit Data for editable charts (`chart.switchRowColumn`).
+
 ## Revision history
+
+| 2026-11-15 | trivial | P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged. |
 
 > 2026-11-15 · trivial · P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.
 
