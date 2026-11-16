@@ -225,3 +225,7 @@ mod field_search_controls_tests;
 #[cfg(test)]
 #[path = "tests/find_fields.rs"]
 mod find_fields_tests;
+
+#[cfg(test)]
+#[path = "tests/find_folding.rs"]
+mod find_folding_tests;
