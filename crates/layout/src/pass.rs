@@ -211,6 +211,34 @@ fn reflow_sect(first: &SectionProps, opts: &LayoutOptions) -> SectionProps {
     s
 }
 
+/// Draft and Outline wrapping at the margins ([`LayoutOptions::wrap_to_window`] off): each
+/// section as [`reflow_sect`] makes it, with its text as wide as the section's text column on
+/// paper (a multi-column section shown as one column, as wide as its first). All share one page
+/// width, the widest section's; narrower sections take the difference on the right. Outline's
+/// symbols stand left of the text, so its page is that much wider.
+fn draft_sects(sections: &[(usize, &SectionProps)], first: &SectionProps, opts: &LayoutOptions) -> Vec<SectionProps> {
+    const MARGIN: f32 = 18.0;
+    let text_w = |s: &SectionProps| {
+        let w = s.column_boxes().first().map_or_else(|| s.text_width(), |c| c.1);
+        if w.is_finite() { w.clamp(18.0, 20_000.0) } else { s.text_width().clamp(18.0, 20_000.0) }
+    };
+    let widths: Vec<f32> = sections.iter().map(|(_, s)| text_w(s)).collect();
+    let widest = widths.iter().copied().fold(text_w(first), f32::max);
+    let symbol = if opts.view == ViewMode::Outline { crate::outline::SYMBOL_W } else { 0.0 };
+    let page_w = widest + 2.0 * MARGIN + symbol;
+    let one = |s: &SectionProps, w: f32| {
+        let mut r = reflow_sect(s, opts);
+        r.page_w = page_w;
+        r.margin_right = MARGIN + symbol + (widest - w).max(0.0);
+        r
+    };
+    let mut out: Vec<SectionProps> = sections.iter().zip(&widths).map(|((_, s), w)| one(s, *w)).collect();
+    if out.is_empty() {
+        out.push(one(first, text_w(first)));
+    }
+    out
+}
+
 fn new_page_builder<'p>(
     sect: &'p SectionProps,
     page_format: wordcraft_doc::section::NumFormat,
@@ -686,8 +714,11 @@ pub(crate) fn layout_pass(
     let outline = (opts.view == ViewMode::Outline).then(|| OutlinePass::new(doc, opts.outline.clone().unwrap_or_default()));
     let default_sect = SectionProps::default();
     let first_sect = sections.first().map_or(&default_sect, |(_, s)| *s);
-    let web_sect = mode.reflow.then(|| reflow_sect(first_sect, opts));
-    let sect_ref = web_sect.as_ref().unwrap_or(first_sect);
+    // Draft and Outline wrap each section at its own margins unless they wrap to the window.
+    let by_margins = matches!(opts.view, ViewMode::Draft | ViewMode::Outline) && !opts.wrap_to_window;
+    let draft = if by_margins { draft_sects(sections, first_sect, opts) } else { Vec::new() };
+    let web_sect = (mode.reflow && !by_margins).then(|| reflow_sect(first_sect, opts));
+    let sect_ref = draft.first().or(web_sect.as_ref()).unwrap_or(first_sect);
     let mut pb = new_page_builder(sect_ref, first_sect.page_num_format, early, mode.web, !may_rewrap && !mode.reflow);
     pb.mirror = ctx.mirror;
     let mut endnotes = endnote_queue(&ctx);
@@ -701,6 +732,7 @@ pub(crate) fn layout_pass(
         let turn = if mode.reflow { TextDirection::Horizontal } else { sect.text_direction };
         let sect: &SectionProps = match turned.get(si) {
             Some(Some(t)) => t,
+            _ if by_margins => draft.get(si).unwrap_or(sect_ref),
             _ if mode.reflow => sect_ref,
             _ => sect,
         };
@@ -727,7 +759,11 @@ pub(crate) fn layout_pass(
         apply_section_grid(&mut ctx, &mut pb, sect);
         let sec = Sec { si, sect, page_format, start, tops };
         if mode.web && si > 0 {
-            // one long page
+            // one long page; Draft and Outline at the margins take this section's text width
+            if by_margins {
+                pb.cols = sect.column_boxes();
+                pb.col = 0;
+            }
         } else if next_col {
             next_column(&mut pb, sect, block);
         } else if pb.pages.is_empty() || start != SectionStart::Continuous || turn != prev_turn {

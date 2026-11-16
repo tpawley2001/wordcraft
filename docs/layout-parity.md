@@ -1,5 +1,7 @@
 # Layout and pagination parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0614: Draft and Outline wrap each section's lines at its own margins, as on the printed page (one column, as wide as its first); File › Options › Advanced › Show text wrapped within the document window (`file.options` `wrapToWindow`, off, per user) wraps them to the window instead. Print Layout, Web Layout and Read Mode unchanged. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0596: a missing Georgia, Arial Black, Segoe UI, Bookman Old Style, Perpetua or Gill Sans MT keeps Word's advance widths, so their lines break where Word's do. Readiness estimates unchanged.)
@@ -385,6 +387,8 @@ The front-of-text opt-out is retained from the earlier implementation; this patc
 Missing Batang, Gulim, Leelawadee UI, Malgun Gothic, Meiryo, Microsoft JhengHei, Microsoft YaHei, PMingLiU and Yu Gothic now use Word's measured line metrics (P0504; `fonts/tests/missing_font_line_east_asian.rs`). Localized names remain unmeasured; broader pagination differences in gap #4 remain open.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0614: Draft and Outline wrap each section's lines at its own margins, as on the printed page (one column, as wide as its first); File › Options › Advanced › Show text wrapped within the document window (`file.options` `wrapToWindow`, off, per user) wraps them to the window instead. Print Layout, Web Layout and Read Mode unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.
 

@@ -242,6 +242,10 @@ pub struct LayoutOptions {
     /// in this one font and size there (bold, italic, underline and colour kept). Ignored in the
     /// other views; see [`LayoutOptions::draft_font`].
     pub draft_font: Option<DraftFont>,
+    /// File › Options › Advanced › Show text wrapped within the document window: Draft and
+    /// Outline wrap to the window ([`LayoutOptions::web_width`]). Off (Word's default), they wrap
+    /// each section at its own margins, as on the printed page. Ignored in the other views.
+    pub wrap_to_window: bool,
 }
 
 /// The draft font ([`LayoutOptions::draft_font`]): a family name and a size in points.

@@ -41,6 +41,9 @@ pub struct Prefs {
     pub print_duplex_back: bool,
     /// File › Options › Advanced › Save › Always create backup copy (off).
     pub always_create_backup: bool,
+    /// File › Options › Advanced › Show text wrapped within the document window (off): Draft and
+    /// Outline wrap to the window instead of each section's margins.
+    pub wrap_to_window: bool,
     /// Language › Detect language automatically (per user, as in Word).
     pub detect_language: bool,
     /// Set Proofing Language › Set As Default: overrides the interface language for future
@@ -158,6 +161,7 @@ impl Default for Prefs {
             print_duplex_front: false,
             print_duplex_back: false,
             always_create_backup: false,
+            wrap_to_window: false,
             typing_replaces_selection: true,
             insert_key_overtype: false,
             overtype: false,

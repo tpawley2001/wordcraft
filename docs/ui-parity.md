@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0614: Draft and Outline wrap each section's lines at its own margins, as on the printed page (one column, as wide as its first); File › Options › Advanced › Show text wrapped within the document window (`file.options` `wrapToWindow`, off, per user) wraps them to the window instead. Print Layout, Web Layout and Read Mode unchanged. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0604: Customize Status Bar: right-click the status bar for the list of its items (Formatted Page Number, Section, Page Number, Vertical Page Position, Line Number, Column, Word Count, Character Count (with spaces), Language, Track Changes, Caps Lock, Overtype, Selection Mode, View Shortcuts, Zoom Slider, Zoom), each with its value; a click shows or hides one and the list stays open; kept between runs (`ui.statusItem`). The default set is what the bar showed before. Caps Lock has no value: egui doesn't report the key's state. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged; earlier: P0587: Find matches the text a field shows (a citation's `[7]`, a REF or SEQ result, a legacy form field's text), and a match may run into and out of it; with field codes shown it searches the code instead, never across the field's edge, and the drawn braces are not characters. A match in a field covers the whole field; Replace leaves it alone and Replace All reports it as skipped (from storytold/wordcraft#5560). Readiness estimates unchanged)
@@ -185,6 +187,7 @@ Per-user screen settings, kept between runs; the document, its undo history, pri
 | Show crop marks (`ui.cropMarks`, on) | Print Layout: two grey lines from each corner of the text area out into the margins, 18 pt long (our choice) or to the page edge | same lines; length unmeasured | ✅ |
 | Show text boundaries (`ui.textBoundaries`) | Print Layout: a dotted grey outline round the text area, or round each column | same | ✅ |
 | Show picture placeholders (`ui.picturePlaceholders`) | pictures, inline, floating and in shapes, drawn as an empty outlined rectangle; layout unchanged | same | ✅ |
+| Show text wrapped within the document window (`file.options` `wrapToWindow`, off) | Off, Draft and Outline wrap each section at its margins as on paper; on, they wrap to the window. No effect in Print Layout, Web Layout or Read Mode | same | ✅ |
 | Use draft font in Draft and Outline views (`ui.draftFont`, Courier New 10 pt) | Draft and Outline views lay every run out in the chosen font and size, keeping bold, italic, underline and colour | same | ✅ |
 | Style area pane width in Draft and Outline views (`view.styleAreaWidth`, points, 0 = none) | Draft and Outline views show a column at the left of the text naming each paragraph's style level with its first line (a table: each row's first cell), with a separator that drags to resize or close it; double-clicking a name selects the paragraph and opens Modify Style; screen only, kept in the user's preferences | same; Word's 22 in limit and clipping of long names unmeasured | ✅ |
 
@@ -201,6 +204,8 @@ Convert Text to Table (`table.fromText`) keeps spaces, tabs and no-break spaces 
 Word Count's shared counters follow the 2026-11-14 Word for Windows measurements for symbols, dash/bullet separators, spaces and invisible characters. U+2028/U+2029 as breaks, invisible-only tokens and the retained CJK punctuation exception remain unverified in Word.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0614: Draft and Outline wrap each section's lines at its own margins, as on the printed page (one column, as wide as its first); File › Options › Advanced › Show text wrapped within the document window (`file.options` `wrapToWindow`, off, per user) wraps them to the window instead. Print Layout, Web Layout and Read Mode unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0571: Shift+F3 (Change Case with no mode) picks the next case from the selected text as Word does: Sentence case, Capitalize Each Word, UPPERCASE or lowercase.

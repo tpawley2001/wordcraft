@@ -535,8 +535,11 @@ fn update_viewport(app: &mut WordApp, ui: &Ui, full: Rect, now: f64) -> Option<P
                 v.read_height = height;
             }
         }
-        if app.session.view.mode == wordcraft_layout::ViewMode::Web {
-            // Web Layout wraps to the work area (#1876): at once on entry or a zoom (the viewport
+        let mode = app.session.view.mode;
+        let to_window = matches!(mode, wordcraft_layout::ViewMode::Draft | wordcraft_layout::ViewMode::Outline) && app.session.prefs.wrap_to_window;
+        if mode == wordcraft_layout::ViewMode::Web || to_window {
+            // Web Layout wraps to the work area (#1876), and so do Draft and Outline with Show text
+            // wrapped within the document window: at once on entry or a zoom (the viewport
             // holds still), after a window drag has settled, and only on a real change.
             let scale = app.session.view.zoom.clamp(0.1, 5.0) * PX_PER_PT;
             let w = web_layout_width(full.width() - SCROLLBAR, scale);

@@ -30,6 +30,11 @@ impl Session {
             ViewMode::Read if immersive => self.view.immersive_column_width.points(self.view.immersive_window),
             ViewMode::Read => self.view.read_width,
             ViewMode::Web => self.view.web_width,
+            // Show text wrapped within the document window: Draft and Outline follow the window.
+            ViewMode::Draft | ViewMode::Outline if self.prefs.wrap_to_window => self.view.web_width,
+            // Else they wrap at each section's margins and the width isn't used; a value no
+            // window has keeps the two apart in the memo below.
+            ViewMode::Draft | ViewMode::Outline => -DRAFT_WIDTH,
             _ => DRAFT_WIDTH,
         };
         let height = if mode == ViewMode::Read { self.view.read_height } else { 0.0 };
@@ -90,6 +95,7 @@ impl Session {
             filename: filename.clone(),
             filepath: filepath.clone(),
             draft_font: self.view.draft_font.clone(),
+            wrap_to_window: self.prefs.wrap_to_window,
         };
         let l = Arc::new(wordcraft_layout::layout(&self.doc, &mut self.cache, &opts));
         let [newest, _] = std::mem::take(&mut self.layout);

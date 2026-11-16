@@ -592,10 +592,20 @@ fn accessibility(app: &mut WordApp, ui: &mut Ui) {
     }
 }
 
+/// Show text wrapped within the document window: Draft and Outline wrap to the window instead of
+/// each section's margins. A preference (`file.options` `wrapToWindow`), not part of the document.
+fn wrap_to_window(app: &mut WordApp, ui: &mut Ui) {
+    let mut on = app.session.prefs.wrap_to_window;
+    if ui.checkbox(&mut on, tl!("Show text wrapped within the document window")).changed() {
+        set(app, json!({ "wrapToWindow": on }));
+    }
+}
+
 /// Advanced › Show document content, in Word's order: picture placeholders, text boundaries, crop
 /// marks, and the draft font with its name and size. Screen settings, kept between runs.
 fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Show document content");
+    wrap_to_window(app, ui);
     for (label, id, mut on) in [
         (tl!("Show picture placeholders"), "ui.picturePlaceholders", app.ui.picture_placeholders),
         (tl!("Show text boundaries"), "ui.textBoundaries", app.ui.text_boundaries),
