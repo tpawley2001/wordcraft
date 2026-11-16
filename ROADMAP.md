@@ -207,6 +207,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-16: P0641: the pointer is the arrow over the workspace beside and between the pages, as in Word; only the page shows the I-beam, and a selection drag from a page keeps it (#4114, from #4427). Readiness estimates unchanged.
 - 2026-11-15: P0632: European keyboard font-size shortcuts: Ctrl+< shrinks and Ctrl+Shift+< (typing >) grows; Customize Keyboard records Mod+< / Mod+Shift+>. Existing US shortcuts are preserved. Readiness estimates unchanged.
 
 - 2026-11-16: P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.
