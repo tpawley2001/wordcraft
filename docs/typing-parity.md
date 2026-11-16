@@ -1,6 +1,6 @@
 # Typing parity with Word
 
-> **Last updated:** 2026-11-14 · **Change:** trivial (P0517: applying a paragraph style clears direct paragraph formatting and a direct bullet or number.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0607: Use smart cursoring: after scrolling, an arrow key moves the caret on the page in view; earlier: P0517: applying a paragraph style clears direct paragraph formatting and a direct bullet or number.)
 
 > **Last updated:** 2026-11-14 · **Change:** trivial (P0513: Change Case preserves words in capitals and follows Word’s word and sentence boundaries; earlier: P0516: underline shortcuts and exclusive font effects follow Word; earlier: P0514: Ctrl+Space and Clear All Formatting keep highlighting; Ctrl+Space also removes the character style and Ctrl+Q a directly applied bullet or number, as measured in Word. Readiness estimates unchanged. Earlier: P0511: Select Sentence, F8 and Delete Previous Sentence recognize closing quotes/brackets, tabs, line breaks and terminator runs. Readiness estimates unchanged)
 
@@ -448,6 +448,7 @@ address are checked (`address_after_a_wide_space_is_an_internet_token`, in craft
 |---|---|---|
 | Typing over a selection | replaces it (Word's default); with "Typing replaces selected text" off, the text goes in front of the selection, which stays | `typing_over_a_selection_follows_the_replace_selection_option` |
 | Overtype on, typing | each character replaces the one after the caret, never the paragraph mark or an object; Insert switches overtype only with the Insert-key option on (off by default, as in Word) | `overtype_replaces_the_characters_after_the_caret` |
+| Arrow key after scrolling the caret out of view | with "Use smart cursoring" on (Word's default), a plain Left/Right/Up/Down puts the caret on the first line at the top of the window and the view stays; off, it moves from the old caret and scrolls back. Shift/Ctrl arrows, Home/End and Page Up/Down are unchanged | `down_arrow_after_scrolling_lands_on_the_page_in_view` (ui-egui) |
 
 ## Text direction
 
@@ -754,3 +755,4 @@ Underline shortcuts and font effects follow Word: Ctrl+U makes any other underli
 | 2026-10-31 | trivial | `*bold*` and `_italic_` also convert when a closing bracket or quote follows the closing mark: `(*see note*)` (#4098) |
 | 2026-11-14 | trivial | AutoCorrect's symbol entries as Microsoft 365 Word's: `(e)` → €, `:)` → 😊, `;)` `;-)` → 😉, `:-|` → 😐, `-->` `<--` `==>` `<==` `<=>` → Wingdings arrows; `->` `<-` `=>` stay as typed |
 | 2026-11-14 | trivial | Applying a paragraph style clears direct paragraph formatting (indents, alignment, spacing, keeps, tabs, borders, shading, outline level) and a direct bullet or number, for every paragraph style |
+| 2026-11-15 | trivial | Use smart cursoring (on by default): after scrolling the caret out of view, a plain arrow key puts it at the top of the window instead of scrolling back |
