@@ -6,7 +6,7 @@
 //! [`spec_of`] turns a chart part back into the model only when writing that model again gives
 //! the same markup, so a chart with anything the model leaves out stays as it was read.
 
-use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, LegendPos, MAX_POINTS, MAX_SERIES};
+use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, LegendPos, MAX_POINTS, MAX_SERIES, ValueAxis};
 use wordcraft_doc::graphic::GraphicItem;
 use wordcraft_doc::props::Rgb;
 
@@ -107,6 +107,7 @@ fn bounded(spec: &ChartSpec) -> ChartSpec {
         title: spec.title.clone(),
         legend: spec.legend,
         data_labels: spec.data_labels,
+        value_axis: spec.value_axis.clone(),
     }
     .sanitized()
 }
@@ -185,12 +186,12 @@ fn plot(w: &mut W, spec: &ChartSpec) {
     match k {
         ChartType::Pie | ChartType::Doughnut => {}
         ChartType::Scatter => {
-            value_axis(w, CAT_AX, VAL_AX, "b", false, "midCat");
-            value_axis(w, VAL_AX, CAT_AX, "l", true, "midCat");
+            value_axis(w, CAT_AX, VAL_AX, "b", false, "midCat", &ValueAxis::default());
+            value_axis(w, VAL_AX, CAT_AX, "l", true, "midCat", &spec.value_axis);
         }
         _ => {
             category_axis(w, if horizontal { "l" } else { "b" });
-            value_axis(w, VAL_AX, CAT_AX, if horizontal { "b" } else { "l" }, true, "between");
+            value_axis(w, VAL_AX, CAT_AX, if horizontal { "b" } else { "l" }, true, "between", &spec.value_axis);
         }
     }
 }
@@ -305,17 +306,28 @@ fn category_axis(w: &mut W, pos: &str) {
     w.close("c:catAx");
 }
 
-/// A value axis: with gridlines and no axis line (`grid`), else with its line and no gridlines.
-fn value_axis(w: &mut W, id: &str, cross: &str, pos: &str, grid: bool, between: &str) {
+/// A value axis: with gridlines and no axis line (`grid`), else with its line and no gridlines;
+/// `set` gives its bounds (ECMA-376 Part 1 §21.2.2.164 `c:scaling`: orientation, max, min), major
+/// unit (§21.2.2.100) and number format (§21.2.2.121), each written only when not automatic.
+fn value_axis(w: &mut W, id: &str, cross: &str, pos: &str, grid: bool, between: &str, set: &ValueAxis) {
     w.open("c:valAx", &[]);
     w.empty("c:axId", &[("val", id)]);
     w.open("c:scaling", &[]);
     w.empty("c:orientation", &[("val", "minMax")]);
+    if let Some(v) = set.max {
+        w.empty("c:max", &[("val", &num(v))]);
+    }
+    if let Some(v) = set.min {
+        w.empty("c:min", &[("val", &num(v))]);
+    }
     w.close("c:scaling");
     w.empty("c:delete", &[("val", "0")]);
     w.empty("c:axPos", &[("val", pos)]);
     if grid {
         w.empty("c:majorGridlines", &[]);
+    }
+    if let Some(f) = &set.number_format {
+        w.empty("c:numFmt", &[("formatCode", f), ("sourceLinked", "0")]);
     }
     w.empty("c:majorTickMark", &[("val", "none")]);
     w.empty("c:minorTickMark", &[("val", "none")]);
@@ -330,6 +342,9 @@ fn value_axis(w: &mut W, id: &str, cross: &str, pos: &str, grid: bool, between: 
     w.empty("c:crossAx", &[("val", cross)]);
     w.empty("c:crosses", &[("val", "autoZero")]);
     w.empty("c:crossBetween", &[("val", between)]);
+    if let Some(v) = set.major_unit {
+        w.empty("c:majorUnit", &[("val", &num(v))]);
+    }
     w.close("c:valAx");
 }
 
@@ -384,10 +399,28 @@ pub(crate) fn spec_of(space: &El) -> Option<ChartSpec> {
         _ => LegendPos::Right,
     });
     let data_labels = ty.child("c:dLbls").and_then(|d| d.child("c:showVal")).and_then(|v| v.attr("val")) == Some("1");
-    let spec = ChartSpec { kind, categories, series, title, legend, data_labels }.sanitized();
+    let value_axis = axis_of(plot, kind).unwrap_or_default();
+    let spec = ChartSpec { kind, categories, series, title, legend, data_labels, value_axis }.sanitized();
     // Editable only when nothing would be lost: writing the model again gives the same part.
     let again = xml::parse(chart_xml(&spec).as_bytes()).ok()?;
     same(space, &again, 0).then_some(spec)
+}
+
+/// The settings of the value axis [`chart_xml`] writes for a chart of type `kind` (scatter: the Y
+/// axis). `None` for pie and doughnut charts, which have none.
+fn axis_of(plot: &El, kind: ChartType) -> Option<ValueAxis> {
+    if kind.is_round() {
+        return None;
+    }
+    let ax = plot.children("c:valAx").find(|a| a.child("c:axId").and_then(|i| i.attr("val")) == Some(VAL_AX))?;
+    let scaling = ax.child("c:scaling");
+    let num = |e: Option<&El>| e.and_then(|e| e.attr("val")).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite());
+    Some(ValueAxis {
+        min: num(scaling.and_then(|s| s.child("c:min"))),
+        max: num(scaling.and_then(|s| s.child("c:max"))),
+        major_unit: num(ax.child("c:majorUnit")),
+        number_format: ax.child("c:numFmt").and_then(|f| f.attr("formatCode")).map(str::to_string),
+    })
 }
 
 /// The points of a `c:strLit` / `c:numLit` (or a cache) as texts by index, `ptCount` long.
@@ -465,6 +498,7 @@ mod tests {
             title: None,
             legend: None,
             data_labels: false,
+            value_axis: Default::default(),
         };
         let x = chart_xml(&spec);
         let series = x.matches("<c:ser>").count();
