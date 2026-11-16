@@ -8902,3 +8902,25 @@ fn mouse_wheel_scroll_speed_does_not_alter_ctrl_wheel_zoom_distance() {
             .drop_without_applying_deltas();
     }
 }
+
+/// File › Options › ScreenTip style and Show shortcut keys in ScreenTips are kept between runs;
+/// older or damaged settings read as Word's defaults.
+#[test]
+fn screen_tip_settings_survive_a_restart() {
+    let mut a = app();
+    assert_eq!(a.ui.screen_tip_style, crate::widgets::ScreenTipStyle::Descriptions);
+    assert!(a.ui.show_shortcuts_in_tips);
+    a.ui.screen_tip_style = crate::widgets::ScreenTipStyle::Hidden;
+    a.ui.show_shortcuts_in_tips = false;
+    let saved = serde_json::to_string(&a.prefs()).unwrap();
+    let mut b = app();
+    b.apply_prefs(serde_json::from_str(&saved).unwrap());
+    assert_eq!(b.ui.screen_tip_style, crate::widgets::ScreenTipStyle::Hidden);
+    assert!(!b.ui.show_shortcuts_in_tips);
+    let old: UiState = serde_json::from_str(r#"{"tab":"Insert"}"#).unwrap();
+    assert_eq!(old.screen_tip_style, crate::widgets::ScreenTipStyle::Descriptions);
+    assert!(old.show_shortcuts_in_tips);
+    let junk: UiState = serde_json::from_str(r#"{"tab":"Insert","screenTipStyle":"Sideways","recentCount":3}"#).unwrap();
+    assert_eq!(junk.screen_tip_style, crate::widgets::ScreenTipStyle::Descriptions);
+    assert_eq!(junk.recent_count, 3, "the rest of the settings still load");
+}

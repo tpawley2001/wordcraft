@@ -421,6 +421,12 @@ pub struct UiState {
     pub text_boundaries: bool,
     /// … pictures drawn as empty outlined rectangles. Screen only.
     pub picture_placeholders: bool,
+    /// File › Options › General › ScreenTip style: feature descriptions (Word's default), none,
+    /// or no ScreenTips on ribbon and toolbar controls.
+    #[serde(deserialize_with = "lenient_screen_tip_style")]
+    pub screen_tip_style: widgets::ScreenTipStyle,
+    /// File › Options › Advanced › Display › Show shortcut keys in ScreenTips (on, as in Word).
+    pub show_shortcuts_in_tips: bool,
     /// … Draft and Outline views show all text in [`UiState::draft_font_name`] at
     /// [`UiState::draft_font_size`] points. Screen only.
     pub draft_font: bool,
@@ -553,6 +559,8 @@ impl Default for UiState {
             crop_marks: true,
             text_boundaries: false,
             picture_placeholders: false,
+            screen_tip_style: widgets::ScreenTipStyle::Descriptions,
+            show_shortcuts_in_tips: true,
             draft_font: false,
             draft_font_name: DEFAULT_DRAFT_FONT.into(),
             draft_font_size: DEFAULT_DRAFT_FONT_SIZE,
@@ -641,6 +649,11 @@ pub fn recent_fonts_from<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<St
 fn lenient_styles_pane_dock<'de, D: serde::Deserializer<'de>>(d: D) -> Result<wordcraft_engine::StylesPaneDock, D::Error> {
     let v = Value::deserialize(d)?;
     Ok(v.as_str().and_then(wordcraft_engine::StylesPaneDock::parse).unwrap_or_default())
+}
+
+/// An unknown saved ScreenTip style reads as the default.
+fn lenient_screen_tip_style<'de, D: serde::Deserializer<'de>>(d: D) -> Result<widgets::ScreenTipStyle, D::Error> {
+    Ok(serde_json::from_value(Value::deserialize(d)?).unwrap_or_default())
 }
 
 /// Anything but four finite numbers reads as no saved rect; `craft_ui::panes` brings a saved one

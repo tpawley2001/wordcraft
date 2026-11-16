@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged; earlier: P0605: Math AutoCorrect has Word's 780 built-in entries (add, replace and delete your own), Recognized Functions… (Word's 55, add and delete) and Use Math AutoCorrect rules outside of math regions (`tools.autocorrect` `mathAdd`, `mathDelete`, `addFunction`, `deleteFunction`, `mathReplaceText`, `mathOutside`). Readiness estimates unchanged; dialog count +1)
@@ -206,7 +208,11 @@ Word Count's shared counters follow the 2026-11-14 Word for Windows measurements
 
 Modify Style’s existing Automatically update flag is honoured by engine formatting commands (P0608). Only paragraph styles redefine, and only whole paragraphs promote character formatting; tracked edits retain direct formatting.
 
+File › Options › General › ScreenTip style (Show feature descriptions, Don't show feature descriptions, Don't show ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips shape every ribbon and Quick Access Toolbar hint, as in Word (P0618). Our reason line on a disabled control stays under "Don't show feature descriptions" (unverified in Word).
+
 ## Revision history
+
+> 2026-11-15 · trivial · P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.
 

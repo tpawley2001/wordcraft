@@ -119,9 +119,15 @@ pub(super) fn tooltip(app: &WordApp, resp: Response, label: &str, id: &str) -> R
     } else {
         Some(app.session.why_disabled(id).unwrap_or(""))
     };
-    let (title, notes) = tooltip_lines(label, &shortcut_text(app, id), &desc, reason);
-    show_hint(&resp, &title, &notes);
+    show_screen_tip(app, &resp, label, &shortcut_text(app, id), &desc, reason);
     resp
+}
+
+/// Show a control's ScreenTip on `resp` under the user's ScreenTip settings (File › Options).
+pub(super) fn show_screen_tip(app: &WordApp, resp: &Response, label: &str, shortcut: &str, desc: &str, disabled: Option<&str>) {
+    if let Some((title, notes)) = screen_tip_lines(app.ui.screen_tip_style, app.ui.show_shortcuts_in_tips, label, shortcut, desc, disabled) {
+        show_hint(resp, &title, &notes);
+    }
 }
 
 /// Record a keytip badge over a control's rect when keytips are showing commands. `ui` reaches
@@ -153,9 +159,8 @@ pub(super) fn keytip_badge(ui: &Ui, rect: Rect, id: &str, name: &str) {
 }
 
 /// File › Options › General › ScreenTip style (Word's three choices).
-#[cfg_attr(not(test), allow(dead_code))] // P0618 stub: wire it into the hover hints
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(crate) enum ScreenTipStyle {
+pub enum ScreenTipStyle {
     /// Show feature descriptions in ScreenTips (Word's default).
     #[default]
     Descriptions,
@@ -167,7 +172,6 @@ pub(crate) enum ScreenTipStyle {
 
 /// [`tooltip_lines`] under the ScreenTip style and File › Options › Advanced › Show shortcut keys
 /// in ScreenTips; `None` when no tip is shown at all.
-#[cfg_attr(not(test), allow(dead_code))] // P0618 stub
 pub(crate) fn screen_tip_lines(
     style: ScreenTipStyle,
     show_shortcuts: bool,
@@ -176,6 +180,11 @@ pub(crate) fn screen_tip_lines(
     desc: &str,
     disabled: Option<&str>,
 ) -> Option<(String, Vec<String>)> {
-    let _ = (style, show_shortcuts);
+    if style == ScreenTipStyle::Hidden {
+        return None;
+    }
+    let shortcut = if show_shortcuts { shortcut } else { "" };
+    // The disabled reason is ours, not a Word feature description: it stays.
+    let desc = if style == ScreenTipStyle::NoDescriptions { "" } else { desc };
     Some(tooltip_lines(label, shortcut, desc, disabled))
 }

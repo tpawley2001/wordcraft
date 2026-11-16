@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged; earlier: P0605: Math AutoCorrect has Word's 780 built-in entries (add, replace and delete your own), Recognized Functions… (Word's 55, add and delete) and Use Math AutoCorrect rules outside of math regions (`tools.autocorrect` `mathAdd`, `mathDelete`, `addFunction`, `deleteFunction`, `mathReplaceText`, `mathOutside`). Readiness estimates unchanged; earlier: P0602: Save as Plain Text opens File Conversion (encoding, line ends, character substitution, red preview), as in Word. Readiness estimates unchanged)
@@ -275,8 +277,12 @@ Formatting restriction settings now include theme and style set switching locks,
 
 Automatically update now redefines paragraph styles for paragraph formatting and whole-paragraph character formatting (P0608); broader style and dialog depth work remains open.
 
+File › Options has ScreenTip style (feature descriptions, none, or no ScreenTips) and Show shortcut keys in ScreenTips (P0618); the rest of gap #7 is unchanged.
+
 Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM437) or another encoding (Unicode with a byte order mark, Windows and East Asian code pages), the line ends and character substitution, with a preview that shows in red what won't save (P0602). Insert line breaks and the open-side encoding dialog remain open in gap #7.
 ## Revision history
+
+> 2026-11-15 · trivial · P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.
 
