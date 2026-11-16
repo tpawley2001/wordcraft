@@ -282,6 +282,26 @@ mod tests {
         }
     }
 
+    #[test]
+    fn european_font_size_shortcuts_have_unique_default_owners() {
+        let reg = crate::cmd::registry();
+        let map = KeyMap::default();
+        for (key, owner) in [
+            ("Mod+<", "format.shrinkFont"),
+            ("Mod+Shift+>", "format.growFont"),
+            ("Mod+Shift+<", "format.shrinkFont"),
+            ("Mod+Shift+,", "format.shrinkFont"),
+            ("Mod+Shift+.", "format.growFont"),
+            ("Mod+[", "format.shrinkFont1"),
+            ("Mod+]", "format.growFont1"),
+        ] {
+            let owners: Vec<_> =
+                reg.all().iter().flat_map(|s| builtin_keys(s).map(move |k| (k, s.id))).filter_map(|(k, id)| (k == key).then_some(id)).collect();
+            assert_eq!(owners, [owner], "{key} must have exactly one default binding");
+            assert_eq!(map.resolve(&reg, key).map(|s| s.id), Some(owner));
+        }
+    }
+
     /// #368: an assignment overrides a built-in key, a removed built-in key runs nothing, and
     /// Reset All brings the built-ins back.
     #[test]
