@@ -151,3 +151,31 @@ pub(super) fn keytip_badge(ui: &Ui, rect: Rect, id: &str, name: &str) {
         });
     }
 }
+
+/// File › Options › General › ScreenTip style (Word's three choices).
+#[cfg_attr(not(test), allow(dead_code))] // P0618 stub: wire it into the hover hints
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum ScreenTipStyle {
+    /// Show feature descriptions in ScreenTips (Word's default).
+    #[default]
+    Descriptions,
+    /// Don't show feature descriptions in ScreenTips: the name (and shortcut) only.
+    NoDescriptions,
+    /// Don't show ScreenTips.
+    Hidden,
+}
+
+/// [`tooltip_lines`] under the ScreenTip style and File › Options › Advanced › Show shortcut keys
+/// in ScreenTips; `None` when no tip is shown at all.
+#[cfg_attr(not(test), allow(dead_code))] // P0618 stub
+pub(crate) fn screen_tip_lines(
+    style: ScreenTipStyle,
+    show_shortcuts: bool,
+    label: &str,
+    shortcut: &str,
+    desc: &str,
+    disabled: Option<&str>,
+) -> Option<(String, Vec<String>)> {
+    let _ = (style, show_shortcuts);
+    Some(tooltip_lines(label, shortcut, desc, disabled))
+}
