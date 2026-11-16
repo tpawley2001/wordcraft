@@ -65,6 +65,7 @@ mod font_sizes;
 mod shrink_font_steps;
 mod sort_number_date_word;
 mod grid_settings;
+mod embed_fonts_save;
 mod fonts;
 mod includetext;
 mod includetext_update_source;
