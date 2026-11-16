@@ -1002,6 +1002,16 @@ impl WordApp {
                 json!({"ctrlClickFollowsLinks": self.ui.ctrl_click_follows_links})
             }
             "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" => return Some(self.show_content_option(id, p)),
+            "ui.fieldShading" => {
+                // File › Options › Advanced › Show document content › Field shading: `value`
+                // `never`, `always` or `selected` (When selected); no value reads it. Screen only.
+                match p.get("value") {
+                    None => {}
+                    Some(Value::String(v)) if crate::FIELD_SHADING_VALUES.contains(&v.as_str()) => self.ui.field_shading = v.clone(),
+                    Some(_) => return Some(Err("`value` must be \"never\", \"always\" or \"selected\"".into())),
+                }
+                json!({"fieldShading": self.ui.field_shading})
+            }
             "ui.draftFont" => return Some(self.draft_font_command(p)),
             "ui.startScreen" => {
                 // File › Options › General › Start-up (#766): `value` true or false turns showing

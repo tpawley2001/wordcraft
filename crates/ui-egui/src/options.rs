@@ -593,7 +593,8 @@ fn accessibility(app: &mut WordApp, ui: &mut Ui) {
 }
 
 /// Advanced › Show document content, in Word's order: picture placeholders, text boundaries, crop
-/// marks, and the draft font with its name and size. Screen settings, kept between runs.
+/// marks, field shading, and the draft font with its name and size. Screen settings, kept between
+/// runs.
 fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Show document content");
     for (label, id, mut on) in [
@@ -605,6 +606,26 @@ fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
             let _ = app.run(id, json!({"value": on}));
         }
     }
+    ui.horizontal(|ui| {
+        let label = ui.label(tl!("Field shading:"));
+        let name = |v: &str| match v {
+            "never" => tl!("Never"),
+            "always" => tl!("Always"),
+            _ => tl!("When selected"),
+        };
+        let current = app.ui.field_shading.clone();
+        craft_ui::ComboBox::from_id_salt("options_field_shading")
+            .selected_text(name(&current))
+            .show_ui(ui, |ui| {
+                for v in crate::FIELD_SHADING_VALUES {
+                    if ui.selectable_label(current == v, name(v)).clicked() && current != v {
+                        let _ = app.run("ui.fieldShading", json!({"value": v}));
+                    }
+                }
+            })
+            .response
+            .labelled_by(label.id);
+    });
     let mut draft = app.ui.draft_font;
     if ui.checkbox(&mut draft, tl!("Use draft font in Draft and Outline views")).changed() {
         let _ = app.run("ui.draftFont", json!({"value": draft}));
@@ -754,6 +775,16 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     {
         let _ = app.run("ui.caretAnimation", json!({"value": caret}));
     }
+    ui.add_space(8.0);
+    section(ui, "Cut, copy, and paste");
+    flag(app, ui, "Use smart cut and paste", "smartCutPaste", pr.smart_cut_paste);
+    // Word keeps this under the Settings button; it only counts while smart cut and paste is on.
+    ui.horizontal(|ui| {
+        ui.add_space(20.0);
+        ui.add_enabled_ui(pr.smart_cut_paste, |ui| {
+            flag(app, ui, "Adjust sentence and word spacing automatically", "pasteAdjustWordSpacing", pr.paste_adjust_word_spacing);
+        });
+    });
     if cfg!(all(unix, not(target_os = "macos"))) {
         ui.add_space(8.0);
         section(ui, "Linux display server");

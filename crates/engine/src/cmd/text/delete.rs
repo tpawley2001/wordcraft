@@ -2,7 +2,7 @@ use super::enter_tab::tab_indent_on;
 use super::{Block, CmdResult, NumRef, OBJ, Pos, Selection, Session, StoryRef, Value, delete_selection, delete_selection_effect, sel_result};
 
 pub(super) fn backspace(s: &mut Session, v: &Value) -> CmdResult {
-    let r = backspace_inner(s, v)?;
+    let r = backspace_inner(s, v, true)?;
     crate::cmd::controls::restore_placeholder(s)?;
     Ok(r)
 }
@@ -29,11 +29,16 @@ fn remove_number(s: &mut Session, f: &Pos, n: NumRef) -> CmdResult {
     sel_result(s)
 }
 
-fn backspace_inner(s: &mut Session, _: &Value) -> CmdResult {
+fn backspace_inner(s: &mut Session, _: &Value, smart: bool) -> CmdResult {
     s.goal_x = None;
     s.pending = None;
     if !s.sel.is_collapsed() {
+        let (a, b) = s.sel.ordered();
+        let smart = smart && crate::cmd::smart_space::whole_words(s, &a, &b);
         let effect = delete_selection_effect(s)?;
+        if smart {
+            crate::cmd::smart_space::after_delete(s)?;
+        }
         s.set_ime_edit_outcome(crate::ImeEditOutcome {
             classified: true,
             content_changed: effect.content_changed,
@@ -134,18 +139,23 @@ fn backspace_inner(s: &mut Session, _: &Value) -> CmdResult {
 }
 
 pub(super) fn delete(s: &mut Session, v: &Value) -> CmdResult {
-    let r = delete_inner(s, v)?;
+    let r = delete_inner(s, v, true)?;
     crate::cmd::controls::restore_placeholder(s)?;
     Ok(r)
 }
 
 /// Deletes the selection or the character after the caret, joins the next paragraph, handles a
 /// following table and removes a trailing section break; tracked changes keep their marks.
-fn delete_inner(s: &mut Session, _: &Value) -> CmdResult {
+fn delete_inner(s: &mut Session, _: &Value, smart: bool) -> CmdResult {
     s.goal_x = None;
     s.pending = None;
     if !s.sel.is_collapsed() {
+        let (a, b) = s.sel.ordered();
+        let smart = smart && crate::cmd::smart_space::whole_words(s, &a, &b);
         let effect = delete_selection_effect(s)?;
+        if smart {
+            crate::cmd::smart_space::after_delete(s)?;
+        }
         s.set_ime_edit_outcome(crate::ImeEditOutcome {
             classified: true,
             content_changed: effect.content_changed,
@@ -206,14 +216,28 @@ fn delete_inner(s: &mut Session, _: &Value) -> CmdResult {
     sel_result(s)
 }
 
+/// Backspace without the smart cut and paste spacing fix (the word deletes keep their own).
+fn backspace_plain(s: &mut Session, v: &Value) -> CmdResult {
+    let r = backspace_inner(s, v, false)?;
+    crate::cmd::controls::restore_placeholder(s)?;
+    Ok(r)
+}
+
+/// Delete without the smart cut and paste spacing fix.
+fn delete_plain(s: &mut Session, v: &Value) -> CmdResult {
+    let r = delete_inner(s, v, false)?;
+    crate::cmd::controls::restore_placeholder(s)?;
+    Ok(r)
+}
+
 pub(super) fn delete_word_back(s: &mut Session, v: &Value) -> CmdResult {
     if !s.sel.is_collapsed() {
-        return backspace(s, v);
+        return backspace_plain(s, v);
     }
     let f = s.sel.focus.clone();
     let Some(para) = s.doc.para_at(&f) else { return sel_result(s) };
     if f.off == 0 {
-        return backspace(s, v);
+        return backspace_plain(s, v);
     }
     let a = Pos { off: para.word_start(f.off), ..f.clone() };
     s.sel = Selection { anchor: a, focus: f };
@@ -224,12 +248,12 @@ pub(super) fn delete_word_back(s: &mut Session, v: &Value) -> CmdResult {
 
 pub(super) fn delete_word_fwd(s: &mut Session, v: &Value) -> CmdResult {
     if !s.sel.is_collapsed() {
-        return delete(s, v);
+        return delete_plain(s, v);
     }
     let f = s.sel.focus.clone();
     let Some(para) = s.doc.para_at(&f) else { return sel_result(s) };
     if f.off >= para.len() {
-        return delete(s, v);
+        return delete_plain(s, v);
     }
     let b = Pos { off: para.word_end(f.off), ..f.clone() };
     s.sel = Selection { anchor: f, focus: b };
@@ -242,7 +266,7 @@ pub(super) fn delete_word_fwd(s: &mut Session, v: &Value) -> CmdResult {
 /// Sentence boundaries match Select Sentence. Never remove a paragraph or cell boundary.
 pub(super) fn delete_sentence_back(s: &mut Session, v: &Value) -> CmdResult {
     if !s.sel.is_collapsed() {
-        return backspace(s, v);
+        return backspace_plain(s, v);
     }
     let mut f = s.sel.focus.clone();
     let Some(para) = s.doc.para_at(&f) else { return sel_result(s) };

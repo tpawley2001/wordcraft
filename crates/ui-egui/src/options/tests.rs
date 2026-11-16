@@ -445,6 +445,7 @@ fn advanced_animation_turns_the_caret_animation_off_and_on() {
     h.run_steps(4);
     assert!(h.query_by_label("Animation").is_some(), "the section is there");
     // Additional editing options can put this setting below the visible scroll area.
+    // The section sits low in the pane: bring it into view before clicking.
     h.get_by_label("Animate the caret (it glides and fades)").scroll_to_me();
     h.run_steps(4);
     h.get_by_label("Animate the caret (it glides and fades)").click();
@@ -558,6 +559,30 @@ fn screen_paper_color_options_round_trip_and_work_without_a_document() {
     h.get_by_label("Warm cream").click();
     h.run_steps(3);
     assert_eq!(h.state().session.prefs.paper_color, PaperColor::Cream);
+}
+
+/// File › Options › Advanced › Cut, copy, and paste: Use smart cut and paste and, under it,
+/// Adjust sentence and word spacing automatically are the two preferences.
+#[test]
+fn advanced_smart_cut_and_paste_checkboxes_set_the_preferences() {
+    let mut a = app();
+    a.run("file.options", json!({"pane": "advanced"})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 1800.0)).build_ui_state(
+        |ui, app: &mut WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        a,
+    );
+    h.run_steps(4);
+    assert!(h.state().session.prefs.smart_cut_paste && h.state().session.prefs.paste_adjust_word_spacing, "both on by default");
+    h.get_by_label("Adjust sentence and word spacing automatically").click();
+    h.run_steps(4);
+    assert!(!h.state().session.prefs.paste_adjust_word_spacing, "the checkbox turns it off");
+    h.get_by_label("Use smart cut and paste").click();
+    h.run_steps(4);
+    assert!(!h.state().session.prefs.smart_cut_paste);
 }
 
 #[test]

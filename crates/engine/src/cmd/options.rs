@@ -53,7 +53,7 @@ fn style_area_width(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 /// The on/off settings by their `file.options` name.
-fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 19] {
+fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 21] {
     [
         ("typingReplacesSelection", |p| &mut p.typing_replaces_selection),
         ("insertKeyPaste", |p| &mut p.insert_key_paste),
@@ -74,6 +74,8 @@ fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 19] {
         ("ignoreNumbers", |p| &mut p.ignore_numbers),
         ("ignoreInternet", |p| &mut p.ignore_internet),
         ("alwaysCreateBackup", |p| &mut p.always_create_backup),
+        ("smartCutPaste", |p| &mut p.smart_cut_paste),
+        ("pasteAdjustWordSpacing", |p| &mut p.paste_adjust_word_spacing),
     ]
 }
 
@@ -282,6 +284,8 @@ pub fn current(s: &Session) -> Value {
         "ignoreNumbers": pr.ignore_numbers,
         "ignoreInternet": pr.ignore_internet,
         "alwaysCreateBackup": pr.always_create_backup,
+        "smartCutPaste": pr.smart_cut_paste,
+        "pasteAdjustWordSpacing": pr.paste_adjust_word_spacing,
         "dictionary": wordcraft_proof::user_dictionary(),
         "dictionariesFolder": pr.dictionaries_folder,
         "userTemplatesFolder": pr.user_templates_folder,

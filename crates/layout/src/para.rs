@@ -94,6 +94,11 @@ pub struct ParaLayout {
     /// The paragraph offsets (ascending) of the legacy form fields laid out as forms rather than
     /// as their field codes: their clusters are what Form Field Shading draws on grey.
     pub forms: Vec<usize>,
+    /// The paragraph offsets (ascending) of the other fields ([`wordcraft_doc::InlineObject::Field`]),
+    /// laid out as their results or codes, each with whether layout drew its code on grey (no
+    /// highlight or shading of its own). Field shading ([`crate::display::FieldShading`]) draws
+    /// their clusters on grey.
+    pub fields: Vec<(usize, bool)>,
     /// The note separators among its objects (inline objects' indexes). A line holding one is at
     /// least as tall as the paragraph mark's font, as in Word.
     pub note_seps: Vec<usize>,
