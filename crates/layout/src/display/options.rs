@@ -62,9 +62,46 @@ pub struct DisplayOptions {
     /// Print drawings created in Word off: nothing is drawn for shapes (ink excepted), text boxes
     /// and their text, WordArt and drawing canvases. The layout is unchanged.
     pub hide_drawings: bool,
+    /// File › Options › Display › Show highlighter marks off: highlight colour is not drawn (the
+    /// text keeps its highlight; shading still draws). Set on screen and for print jobs; PDF
+    /// export leaves it off.
+    pub hide_highlight: bool,
     /// Draw legacy form fields on grey when the document's Form Field Shading is on. Screen
     /// only; print and PDF leave it off.
     pub form_field_shading: bool,
+    /// File › Options › Advanced › Field shading: which fields' text is drawn on grey. Screen
+    /// only; print and PDF leave it [`FieldShading::Never`].
+    pub field_shading: FieldShading,
+    /// The selection (start, end in document order; equal for a caret) that
+    /// [`FieldShading::WhenSelected`] shades the fields of.
+    pub field_shading_selection: Option<(wordcraft_doc::Pos, wordcraft_doc::Pos)>,
+}
+
+/// Field shading (File › Options › Advanced › Show document content): fields' text (results,
+/// or codes in braces) on light grey ([`crate::fields::FIELD_SHADING`]) behind the line band.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum FieldShading {
+    /// No field is shaded; on screen field codes lose their grey too.
+    #[default]
+    Never,
+    /// Every field is shaded.
+    Always,
+    /// Only a field the selection overlaps, or the caret is inside.
+    WhenSelected,
+}
+
+impl FieldShading {
+    /// Whether the field from `start` to `end` (its first and last markers) is shaded with the
+    /// selection `sel` (start, end): always, or when selected while the selection overlaps it or
+    /// a caret is inside it (not just before or just after it).
+    pub fn shades(self, sel: Option<&(wordcraft_doc::Pos, wordcraft_doc::Pos)>, start: &wordcraft_doc::Pos, end: &wordcraft_doc::Pos) -> bool {
+        match (self, sel) {
+            (FieldShading::Always, _) => true,
+            (FieldShading::WhenSelected, Some((a, b))) if a == b => start < a && a < end,
+            (FieldShading::WhenSelected, Some((a, b))) => a <= end && b > start,
+            _ => false,
+        }
+    }
 }
 
 impl Default for DisplayOptions {
@@ -83,7 +120,10 @@ impl Default for DisplayOptions {
             picture_placeholders: false,
             forms_data_only: false,
             hide_drawings: false,
+            hide_highlight: false,
             form_field_shading: false,
+            field_shading: FieldShading::Never,
+            field_shading_selection: None,
         }
     }
 }

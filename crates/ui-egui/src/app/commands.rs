@@ -83,6 +83,14 @@ impl WordApp {
         {
             return r;
         }
+        // Saving as Plain Text asks for the encoding first (File Conversion).
+        if let Some(r) = crate::file_conversion::before_save(self, id, &mut params) {
+            return r;
+        }
+        // With Confirm file format conversion on open, opening plain text asks for its encoding.
+        if let Some(r) = crate::file_conversion::before_open(self, id, &params) {
+            return r;
+        }
         let applied = applied_font(id, &params);
         let r = self.execute_user(id, params);
         // A save error already on the status line is the reason to see; the refusal shows otherwise.
@@ -193,7 +201,9 @@ impl WordApp {
                 return Err("the document is open read-only: save it under another name (Save As)".into());
             }
             let name = params.get("path").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| self.web_save_name(id));
-            let name = if id == "file.exportPdf" && !name.ends_with(".pdf") { format!("{name}.pdf") } else { name };
+            // Inspect only the suffix bytes: no full-name allocation or UTF-8 slicing.
+            let has_pdf_suffix = name.as_bytes().last_chunk::<4>().is_some_and(|suffix| suffix.eq_ignore_ascii_case(b".pdf"));
+            let name = if id == "file.exportPdf" && !has_pdf_suffix { format!("{name}.pdf") } else { name };
             // A save with a password encrypts this and later saves (`file.save`'s `password`).
             if matches!(id, "file.save" | "file.saveAs")
                 && let Some(pw) = params.get("password").filter(|v| !v.is_null())
@@ -604,14 +614,18 @@ impl WordApp {
     }
 
     /// Commands that live in the UI layer.
-    /// `ui.cropMarks`, `ui.textBoundaries`, `ui.picturePlaceholders`.
+    /// `ui.cropMarks`, `ui.textBoundaries`, `ui.picturePlaceholders`, `ui.showHighlight`,
+    /// `ui.showDrawings`, `ui.showBackgrounds`.
     fn show_content_option(&mut self, id: &str, p: &Value) -> Result<Value, String> {
-        // File › Options › Advanced › Show document content: `value` true or false turns
-        // crop marks, text boundaries or picture placeholders on or off; no value reads
-        // it. Screen only: the document, printing and exports never see them.
+        // File › Options › Advanced › Show document content (and Display › Show highlighter
+        // marks): `value` true or false turns the option on or off; no value reads it. Screen
+        // only (highlight also in print jobs): the document and exports never see them.
         let (key, slot) = match id {
             "ui.cropMarks" => ("cropMarks", &mut self.ui.crop_marks),
             "ui.textBoundaries" => ("textBoundaries", &mut self.ui.text_boundaries),
+            "ui.showHighlight" => ("showHighlight", &mut self.ui.show_highlight),
+            "ui.showDrawings" => ("showDrawings", &mut self.ui.show_drawings),
+            "ui.showBackgrounds" => ("showBackgrounds", &mut self.ui.show_backgrounds),
             _ => ("picturePlaceholders", &mut self.ui.picture_placeholders),
         };
         match p.get("value") {
@@ -912,6 +926,7 @@ impl WordApp {
                     json!({"pending": "discardRecovery"})
                 }
             }
+            "ui.fileConversion" => return Some(crate::file_conversion::answer(self, p)),
             "ui.saveChanges" => {
                 let Some(choice) = s("answer").and_then(SaveChoice::parse) else {
                     return Some(Err("`answer` must be save, dontSave or cancel".into()));
@@ -985,7 +1000,30 @@ impl WordApp {
                 }
                 json!({"alignmentGuides": self.ui.alignment_guides})
             }
-            "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" => return Some(self.show_content_option(id, p)),
+            "ui.ctrlClickFollowsLinks" => {
+                // File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink:
+                // `value` true (the default) or false; no value reads it. Off, a plain click on a
+                // link in the text follows it.
+                match p.get("value") {
+                    None => {}
+                    Some(Value::Bool(on)) => self.ui.ctrl_click_follows_links = *on,
+                    Some(_) => return Some(Err("`value` must be true or false".into())),
+                }
+                json!({"ctrlClickFollowsLinks": self.ui.ctrl_click_follows_links})
+            }
+            "ui.cropMarks" | "ui.textBoundaries" | "ui.picturePlaceholders" | "ui.showHighlight" | "ui.showDrawings" | "ui.showBackgrounds" => {
+                return Some(self.show_content_option(id, p));
+            }
+            "ui.fieldShading" => {
+                // File › Options › Advanced › Show document content › Field shading: `value`
+                // `never`, `always` or `selected` (When selected); no value reads it. Screen only.
+                match p.get("value") {
+                    None => {}
+                    Some(Value::String(v)) if crate::FIELD_SHADING_VALUES.contains(&v.as_str()) => self.ui.field_shading = v.clone(),
+                    Some(_) => return Some(Err("`value` must be \"never\", \"always\" or \"selected\"".into())),
+                }
+                json!({"fieldShading": self.ui.field_shading})
+            }
             "ui.draftFont" => return Some(self.draft_font_command(p)),
             "ui.startScreen" => {
                 // File › Options › General › Start-up (#766): `value` true or false turns showing
@@ -1343,6 +1381,7 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.makeDefaultApp"
             | "ui.pirateSpeak"
             | "ui.caretAnimation"
+            | "ui.ctrlClickFollowsLinks"
             | "ui.startScreen"
             | "ui.recentRemove"
             | "ui.recentClear"

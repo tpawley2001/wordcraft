@@ -1,5 +1,5 @@
 use super::balloons::over_balloon;
-use super::links::{field_showing_code, follow_link, is_generated_bookmark_link, link_and_tip_under, link_hover_text, link_under};
+use super::links::{field_showing_code, follow_hint, follow_link, is_generated_bookmark_link, link_and_tip_under, link_hover_text, link_under};
 use super::navigation::page_at;
 use super::story::{enters_header_footer, in_text_box, part_kind, text_box_host};
 use super::{CanvasState, DocLayout, PartKind, Pos, Pos2, Rect, StoryRef, Ui, WordApp, json};
@@ -212,11 +212,31 @@ fn handle_page_pointer(app: &mut WordApp, pointer: PagePointer<'_>) {
     } else if app.canvas.dragging && ui.input(|i| i.pointer.primary_down()) {
         // Through the command, so from one table cell into another the drag takes whole cells
         // (Word); straight to the session, as the app's `run` would scroll on every frame.
+        let last = match &app.canvas.plain_drag {
+            Some((_, last)) => last.clone(),
+            None => app.session.sel_ends().focus.clone(),
+        };
         if let Some(pos) = layout.hit(page, x, y, story)
-            && pos != app.session.sel_ends().focus
+            && pos != last
         {
+            // Whole words and a whole paragraph's mark (File › Options › Advanced) were added
+            // to the last frame's selection; the drag goes on from the press.
+            let press = app.canvas.plain_drag.as_ref().map(|(press, _)| press.clone());
+            if let Some(press) = &press
+                && app.session.sel_ends() == &app.session.sel
+            {
+                app.session.sel = wordcraft_engine::Selection { anchor: press.clone(), focus: last };
+            }
             let pj = serde_json::to_value(&pos).unwrap_or_default();
             let _ = app.session.run("caret.set", &json!({"pos": pj, "extend": true}));
+            if let Some(press) = press {
+                let focus = app.session.sel.focus.clone();
+                // Not when the drag took whole table cells (the command widened it).
+                if app.session.sel_ends() == &app.session.sel && app.session.sel.anchor == press {
+                    app.session.sel = wordcraft_engine::cmd::caret::plain_drag_selection(&mut app.session, &press, &focus);
+                }
+                app.canvas.plain_drag = Some((press, pos));
+            }
             app.session.page_hint = page;
             app.canvas.caret_visible_since = crate::now_ms();
         }
@@ -226,7 +246,17 @@ fn handle_page_pointer(app: &mut WordApp, pointer: PagePointer<'_>) {
         app.canvas.dragging = false;
         app.canvas.column_drag = None;
         app.canvas.unit_drag = None;
+        app.canvas.plain_drag = None;
         apply_format_painter(app);
+    }
+    // Use Ctrl+Click to follow hyperlink off: a press on a link released without a drag follows it.
+    if ui.input(|i| i.pointer.primary_released())
+        && let Some(link) = app.canvas.link_press.take()
+        && resp.clicked()
+    {
+        app.canvas.dragging = false;
+        follow_link(app, link);
+        return;
     }
     show_hover_link(app, &pointer);
 }
@@ -245,6 +275,8 @@ fn handle_primary_press(
     let clicks = press_count(app.canvas.last_press, now, p, delay, dist);
     app.canvas.last_press = Some((now, p, clicks));
     app.canvas.unit_drag = None;
+    app.canvas.link_press = None;
+    app.canvas.plain_drag = None;
     if clicks <= 1 {
         app.canvas.hf_press_switched = false;
     }
@@ -330,12 +362,17 @@ fn handle_primary_press(
         return true;
     }
     let Some(pos) = layout.hit(page, x, y, story) else { return true };
-    // Ctrl/⌘+click follows a hyperlink.
-    if mods.command
-        && let Some(link) = link_under(app, layout, page, x, y, &pos)
-    {
-        follow_link(app, link);
-        return true;
+    // Ctrl/⌘+click follows a hyperlink. With File › Options › Advanced › Use Ctrl+Click to follow
+    // hyperlink off, a plain click does instead, on release, so a drag from a link still selects.
+    if app.ui.ctrl_click_follows_links {
+        if mods.command
+            && let Some(link) = link_under(app, layout, page, x, y, &pos)
+        {
+            follow_link(app, link);
+            return true;
+        }
+    } else if clicks == 1 && !mods.shift && !mods.command && !mods.alt {
+        app.canvas.link_press = link_under(app, layout, page, x, y, &pos);
     }
     let pj = serde_json::to_value(&pos).unwrap_or_default();
     // Alt+drag selects a column (block) of text.
@@ -375,6 +412,10 @@ fn handle_primary_press(
         let _ = app.run(&format!("select.{unit}"), json!({}));
         let (start, end) = app.session.sel.ordered();
         app.canvas.unit_drag = Some(UnitDrag { unit, clicks, start, end, last: pos });
+    } else if !mods.shift {
+        // A plain press: the drag from it may select whole words and paragraph marks.
+        let at = app.session.sel.focus.clone();
+        app.canvas.plain_drag = Some((at.clone(), at));
     }
     app.session.page_hint = page;
     app.canvas.dragging = true;
@@ -507,13 +548,17 @@ fn show_hover_link(app: &WordApp, pointer: &PagePointer<'_>) {
         && !app.canvas.context_menu_open
         && !resp.secondary_clicked()
         && !ui.input(|i| i.pointer.secondary_down())
-        && let Some((link, screen_tip)) = crate::objects::link_at(app, layout, rects, *scale, *p)
-            .map(|link| (link, None))
-            .or_else(|| layout.hit(*page, *x, *y, *story).and_then(|pos| link_and_tip_under(app, layout, *page, *x, *y, &pos)))
+        && let Some((link, screen_tip, ctrl_click)) =
+            crate::objects::link_at(app, layout, rects, *scale, *p).map(|link| (link, None, true)).or_else(|| {
+                layout
+                    .hit(*page, *x, *y, *story)
+                    .and_then(|pos| link_and_tip_under(app, layout, *page, *x, *y, &pos))
+                    .map(|(link, tip)| (link, tip, app.ui.ctrl_click_follows_links))
+            })
     {
-        let key = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl" };
+        // Linked pictures and shapes keep Ctrl/⌘+click: a plain click selects them.
         let target = if is_generated_bookmark_link(&link) { tl!("Current Document").to_string() } else { link };
-        let tip = link_hover_text(&target, screen_tip.as_deref(), &crate::i18n::fmt(tl!("{key}+Click to follow link"), &[("key", key)]));
+        let tip = link_hover_text(&target, screen_tip.as_deref(), &follow_hint(ctrl_click));
         egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), egui::Id::unique("link_tip"), egui::PopupAnchor::Pointer).show(|ui| {
             ui.label(tip);
         });

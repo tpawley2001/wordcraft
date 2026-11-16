@@ -319,6 +319,8 @@ mod tests {
             ..Default::default()
         };
         let mut a = WordApp::new(Session::new(wordcraft_doc::Document::new()), services);
+        // Pastes land against other words; smart cut and paste spacing has its own tests.
+        a.run("file.options", json!({"smartCutPaste": false})).unwrap();
         a.run("edit.paste", json!({})).unwrap();
         a.run("edit.pasteText", json!({})).unwrap();
         a.run("edit.pasteMerge", json!({})).unwrap();

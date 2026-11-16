@@ -10,15 +10,18 @@ use wordcraft_doc::{Pos, StoryRef};
 
 use crate::{Session, cmd};
 
+mod replace_all_stories;
 mod autonum_fields;
 mod autonum_heading_rule;
 mod auto_caption;
 mod autocorrect_symbols_word;
+mod math_autocorrect_word;
 mod indent_keys_word;
 mod change_case_word;
 mod change_case_cycle;
 mod convert_text_spaces_word;
 mod table_to_text_word;
+mod txt_save_encoding;
 mod find_caret_word;
 mod find_objects_word;
 mod find_field_text_word;
@@ -36,6 +39,7 @@ mod drop_cap_in_margin;
 mod drop_cap_margin_style_indent;
 mod immersive_reader;
 mod style_area;
+mod style_auto_redefine;
 mod bidi;
 mod browse_object;
 mod table_keys;
@@ -63,10 +67,12 @@ mod shrink_font_steps;
 mod sort_number_date_word;
 mod grid_settings;
 mod fonts;
+mod font_substitution;
 mod includetext;
 mod includetext_update_source;
 mod edit_links;
 mod link_update;
+mod print_update_links;
 mod goto_what;
 mod goto_line;
 mod ime_noop;
@@ -109,8 +115,11 @@ mod manual_duplex;
 mod print_document_properties;
 mod form_shading;
 mod print_forms_data;
+mod chart_format_axis;
+mod chart_switch_row_column;
 mod print_options;
 mod print_display_options;
+mod print_scale_a4_letter;
 mod print_selection;
 mod reveal_formatting;
 mod reveal_compare;
@@ -120,6 +129,7 @@ mod para_tools;
 mod revision_checks;
 mod selection_pane;
 mod shape_format_painter;
+mod smart_cut_paste;
 mod table_insert_delete_cells;
 mod text_from_file_range;
 mod text_from_file_stories;
@@ -1290,6 +1300,141 @@ fn replace_under_track_changes_skips_deleted_text() {
     assert_eq!(text(&s), "one dog two dog");
 }
 
+// #4800: each Match option is on by default (an exact search, as before); turned off, the
+// difference is ignored and the match covers the original characters.
+
+/// The (start, end) offsets of a find result's matches.
+fn fold_offs(r: &serde_json::Value) -> Vec<(u64, u64)> {
+    r["matches"].as_array().unwrap().iter().map(|m| (m["start"]["off"].as_u64().unwrap(), m["end"]["off"].as_u64().unwrap())).collect()
+}
+
+/// How many matches `q` has with the options `o` over the defaults (options stick between
+/// searches, so each search starts from the defaults).
+fn fold_count(s: &mut Session, q: &str, o: serde_json::Value) -> u64 {
+    let mut v = json!({"text": q, "matchDiacritics": true, "matchKashida": true, "matchAlefHamza": true, "matchCase": false,
+        "wholeWord": false, "regex": false, "wildcards": false, "ignoreSpace": false, "special": true});
+    for (k, x) in o.as_object().unwrap() {
+        v[k] = x.clone();
+    }
+    run(s, "edit.find", v)["count"].as_u64().unwrap()
+}
+
+fn loose() -> serde_json::Value {
+    json!({"matchDiacritics": false})
+}
+
+fn byte_len(t: &str) -> u64 {
+    t.len() as u64
+}
+
+#[test]
+fn find_match_diacritics_latin() {
+    // Precomposed, decomposed and bare: one word, three spellings, plus a capital.
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": "café cafe cafe\u{301} CAFÉ"}));
+    assert_eq!(fold_count(&mut s, "cafe", json!({"wholeWord": true})), 1);
+    for q in ["cafe", "café", "cafe\u{301}", "CAFE"] {
+        let r = run(&mut s, "edit.find", json!({"text": q, "matchDiacritics": false}));
+        assert_eq!(fold_offs(&r), [(0, 5), (6, 10), (11, 17), (18, 23)], "{q}");
+    }
+    assert_eq!(fold_count(&mut s, "café", json!({"matchDiacritics": false, "matchCase": true})), 3);
+    assert_eq!(fold_count(&mut s, "cafe", json!({"matchDiacritics": false, "wholeWord": true})), 4);
+    // The selection is the first match after the caret, over the original text.
+    run(&mut s, "caret.docStart", json!({}));
+    run(&mut s, "edit.find", json!({"text": "cafe", "matchDiacritics": false, "wholeWord": false}));
+    assert_eq!(s.selected_text(), "café");
+    // The option sticks for Find Next until it is turned back on.
+    assert_eq!(run(&mut s, "edit.findNext", json!({}))["count"], 4);
+    assert_eq!(run(&mut s, "edit.findNext", json!({"matchDiacritics": true}))["count"], 2);
+}
+
+#[test]
+fn find_match_diacritics_greek_slavic_vietnamese() {
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": "Ελληνικά ελληνικα"}));
+    assert_eq!(fold_count(&mut s, "ελληνικα", json!({})), 1);
+    assert_eq!(fold_count(&mut s, "ελληνικα", loose()), 2);
+    assert_eq!(fold_count(&mut s, "ελληνικά", loose()), 2);
+    run(&mut s, "document.setText", json!({"text": "Čačak ćevap Đorđe cacak cevap Dorde"}));
+    for q in ["cacak", "ćevap", "dorde"] {
+        assert_eq!(fold_count(&mut s, q, json!({})), 1, "{q}");
+        assert_eq!(fold_count(&mut s, q, loose()), 2, "{q}");
+    }
+    run(&mut s, "document.setText", json!({"text": "Tiếng Việt, tieng viet"}));
+    let r = run(&mut s, "edit.find", json!({"text": "tieng viet", "matchDiacritics": false}));
+    assert_eq!(fold_offs(&r), [(0, byte_len("Tiếng Việt")), (byte_len("Tiếng Việt, "), byte_len("Tiếng Việt, tieng viet"))]);
+    assert_eq!(fold_count(&mut s, "Tiếng Viet", json!({})), 0);
+}
+
+#[test]
+fn find_match_kashida_alef_hamza_and_niqqud() {
+    // Arabic: harakat are diacritics; kashida and the hamza forms have their own options.
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": "كَتَبَ كتب"}));
+    assert_eq!(fold_count(&mut s, "كتب", json!({})), 1);
+    assert_eq!(fold_count(&mut s, "كتب", json!({"matchKashida": false, "matchAlefHamza": false})), 1);
+    let r = run(&mut s, "edit.find", json!({"text": "كتب", "matchDiacritics": false}));
+    assert_eq!(fold_offs(&r)[0], (0, byte_len("كَتَبَ")), "the last fatha is part of the match");
+    run(&mut s, "document.setText", json!({"text": "كـتاب كتاب"}));
+    assert_eq!(fold_count(&mut s, "كتاب", json!({})), 1);
+    assert_eq!(fold_count(&mut s, "كتاب", loose()), 1);
+    let r = run(&mut s, "edit.find", json!({"text": "كتاب", "matchKashida": false}));
+    assert_eq!(fold_offs(&r), [(0, byte_len("كـتاب")), (byte_len("كـتاب "), byte_len("كـتاب كتاب"))]);
+    run(&mut s, "document.setText", json!({"text": "أحمد احمد إسلام اسلام آمن امن ٱلله الله"}));
+    for q in ["احمد", "أحمد", "اسلام", "امن", "الله"] {
+        assert_eq!(fold_count(&mut s, q, json!({})), 1, "{q}");
+        assert_eq!(fold_count(&mut s, q, loose()), 1, "{q}: the hamza is not a diacritic");
+        assert_eq!(fold_count(&mut s, q, json!({"matchAlefHamza": false})), 2, "{q}");
+    }
+    // Hebrew niqqud and cantillation, stored as marks or precomposed (U+FB2A).
+    run(&mut s, "document.setText", json!({"text": "שָׁלוֹם \u{FB2A}לום שלום בְּרֵאשִׁ֖ית בראשית"}));
+    assert_eq!(fold_count(&mut s, "שלום", json!({})), 1);
+    assert_eq!(fold_count(&mut s, "שלום", loose()), 3);
+    assert_eq!(fold_count(&mut s, "בראשית", loose()), 2);
+}
+
+#[test]
+fn replace_all_without_match_diacritics_keeps_the_rest() {
+    // Replace All replaces the original characters and leaves the rest alone; ^& is the text found.
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": "Le café et le cafe\u{301}, déjà vu."}));
+    let r = run(&mut s, "edit.replaceAll", json!({"text": "cafe", "with": "[^&]", "matchDiacritics": false}));
+    assert_eq!(r["replaced"], 2);
+    assert_eq!(text(&s), "Le [café] et le [cafe\u{301}], déjà vu.");
+    let r = run(&mut s, "edit.replaceAll", json!({"text": "[cafe]", "with": "thé", "matchDiacritics": false, "special": false}));
+    assert_eq!(r["replaced"], 2);
+    assert_eq!(text(&s), "Le thé et le thé, déjà vu.");
+    // Special codes and ignored white space still work with folding.
+    assert_eq!(fold_count(&mut s, "the^w", loose()), 1);
+    assert_eq!(fold_count(&mut s, "dejavu", json!({"matchDiacritics": false, "ignoreSpace": true})), 1);
+}
+
+#[test]
+fn wildcards_and_regex_ignore_the_match_diacritics_options() {
+    // Wildcards and regular expressions match exactly whatever the options say.
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": "café cafe"}));
+    assert_eq!(fold_count(&mut s, "cafe", json!({"matchDiacritics": false, "regex": true})), 1);
+    assert_eq!(fold_count(&mut s, "caf?", json!({"matchDiacritics": false, "wildcards": true})), 2);
+    assert_eq!(fold_count(&mut s, "cafe", json!({"matchDiacritics": false, "wildcards": true})), 1);
+    // A Find what made only of marks finds nothing (and never an empty match).
+    assert_eq!(fold_count(&mut s, "\u{301}", loose()), 0);
+}
+
+#[test]
+fn find_with_folding_follows_tracked_deletions() {
+    // A mark after a tracked deletion does not join the letter before it.
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": "cafXe\u{301}"}));
+    run(&mut s, "review.trackChanges", json!({"value": true}));
+    run(&mut s, "select.range", json!({"anchor": {"block": 0, "off": 3}, "focus": {"block": 0, "off": 4}}));
+    run(&mut s, "text.delete", json!({}));
+    let r = run(&mut s, "edit.find", json!({"text": "cafe", "matchDiacritics": false}));
+    assert_eq!(r["count"], 0, "a match may not span a deletion");
+    let r = run(&mut s, "edit.find", json!({"text": "e", "matchDiacritics": false}));
+    assert_eq!((r["matches"][0]["start"]["off"].as_u64(), r["matches"][0]["end"]["off"].as_u64()), (Some(4), Some(7)));
+}
+
 #[test]
 fn find_reads_the_text_around_tracked_deletions() {
     // `edits` are (start, end) byte ranges deleted with Track Changes on, last first.
@@ -1362,6 +1507,8 @@ fn find_next_with_options_visits_every_match() {
 #[test]
 fn clipboard_round_trip() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     run(&mut s, "document.setText", json!({"text": "alpha beta\ngamma"}));
     run(&mut s, "select.range", json!({"anchor": {"block": 0, "off": 6}, "focus": {"block": 1, "off": 2}}));
     run(&mut s, "edit.copy", json!({}));
@@ -1948,6 +2095,8 @@ fn props_at(s: &Session, off: usize) -> wordcraft_doc::CharProps {
 #[test]
 fn paste_keeps_source_formatting_from_other_programs() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     run(&mut s, "document.setText", json!({"text": "x"}));
     run(&mut s, "caret.docEnd", json!({}));
     let html = "<p><span style=\"font-family:'Courier New';color:#ff0000\">red <b>bold</b></span></p>";
@@ -2082,6 +2231,8 @@ fn paste_special_lists_and_pastes_a_picture() {
 #[test]
 fn clipboard_pane_collects_copies_and_pastes_one_undoably() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     run(&mut s, "document.setText", json!({"text": "one two three"}));
     for (a, b) in [(0, 3), (4, 7), (8, 13)] {
         run(&mut s, "select.range", json!({"anchor": {"block": 0, "off": a}, "focus": {"block": 0, "off": b}}));
@@ -2213,6 +2364,8 @@ fn spike_outside_the_editable_regions_changes_nothing() {
 #[test]
 fn clipboard_pane_is_capped_and_rejects_bad_indexes() {
     let mut s = s();
+    // Pastes and cuts here sit against other words; smart cut and paste spacing has its own tests.
+    run(&mut s, "file.options", json!({"smartCutPaste": false}));
     let words: Vec<String> = (0..30).map(|i| format!("w{i}")).collect();
     run(&mut s, "document.setText", json!({"text": words.join(" ")}));
     // Cutting each word in turn leaves the spaces: word `off` starts at `off`.
@@ -13781,6 +13934,7 @@ fn drop_cap_menu_availability_uses_the_resolved_cap() {
     assert_eq!(s.why_disabled("insert.dropCap"), None);
 }
 mod readability;
+mod readability_passive;
 mod linked_style_apply;
 mod style_pane_options;
 mod backup_copy;

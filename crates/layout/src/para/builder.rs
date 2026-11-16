@@ -38,6 +38,9 @@ struct MissingFonts<'a> {
     east_asian: Option<&'a str>,
     /// The run names an East Asian font for its CJK text, installed or not.
     names_east_asian: bool,
+    /// The missing East Asian font the user picked a font to show it in: its CJK text is drawn
+    /// in that font (the East Asian face) and still asks for this one.
+    east_asian_chosen: Option<&'a str>,
 }
 
 struct SegmentInput<'a> {
@@ -128,7 +131,7 @@ impl<'a> Builder<'a> {
     /// Asian characters in the run's East Asian font. When `line_font` is missing and Word has a
     /// line for it (SimSun), the style takes that line instead of the substitute's.
     fn style_with_line(&mut self, rc: &Arc<ResolvedChar>, face_override: Option<FaceRef>, small: bool, line_font: Option<&str>) -> u32 {
-        let r = wordcraft_fonts::word::resolve(lookup_family(self.env.doc, &rc.font), rc.bold, rc.italic);
+        let r = wordcraft_fonts::word::resolve(lookup_family(self.env.doc, self.env.font_substitutes, &rc.font), rc.bold, rc.italic);
         let face = face_override.unwrap_or(r.face);
         // The display list reads every run's format (link target, strike kind, underline colour,
         // baseline shift…) from its StyleRun, so runs share one only when their formats are equal.
@@ -257,7 +260,7 @@ impl<'a> Builder<'a> {
         (primary, primary_cs, primary_ea): (FaceRef, Option<FaceRef>, Option<FaceRef>),
         missing: &MissingFonts,
     ) {
-        if missing.latin.is_none() && missing.complex.is_none() && missing.east_asian.is_none() {
+        if missing.latin.is_none() && missing.complex.is_none() && missing.east_asian.is_none() && missing.east_asian_chosen.is_none() {
             return;
         }
         for &(a, b, key) in segs {
@@ -281,6 +284,9 @@ impl<'a> Builder<'a> {
                 self.note_substituted(f, drawn);
             }
             if let Some(f) = missing.east_asian.filter(|_| !in_ea_font && sub.chars().any(east_asian)) {
+                self.note_substituted(f, drawn);
+            }
+            if let Some(f) = missing.east_asian_chosen.filter(|_| in_ea_font && sub.chars().any(east_asian)) {
                 self.note_substituted(f, drawn);
             }
         }
@@ -312,7 +318,7 @@ impl<'a> Builder<'a> {
         // Complex-script characters (Persian, Arabic…) use the run's complex-script font, size,
         // bold and italic.
         let rc_cs: Option<Arc<ResolvedChar>> = text.chars().any(|c| rc.uses_complex(c)).then(|| Arc::new(rc.complex()));
-        let family = lookup_family(self.env.doc, &rc.font);
+        let family = lookup_family(self.env.doc, self.env.font_substitutes, &rc.font);
         let resolved = wordcraft_fonts::word::resolve(family, rc.bold, rc.italic);
         let primary = resolved.face;
         // Symbol-font characters are laid out as their Unicode equivalents.
@@ -324,19 +330,26 @@ impl<'a> Builder<'a> {
         let boxes = matches!(dir, Dir::Para);
         // A font isn't installed when it was substituted, or looked up as a missing roman font.
         let resolved_cs = rc_cs.as_ref().map(|r| {
-            let family = lookup_family(self.env.doc, &r.font);
+            let family = lookup_family(self.env.doc, self.env.font_substitutes, &r.font);
             let resolved = wordcraft_fonts::word::resolve(family, r.bold, r.italic);
             (resolved.face, resolved.substituted || family != r.font)
         });
         let primary_cs = resolved_cs.map(|(face, _)| face);
         // Chinese, Japanese and Korean characters use the run's East Asian font (`w:eastAsia`) when
         // it is installed and has them.
-        let wanted_ea = rc
-            .font_ea
-            .as_deref()
-            .filter(|f| !f.eq_ignore_ascii_case(&rc.font) && text.chars().any(east_asian))
-            .map(|f| (f, wordcraft_fonts::word::resolve(f, rc.bold, rc.italic)));
-        let primary_ea = wanted_ea.filter(|(_, r)| !r.substituted).map(|(_, r)| r.face);
+        let wanted_ea = rc.font_ea.as_deref().filter(|f| !f.eq_ignore_ascii_case(&rc.font) && text.chars().any(east_asian)).map(|f| {
+            match self.env.font_substitutes.chosen(f) {
+                // A missing East Asian font the user picked a font to show it in (Font
+                // Substitution) is drawn and measured in that font, as if it were installed.
+                Some(chosen) => {
+                    let mut r = wordcraft_fonts::word::resolve(chosen, rc.bold, rc.italic);
+                    r.substituted = false;
+                    (f, r, true)
+                }
+                None => (f, wordcraft_fonts::word::resolve(f, rc.bold, rc.italic), false),
+            }
+        });
+        let primary_ea = wanted_ea.filter(|(_, r, _)| !r.substituted).map(|(_, r, _)| r.face);
         // The levels by byte of `text`, from `lbase` on.
         let (levels, lbase): (&[u8], usize) = match dir {
             Dir::Para => (&self.levels, base),
@@ -387,8 +400,9 @@ impl<'a> Builder<'a> {
         let missing = MissingFonts {
             latin: (resolved.substituted || family != rc.font).then_some(rc.font.as_str()),
             complex: rc_cs.as_ref().filter(|_| resolved_cs.is_some_and(|(_, missing)| missing)).map(|r| r.font.as_str()),
-            east_asian: wanted_ea.filter(|(_, r)| r.substituted).map(|(f, _)| f),
+            east_asian: wanted_ea.filter(|(_, r, _)| r.substituted).map(|(f, _, _)| f),
             names_east_asian: wanted_ea.is_some(),
+            east_asian_chosen: wanted_ea.filter(|(_, _, chosen)| *chosen).map(|(f, _, _)| f),
         };
         self.note_missing_fonts(text, &segs, (primary, primary_cs, primary_ea), &missing);
         let no_kern = [wordcraft_fonts::feature_value(b"kern", 0)];
@@ -442,20 +456,19 @@ impl<'a> Builder<'a> {
                 }
             };
             // The shaper kerns by default; Word kerns only when Kerning for fonts covers the size.
-            // Without `w14:ligatures` the shaper's default (standard and contextual) stays.
+            // Word draws no ligatures unless the run asks for them (`w14:ligatures`; Font ›
+            // Advanced › Ligatures defaults to None), so without it every ligature feature is
+            // turned off instead of leaving the shaper's default (standard and contextual on).
+            // Required ligatures and complex-script forms (`rlig`, `ccmp`, init/medi/fina…) stay.
             let [kern_off] = no_kern;
             // Khmer shaping builds its syllables (pre-base vowels, stacked signs) in `liga` and
             // `clig`, so a run's ligature setting never reaches Khmer text: Word ignores it there.
-            let ligatures = rc.ligatures.filter(|_| !shape_text.chars().any(is_khmer));
-            let all = match ligatures {
-                Some(l) => {
-                    let [a, b, c, d] = ligature_features(l);
-                    [kern_off, a, b, c, d]
-                }
-                None => [kern_off; 5],
-            };
+            let khmer = shape_text.chars().any(is_khmer);
+            let ligatures = rc.ligatures.filter(|_| !khmer);
+            let [liga, clig, hlig, dlig] = ligature_features(ligatures.unwrap_or_default());
+            let all = [kern_off, liga, clig, hlig, dlig];
             let from = usize::from(rc.kerned());
-            let to = if ligatures.is_some() { all.len() } else { 1 };
+            let to = if khmer { 1 } else { all.len() };
             // Number forms, number spacing, stylistic sets and contextual alternates come after.
             let mut list = FeatureList::new();
             list.extend(all.get(from..to).unwrap_or_default());

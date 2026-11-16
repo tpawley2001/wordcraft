@@ -248,7 +248,7 @@ impl Reader {
             _ => LegendPos::Right,
         });
         let title = self.title.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string);
-        Some(ChartSpec { kind, categories, series, title, legend, data_labels }.sanitized())
+        Some(ChartSpec { kind, categories, series, title, legend, data_labels, value_axis: Default::default() }.sanitized())
     }
 }
 

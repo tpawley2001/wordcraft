@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use wordcraft_doc::edit::Fragment;
 use wordcraft_doc::{InlineObject, Pos, StoryRef};
 
-use super::{delete_selection, find_pattern, pos_json, sel_result};
+use super::{delete_selection, find_fold, find_pattern, pos_json, sel_result};
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
 /// Browsers reserve Mod+Shift+C for their inspector. Keep the desktop binding, but
@@ -124,7 +124,7 @@ pub fn specs() -> Vec<CommandSpec> {
         .pure(),
         CommandSpec::new("edit.find", "Find", "Home › Editing", find)
             .key("Mod+F")
-            .params(r#"{"text": string, "matchCase"?: bool, "wholeWord"?: bool, "matchPrefix"?: bool, "matchSuffix"?: bool, "ignorePunct"?: bool, "ignoreSpace"?: bool, "wildcards"?: bool, "special"?: bool (^p ^t ^# … codes, default true), "regex"?: bool, "format"?: {"bold"?, "italic"?, "underline"?: bool, "font"?: string, "size"?: pt, "color"?: "RRGGBB|auto", "highlight"?: name|"none", "style"?: name} | null (No Formatting; text may be empty to find by format alone), "replaceFormat"?: {same} | null}"#)
+            .params(r#"{"text": string, "matchCase"?: bool, "wholeWord"?: bool, "matchPrefix"?: bool, "matchSuffix"?: bool, "ignorePunct"?: bool, "ignoreSpace"?: bool, "matchDiacritics"?: bool (default true; false: é finds e, Hebrew points and Arabic harakat are skipped), "matchKashida"?: bool (default true; false skips the tatweel), "matchAlefHamza"?: bool (default true; false: أ إ آ ٱ find ا) — the three apply to a normal search, not wildcards or regex, "wildcards"?: bool, "special"?: bool (^p ^t ^# … codes, default true), "regex"?: bool, "format"?: {"bold"?, "italic"?, "underline"?: bool, "font"?: string, "size"?: pt, "color"?: "RRGGBB|auto", "highlight"?: name|"none", "style"?: name} | null (No Formatting; text may be empty to find by format alone), "replaceFormat"?: {same} | null}"#)
             .pure(),
         CommandSpec::new("edit.advancedFind", "Advanced Find", "Home › Editing › Find", advanced_find)
             .params(r#"{"text"?: string, …options of edit.find, "in"?: "main|selection", "highlight"?: bool}"#)
@@ -163,7 +163,7 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"tab"?: "find|replace|goto" (default replace)}"#)
         .pure(),
         CommandSpec::new("edit.replaceAll", "Replace All", "Home › Editing › Replace", replace_all)
-            .params(r#"{"text": string, "with": string (^p ^t ^& ^c …; \\1 with wildcards; with regex also $1 ${n} ${name} $0 $$ \\1 \\n (paragraph mark) \\t), "format"?, "replaceFormat"?: {…} | null (Replace with's formatting; empty `with` keeps the text and only formats it), …options of edit.find}"#),
+            .params(r#"{"text": string, "with": string (^p ^t ^& ^c …; \\1 with wildcards; with regex also $1 ${n} ${name} $0 $$ \\1 \\n (paragraph mark) \\t), "format"?, "replaceFormat"?: {…} | null (Replace with's formatting; empty `with` keeps the text and only formats it), …options of edit.find}; replaces in the main text, headers, footers, footnotes, endnotes and text boxes, wherever the caret is"#),
         // Word for Windows binds Ctrl+G to Go To (Ctrl+G first, so menus and tooltips show it);
         // on the Mac Cmd+G is Find Next, as in Word for Mac.
         CommandSpec::new("edit.goto", "Go To", "Home › Editing › Find", goto)
@@ -342,7 +342,12 @@ fn cut(s: &mut Session, _: &Value) -> CmdResult {
     }
     // A tracked cut of a paragraph or sentence may become a move when pasted.
     if !super::moves::cut_tracked(s)? {
+        let (a, b) = s.sel.ordered();
+        let smart = super::smart_space::whole_words(s, &a, &b);
         delete_selection(s)?;
+        if smart {
+            super::smart_space::after_delete(s)?;
+        }
     }
     super::controls::restore_placeholder(s)?;
     Ok(r)
@@ -380,10 +385,12 @@ fn insert_spike(s: &mut Session, _: &Value) -> CmdResult {
 /// else another program's HTML or RTF (#687). The system clipboard's text has none, so it pastes
 /// as Keep Text Only does.
 fn paste(s: &mut Session, v: &Value) -> CmdResult {
+    let start = s.sel.ordered().0;
     match super::paste::paste_content(s, v)? {
         super::paste::Pasted::Fragment(frag) => super::paste::insert(s, frag)?,
         super::paste::Pasted::Text(text) => super::paste::insert_text(s, &text)?,
     }
+    super::smart_space::after_paste(s, &start)?;
     sel_result(s)
 }
 
@@ -543,7 +550,9 @@ fn paste_text(s: &mut Session, v: &Value) -> CmdResult {
     if text.is_empty() {
         return Err(CmdError::Failed("the clipboard is empty".into()));
     }
+    let start = s.sel.ordered().0;
     super::paste_text(s, &text.replace("\r\n", "\r").replace('\n', "\r"))?;
+    super::smart_space::after_paste(s, &start)?;
     sel_result(s)
 }
 
@@ -592,6 +601,7 @@ fn find_opts(f: &crate::session::FindState, field_codes: bool) -> find_pattern::
         regex: f.regex,
         literal: f.literal,
         field_codes,
+        fold: find_fold::Fold { diacritics: f.ignore_diacritics, kashida: f.ignore_kashida, alef_hamza: f.ignore_alef_hamza },
     }
 }
 
@@ -734,19 +744,32 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
             segs.get(k..).unwrap_or(&[]).iter().take_while(|sg| sg.hay < b).any(|sg| sg.field && (!sg.code || a > sg.hay || b < sg.hay + sg.len))
         };
         cuts.push(hay.len());
+        // With a Match option off, the search reads the paragraph folded once (#4800) and maps
+        // each match back to the original characters.
+        let folded = opts.folds().then(|| find_fold::fold(&hay, &cuts, opts.fold));
+        let (text, cuts) = match &folded {
+            Some(fd) => (fd.text.as_str(), fd.cuts.clone()),
+            None => (hay.as_str(), cuts),
+        };
+        let orig = |x: usize, end: bool| match &folded {
+            Some(fd) if end => fd.end(x),
+            Some(fd) => fd.start(x),
+            None => x,
+        };
+        let orig_range = |r: std::ops::Range<usize>| orig(r.start, false)..orig(r.end, true);
         let mut from = 0;
         for cut in cuts {
             if cut <= from {
                 continue;
             }
-            let mut input = Input::new(&hay).range(from..cut);
+            let mut input = Input::new(text).range(from..cut);
             from = cut;
             loop {
                 re.search_captures(&input, &mut caps);
                 let Some(m) = caps.get_match() else { break };
                 // Step past an empty match so the search moves on.
                 let next = if m.is_empty() {
-                    hay.get(m.end()..).and_then(|t| t.chars().next()).map_or(m.end() + 1, |c| m.end() + c.len_utf8())
+                    text.get(m.end()..).and_then(|t| t.chars().next()).map_or(m.end() + 1, |c| m.end() + c.len_utf8())
                 } else {
                     m.end()
                 };
@@ -757,7 +780,7 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 if m.is_empty() {
                     continue;
                 }
-                let (Some(a), Some(b)) = (pos_of(m.start(), false), pos_of(m.end(), true)) else { continue };
+                let (Some(a), Some(b)) = (pos_of(orig(m.start(), false), false), pos_of(orig(m.end(), true), true)) else { continue };
                 // Text and a format: every character of the match has the format.
                 if cond.as_ref().is_some_and(|c| !c.range_matches(s, &a, &b)) {
                     continue;
@@ -766,16 +789,18 @@ pub(crate) fn search_full(s: &Session, story: StoryRef, with_rep: bool) -> Resul
                 if out.last().is_some_and(|f: &Found| f.a == a && f.b == b) {
                     continue;
                 }
-                let field = in_field(m.start(), m.end());
+                let field = in_field(orig(m.start(), false), orig(m.end(), true));
                 let rep = pieces.as_ref().map(|pc| {
-                    let group = |n: usize| caps.get_group(n).and_then(|g| hay.get(g.range())).map(str::to_string);
-                    let end =
-                        if final_mark && m.end() == hay.len() && segs.last().is_some_and(|sg| sg.mark && sg.para == paths.len().saturating_sub(1)) {
-                            m.end().saturating_sub(1)
-                        } else {
-                            m.end()
-                        };
-                    find_pattern::expand(pc, hay.get(m.start()..end).unwrap_or(""), &group, &s.clipboard_text)
+                    let group = |n: usize| caps.get_group(n).and_then(|g| hay.get(orig_range(g.range()))).map(str::to_string);
+                    let end = if final_mark
+                        && orig(m.end(), true) == hay.len()
+                        && segs.last().is_some_and(|sg| sg.mark && sg.para == paths.len().saturating_sub(1))
+                    {
+                        orig(m.end(), true).saturating_sub(1)
+                    } else {
+                        orig(m.end(), true)
+                    };
+                    find_pattern::expand(pc, hay.get(orig(m.start(), false)..end).unwrap_or(""), &group, &s.clipboard_text)
                 });
                 out.push(Found { a, b, rep, field });
                 if out.len() >= 100_000 {
@@ -911,6 +936,16 @@ fn read_opts(s: &mut Session, v: &Value) -> Result<(), CmdError> {
     }
     if let Some(b) = p::bool(v, "ignoreSpace") {
         s.find.ignore_space = b;
+    }
+    // Word's Match Diacritics / Kashida / Alef Hamza (#4800): on by default (exact search).
+    if let Some(b) = p::bool(v, "matchDiacritics") {
+        s.find.ignore_diacritics = !b;
+    }
+    if let Some(b) = p::bool(v, "matchKashida") {
+        s.find.ignore_kashida = !b;
+    }
+    if let Some(b) = p::bool(v, "matchAlefHamza") {
+        s.find.ignore_alef_hamza = !b;
     }
     if let Some(t) = p::str(v, "with") {
         s.find.replace = t.to_string();
@@ -1077,29 +1112,55 @@ fn replace_match(s: &mut Session, a: Pos, b: Pos, with: &str, rf: Option<&crate:
     Ok(())
 }
 
-/// Every match replaced, last first so earlier positions stay valid (one undo step). A `\r` in
-/// the replacement (`^p`) splits the paragraph. Replace with's formatting goes on each
-/// replacement (or each match, when Replace with is empty).
+/// The stories Replace All covers, as in Word: the main text, then headers, footers, footnotes,
+/// endnotes and text boxes. Comments keep their words.
+fn replace_stories(s: &Session) -> Vec<StoryRef> {
+    use wordcraft_doc::PartKind;
+    let parts = s.doc.parts.iter().filter(|(_, p)| !matches!(p.kind, PartKind::Comment)).map(|(id, _)| StoryRef::Part(*id));
+    std::iter::once(StoryRef::Body).chain(parts).collect()
+}
+
+/// Every match in every story replaced (wherever the caret is), last first so earlier positions
+/// stay valid (one undo step). A `\r` in the replacement (`^p`) splits the paragraph. Replace
+/// with's formatting goes on each replacement (or each match, when Replace with is empty).
+/// Locked content in any story stops it before anything changes.
 fn replace_all(s: &mut Session, v: &Value) -> CmdResult {
     need_query(s, v)?;
     read_opts(s, v)?;
-    let story = s.sel.focus.story;
-    // Matches in fields' text are left as they are: replacing one would delete its field (#5552).
-    let (results, in_fields): (Vec<Found>, Vec<Found>) = search_full(s, story, true)?.into_iter().partition(|f| !f.field);
-    let n = results.len();
     let rf = s.find.replace_format.clone();
-    // Only formatting changes when Replace with is empty and has a format: nothing is deleted.
-    let deletes = rf.is_none() || results.iter().any(|f| f.rep.as_deref().is_some_and(|r| !r.is_empty()));
-    if deletes {
-        super::controls::check_deletions(s, story, results.iter().map(|f| (&f.a, &f.b)))?;
+    let mut found = Vec::new();
+    let mut skipped = 0usize;
+    for story in replace_stories(s) {
+        // Matches in fields' text are left as they are: replacing one would delete its field (#5552).
+        let (results, in_fields): (Vec<Found>, Vec<Found>) = search_full(s, story, true)?.into_iter().partition(|f| !f.field);
+        skipped += in_fields.len();
+        if results.is_empty() {
+            continue;
+        }
+        // Only formatting changes when Replace with is empty and has a format: nothing is deleted.
+        let deletes = rf.is_none() || results.iter().any(|f| f.rep.as_deref().is_some_and(|r| !r.is_empty()));
+        if deletes {
+            super::controls::check_deletions(s, story, results.iter().map(|f| (&f.a, &f.b)))?;
+        }
+        found.push(results);
     }
+    let n: usize = found.iter().map(Vec::len).sum();
     let direct = !s.doc.settings.track_changes;
+    // The main text comes last, so under Track Changes the caret ends where it did before.
+    for results in found.into_iter().rev() {
+        replace_found(s, results, rf.as_ref(), direct)?;
+    }
+    s.status = replace_all_message(n, skipped);
+    Ok(json!({"replaced": n, "skippedInFields": skipped}))
+}
+
+/// Replace the matches of one story, last first.
+fn replace_found(s: &mut Session, results: Vec<Found>, rf: Option<&crate::session::FindFormat>, direct: bool) -> Result<(), CmdError> {
     for Found { a, b, rep, .. } in results.into_iter().rev() {
         // Tracked, it takes the same path as a single replace, so the change is a reviewable revision.
-        replace_match(s, a, b, &rep.unwrap_or_default(), rf.as_ref(), direct)?;
+        replace_match(s, a, b, &rep.unwrap_or_default(), rf, direct)?;
     }
-    s.status = replace_all_message(n, in_fields.len());
-    Ok(json!({"replaced": n, "skippedInFields": in_fields.len()}))
+    Ok(())
 }
 
 /// What Replace All reports: how many matches it replaced and, when some were in fields' text,
