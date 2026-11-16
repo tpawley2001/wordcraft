@@ -1,4 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
+mod rtl_order;
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod sysfonts;
 
 #[test]
