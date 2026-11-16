@@ -308,6 +308,7 @@ impl WordApp {
             crop_marks: _,
             text_boundaries: _,
             picture_placeholders: _,
+            field_shading: _,
             draft_font: _,
             draft_font_name: _,
             draft_font_size: _,
