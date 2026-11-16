@@ -231,7 +231,7 @@ fn solve(m: &mut [Vec<f64>]) -> Option<Vec<f64>> {
         m.swap(col, piv);
         let pivot_row = m.get(col)?.clone();
         let p = *pivot_row.get(col)?;
-        if !(p.abs() > 1e-12 * norm) {
+        if !p.is_finite() || p.abs() <= 1e-12 * norm {
             return None;
         }
         for row in m.iter_mut().skip(col + 1) {
@@ -387,7 +387,7 @@ fn clip_segment(a: (f64, f64), b: (f64, f64), r: Rect) -> Option<((f64, f64), (f
             }
         }
     }
-    if !(t0 <= t1) {
+    if t0.is_nan() || t1.is_nan() || t0 > t1 {
         return None;
     }
     let at = |t: f64| (a.0 + t * dx, a.1 + t * dy);
