@@ -10,6 +10,7 @@ use wordcraft_doc::{Pos, StoryRef};
 
 use crate::{Session, cmd};
 
+mod replace_all_stories;
 mod autonum_fields;
 mod autonum_heading_rule;
 mod auto_caption;
@@ -65,6 +66,7 @@ mod font_sizes;
 mod shrink_font_steps;
 mod sort_number_date_word;
 mod grid_settings;
+mod embed_fonts_save;
 mod fonts;
 mod font_substitution;
 mod includetext;
