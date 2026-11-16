@@ -49,7 +49,8 @@ fn a_saved_file_opens_back_in_its_encoding() {
     ];
     for (enc, text) in encs {
         let d = Document::from_text(text);
-        let bytes = export_with(&d, &TxtSaveOptions { encoding: enc.clone(), line_end: LineEnd::CrLf, allow_substitution: false });
+        let bytes =
+            export_with(&d, &TxtSaveOptions { encoding: enc.clone(), line_end: LineEnd::CrLf, allow_substitution: false, insert_line_breaks: false });
         assert_eq!(texts(&import_with(&bytes, &enc, &page)), texts(&d), "{enc:?}");
     }
 }
