@@ -260,6 +260,11 @@ fn options(s: &mut Session, v: &Value) -> CmdResult {
 pub fn current(s: &Session) -> Value {
     let pr = &s.prefs;
     let region = s.region();
+    // Built outside the big `json!` below: one more nesting level there passes the macro's recursion limit.
+    let dictionaries = wordcraft_proof::installed_dictionaries()
+        .into_iter()
+        .map(|(lang, dic)| json!({"language": lang.tag(), "file": dic.map(|d| d.to_string_lossy().into_owned())}))
+        .collect::<Vec<_>>();
     json!({
         "author": s.author,
         "initials": s.user_initials(),
@@ -299,10 +304,7 @@ pub fn current(s: &Session) -> Value {
         "dictionary": wordcraft_proof::user_dictionary(),
         "dictionariesFolder": pr.dictionaries_folder,
         "userTemplatesFolder": pr.user_templates_folder,
-        "dictionaries": wordcraft_proof::installed_dictionaries()
-            .into_iter()
-            .map(|(lang, dic)| json!({"language": lang.tag(), "file": dic.map(|d| d.to_string_lossy().into_owned())}))
-            .collect::<Vec<_>>(),
+        "dictionaries": dictionaries,
     })
 }
 
