@@ -344,6 +344,7 @@ fn display(app: &mut WordApp, ui: &mut Ui) {
     flag(app, ui, "Print document properties", "printProperties", app.session.prefs.print_properties);
     flag(app, ui, "Print hidden text", "printHiddenText", app.session.prefs.print_hidden_text);
     ui.checkbox(&mut app.ui.update_fields_before_print, tl!("Update fields before printing"));
+    flag(app, ui, "Update linked data before printing", "printUpdateLinks", app.session.prefs.print_update_links);
 }
 
 fn proofing(app: &mut WordApp, ui: &mut Ui) {

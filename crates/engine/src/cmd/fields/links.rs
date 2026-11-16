@@ -276,6 +276,23 @@ pub(super) fn edit_link(s: &mut Session, v: &Value) -> CmdResult {
     Ok(link_json(usize::try_from(index).unwrap_or(0), &after))
 }
 
+/// `fields.updateLinks`: Update Now on every link `fields.links` lists, in document order. A
+/// locked link keeps its result; a link whose source can't be read keeps its stored result. Each
+/// link is found again after every update, since an update can move the links after it.
+pub(super) fn update_links(s: &mut Session, _: &Value) -> CmdResult {
+    let count = link_fields(s).len();
+    let mut updated = 0usize;
+    for i in 0..count {
+        let Some(f) = link_fields(s).get(i).cloned() else { break };
+        if f.locked {
+            continue;
+        }
+        update_link_at(s, &f.at)?;
+        updated = updated.saturating_add(1);
+    }
+    Ok(json!({"updated": updated}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
