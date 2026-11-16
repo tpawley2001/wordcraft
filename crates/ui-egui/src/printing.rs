@@ -202,6 +202,11 @@ pub fn submit(app: &mut crate::WordApp, params: &serde_json::Value) -> Result<se
     {
         log::warn!("updating fields before printing: {error}");
     }
+    if app.session.prefs.print_update_links
+        && let Err(error) = app.session.run("fields.updateLinks", &json!({}))
+    {
+        log::warn!("updating links before printing: {error}");
+    }
     // The job follows File › Options › Display › Print background colors and images.
     let pdf = app.session.print_job_pdf(&pdf_params).map_err(|error| error.to_string());
     let result = pdf.and_then(|(bytes, plan)| {

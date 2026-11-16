@@ -71,6 +71,7 @@ mod includetext;
 mod includetext_update_source;
 mod edit_links;
 mod link_update;
+mod print_update_links;
 mod goto_what;
 mod goto_line;
 mod ime_noop;
