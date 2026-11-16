@@ -249,12 +249,14 @@ fn vert(s: &mut Session, v: &Value, dir: i32) -> CmdResult {
 
 fn line(s: &mut Session, v: &Value, home: bool) -> CmdResult {
     let ext = extend(v);
+    let from = line_from(s, ext, home);
     let l = s.layout();
-    let from = s.sel.focus.clone();
     let to = match l.line_bounds(&from, s.page_hint) {
         Some((a, b)) => {
             if home {
                 a
+            } else if ext {
+                past_mark(s, b)
             } else {
                 b
             }
@@ -264,6 +266,45 @@ fn line(s: &mut Session, v: &Value, home: bool) -> CmdResult {
     s.goal_x = None;
     apply(s, to, ext);
     sel_result(s)
+}
+
+/// Where Home and End measure the line from, as in Word. With Shift, from the focus. Without
+/// Shift a selection collapses: Home goes to the start of the line where the selection starts,
+/// End to the end of the line where it ends. A selection end at a paragraph's start, after the
+/// mark of the paragraph before (as after Shift+End, or Shift+Down from a line start), counts as
+/// the end of that paragraph's last line: Shift+End leaves it, and Shift+Home and End go to that
+/// line's start and end.
+fn line_from(s: &Session, ext: bool, home: bool) -> Pos {
+    let (start, end) = s.sel.ordered();
+    if !ext && home {
+        return start;
+    }
+    let forward = s.sel.anchor < s.sel.focus;
+    if ext && !forward {
+        return s.sel.focus.clone();
+    }
+    if start != end
+        && end.off == 0
+        && let Some(i) = end.path.last().checked_sub(1)
+    {
+        let prev = end.path.with_last(i);
+        if let Some(p) = s.doc.para(end.story, &prev) {
+            return Pos { story: end.story, path: prev, off: p.len() };
+        }
+    }
+    end
+}
+
+/// Shift+End on a paragraph's last line takes in its mark, as in Word: the selection runs to the
+/// start of the next paragraph in the same container. With none (the last paragraph of a story
+/// or a cell, or a table next) it stops at the end of the text.
+fn past_mark(s: &Session, end: Pos) -> Pos {
+    let Some(i) = end.path.last().checked_add(1) else { return end };
+    let next = end.path.with_last(i);
+    match (s.doc.para(end.story, &end.path), s.doc.para(end.story, &next)) {
+        (Some(p), Some(_)) if end.off == p.len() => Pos { story: end.story, path: next, off: 0 },
+        _ => end,
+    }
 }
 
 /// Page Up (`dir < 0`) / Page Down: the same place on the page before or after, or in the views
@@ -286,7 +327,13 @@ fn page(s: &mut Session, v: &Value, dir: i32) -> CmdResult {
     }
     let Some(c) = l.caret_on(&from, s.page_hint) else { return sel_result(s) };
     let np = if dir < 0 { c.page.saturating_sub(1) } else { (c.page + 1).min(l.pages.len().saturating_sub(1)) };
-    let to = l.hit(np, c.x, c.top + 1.0, from.story).unwrap_or(from);
+    // The caret's point is in its text's upright frame: in a turned text box too, so it is hit
+    // as drawn straight.
+    let upright = match from.story {
+        StoryRef::Part(id) => Some(id),
+        StoryRef::Body => None,
+    };
+    let to = l.hit_with(np, c.x, c.top + 1.0, from.story, upright).unwrap_or(from);
     s.page_hint = np;
     apply(s, to, ext);
     sel_result(s)

@@ -86,7 +86,8 @@ pub(super) fn smart_art_design(app: &mut WordApp, ui: &mut Ui) {
     graphic_size(ui, app);
 }
 
-/// Chart Design: the selected chart's elements (title, legend, data labels), its data and type,
+/// Chart Design: the selected chart's elements (title, legend, data labels, axis titles,
+/// gridlines), its data and type,
 /// and its size.
 pub(super) fn chart_design(app: &mut WordApp, ui: &mut Ui) {
     let Some(chart) = wordcraft_engine::cmd::chart::selected_chart(&app.session) else { return };
@@ -111,6 +112,29 @@ pub(super) fn chart_design(app: &mut WordApp, ui: &mut Ui) {
             mi_check(ui, app, "None", !chart.data_labels, "chart.dataLabels", json!({"on": false}));
             mi_check(ui, app, "Show", chart.data_labels, "chart.dataLabels", json!({"on": true}));
         });
+        // Pie and doughnut charts have no axes.
+        if !chart.kind.is_round() {
+            let titles = &chart.axis_titles;
+            menu_button(ui, app, crate::widgets::MenuButtonOptions::new("axisTitles", Some("Axis Titles"), "Axis Titles", true, ""), |ui, app| {
+                for (label, axis, on) in
+                    [("Primary Horizontal", "horizontal", titles.horizontal.is_some()), ("Primary Vertical", "vertical", titles.vertical.is_some())]
+                {
+                    mi_check(ui, app, label, on, "chart.axisTitle", json!({"axis": axis}));
+                }
+            });
+            menu_button(ui, app, crate::widgets::MenuButtonOptions::new("gridlines", Some("Gridlines"), "Gridlines", true, ""), |ui, app| {
+                use wordcraft_doc::chart::GridKind;
+                for (label, kind) in [
+                    ("Primary Major Horizontal", GridKind::MajorHorizontal),
+                    ("Primary Major Vertical", GridKind::MajorVertical),
+                    ("Primary Minor Horizontal", GridKind::MinorHorizontal),
+                    ("Primary Minor Vertical", GridKind::MinorVertical),
+                ] {
+                    let on = chart.gridlines.get(kind);
+                    mi_check(ui, app, label, on, "chart.gridlines", json!({"kind": kind.id(), "on": !on}));
+                }
+            });
+        }
     });
     group(ui, "Data", None, app, |ui, app| {
         big(ui, app, "chartData", "Edit\nData", "chart.editData", json!({}), false);

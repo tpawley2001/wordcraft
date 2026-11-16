@@ -38,7 +38,10 @@ pub use fonts::{EmbeddedFont, embedded_fonts};
 pub use read::{AltChunk, ChunkImporter, ReadOptions, read};
 pub use smart_art::smart_art_items;
 pub use wordml2003_write::write as write_wordml2003;
-pub use write::{write, write_as};
+pub use write::{
+    COMMON_SYSTEM_FONTS, FaceStyle, FontFile, MAX_EMBED_FILE_BYTES, NotEmbeddable, embeddable, is_common_system_font, write, write_as,
+    write_as_with_fonts,
+};
 
 /// Largest `.xml` file read as a Word XML document.
 pub const MAX_XML_FILE: usize = 1 << 30;

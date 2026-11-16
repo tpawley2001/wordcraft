@@ -15,6 +15,7 @@ pub mod edit;
 pub mod equation;
 pub mod fields;
 pub mod file;
+pub mod find_fold;
 pub mod find_format;
 pub mod find_pattern;
 pub mod fmt_revisions;
@@ -199,6 +200,26 @@ pub(crate) fn delete_selection_effect(s: &mut Session) -> Result<SelectionDelete
     };
     s.sel = crate::Selection::caret(effect.at.clone());
     Ok(effect)
+}
+
+/// Keep the paragraph mark a selection ends with, as Word does: when the selection ends at the
+/// start of a paragraph, it stops before the mark of the paragraph before. Typing over the
+/// selection (`typing`) always keeps that mark. Delete and Backspace keep it only when the
+/// selection starts after its paragraph's start and holds more than the mark. Whole paragraphs,
+/// or the mark alone, still go. The paragraph after the selection stays a paragraph of its own.
+pub(crate) fn keep_final_mark(s: &mut Session, typing: bool) {
+    let (a, b) = s.sel.ordered();
+    if a == b || b.off != 0 {
+        return;
+    }
+    let Some(i) = b.path.last().checked_sub(1) else { return };
+    let prev = b.path.with_last(i);
+    let Some(p) = s.doc.para(b.story, &prev) else { return };
+    let end = Pos { story: b.story, path: prev, off: p.len() };
+    if a > end || (!typing && (a.off == 0 || a == end)) {
+        return;
+    }
+    s.sel = crate::Selection { anchor: a, focus: end };
 }
 
 /// Delete the selection (respecting track changes); returns the collapsed position. With a
@@ -389,6 +410,9 @@ fn insert_text(s: &mut Session, text: &str, enter: bool, language: Option<&str>)
     let mut props = s.typing_props();
     if s.sel.is_collapsed() {
         s.sel = crate::Selection::caret(s.doc.past_field_ends(&s.sel.focus));
+    } else if enter && !text.starts_with(['\r', '\u{2029}']) {
+        // A break first is Enter, which replaces the whole selection, mark included.
+        keep_final_mark(s, true);
     }
     // Content controls: a placeholder is replaced, locked ones refuse.
     let prepared = controls::prepare_edit(s)?;

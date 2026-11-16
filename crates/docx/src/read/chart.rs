@@ -32,6 +32,7 @@ mod polar;
 mod stock;
 mod sunburst;
 mod three_d;
+mod trendline;
 
 #[cfg(test)]
 use canvas::SWATCH;
@@ -207,6 +208,8 @@ struct Chart {
 }
 
 #[cfg(test)]
+mod axis_title_tests;
+#[cfg(test)]
 mod chartex_box_tests;
 #[cfg(test)]
 mod chartex_polish_tests;
@@ -223,3 +226,5 @@ mod tests;
 mod three_d_tests;
 #[cfg(test)]
 mod treemap_tests;
+#[cfg(test)]
+mod trendline_tests;

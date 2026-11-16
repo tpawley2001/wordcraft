@@ -1,4 +1,5 @@
 use super::Rgb;
+use super::trendline::Trendline;
 
 /// A data label to draw once the chart is: the value at (`x`, `y`), centred there (`inside`, in
 /// white on the fill) or just beside it (above, or right of a horizontal bar's end).
@@ -119,11 +120,29 @@ pub(super) enum Pos {
     Bottom,
 }
 
+/// An axis title as the file gives it: its text and the look of its first run.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct AxisTitle {
+    pub(super) text: String,
+    /// Points.
+    pub(super) size: f32,
+    pub(super) color: Rgb,
+    pub(super) bold: bool,
+}
+
 /// One value axis (or category axis) as the file states it.
 #[derive(Default)]
 pub(super) struct Axis {
     pub(super) deleted: bool,
+    /// Major gridlines (`c:majorGridlines`), drawn even when the axis is deleted.
     pub(super) grid: bool,
+    /// Colour and width of the major gridlines.
+    pub(super) grid_style: (Rgb, f32),
+    /// Minor gridlines (`c:minorGridlines`).
+    pub(super) minor_grid: bool,
+    pub(super) minor_style: (Rgb, f32),
+    /// The axis title (`c:title`), drawn even when the axis is deleted.
+    pub(super) title: Option<AxisTitle>,
     pub(super) line: bool,
     /// `c:crossBetween val="midCat"`: categories sit on the tick marks, not between them.
     pub(super) mid: bool,
@@ -159,4 +178,6 @@ pub(super) struct Series {
     /// The values as the file has them, for data labels (`values` become shares in a 100%
     /// stacked chart); empty when the series shows no labels.
     pub(super) raw: Vec<Option<f64>>,
+    /// Trendlines (`c:trendline`) drawn over the series.
+    pub(super) trendlines: Vec<Trendline>,
 }

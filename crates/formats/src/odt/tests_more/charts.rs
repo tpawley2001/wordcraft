@@ -79,6 +79,8 @@ fn a_column_chart_reads_its_data_title_and_legend() {
             legend: Some(LegendPos::Right),
             data_labels: false,
             value_axis: Default::default(),
+            axis_titles: Default::default(),
+            gridlines: Default::default(),
         }
     );
     // The frame's size, in points.

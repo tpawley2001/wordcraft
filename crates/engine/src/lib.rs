@@ -14,6 +14,7 @@ pub mod catalog;
 pub mod cmd;
 pub(crate) mod doc_state;
 pub mod file_access;
+pub mod font_embed;
 pub(crate) mod ime;
 pub mod io;
 mod io_ext;
@@ -225,3 +226,7 @@ mod field_search_controls_tests;
 #[cfg(test)]
 #[path = "tests/find_fields.rs"]
 mod find_fields_tests;
+
+#[cfg(test)]
+#[path = "tests/find_folding.rs"]
+mod find_folding_tests;

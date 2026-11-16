@@ -33,6 +33,7 @@ fn backspace_inner(s: &mut Session, _: &Value, smart: bool) -> CmdResult {
     s.goal_x = None;
     s.pending = None;
     if !s.sel.is_collapsed() {
+        crate::cmd::keep_final_mark(s, false);
         let (a, b) = s.sel.ordered();
         let smart = smart && crate::cmd::smart_space::whole_words(s, &a, &b);
         let effect = delete_selection_effect(s)?;
@@ -150,6 +151,7 @@ fn delete_inner(s: &mut Session, _: &Value, smart: bool) -> CmdResult {
     s.goal_x = None;
     s.pending = None;
     if !s.sel.is_collapsed() {
+        crate::cmd::keep_final_mark(s, false);
         let (a, b) = s.sel.ordered();
         let smart = smart && crate::cmd::smart_space::whole_words(s, &a, &b);
         let effect = delete_selection_effect(s)?;
