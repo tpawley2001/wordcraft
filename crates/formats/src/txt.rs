@@ -92,13 +92,18 @@ const SNIFF: usize = 1 << 20;
 /// EUC-JP, EUC-KR, or a single-byte Windows / ISO code page; Windows-1252 as before when the
 /// guess is a single-byte Western one.
 pub fn legacy(b: &[u8]) -> String {
-    let mut det = chardetng::EncodingDetector::new(chardetng::Iso2022JpDetection::Deny);
-    det.feed(b.get(..SNIFF).unwrap_or(b), b.len() <= SNIFF);
-    let enc = det.guess(None, chardetng::Utf8Detection::Deny);
+    let enc = legacy_guess(b);
     if enc == encoding_rs::WINDOWS_1252 {
         return b.iter().map(|c| cp1252(*c)).collect();
     }
     enc.decode_without_bom_handling(b).0.into_owned()
+}
+
+/// chardetng's guess for bytes that aren't UTF-8.
+fn legacy_guess(b: &[u8]) -> &'static encoding_rs::Encoding {
+    let mut det = chardetng::EncodingDetector::new(chardetng::Iso2022JpDetection::Deny);
+    det.feed(b.get(..SNIFF).unwrap_or(b), b.len() <= SNIFF);
+    det.guess(None, chardetng::Utf8Detection::Deny)
 }
 
 /// Decode bytes in a named encoding (a WHATWG label such as `gbk`, `gb18030`, `big5`,
@@ -108,24 +113,58 @@ pub fn decode_as(b: &[u8], label: &str) -> Option<String> {
     Some(enc.decode(b).0.into_owned())
 }
 
-/// The encoding [`decode`] would read `b` in.
-pub fn detect(_b: &[u8]) -> TxtEncoding {
-    todo!("P0603")
+/// The encoding [`decode`] would read `b` in: a BOM, UTF-16 by its zero bytes, UTF-8 (pure
+/// ASCII too), else the legacy guess ([`legacy`]): `Windows` for windows-1252, else its
+/// encoding_rs name in lower case.
+pub fn detect(b: &[u8]) -> TxtEncoding {
+    if b.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        return TxtEncoding::Utf8;
+    }
+    if b.starts_with(&[0xFF, 0xFE]) {
+        return TxtEncoding::Utf16Le;
+    }
+    if b.starts_with(&[0xFE, 0xFF]) {
+        return TxtEncoding::Utf16Be;
+    }
+    if let Some(le) = unmarked_utf16(b) {
+        return if le { TxtEncoding::Utf16Le } else { TxtEncoding::Utf16Be };
+    }
+    if std::str::from_utf8(b).is_ok() {
+        return TxtEncoding::Utf8;
+    }
+    let enc = legacy_guess(b);
+    if enc == encoding_rs::WINDOWS_1252 { TxtEncoding::Windows } else { TxtEncoding::Label(enc.name().to_ascii_lowercase()) }
 }
 
-/// `b` read in `enc`; a BOM matching `enc` is dropped.
-pub fn decode_with(_b: &[u8], _enc: &TxtEncoding) -> String {
-    todo!("P0603")
+/// `b` read in `enc`; a BOM matching `enc` is dropped (EF BB BF for UTF-8, FF FE for UTF-16
+/// LE, FE FF for UTF-16 BE). Windows reads with [`cp1252`] as [`decode`] does; an unknown
+/// label reads as Windows.
+pub fn decode_with(b: &[u8], enc: &TxtEncoding) -> String {
+    match target(enc) {
+        Target::Utf8 => String::from_utf8_lossy(b.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(b)).into_owned(),
+        Target::Utf16(true) => utf16(b.strip_prefix(&[0xFF, 0xFE]).unwrap_or(b), true),
+        Target::Utf16(false) => utf16(b.strip_prefix(&[0xFE, 0xFF]).unwrap_or(b), false),
+        Target::Ibm437 => b.iter().map(|c| ibm437_char(*c)).collect(),
+        Target::Rs(e) if e == encoding_rs::WINDOWS_1252 => b.iter().map(|c| cp1252(*c)).collect(),
+        Target::Rs(e) => e.decode_without_bom_handling(b).0.into_owned(),
+    }
 }
 
 /// [`import_on`] with the encoding chosen instead of guessed.
-pub fn import_with(_bytes: &[u8], _enc: &TxtEncoding, _page: &wordcraft_doc::SectionProps) -> Document {
-    todo!("P0603")
+pub fn import_with(bytes: &[u8], enc: &TxtEncoding, page: &wordcraft_doc::SectionProps) -> Document {
+    let mut doc = text_document(&decode_with(bytes, enc));
+    doc.last_section = page.clone();
+    doc
 }
 
 /// A document with one paragraph per line.
 pub fn import(bytes: &[u8]) -> Document {
-    let text = decode(bytes);
+    text_document(&decode(bytes))
+}
+
+/// One paragraph per line of decoded `text`; control characters other than tab and form feed
+/// are dropped.
+fn text_document(text: &str) -> Document {
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
     let clean: String = text.chars().filter(|c| !c.is_control() || matches!(c, '\n' | '\t' | '\u{000C}')).collect();
     Document::from_text(&clean)
@@ -292,7 +331,15 @@ fn ibm437(c: char) -> Option<u8> {
     u8::try_from(i).ok()?.checked_add(0x80)
 }
 
-/// What an encoding resolves to for writing.
+/// The character IBM437 byte `b` stands for.
+fn ibm437_char(b: u8) -> char {
+    match b.checked_sub(0x80) {
+        None => char::from(b),
+        Some(i) => IBM437_HIGH.get(usize::from(i)).copied().unwrap_or(char::REPLACEMENT_CHARACTER),
+    }
+}
+
+/// What an encoding resolves to for reading and writing.
 enum Target {
     Utf8,
     Utf16(bool),

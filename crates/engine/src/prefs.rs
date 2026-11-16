@@ -41,6 +41,9 @@ pub struct Prefs {
     pub print_duplex_back: bool,
     /// File › Options › Advanced › Save › Always create backup copy (off).
     pub always_create_backup: bool,
+    /// File › Options › Advanced › General › Confirm file format conversion on open (off): the
+    /// app asks for a plain-text file's encoding (File Conversion) before opening it.
+    pub confirm_conversions: bool,
     /// Language › Detect language automatically (per user, as in Word).
     pub detect_language: bool,
     /// Set Proofing Language › Set As Default: overrides the interface language for future
@@ -158,6 +161,7 @@ impl Default for Prefs {
             print_duplex_front: false,
             print_duplex_back: false,
             always_create_backup: false,
+            confirm_conversions: false,
             typing_replaces_selection: true,
             insert_key_overtype: false,
             overtype: false,

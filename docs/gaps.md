@@ -1,6 +1,6 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0602: Save as Plain Text opens File Conversion (encoding, line ends, character substitution, red preview), as in Word. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0603: opening a .txt file can ask for its encoding in File Conversion, with a preview (Confirm file format conversion on open). Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0596: a missing Georgia, Arial Black, Segoe UI, Bookman Old Style, Perpetua or Gill Sans MT keeps Word's advance widths. Readiness estimates unchanged; earlier: P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged)
 
@@ -277,9 +277,11 @@ Convert to Text now uses comma-space separators and offers recursive nested-tabl
 
 Formatting restriction settings now include theme and style set switching locks, with DOCX and RTF persistence (P0560); broader dialog depth remains open.
 
-Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM437) or another encoding (Unicode with a byte order mark, Windows and East Asian code pages), the line ends and character substitution, with a preview that shows in red what won't save (P0602). Insert line breaks and the open-side encoding dialog remain open in gap #7.
+Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM437) or another encoding (Unicode with a byte order mark, Windows and East Asian code pages), the line ends and character substitution, with a preview that shows in red what won't save (P0602). With File › Options › Advanced › Confirm file format conversion on open (off by default), opening a .txt file shows File Conversion too, with the guessed encoding chosen and a preview of the file read in the chosen one (`txt::detect`/`decode_with`/`import_with`, `file.open` `encoding`; P0603). Insert line breaks and Word's converter list for other formats remain open in gap #7.
 
 ## Revision history
+
+> 2026-11-15 · trivial · P0603: Confirm file format conversion on open (`file.options` `confirmConversions`, off by default) shows File Conversion on opening a .txt file, with a preview; OK opens it in the chosen encoding (`file.open` `encoding`). Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0602: Save as Plain Text asks for the encoding, line ends and character substitution in a File Conversion dialog, as in Word (`txt::export_with`; `file.save` `encoding`/`lineEnd`/`allowSubstitution`). Readiness estimates unchanged.
 

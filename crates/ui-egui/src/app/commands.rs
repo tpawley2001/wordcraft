@@ -87,6 +87,10 @@ impl WordApp {
         if let Some(r) = crate::file_conversion::before_save(self, id, &mut params) {
             return r;
         }
+        // With Confirm file format conversion on open, opening plain text asks for its encoding.
+        if let Some(r) = crate::file_conversion::before_open(self, id, &params) {
+            return r;
+        }
         let applied = applied_font(id, &params);
         let r = self.execute_user(id, params);
         // A save error already on the status line is the reason to see; the refusal shows otherwise.
