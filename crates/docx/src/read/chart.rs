@@ -223,3 +223,5 @@ mod tests;
 mod three_d_tests;
 #[cfg(test)]
 mod treemap_tests;
+#[cfg(test)]
+mod trendline_tests;
