@@ -437,9 +437,11 @@ fn key_press(app: &mut WordApp, ctx: &egui::Context, key: Key, modifiers: Modifi
         let _ = app.run("select.extendOff", json!({}));
         return;
     }
-    // File › Options › Advanced: the Insert key switches overtype only when asked to.
+    // File › Options › Advanced: paste takes priority when both Insert options are on.
     if key == Key::Insert && modifiers.is_none() {
-        if app.session.prefs.insert_key_overtype {
+        if app.session.prefs.insert_key_paste {
+            let _ = app.run("edit.paste", json!({}));
+        } else if app.session.prefs.insert_key_overtype {
             let _ = app.run("text.overtype", json!({}));
         }
         return;

@@ -1,5 +1,9 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click.. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged; earlier: P0605: Math AutoCorrect has Word's 780 built-in entries (add, replace and delete your own), Recognized Functions… (Word's 55, add and delete) and Use Math AutoCorrect rules outside of math regions (`tools.autocorrect` `mathAdd`, `mathDelete`, `addFunction`, `deleteFunction`, `mathReplaceText`, `mathOutside`). Readiness estimates unchanged; earlier: P0602: Save as Plain Text opens File Conversion (encoding, line ends, character substitution, red preview), as in Word. Readiness estimates unchanged)
@@ -279,6 +283,7 @@ Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM4
 ## Revision history
 
 > 2026-11-15 · trivial · P0616: #6 narrowed: File › Options › Display › Update linked data before printing (off) runs Update Now on every link before a print job (`printUpdateLinks`; `file.printPdf` `updateLinks`; `fields.updateLinks`). Readiness estimates unchanged.
+> 2026-11-15 · trivial · P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.
 
@@ -783,6 +788,7 @@ Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM4
 | 2026-11-13 | trivial | P0461: #6: File › Options › Display › Print background colors and images (off: print jobs leave out the page colour and page picture) and Print drawings created in Word (on; off: shapes, text boxes, WordArt and drawing canvases print as empty space, the layout unchanged); job params `background`/`drawings`; Save as PDF unchanged |
 | 2026-11-14 | trivial | P0515: #24: F6 / Shift+F6 also reach the status bar and the ribbon's selected tab, as in Word (document, task panes, status bar, ribbon); Escape from either returns to the page. Readiness unchanged |
 | 2026-11-15 | trivial | P0559: #7: Edit Links to Files (Links dialog; `fields.links`, `fields.editLink`): list the body's LINK fields, set Automatic / Manual update, Locked and Preserve formatting, Update Now, Open Source, Change Source…, Break Link; dialog count +1 |
+| 2026-11-15 | trivial | P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click. Readiness estimates unchanged. |
 
 ## Layout validation fonts
 
