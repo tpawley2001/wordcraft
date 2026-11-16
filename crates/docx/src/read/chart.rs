@@ -208,6 +208,8 @@ struct Chart {
 }
 
 #[cfg(test)]
+mod axis_title_tests;
+#[cfg(test)]
 mod chartex_box_tests;
 #[cfg(test)]
 mod chartex_polish_tests;

@@ -23,6 +23,7 @@ pub fn key_name(k: Key) -> Option<&'static str> {
         Key::Minus => "-",
         Key::Period => ".",
         Key::Comma => ",",
+        Key::IntlBackslash => "<",
         Key::OpenBracket => "[",
         Key::CloseBracket => "]",
         Key::Quote => "'",
@@ -81,6 +82,14 @@ pub fn key_name(k: Key) -> Option<&'static str> {
     })
 }
 
+/// [`key_name`] for a key pressed with `m`. The key beside the left Shift on European keyboards
+/// types < and, with Shift, > (Italian, German, French, Spanish, Nordic layouts); egui has no key
+/// for either character, so it gives that key's place. There, Word's Ctrl+< shrinks the font and
+/// Ctrl+Shift+< (which types >) grows it.
+pub fn key_name_with(k: Key, m: Modifiers) -> Option<&'static str> {
+    if k == Key::IntlBackslash && m.shift { Some(">") } else { key_name(k) }
+}
+
 /// A key with its modifiers as the registry writes shortcuts (`Mod+Shift+K`).
 pub fn combo(m: Modifiers, key: &str, with_shift: bool) -> String {
     let mut s = String::new();
@@ -127,7 +136,7 @@ pub(super) fn ui_shortcut(key: Key, m: Modifiers) -> Option<(&'static str, Value
 /// Find and run the command bound to this key. Returns true if handled.
 pub(super) fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
     let reg = app.session.registry.clone();
-    let name = key_name(key);
+    let name = key_name_with(key, m);
     let bound = name.and_then(|n| app.session.keymap.resolve(&reg, &combo(m, n, true)));
     let style = name.and_then(|n| match app.session.keymap.resolve_target(&reg, &combo(m, n, true)) {
         Some(wordcraft_engine::KeyTarget::Style(style)) => Some(style),

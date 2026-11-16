@@ -1,12 +1,12 @@
-use super::canvas::{Rect, fill, rect_segs, runs, seg, stroke, text, text_at, text_w, widest, wrap};
+use super::canvas::{Rect, clip_text, fill, rect_segs, runs, seg, stroke, text, text_at, text_w, widest, wrap};
 use super::format::format_value;
-use super::model::{DataLabel, Group, Grouping, Kind, Series};
+use super::model::{AxisTitle, DataLabel, Group, Grouping, Kind, Series};
 use super::parse::category_text;
 use super::polar::{draw_data_labels, label_of};
 use super::stock::draw_stock;
 use super::three_d::{Projection, areas_3d, bars_3d, lines_3d, walls};
 use super::trendline;
-use super::{AXIS, Axis, Chart, El, GAP, GRID, GraphicItem, LINE, MAX_LABEL, MAX_TICKS, PathSeg, Rgb, ShapeKind, TextAlign, fill_colour, measure};
+use super::{AXIS, Axis, Chart, El, GAP, GraphicItem, LINE, MAX_LABEL, MAX_TICKS, PathSeg, Rgb, ShapeKind, TextAlign, fill_colour, measure};
 
 pub(super) fn label(s: &str) -> String {
     s.chars().take(MAX_LABEL).collect()
@@ -253,6 +253,20 @@ pub(super) fn cartesian(out: &mut Vec<GraphicItem>, c: &Chart, area: Rect) {
     if c.n == 0 {
         return;
     }
+    // Axis titles take room from the plot: the vertical axis's at the left, the horizontal
+    // axis's at the bottom (bars across: the value axis is the horizontal one).
+    let (h_axis, v_axis) = if c.horizontal { (&c.val, &c.cat) } else { (&c.cat, &c.val) };
+    let (h_title, v_title) = (h_axis.title.as_ref(), v_axis.title.as_ref());
+    let full = area;
+    let mut area = area;
+    if let Some(t) = v_title {
+        let room = title_room(t).min(area.w / 2.0);
+        area.x += room;
+        area.w -= room;
+    }
+    if let Some(t) = h_title {
+        area.h -= title_room(t).min(area.h / 2.0);
+    }
     let ax = Axes::of(c);
     let m = axis_margins(c, &ax, area);
     let plot = Rect { x: area.x + m.left, y: area.y + m.top, w: area.w - m.left - m.right, h: area.h - m.top - m.bottom };
@@ -265,8 +279,8 @@ pub(super) fn cartesian(out: &mut Vec<GraphicItem>, c: &Chart, area: Rect) {
     let g = Frame { plot, horiz: c.horizontal, n: c.n, vs: ax.vs, xs: ax.xs, mid: c.val.mid };
     if let Some(p) = &depth {
         walls(out, c, &g, &ax.vticks, p);
-    } else if c.val.grid {
-        draw_grid(out, &g, &ax.vticks);
+    } else {
+        draw_grids(out, c, &g, &ax);
     }
     // Secondary value axis: its own scale on the same frame (Word draws gridlines from the
     // primary axis only).
@@ -327,16 +341,107 @@ pub(super) fn cartesian(out: &mut Vec<GraphicItem>, c: &Chart, area: Rect) {
     if !c.cat.deleted {
         draw_category_labels(out, c, &g, &ax.xticks, &m, area);
     }
+    if let Some(t) = v_title {
+        // Turned to read bottom to top, left of the tick labels, centred on the plot's height.
+        let lh = t.size * LINE;
+        let s = clip_text(&t.text, plot.h.max(full.h * 0.5), t.size);
+        let w = text_w(&s, t.size) + 4.0;
+        let (cx, cy) = (full.x + lh / 2.0, plot.y + plot.h / 2.0);
+        title_item(out, t, s, Rect { x: cx - w / 2.0, y: cy - lh / 2.0, w, h: lh }, 270.0);
+    }
+    if let Some(t) = h_title {
+        // Centred under the category labels.
+        let lh = t.size * LINE;
+        let s = clip_text(&t.text, area.w, t.size);
+        title_item(out, t, s, Rect { x: plot.x + plot.w / 2.0 - area.w / 2.0, y: full.bottom() - lh, w: area.w, h: lh }, 0.0);
+    }
 }
 
-/// Major gridlines at the value ticks.
-fn draw_grid(out: &mut Vec<GraphicItem>, g: &Frame, ticks: &[(f64, String)]) {
+/// Gap between an axis title and the axis labels, as a share of the title's size.
+const TITLE_GAP: f32 = 0.4;
+
+/// Room an axis title takes from the plot: its line and a gap.
+fn title_room(t: &AxisTitle) -> f32 {
+    t.size * (LINE + TITLE_GAP)
+}
+
+fn title_item(out: &mut Vec<GraphicItem>, t: &AxisTitle, s: String, r: Rect, rotation: f32) {
+    out.push(GraphicItem::Text {
+        rect: r.arr(),
+        text: s,
+        size: t.size,
+        color: t.color,
+        bold: t.bold,
+        align: TextAlign::Center,
+        font: None,
+        rotation,
+    });
+}
+
+/// Most gridlines drawn along one axis (a category axis has one per category).
+const MAX_GRIDLINES: usize = 1000;
+
+/// Gridlines: the minor ones under the major ones, of the value axis (across the value ticks) and
+/// of the category axis (scatter: at the x ticks; else major at the category boundaries, minor at
+/// the categories' centres). Minor ticks are a fifth of the major unit, Word's automatic minor
+/// unit.
+fn draw_grids(out: &mut Vec<GraphicItem>, c: &Chart, g: &Frame, ax: &Axes) {
     let plot = g.plot;
-    for (t, _) in ticks {
-        let p = g.val(*t);
-        let segs = if g.horiz { seg(p, plot.y, p, plot.bottom()) } else { seg(plot.x, p, plot.right(), p) };
-        stroke(out, segs, GRID, 0.75);
+    // A line across the plot at `p` along the value direction, or along the category direction.
+    let val_line = |p: f32| if g.horiz { seg(p, plot.y, p, plot.bottom()) } else { seg(plot.x, p, plot.right(), p) };
+    let cat_line = |p: f32| if g.horiz { seg(plot.x, p, plot.right(), p) } else { seg(p, plot.y, p, plot.bottom()) };
+    let (v, k) = (&c.val, &c.cat);
+    if v.minor_grid {
+        for t in minor_ticks(ax.vs) {
+            stroke(out, val_line(g.val(t)), v.minor_style.0, v.minor_style.1);
+        }
     }
+    if k.minor_grid {
+        match ax.xs {
+            Some(xs) => minor_ticks(xs).into_iter().for_each(|t| stroke(out, cat_line(g.scat_x(t)), k.minor_style.0, k.minor_style.1)),
+            None => category_marks(g, true).into_iter().for_each(|p| stroke(out, cat_line(p), k.minor_style.0, k.minor_style.1)),
+        }
+    }
+    if v.grid {
+        for (t, _) in &ax.vticks {
+            stroke(out, val_line(g.val(*t)), v.grid_style.0, v.grid_style.1);
+        }
+    }
+    if k.grid {
+        match ax.xs {
+            Some(_) => ax.xticks.iter().for_each(|(t, _)| stroke(out, cat_line(g.scat_x(*t)), k.grid_style.0, k.grid_style.1)),
+            None => category_marks(g, false).into_iter().for_each(|p| stroke(out, cat_line(p), k.grid_style.0, k.grid_style.1)),
+        }
+    }
+}
+
+/// The minor ticks of `s` (a fifth of its step) that aren't major ticks.
+fn minor_ticks(s: Scale) -> Vec<f64> {
+    let minor = s.step / 5.0;
+    if !(minor.is_finite() && minor > 0.0) {
+        return Vec::new();
+    }
+    let n = (((s.hi - s.lo) / minor + 1e-9).floor().max(0.0) as usize).min(MAX_TICKS * 5);
+    (1..=n).filter(|k| k % 5 != 0).map(|k| s.lo + k as f64 * minor).collect()
+}
+
+/// Positions along the category direction of the category axis's tick marks (`centres`: of the
+/// categories' centres instead). Categories between the ticks (`crossBetween` = `between`) have
+/// their ticks at the band edges; categories on the ticks (`midCat`) at the categories, with
+/// the centres halfway between them. At most [`MAX_GRIDLINES`], evenly picked.
+fn category_marks(g: &Frame, centres: bool) -> Vec<f32> {
+    let band = g.band();
+    let along = |t: f32| if g.horiz { g.plot.bottom() - t * band } else { g.plot.x + t * band };
+    let pts: Vec<f32> = if g.mid && !g.horiz {
+        let at: Vec<f32> = (0..g.n).map(|i| g.cat_x(i)).collect();
+        if centres { at.windows(2).filter_map(|w| Some((w.first()? + w.get(1)?) / 2.0)).collect() } else { at }
+    } else if centres {
+        (0..g.n).map(|i| along(i as f32 + 0.5)).collect()
+    } else {
+        (0..=g.n).map(|i| along(i as f32)).collect()
+    };
+    let stride = pts.len().div_ceil(MAX_GRIDLINES).max(1);
+    pts.into_iter().step_by(stride).collect()
 }
 
 /// The category axis line, the plot area's outline and the value axis line, as the file shows them.

@@ -62,6 +62,9 @@ pub struct DisplayOptions {
     /// Print drawings created in Word off: nothing is drawn for shapes (ink excepted), text boxes
     /// and their text, WordArt and drawing canvases. The layout is unchanged.
     pub hide_drawings: bool,
+    /// The text box story being edited: its frames and text are drawn straight (unturned) on
+    /// screen, as Word shows a turned box while you edit it (#6056). None in exports and print.
+    pub straight_text_box: Option<u32>,
     /// File › Options › Display › Show highlighter marks off: highlight colour is not drawn (the
     /// text keeps its highlight; shading still draws). Set on screen and for print jobs; PDF
     /// export leaves it off.
@@ -120,6 +123,7 @@ impl Default for DisplayOptions {
             picture_placeholders: false,
             forms_data_only: false,
             hide_drawings: false,
+            straight_text_box: None,
             hide_highlight: false,
             form_field_shading: false,
             field_shading: FieldShading::Never,
