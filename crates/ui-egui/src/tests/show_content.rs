@@ -82,3 +82,50 @@ fn the_options_are_not_edits() {
     assert!(!a.session.dirty);
     assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), text);
 }
+
+/// Show highlighter marks, Show drawings and text boxes on screen and Show background colors and
+/// images in Print Layout view are kept between runs; a settings file from before them has them on.
+#[test]
+fn the_show_options_survive_a_restart() {
+    let mut a = app();
+    for id in ["ui.showHighlight", "ui.showDrawings", "ui.showBackgrounds"] {
+        run(&mut a, id, json!({"value": false}));
+    }
+    let saved = serde_json::to_string(&a.prefs()).unwrap();
+    let mut b = app();
+    b.apply_prefs(serde_json::from_str(&saved).unwrap());
+    assert_eq!(run(&mut b, "ui.showHighlight", json!({})), json!({"showHighlight": false}));
+    assert_eq!(run(&mut b, "ui.showDrawings", json!({})), json!({"showDrawings": false}));
+    assert_eq!(run(&mut b, "ui.showBackgrounds", json!({})), json!({"showBackgrounds": false}));
+    let old: UiState = serde_json::from_str(r#"{"tab":"Insert"}"#).unwrap();
+    assert!(old.show_highlight && old.show_drawings && old.show_backgrounds);
+}
+
+/// Show highlighter marks off: a print job leaves the highlight out (Word: it "displays and
+/// prints highlighted text"), as the job param `highlight: false` does; the document keeps it.
+#[test]
+fn show_highlighter_marks_off_prints_no_highlight() {
+    let mut a = app();
+    run(&mut a, "select.text", json!({"text": "Body"}));
+    run(&mut a, "format.highlight", json!({"color": "yellow"}));
+    let got = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let seen = got.clone();
+    a.services.print = Some(Box::new(move |bytes| {
+        seen.borrow_mut().push(bytes.to_vec());
+        Ok(())
+    }));
+    run(&mut a, "ui.print", json!({}));
+    run(&mut a, "ui.print", json!({}));
+    run(&mut a, "ui.print", json!({"highlight": false}));
+    run(&mut a, "ui.showHighlight", json!({"value": false}));
+    let doc = a.session.doc.clone();
+    run(&mut a, "ui.print", json!({}));
+    assert_eq!(a.session.doc, doc, "printing keeps the highlight in the document");
+    let jobs = got.borrow();
+    let [on, again, param_off, option_off] = jobs.as_slice() else { panic!("four jobs") };
+    assert_eq!(on, again, "a job prints the same bytes each time");
+    assert_ne!(on, option_off, "off: the highlight is not printed");
+    assert_eq!(param_off, option_off, "the option prints as `highlight: false` does");
+    drop(jobs);
+    assert!(a.run("ui.print", json!({"highlight": "no"})).is_err(), "a non-bool `highlight` is an error");
+}

@@ -334,6 +334,10 @@ fn display(app: &mut WordApp, ui: &mut Ui) {
     if ui.checkbox(&mut ruler, tl!("Show rulers")).changed() {
         let _ = app.run("view.ruler", json!({"value": ruler}));
     }
+    let mut highlight = app.ui.show_highlight;
+    if ui.checkbox(&mut highlight, tl!("Show highlighter marks")).changed() {
+        let _ = app.run("ui.showHighlight", json!({"value": highlight}));
+    }
     numeral_picker(app, ui);
     ui.add_space(8.0);
     section(ui, "Status bar");
@@ -594,13 +598,16 @@ fn accessibility(app: &mut WordApp, ui: &mut Ui) {
     }
 }
 
-/// Advanced › Show document content, in Word's order: picture placeholders, text boundaries, crop
-/// marks, field shading, and the draft font with its name and size. Screen settings, kept between
-/// runs. Font Substitution… opens the dialog of the fonts the document shows that aren't installed.
+/// Advanced › Show document content, in Word's order: background colors and images, picture
+/// placeholders, drawings and text boxes, text boundaries, crop marks, field shading, and the draft
+/// font with its name and size. Screen settings, kept between runs. Font Substitution… opens the
+/// dialog of the fonts the document shows that aren't installed.
 fn show_document_content(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Show document content");
     for (label, id, mut on) in [
+        (tl!("Show background colors and images in Print Layout view"), "ui.showBackgrounds", app.ui.show_backgrounds),
         (tl!("Show picture placeholders"), "ui.picturePlaceholders", app.ui.picture_placeholders),
+        (tl!("Show drawings and text boxes on screen"), "ui.showDrawings", app.ui.show_drawings),
         (tl!("Show text boundaries"), "ui.textBoundaries", app.ui.text_boundaries),
         (tl!("Show crop marks"), "ui.cropMarks", app.ui.crop_marks),
     ] {

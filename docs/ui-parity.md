@@ -2,6 +2,7 @@
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.)
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0613: File › Options: Show highlighter marks, Show drawings and text boxes on screen, Show background colors and images in Print Layout view (all on, kept between runs; Save as PDF unchanged). Readiness estimates unchanged; earlier: P0609: File › Options › Advanced › Cut, copy, and paste has Use smart cut and paste and, under it, Adjust sentence and word spacing automatically (both on, `file.options` `smartCutPaste` / `pasteAdjustWordSpacing`). Readiness estimates unchanged)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (Font Substitution dialog: see which fonts aren't installed, pick what each is shown in, or convert them permanently. Readiness estimates unchanged; earlier: P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged)
@@ -192,10 +193,13 @@ Options / Print: Display adds Print hidden text; Advanced adds Print pages in re
 
 ## Show document content (File › Options › Advanced)
 
-Per-user screen settings, kept between runs; the document, its undo history, printing and export never see them.
+Per-user screen settings, kept between runs; the document, its undo history, printing and export never see them (except Show highlighter marks, which print jobs follow too).
 
 | Option | WordCraft | Word | Parity |
 |---|---|---|---|
+| Show background colors and images in Print Layout view (`ui.showBackgrounds`, on) | off: Print Layout pages show white (or the screen paper tint) instead of the page color and page picture; Read Mode and Immersive Reader keep their own paper | same | ✅ |
+| Show drawings and text boxes on screen (`ui.showDrawings`, on) | off: shapes, text boxes and their text, WordArt and drawing canvases aren't drawn; pictures stay; layout unchanged | same | ✅ |
+| Show highlighter marks (`ui.showHighlight`, on; File › Options › Display) | off: text highlight isn't drawn on screen or in print jobs (shading stays); the document keeps it; Save as PDF unchanged | same (Word's PDF export unverified) | ✅ |
 | Show crop marks (`ui.cropMarks`, on) | Print Layout: two grey lines from each corner of the text area out into the margins, 18 pt long (our choice) or to the page edge | same lines; length unmeasured | ✅ |
 | Show text boundaries (`ui.textBoundaries`) | Print Layout: a dotted grey outline round the text area, or round each column | same | ✅ |
 | Show picture placeholders (`ui.picturePlaceholders`) | pictures, inline, floating and in shapes, drawn as an empty outlined rectangle; layout unchanged | same | ✅ |
@@ -654,6 +658,7 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 | 2026-11-15 | trivial | P0604: Customize Status Bar: right-click the status bar for the list of its items (Formatted Page Number, Section, Page Number, Vertical Page Position, Line Number, Column, Word Count, Character Count (with spaces), Language, Track Changes, Caps Lock, Overtype, Selection Mode, View Shortcuts, Zoom Slider, Zoom), each with its value; a click shows or hides one and the list stays open; kept between runs (`ui.statusItem`). The default set is what the bar showed before. Caps Lock has no value: egui doesn't report the key's state. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0612: File › Options › Advanced › Show document content › Field shading: Never, Always or When selected (the default; `ui.fieldShading`), so fields and cross-references show on grey; screen only, kept between runs (#3233). Readiness estimates unchanged. |
+| 2026-11-15 | trivial | P0613: File › Options › Display › Show highlighter marks (also print jobs) and Advanced › Show document content › Show background colors and images in Print Layout view and Show drawings and text boxes on screen (all on; `ui.showHighlight`, `ui.showBackgrounds`, `ui.showDrawings`); kept between runs; Save as PDF unchanged. Readiness estimates unchanged. |
 
 ### Format Painter integration refresh, 2026-10-30
 
