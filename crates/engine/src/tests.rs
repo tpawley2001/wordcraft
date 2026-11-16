@@ -10,6 +10,7 @@ use wordcraft_doc::{Pos, StoryRef};
 
 use crate::{Session, cmd};
 
+mod page_break_caret;
 mod replace_all_stories;
 mod autonum_fields;
 mod copy_html_list;

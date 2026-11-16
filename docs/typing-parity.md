@@ -1,5 +1,6 @@
 # Typing parity with Word
 
+> **Last updated:** 2026-11-16 · **Change:** trivial (P0638: Ctrl+Enter (Cmd+Enter on macOS) at paragraph end adds an empty paragraph after the page break and moves the caret there; ribbon Page Break uses the same command behavior. Mid-paragraph and table-cell insertion stay unchanged. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0631: Shift+End selects an interior paragraph mark; typing and partial-paragraph deletion preserve it. Home/End collapse selections by line. Existing smart spacing and IME effects retained; readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0607: Use smart cursoring: after scrolling, an arrow key moves the caret on the page in view; earlier: P0517: applying a paragraph style clears direct paragraph formatting and a direct bullet or number.)
@@ -19,6 +20,16 @@ WordCraft, results read back paragraph by paragraph) and pinned by tests in
 `crates/engine/src/tests/typing.rs`. When typing behaviour changes, change it here and in the
 tests together. Line breaking and pagination are in [`layout-parity.md`](layout-parity.md); the
 overall picture is in [`target-app-parity.md`](target-app-parity.md).
+
+## Page Break (Ctrl+Enter / Cmd+Enter)
+
+At paragraph end, `text.pageBreak` and `insert.pageBreak` insert a page break and
+start a new empty paragraph, with the caret at its beginning on the next page.
+A selection ending at paragraph end is replaced first. In the middle of a paragraph,
+no paragraph is added; in a table cell, the caret stays in the cell's paragraph.
+Insertion and the paragraph split form one undo step. Repeated presses each start
+another page. Regressions: `tests/page_break_caret.rs`, `tests/typing.rs`, and the
+UI test `mod_enter_moves_the_caret_to_the_next_page`.
 
 ## Additional editing command: Delete Previous Sentence (#3693)
 
@@ -673,6 +684,8 @@ Change Case: title and sentence case keep words in capitals when the selection c
 Underline shortcuts and font effects follow Word: Ctrl+U makes any other underline style single, Ctrl+Shift+D and Ctrl+Shift+W toggle their own style off again, and turning on All Caps/Small Caps, Strikethrough/Double strikethrough or Emboss/Engrave/Outline/Shadow turns its exclusive partners off (Outline and Shadow can both be on) (`tests::char_toggles_word`).
 
 ## Revision history
+
+> 2026-11-16 · trivial · P0638: Ctrl+Enter (Cmd+Enter on macOS) at paragraph end adds an empty paragraph after the page break and moves the caret there; ribbon Page Break uses the same command behavior. Mid-paragraph and table-cell insertion stay unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.
 

@@ -62,9 +62,10 @@ fn a_shape_dragged_back_to_the_page_its_paragraph_starts_on_stays_there() {
 fn a_shape_dropped_just_after_a_page_break_in_a_paragraph_stays_there() {
     let mut s = Session::new(wordcraft_doc::Document::new());
     let text = "The quick brown fox jumps over the lazy dog. ";
-    s.run("text.insert", &json!({"text": text.repeat(20)})).unwrap();
+    // Keep the break inside the paragraph: at its end Page Break starts a new paragraph.
+    s.run("text.insert", &json!({"text": text.repeat(60)})).unwrap();
+    s.run("caret.set", &json!({"pos": Pos::body(0, text.len() * 20)})).unwrap();
     s.run("insert.pageBreak", &json!({})).unwrap();
-    s.run("text.insert", &json!({"text": text.repeat(40)})).unwrap();
     assert_eq!(s.doc.body.len(), 1, "one paragraph");
     s.run("caret.docStart", &json!({})).unwrap();
     s.run("insert.shape", &json!({"kind": "rectangle"})).unwrap();

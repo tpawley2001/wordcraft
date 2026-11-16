@@ -4090,6 +4090,26 @@ fn autoformat_now_follows_the_switches_and_keeps_the_caret() {
     assert_eq!(s.undo_depth(), depth, "nothing changed, no undo step");
 }
 
+/// Each page-break key press reaches a new empty paragraph; undo and redo keep its caret.
+#[test]
+fn repeated_page_breaks_move_the_caret_and_restore_it_on_redo() {
+    let mut s = s();
+    run(&mut s, "text.insert", json!({"text": "Hello"}));
+    for paragraph in 1..=2 {
+        run(&mut s, "text.pageBreak", json!({}));
+        assert_eq!(s.sel.focus, Pos::body(paragraph, 0));
+        assert!(s.doc.para_at(&s.sel.focus).unwrap().is_empty());
+        let caret = s.sel.focus.clone();
+        assert_eq!(s.layout().caret(&caret).unwrap().page, paragraph);
+    }
+    assert!(s.undo());
+    assert_eq!(s.sel.focus, Pos::body(1, 0));
+    assert!(s.redo());
+    assert_eq!(s.sel.focus, Pos::body(2, 0));
+    run(&mut s, "text.insert", json!({"text": "Next"}));
+    assert_eq!(s.doc.para_at(&Pos::body(2, 0)).unwrap().text, "Next");
+}
+
 /// The body's paragraphs as plain text, as typed (not lowercased).
 fn para_texts(s: &Session) -> Vec<String> {
     s.doc.body.iter().filter_map(|b| b.as_para()).map(|p| p.text.clone()).collect()
