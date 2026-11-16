@@ -62,6 +62,7 @@ pub(super) fn list(s: &mut Session, v: &Value, default: ListKind) -> CmdResult {
             _ => Arc::make_mut(&mut s.doc.numbering).try_add_list(kind)?,
         },
     };
+    let normal_for_lists = s.prefs.normal_style_for_lists;
     fmt(s, &|p| {
         let level = p.numbering.filter(|n| n.num != 0).map(|n| n.level).unwrap_or(0);
         p.numbering = Some(NumRef { num, level });
@@ -69,9 +70,7 @@ pub(super) fn list(s: &mut Session, v: &Value, default: ListKind) -> CmdResult {
         p.indent_first = None;
         p.indent_left_chars = None;
         p.indent_first_chars = None;
-        if p.style.is_none() || p.style.as_deref() == Some("Normal") {
-            p.style = Some("ListParagraph".into());
-        }
+        p.style = crate::cmd::lists::list_style_for(normal_for_lists, p.style.as_deref());
     })
 }
 

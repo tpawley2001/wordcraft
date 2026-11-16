@@ -128,6 +128,9 @@ pub struct CanvasState {
     /// revision: finding out walks every paragraph, too slow for every frame (#811).
     markup_facts: std::cell::Cell<Option<((u64, u64), [bool; 3])>>,
     pub scroll_to_caret: bool,
+    /// The turned text box being edited this frame (the caret's story), drawn straight on screen
+    /// and hit as drawn (see [`wordcraft_layout::display::DisplayOptions::straight_text_box`]).
+    pub(crate) straight_box: Option<u32>,
     /// Set while a command runs for a mouse drag on a table: the pointer is already
     /// on the target, so the view stays put instead of following the caret (#1738).
     pub keep_view: bool,
@@ -411,6 +414,7 @@ impl Default for CanvasState {
             page_keys: PageKeys::default(),
             markup_facts: std::cell::Cell::new(None),
             scroll_to_caret: true,
+            straight_box: None,
             keep_view: false,
             nav_to_caret: false,
             read_wheel_accum: 0.0,
@@ -1499,7 +1503,7 @@ fn handle_secondary_selection(app: &mut WordApp, resp: &egui::Response, rects: &
         let at = wordcraft_geom::Point::new(x, y);
         let on_cells =
             wordcraft_engine::cmd::table_mouse::cell_rects(layout, &app.session.doc, range).iter().any(|(pi, r)| *pi == page && r.contains(at));
-        if !on_cells && let Some(pos) = layout.hit(page, x, y, app.session.sel.focus.story) {
+        if !on_cells && let Some(pos) = layout.hit_with(page, x, y, app.session.sel.focus.story, app.canvas.straight_box) {
             app.session.sel = wordcraft_engine::Selection::caret(pos);
         }
     }
@@ -1529,7 +1533,7 @@ fn handle_secondary_selection(app: &mut WordApp, resp: &egui::Response, rects: &
         if crate::objects::select_at(app, layout, rects, geo.scale, p) {
             app.canvas.context_issue = None;
             app.canvas.context_synonyms = None;
-        } else if let Some(pos) = layout.hit(page, x, y, app.session.sel.focus.story) {
+        } else if let Some(pos) = layout.hit_with(page, x, y, app.session.sel.focus.story, app.canvas.straight_box) {
             let (a, b) = app.session.sel.ordered();
             if !(a <= pos && pos <= b) || app.session.sel.is_collapsed() {
                 app.session.sel = wordcraft_engine::Selection::caret(pos);
@@ -1822,6 +1826,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let full = ui.available_rect_before_wrap();
     let layout = prepare_layout(app, ui, full);
+    // Word shows a turned text box straight while you edit it (#6056).
+    app.canvas.straight_box = layout.turned_box_story(app.session.sel.focus.story);
     let view = prepare_view(app, ui, full, &layout);
     // Only the active pane of a split window follows the caret.
     let passive = app.canvas.split.passive;

@@ -286,7 +286,13 @@ fn page(s: &mut Session, v: &Value, dir: i32) -> CmdResult {
     }
     let Some(c) = l.caret_on(&from, s.page_hint) else { return sel_result(s) };
     let np = if dir < 0 { c.page.saturating_sub(1) } else { (c.page + 1).min(l.pages.len().saturating_sub(1)) };
-    let to = l.hit(np, c.x, c.top + 1.0, from.story).unwrap_or(from);
+    // The caret's point is in its text's upright frame: in a turned text box too, so it is hit
+    // as drawn straight.
+    let upright = match from.story {
+        StoryRef::Part(id) => Some(id),
+        StoryRef::Body => None,
+    };
+    let to = l.hit_with(np, c.x, c.top + 1.0, from.story, upright).unwrap_or(from);
     s.page_hint = np;
     apply(s, to, ext);
     sel_result(s)
