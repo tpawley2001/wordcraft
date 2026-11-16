@@ -190,6 +190,8 @@ fn insert_line_breaks_checkbox_reaches_save_and_is_remembered() {
     let path = dir.join("wrapped.text");
     let text = (0..90).map(|i| format!("word{i}")).collect::<Vec<_>>().join(" ");
     let mut a = app(&text);
+    // Repeated Save applies to a document whose own file is plain text.
+    a.session.path = Some(path.clone());
     a.run("file.saveAs", json!({"path": path})).unwrap();
     let Some(crate::dialogs::Dialog::FileConversion { form }) = &mut a.dialog else { panic!("File Conversion is open") };
     assert!(!form.insert_line_breaks);

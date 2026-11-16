@@ -469,13 +469,13 @@ pub fn txt_layout_copy(doc: &Document, layout: &wordcraft_layout::DocLayout) -> 
     use wordcraft_doc::StoryRef;
     let mut starts = BTreeMap::<_, BTreeSet<usize>>::new();
     for item in layout.pages.iter().flat_map(|page| &page.items) {
-        if let wordcraft_layout::Placed::Lines { story: StoryRef::Body, path, para, l0, l1, .. } = item {
-            // Table cells are body story too; only top-level paragraphs gain wraps.
-            if path.len() == 1 {
-                for line in para.lines.get(*l0..*l1).unwrap_or(&[]) {
-                    if line.start > 0 {
-                        starts.entry(path.clone()).or_default().insert(line.start);
-                    }
+        // Table cells are body story too; only top-level paragraphs gain wraps.
+        if let wordcraft_layout::Placed::Lines { story: StoryRef::Body, path, para, l0, l1, .. } = item
+            && path.0.len() == 1
+        {
+            for line in para.lines.get(*l0..*l1).unwrap_or(&[]) {
+                if line.start > 0 {
+                    starts.entry(path.clone()).or_default().insert(line.start);
                 }
             }
         }
