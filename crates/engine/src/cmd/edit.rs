@@ -294,6 +294,7 @@ pub(crate) fn selection_fragment_in(s: &Session, doc: &wordcraft_doc::Document) 
 /// #816) and as RTF for the host to put on the system clipboard too, so other programs keep the
 /// formatting; and for a copy of one equation alone, its MathML (#1297).
 pub(crate) fn copy_result(s: &mut Session) -> Value {
+<<<<<<< ours
     (s.clipboard_html, s.clipboard_rtf) = match &s.clipboard {
         Some(f) => {
             let mut d = f.to_document();
@@ -303,6 +304,14 @@ pub(crate) fn copy_result(s: &mut Session) -> Value {
             (wordcraft_formats::html::export_fragment(&d), wordcraft_formats::rtf::export(&d))
         }
         None => (String::new(), String::new()),
+=======
+    s.clipboard_html = match &s.clipboard {
+        Some(f) => {
+            let (d, lists) = clipboard_document(s, f);
+            wordcraft_formats::html::export_fragment(&d, lists)
+        }
+        None => String::new(),
+>>>>>>> theirs
     };
     let mut r = json!({"text": s.clipboard_text});
     for (k, v) in [("html", &s.clipboard_html), ("rtf", &s.clipboard_rtf)] {
@@ -320,6 +329,7 @@ pub(crate) fn copy_result(s: &mut Session) -> Value {
     r
 }
 
+<<<<<<< ours
 fn cut(s: &mut Session, _: &Value) -> CmdResult {
     let whole = super::table::selected_table(s);
     let r = copy_with(s)?;
@@ -340,6 +350,32 @@ fn cut(s: &mut Session, _: &Value) -> CmdResult {
         super::controls::restore_placeholder(s)?;
         return Ok(r);
     }
+=======
+/// The copy as a document, for the HTML Copy puts on the system clipboard: the fragment with the
+/// source's styles and list definitions, so its numbered and bulleted paragraphs stay lists when
+/// another program pastes them (Word turns the HTML list back into numbering); and the source's
+/// list counters where the copy starts, so each copied item keeps the number the page shows for
+/// it: a copy of items 3 and 4 reads 3 and 4, as Word's does. The copy's paragraphs are the
+/// source's from its first on, in order (whole tables, or the paragraphs of the cells it spans),
+/// so counting on through them gives each one its number there, in the body, a table cell or
+/// any other story.
+fn clipboard_document(s: &Session, f: &Fragment) -> (wordcraft_doc::Document, wordcraft_doc::numbering::Counters) {
+    let mut d = f.to_document();
+    d.styles = s.doc.styles.clone();
+    d.numbering = s.doc.numbering.clone();
+    let (a, _) = s.sel.ordered();
+    let mut counters = wordcraft_doc::numbering::Counters::default();
+    for path in s.doc.para_paths(a.story).into_iter().take_while(|p| *p != a.path) {
+        if let Some(p) = s.doc.para(a.story, &path) {
+            wordcraft_formats::model::count_list_para(&s.doc, p, &mut counters);
+        }
+    }
+    (d, counters)
+}
+
+fn cut(s: &mut Session, v: &Value) -> CmdResult {
+    let r = copy(s, v)?;
+>>>>>>> theirs
     // A tracked cut of a paragraph or sentence may become a move when pasted.
     if !super::moves::cut_tracked(s)? {
         let (a, b) = s.sel.ordered();

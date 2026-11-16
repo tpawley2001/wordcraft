@@ -11,6 +11,7 @@ use wordcraft_doc::{Pos, StoryRef};
 use crate::{Session, cmd};
 
 mod autonum_fields;
+mod copy_html_list;
 mod autonum_heading_rule;
 mod auto_caption;
 mod autocorrect_symbols_word;
