@@ -1,12 +1,10 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (Font Substitution dialog: see which fonts aren't installed, pick what each is shown in, or convert them permanently. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged.)
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0587: Find matches the text a field shows (a citation's `[7]`, a REF or SEQ result, a legacy form field's text), and a match may run into and out of it; with field codes shown it searches the code instead, never across the field's edge, and the drawn braces are not characters. A match in a field covers the whole field; Replace leaves it alone and Replace All reports it as skipped (from storytold/wordcraft#5560). Readiness estimates unchanged.)
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click.. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (Font Substitution dialog: see which fonts aren't installed, pick what each is shown in, or convert them permanently. Readiness estimates unchanged; earlier: P0587: Find matches the text a field shows (a citation's `[7]`, a REF or SEQ result, a legacy form field's text), and a match may run into and out of it; with field codes shown it searches the code instead, never across the field's edge, and the drawn braces are not characters. A match in a field covers the whole field; Replace leaves it alone and Replace All reports it as skipped (from storytold/wordcraft#5560). Readiness estimates unchanged; earlier: P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click.. Readiness estimates unchanged)
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.)
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0609: File › Options › Advanced › Cut, copy, and paste has Use smart cut and paste and, under it, Adjust sentence and word spacing automatically (both on, `file.options` `smartCutPaste` / `pasteAdjustWordSpacing`). Readiness estimates unchanged)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged; earlier: P0609: File › Options › Advanced › Cut, copy, and paste has Use smart cut and paste and, under it, Adjust sentence and word spacing automatically (both on, `file.options` `smartCutPaste` / `pasteAdjustWordSpacing`). Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged; earlier: P0612: File › Options › Advanced › Show document content › Field shading: Never, Always or When selected (the default; `ui.fieldShading`), so fields and cross-references show on grey; screen only, kept between runs (#3233). Readiness estimates unchanged)
 
@@ -213,7 +211,11 @@ Word Count's shared counters follow the 2026-11-14 Word for Windows measurements
 
 Modify Style’s existing Automatically update flag is honoured by engine formatting commands (P0608). Only paragraph styles redefine, and only whole paragraphs promote character formatting; tracked edits retain direct formatting.
 
+Chart Design › Data places Switch Row/Column beside Edit Data for editable charts (`chart.switchRowColumn`).
+
 ## Revision history
+
+| 2026-11-15 | trivial | P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged. |
 
 > 2026-11-15 · trivial · Font Substitution dialog (File › Options › Advanced › Show document content; `font.substitution`, `font.setSubstitute`, `font.convertPermanently`): the missing fonts with what each is drawn in, a per-computer display substitute (not saved in the document), Convert Permanently… as one undo step. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.

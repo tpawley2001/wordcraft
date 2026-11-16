@@ -114,6 +114,7 @@ mod manual_duplex;
 mod print_document_properties;
 mod form_shading;
 mod print_forms_data;
+mod chart_switch_row_column;
 mod print_options;
 mod print_display_options;
 mod print_scale_a4_letter;
