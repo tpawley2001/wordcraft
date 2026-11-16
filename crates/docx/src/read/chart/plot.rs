@@ -5,6 +5,7 @@ use super::parse::category_text;
 use super::polar::{draw_data_labels, label_of};
 use super::stock::draw_stock;
 use super::three_d::{Projection, areas_3d, bars_3d, lines_3d, walls};
+use super::trendline;
 use super::{AXIS, Axis, Chart, El, GAP, GRID, GraphicItem, LINE, MAX_LABEL, MAX_TICKS, PathSeg, Rgb, ShapeKind, TextAlign, fill_colour, measure};
 
 pub(super) fn label(s: &str) -> String {
@@ -45,8 +46,10 @@ impl Scale {
 /// A scale for data `dlo..dhi` (zero included when `zero`), as Excel and Word pick it: an end
 /// away from zero sits 5% of the data span beyond the data (an end at zero stays there), rounded
 /// out to a step of 1, 2, 2.5, 5 or 10 times a power of ten (about seven steps). `min`/`max`
-/// from the file replace the ends.
-pub(super) fn nice_scale(dlo: f64, dhi: f64, zero: bool, min: Option<f64>, max: Option<f64>) -> Scale {
+/// from the file replace the ends. A `major` unit from the file (`c:majorUnit`) is the step, and
+/// an automatic end is rounded out to a multiple of it; one that would give more than
+/// [`MAX_TICKS`] steps (a hostile file) is ignored for the automatic step.
+pub(super) fn nice_scale(dlo: f64, dhi: f64, zero: bool, min: Option<f64>, max: Option<f64>, major: Option<f64>) -> Scale {
     let (dlo, dhi) = if dhi > dlo { (dlo, dhi) } else { (dlo, dlo + 1.0) };
     let span = dhi - dlo;
     // With zero, the ends reach it: all-negative data still starts its bars at zero.
@@ -56,15 +59,21 @@ pub(super) fn nice_scale(dlo: f64, dhi: f64, zero: bool, min: Option<f64>, max: 
     if !(hi > lo && hi.is_finite() && lo.is_finite()) {
         return Scale { lo: 0.0, hi: 1.0, step: 0.2 };
     }
+    // The ends with step `step`: an automatic end rounded out to a multiple of it.
+    let ends = |step: f64| -> Option<Scale> {
+        let lo_r = if min.is_some() { lo } else { ((lo / step) + 1e-9).floor() * step };
+        let hi_r = if max.is_some() { hi } else { ((hi / step) - 1e-9).ceil() * step };
+        (step.is_finite() && step > 0.0 && lo_r.is_finite() && hi_r.is_finite() && hi_r > lo_r).then_some(Scale { lo: lo_r, hi: hi_r, step })
+    };
+    if let Some(s) = major.filter(|m| m.is_finite() && *m > 0.0).and_then(ends)
+        && (s.hi - s.lo) / s.step <= MAX_TICKS as f64 + 1e-9
+    {
+        return s;
+    }
     let raw = (hi - lo) / 7.5;
     let mag = 10f64.powf(raw.log10().floor());
     let step = [1.0, 2.0, 2.5, 5.0, 10.0].iter().map(|m| m * mag).find(|s| *s >= raw).unwrap_or(10.0 * mag);
-    let lo_r = if min.is_some() { lo } else { ((lo / step) + 1e-9).floor() * step };
-    let hi_r = if max.is_some() { hi } else { ((hi / step) - 1e-9).ceil() * step };
-    if !(step.is_finite() && step > 0.0 && lo_r.is_finite() && hi_r.is_finite() && hi_r > lo_r) {
-        return Scale { lo: 0.0, hi: 1.0, step: 0.2 };
-    }
-    Scale { lo: lo_r, hi: hi_r, step }
+    ends(step).unwrap_or(Scale { lo: 0.0, hi: 1.0, step: 0.2 })
 }
 
 /// The plot rectangle and the scales that map values and categories onto it.
@@ -106,6 +115,26 @@ impl Frame {
         if self.n <= 1 { self.plot.x + self.plot.w / 2.0 } else { self.plot.x + self.plot.w * i as f32 / (self.n - 1) as f32 }
     }
 
+    /// The place of data point (`x`, `y`), not clamped to the plot (trendlines run past it and
+    /// are clipped): `x` is a scatter x value, or a category number counted from 1 (between
+    /// categories when fractional).
+    pub(super) fn point_at(&self, x: f64, y: f64, scatter: bool) -> Option<(f64, f64)> {
+        let v = (y - self.vs.lo) / (self.vs.hi - self.vs.lo);
+        let n = self.n.max(1) as f64;
+        let c = if scatter {
+            let s = self.xs?;
+            (x - s.lo) / (s.hi - s.lo)
+        } else if self.mid && !self.horiz {
+            if self.n <= 1 { 0.5 } else { (x - 1.0) / (n - 1.0) }
+        } else {
+            (x - 0.5) / n
+        };
+        let p = self.plot;
+        let (left, bottom, w, h) = (f64::from(p.x), f64::from(p.bottom()), f64::from(p.w), f64::from(p.h));
+        let (px, py) = if self.horiz { (left + v * w, bottom - c * h) } else { (left + c * w, bottom - v * h) };
+        (px.is_finite() && py.is_finite()).then_some((px, py))
+    }
+
     /// x of a scatter point.
     fn scat_x(&self, x: f64) -> f32 {
         match self.xs {
@@ -131,7 +160,7 @@ impl Axes {
         let sec = c.sec.as_ref().filter(|_| c.groups.iter().any(|g| g.secondary)).map(|a| value_scale(c, true, a, &c.sec_fmt));
         let xs = (c.kind == Kind::Scatter).then(|| {
             let (xl, xh) = x_extent(c);
-            nice_scale(xl, xh, false, c.cat.min, c.cat.max)
+            nice_scale(xl, xh, false, c.cat.min, c.cat.max, c.cat.major)
         });
         // Scatter x values show in the axis's own format, else their cache's (dates included).
         let xfmt = c
@@ -150,10 +179,10 @@ impl Axes {
 fn value_scale(c: &Chart, secondary: bool, a: &Axis, fmt: &str) -> (Scale, Vec<(f64, String)>) {
     let on = || c.groups.iter().filter(move |g| g.secondary == secondary);
     let (dlo, dhi) = extent(on(), c.n);
-    let (vmin, vmax) = if on().any(|g| g.grouping == Grouping::Percent) { (Some(0.0), Some(1.0)) } else { (a.min, a.max) };
+    let (vmin, vmax, major) = if on().any(|g| g.grouping == Grouping::Percent) { (Some(0.0), Some(1.0), a.major) } else { (a.min, a.max, a.major) };
     // Lines and scatters don't need zero for a narrow range (1000..1050 stays on its own scale).
     let zero = !on().all(|g| matches!(g.kind, Kind::Line | Kind::Scatter | Kind::Stock)) || !narrow(dlo, dhi);
-    let vs = nice_scale(dlo, dhi, zero, vmin, vmax);
+    let vs = nice_scale(dlo, dhi, zero, vmin, vmax, major);
     let ticks = vs.ticks().into_iter().map(|t| (t, format_value(t, fmt, vs.step))).collect();
     (vs, ticks)
 }
@@ -408,7 +437,9 @@ fn extent<'a>(groups: impl Iterator<Item = &'a Group>, n: usize) -> (f64, f64) {
 
 /// Range of scatter x values (index + 1 where missing).
 fn x_extent(c: &Chart) -> (f64, f64) {
-    let xs: Vec<f64> = c.groups.iter().flat_map(|g| &g.series).flat_map(|s| s.xs.iter().flatten().copied()).collect();
+    let mut xs: Vec<f64> = c.groups.iter().flat_map(|g| &g.series).flat_map(|s| s.xs.iter().flatten().copied()).collect();
+    // Trendlines reaching forward or backward widen the axis to take them in.
+    xs.extend(c.groups.iter().flat_map(|g| &g.series).flat_map(trendline::x_reach));
     let lo = xs.iter().copied().fold(f64::INFINITY, f64::min);
     let hi = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     if lo.is_finite() && hi.is_finite() { (lo, hi) } else { (0.0, 1.0) }
@@ -419,6 +450,7 @@ fn bars(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, labels: &
         fill(out, rect_segs(b.x0, b.y0, b.x1, b.y1), b.color);
         labels.extend(b.label);
     }
+    trendline::draw(out, c, grp, g);
 }
 
 /// One bar of a bar or column chart: its rectangle (the front face of a 3-D bar), colour, depth
@@ -507,6 +539,7 @@ fn lines(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, labels: 
             }
         }
     }
+    trendline::draw(out, c, grp, g);
 }
 
 /// The points of each line series with values (by series index); stacked ones at the running
@@ -599,4 +632,5 @@ fn draw_scatter(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, l
             out.push(GraphicItem::Shape { rect, kind: ShapeKind::Ellipse, fill: Some(c.series_colour(grp, j)), stroke: None, stroke_width: 0.0 });
         }
     }
+    trendline::draw(out, c, grp, g);
 }

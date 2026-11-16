@@ -428,6 +428,30 @@ fn advanced_always_create_backup_copy_checkbox_sets_the_preference() {
     assert!(!h.state().session.prefs.always_create_backup, "and off again");
 }
 
+/// File › Options › Advanced › Editing: the checkbox is the `normalStyleForLists` preference.
+#[test]
+fn advanced_normal_style_for_lists_checkbox_sets_the_preference() {
+    let mut a = app();
+    a.run("file.options", json!({"pane": "advanced"})).unwrap();
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        |ui, app: &mut WordApp| {
+            let ctx = ui.ctx().clone();
+            app.logic(&ctx);
+            app.ui(ui);
+        },
+        a,
+    );
+    h.run_steps(4);
+    let label = "Use Normal style for bulleted or numbered lists";
+    assert!(!h.state().session.prefs.normal_style_for_lists, "off by default");
+    h.get_by_label(label).click();
+    h.run_steps(4);
+    assert!(h.state().session.prefs.normal_style_for_lists, "the checkbox turns it on");
+    h.get_by_label(label).click();
+    h.run_steps(4);
+    assert!(!h.state().session.prefs.normal_style_for_lists, "and off again");
+}
+
 /// File › Options › Advanced › Animation: the checkbox is the `ui.caretAnimation` setting,
 /// and the section is translated. (A tall window: the section sits below the Editing options.)
 #[test]
@@ -451,6 +475,8 @@ fn advanced_animation_turns_the_caret_animation_off_and_on() {
     h.get_by_label("Animate the caret (it glides and fades)").click();
     h.run_steps(4);
     assert!(!h.state().ui.caret_animation, "the checkbox turns it off");
+    h.get_by_label("Animate the caret (it glides and fades)").scroll_to_me();
+    h.run_steps(4);
     h.get_by_label("Animate the caret (it glides and fades)").click();
     h.run_steps(4);
     assert!(h.state().ui.caret_animation, "and on again");

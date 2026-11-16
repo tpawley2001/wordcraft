@@ -730,6 +730,12 @@ impl Session {
             forms_data_only: report.is_none() && self.doc.settings.print_forms_data,
             background,
             drawings,
+            // File › Options › Display › Show highlighter marks (an app setting): the job param
+            // `highlight`, on unless it says false.
+            highlight: match v.get("highlight") {
+                None => true,
+                Some(b) => b.as_bool().ok_or_else(|| CmdError::Params("highlight must be true or false".into()))?,
+            },
             ..Default::default()
         };
         let bytes = match self.properties_appendix(v, report.is_some())? {

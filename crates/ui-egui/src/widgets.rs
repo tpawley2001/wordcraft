@@ -32,7 +32,7 @@ pub use icon_buttons::{
 use tooltip::show_hint;
 #[cfg(test)]
 pub(crate) use tooltip::tooltip_lines;
-pub use tooltip::{key_text, shortcut_text};
+pub use tooltip::{ScreenTipStyle, key_text, shortcut_text};
 // #653: a two-line label ends inside the content, above the group title row.
 const _: () = assert!(BIG_LABEL_Y + LABEL_PITCH + LABEL_LINE_H <= CONTENT_H);
 const _: () = assert!(BIG_ICON_Y + 16.0 <= BIG_LABEL_Y);
@@ -46,3 +46,5 @@ thread_local! {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_screentips;

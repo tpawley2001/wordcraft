@@ -51,6 +51,9 @@ pub struct Prefs {
     /// Its Settings › Adjust sentence and word spacing automatically (on): with both on,
     /// deleting, cutting or pasting a word fixes the spaces around it.
     pub paste_adjust_word_spacing: bool,
+    /// File › Options › Advanced › General › Confirm file format conversion on open (off): the
+    /// app asks for a plain-text file's encoding (File Conversion) before opening it.
+    pub confirm_conversions: bool,
     /// Language › Detect language automatically (per user, as in Word).
     pub detect_language: bool,
     /// Set Proofing Language › Set As Default: overrides the interface language for future
@@ -69,6 +72,13 @@ pub struct Prefs {
     /// File › Options › Advanced › Use smart paragraph selection (on, as in Word): a drag over a
     /// whole paragraph's text takes its paragraph mark too.
     pub smart_paragraph_selection: bool,
+    /// File › Options › Advanced › Use smart cursoring (on, as in Word): after scrolling the caret
+    /// out of view, a plain arrow key puts it on the page in view instead of scrolling back.
+    pub smart_cursoring: bool,
+    /// File › Options › Advanced › Use Normal style for bulleted or numbered lists (off, as in
+    /// Word): on, Bullets and Numbering keep a Normal paragraph's style instead of
+    /// switching it to List Paragraph.
+    pub normal_style_for_lists: bool,
     /// Overtype: typed characters replace the ones after the caret.
     pub overtype: bool,
     /// The unit rulers and dialogs show lengths in, when the user chose one (File › Options ›
@@ -185,11 +195,14 @@ impl Default for Prefs {
             always_create_backup: false,
             smart_cut_paste: true,
             paste_adjust_word_spacing: true,
+            confirm_conversions: false,
             typing_replaces_selection: true,
             insert_key_paste: false,
             insert_key_overtype: false,
             auto_word_selection: true,
             smart_paragraph_selection: true,
+            smart_cursoring: true,
+            normal_style_for_lists: false,
             overtype: false,
             units: Default::default(),
             region: None,

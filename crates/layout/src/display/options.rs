@@ -65,6 +65,10 @@ pub struct DisplayOptions {
     /// The text box story being edited: its frames and text are drawn straight (unturned) on
     /// screen, as Word shows a turned box while you edit it (#6056). None in exports and print.
     pub straight_text_box: Option<u32>,
+    /// File › Options › Display › Show highlighter marks off: highlight colour is not drawn (the
+    /// text keeps its highlight; shading still draws). Set on screen and for print jobs; PDF
+    /// export leaves it off.
+    pub hide_highlight: bool,
     /// Draw legacy form fields on grey when the document's Form Field Shading is on. Screen
     /// only; print and PDF leave it off.
     pub form_field_shading: bool,
@@ -120,6 +124,7 @@ impl Default for DisplayOptions {
             forms_data_only: false,
             hide_drawings: false,
             straight_text_box: None,
+            hide_highlight: false,
             form_field_shading: false,
             field_shading: FieldShading::Never,
             field_shading_selection: None,
