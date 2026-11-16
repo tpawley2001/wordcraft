@@ -1,18 +1,31 @@
 use super::{CmdError, CmdResult, InlineObject, Paragraph, Pos, Selection, Session, StoryRef, Value, fmt_revisions, json, p, pos_json, sel_result};
 
 /// Accept or reject the tracked formatting and text of `from..to` in one paragraph (not its mark).
-fn resolve_runs(para: &mut wordcraft_doc::Paragraph, from: usize, to: usize, props: bool, accept: bool) -> Result<(), CmdError> {
+/// With `nested`, rejecting text one revision inserted and another deleted rejects only the
+/// deletion, the change listed on top of the insertion: the text comes back as still inserted.
+fn resolve_runs(para: &mut wordcraft_doc::Paragraph, from: usize, to: usize, (props, nested): (bool, bool), accept: bool) -> Result<(), CmdError> {
     if props && (para.props.fmt_change.is_some() || para.props.num_change.is_some()) {
         fmt_revisions::resolve_para(&mut para.props, accept);
         para.touch();
     }
-    let ranges: Vec<(usize, usize, bool, bool, bool)> = para
+    let ranges: Vec<(usize, usize, bool, bool, bool, bool)> = para
         .run_ranges()
         .filter(|(r, _)| r.end > from && r.start < to)
-        .map(|(r, c)| (r.start.max(from), r.end.min(to), c.ins.is_some(), c.del.is_some(), c.fmt_change.is_some()))
+        .map(|(r, c)| {
+            (
+                r.start.max(from),
+                r.end.min(to),
+                c.ins.is_some(),
+                c.del.is_some(),
+                c.fmt_change.is_some(),
+                c.ins.is_some() && c.del.is_some() && c.ins != c.del,
+            )
+        })
         .collect();
-    for (a, b, ins, del, fmt) in ranges.into_iter().rev() {
-        if (del && accept) || (ins && !accept) {
+    for (a, b, ins, del, fmt, inside) in ranges.into_iter().rev() {
+        if nested && inside && !accept {
+            para.format(a, b, &|c| c.del = None)?;
+        } else if (del && accept) || (ins && !accept) {
             para.delete(a, b)?;
         } else if ins || del || fmt {
             para.format(a, b, &|c| {
@@ -32,11 +45,11 @@ fn resolve_para(
     story: StoryRef,
     path: &wordcraft_doc::Path,
     (from, to): (usize, usize),
-    (mark, props): (bool, bool),
+    (mark, props, nested): (bool, bool, bool),
     accept: bool,
 ) -> Result<(), CmdError> {
     let para = s.doc.para_mut(story, path)?;
-    resolve_runs(para, from, to, props, accept)?;
+    resolve_runs(para, from, to, (props, nested), accept)?;
     if !mark {
         return Ok(());
     }
@@ -49,6 +62,11 @@ fn resolve_para(
     }
     let (ins, del) = (para.mark.ins, para.mark.del);
     if ins.is_none() && del.is_none() {
+        return Ok(());
+    }
+    if nested && !accept && ins.is_some() && del.is_some() && ins != del {
+        para.mark.del = None;
+        para.touch();
         return Ok(());
     }
     // An inserted paragraph mark that is rejected, or a deleted one that is accepted, goes away:
@@ -202,6 +220,16 @@ fn mark_change(s: &Session, story: StoryRef, path: &wordcraft_doc::Path) -> Opti
     Some(Change { a, b, kind, rev: p.mark.ins.or(p.mark.del), props: Vec::new(), style: None })
 }
 
+/// A deletion inside another revision's insertion (or move destination): a change of its own, by
+/// its own author, over the same text (Word's Reviewing Pane lists both). Its revision and kind:
+/// `delete`, or `moveFrom` when that text was moved away. It is listed right after the change it
+/// sits in.
+fn nested_deletion(doc: &wordcraft_doc::Document, ins: Option<u32>, del: Option<u32>) -> Option<(u32, &'static str)> {
+    let rev = del?;
+    let kind = if doc.move_name(del).is_some() { "moveFrom" } else { "delete" };
+    (ins.is_some() && del != ins).then_some((rev, kind))
+}
+
 /// The kind of an insertion / deletion change: `insert`, `delete`, or for one end of a move
 /// `moveTo` / `moveFrom`; empty when neither.
 fn run_kind(doc: &wordcraft_doc::Document, ins: Option<u32>, del: Option<u32>) -> &'static str {
@@ -241,7 +269,7 @@ fn resolve_loose_blocks(blocks: &mut wordcraft_doc::Blocks, accept: bool) -> Res
     for b in blocks.iter_mut() {
         let wordcraft_doc::Block::Para(p) = std::sync::Arc::make_mut(b) else { continue };
         let len = p.len();
-        resolve_runs(p, 0, len, true, accept)?;
+        resolve_runs(p, 0, len, (true, false), accept)?;
         if p.mark.fmt_change.is_some() || p.section.as_ref().is_some_and(|x| x.fmt_change.is_some()) {
             fmt_revisions::resolve_char(&mut p.mark, accept);
             if let Some(sec) = p.section.as_deref_mut() {
@@ -262,7 +290,7 @@ fn resolve_all(s: &mut Session, accept: bool) -> CmdResult {
     for st in stories {
         for path in s.doc.para_paths(st).into_iter().rev() {
             let len = s.doc.para(st, &path).map(|p| p.len()).unwrap_or(0);
-            resolve_para(s, st, &path, (0, len), (true, true), accept)?;
+            resolve_para(s, st, &path, (0, len), (true, true, false), accept)?;
         }
     }
     // Tables, rows, cells, sections and style definitions.
@@ -394,7 +422,7 @@ fn resolve_sel(s: &mut Session, accept: bool, next: bool) -> CmdResult {
         // A paragraph's mark is in the selection when the selection goes on past it.
         let mark = path != b.path || caret_mark.as_ref() == Some(&path);
         let props = (ranged && (path != b.path || to > from)) || caret_props.as_ref() == Some(&path);
-        resolve_para(s, a.story, &path, (from, to), (mark, props), accept)?;
+        resolve_para(s, a.story, &path, (from, to), (mark, props, true), accept)?;
         if ranged {
             // A row's deletion goes with the row's first paragraph: the last of the row visited
             // here, so removing the row doesn't move the paths still to come.
@@ -445,6 +473,9 @@ fn changes(s: &Session) -> Vec<Change> {
             if !kind.is_empty() {
                 out.push(Change { a: mk(&path, r.start), b: mk(&path, r.end), kind, rev: c.ins.or(c.del), props: Vec::new(), style: None });
             }
+            if let Some((rev, kind)) = nested_deletion(&s.doc, c.ins, c.del) {
+                out.push(Change { a: mk(&path, r.start), b: mk(&path, r.end), kind, rev: Some(rev), props: Vec::new(), style: None });
+            }
             let Some(ch) = &c.fmt_change else { continue };
             let props = fmt_revisions::char_diff(c);
             // Neighbouring runs changed the same way by the same revision are one change.
@@ -460,7 +491,18 @@ fn changes(s: &Session) -> Vec<Change> {
             let end = mk(&path, p.len());
             out.push(Change::format(end.clone(), end, ch.rev, fmt_revisions::char_diff(&p.mark)));
         }
-        out.extend(mark_change(s, StoryRef::Body, &path));
+        if let Some(m) = mark_change(s, StoryRef::Body, &path) {
+            let nested = nested_deletion(&s.doc, p.mark.ins, p.mark.del).map(|(rev, kind)| Change {
+                a: m.a.clone(),
+                b: m.b.clone(),
+                kind,
+                rev: Some(rev),
+                props: Vec::new(),
+                style: None,
+            });
+            out.push(m);
+            out.extend(nested);
+        }
         if let Some(ch) = p.section.as_ref().and_then(|x| x.fmt_change.as_ref().map(|ch| (ch.rev, x))) {
             let end = mk(&path, p.len());
             out.push(Change::format(end.clone(), end, ch.0, fmt_revisions::section_diff(ch.1)));

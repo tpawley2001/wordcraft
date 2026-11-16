@@ -207,6 +207,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-16: Track Changes: a deletion by one author inside another author's insertion or move destination is listed in `review.changes` as its own change, right after the insertion, so the Reviewing Pane and Next/Previous Change reach it (#5228). Accept on it removes the text; Reject brings the text back as the first author's insertion. Readiness estimates unchanged.
 - 2026-11-16: P0641: the pointer is the arrow over the workspace beside and between the pages, as in Word; only the page shows the I-beam, and a selection drag from a page keeps it (#4114, from #4427). Readiness estimates unchanged.
 - 2026-11-15: P0632: European keyboard font-size shortcuts: Ctrl+< shrinks and Ctrl+Shift+< (typing >) grows; Customize Keyboard records Mod+< / Mod+Shift+>. Existing US shortcuts are preserved. Readiness estimates unchanged.
 
