@@ -302,7 +302,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                     // Every tab: they only place the legacy keys' hint (#1697).
                                     crate::keytips::record_tab(r, tab, "", &mut app.keytip_rects);
                                 }
-                                let active = app.ui.tab == tab && !app.ui.backstage;
+                                // A minimized ribbon shows no tab as active (Word), until a tab is clicked.
+                                let active = app.ui.tab == tab && !app.ui.backstage && !app.ui.ribbon_collapsed;
                                 if ghost.is_none() {
                                     // F6 brings the keyboard to the selected tab (the first one shown when the
                                     // selected tab sits in the More tabs menu).
@@ -383,7 +384,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                     );
                                 }
                                 // The active tab is in the menu: the button says so.
-                                let holds_active = left_out.iter().any(|(tab, _)| *tab == app.ui.tab);
+                                let holds_active = !app.ui.ribbon_collapsed && left_out.iter().any(|(tab, _)| *tab == app.ui.tab);
                                 ui.painter().text(
                                     r.center(),
                                     Align2::CENTER_CENTER,
@@ -398,7 +399,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                 crate::theme::off_band(|| {
                                     crate::rtl::menu(&resp).show(|ui| {
                                         for (tab, shown) in left_out {
-                                            if ui.selectable_label(app.ui.tab == tab, shown).clicked() {
+                                            if ui.selectable_label(!app.ui.ribbon_collapsed && app.ui.tab == tab, shown).clicked() {
                                                 let _ = app.run("ui.tab", json!({"tab": tab}));
                                                 ui.close();
                                             }

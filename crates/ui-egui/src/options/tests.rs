@@ -448,6 +448,7 @@ fn advanced_always_create_backup_copy_checkbox_sets_the_preference() {
     h.run_steps(4);
     assert!(!h.state().session.prefs.always_create_backup, "off by default");
     // The Save section sits below the Editing options: bring it into view before clicking.
+    // The Save section sits at the foot of the Advanced pane: bring it into view first.
     h.get_by_label("Always create backup copy").scroll_to_me();
     h.run_steps(4);
     h.get_by_label("Always create backup copy").click();
