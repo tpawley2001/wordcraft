@@ -1,5 +1,6 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-16 · **Change:** trivial (P0639: Save As starts in the folder of the open file, as in Word (#4143, from #4209); a document never saved keeps the default folder, and a relatively opened file starts in the working folder. Export and Print to PDF unchanged. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged.)
 
@@ -233,6 +234,8 @@ Chart Design › Data places Switch Row/Column beside Edit Data for editable cha
 File › Options › Advanced › Editing has Use Normal style for bulleted or numbered lists (P0617): new lists keep the Normal style; paragraphs already in a list are not changed when it is switched.
 
 ## Revision history
+
+> 2026-11-16 · trivial · P0639: Save As starts in the folder of the open file, as in Word (#4143, from #4209); a document never saved keeps the default folder, and a relatively opened file starts in the working folder. Export and Print to PDF unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.
 
