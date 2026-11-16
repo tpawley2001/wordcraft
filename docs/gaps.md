@@ -1,6 +1,6 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0632: European keyboard font-size shortcuts: Ctrl+< shrinks and Ctrl+Shift+< (typing >) grows; Customize Keyboard records Mod+< / Mod+Shift+>. Existing US shortcuts are preserved. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0631: Shift+End selects an interior paragraph mark; typing and partial-paragraph deletion preserve it. Home/End collapse selections by line. Existing smart spacing and IME effects retained; readiness estimates unchanged; earlier: P0632: European keyboard font-size shortcuts: Ctrl+< shrinks and Ctrl+Shift+< (typing >) grows; Customize Keyboard records Mod+< / Mod+Shift+>. Existing US shortcuts are preserved. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-16 · **Change:** trivial (P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged; earlier: P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged; earlier: P0626: #10 narrowed: editing text in a turned text box (#6056): a click lands on the character drawn there, and the box and its text are shown straight while you edit it; the two #10 rows merged into one. Readiness estimates unchanged)
 
@@ -347,6 +347,7 @@ Use Normal style for bulleted or numbered lists (File › Options › Advanced) 
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | trivial | P0631: Shift+End selects an interior paragraph mark; typing and partial-paragraph deletion preserve it. Home/End collapse selections by line. Existing smart spacing and IME effects retained; readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0632: European keyboard font-size shortcuts: Ctrl+< shrinks and Ctrl+Shift+< (typing >) grows; Customize Keyboard records Mod+< / Mod+Shift+>. Existing US shortcuts are preserved. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0620: Format Axis for WordCraft's charts: the value axis's minimum, maximum, major unit and number format (`chart.axis`), saved to .docx and read back; charts from Word draw their major unit. Readiness estimates unchanged. |
@@ -473,6 +474,7 @@ Use Normal style for bulleted or numbered lists (File › Options › Advanced) 
 | 2026-11-07 | trivial | Pagination gap #4: An in-line picture lowered past its own height (`w:position`) lowers its line as far, as in Word; all 156 synthetic lines measured for #3984 match Word (#5796). |
 | 2026-10-31 | trivial | A list level with numFmt none shows its literal text as its label and still counts, as in Word (#4985); no ranked gap changed; readiness estimates unchanged |
 | 2026-11-02 | trivial | Picture hyperlinks show on hover, follow on Ctrl/⌘+click and round-trip as Word stores them (#5267); no ranked gap changed; readiness estimates unchanged |
+| 2026-10-31 | trivial | progress log: Shift+End selects a paragraph's mark, and typing or deleting over it keeps the paragraph |
 | 2026-11-02 | trivial | #26 narrowed: MHT opens and `w:altChunk` content is brought in on open; saving MHT remains |
 | 2026-11-01 | trivial | Preserve table rows and cells inside selected alternate-content branches (#5219); readiness estimates unchanged. |
 | 2026-11-07 | trivial | Empty paragraph deletion preserves following paragraph/mark formatting (Leaf #152); synthetic regressions only, no ranked gap closed or estimate changed. |

@@ -1,6 +1,6 @@
 # WordCraft roadmap
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0632: European keyboard font-size shortcuts: Ctrl+< shrinks and Ctrl+Shift+< (typing >) grows; Customize Keyboard records Mod+< / Mod+Shift+>. Existing US shortcuts are preserved. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0631: Shift+End selects an interior paragraph mark; typing and partial-paragraph deletion preserve it. Home/End collapse selections by line. Existing smart spacing and IME effects retained; readiness estimates unchanged; earlier: P0632: European keyboard font-size shortcuts: Ctrl+< shrinks and Ctrl+Shift+< (typing >) grows; Customize Keyboard records Mod+< / Mod+Shift+>. Existing US shortcuts are preserved. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-16 · **Change:** trivial (P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged; earlier: P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged; earlier: P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged)
 
@@ -315,6 +315,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 - 2026-10-31: List labels: a numbering level with format `none` and literal text, such as `RESPONSE:` with a one-inch hanging indent, shows that text as its label, as Word does; it used to show nothing. As in Word, a `none` level still counts and restarts the levels below it, its own number is empty (in legal numbering too), and an empty label still tabs the text to the indent (#4985). Readiness unchanged.
 - 2026-10-31: Font menus draw their entries from a few shared textures written in place, as the Equation tab's pictures are (#1002), instead of a texture per font: on Windows (DirectX 12) browsing the list showed the names on black strips in light mode and white or red ones in dark mode (#5105). Readiness unchanged.
 - 2026-11-02: A picture linked from its context menu shows its address on hover and opens it with Ctrl/⌘+click, in line or floating, as linked text does; DOCX files keep the link where Word does, on the drawing (`a:hlinkClick`), so links on pictures from Word open too (#5267). Readiness unchanged.
+- 2026-10-31: Shift+End on a paragraph's last line selects its mark, as in Word, so screen readers say the paragraph mark is selected too. Typing over a selection that ends with a mark keeps the mark, and so do Delete and Backspace when the selection starts inside a paragraph: Shift+End then Delete no longer joins the next paragraph. Readiness unchanged.
 - 2026-11-02: Hebrew and Arabic text the font lacks falls back to the same font whatever was laid out before it (#4300). The ranked right-to-left fallback families are loaded before a fallback is chosen, for a single character and for a run, so a word no longer takes Liberation Sans because a document had asked for Arial first while the next one takes DejaVu Sans (in the issue's reproduction, a Hebrew document's lines moved by about 0.2 pt). Readiness unchanged.
 
 - 2026-11-01: DOCX tables keep rows and cells wrapped in `mc:AlternateContent`, selecting one supported Choice or Fallback with the existing reader policy (#5219). Original synthetic checks cover namespace aliases, unsupported requirements, nested row/cell content controls and two save/reopen cycles; broader corpus and native Word qualification remain open.
@@ -1125,6 +1126,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | trivial | P0631: Shift+End selects an interior paragraph mark; typing and partial-paragraph deletion preserve it. Home/End collapse selections by line. Existing smart spacing and IME effects retained; readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0632: European keyboard font-size shortcuts: Ctrl+< shrinks and Ctrl+Shift+< (typing >) grows; Customize Keyboard records Mod+< / Mod+Shift+>. Existing US shortcuts are preserved. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged. |
@@ -1226,6 +1228,7 @@ MATH glyphs that reference the same construction now share its immutable variant
 | 2026-10-31 | trivial | Progress log: a numFmt none list level shows its literal text (#4985); readiness unchanged |
 | 2026-10-31 | trivial | Progress log: font menu entries are drawn from shared textures (#5105) |
 | 2026-11-02 | trivial | Progress log: a linked picture shows and follows its link; DOCX `a:hlinkClick` (#5267) |
+| 2026-10-31 | trivial | progress log: Shift+End selects a paragraph's mark, and typing or deleting over it keeps the paragraph |
 | 2026-11-02 | trivial | Progress log: alternative format chunks and MHT open |
 | 2026-11-06 | trivial | Progress log: Change Picture keeps the width and takes the new picture's aspect ratio (#5761) |
 | 2026-11-06 | trivial | Progress log: superscript and subscript text at 0.65 of its size rounded to the half point (Word for Mac) |
