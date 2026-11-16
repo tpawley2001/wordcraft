@@ -22,7 +22,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("file.options", "Options", "File", options)
             .params(
-                r#"{"pane"?: "general|display|proofing|save|language|accessibility|advanced|agents", "author"?: string, "initials"?: string, "units"?: "inches|centimeters|millimeters|points|picas|auto" (auto: the region's), "region"?: string (a locale tag like pl-PL, saved: the paper File › New starts on, the default units and the decimal separator; auto: the system's), "typingReplacesSelection"?: bool, "insertKeyOvertype"?: bool, "insertKeyPaste"?: bool, "overtype"?: bool, "normalStyleForLists"?: bool (bulleted and numbered lists keep the Normal style instead of List Paragraph), "autoWordSelection"?: bool (a mouse drag into another word selects whole words), "smartParagraphSelection"?: bool (a drag over a whole paragraph takes its mark), "smartCursoring"?: bool (after scrolling the caret out of view, an arrow key puts it on the page in view), "marks"?: {"tabs"?: bool, "spaces"?: bool, "paragraphs"?: bool, "hidden"?: bool}, "checkSpelling"?: bool, "markGrammar"?: bool, "printProperties"?: bool, "printBackground"?: bool (print the page color and picture), "printDrawings"?: bool (print shapes, text boxes, Decorative Text and drawing canvases), "printHiddenText"?: bool, "printFieldCodes"?: bool, "printFormsData"?: bool (this document: print only the data from its form fields), "printReverse"?: bool, "printUpdateLinks"?: bool (update links to other files before printing), "printScaleA4Letter"?: bool (default true; scale between A4 and Letter printer paper), "printDuplexFront"?: bool, "printDuplexBack"?: bool, "ignoreUppercase"?: bool, "ignoreNumbers"?: bool, "ignoreInternet"?: bool, "alwaysCreateBackup"?: bool, "confirmConversions"?: bool (ask for a plain-text file's encoding before opening it, as Word's File Conversion on open), "dictionariesFolder"?: string (a folder of Hunspell .aff/.dic files searched first, saved; auto: the system locations only), "userTemplatesFolder"?: string (the folder File › New lists personal templates from, saved; auto: the app's own Templates folder; not a network folder), "addWords"?: [string], "removeWords"?: [string]} — with any setting it changes them and opens nothing; without, it opens File › Options (at `pane`). Returns the settings."#,
+                r#"{"pane"?: "general|display|proofing|save|language|accessibility|advanced|agents", "author"?: string, "initials"?: string, "units"?: "inches|centimeters|millimeters|points|picas|auto" (auto: the region's), "region"?: string (a locale tag like pl-PL, saved: the paper File › New starts on, the default units and the decimal separator; auto: the system's), "typingReplacesSelection"?: bool, "insertKeyOvertype"?: bool, "insertKeyPaste"?: bool, "overtype"?: bool, "normalStyleForLists"?: bool (bulleted and numbered lists keep the Normal style instead of List Paragraph), "autoWordSelection"?: bool (a mouse drag into another word selects whole words), "smartParagraphSelection"?: bool (a drag over a whole paragraph takes its mark), "smartCursoring"?: bool (after scrolling the caret out of view, an arrow key puts it on the page in view), "marks"?: {"tabs"?: bool, "spaces"?: bool, "paragraphs"?: bool, "hidden"?: bool}, "checkSpelling"?: bool, "markGrammar"?: bool, "printProperties"?: bool, "printBackground"?: bool (print the page color and picture), "printDrawings"?: bool (print shapes, text boxes, Decorative Text and drawing canvases), "printHiddenText"?: bool, "printFieldCodes"?: bool, "printFormsData"?: bool (this document: print only the data from its form fields), "printReverse"?: bool, "printUpdateLinks"?: bool (update links to other files before printing), "printScaleA4Letter"?: bool (default true; scale between A4 and Letter printer paper), "printDuplexFront"?: bool, "printDuplexBack"?: bool, "ignoreUppercase"?: bool, "ignoreNumbers"?: bool, "ignoreInternet"?: bool, "alwaysCreateBackup"?: bool, "wrapToWindow"?: bool (Draft and Outline wrap to the window, not the margins), "confirmConversions"?: bool (ask for a plain-text file's encoding before opening it, as Word's File Conversion on open), "dictionariesFolder"?: string (a folder of Hunspell .aff/.dic files searched first, saved; auto: the system locations only), "userTemplatesFolder"?: string (the folder File › New lists personal templates from, saved; auto: the app's own Templates folder; not a network folder), "addWords"?: [string], "removeWords"?: [string]} — with any setting it changes them and opens nothing; without, it opens File › Options (at `pane`). Returns the settings."#,
             )
             .pure(),
         CommandSpec::new("text.overtype", "Overtype", "File › Options › Advanced", |s, v| {
@@ -53,7 +53,7 @@ fn style_area_width(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 /// The on/off settings by their `file.options` name.
-fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 26] {
+fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 27] {
     [
         ("typingReplacesSelection", |p| &mut p.typing_replaces_selection),
         ("insertKeyPaste", |p| &mut p.insert_key_paste),
@@ -78,6 +78,7 @@ fn flags() -> [(&'static str, fn(&mut Prefs) -> &mut bool); 26] {
         ("ignoreNumbers", |p| &mut p.ignore_numbers),
         ("ignoreInternet", |p| &mut p.ignore_internet),
         ("alwaysCreateBackup", |p| &mut p.always_create_backup),
+        ("wrapToWindow", |p| &mut p.wrap_to_window),
         ("smartCutPaste", |p| &mut p.smart_cut_paste),
         ("pasteAdjustWordSpacing", |p| &mut p.paste_adjust_word_spacing),
         ("confirmConversions", |p| &mut p.confirm_conversions),
@@ -305,6 +306,7 @@ pub fn current(s: &Session) -> Value {
     });
     // Set apart: one more key in the literal above passes `json!`'s macro recursion limit.
     v["normalStyleForLists"] = json!(pr.normal_style_for_lists);
+    v["wrapToWindow"] = json!(pr.wrap_to_window);
     v
 }
 
