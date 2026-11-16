@@ -1,7 +1,8 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.)
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (#7: Font Substitution dialog: pick what each missing font is shown in, or convert it permanently; dialog count +1. Readiness estimates unchanged; earlier: P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged; earlier: P0603: opening a .txt file can ask for its encoding in File Conversion, with a preview (Confirm file format conversion on open). Readiness estimates unchanged)
@@ -290,10 +291,13 @@ Automatically update now redefines paragraph styles for paragraph formatting and
 
 File › Options has ScreenTip style (feature descriptions, none, or no ScreenTips) and Show shortcut keys in ScreenTips (P0618); the rest of gap #7 is unchanged.
 
+Use Normal style for bulleted or numbered lists (File › Options › Advanced) keeps new list items in the Normal style instead of List Paragraph (P0617); gap #7 dialog depth otherwise unchanged.
+
 ## Revision history
 
 > 2026-11-15 · trivial · P0623: #13 narrowed: trendlines on charts from Word (linear, exponential, logarithmic, power, polynomial, moving average) are drawn over line, column/bar and scatter series. Readiness estimates unchanged.
 
+> 2026-11-15 · trivial · P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged.
