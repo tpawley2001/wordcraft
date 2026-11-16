@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-16 · **Change:** trivial (P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (#7: Font Substitution dialog: pick what each missing font is shown in, or convert it permanently; dialog count +1. Readiness estimates unchanged; earlier: P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged; earlier: P0603: opening a .txt file can ask for its encoding in File Conversion, with a preview (Confirm file format conversion on open). Readiness estimates unchanged)
@@ -289,6 +291,8 @@ Automatically update now redefines paragraph styles for paragraph formatting and
 File › Options has ScreenTip style (feature descriptions, none, or no ScreenTips) and Show shortcut keys in ScreenTips (P0618); the rest of gap #7 is unchanged.
 
 ## Revision history
+
+> 2026-11-16 · trivial · P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.
 

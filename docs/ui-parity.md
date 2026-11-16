@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-16 · **Change:** trivial (P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0613: File › Options: Show highlighter marks, Show drawings and text boxes on screen, Show background colors and images in Print Layout view (all on, kept between runs; Save as PDF unchanged). Readiness estimates unchanged; earlier: P0609: File › Options › Advanced › Cut, copy, and paste has Use smart cut and paste and, under it, Adjust sentence and word spacing automatically (both on, `file.options` `smartCutPaste` / `pasteAdjustWordSpacing`). Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.)
@@ -224,6 +226,8 @@ File › Options › General › ScreenTip style (Show feature descriptions, Don
 
 Chart Design › Data places Switch Row/Column beside Edit Data for editable charts (`chart.switchRowColumn`).
 ## Revision history
+
+> 2026-11-16 · trivial · P0637: selecting only a paragraph break shows its own paragraph mark's font size, rather than the next paragraph's text (#5407). Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.
 
