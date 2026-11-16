@@ -5,6 +5,7 @@ use super::parse::category_text;
 use super::polar::{draw_data_labels, label_of};
 use super::stock::draw_stock;
 use super::three_d::{Projection, areas_3d, bars_3d, lines_3d, walls};
+use super::trendline;
 use super::{AXIS, Axis, Chart, El, GAP, GRID, GraphicItem, LINE, MAX_LABEL, MAX_TICKS, PathSeg, Rgb, ShapeKind, TextAlign, fill_colour, measure};
 
 pub(super) fn label(s: &str) -> String {
@@ -104,6 +105,26 @@ impl Frame {
             return self.plot.x + (i as f32 + 0.5) * self.band();
         }
         if self.n <= 1 { self.plot.x + self.plot.w / 2.0 } else { self.plot.x + self.plot.w * i as f32 / (self.n - 1) as f32 }
+    }
+
+    /// The place of data point (`x`, `y`), not clamped to the plot (trendlines run past it and
+    /// are clipped): `x` is a scatter x value, or a category number counted from 1 (between
+    /// categories when fractional).
+    pub(super) fn point_at(&self, x: f64, y: f64, scatter: bool) -> Option<(f64, f64)> {
+        let v = (y - self.vs.lo) / (self.vs.hi - self.vs.lo);
+        let n = self.n.max(1) as f64;
+        let c = if scatter {
+            let s = self.xs?;
+            (x - s.lo) / (s.hi - s.lo)
+        } else if self.mid && !self.horiz {
+            if self.n <= 1 { 0.5 } else { (x - 1.0) / (n - 1.0) }
+        } else {
+            (x - 0.5) / n
+        };
+        let p = self.plot;
+        let (left, bottom, w, h) = (f64::from(p.x), f64::from(p.bottom()), f64::from(p.w), f64::from(p.h));
+        let (px, py) = if self.horiz { (left + v * w, bottom - c * h) } else { (left + c * w, bottom - v * h) };
+        (px.is_finite() && py.is_finite()).then_some((px, py))
     }
 
     /// x of a scatter point.
@@ -408,7 +429,9 @@ fn extent<'a>(groups: impl Iterator<Item = &'a Group>, n: usize) -> (f64, f64) {
 
 /// Range of scatter x values (index + 1 where missing).
 fn x_extent(c: &Chart) -> (f64, f64) {
-    let xs: Vec<f64> = c.groups.iter().flat_map(|g| &g.series).flat_map(|s| s.xs.iter().flatten().copied()).collect();
+    let mut xs: Vec<f64> = c.groups.iter().flat_map(|g| &g.series).flat_map(|s| s.xs.iter().flatten().copied()).collect();
+    // Trendlines reaching forward or backward widen the axis to take them in.
+    xs.extend(c.groups.iter().flat_map(|g| &g.series).flat_map(trendline::x_reach));
     let lo = xs.iter().copied().fold(f64::INFINITY, f64::min);
     let hi = xs.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     if lo.is_finite() && hi.is_finite() { (lo, hi) } else { (0.0, 1.0) }
@@ -419,6 +442,7 @@ fn bars(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, labels: &
         fill(out, rect_segs(b.x0, b.y0, b.x1, b.y1), b.color);
         labels.extend(b.label);
     }
+    trendline::draw(out, c, grp, g);
 }
 
 /// One bar of a bar or column chart: its rectangle (the front face of a 3-D bar), colour, depth
@@ -507,6 +531,7 @@ fn lines(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, labels: 
             }
         }
     }
+    trendline::draw(out, c, grp, g);
 }
 
 /// The points of each line series with values (by series index); stacked ones at the running
@@ -599,4 +624,5 @@ fn draw_scatter(out: &mut Vec<GraphicItem>, c: &Chart, grp: &Group, g: &Frame, l
             out.push(GraphicItem::Shape { rect, kind: ShapeKind::Ellipse, fill: Some(c.series_colour(grp, j)), stroke: None, stroke_width: 0.0 });
         }
     }
+    trendline::draw(out, c, grp, g);
 }
