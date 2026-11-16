@@ -156,6 +156,9 @@ pub(super) fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
         } else {
             json!({})
         };
+        if smart_cursoring(app, spec.id, m) {
+            return true;
+        }
         let params = window_edge_params(app, spec.id, params);
         let _ = app.run(spec.id, params);
         return true;
@@ -175,6 +178,21 @@ pub(super) fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
         return true;
     }
     false
+}
+
+/// Use smart cursoring (File › Options › Advanced, on as in Word): a plain arrow key while the
+/// caret's line is scrolled out of the window puts the caret on the first line at the top of the
+/// window instead of moving from the old position and scrolling back. Returns true when it did.
+fn smart_cursoring(app: &mut WordApp, id: &str, m: Modifiers) -> bool {
+    if !m.is_none()
+        || !matches!(id, "caret.left" | "caret.right" | "caret.up" | "caret.down")
+        || !app.session.prefs.smart_cursoring
+        || app.canvas.caret_in_view
+    {
+        return false;
+    }
+    let params = window_edge_params(app, "caret.windowTop", json!({}));
+    app.run("caret.windowTop", params).is_ok()
 }
 
 /// Top of Window / Bottom of Window take the window's edge from the canvas: the engine has no

@@ -46,8 +46,10 @@ impl Scale {
 /// A scale for data `dlo..dhi` (zero included when `zero`), as Excel and Word pick it: an end
 /// away from zero sits 5% of the data span beyond the data (an end at zero stays there), rounded
 /// out to a step of 1, 2, 2.5, 5 or 10 times a power of ten (about seven steps). `min`/`max`
-/// from the file replace the ends.
-pub(super) fn nice_scale(dlo: f64, dhi: f64, zero: bool, min: Option<f64>, max: Option<f64>) -> Scale {
+/// from the file replace the ends. A `major` unit from the file (`c:majorUnit`) is the step, and
+/// an automatic end is rounded out to a multiple of it; one that would give more than
+/// [`MAX_TICKS`] steps (a hostile file) is ignored for the automatic step.
+pub(super) fn nice_scale(dlo: f64, dhi: f64, zero: bool, min: Option<f64>, max: Option<f64>, major: Option<f64>) -> Scale {
     let (dlo, dhi) = if dhi > dlo { (dlo, dhi) } else { (dlo, dlo + 1.0) };
     let span = dhi - dlo;
     // With zero, the ends reach it: all-negative data still starts its bars at zero.
@@ -57,15 +59,21 @@ pub(super) fn nice_scale(dlo: f64, dhi: f64, zero: bool, min: Option<f64>, max: 
     if !(hi > lo && hi.is_finite() && lo.is_finite()) {
         return Scale { lo: 0.0, hi: 1.0, step: 0.2 };
     }
+    // The ends with step `step`: an automatic end rounded out to a multiple of it.
+    let ends = |step: f64| -> Option<Scale> {
+        let lo_r = if min.is_some() { lo } else { ((lo / step) + 1e-9).floor() * step };
+        let hi_r = if max.is_some() { hi } else { ((hi / step) - 1e-9).ceil() * step };
+        (step.is_finite() && step > 0.0 && lo_r.is_finite() && hi_r.is_finite() && hi_r > lo_r).then_some(Scale { lo: lo_r, hi: hi_r, step })
+    };
+    if let Some(s) = major.filter(|m| m.is_finite() && *m > 0.0).and_then(ends)
+        && (s.hi - s.lo) / s.step <= MAX_TICKS as f64 + 1e-9
+    {
+        return s;
+    }
     let raw = (hi - lo) / 7.5;
     let mag = 10f64.powf(raw.log10().floor());
     let step = [1.0, 2.0, 2.5, 5.0, 10.0].iter().map(|m| m * mag).find(|s| *s >= raw).unwrap_or(10.0 * mag);
-    let lo_r = if min.is_some() { lo } else { ((lo / step) + 1e-9).floor() * step };
-    let hi_r = if max.is_some() { hi } else { ((hi / step) - 1e-9).ceil() * step };
-    if !(step.is_finite() && step > 0.0 && lo_r.is_finite() && hi_r.is_finite() && hi_r > lo_r) {
-        return Scale { lo: 0.0, hi: 1.0, step: 0.2 };
-    }
-    Scale { lo: lo_r, hi: hi_r, step }
+    ends(step).unwrap_or(Scale { lo: 0.0, hi: 1.0, step: 0.2 })
 }
 
 /// The plot rectangle and the scales that map values and categories onto it.
@@ -152,7 +160,7 @@ impl Axes {
         let sec = c.sec.as_ref().filter(|_| c.groups.iter().any(|g| g.secondary)).map(|a| value_scale(c, true, a, &c.sec_fmt));
         let xs = (c.kind == Kind::Scatter).then(|| {
             let (xl, xh) = x_extent(c);
-            nice_scale(xl, xh, false, c.cat.min, c.cat.max)
+            nice_scale(xl, xh, false, c.cat.min, c.cat.max, c.cat.major)
         });
         // Scatter x values show in the axis's own format, else their cache's (dates included).
         let xfmt = c
@@ -171,10 +179,10 @@ impl Axes {
 fn value_scale(c: &Chart, secondary: bool, a: &Axis, fmt: &str) -> (Scale, Vec<(f64, String)>) {
     let on = || c.groups.iter().filter(move |g| g.secondary == secondary);
     let (dlo, dhi) = extent(on(), c.n);
-    let (vmin, vmax) = if on().any(|g| g.grouping == Grouping::Percent) { (Some(0.0), Some(1.0)) } else { (a.min, a.max) };
+    let (vmin, vmax, major) = if on().any(|g| g.grouping == Grouping::Percent) { (Some(0.0), Some(1.0), a.major) } else { (a.min, a.max, a.major) };
     // Lines and scatters don't need zero for a narrow range (1000..1050 stays on its own scale).
     let zero = !on().all(|g| matches!(g.kind, Kind::Line | Kind::Scatter | Kind::Stock)) || !narrow(dlo, dhi);
-    let vs = nice_scale(dlo, dhi, zero, vmin, vmax);
+    let vs = nice_scale(dlo, dhi, zero, vmin, vmax, major);
     let ticks = vs.ticks().into_iter().map(|t| (t, format_value(t, fmt, vs.step))).collect();
     (vs, ticks)
 }

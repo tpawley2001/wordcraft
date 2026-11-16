@@ -130,6 +130,8 @@ pub(super) struct Axis {
     pub(super) mid: bool,
     pub(super) min: Option<f64>,
     pub(super) max: Option<f64>,
+    /// `c:majorUnit`: the step between ticks, when the file sets one (finite and > 0).
+    pub(super) major: Option<f64>,
     /// Number format of the tick labels, when not linked to the source data.
     pub(super) fmt: Option<String>,
 }

@@ -452,6 +452,7 @@ pub(super) fn axis(a: Option<&El>) -> Axis {
         mid: a.child("c:crossBetween").and_then(|c| c.attr("val")) == Some("midCat"),
         min: num("c:min"),
         max: num("c:max"),
+        major: a.child("c:majorUnit").and_then(|e| e.attr("val")).and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite() && *v > 0.0),
         fmt: a
             .child("c:numFmt")
             .filter(|f| f.attr("sourceLinked") != Some("1"))

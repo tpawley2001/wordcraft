@@ -47,6 +47,9 @@ pub struct PdfOptions {
     /// is scaled to fit and centred, the paper turned to the page's orientation (Scale to paper
     /// size, #2108). `None` keeps the document's page sizes.
     pub paper: Option<(f32, f32)>,
+    /// Print-only source/target paper pair, matched within 2 pt in either orientation.
+    /// Explicit `paper` takes precedence. Other page sizes retain their own dimensions.
+    pub paper_substitution: Option<((f32, f32), (f32, f32))>,
     /// How [`export`] shows digits (the Numeral setting; callers resolve `System`, see
     /// [`NumeralMode::resolve`]). [`export_layout`] keeps the layout it is given.
     pub numeral: NumeralMode,
@@ -61,6 +64,9 @@ pub struct PdfOptions {
     /// Draw shapes, text boxes, WordArt and drawing canvases (File › Options › Display › Print
     /// drawings created in Word). On by default.
     pub drawings: bool,
+    /// Draw text highlight. Print jobs follow File › Options › Display › Show highlighter marks;
+    /// export keeps it on (the default).
+    pub highlight: bool,
 }
 
 /// How many characters of the watermark text the PDF draws.
@@ -79,6 +85,7 @@ impl PdfOptions {
             placeholders: false,
             forms_data_only: self.forms_data_only,
             hide_drawings: !self.drawings,
+            hide_highlight: !self.highlight,
             ..Default::default()
         }
     }
@@ -110,10 +117,12 @@ impl Default for PdfOptions {
             compress: true,
             links: true,
             paper: None,
+            paper_substitution: None,
             numeral: NumeralMode::Arabic,
             forms_data_only: false,
             background: true,
             drawings: true,
+            highlight: true,
         }
     }
 }

@@ -203,6 +203,7 @@ pub fn measure_table_columns(doc: &wordcraft_doc::Document, t: &Table) -> Vec<(f
     let margins_def = default_margins(t, style.as_ref());
     let ncols = grid_cols(t).clamp(1, wordcraft_doc::table::MAX_COLS);
     let fields = crate::FieldCtx::default();
+    let font_substitutes = crate::FontSubstitutes::default();
     let mut cols = vec![(0.0f32, 0.0f32); ncols];
     // Cells spanning several columns: (first column, span, min, max), applied after the others.
     let mut spanned: Vec<(usize, usize, f32, f32)> = Vec::new();
@@ -235,6 +236,7 @@ pub fn measure_table_columns(doc: &wordcraft_doc::Document, t: &Table) -> Vec<(f
                 fit_objects: false,
                 fitted: &[],
                 draft_font: None,
+                font_substitutes: &font_substitutes,
             };
             let (mut min, mut max) = (EMPTY_TEXT, EMPTY_TEXT);
             if cell.props.vmerge != VMerge::Continue && !cell.props.text_direction.is_turned() {
