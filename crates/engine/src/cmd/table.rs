@@ -19,12 +19,6 @@ mod structure;
 
 pub(super) use cells::grid_cols;
 pub use cells::selected_cells;
-
-/// Shade the selected cells edge to edge (`w:tcPr/w:shd`): Table Design › Shading, and Home ›
-/// Shading when whole cells are selected.
-pub(super) fn shade_cells(s: &mut Session, c: Option<Rgb>) -> CmdResult {
-    with_cells(s, |cl| cl.props.shading = c)
-}
 use cells::{cell, with_cells, with_table};
 pub(crate) use cells::{cell_text, row_ends};
 pub(super) use clear::clear_range_cells;
@@ -68,6 +62,12 @@ pub fn effective_cell_margins(props: &wordcraft_doc::props::CellProps, default: 
 
 fn in_table(s: &Session) -> Option<&'static str> {
     if s.sel.focus.path.cell().is_some() { None } else { Some("the cursor isn't in a table") }
+}
+
+/// Shade the selected cells edge to edge (`w:tcPr/w:shd`): Table Design › Shading, and Home ›
+/// Shading when whole cells are selected.
+pub(super) fn shade_cells(s: &mut Session, c: Option<Rgb>) -> CmdResult {
+    with_cells(s, |cl| cl.props.shading = c)
 }
 
 pub fn specs() -> Vec<CommandSpec> {

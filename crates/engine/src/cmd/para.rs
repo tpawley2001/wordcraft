@@ -176,28 +176,24 @@ pub fn specs() -> Vec<CommandSpec> {
             .key(if cfg!(target_os = "macos") { "Ctrl+Shift+Right" } else { "Alt+Shift+Right" }),
         CommandSpec::new("para.shading", "Shading", "Home › Paragraph", |s, v| {
             let c = p::str(v, "color").and_then(Rgb::parse);
-<<<<<<< ours
             // Text selected within one paragraph is shaded itself, as in Word, so No Color takes
             // off a shading a file gave the text (#4685); a caret or paragraphs shade paragraphs.
             // `paragraph` (Borders and Shading › Apply to: Paragraph) shades the paragraphs anyway.
-            if p::bool(v, "paragraph") != Some(true) && shades_text(s) {
-                return super::format::apply(s, &|x| x.shading = c);
+            if p::bool(v, "paragraph") != Some(true) {
+                // As in Word, whole cells selected take the shading themselves, edge to edge,
+                // rather than each paragraph inside the cell margins.
+                if s.cell_range().is_some() {
+                    return super::table::shade_cells(s, c);
+                }
+                if shades_text(s) {
+                    return super::format::apply(s, &|x| x.shading = c);
+                }
             }
             fmt(s, &|p| p.shading = c)
         })
         .params(
-            r#"{"color": "RRGGBB" | null, "paragraph"?: bool} (text selected inside one paragraph is shaded itself, as in Word; `paragraph: true` shades the paragraphs instead, as Borders and Shading › Apply to: Paragraph)"#,
+            r#"{"color": "RRGGBB" | null, "paragraph"?: bool} (whole table cells selected: the cells are shaded, as table.shading; text selected inside one paragraph is shaded itself, as in Word; `paragraph: true` shades the paragraphs instead, as Borders and Shading › Apply to: Paragraph)"#,
         ),
-=======
-            // As in Word, whole cells selected take the shading themselves, edge to edge, rather
-            // than each paragraph inside the cell margins.
-            if s.cell_range().is_some() {
-                return super::table::shade_cells(s, c);
-            }
-            fmt(s, &|p| p.shading = c)
-        })
-        .params(r#"{"color": "RRGGBB" | null} — whole cells selected: the cells are shaded (as table.shading)"#),
->>>>>>> theirs
         CommandSpec::new("para.borders", "Borders", "Home › Paragraph", borders).params(
             r#"{"kind": "bottom|top|left|right|none|all|outside|inside|horizontalLine", "width"?: pt, "color"?: "RRGGBB", "style"?: "single|double|dotted|dashed|thick|triple|dotDash|wave", "sides"?: Sides} where Sides = {"top"|"left"|"bottom"|"right"|"between": {"style"?, "width"?: pt, "color"?: "RRGGBB", "space"?: pt (0-31, distance from text)} | null}: exactly these sides (others off), instead of `kind`"#,
         ),

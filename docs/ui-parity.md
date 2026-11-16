@@ -1,5 +1,7 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-16 · **Change:** trivial (P0645: Home › Shading on whole selected table cells shades the cells, not their paragraphs (#4783). Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0613: File › Options: Show highlighter marks, Show drawings and text boxes on screen, Show background colors and images in Print Layout view (all on, kept between runs; Save as PDF unchanged). Readiness estimates unchanged; earlier: P0609: File › Options › Advanced › Cut, copy, and paste has Use smart cut and paste and, under it, Adjust sentence and word spacing automatically (both on, `file.options` `smartCutPaste` / `pasteAdjustWordSpacing`). Readiness estimates unchanged; earlier: P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged)
@@ -658,6 +660,7 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 | 2026-11-15 | trivial | P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0612: File › Options › Advanced › Show document content › Field shading: Never, Always or When selected (the default; `ui.fieldShading`), so fields and cross-references show on grey; screen only, kept between runs (#3233). Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0613: File › Options › Display › Show highlighter marks (also print jobs) and Advanced › Show document content › Show background colors and images in Print Layout view and Show drawings and text boxes on screen (all on; `ui.showHighlight`, `ui.showBackgrounds`, `ui.showDrawings`); kept between runs; Save as PDF unchanged. Readiness estimates unchanged. |
+| 2026-11-16 | trivial | P0645: Home › Paragraph › Shading with whole table cells selected (a row, a column, a block of cells) shades the cells edge to edge, as Table Design › Shading and Word do, instead of each paragraph inside the cell margins; a caret or text in a cell keeps the paragraph and text rules; one undo step (#4783) |
 
 ### Format Painter integration refresh, 2026-10-30
 
