@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use serde_json::{Value, json};
-use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, LegendPos, MAX_AXIS_STEPS, MAX_FORMAT, MAX_POINTS, MAX_SERIES, ValueAxis};
+use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, LegendPos, MAX_AXIS_STEPS, MAX_FORMAT, MAX_POINTS, MAX_SERIES};
 use wordcraft_doc::graphic::{Graphic, GraphicKind};
 use wordcraft_doc::para::{Float, InlineObject};
 use wordcraft_doc::props::Rgb;

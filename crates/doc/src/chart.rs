@@ -165,16 +165,16 @@ impl ValueAxis {
     pub fn sanitize(&mut self) {
         self.min = self.min.filter(|v| v.is_finite());
         self.max = self.max.filter(|v| v.is_finite());
-        if let (Some(lo), Some(hi)) = (self.min, self.max) {
-            if hi <= lo {
-                self.max = None;
-            }
+        if let (Some(lo), Some(hi)) = (self.min, self.max)
+            && hi <= lo
+        {
+            self.max = None;
         }
         self.major_unit = self.major_unit.filter(|u| u.is_finite() && *u > 0.0);
-        if let (Some(lo), Some(hi), Some(u)) = (self.min, self.max, self.major_unit) {
-            if (hi - lo) / u > MAX_AXIS_STEPS {
-                self.major_unit = None;
-            }
+        if let (Some(lo), Some(hi), Some(u)) = (self.min, self.max, self.major_unit)
+            && (hi - lo) / u > MAX_AXIS_STEPS
+        {
+            self.major_unit = None;
         }
         self.number_format = self.number_format.take().filter(|f| !f.is_empty() && f.len() <= MAX_FORMAT);
     }

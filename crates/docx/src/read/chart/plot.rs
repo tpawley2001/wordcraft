@@ -64,10 +64,10 @@ pub(super) fn nice_scale(dlo: f64, dhi: f64, zero: bool, min: Option<f64>, max: 
         let hi_r = if max.is_some() { hi } else { ((hi / step) - 1e-9).ceil() * step };
         (step.is_finite() && step > 0.0 && lo_r.is_finite() && hi_r.is_finite() && hi_r > lo_r).then_some(Scale { lo: lo_r, hi: hi_r, step })
     };
-    if let Some(s) = major.filter(|m| m.is_finite() && *m > 0.0).and_then(ends) {
-        if (s.hi - s.lo) / s.step <= MAX_TICKS as f64 + 1e-9 {
-            return s;
-        }
+    if let Some(s) = major.filter(|m| m.is_finite() && *m > 0.0).and_then(ends)
+        && (s.hi - s.lo) / s.step <= MAX_TICKS as f64 + 1e-9
+    {
+        return s;
     }
     let raw = (hi - lo) / 7.5;
     let mag = 10f64.powf(raw.log10().floor());
