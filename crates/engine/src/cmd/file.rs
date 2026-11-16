@@ -612,6 +612,7 @@ pub fn export_options(s: &Session, v: &Value) -> crate::io::ExportOptions {
         word2003: p::str(v, "format") == Some(FORMAT_WORD_2003),
         numeral: s.view.numeral.resolve(crate::session::system_locale()),
         strict: p::bool(v, "strict").unwrap_or(false),
+        font_substitutes: s.prefs.font_substitutes.clone(),
         txt: txt_options(v),
     }
 }

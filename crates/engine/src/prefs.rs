@@ -110,6 +110,11 @@ pub struct Prefs {
     /// points (0: no style area, Word's default). An application setting, never saved in documents.
     #[serde(deserialize_with = "lenient_style_area_width")]
     pub style_area_width: f32,
+    /// File › Options › Advanced › Font Substitution: the font each missing font is shown and
+    /// printed in on this computer, in every document (`font.setSubstitute`). The documents keep
+    /// naming the missing fonts.
+    #[serde(deserialize_with = "lenient_font_substitutes")]
+    pub font_substitutes: wordcraft_layout::FontSubstitutes,
 }
 
 /// Widest style area, in points (22 in).
@@ -197,6 +202,7 @@ impl Default for Prefs {
             clipboard: Default::default(),
             insert_table: Default::default(),
             style_area_width: 0.0,
+            font_substitutes: Default::default(),
         }
     }
 }
@@ -210,6 +216,18 @@ impl Prefs {
             ignore_internet: self.ignore_internet,
         }
     }
+}
+
+/// Read saved font substitutes ([`Prefs::font_substitutes`]) leniently: pairs that aren't two
+/// strings are skipped, and anything else reads as none, without discarding the other
+/// preferences.
+fn lenient_font_substitutes<'de, D: serde::Deserializer<'de>>(d: D) -> Result<wordcraft_layout::FontSubstitutes, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    let pairs = value.as_array().into_iter().flatten().filter_map(|p| match p.as_array().map(Vec::as_slice) {
+        Some([font, family]) => Some((font.as_str()?.to_string(), family.as_str()?.to_string())),
+        _ => None,
+    });
+    Ok(wordcraft_layout::FontSubstitutes::from_pairs(pairs))
 }
 
 /// Ignore malformed saved language tags without discarding the other preferences.
