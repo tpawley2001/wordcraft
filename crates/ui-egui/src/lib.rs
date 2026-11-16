@@ -414,6 +414,9 @@ pub struct UiState {
     /// File › Options › Advanced › Editing: moving a picture or shape snaps it to alignment
     /// guides (on by default; Alt moves freely).
     pub alignment_guides: bool,
+    /// File › Options › Advanced › Editing: Use Ctrl+Click to follow hyperlink (on by default, as
+    /// in Word); off, a plain click on a link follows it.
+    pub ctrl_click_follows_links: bool,
     /// File › Options › Advanced › Show document content: crop marks at the corners of the text
     /// area in Print Layout (on, as in Word). Screen only.
     pub crop_marks: bool,
@@ -421,6 +424,9 @@ pub struct UiState {
     pub text_boundaries: bool,
     /// … pictures drawn as empty outlined rectangles. Screen only.
     pub picture_placeholders: bool,
+    /// … Field shading: `never`, `always` or `selected` (When selected, Word's default): which
+    /// fields are drawn on grey. Screen only.
+    pub field_shading: String,
     /// … Draft and Outline views show all text in [`UiState::draft_font_name`] at
     /// [`UiState::draft_font_size`] points. Screen only.
     pub draft_font: bool,
@@ -464,6 +470,8 @@ pub const DEFAULT_TAB: &str = "Home";
 const QUIT: egui::KeyboardShortcut = egui::KeyboardShortcut::new(egui::Modifiers::MAC_CMD, egui::Key::Q);
 /// The draft font Word starts with (File › Options › Advanced › Show document content).
 pub const DEFAULT_DRAFT_FONT: &str = "Courier New";
+/// [`UiState::field_shading`]'s values, in Word's order: Never, Always, When selected (the default).
+pub const FIELD_SHADING_VALUES: [&str; 3] = ["never", "always", "selected"];
 /// The draft font's size Word starts with, in points.
 pub const DEFAULT_DRAFT_FONT_SIZE: f32 = 10.0;
 /// Ctrl+Shift+0 (⌘⇧0): back to the Auto interface size (#4030). Not Ctrl+Alt+0, which is AltGr+0
@@ -550,9 +558,11 @@ impl Default for UiState {
             recent_count: 12,
             mini_toolbar: true,
             alignment_guides: true,
+            ctrl_click_follows_links: true,
             crop_marks: true,
             text_boundaries: false,
             picture_placeholders: false,
+            field_shading: FIELD_SHADING_VALUES[2].into(),
             draft_font: false,
             draft_font_name: DEFAULT_DRAFT_FONT.into(),
             draft_font_size: DEFAULT_DRAFT_FONT_SIZE,
@@ -905,6 +915,8 @@ pub(crate) fn rust_sources(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 #[cfg(test)]
 mod tests_dialog_tabs;
+#[cfg(test)]
+mod tests_math_autocorrect;
 
 #[cfg(test)]
 mod tests;

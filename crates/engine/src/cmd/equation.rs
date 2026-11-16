@@ -317,6 +317,8 @@ fn type_text(s: &mut Session, v: &Value) -> CmdResult {
     }
     let latex = s.math_latex;
     let style = TypeStyle { nor: s.math_normal_text };
+    let mac = s.prefs.autocorrect.math();
+    let functions = mac.functions();
     let mut pos = m.pos.clone();
     let mut transformed = false;
     let (_, effect) = with_eq(s, &m.at, |math, _| {
@@ -331,7 +333,7 @@ fn type_text(s: &mut Session, v: &Value) -> CmdResult {
             let rel = matches!(wordcraft_doc::math::math_class(c), wordcraft_doc::math::MClass::Rel);
             if !style.nor && (c == ' ' || c == '\t' || rel) {
                 let mut changed = false;
-                if let Some(p) = me::autocorrect(&mut math.nodes, &pos) {
+                if let Some(p) = me::autocorrect_with(&mut math.nodes, &pos, &mac, true) {
                     pos = p;
                     changed = true;
                 }
@@ -341,7 +343,7 @@ fn type_text(s: &mut Session, v: &Value) -> CmdResult {
                 // Only an operator this build-up makes takes the caret: one already there (from
                 // the gallery, say) keeps it after it.
                 let built_before = me::nary_node_before(&math.nodes, &pos);
-                if !waits && let Some(p) = me::build_up(&mut math.nodes, &pos, latex) {
+                if !waits && let Some(p) = me::build_up_with(&mut math.nodes, &pos, latex, &functions) {
                     pos = if built_before { p } else { me::into_empty_operand(&math.nodes, &p) };
                     changed = true;
                 }
@@ -355,7 +357,7 @@ fn type_text(s: &mut Session, v: &Value) -> CmdResult {
                 // Word corrects `\name` on any character that can't continue it (`\int_`,
                 // `\alpha+`), keeps that character and builds nothing up yet. LaTeX input keeps
                 // its commands (`\sqrt{`).
-                if let Some(p) = me::autocorrect(&mut math.nodes, &pos) {
+                if let Some(p) = me::autocorrect_with(&mut math.nodes, &pos, &mac, false) {
                     pos = p;
                     transformed = true;
                 }
@@ -456,15 +458,17 @@ fn move_caret(s: &mut Session, v: &Value) -> CmdResult {
     let mut pos = m.pos.clone();
     if !s.math_normal_text && !shown_linear {
         let latex = s.math_latex;
+        let mac = s.prefs.autocorrect.math();
+        let functions = mac.functions();
         let before = nodes.clone();
         let mut candidate = nodes.clone();
         let mut candidate_pos = pos.clone();
         let mut changed = false;
-        if let Some(p) = me::autocorrect(&mut candidate, &candidate_pos) {
+        if let Some(p) = me::autocorrect_with(&mut candidate, &candidate_pos, &mac, true) {
             candidate_pos = p;
             changed = true;
         }
-        if let Some(p) = me::build_up(&mut candidate, &candidate_pos, latex) {
+        if let Some(p) = me::build_up_with(&mut candidate, &candidate_pos, latex, &functions) {
             candidate_pos = p;
             changed = true;
         }
@@ -588,17 +592,19 @@ fn delete_surrounding(s: &mut Session, v: &Value) -> CmdResult {
 fn enter(s: &mut Session, _: &Value) -> CmdResult {
     let m = current(s)?;
     let latex = s.math_latex;
+    let mac = s.prefs.autocorrect.math();
+    let functions = mac.functions();
     let mut pos = m.pos.clone();
     let mut changed = false;
     let (_, effect) = with_eq(s, &m.at, |math, _| {
         if math.linear {
             return;
         }
-        if let Some(p) = me::autocorrect(&mut math.nodes, &pos) {
+        if let Some(p) = me::autocorrect_with(&mut math.nodes, &pos, &mac, true) {
             pos = p;
             changed = true;
         }
-        if let Some(p) = me::build_up(&mut math.nodes, &pos, latex) {
+        if let Some(p) = me::build_up_with(&mut math.nodes, &pos, latex, &functions) {
             pos = p;
             changed = true;
         }

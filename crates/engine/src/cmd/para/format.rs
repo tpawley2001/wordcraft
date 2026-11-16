@@ -18,12 +18,23 @@ pub fn cur(s: &Session) -> wordcraft_doc::resolve::ResolvedPara {
 }
 
 pub fn fmt(s: &mut Session, f: &dyn Fn(&mut ParaProps)) -> CmdResult {
+    use crate::cmd::style_auto_redefine::{Patch, redefine, style_id};
     let story = s.sel.focus.story;
+    let mut patches = std::collections::BTreeMap::<String, Patch>::new();
     for path in crate::cmd::selected_paths(s) {
+        let id = s.doc.para(story, &path).and_then(|para| style_id(s, &para.props));
         let para = s.doc.para_mut(story, &path)?;
-        f(&mut para.props);
+        if let Some(id) = id {
+            let patch = Patch::paragraph(&para.props, f)?;
+            f(&mut para.props);
+            patch.clear(&mut para.props)?;
+            patches.entry(id).or_default().extend(patch);
+        } else {
+            f(&mut para.props);
+        }
         para.touch();
     }
+    redefine(s, patches, false)?;
     sel_result(s)
 }
 

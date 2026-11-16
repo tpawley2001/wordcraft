@@ -77,6 +77,30 @@ enum Attempt {
     BadFont(u32, String),
 }
 
+/// Apply a print job's optional paper substitution through the existing fit and slot geometry.
+fn print_sheets(lay: &DocLayout, pages: &[usize], mode: imposition::Imposition, opts: &PdfOptions) -> Result<Vec<imposition::Sheet>, PdfError> {
+    let mut sheets = mode.sheets(lay, pages, opts.paper)?;
+    if opts.paper.is_none()
+        && let Some(((sw, sh), (tw, th))) = opts.paper_substitution
+    {
+        for sheet in &mut sheets {
+            let (w, h) = (sheet.width, sheet.height);
+            if ((w - sw).abs() <= 2.0 && (h - sh).abs() <= 2.0) || ((h - sw).abs() <= 2.0 && (w - sh).abs() <= 2.0) {
+                let fit = wordcraft_geom::fit_to_paper(w, h, tw, th);
+                for slot in &mut sheet.slots {
+                    slot.x *= fit.paper_w / w;
+                    slot.y *= fit.paper_h / h;
+                    slot.width *= fit.paper_w / w;
+                    slot.height *= fit.paper_h / h;
+                }
+                sheet.width = fit.paper_w;
+                sheet.height = fit.paper_h;
+            }
+        }
+    }
+    Ok(sheets)
+}
+
 /// Serialize physical sheet sides while mapping link and outline destinations onto their cells.
 fn write_attempt<'a>(
     doc: &'a Document,
@@ -86,11 +110,11 @@ fn write_attempt<'a>(
     pages: &[usize],
     outlined: &'a HashSet<u32>,
 ) -> Result<Attempt, PdfError> {
-    let one_copy = opts.imposition.sheets(lay, pages, opts.paper)?;
+    let one_copy = print_sheets(lay, pages, opts.imposition, opts)?;
     let extra = match appendix {
         Some((_, alay)) if !alay.pages.is_empty() => {
             let all: Vec<usize> = (0..alay.pages.len()).collect();
-            imposition::Imposition::Single.sheets(alay, &all, opts.paper)?
+            print_sheets(alay, &all, imposition::Imposition::Single, opts)?
         }
         _ => Vec::new(),
     };
@@ -288,6 +312,26 @@ impl Fit {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mixed_paper_substitution_preserves_other_sizes_and_centres_content() {
+        let doc = Document::from_text("One\u{c}Two\u{c}Three\u{c}Four");
+        let mut lay = layout(&doc, &mut LayoutCache::new(), &Default::default());
+        let sizes = [(595.0, 842.0), (842.0, 595.0), (612.0, 1008.0), (598.0, 842.0)];
+        for (page, (w, h)) in lay.pages.iter_mut().zip(sizes) {
+            page.w = w;
+            page.h = h;
+        }
+        let opts = PdfOptions { paper_substitution: Some(((595.28, 841.89), (612.0, 792.0))), ..Default::default() };
+        let sheets = print_sheets(&lay, &[0, 1, 2, 3], imposition::Imposition::Single, &opts).unwrap();
+        assert_eq!(sheets.iter().map(|s| (s.width, s.height)).collect::<Vec<_>>(), vec![(612.0, 792.0), (792.0, 612.0), sizes[2], sizes[3]]);
+        let actual = Fit::in_slot(&lay.pages[0], sheets[0].slots[0]);
+        let expected = Fit::of(&lay.pages[0], Some((612.0, 792.0)));
+        for (a, e) in [(actual.k, expected.k), (actual.dx, expected.dx), (actual.dy, expected.dy)] {
+            assert!((a - e).abs() < 0.01, "{a} vs {e}");
+        }
+        assert!(actual.dx > 0.0);
+    }
 
     /// N-up fits the whole markup page once, with the same centering as the physical-sheet preview.
     #[test]

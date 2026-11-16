@@ -42,8 +42,14 @@ impl Session {
         let outline = (mode == ViewMode::Outline).then(|| self.view.outline.view());
         let shown = (self.view.marks || self.prefs.marks.hidden, self.view.field_codes);
         // A dictionary or Language pack installed, removed or edited (in this document's window or
-        // any other) proofs it again, open or parked.
-        let rev = (self.rev, wordcraft_proof::dictionary_generation());
+        // any other) proofs it again, open or parked. So does a change to the fonts missing fonts
+        // are shown in, which every open document follows.
+        let rev = (self.rev, {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (wordcraft_proof::dictionary_generation(), &self.prefs.font_substitutes).hash(&mut h);
+            h.finish()
+        });
         let (proofing, numeral) = (self.view.proofing, self.view.numeral);
         let fits = |e: &Option<LayoutEntry>| {
             e.as_ref().is_some_and(|(r, w, h, m, sp, _, pf, o, hd, n, t, sh)| {
@@ -90,6 +96,7 @@ impl Session {
             filename: filename.clone(),
             filepath: filepath.clone(),
             draft_font: self.view.draft_font.clone(),
+            font_substitutes: self.prefs.font_substitutes.clone(),
         };
         let l = Arc::new(wordcraft_layout::layout(&self.doc, &mut self.cache, &opts));
         let [newest, _] = std::mem::take(&mut self.layout);
@@ -201,9 +208,18 @@ impl Session {
             numeral: self.view.numeral.resolve(SYSTEM_LOCALE.get().map(String::as_str)),
             filename: Some(Arc::from(fn_name.as_str())),
             filepath: Some(Arc::from(fn_path.as_str())),
+            font_substitutes: self.prefs.font_substitutes.clone(),
             ..Default::default()
         };
         Arc::new(wordcraft_layout::layout(doc, &mut LayoutCache::new(), &opts))
+    }
+
+    /// Show missing fonts in the fonts the user picked for them (File › Options › Advanced ›
+    /// Font Substitution), keyed by [`wordcraft_layout::FontSubstitutes::key`]: the setting the
+    /// UI keeps between runs. A screen and print setting: the document doesn't change.
+    pub fn set_font_substitutes(&mut self, subs: wordcraft_layout::FontSubstitutes) {
+        // The layout follows: it is keyed on these choices.
+        self.prefs.font_substitutes = subs;
     }
 
     /// Show Draft and Outline views in `font` (File › Options › Advanced › Use draft font), or in
