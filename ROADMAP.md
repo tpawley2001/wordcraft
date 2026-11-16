@@ -207,6 +207,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-16: P0641: the pointer is the arrow over the workspace beside and between the pages, as in Word; only the page shows the I-beam, and a selection drag from a page keeps it (#4114, from #4427). Readiness estimates unchanged.
 - 2026-11-15: P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.
 
 - 2026-11-15: P0621: Chart Design adds Switch Row/Column for editable charts, exchanging series and categories with gaps preserved in one undo step; scatter charts and more than 255 categories are refused. Readiness estimates unchanged.

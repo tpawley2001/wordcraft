@@ -1,5 +1,6 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-16 · **Change:** trivial (P0641: the pointer is the arrow over the workspace beside and between the pages, as in Word (#4114). Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged.)
 
@@ -666,6 +667,7 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 | 2026-11-15 | trivial | P0611: File › Options › Advanced › Editing › Use Ctrl+Click to follow hyperlink (`ui.ctrlClickFollowsLinks`, on by default): cleared, a plain click on a link in the text follows it and the hover tip says "Click to follow link"; a drag or Shift+click still selects; linked pictures and shapes keep Ctrl/⌘+click. Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0612: File › Options › Advanced › Show document content › Field shading: Never, Always or When selected (the default; `ui.fieldShading`), so fields and cross-references show on grey; screen only, kept between runs (#3233). Readiness estimates unchanged. |
 | 2026-11-15 | trivial | P0613: File › Options › Display › Show highlighter marks (also print jobs) and Advanced › Show document content › Show background colors and images in Print Layout view and Show drawings and text boxes on screen (all on; `ui.showHighlight`, `ui.showBackgrounds`, `ui.showDrawings`); kept between runs; Save as PDF unchanged. Readiness estimates unchanged. |
+| 2026-11-16 | trivial | P0641: the pointer is the arrow over the workspace beside and between the pages, as in Word; the page keeps the I-beam, and a text-selection drag that started on a page keeps it wherever it goes (#4114, from #4427). Readiness estimates unchanged. |
 
 ### Format Painter integration refresh, 2026-10-30
 
