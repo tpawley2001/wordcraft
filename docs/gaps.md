@@ -1,5 +1,7 @@
 # Where WordCraft falls short of Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (#7: Font Substitution dialog: pick what each missing font is shown in, or convert it permanently; dialog count +1. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0595: a missing Corbel, Candara, Constantia or Tw Cen MT keeps Word's advance widths. Readiness estimates unchanged.)
@@ -287,6 +289,8 @@ Automatically update now redefines paragraph styles for paragraph formatting and
 Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM437) or another encoding (Unicode with a byte order mark, Windows and East Asian code pages), the line ends and character substitution, with a preview that shows in red what won't save (P0602). Insert line breaks and the open-side encoding dialog remain open in gap #7.
 ## Revision history
 
+> 2026-11-15 · trivial · P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.
+
 > 2026-11-15 · trivial · P0616: #6 narrowed: File › Options › Display › Update linked data before printing (off) runs Update Now on every link before a print job (`printUpdateLinks`; `file.printPdf` `updateLinks`; `fields.updateLinks`). Readiness estimates unchanged.
 > 2026-11-15 · trivial · #7: Font Substitution dialog (`font.substitution`, `font.setSubstitute`, `font.convertPermanently`): a display substitute per missing font, kept in the user's preferences, and Convert Permanently…; dialog count +1. Readiness estimates unchanged.
 
@@ -433,7 +437,7 @@ Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM4
 | 2026-11-09 | trivial | P0163: #6 narrowed: File › Print › Document Info › Key Assignments prints the keyboard customizations, command or style name and key, by name (`print::document_info(s, "keys")`). Readiness estimates unchanged. |
 | 2026-11-09 | trivial | P0162: Go To (F5) adds Line: the n-th layout line of the main text (wrapped lines and manual line breaks count, headers and notes don't), +n/-n from the caret's line, clamped |
 | 2026-11-09 | trivial | #7 narrowed: Adjust List Indents (number position, text indent, follow number with, tab stop) from a list item's context menu changes that level of the list, `list.adjustIndents` |
-| 2026-11-09 | trivial | P0159: Readability Statistics (`review.readability`: words, characters, paragraphs, sentences, averages, Flesch Reading Ease and Flesch-Kincaid Grade Level for the selection or the main text; passive sentences not yet, #4152) and Show readability statistics (`review.showReadability`, File › Options › Proofing, saved with the other preferences), shown in the Proofing pane after the check completes |
+| 2026-11-09 | trivial | P0159: Readability Statistics (`review.readability`: words, characters, paragraphs, sentences, averages, Flesch Reading Ease and Flesch-Kincaid Grade Level for the selection or the main text; Passive Sentences added by P0624 (#4152), using English word patterns) and Show readability statistics (`review.showReadability`, File › Options › Proofing, saved with the other preferences), shown in the Proofing pane after the check completes |
 | 2026-11-09 | trivial | P0155: #6 narrowed: File › Print › Document Info prints Document Properties, List of Markup, Styles and AutoText Entries (`print::document_info`, print job `what`). Readiness estimates unchanged. |
 | 2026-11-09 | trivial | P0153: Go To (F5) adds every "Go to what" kind but Line: numbers, +n/-n, Next/Previous, comments by reviewer and fields by type |
 | 2026-11-08 | trivial | P0142: Insert Hyperlink adds E-mail Address with a subject and recently used document addresses. Readiness estimates unchanged. |

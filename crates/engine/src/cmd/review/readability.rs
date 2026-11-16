@@ -1,6 +1,8 @@
 //! Review › Proofing › Readability Statistics: the counts, averages and Flesch scores Word shows
 //! after a spelling check when File › Options › Proofing › "Show readability statistics" is on.
-//! Passive sentences aren't reported (#4152).
+//! Passive sentences use English be/get + past-participle patterns, Word-measured adjective
+//! exceptions and an initial finite-be question exclusion. These English rules apply to all
+//! text, regardless of proofing language; this is a word-pattern check, not a grammar parser.
 
 use super::{CmdResult, Session, Value, json};
 
@@ -39,31 +41,205 @@ pub(crate) fn syllables(word: &str) -> usize {
     groups.max(1)
 }
 
+// Word-measured adjective exceptions after be/get (Microsoft 365 Word, en-US).
+const PASSIVE_ADJECTIVES: &[&str] =
+    &["known", "gone", "tired", "interested", "excited", "worried", "surprised", "married", "wet", "clean", "empty", "blue", "happy"];
+
+const IRREGULAR_PARTICIPLES: &[&str] = &[
+    "arisen",
+    "awoken",
+    "been",
+    "beaten",
+    "become",
+    "begun",
+    "bent",
+    "bet",
+    "bitten",
+    "bled",
+    "blown",
+    "broken",
+    "brought",
+    "built",
+    "burnt",
+    "burst",
+    "bought",
+    "caught",
+    "chosen",
+    "come",
+    "cost",
+    "crept",
+    "cut",
+    "dealt",
+    "done",
+    "drawn",
+    "dreamt",
+    "driven",
+    "drunk",
+    "eaten",
+    "fallen",
+    "fed",
+    "felt",
+    "fought",
+    "found",
+    "fled",
+    "flown",
+    "forbidden",
+    "forgotten",
+    "forgiven",
+    "frozen",
+    "given",
+    "gone",
+    "grown",
+    "hung",
+    "had",
+    "heard",
+    "hidden",
+    "hit",
+    "held",
+    "hurt",
+    "kept",
+    "knelt",
+    "known",
+    "laid",
+    "led",
+    "left",
+    "lent",
+    "let",
+    "lain",
+    "lit",
+    "lost",
+    "made",
+    "meant",
+    "met",
+    "paid",
+    "put",
+    "quit",
+    "read",
+    "ridden",
+    "rung",
+    "risen",
+    "run",
+    "said",
+    "seen",
+    "sought",
+    "sold",
+    "sent",
+    "set",
+    "shaken",
+    "shed",
+    "shone",
+    "shot",
+    "shown",
+    "shut",
+    "sung",
+    "sunk",
+    "sat",
+    "slain",
+    "slept",
+    "slid",
+    "spoken",
+    "spent",
+    "spun",
+    "split",
+    "spread",
+    "stood",
+    "stolen",
+    "stuck",
+    "stung",
+    "struck",
+    "sworn",
+    "swept",
+    "swum",
+    "swung",
+    "taken",
+    "taught",
+    "torn",
+    "told",
+    "thought",
+    "thrown",
+    "understood",
+    "woken",
+    "worn",
+    "woven",
+    "wept",
+    "won",
+    "wound",
+    "written",
+];
+
+fn participle(word: &str) -> bool {
+    IRREGULAR_PARTICIPLES.contains(&word) || (word.len() >= 4 && word.ends_with("ed") && !word.ends_with("eed"))
+}
+
+fn passive_skip(word: &str) -> bool {
+    matches!(word, "not" | "never" | "really" | "quickly" | "also" | "just" | "already" | "being" | "been" | "be")
+        || word.ends_with("ly")
+        || word.ends_with("n't")
+        || word.ends_with("n’t")
+}
+
+/// Check one sentence's existing whitespace tokens, preserving punctuation for questions.
+fn is_passive(sentence_tokens: &[&str]) -> bool {
+    let words: Vec<String> = sentence_tokens.iter().map(|token| token.trim_matches(|c: char| !c.is_alphabetic()).to_lowercase()).collect();
+    if words.first().is_some_and(|w| matches!(w.as_str(), "am" | "is" | "are" | "was" | "were"))
+        && sentence_tokens.last().is_some_and(|t| t.trim_end_matches(is_closer).ends_with('?'))
+    {
+        return false;
+    }
+    for (i, word) in words.iter().enumerate() {
+        let following = words.iter().skip(i.saturating_add(1));
+        let contracted = ["'s", "'re", "'m", "’s", "’re", "’m"].iter().any(|suffix| word.ends_with(suffix))
+            && following.clone().next().is_some_and(|w| w == "been" || participle(w));
+        let auxiliary = word.strip_suffix("n't").or_else(|| word.strip_suffix("n’t")).unwrap_or(word);
+        if !contracted
+            && !matches!(auxiliary, "am" | "is" | "are" | "was" | "were" | "be" | "been" | "being" | "get" | "gets" | "got" | "gotten" | "getting")
+        {
+            continue;
+        }
+        // At most three adverb-like words may intervene before the participle.
+        for candidate in following.take(4) {
+            if participle(candidate) && !PASSIVE_ADJECTIVES.contains(&candidate.as_str()) {
+                return true;
+            }
+            if !passive_skip(candidate) {
+                break;
+            }
+        }
+    }
+    false
+}
+
 /// Sentences and syllables in `text` (paragraphs separated by `\n`), and the paragraphs that
-/// hold at least one word. A paragraph's last words without terminal punctuation are a sentence.
-fn sentences_syllables_paragraphs(text: &str) -> (usize, usize, usize) {
-    let (mut sentences, mut syl, mut paragraphs) = (0usize, 0usize, 0usize);
+/// hold at least one word, plus the passive sentence count. A paragraph's last words without
+/// terminal punctuation are a sentence.
+fn sentences_syllables_paragraphs(text: &str) -> (usize, usize, usize, usize) {
+    let (mut sentences, mut syl, mut paragraphs, mut passive) = (0usize, 0usize, 0usize, 0usize);
     for para in text.split('\n') {
         if wordcraft_doc::count_words(para) == 0 {
             continue;
         }
         paragraphs = paragraphs.saturating_add(1);
         let mut open = false;
+        let mut sentence_tokens = Vec::new();
         for token in para.split(|c: char| c.is_whitespace() || c == wordcraft_doc::para::OBJ).filter(|t| !t.is_empty()) {
+            sentence_tokens.push(token);
             if wordcraft_doc::count_words(token) > 0 {
                 open = true;
                 syl = syl.saturating_add(syllables(token));
             }
             if open && ends_sentence(token) {
+                passive = passive.saturating_add(usize::from(is_passive(&sentence_tokens)));
+                sentence_tokens.clear();
                 sentences = sentences.saturating_add(1);
                 open = false;
             }
         }
         if open {
+            passive = passive.saturating_add(usize::from(is_passive(&sentence_tokens)));
             sentences = sentences.saturating_add(1);
         }
     }
-    (sentences, syl, paragraphs)
+    (sentences, syl, paragraphs, passive)
 }
 
 /// `a / b`, or 0 when `b` is 0.
@@ -82,7 +258,7 @@ pub(super) fn readability(s: &mut Session, _: &Value) -> CmdResult {
 fn readability_json(text: &str) -> Value {
     let words = wordcraft_doc::count_words(text);
     let characters = wordcraft_doc::count_chars_no_spaces(text);
-    let (sentences, syllables, paragraphs) = sentences_syllables_paragraphs(text);
+    let (sentences, syllables, paragraphs, passive) = sentences_syllables_paragraphs(text);
     let wps = ratio(words, sentences);
     let spw = ratio(syllables, words);
     let (ease, grade) = if words == 0 || sentences == 0 {
@@ -90,9 +266,12 @@ fn readability_json(text: &str) -> Value {
     } else {
         ((206.835 - 1.015 * wps - 84.6 * spw).clamp(0.0, 100.0), (0.39 * wps + 11.8 * spw - 15.59).max(0.0))
     };
+    // Widen before multiplying so hostile document sizes cannot overflow the percentage.
+    let passive_percent = if sentences == 0 { 0 } else { ((passive as u128 * 100 + sentences as u128 / 2) / sentences as u128) as u64 };
     json!({
         "words": words, "characters": characters, "paragraphs": paragraphs, "sentences": sentences, "syllables": syllables,
         "sentencesPerParagraph": ratio(sentences, paragraphs), "wordsPerSentence": wps, "charactersPerWord": ratio(characters, words),
+        "passiveCount": passive, "passiveSentences": passive_percent,
         "fleschReadingEase": ease, "fleschKincaidGrade": grade,
     })
 }
@@ -100,6 +279,41 @@ fn readability_json(text: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn passive_contractions_and_questions() {
+        for text in
+            ["The book's been read.", "The book’s read.", "They're chosen.", "I’m paid.", "The book isn't read.", "Being chosen was an honour."]
+        {
+            assert!(is_passive(&text.split_whitespace().collect::<Vec<_>>()), "{text}");
+        }
+        for text in ["Was the letter sent?", "“WERE the letters sent?”", "Is the book read?", "The book's blue.", "I'm running."] {
+            assert!(!is_passive(&text.split_whitespace().collect::<Vec<_>>()), "{text}");
+        }
+    }
+
+    #[test]
+    fn passive_patterns_bound_skips_and_reject_false_participles() {
+        for text in ["It was not really quickly sent.", "It gets just sent.", "It gotten sent.", "The file is (FORMATTED)."] {
+            assert!(is_passive(&text.split_whitespace().collect::<Vec<_>>()), "{text}");
+        }
+        for text in
+            ["It was not really quickly already sent.", "It was indeed.", "It was need.", "It was feed.", "It was speed.", "It was surprised."]
+        {
+            assert!(!is_passive(&text.split_whitespace().collect::<Vec<_>>()), "{text}");
+        }
+    }
+
+    #[test]
+    fn passive_uses_existing_sentence_boundaries_and_rounds_halves_up() {
+        let stats = readability_json("The ball was thrown\nIt was sent. He ran. She left. We ate. I slept. They came. You won.");
+        assert_eq!(stats["sentences"], 8);
+        assert_eq!(stats["passiveCount"], 2);
+        assert_eq!(stats["passiveSentences"], 25);
+        let stats = readability_json("It was sent. He ran. She left. We ate. I slept. They came. You won. Birds fly.");
+        assert_eq!(stats["passiveSentences"], 13);
+        assert_eq!(readability_json("It was. Sent.")["passiveCount"], 0);
+    }
 
     #[test]
     fn syllable_rules() {
