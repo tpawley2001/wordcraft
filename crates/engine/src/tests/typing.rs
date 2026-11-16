@@ -4084,3 +4084,57 @@ fn autoformat_now_follows_the_switches_and_keeps_the_caret() {
     assert_eq!(text(&s), "a -- \"b\"");
     assert_eq!(s.undo_depth(), depth, "nothing changed, no undo step");
 }
+
+/// #4281: Home › Numbering offers every preset, "a. b. c." among them, and picking another preset
+/// for a list that is already numbered changes its style (only picking the same one again turns it off).
+#[test]
+fn the_numbering_gallery_presets_each_apply_and_switch_between_each_other() {
+    let labels = |s: &mut Session| numbers(s).into_iter().map(|(l, _)| l.unwrap_or_default()).collect::<Vec<_>>();
+    for (kind, want) in [
+        ("numbered", ["1.", "2.", "3."]),
+        ("numberedParen", ["1)", "2)", "3)"]),
+        ("outline", ["I.", "II.", "III."]),
+        ("upperLetter", ["A.", "B.", "C."]),
+        ("lowerLetter", ["a)", "b)", "c)"]),
+        ("lowerLetterDot", ["a.", "b.", "c."]),
+        ("lowerRoman", ["i.", "ii.", "iii."]),
+    ] {
+        let mut s = s();
+        typ(&mut s, "One\nTwo\nThree");
+        run(&mut s, "select.all", json!({}));
+        run(&mut s, "para.numbering", json!({"kind": kind}));
+        assert_eq!(labels(&mut s), want, "{kind}");
+        // Picking the same preset again turns the list off.
+        run(&mut s, "para.numbering", json!({"kind": kind}));
+        assert_eq!(labels(&mut s), ["", "", ""], "{kind} again");
+    }
+    // From one preset to another: the list changes style, it doesn't go off.
+    let mut s = s();
+    typ(&mut s, "One\nTwo\nThree");
+    run(&mut s, "select.all", json!({}));
+    run(&mut s, "para.numbering", json!({"kind": "numbered"}));
+    for (kind, want) in [("upperLetter", "A."), ("lowerLetterDot", "a."), ("lowerRoman", "i."), ("outline", "I."), ("numbered", "1.")] {
+        run(&mut s, "para.numbering", json!({"kind": kind}));
+        assert_eq!(labels(&mut s)[0], want, "to {kind}");
+    }
+}
+
+/// #4281: whatever level a list item is on, picking a different Numbering preset changes the list
+/// and never turns it off; deeper levels of two presets can look alike.
+#[test]
+fn another_numbering_preset_never_switches_a_list_off_at_any_level() {
+    let kinds = ["numbered", "numberedParen", "outline", "upperLetter", "lowerLetter", "lowerLetterDot", "lowerRoman"];
+    for a in kinds {
+        for b in kinds.into_iter().filter(|b| *b != a) {
+            for level in 0..9 {
+                let mut s = s();
+                typ(&mut s, "One");
+                run(&mut s, "para.numbering", json!({"kind": a}));
+                run(&mut s, "para.listLevel", json!({"level": level}));
+                run(&mut s, "para.numbering", json!({"kind": b}));
+                let label = numbers(&mut s).into_iter().next().and_then(|(l, _)| l);
+                assert!(label.is_some(), "{a} -> {b} at level {level} turned the list off");
+            }
+        }
+    }
+}
