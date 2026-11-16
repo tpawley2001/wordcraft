@@ -52,7 +52,8 @@ pub struct Prefs {
     /// The Insert key switches overtype on and off.
     pub insert_key_overtype: bool,
     /// File › Options › Advanced › Use Normal style for bulleted or numbered lists (off, as in
-    /// Word): on, Bullets and Numbering keep a Normal paragraph's style (stub: not applied yet).
+    /// Word): on, Bullets and Numbering keep a Normal paragraph's style instead of
+    /// switching it to List Paragraph.
     pub normal_style_for_lists: bool,
     /// Overtype: typed characters replace the ones after the caret.
     pub overtype: bool,

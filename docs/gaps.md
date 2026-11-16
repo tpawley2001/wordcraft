@@ -1,6 +1,6 @@
 # Where WordCraft falls short of Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged; earlier: P0605: Math AutoCorrect has Word's 780 built-in entries (add, replace and delete your own), Recognized Functions… (Word's 55, add and delete) and Use Math AutoCorrect rules outside of math regions (`tools.autocorrect` `mathAdd`, `mathDelete`, `addFunction`, `deleteFunction`, `mathReplaceText`, `mathOutside`). Readiness estimates unchanged; earlier: P0602: Save as Plain Text opens File Conversion (encoding, line ends, character substitution, red preview), as in Word. Readiness estimates unchanged)
 
@@ -276,7 +276,11 @@ Formatting restriction settings now include theme and style set switching locks,
 Automatically update now redefines paragraph styles for paragraph formatting and whole-paragraph character formatting (P0608); broader style and dialog depth work remains open.
 
 Saving as Plain Text opens File Conversion: Windows (windows-1252), MS-DOS (IBM437) or another encoding (Unicode with a byte order mark, Windows and East Asian code pages), the line ends and character substitution, with a preview that shows in red what won't save (P0602). Insert line breaks and the open-side encoding dialog remain open in gap #7.
+Use Normal style for bulleted or numbered lists (File › Options › Advanced) keeps new list items in the Normal style instead of List Paragraph (P0617); gap #7 dialog depth otherwise unchanged.
+
 ## Revision history
+
+> 2026-11-15 · trivial · P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.
 

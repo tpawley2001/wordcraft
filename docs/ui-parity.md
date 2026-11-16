@@ -1,6 +1,6 @@
 # UI parity with Microsoft Word
 
-> **Last updated:** 2026-11-15 · **Change:** trivial (P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged; earlier: P0605: Math AutoCorrect has Word's 780 built-in entries (add, replace and delete your own), Recognized Functions… (Word's 55, add and delete) and Use Math AutoCorrect rules outside of math regions (`tools.autocorrect` `mathAdd`, `mathDelete`, `addFunction`, `deleteFunction`, `mathReplaceText`, `mathOutside`). Readiness estimates unchanged; dialog count +1)
 
@@ -206,7 +206,11 @@ Word Count's shared counters follow the 2026-11-14 Word for Windows measurements
 
 Modify Style’s existing Automatically update flag is honoured by engine formatting commands (P0608). Only paragraph styles redefine, and only whole paragraphs promote character formatting; tracked edits retain direct formatting.
 
+File › Options › Advanced › Editing has Use Normal style for bulleted or numbered lists (P0617): new lists keep the Normal style; paragraphs already in a list are not changed when it is switched.
+
 ## Revision history
+
+> 2026-11-15 · trivial · P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.
 
