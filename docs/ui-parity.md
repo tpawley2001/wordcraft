@@ -1,7 +1,10 @@
 # UI parity with Microsoft Word
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0628: Find and Replace preserves current formatting, field and special-code searches while adding exact-by-default Match Diacritics, Match Kashida and Match Alef Hamza options. Cleared options fold normal searches and map replacements to whole original characters; wildcard and regex matching stay exact. Readiness estimates unchanged.)
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0613: File › Options: Show highlighter marks, Show drawings and text boxes on screen, Show background colors and images in Print Layout view (all on, kept between runs; Save as PDF unchanged). Readiness estimates unchanged; earlier: P0609: File › Options › Advanced › Cut, copy, and paste has Use smart cut and paste and, under it, Adjust sentence and word spacing automatically (both on, `file.options` `smartCutPaste` / `pasteAdjustWordSpacing`). Readiness estimates unchanged)
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0613: File › Options: Show highlighter marks, Show drawings and text boxes on screen, Show background colors and images in Print Layout view (all on, kept between runs; Save as PDF unchanged). Readiness estimates unchanged; earlier: P0609: File › Options › Advanced › Cut, copy, and paste has Use smart cut and paste and, under it, Adjust sentence and word spacing automatically (both on, `file.options` `smartCutPaste` / `pasteAdjustWordSpacing`). Readiness estimates unchanged; earlier: P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (Font Substitution dialog: see which fonts aren't installed, pick what each is shown in, or convert them permanently. Readiness estimates unchanged; earlier: P0618: File › Options › General › ScreenTip style (feature descriptions, none, or no ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips apply to ribbon and Quick Access Toolbar hints and are kept between runs. Readiness estimates unchanged)
@@ -226,7 +229,12 @@ Modify Style’s existing Automatically update flag is honoured by engine format
 File › Options › General › ScreenTip style (Show feature descriptions, Don't show feature descriptions, Don't show ScreenTips) and Advanced › Display › Show shortcut keys in ScreenTips shape every ribbon and Quick Access Toolbar hint, as in Word (P0618). Our reason line on a disabled control stays under "Don't show feature descriptions" (unverified in Word).
 
 Chart Design › Data places Switch Row/Column beside Edit Data for editable charts (`chart.switchRowColumn`).
+
+File › Options › Advanced › Editing has Use Normal style for bulleted or numbered lists (P0617): new lists keep the Normal style; paragraphs already in a list are not changed when it is switched.
+
 ## Revision history
+
+> 2026-11-15 · trivial · P0617: File › Options › Advanced › Use Normal style for bulleted or numbered lists (`normalStyleForLists`, off by default): on, Bullets, Numbering, Define New List and AutoFormat As You Type lists keep a Normal paragraph's style instead of List Paragraph. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0624: Readability Statistics adds Passive Sentences above Flesch Reading Ease, with a whole-percent share and passiveCount from the existing sentence boundaries. English be/get + participle patterns, Word-measured adjective exceptions and finite-be question exclusions apply to all text; no grammar parser. Readiness estimates unchanged.
 

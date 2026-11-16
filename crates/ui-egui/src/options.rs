@@ -677,6 +677,7 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     flag(app, ui, "When selecting, automatically select entire word", "autoWordSelection", pr.auto_word_selection);
     flag(app, ui, "Use smart paragraph selection", "smartParagraphSelection", pr.smart_paragraph_selection);
     flag(app, ui, "Use smart cursoring", "smartCursoring", pr.smart_cursoring);
+    flag(app, ui, "Use Normal style for bulleted or numbered lists", "normalStyleForLists", pr.normal_style_for_lists);
     let mut guides = app.ui.alignment_guides;
     if ui
         .checkbox(&mut guides, tl!("Show alignment guides when moving pictures and shapes"))
