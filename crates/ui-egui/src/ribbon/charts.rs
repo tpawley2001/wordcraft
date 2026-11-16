@@ -114,6 +114,9 @@ pub(super) fn chart_design(app: &mut WordApp, ui: &mut Ui) {
     });
     group(ui, "Data", None, app, |ui, app| {
         big(ui, app, "chartData", "Edit\nData", "chart.editData", json!({}), false);
+        if ui.button(tl!("Switch Row/Column")).clicked() {
+            let _ = app.run("chart.switchRowColumn", json!({}));
+        }
     });
     group(ui, "Type", None, app, |ui, app| {
         big(ui, app, "changeChartType", "Change\nChart Type", "chart.type", json!({}), false);

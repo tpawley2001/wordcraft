@@ -58,6 +58,8 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("fields.editLink", "Edit Link", "File › Info › Related Documents › Edit Links to Files", links::edit_link).params(
             r#"{"index": number (0-based, as fields.links lists the links), "update"?: "auto"|"manual", "locked"?: bool, "preserveFormatting"?: bool, "source"?: string (path), "item"?: string (bookmark name; "" = the whole document), "action"?: "updateNow"|"breakLink"}"#,
         ),
+        CommandSpec::new("fields.updateLinks", "Update Links", "File › Info › Related Documents › Edit Links to Files", links::update_links)
+            .params(r#"{} — Update Now on every link fields.links lists, in document order; locked links keep their result. Returns {"updated": n}"#),
         CommandSpec::new("fields.selected", "Selected Fields", "Insert › Text › Quick Parts", |s, _| {
             Ok(Value::Array(selected(s).iter().map(|f| f.json()).collect()))
         })

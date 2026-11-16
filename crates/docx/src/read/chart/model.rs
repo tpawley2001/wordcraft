@@ -1,4 +1,5 @@
 use super::Rgb;
+use super::trendline::Trendline;
 
 /// A data label to draw once the chart is: the value at (`x`, `y`), centred there (`inside`, in
 /// white on the fill) or just beside it (above, or right of a horizontal bar's end).
@@ -129,6 +130,8 @@ pub(super) struct Axis {
     pub(super) mid: bool,
     pub(super) min: Option<f64>,
     pub(super) max: Option<f64>,
+    /// `c:majorUnit`: the step between ticks, when the file sets one (finite and > 0).
+    pub(super) major: Option<f64>,
     /// Number format of the tick labels, when not linked to the source data.
     pub(super) fmt: Option<String>,
 }
@@ -157,4 +160,6 @@ pub(super) struct Series {
     /// The values as the file has them, for data labels (`values` become shares in a 100%
     /// stacked chart); empty when the series shows no labels.
     pub(super) raw: Vec<Option<f64>>,
+    /// Trendlines (`c:trendline`) drawn over the series.
+    pub(super) trendlines: Vec<Trendline>,
 }

@@ -487,9 +487,11 @@ SmartArt Design|SmartArt Styles|Change Colors|smartArt.colors
 SmartArt Design|Reset|Reset Graphic|smartArt.reset
 Chart Design|Type|Change Chart Type|chart.type
 Chart Design|Data|Edit Data|chart.editData
+Chart Design|Data|Switch Row/Column|chart.switchRowColumn
 Chart Design|Chart Layouts|Chart Title|chart.title
 Chart Design|Chart Layouts|Legend|chart.legend
 Chart Design|Chart Layouts|Data Labels|chart.dataLabels
+Chart Design|Chart Layouts|Axis Options|chart.axis
 Shape Format|Shape Styles|Shape Fill|shape.fill
 Shape Format|Shape Styles|Shape Fill Gradient|shape.fill
 Shape Format|Shape Styles|Format Shape Pane|view.formatShapePane

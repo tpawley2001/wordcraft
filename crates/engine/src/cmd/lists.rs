@@ -13,6 +13,18 @@ use wordcraft_doc::section::NumFormat;
 use super::sel_result;
 use crate::{CmdError, CmdResult, CommandSpec, Session, p};
 
+/// Whether `style` is Normal (named or implied).
+pub(crate) fn is_normal_style(style: Option<&str>) -> bool {
+    style.is_none_or(|st| st == "Normal")
+}
+
+/// The style a paragraph takes when numbering is applied to it: a Normal paragraph becomes List
+/// Paragraph, unless File › Options › Advanced › Use Normal style for bulleted or numbered lists
+/// (`normal_for_lists`) is on; any other style (a heading, say) is kept.
+pub(crate) fn list_style_for(normal_for_lists: bool, current: Option<&str>) -> Option<String> {
+    if !normal_for_lists && is_normal_style(current) { Some("ListParagraph".into()) } else { current.map(str::to_string) }
+}
+
 /// The most levels a list has (Word's nine).
 pub const LEVELS: usize = 9;
 
@@ -296,6 +308,7 @@ fn define(s: &mut Session, v: &Value) -> CmdResult {
         touch_styles(s, &linked)?;
     }
     if p::bool(v, "apply").unwrap_or(true) {
+        let normal_for_lists = s.prefs.normal_style_for_lists;
         super::para::fmt(s, &|pp| {
             // Paragraphs already in a list keep their level.
             let level = pp.numbering.filter(|n| n.num != 0).map(|n| n.level).unwrap_or(0);
@@ -304,9 +317,7 @@ fn define(s: &mut Session, v: &Value) -> CmdResult {
             pp.indent_first = None;
             pp.indent_left_chars = None;
             pp.indent_first_chars = None;
-            if pp.style.is_none() || pp.style.as_deref() == Some("Normal") {
-                pp.style = Some("ListParagraph".into());
-            }
+            pp.style = list_style_for(normal_for_lists, pp.style.as_deref());
         })?;
     }
     let mut r = sel_result(s)?;
@@ -367,9 +378,12 @@ pub fn define_number(s: &mut Session, v: &Value) -> CmdResult {
         level.start = start.unwrap_or(1);
         *l = level;
     }
+    let normal_for_lists = s.prefs.normal_style_for_lists;
     super::para::fmt(s, &|pp| {
         pp.numbering = Some(NumRef { num, level: 0 });
-        pp.style = Some("ListParagraph".into());
+        if !(normal_for_lists && is_normal_style(pp.style.as_deref())) {
+            pp.style = Some("ListParagraph".into());
+        }
     })?;
     let mut r = sel_result(s)?;
     r["num"] = json!(num);

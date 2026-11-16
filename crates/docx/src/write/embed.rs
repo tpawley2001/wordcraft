@@ -1044,6 +1044,7 @@ mod tests {
                 title: None,
                 legend: None,
                 data_labels: false,
+                value_axis: Default::default(),
             };
             let graphic = Graphic { kind: GraphicKind::Chart, w: 100.0, h: 100.0, chart: Some(Arc::new(spec)), ..Default::default() };
             InlineObject::Graphic { w: 100.0, h: 100.0, alt: String::new(), float: Default::default(), graphic: Arc::new(graphic) }

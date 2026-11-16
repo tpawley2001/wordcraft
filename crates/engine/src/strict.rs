@@ -207,18 +207,27 @@ pub(crate) fn png_display() -> DisplayOptions {
 /// The strict report of a PDF export of `doc`: every page, laid out as the export lays it out.
 pub(crate) fn pdf_report(doc: &Document, opts: &ExportOptions) -> StrictReport {
     let pdf = pdf_options(opts);
-    let lay = wordcraft_layout::layout(doc, &mut LayoutCache::new(), &pdf.layout_options());
+    let lay = wordcraft_layout::layout(doc, &mut LayoutCache::new(), &pdf_layout_options(&pdf, opts));
     strict_report(doc, &lay, &pdf.display_options(), None, StrictOutput::Pdf)
+}
+
+/// How a PDF export lays `doc` out: `pdf`'s options, with the fonts the user picked to show
+/// missing fonts in.
+fn pdf_layout_options(pdf: &wordcraft_pdf::PdfOptions, opts: &ExportOptions) -> wordcraft_layout::LayoutOptions {
+    wordcraft_layout::LayoutOptions { font_substitutes: opts.font_substitutes.clone(), ..pdf.layout_options() }
 }
 
 /// The PDF of `doc`; with `opts.strict`, only if nothing is missing, laid out once for the check
 /// and the export.
 pub(crate) fn export_pdf(doc: &Document, opts: &ExportOptions) -> Result<Vec<u8>, String> {
     let pdf = pdf_options(opts);
-    if !opts.strict {
+    if !opts.strict && opts.font_substitutes.is_empty() {
         return wordcraft_pdf::export(doc, &pdf).map_err(|e| e.to_string());
     }
-    let lay = wordcraft_layout::layout(doc, &mut LayoutCache::new(), &pdf.layout_options());
+    let lay = wordcraft_layout::layout(doc, &mut LayoutCache::new(), &pdf_layout_options(&pdf, opts));
+    if !opts.strict {
+        return wordcraft_pdf::export_layout(doc, &lay, &pdf).map_err(|e| e.to_string());
+    }
     let report = strict_report(doc, &lay, &pdf.display_options(), None, StrictOutput::Pdf);
     if !report.passed() {
         return Err(report.refusal());
