@@ -1,5 +1,9 @@
 # WordCraft roadmap
 
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.)
+
+> **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged; earlier: P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged)
+
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.)
 
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged; earlier: P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged)
@@ -199,8 +203,10 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
-> 2026-11-15 · P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.
+- 2026-11-15: P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.
 
+> 2026-11-15 · P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged.
+> 2026-11-15 · P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.
 - 2026-11-15: P0600: Ctrl+Alt+5 selects a floating shape and Tab / Shift+Tab cycle through the body's floating shapes in document order (`select.nextFloatingShape`; Linux/Windows); Esc puts the caret after the shape. Readiness estimates unchanged.
 - 2026-11-15: P0578: lowercase `a` runs in date/time pictures show `a` for 1–3 letters and `aa` for longer runs; a following `/p` makes the whole run an AM/PM item. Readiness estimates unchanged.
 
@@ -1071,8 +1077,10 @@ MATH glyphs that reference the same construction now share its immutable variant
 
 ## Revision history
 
-> 2026-11-15 · trivial · P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.
+> 2026-11-15 · trivial · P0608: Automatically update on paragraph styles moves paragraph formatting and whole-paragraph character formatting into the style, preserving unrelated direct properties. Partial text and tracked edits stay direct; each edit remains one undo step. Readiness estimates unchanged.
 
+> 2026-11-15 · trivial · P0598: a missing Yu Mincho, Yu Gothic, MS PGothic, MS Mincho or MS Gothic keeps Word's Latin advance widths; unmeasured characters keep the substitute's. Readiness estimates unchanged.
+> 2026-11-15 · trivial · P0597: a missing Palatino Linotype or Microsoft Sans Serif keeps Word's advance widths from its PDFs; characters not measured keep the substitute's. Readiness estimates unchanged.
 > 2026-11-15 · trivial · P0576: PDF, printing and page images show unlocked PRINTDATE fields at output time in all stories; locked fields and stored document results stay unchanged. Readiness estimates unchanged.
 
 > 2026-11-15 · trivial · P0560: Restrict Editing settings block theme and style set switching while formatting protection is enforced. DOCX and RTF keep all three settings; AutoFormat override is retained without changing behaviour. Readiness estimates unchanged.

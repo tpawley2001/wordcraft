@@ -638,6 +638,8 @@ fn advanced(app: &mut WordApp, ui: &mut Ui) {
     flag(app, ui, "Typing replaces selected text", "typingReplacesSelection", pr.typing_replaces_selection);
     flag(app, ui, "Use the Insert key to switch overtype on and off", "insertKeyOvertype", pr.insert_key_overtype);
     flag(app, ui, "Overtype (typing replaces the characters after the caret)", "overtype", pr.overtype);
+    flag(app, ui, "When selecting, automatically select entire word", "autoWordSelection", pr.auto_word_selection);
+    flag(app, ui, "Use smart paragraph selection", "smartParagraphSelection", pr.smart_paragraph_selection);
     let mut guides = app.ui.alignment_guides;
     if ui
         .checkbox(&mut guides, tl!("Show alignment guides when moving pictures and shapes"))

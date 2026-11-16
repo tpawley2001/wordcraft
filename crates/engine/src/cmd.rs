@@ -46,6 +46,7 @@ pub mod smart_art;
 pub(crate) mod smart_space;
 mod sort_keys;
 pub mod speech;
+mod style_auto_redefine;
 pub mod table;
 pub mod table_draw;
 pub mod table_formula;

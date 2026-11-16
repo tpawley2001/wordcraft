@@ -53,7 +53,7 @@ pub fn is_word_package(ext: &str) -> bool {
 }
 
 /// How a copy in another format is written.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExportOptions {
     /// Print Markup: PDFs show tracked changes marked up and, with `comments`, each page scaled
     /// down beside a markup area with the comments in balloons (page images get the area too);
@@ -70,6 +70,9 @@ pub struct ExportOptions {
     /// face can draw, a picture that is missing or can't be decoded); else the save fails with
     /// `strict: …` (#6005). Ignored for other formats.
     pub strict: bool,
+    /// A plain-text file's encoding, line ends and character substitution (Word's File
+    /// Conversion dialog); `None` writes UTF-8 with CRLF line ends as before.
+    pub txt: Option<wordcraft_formats::txt::TxtSaveOptions>,
 }
 
 /// A document password: wiped from memory when dropped, never printed (`Debug` shows `***`).
@@ -468,7 +471,11 @@ pub fn save_bytes_opts(name: &str, doc: &Document, opts: &ExportOptions) -> Resu
         // List paragraphs get their label and a tab, as in Word's plain-text save.
         "txt" | "text" => {
             let bytes = wordcraft_formats::txt::export(doc);
-            Ok(if opts.markup && opts.comments { wordcraft_formats::comments::append("txt", doc, bytes) } else { bytes })
+            let bytes = if opts.markup && opts.comments { wordcraft_formats::comments::append("txt", doc, bytes) } else { bytes };
+            Ok(match &opts.txt {
+                Some(o) => wordcraft_formats::txt::encode_text(&String::from_utf8_lossy(&bytes).replace("\r\n", "\n"), o),
+                None => bytes,
+            })
         }
         "json" => serde_json::to_vec_pretty(doc).map_err(|e| e.to_string()),
         other => match crate::io_ext::save(other, doc, opts) {
