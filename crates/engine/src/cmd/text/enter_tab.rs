@@ -208,7 +208,11 @@ pub(super) fn tab(s: &mut Session, _: &Value) -> CmdResult {
         && n.num != 0
     {
         let para = s.doc.para_mut(f.story, &f.path)?;
-        para.props.numbering = Some(NumRef { num: n.num, level: n.level.saturating_add(1).min(8) });
+        let level = n.level.saturating_add(1).min(8);
+        para.props.numbering = Some(NumRef { num: n.num, level });
+        if level != n.level {
+            crate::cmd::para::drop_direct_indents(&mut para.props);
+        }
         para.touch();
         return sel_result(s);
     }
@@ -257,7 +261,11 @@ fn indent_by_tab(s: &mut Session, f: &Pos) -> CmdResult {
         && let Some(n) = r.numbering.filter(|n| n.num != 0)
     {
         let p = s.doc.para_mut(f.story, &f.path)?;
-        p.props.numbering = Some(NumRef { num: n.num, level: n.level.saturating_add(1).min(8) });
+        let level = n.level.saturating_add(1).min(8);
+        p.props.numbering = Some(NumRef { num: n.num, level });
+        if level != n.level {
+            crate::cmd::para::drop_direct_indents(&mut p.props);
+        }
         p.touch();
         return sel_result(s);
     }
@@ -290,7 +298,11 @@ pub(super) fn back_tab(s: &mut Session, _: &Value) -> CmdResult {
     let f = s.sel.focus.clone();
     if let Some(n) = s.doc.para_at(&f).and_then(|x| x.props.numbering).filter(|n| n.num != 0) {
         let para = s.doc.para_mut(f.story, &f.path)?;
-        para.props.numbering = Some(NumRef { num: n.num, level: n.level.saturating_sub(1) });
+        let level = n.level.saturating_sub(1);
+        para.props.numbering = Some(NumRef { num: n.num, level });
+        if level != n.level {
+            crate::cmd::para::drop_direct_indents(&mut para.props);
+        }
         para.touch();
         return sel_result(s);
     }

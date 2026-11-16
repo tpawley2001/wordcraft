@@ -139,3 +139,20 @@ fn decrease_indent_steps_the_leftmost_edge_back_and_never_into_the_margin() {
         ],
     );
 }
+
+/// #4287: Tab / Shift+Tab at the start of a list item and Promote / Demote change its level and drop a
+/// direct indent, so the item takes the new level's indents.
+#[test]
+fn list_level_keys_drop_a_direct_indent() {
+    for (command, start_level, level) in [("text.tab", 0, 1), ("text.backTab", 1, 0), ("para.demote", 0, 1), ("para.promote", 1, 0)] {
+        let mut s = para(120.0, -6.0);
+        s.run("para.numbering", &json!({"kind": "upperLetter"})).unwrap();
+        s.run("para.listLevel", &json!({"level": start_level})).unwrap();
+        s.run("para.indents", &json!({"left": 120.0, "firstLine": -6.0})).unwrap();
+        s.sel = crate::Selection::caret(Pos::body(0, 0));
+        s.run(command, &json!({})).unwrap();
+        let p = s.doc.para_at(&Pos::body(0, 0)).unwrap();
+        assert_eq!(p.props.numbering.map(|n| n.level), Some(level), "{command}");
+        assert_eq!((p.props.indent_left, p.props.indent_first), (None, None), "{command}");
+    }
+}

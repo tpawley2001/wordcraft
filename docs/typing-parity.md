@@ -1,5 +1,6 @@
 # Typing parity with Word
 
+> **Last updated:** 2026-11-16 · **Change:** trivial (a list item that changes level drops its direct indent and takes the new level's indents, as in Word, #4287.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0607: Use smart cursoring: after scrolling, an arrow key moves the caret on the page in view; earlier: P0517: applying a paragraph style clears direct paragraph formatting and a direct bullet or number.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0609: smart cut and paste fixes the spaces around a deleted, cut or pasted word, as in Word.)
 > **Last updated:** 2026-11-15 · **Change:** trivial (P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.)
@@ -10,7 +11,6 @@
 
 
 > **Last reviewed:** 2026-10-11 · **Last updated:** 2026-11-14 · **Change:** trivial (in a table Ctrl+Shift+Enter splits it and Alt+Shift+Up/Down move whole rows; earlier: Decrease Font Size steps one point below 8 pt and 10 pt above 72 pt; earlier: AutoFormat Now under Track Changes records a tracked deletion and insertion, skips locked content controls and labels inside field results)
-
 
 What Word does when you type, observed black-box (same keystrokes typed into Word and
 WordCraft, results read back paragraph by paragraph) and pinned by tests in
@@ -100,6 +100,7 @@ Bullets and Numbering decide whether to toggle off from the selected paragraphs'
 | Enter on an empty **nested** item | moves it up one level; only a top-level empty item leaves the list. The same when the list comes from the paragraph style (List Number 2 in a Word file, #2143) | `enter_on_an_empty_nested_item_moves_it_up_a_level_first`, `enter_on_an_empty_item_numbered_by_its_style_moves_it_up_a_level` |
 | `* ` Enter (nothing typed) | list cancelled, Normal paragraph | `enter_right_after_starting_a_list_cancels_it` |
 | Tab / Shift+Tab at the start of an item | demote / promote | `shift_tab_and_tab_change_list_levels` |
+| Change List Level, Tab or Shift+Tab on an item with a direct indent (ruler drag, pasted block, a Word file's `w:ind`) | the direct left, hanging and first-line indent is dropped and the item takes the new level's indents (#4287) | `changing_a_list_level_drops_a_direct_indent` |
 | Tab with a whole paragraph (or several paragraphs) selected | indents the paragraph(s) by one default tab stop; the text stays. A partial selection inside one paragraph is replaced by a tab character | `tab_with_a_whole_paragraph_selected_indents_it`, `tab_with_a_partial_selection_still_inserts_a_tab` |
 | Backspace at the start of an item | 1st: number removed, indent kept; 2nd: Normal paragraph — **not** joined to the one above | `backspace_at_the_start_of_an_item_removes_the_number_then_the_indent` |
 | Enter mid-item / at item start | splits the item / inserts an empty item above | `enter_in_the_middle_or_at_the_start_of_an_item` |
@@ -664,6 +665,8 @@ Change Case: title and sentence case keep words in capitals when the selection c
 Underline shortcuts and font effects follow Word: Ctrl+U makes any other underline style single, Ctrl+Shift+D and Ctrl+Shift+W toggle their own style off again, and turning on All Caps/Small Caps, Strikethrough/Double strikethrough or Emboss/Engrave/Outline/Shadow turns its exclusive partners off (Outline and Shadow can both be on) (`tests::char_toggles_word`).
 
 ## Revision history
+
+> 2026-11-16 · trivial · A list item that changes level (Change List Level, Tab, Shift+Tab) drops its direct indent and takes the new level's indents, as in Word (#4287).
 
 > 2026-11-15 · trivial · P0610: Advanced options adds Use the Insert key for paste (off by default); plain Insert uses `edit.paste` and takes priority over the overtype switch. Shift+Insert and Ctrl+Insert are unchanged. Readiness estimates unchanged.
 

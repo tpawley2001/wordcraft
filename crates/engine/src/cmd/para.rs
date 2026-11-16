@@ -20,7 +20,7 @@ mod tabs_borders;
 mod tools;
 
 use format::{align, asian_typography, cur, direction, hanging_indent, line_spacing, ls, remove_hanging, set_align, set_props, tog};
-pub use format::{cur as selection_para, fmt, indent, outdent};
+pub use format::{cur as selection_para, drop_direct_indents, fmt, indent, outdent};
 pub use lists::{ListButtons, list_buttons, manage_list, style_description, touch_all};
 use lists::{list, restart_numbering};
 pub(crate) use outline::{ensure_heading_style, set_heading};

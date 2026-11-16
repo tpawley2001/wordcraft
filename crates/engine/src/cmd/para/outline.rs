@@ -137,6 +137,7 @@ pub(super) fn outline_step(s: &mut Session, promote: bool) -> CmdResult {
                 if level != n.level {
                     let para = s.doc.para_mut(a.story, &path)?;
                     para.props.numbering = Some(NumRef { num: n.num, level });
+                    super::drop_direct_indents(&mut para.props);
                     para.touch();
                     changed = true;
                 }
